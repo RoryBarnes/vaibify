@@ -47,11 +47,11 @@ If you run `python dataFoo.py …` in a shell instead:
 debug — tell the researcher in chat exactly what you ran and on which
 step. The dashboard cannot show it for you.
 
-## Editing the workflow, not just running it
+## Editing the project, not just running it
 
-Change the workflow only through `vaibify-do` actions
+Change the project only through `vaibify-do` actions
 (`create-step`, `update-step`, `reorder-steps`, …). Never hand-edit an
-existing `workflow.json` or `state.json` with `sed`/`Edit`/an editor:
+existing `project.json` or `state.json` with `sed`/`Edit`/an editor:
 
 - Direct edits bypass the host save path — step-label recomputation,
   positional→symbolic token normalization, and reload detection — and
@@ -63,9 +63,9 @@ existing `workflow.json` or `state.json` with `sed`/`Edit`/an editor:
   dry-runs the whole graph so you can verify a rewire before running
   anything), pass it as `sBaseFingerprint`, and retry on a 409.
 
-The one sanctioned exception is *creating a brand-new* workflow in
-toolkit mode, where no `create-workflow` action exists yet — writing a
-fresh `.vaibify/workflows/<slug>.json` is expected there.
+The one sanctioned exception is *creating a brand-new* project in
+toolkit mode, where no `create-project` action exists yet — writing a
+fresh `.vaibify/projects/<slug>.json` is expected there.
 
 ## Honesty
 

@@ -1,9 +1,9 @@
 ---
 name: aics-ladder
-description: Raise a vaibify workflow to AICS Level 1, 2, or 3, audit why a level is red, or explain the reproducibility ladder. Use whenever a researcher asks to reach or check an AICS level, or when a level badge disagrees with your expectation.
+description: Raise a vaibify project to AICS Level 1, 2, or 3, audit why a level is red, or explain the reproducibility ladder. Use whenever a researcher asks to reach or check an AICS level, or when a level badge disagrees with your expectation.
 ---
 
-# Driving a workflow up the AICS ladder
+# Driving a project up the AICS ladder
 
 The AI Containment Scale is a five-rung reproducibility ladder
 (L1 Self-Consistent, L2 Published, L3 Reproducible, L4 Archived,
@@ -31,7 +31,7 @@ by inspecting raw files. Two traps that have produced false
 ## L1 — Self-Consistent
 
 All tests pass; every declared output's hash matches its recorded
-baseline; the workflow lives in a git repo (fix: `git init`).
+baseline; the project lives in a git repo (fix: `git init`).
 
 1. `vaibify-do run-all` — execute the pipeline end to end.
 2. `vaibify-do run-all-tests` — unit, integrity, qualitative,

@@ -1,20 +1,20 @@
-# Authoring scripts inside a vaibify workflow
+# Authoring scripts inside a vaibify project
 
 This document explains the contract that vaibify expects scripts inside
-a workflow to follow. The contract is small, mechanical, and exists for
-exactly one reason: the workflow JSON must describe the complete
+a project to follow. The contract is small, mechanical, and exists for
+exactly one reason: the project JSON must describe the complete
 dependency graph so the dashboard can honestly track reproducibility.
 
 ## The contract
 
-A vaibify workflow is a `workflow.json` plus a directory of scripts.
+A vaibify project is a `project.json` plus a directory of scripts.
 The JSON declares each step, the commands that produce its outputs, and
 the files those outputs are stored at. Vaibify's dashboard parses the
 JSON to:
 
 1. Build the dependency graph between steps.
 2. Decide when a step is stale because an upstream changed.
-3. Decide when the workflow has reached AICS Level 1, 2, or 3.
+3. Decide when the project has reached AICS Level 1, 2, or 3.
 
 The parser at
 `vaibify/gui/workflowManager.py::fdictBuildDirectDependencies` uses one
@@ -23,7 +23,7 @@ mechanism to find dependencies: it scans command strings for
 is part of the graph. Anything else is not.
 
 This is the contract: **every cross-step file your script reads must
-arrive as a CLI argument, and the workflow JSON command must reference
+arrive as a CLI argument, and the project JSON command must reference
 it via a `{StepNN.varname}` token.**
 
 ## Why hardcoded cross-step paths break vaibify
@@ -47,7 +47,7 @@ A03 edge does not exist in the dependency graph. The consequences:
   isn't.
 - A03 can show as Level 1 verified while its plot is based on a stale
   flare-samples file.
-- The workflow can therefore claim Self-Consistent (L1) status when it
+- The project can therefore claim Self-Consistent (L1) status when it
   is not, in fact, self-consistent.
 
 This is not a missing feature — it is a deliberate boundary. Vaibify
@@ -92,7 +92,7 @@ Three conventions matter:
   `saDataFiles` entry. So `flare_samples.npy` in `saDataFiles` becomes
   `{Step02.flare_samples}` in any consumer's command.
 - **Use `argparse`, not raw `sys.argv` indexing.** The CLI is part of
-  the workflow contract; argparse makes it explicit and self-documenting.
+  the project contract; argparse makes it explicit and self-documenting.
 
 The director substitutes `{Step02.flare_samples}` at runtime with the
 actual repo-relative path to the producer's output. Your script never
@@ -102,11 +102,11 @@ needs to know where A02 lives.
 
 Sometimes the data flow does not naturally express the dependency. The
 most common case: a plot script reads a sibling step's output but the
-workflow command does not "naturally" thread that path as a CLI
+project command does not "naturally" thread that path as a CLI
 argument (for instance, the script reads many sibling outputs whose
 names follow a pattern).
 
-For those cases, the workflow JSON has an explicit `saDependencies`
+For those cases, the project JSON has an explicit `saDependencies`
 field. List one or more `{StepNN.*}` tokens there and the parser will
 register the edge:
 
@@ -144,9 +144,9 @@ output filenames are part of a scientific code's public interface, and
 benchmark tests bind to them. Keep the tool's standard filenames and
 let the qualified tokens disambiguate.
 
-## Worked example: a 2-step workflow
+## Worked example: a 2-step project
 
-This is the smallest workflow that demonstrates the contract.
+This is the smallest project that demonstrates the contract.
 
 **Step 1** — `Sampler/dataSample.py`:
 
@@ -179,7 +179,7 @@ plt.hist(daSamples)
 plt.savefig(dictArgs["sPlotPath"])
 ```
 
-**`workflow.json`**:
+**`project.json`**:
 
 ```json
 {
@@ -206,7 +206,7 @@ plt.savefig(dictArgs["sPlotPath"])
 
 The token `{Step01.samples}` makes the Sampler → Plot edge explicit in
 the JSON. The parser finds it. The dashboard tracks it. When Sampler
-re-runs, Plot's `bUpstreamModified` flag fires correctly. The workflow
+re-runs, Plot's `bUpstreamModified` flag fires correctly. The project
 can honestly claim Self-Consistent status because the contract is
 intact.
 
@@ -214,8 +214,8 @@ intact.
 
 The architectural invariant
 `tests/testArchitecturalInvariants.py::testTemplateCommandsUseStepTokens`
-scans every `vaibify/templates/*/workflow.json` at CI time and rejects
+scans every `vaibify/templates/*/project.json` at CI time and rejects
 templates that ship with hardcoded cross-step paths. The invariant
-applies only to vaibify-shipped templates — user-authored workflows
+applies only to vaibify-shipped templates — user-authored projects
 are out of vaibify's enforcement scope, but the same rule applies for
 the dashboard to function correctly.

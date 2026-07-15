@@ -1,6 +1,6 @@
 ---
 name: vaibify-doc-map
-description: Find and read the right section of vaibify's own documentation instead of loading a whole doc into context. Use when you need authoritative detail on how vaibify works — the dashboard, the reproducibility ladder, the workflow/step schema, test formats, or script authoring.
+description: Find and read the right section of vaibify's own documentation instead of loading a whole doc into context. Use when you need authoritative detail on how vaibify works — the dashboard, the reproducibility ladder, the project/step schema, test formats, or script authoring.
 ---
 
 # vaibify documentation map
@@ -22,8 +22,8 @@ All paths are under `/usr/share/vaibify/docs/`.
 | The reproducibility envelope files | reproducibility.md | `## The Reproducibility Envelope` (Tier 1/2/3 subsections) |
 | How `vaibify reproduce` verifies | reproducibility.md | `## The verification ceremony` |
 | The full ladder incl. L4/L5 (out of scope) | vision.md | (whole file is short) |
-| The workflow.json / step object schema | pipelines.md | `## Workflow File`, `## Step Object` |
-| Workflow size limits, core allocation | pipelines.md | `### Workflow size limits`, `## Core Allocation` |
+| The project.json / step object schema | pipelines.md | `## Project File`, `## Step Object` |
+| Project size limits, core allocation | pipelines.md | `### Project size limits`, `## Core Allocation` |
 | Test file formats and detection | testFormats.md | `## Format Table`, `## How Format Detection Works` |
 | The data access-path syntax for tests | testFormats.md | `## Access Path Syntax` |
 | The cross-step `{StepNN.varname}` contract | scriptAuthoring.md | (whole file; the token convention + colliding basenames) |

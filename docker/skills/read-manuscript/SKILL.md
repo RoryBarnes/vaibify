@@ -1,6 +1,6 @@
 ---
 name: read-manuscript
-description: Read the project's OWN manuscript (the LaTeX source of the paper this workflow supports) before answering questions about it, checking it against results, or editing figure references. Use whenever asked to consult, summarize, check, or update the project's paper or manuscript.
+description: Read the project's OWN manuscript (the LaTeX source of the paper this project supports) before answering questions about it, checking it against results, or editing figure references. Use whenever asked to consult, summarize, check, or update the project's paper or manuscript.
 ---
 
 # Reading the project's own manuscript
@@ -24,13 +24,13 @@ you cannot.
    (`grep -n caption`). The token cost of reading a whole manuscript
    is real; a targeted read almost always answers the question.
 4. When checking the paper against results, compare the numbers/
-   figures in the tex against the workflow's actual outputs; report
+   figures in the tex against the project's actual outputs; report
    discrepancies rather than assuming the paper is current.
 
 ## When there is no Overleaf binding
 
 `pull-manuscript` returns a 409 ("No Overleaf project is bound") when
-the workflow has no manuscript configured. Then:
+the project has no manuscript configured. Then:
 
 - Check whether the repo vendors its own tex:
   `find /workspace -name '*.tex' -not -path '*/.vaibify/*'`.

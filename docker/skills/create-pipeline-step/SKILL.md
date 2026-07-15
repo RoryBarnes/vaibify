@@ -1,6 +1,6 @@
 ---
 name: create-pipeline-step
-description: Author a new, fully wired vaibify pipeline step — scripts, declared outputs, cross-step dependency tokens, and the workflow JSON entry. Use whenever asked to create a new analysis, computation, or plot in a vaibify workflow.
+description: Author a new, fully wired vaibify pipeline step — scripts, declared outputs, cross-step dependency tokens, and the project JSON entry. Use whenever asked to create a new analysis, computation, or plot in a vaibify project.
 ---
 
 # Creating a new pipeline step
@@ -10,8 +10,8 @@ dependency graph the backend can parse mechanically.
 
 ## Phase 1: Discover context
 
-1. Find the workflow JSON:
-   `find /workspace -maxdepth 4 -path '*/.vaibify/workflows/*.json'`
+1. Find the project JSON:
+   `find /workspace -maxdepth 4 \( -path '*/.vaibify/projects/*.json' -o -path '*/.vaibify/workflows/*.json' \)`
 2. Read `listSteps`: existing steps, their outputs, available
    variables.
 3. Backward dependencies: which steps' `saDataFiles` produce the
@@ -33,7 +33,7 @@ dependency graph the backend can parse mechanically.
 ## Phase 3: The cross-step token contract (non-negotiable)
 
 Every file the script reads from ANOTHER step must be a CLI argument,
-referenced in the workflow command via a `{StepNN.varname}` token. A
+referenced in the project command via a `{StepNN.varname}` token. A
 hardcoded cross-step path (`open("../OtherStep/output.json")`) is
 invisible to the dependency parser and silently breaks the L1
 contract. Own-step files may be hardcoded; the boundary is the step.
@@ -43,7 +43,7 @@ contract. Own-step files may be hardcoded; the boundary is the step.
   extensionless basename of the producer's `saDataFiles` entry.
 - Use argparse, never raw sys.argv, so the contract is explicit.
 - When two producers declare colliding basenames, use the qualified
-  token form (producer-prefixed); the workflow's `saDependencies`
+  token form (producer-prefixed); the project's `saDependencies`
   list is the escape hatch for edges the data flow does not express.
 
 Worked example — producer declares, consumer tokenizes:
@@ -56,13 +56,13 @@ Worked example — producer declares, consumer tokenizes:
  "saPlotCommands": ["python plotFfd.py --flare-samples {Step02.flare_samples} {sPlotDirectory}/ffd.{sFigureType}"]}
 ```
 
-## Phase 4: Scripts and the workflow entry
+## Phase 4: Scripts and the project entry
 
 Scripts follow the repo style guide (read the repo CLAUDE.md first):
 Hungarian notation, return-type function prefixes, functions ~20
 lines, `import vplot` for any matplotlib figure.
 
-Workflow entry rules:
+Project entry rules:
 - EVERY output file declared in `saDataFiles` or `saPlotFiles` — no
   untracked outputs.
 - `saTestCommands` should include at least a basic sanity check.
