@@ -1152,6 +1152,20 @@ body.aics-level-3 .toolbar-label {
     animation: pulse 0.7s infinite;
 }
 
+/* Per-step expected-runtime input in the expanded detail. Compact so
+   it reads as a small inline field beside its label, not a settings
+   control. */
+.step-budget-input {
+    width: 5em;
+    margin-left: 4px;
+    padding: 1px 4px;
+    font-size: 12px;
+    background: var(--input-bg, rgba(0, 0, 0, 0.2));
+    color: inherit;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+    border-radius: 3px;
+}
+
 .step-item .step-status.skipped {
     background: var(--text-muted);
     border: none;

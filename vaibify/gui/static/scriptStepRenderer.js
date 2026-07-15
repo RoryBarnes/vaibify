@@ -224,12 +224,15 @@ var VaibifyStepRenderer = (function () {
                 (step.bPlotOnly !== false ? " checked" : "") + '>' +
                 ' Plot only (skip data analysis)</label></div>';
             sHtml += '<div class="detail-label plot-only-row">' +
-                '<label class="plot-only-toggle" title="Wall-clock' +
-                ' budget in seconds; a running step that outruns it is' +
-                ' flagged as possibly hung. 0 or blank inherits the' +
-                ' workflow default (Settings). Never stops the run.">' +
-                'Budget (s) <input type="number" min="0" step="1"' +
-                ' class="step-budget-input gs-input"' +
+                '<label class="plot-only-toggle" title="Optional: the' +
+                ' number of seconds this step is expected to run.' +
+                ' If it runs longer, the run light turns red as a' +
+                ' possibly-hung warning — the run is never stopped.' +
+                ' Blank or 0 means no limit (inherits the workflow' +
+                ' default under Settings).">' +
+                'Expected runtime (s), 0 = no limit ' +
+                '<input type="number" min="0" step="1"' +
+                ' class="step-budget-input"' +
                 ' data-step="' + iIndex + '"' +
                 ' value="' + (step.fWallClockBudgetSeconds || "") +
                 '"></label></div>';

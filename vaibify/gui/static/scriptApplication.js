@@ -406,6 +406,13 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.iWorkflowEpoch =
                 dictData.iWorkflowEpoch;
         }
+        // Adopt the fresh compare-and-swap baseline immediately so the
+        // very next edit is validated against current state, not the
+        // stale fingerprint that provoked the reload.
+        if (typeof dictData.sWorkflowFingerprint === "string") {
+            _dictWorkflowState.sWorkflowFingerprint =
+                dictData.sWorkflowFingerprint;
+        }
         _fnClearFileCaches();
         _fnInvalidateAllRenderCaches();
         fnRenderStepList();
@@ -907,14 +914,15 @@ const PipeleyenApp = (function () {
             (_dictWorkflowState.dictWorkflow.bAutoArchive
                 ? " checked" : "") +
             ' title="Push verified files to Overleaf/Zenodo automatically">') +
-            fsSettingsRowHtml("Budget (s)",
+            fsSettingsRowHtml("Runtime limit (s)",
             '<input class="gs-input" id="gsDefaultWallClockBudget"' +
             ' type="number" min="0" step="1" value="' +
             (_dictWorkflowState.dictWorkflow
                 .fDefaultWallClockBudgetSeconds || 0) + '"' +
-            ' title="Default wall-clock budget in seconds; a running' +
-            ' step that outruns it is flagged as possibly hung. 0 = off.' +
-            ' A step can override this in its editor.">') +
+            ' title="Default expected runtime in seconds applied to' +
+            ' every step without its own value. A step that runs longer' +
+            ' turns its run light red as a possibly-hung warning; the' +
+            ' run is never stopped. 0 = no limit.">') +
             fsClaudeSettingsHtml();
     }
 
@@ -3084,8 +3092,12 @@ const PipeleyenApp = (function () {
                     + "reloaded to stay in sync so your edit didn't "
                     + "overwrite it. Re-apply it if you still want it.",
                     "warning");
-                PipeleyenContainerManager.fnConnectToContainer(
-                    _dictSessionState.sContainerId);
+                // Reload the CURRENT workflow in place (refreshes the
+                // fingerprint baseline and re-renders the dashboard).
+                // The old path called fnConnectToContainer, which shows
+                // the workflow picker — a 409 on a routine step edit
+                // must never eject the researcher from their dashboard.
+                VaibifyWorkflowManager.fnRefreshWorkflow();
             } else {
                 fnShowToast("Save failed", "error");
             }
