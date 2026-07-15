@@ -108,3 +108,50 @@ def test_fnClearState_removes():
     fnClearState(mockDocker, "ctr1")
     dictRead = fdictReadState(mockDocker, "ctr1")
     assert dictRead is None
+
+
+def test_reconcile_state_read_timeout_releases_lock():
+    """A hung pipeline_state read must NOT hold the per-container
+    reconcile lock forever — that would deadlock every future
+    reconciliation and leave a dead runner bRunning=True indefinitely
+    (the reported dispatch->silence->state-never-reconciles wedge).
+
+    The reconciler bails this cycle (returns None, lock released) and a
+    subsequent call proceeds — proving the lock did not stay held.
+    """
+    import asyncio
+    import time
+    from unittest.mock import MagicMock, patch
+    from vaibify.gui import pipelineState
+
+    mockDocker = MagicMock()
+
+    def fnSlowRead(*args, **kwargs):
+        time.sleep(0.4)                 # far longer than the timeout
+        return (0, json.dumps({"bRunning": False}))
+
+    mockDocker.ftResultExecuteCommand.side_effect = fnSlowRead
+    dictCtx = {"docker": mockDocker}
+
+    async def fnDrive():
+        with patch.object(
+            pipelineState, "_F_STATE_IO_TIMEOUT_SECONDS", 0.05,
+        ):
+            rFirst = await pipelineState.fdictReadReconciledState(
+                dictCtx, "cid",
+            )
+            # If the lock were still held, this second call would block
+            # forever; wait_for turns a deadlock into a test failure.
+            mockDocker.ftResultExecuteCommand.side_effect = None
+            mockDocker.ftResultExecuteCommand.return_value = (
+                0, json.dumps({"bRunning": False}),
+            )
+            rSecond = await asyncio.wait_for(
+                pipelineState.fdictReadReconciledState(dictCtx, "cid"),
+                timeout=2.0,
+            )
+        return rFirst, rSecond
+
+    rFirst, rSecond = asyncio.run(fnDrive())
+    assert rFirst is None                       # bailed on the hung read
+    assert rSecond == {"bRunning": False}       # lock was released

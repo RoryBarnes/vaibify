@@ -52,6 +52,14 @@ I_HEARTBEAT_INTERVAL_SECONDS = 5
 # the parallel badge/poll fan-out doesn't mass-kill healthy long runs.
 # A truly dead runner is still reconciled in under a minute.
 I_HEARTBEAT_STALE_SECONDS = 60
+# A reconcile reads and writes pipeline_state.json via one docker exec
+# each, under the per-container state lock. Those execs have no native
+# timeout, so a hung exec would hold the lock forever and deadlock ALL
+# future reconciliation for the container (the runner-death safety net
+# is exactly what would then never run). Bounding each exec releases
+# the lock and retries next cycle. A state file is tiny; 15s is
+# generous.
+_F_STATE_IO_TIMEOUT_SECONDS = 15.0
 # Sentinel exit code stamped by the poll-side reconciler when the
 # runner thread has vanished without writing a final state. Sits
 # outside the OS exit-code range (0-255) so callers can distinguish
@@ -328,9 +336,24 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
     _fnEnsureStateLockForContainer(dictCtx, sContainerId)
     lockState = dictCtx["dictPipelineStateLocks"][sContainerId]
     async with lockState:
-        dictState = await asyncio.to_thread(
-            fdictReadState, connectionDocker, sContainerId,
-        )
+        try:
+            dictState = await asyncio.wait_for(
+                asyncio.to_thread(
+                    fdictReadState, connectionDocker, sContainerId,
+                ),
+                timeout=_F_STATE_IO_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            # A hung state read must not hold the reconcile lock
+            # forever — that deadlocks every future reconciliation for
+            # this container, so a dead runner would stay bRunning=True
+            # indefinitely. Bail this cycle (lock released on return);
+            # the next poll retries.
+            _loggerState.warning(
+                "pipeline-state read timed out for container=%s; "
+                "skipping reconcile this cycle", sContainerId,
+            )
+            return None
         if dictState is None:
             return None
         if not dictState.get("bRunning"):
@@ -341,9 +364,23 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
         dictReconciled = _fdictReconcileStaleHeartbeat(
             dictState, fNow, dictIncident=dictIncident,
         )
-        await asyncio.to_thread(
-            fnWriteState, connectionDocker, sContainerId, dictReconciled,
-        )
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    fnWriteState, connectionDocker, sContainerId,
+                    dictReconciled,
+                ),
+                timeout=_F_STATE_IO_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            # The in-memory reconciliation is correct and returned to
+            # the caller; persistence retries next cycle rather than
+            # holding the lock on a hung write.
+            _loggerState.warning(
+                "pipeline-state write timed out for container=%s; "
+                "reconcile applied in memory, persist next cycle",
+                sContainerId,
+            )
         return dictReconciled
 
 
