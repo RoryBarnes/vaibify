@@ -264,9 +264,16 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/push",
      "bAgentSafe": True,
-     "sDescription": "Push committed changes to GitHub. The route "
-                     "verifies the token owner matches the remote "
-                     "before pushing."},
+     "sDescription": "Stage, commit, and push specific output files to "
+                     "the GitHub mirror (the Level-2 publication flow). "
+                     "REQUIRES a listFilePaths body field — pass it as a "
+                     "JSON list, e.g. "
+                     "listFilePaths='[\"Step/out.csv\",\"Plot/fig.pdf\"]'; "
+                     "optional sCommitMessage, sTargetDirectory. Verifies "
+                     "the token owner matches the remote before pushing. "
+                     "This is NOT a general 'git push' of existing "
+                     "commits — to push code/commits, push the branch "
+                     "directly."},
     {"sName": "add-file-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/add-file",
