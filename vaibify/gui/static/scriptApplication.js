@@ -34,6 +34,7 @@ const PipeleyenApp = (function () {
             dictOutputMtimes: {},
             dictPlotMtimes: {},
             dictMaxDataMtimeByStep: {},
+            dictMaxInputMtimeByStep: {},
             dictMarkerMtimeByStep: {},
             dictTestSourceMtimeByStep: {},
             dictTestCategoryMtimes: {},
@@ -491,6 +492,7 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictOutputMtimes = {};
         _dictWorkflowState.dictPlotMtimes = {};
         _dictWorkflowState.dictMaxDataMtimeByStep = {};
+        _dictWorkflowState.dictMaxInputMtimeByStep = {};
         _dictWorkflowState.dictMarkerMtimeByStep = {};
         _dictWorkflowState.dictTestSourceMtimeByStep = {};
         _dictWorkflowState.dictTestCategoryMtimes = {};
@@ -1228,6 +1230,8 @@ const PipeleyenApp = (function () {
             dictOutputMtimes: _dictWorkflowState.dictOutputMtimes,
             dictMaxDataMtimeByStep:
                 _dictWorkflowState.dictMaxDataMtimeByStep,
+            dictMaxInputMtimeByStep:
+                _dictWorkflowState.dictMaxInputMtimeByStep,
             dictMaxPlotMtimeByStep: _dictWorkflowState.dictPlotMtimes,
             dictMarkerMtimeByStep:
                 _dictWorkflowState.dictMarkerMtimeByStep,
@@ -1391,6 +1395,7 @@ const PipeleyenApp = (function () {
             dictContext.dictOutputMtimes[sIdx] || "",
             dictContext.dictMarkerMtimeByStep[sIdx] || "",
             dictContext.dictMaxDataMtimeByStep[sIdx] || "",
+            (dictContext.dictMaxInputMtimeByStep || {})[sIdx] || "",
             dictContext.dictMaxPlotMtimeByStep[sIdx] || "",
             dictContext.dictTestCategoryMtimes[sIdx] || null,
             dictContext.fdictGetFalsificationState ?
@@ -3122,6 +3127,13 @@ const PipeleyenApp = (function () {
         await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
     }
 
+    async function fnToggleNoInputData(iStep, bNoInputData) {
+        _dictWorkflowState.dictWorkflow.listSteps[iStep].bNoInputData =
+            bNoInputData;
+        await fnPutStepEdit(iStep, {bNoInputData: bNoInputData});
+        fnRenderStepList();
+    }
+
     function fnToggleDepsExpand(iStep) {
         if (_dictUiState.setExpandedDeps.has(iStep)) {
             _dictUiState.setExpandedDeps.delete(iStep);
@@ -3391,6 +3403,16 @@ const PipeleyenApp = (function () {
     }
 
     function fnAddNewItem(iStep, sArrayKey) {
+        if (sArrayKey === "saInputDataFiles") {
+            PipeleyenModals.fnShowFilePickerModal(
+                "Add Input Data",
+                "Pick the raw data file this step reads, or type "
+                    + "its repo-relative path.",
+                function (sPath) {
+                    fnCommitNewItem(iStep, sArrayKey, sPath);
+                });
+            return;
+        }
         var sPlaceholder = sArrayKey === "saPlotFiles" ?
             "File path..." : "Command...";
         PipeleyenModals.fnShowInlineInput(
@@ -3716,6 +3738,10 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMaxDataMtimeByStep) {
             _dictWorkflowState.dictMaxDataMtimeByStep =
                 dictStatus.dictMaxDataMtimeByStep;
+        }
+        if (dictStatus.dictMaxInputMtimeByStep) {
+            _dictWorkflowState.dictMaxInputMtimeByStep =
+                dictStatus.dictMaxInputMtimeByStep;
         }
         if (dictStatus.dictMarkerMtimeByStep) {
             _dictWorkflowState.dictMarkerMtimeByStep =
@@ -4198,6 +4224,7 @@ const PipeleyenApp = (function () {
         fnToggleRequirementRow: fnToggleRequirementRow,
         fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
+        fnToggleNoInputData: fnToggleNoInputData,
         fnSetStepBudget: fnSetStepBudget,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,

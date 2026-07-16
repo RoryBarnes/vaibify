@@ -79,3 +79,40 @@ def test_emptying_already_empty_field_passes():
     _fnRequireDestructiveConfirm(
         dictWorkflow, 0, {"saTestCommands": []}, False,
     )
+
+
+def test_empty_input_data_files_blocked_without_confirm():
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "S",
+            "sDirectory": "s",
+            "saTestCommands": [],
+            "saOutputDataFiles": [],
+            "saInputDataFiles": ["data/raw.csv"],
+        }],
+    }
+    with pytest.raises(HTTPException) as excInfo:
+        _fnRequireDestructiveConfirm(
+            dictWorkflow, 0, {"saInputDataFiles": []}, False,
+        )
+    assert excInfo.value.status_code == 400
+    assert "saInputDataFiles" in excInfo.value.detail
+
+
+def test_step_update_request_accepts_input_declaration_fields():
+    """The Pydantic whitelist must not silently drop the new fields."""
+    from vaibify.gui.pipelineServer import StepUpdateRequest
+    requestUpdate = StepUpdateRequest(
+        saInputDataFiles=["data/raw.csv"],
+        bNoInputData=True,
+        listRemoteData=[{
+            "sPath": "data/raw.csv",
+            "sSourceUrl": "https://archive.example/query",
+            "sRetrievedUtc": "",
+            "sSha256": "",
+        }],
+    )
+    dictDump = requestUpdate.model_dump()
+    assert dictDump["saInputDataFiles"] == ["data/raw.csv"]
+    assert dictDump["bNoInputData"] is True
+    assert dictDump["listRemoteData"][0]["sPath"] == "data/raw.csv"

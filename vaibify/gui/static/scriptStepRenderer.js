@@ -9,6 +9,7 @@ var VaibifyStepRenderer = (function () {
     var _DICT_CATEGORY_TO_REMOTE_KEYS = {
         saPlotFiles: ["sGithub", "sOverleaf", "sZenodo", "sArxiv"],
         saOutputDataFiles: ["sGithub", "sZenodo"],
+        saInputDataFiles: ["sGithub", "sZenodo"],
         saStepScripts: ["sGithub", "sZenodo"],
         saTestStandards: ["sGithub", "sZenodo"],
     };
@@ -16,10 +17,12 @@ var VaibifyStepRenderer = (function () {
     var _DICT_STALE_ROW_LABELS = {
         "test|dataScript": "Tests older than data scripts",
         "test|dataFile": "Tests older than output data",
+        "test|inputFile": "Input data modified since last run",
         "user|dataScript": "User verification older than data scripts",
         "user|dataFile": "User verification older than output data",
         "user|plotScript": "User verification older than plot scripts",
         "user|plotFile": "User verification older than plot files",
+        "user|inputFile": "User verification older than input data",
     };
 
     /* --- Level strip (Scope F) ---
@@ -253,6 +256,10 @@ var VaibifyStepRenderer = (function () {
                 'human judgment. It will run in the terminal ' +
                 'with X11 display forwarding.</div></div>';
         }
+
+        sHtml += fsRenderInputDataSection(
+            step, iIndex, dictVars, dictContext
+        );
 
         sHtml += fsRenderTrackedFileSection(
             "Scripts", "saStepScripts",
@@ -962,6 +969,51 @@ var VaibifyStepRenderer = (function () {
             || ["sGithub", "sZenodo"];
         return VaibifyGitBadges.fsRenderBadgeRow(
             dictTriple, aRemoteKeys);
+    }
+
+    /* Input Data: raw files a step consumes that no step produces.
+       Entries are repo-relative, so rows resolve against the project
+       repo root, never the step directory. The section renders even
+       when empty so the + button and the explicit "No input data
+       needed" declaration are always reachable — an undeclared step
+       (no files listed, box unchecked) cannot reach AICS Level 1. */
+    function fsRenderInputDataSection(
+        step, iIndex, dictVars, dictContext
+    ) {
+        var sHtml = fsRenderSectionLabel(
+            "Input Data", iIndex, "saInputDataFiles"
+        );
+        var listInputs = step.saInputDataFiles || [];
+        listInputs.forEach(function (sFile, iFileIdx) {
+            sHtml += fsRenderTrackedFileItem(
+                sFile, dictVars, "saInputDataFiles", iIndex,
+                iFileIdx, dictContext.sProjectRepoPath || "",
+                dictContext
+            );
+        });
+        if (listInputs.length === 0) {
+            sHtml += fsRenderNoInputDataRow(step, iIndex);
+        }
+        return sHtml;
+    }
+
+    function fsRenderNoInputDataRow(step, iIndex) {
+        var bDeclaredNone = step.bNoInputData === true;
+        var sHtml = '<div class="detail-label plot-only-row">' +
+            '<label class="plot-only-toggle" title="Check to declare' +
+            ' explicitly that this step consumes no raw input data.' +
+            ' A step reaches Level 1 only when it lists input files' +
+            ' or carries this declaration.">' +
+            '<input type="checkbox" class="no-input-data-checkbox"' +
+            ' data-step="' + iIndex + '"' +
+            (bDeclaredNone ? " checked" : "") + '>' +
+            ' No input data needed</label></div>';
+        if (!bDeclaredNone) {
+            sHtml += '<div class="detail-note input-undeclared-note">' +
+                'Input data undeclared &mdash; list the raw files this ' +
+                'step reads, or check the box above.</div>';
+        }
+        return sHtml;
     }
 
     function fsRenderTrackedFileSection(

@@ -1793,7 +1793,12 @@ var VaibifySyncManager = (function () {
     }
 
     function _fbRowIsEditable(dictRow) {
-        return !dictRow.bTrackedFile && !isNaN(dictRow.iStep) &&
+        // Tracked-file rows are derived views (Scripts, Test
+        // Standards) and not editable in place — except Input Data,
+        // a user-declared list that shares the row chrome.
+        var bDerivedTracked = dictRow.bTrackedFile &&
+            dictRow.sArray !== "saInputDataFiles";
+        return !bDerivedTracked && !isNaN(dictRow.iStep) &&
             !isNaN(dictRow.iIdx) && dictRow.sArray !== "";
     }
 

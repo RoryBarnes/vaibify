@@ -445,3 +445,82 @@ def test_first_render_after_invalidate_takes_full_path():
         "path; otherwise the incremental path would target an empty "
         "DOM."
     )
+
+
+# -----------------------------------------------------------------------
+# Input Data block
+# -----------------------------------------------------------------------
+
+
+def test_input_data_section_renders_before_scripts():
+    """The Input Data block must sit between Directory and Scripts.
+
+    Checked structurally: inside fsRenderStepItem the call to
+    fsRenderInputDataSection must appear after the Directory field
+    and before the Scripts tracked-file section.
+    """
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    iBody = sSource.find("function fsRenderStepItem")
+    assert iBody != -1
+    iDirectory = sSource.find(">Directory</div>", iBody)
+    iInputCall = sSource.find("fsRenderInputDataSection(", iBody)
+    iScripts = sSource.find('"Scripts", "saStepScripts"', iBody)
+    assert iDirectory != -1 and iInputCall != -1 and iScripts != -1
+    assert iDirectory < iInputCall < iScripts, (
+        "fsRenderInputDataSection must be invoked between the "
+        "Directory field and the Scripts section."
+    )
+
+
+def test_input_data_section_always_offers_add_button():
+    """The section label must be the editable variant so the + button
+    exists even on a step with no inputs declared yet."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    iSection = sSource.find("function fsRenderInputDataSection")
+    assert iSection != -1
+    sBlock = sSource[iSection:iSection + 900]
+    assert 'fsRenderSectionLabel(' in sBlock
+    assert '"Input Data", iIndex, "saInputDataFiles"' in sBlock
+
+
+def test_input_data_registered_for_remote_badges():
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    assert 'saInputDataFiles: ["sGithub", "sZenodo"]' in sSource
+
+
+def test_input_stale_row_labels_defined():
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    assert '"test|inputFile"' in sSource
+    assert '"user|inputFile"' in sSource
+
+
+def test_input_mtime_map_participates_in_render_hash():
+    """dictMaxInputMtimeByStep must be in _fsContextSliceForStep or a
+    poll that only moves an input mtime leaves a stale card."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    iSlice = sSource.find("function _fsContextSliceForStep")
+    iEnd = sSource.find("function _flistBlockerAndLevelSlice")
+    assert iSlice != -1 and iEnd != -1
+    assert "dictMaxInputMtimeByStep" in sSource[iSlice:iEnd], (
+        "dictMaxInputMtimeByStep missing from the per-step context "
+        "slice — input-mtime-only polls would not re-render the card."
+    )
+
+
+def test_input_rows_join_existence_batch():
+    sSource = _fsReadStaticFile("scriptFileOperations.js")
+    assert 'data-array="saInputDataFiles"' in sSource, (
+        "Existence planner must include Input Data rows so a "
+        "declared-but-absent input renders the honest red."
+    )
+
+
+def test_file_picker_modal_exported():
+    sSource = _fsReadStaticFile("scriptModals.js")
+    assert "fnShowFilePickerModal: fnShowFilePickerModal" in sSource
+
+
+def test_no_input_data_checkbox_bound():
+    sSource = _fsReadStaticFile("scriptEventBindings.js")
+    assert "no-input-data-checkbox" in sSource
+    assert "fnToggleNoInputData" in sSource

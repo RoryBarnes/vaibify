@@ -454,6 +454,146 @@ var PipeleyenModals = (function () {
         });
     }
 
+    /* Live container file picker: browses the project repo through
+       GET /api/files/{id}/<absPath> (fnShowTreePicker is unsuitable —
+       it selects directories from a pre-built index). Selection is
+       returned REPO-RELATIVE; navigation is confined to the project
+       repo so a pick can never produce an out-of-repo path. */
+    function fnShowFilePickerModal(sTitle, sMessage, fnOnSelect) {
+        var elExisting = document.getElementById("modalFilePicker");
+        if (elExisting) elExisting.remove();
+        var sRepoRoot = ((PipeleyenApp.fdictGetWorkflow() || {})
+            .sProjectRepoPath || "").replace(/\/+$/, "");
+        var elModal = document.createElement("div");
+        elModal.id = "modalFilePicker";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal modal-directory-browser">' +
+            '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
+            '<p style="font-size:13px;margin-bottom:8px">' +
+            fnEscapeHtml(sMessage) + '</p>' +
+            '<div class="breadcrumb-bar" id="filePickerBreadcrumb">' +
+            '</div>' +
+            '<div class="directory-browser" id="filePickerEntries">' +
+            '</div>' +
+            '<input type="text" class="input-modal-field" ' +
+            'id="inputFilePickerPath" ' +
+            'placeholder="repo-relative/path/to/file">' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnFilePickerCancel">' +
+            'Cancel</button>' +
+            '<button class="btn btn-primary" id="btnFilePickerAdd">' +
+            'Add</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        _fnWireFilePicker(elModal, sRepoRoot, fnOnSelect);
+        _fnLoadPickerDirectory(sRepoRoot, sRepoRoot);
+    }
+
+    function _fnWireFilePicker(elModal, sRepoRoot, fnOnSelect) {
+        var elInput = document.getElementById("inputFilePickerPath");
+        function fnCommit() {
+            var sValue = elInput.value.trim().replace(/^\/+/, "");
+            elModal.remove();
+            if (sValue) fnOnSelect(sValue);
+        }
+        document.getElementById("btnFilePickerCancel")
+            .addEventListener("click", function () {
+                elModal.remove();
+            });
+        document.getElementById("btnFilePickerAdd")
+            .addEventListener("click", fnCommit);
+        elInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") fnCommit();
+            if (e.key === "Escape") elModal.remove();
+        });
+        document.getElementById("filePickerEntries")
+            .addEventListener("click", function (event) {
+                var elItem = event.target.closest(".file-item");
+                if (!elItem) return;
+                if (elItem.dataset.isDir === "true") {
+                    _fnLoadPickerDirectory(
+                        elItem.dataset.path, sRepoRoot);
+                } else {
+                    elInput.value = _fsRepoRelative(
+                        elItem.dataset.path, sRepoRoot);
+                }
+            });
+        document.getElementById("filePickerBreadcrumb")
+            .addEventListener("click", function (event) {
+                var elCrumb = event.target.closest(".crumb");
+                if (!elCrumb) return;
+                _fnLoadPickerDirectory(
+                    elCrumb.dataset.path, sRepoRoot);
+            });
+    }
+
+    function _fsRepoRelative(sAbsPath, sRepoRoot) {
+        if (sRepoRoot && sAbsPath.indexOf(sRepoRoot + "/") === 0) {
+            return sAbsPath.slice(sRepoRoot.length + 1);
+        }
+        return sAbsPath;
+    }
+
+    async function _fnLoadPickerDirectory(sPath, sRepoRoot) {
+        var elEntries = document.getElementById("filePickerEntries");
+        if (!elEntries) return;
+        if (!sPath || sPath.indexOf(sRepoRoot) !== 0) sPath = sRepoRoot;
+        _fnRenderPickerBreadcrumb(sPath, sRepoRoot);
+        try {
+            var listEntries = await VaibifyApi.fdictGet(
+                "/api/files/" + PipeleyenApp.fsGetContainerId() + sPath
+            );
+            elEntries.innerHTML = _fsRenderPickerEntries(listEntries);
+        } catch (error) {
+            elEntries.innerHTML =
+                '<p class="muted-text">Error loading directory</p>';
+        }
+    }
+
+    function _fsRenderPickerEntries(listEntries) {
+        if (!listEntries || listEntries.length === 0) {
+            return '<p class="muted-text">Empty directory</p>';
+        }
+        listEntries.sort(function (a, b) {
+            if (a.bIsDirectory !== b.bIsDirectory) {
+                return a.bIsDirectory ? -1 : 1;
+            }
+            return a.sName.localeCompare(b.sName);
+        });
+        return listEntries.map(function (entry) {
+            return '<div class="file-item" data-path="' +
+                fnEscapeHtml(entry.sPath) +
+                '" data-is-dir="' + entry.bIsDirectory + '">' +
+                '<span class="file-icon' +
+                (entry.bIsDirectory ? " dir" : "") + '">' +
+                (entry.bIsDirectory ? "&#128193;" : "&#128196;") +
+                '</span>' +
+                '<span class="file-name">' +
+                fnEscapeHtml(entry.sName) + '</span></div>';
+        }).join("");
+    }
+
+    function _fnRenderPickerBreadcrumb(sPath, sRepoRoot) {
+        var elBreadcrumb =
+            document.getElementById("filePickerBreadcrumb");
+        if (!elBreadcrumb) return;
+        var sRelative = _fsRepoRelative(sPath, sRepoRoot);
+        var listParts = sRelative === sPath
+            ? [] : sRelative.split("/").filter(Boolean);
+        var sHtml = '<span class="crumb" data-path="' +
+            fnEscapeHtml(sRepoRoot) + '">repo</span>';
+        var sBuiltPath = sRepoRoot;
+        listParts.forEach(function (sPart) {
+            sBuiltPath += "/" + sPart;
+            sHtml += ' / <span class="crumb" data-path="' +
+                fnEscapeHtml(sBuiltPath) + '">' +
+                fnEscapeHtml(sPart) + '</span>';
+        });
+        elBreadcrumb.innerHTML = sHtml;
+    }
+
     return {
         fnShowConfirmModal: fnShowConfirmModal,
         fnShowInputModal: fnShowInputModal,
@@ -463,5 +603,6 @@ var PipeleyenModals = (function () {
         fnShowInfoModal: fnShowInfoModal,
         fnShowInlineInput: fnShowInlineInput,
         fnShowTreePicker: fnShowTreePicker,
+        fnShowFilePickerModal: fnShowFilePickerModal,
     };
 })();

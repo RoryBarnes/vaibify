@@ -162,8 +162,14 @@ var PipeleyenFileOps = (function () {
     function _fnCollectOutputElementPlan(
         dictPlan, setSeenPaths, dictState
     ) {
+        // Input Data rows join the same existence batch: their
+        // data-resolved is the repo-relative declaration, which the
+        // exist endpoint resolves against the project repo root. A
+        // declared-but-absent input renders the honest red.
         document.querySelectorAll(
-            '.detail-item.output'
+            '.detail-item.output, '
+            + '.detail-item.tracked-file'
+            + '[data-array="saInputDataFiles"]'
         ).forEach(function (el) {
             var dictItem = _fdictOutputItemForPlan(el, dictState);
             if (!dictItem) return;
