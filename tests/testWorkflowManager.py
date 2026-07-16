@@ -884,6 +884,28 @@ def test_input_data_files_reject_escaping_path():
     assert "escapes" in listWarnings[0]
 
 
+def test_input_data_files_reject_control_characters():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    for sBad in ("data/x\n__VAIBIFY_EOF__", "data/y\x00z", "data/z\r"):
+        dictWorkflow = _fdictWorkflowWithInputEntries(
+            saInputDataFiles=[sBad],
+        )
+        listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+        assert len(listWarnings) == 1, sBad
+        assert "control character" in listWarnings[0]
+
+
+def test_remote_data_path_rejects_control_characters():
+    from vaibify.gui.workflowManager import flistStepRemoteDataPaths
+    dictStep = {
+        "listRemoteData": [
+            {"sPath": "data/good.fits"},
+            {"sPath": "data/evil\n__VAIBIFY_EOF__"},
+        ],
+    }
+    assert flistStepRemoteDataPaths(dictStep) == ["data/good.fits"]
+
+
 def test_input_data_files_reject_step_tokens():
     from vaibify.gui.workflowManager import flistValidateOutputFilePaths
     for sToken in ("{Step03.samples}", "{step:refit.samples}"):

@@ -586,6 +586,14 @@ def _fsCheckInputPathBoundary(sPath, sLabel, sKey):
     """Return a warning for one repo-relative input path, or ''."""
     if not isinstance(sPath, str) or not sPath:
         return ""
+    if any(sChar in sPath for sChar in ("\n", "\r", "\x00")):
+        # A repo-relative data path never contains a newline or null.
+        # Rejecting them keeps a hostile filename from splitting the
+        # newline-delimited existence heredoc the run gate builds.
+        return (
+            f"{sLabel}: {sKey} path contains an illegal control "
+            f"character (newline or null byte)"
+        )
     if "{Step" in sPath or "{step:" in sPath:
         return (
             f"{sLabel}: {sKey} '{sPath}' must not reference a step "

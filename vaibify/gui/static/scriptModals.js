@@ -539,7 +539,16 @@ var PipeleyenModals = (function () {
     async function _fnLoadPickerDirectory(sPath, sRepoRoot) {
         var elEntries = document.getElementById("filePickerEntries");
         if (!elEntries) return;
-        if (!sPath || sPath.indexOf(sRepoRoot) !== 0) sPath = sRepoRoot;
+        // Confine navigation to the project repo. The prefix test
+        // needs the trailing slash (or an exact match) so a sibling
+        // like "/workspace/repo-other" cannot pass as inside
+        // "/workspace/repo". The backend independently enforces the
+        // workspace root; this is the tighter in-repo confinement.
+        var bInsideRepo = sPath && (
+            sPath === sRepoRoot ||
+            sPath.indexOf(sRepoRoot + "/") === 0
+        );
+        if (!bInsideRepo) sPath = sRepoRoot;
         _fnRenderPickerBreadcrumb(sPath, sRepoRoot);
         try {
             var listEntries = await VaibifyApi.fdictGet(

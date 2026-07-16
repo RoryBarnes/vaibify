@@ -144,6 +144,17 @@ def test_run_all_skips_run_disabled_pull_steps():
     ) is None
 
 
+def test_run_from_skips_run_disabled_pull_steps():
+    """runFrom honors bRunEnabled like the runner — a disabled pull
+    step in range must not trigger the gate (it will not run)."""
+    dictPull = _fdictPullStep()
+    dictPull["bRunEnabled"] = False
+    dictWorkflow = _fdictWorkflow([_fdictPlainStep(), dictPull])
+    assert _fdictRefusalFor(
+        "runFrom", {"iStartStep": 1}, dictWorkflow, [_S_ABS_PULL],
+    ) is None
+
+
 @pytest.mark.parametrize("sAction", ["verify", "runAllTests"])
 def test_non_run_actions_are_never_gated(sAction):
     dictWorkflow = _fdictWorkflow([_fdictPullStep()])

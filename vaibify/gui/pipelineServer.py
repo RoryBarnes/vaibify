@@ -808,20 +808,18 @@ _SET_REMOTE_GATED_ACTIONS = frozenset({
 
 
 def _flistGateStepIndices(sAction, dictRequest, dictWorkflow):
-    """Return the 0-based indices the action would run; [] when ungated."""
+    """Return the 0-based indices the action would run; [] when ungated.
+
+    Mirrors the runner's real step selection (``_fbShouldRunStep`` in
+    pipelineRunner.py) exactly so the gate never disagrees with what
+    executes: ``runAll``/``forceRunAll``/``runFrom`` all honor each
+    step's ``bRunEnabled`` flag (forceRunAll only clears run-stats, it
+    does not force disabled steps), and ``runFrom`` additionally bounds
+    the range by the 1-based start step. ``runSelected`` ignores
+    ``bRunEnabled`` because the explicit index set overrides it, again
+    matching the runner.
+    """
     listSteps = dictWorkflow.get("listSteps", []) or []
-    if sAction in ("runAll", "forceRunAll"):
-        return [
-            iIndex for iIndex, dictStep in enumerate(listSteps)
-            if isinstance(dictStep, dict)
-            and dictStep.get("bRunEnabled", True) is not False
-        ]
-    if sAction == "runFrom":
-        iStartStep = _fiResolveStartStep(dictRequest, dictWorkflow)
-        return [
-            iIndex for iIndex in range(max(iStartStep - 1, 0),
-                                       len(listSteps))
-        ]
     if sAction == "runSelected":
         return [
             iIndex for iIndex in _flistResolveSelectedIndices(
@@ -829,7 +827,18 @@ def _flistGateStepIndices(sAction, dictRequest, dictWorkflow):
             )
             if 0 <= iIndex < len(listSteps)
         ]
-    return []
+    if sAction not in ("runAll", "forceRunAll", "runFrom"):
+        return []
+    iStartStep = (
+        _fiResolveStartStep(dictRequest, dictWorkflow)
+        if sAction == "runFrom" else 1
+    )
+    return [
+        iIndex for iIndex, dictStep in enumerate(listSteps)
+        if isinstance(dictStep, dict)
+        and dictStep.get("bRunEnabled", True) is not False
+        and (iIndex + 1) >= iStartStep
+    ]
 
 
 def _fdictCollectRemoteOverwritePaths(sAction, dictRequest, dictWorkflow):

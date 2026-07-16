@@ -2721,7 +2721,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # alongside the sibling boundary checks it mirrors, plus the
     # flistStepRemoteDataPaths accessor every remote-data reader
     # shares. Cohesive with the schema this module owns.
-    "workflowManager.py": 2254,
+    # +8 (2026-07-16): control-character rejection in the input-path
+    # boundary check (closes a heredoc-split vector for the new fields).
+    "workflowManager.py": 2262,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -2754,7 +2756,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # existence exec, and the runRefused remoteDataOverwrite event.
     # Cohesive with the message loop and busy-refusal it sits beside;
     # every lane (browser, agent CLI) must meet the same gate here.
-    "pipelineServer.py": 1972,
+    # +9 (2026-07-16): the gate step-selection mirrors the runner
+    # exactly (bRunEnabled + runFrom start bound), diverged from a
+    # range() that over-included disabled steps.
+    "pipelineServer.py": 1981,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
