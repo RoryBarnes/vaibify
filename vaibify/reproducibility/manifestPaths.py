@@ -237,6 +237,29 @@ def flistStepOutputRepoPaths(dictStep, dictTemplateValues=None):
     return listPaths
 
 
+def flistStepInputRepoPaths(dictStep):
+    """Return repo-relative declared input-data paths for one step.
+
+    ``saInputDataFiles`` entries are repo-relative by contract —
+    never joined onto the step directory. Templated entries are
+    skipped (unresolvable here); absolute entries pass through
+    unchanged so the manifest writer's absolute-path guard rejects
+    the declaration loudly.
+    """
+    listPaths = []
+    for sFile in dictStep.get("saInputDataFiles", []) or []:
+        if not sFile:
+            continue
+        sPath = str(sFile)
+        if "{" in sPath:
+            continue
+        if sPath.startswith("/"):
+            listPaths.append(sPath)
+            continue
+        listPaths.append(posixpath.normpath(sPath))
+    return listPaths
+
+
 def flistStepStandardsRepoPaths(dictStep):
     """Return repo-relative paths of test standards for one step.
 

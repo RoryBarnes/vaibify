@@ -49,6 +49,37 @@ This makes a project's verification state — which tests have run,
 what they produced, whether the outputs have drifted — reproducible
 from a fresh clone without rerunning anything.
 
+### L1 requires a declared input contract
+
+Every step must state what raw data it consumes: files listed in its
+`saInputDataFiles` (repo-relative, watched for modification) or the
+explicit `bNoInputData` declaration. An *undeclared* step — neither
+inputs listed nor the declaration — cannot reach Level 1, because
+nothing distinguishes "verified there are no raw inputs" from
+"nobody looked." An input file modified after outputs or plots were
+generated does not satisfy Level 1 either: the results no longer
+follow from the recorded inputs, so the Project is not
+self-consistent until the affected steps re-run. Markers record a
+per-input content hash (`dictInputHashes`) at every run, so both
+verdicts survive a fresh clone.
+
+### Canonical remote data
+
+Data pulled from a remote source (an archive query, a survey
+release) must be committed to the repository — the remote may vanish
+or silently change, and a Project whose raw data cannot be
+re-obtained is not reproducible. Each pulled file carries a
+provenance record in the pulling step's `listRemoteData`
+(`sPath`, `sSourceUrl`, `sRetrievedUtc`, `sSha256`), refreshed
+automatically after every successful pull; the URL is inert
+metadata, never fetched by vaibify. Because a re-pull overwrites the
+canonical copy, any run covering such a step whose files already
+exist is refused pending explicit confirmation (browser modal;
+`--confirm-remote-overwrite` for the agent CLI after relaying the
+question to the researcher), and the fresh data is never
+auto-committed — it flows through the normal review-and-commit
+canonical flow.
+
 ## AICS Level 3 — Reproducible
 
 Vaibify targets **AICS Level 3 ("Reproducible")** on the AI
@@ -79,9 +110,9 @@ trigger it.
 ### Tier 1 — Artifacts (`MANIFEST.sha256`)
 
 A GNU-coreutils shasum-format file at the repository root listing
-every declared project output (everything in each step's
-`saPlotFiles` and `saOutputDataFiles`) by repo-relative
-POSIX path with its SHA-256 hash:
+every declared project artefact (everything in each step's
+`saPlotFiles`, `saOutputDataFiles`, and `saInputDataFiles`) by
+repo-relative POSIX path with its SHA-256 hash:
 
 ```
 1a2b3c...  scripts/runAnalysis.py

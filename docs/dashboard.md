@@ -180,10 +180,34 @@ control to an agent for a specific stage.
 #### The expanded step view
 
 Clicking a step row expands its detail: the working directory, its
-scripts, data analysis commands, data files, plot commands, and plot
-files. File rows carry the per-file marks and remote badges described
-under [Status lights and colours](#status-lights-and-colours), and
+input data, scripts, data analysis commands, output data, plot
+commands, and plot files. File rows carry the per-file marks and
+remote badges described under
+[Status lights and colours](#status-lights-and-colours), and
 clicking a file opens it in a Viewing Window.
+
+The **Input Data** block, between Directory and Scripts, declares
+the raw files the step consumes that no step produces — for example,
+observational data committed in the repository. Paths are
+repo-relative; the **+** button opens a file picker that browses the
+container's project repository (or accepts a typed path). Vaibify
+watches declared inputs on every poll: a modified input invalidates
+the step and shows "Input data modified since last run" — the
+Project is no longer self-consistent until the step re-runs. A step
+with no raw inputs is declared explicitly with the **No input data
+needed** checkbox; a step with neither files nor the checkbox is
+*undeclared* and cannot reach Level 1. The Project block's
+"Input data declared" row names undeclared steps and offers a
+one-click bulk declaration for retrofitting an existing Project.
+
+A step that pulls data from a remote source records per-file
+provenance (`listRemoteData`: source URL, retrieval time, content
+hash, refreshed after every successful pull). Re-running such a step
+when the pulled files already exist asks before overwriting the
+canonical committed copy — as a modal in the browser, and as an
+actionable refusal for the in-container agent, which must relay the
+question to you. Fresh pulls are never auto-committed; review and
+commit them through the ordinary canonical flow.
 
 The **Verification** section at the bottom of the expanded view shows
 one row per verification axis, each with its state and a timestamp:

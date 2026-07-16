@@ -150,6 +150,26 @@ When an upstream step is modified, downstream steps are flagged as
 upstream-modified. The researcher sees verification badges dim
 automatically; no one has to remember to invalidate anything by hand.
 
+Declared input data (`saInputDataFiles` — raw files a step consumes
+that no step produces) rides the same poll: input paths join the
+stat batch, an mtime delta on a declared input invalidates every
+step that declares it (matched by full resolved path against the
+repository root, never by basename), and the marker-hash pass reads
+`dictInputHashes` alongside `dictOutputHashes` so content drift with
+a preserved mtime is caught while a fresh clone with identical
+content stays green. The staleness rows label the input lane
+distinctly ("Input data modified since last run").
+
+Run dispatch carries one more gate beside the busy-refusal: a run
+covering a step whose `listRemoteData` files already exist on disk
+is answered with `runRefused` `sReason=remoteDataOverwrite` unless
+the request confirms the overwrite. The gate lives at the single
+WebSocket dispatch choke point so the browser and the in-container
+agent meet the identical rule; the interactive Run-in-Terminal
+buttons never reach dispatch (they compose a shell command
+client-side), so that one lane carries the same check in the
+frontend — a documented exception, not an enforcement path.
+
 Each poll's path-mtime collection is one `docker exec` total, fed by
 a path list written to `/tmp/vaibifyPoll.list` via
 `connectionDocker.fnWriteFileViaTar` and consumed by

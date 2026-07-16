@@ -2686,7 +2686,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the inputFile pencil bucket, and dictInputHashes drift folded
     # into the marker-hash pass. Mirrors the output lane this module
     # owns; splitting it out would smear one behavior across modules.
-    "fileStatusManager.py": 2099,
+    # +8 (2026-07-16): inputs join _flistStepOutputsRepoRelative so
+    # the fresh-clone manifest short-circuit requires manifest-clean
+    # inputs too (landed with manifestWriter input coverage).
+    "fileStatusManager.py": 2107,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

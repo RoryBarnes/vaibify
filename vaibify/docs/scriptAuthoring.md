@@ -219,3 +219,67 @@ templates that ship with hardcoded cross-step paths. The invariant
 applies only to vaibify-shipped templates — user-authored projects
 are out of vaibify's enforcement scope, but the same rule applies for
 the dashboard to function correctly.
+
+## Input Data — raw files a step consumes
+
+Not every file a step reads is produced by another step. Raw
+observational data, instrument tables, and any other file that exists
+before the pipeline runs are **input data**, declared per step in
+`saInputDataFiles`:
+
+- Entries are **repo-relative** — they resolve against the project
+  repository root, never the step directory.
+- Entries must NOT be step products. A `{StepNN.*}` token in
+  `saInputDataFiles` is rejected at load time: cross-step files stay
+  tokens in commands so the dependency parser sees the edge.
+- The same file may be declared by several steps — shared inputs are
+  the normal case. A modification invalidates every declaring step
+  (and, through the ordinary machinery, everything downstream of
+  them); no ordering edge is created between sibling consumers.
+
+Every step must state its input contract to reach AICS Level 1:
+either list the raw files it reads, or set the explicit
+`bNoInputData` declaration ("this step consumes no raw data"). Both
+absent means *undeclared*, which blocks Level 1 — nothing
+distinguishes "verified there are no raw inputs" from "nobody
+looked." An input file modified after the step's outputs were
+generated means the Project is no longer self-consistent: the step
+is invalidated, its tests demote, and Level 1 drops until the step
+re-runs.
+
+At every step run, the test-marker plugin records a content hash for
+each declared input (`dictInputHashes`), so staleness detection
+survives a fresh clone: new mtimes with identical content stay
+green; changed content is flagged even when a copy preserved the
+mtime.
+
+## Remote data — pulls must become canonical
+
+A step that downloads data from a remote source (an archive query, a
+DOI resolver, a survey release) declares each pulled file in
+`listRemoteData`:
+
+```json
+"listRemoteData": [
+  {"sPath": "data/lightcurve.fits",
+   "sSourceUrl": "https://archive.example/query?...",
+   "sRetrievedUtc": "", "sSha256": ""}
+]
+```
+
+`sPath` is repo-relative (the pulled file also appears in the step's
+`saOutputDataFiles` — it is that step's output). `sSourceUrl` is
+inert provenance metadata: vaibify never fetches it. After each
+successful run, vaibify hashes the pulled files and stamps
+`sRetrievedUtc`/`sSha256` when the content changed, so the Project
+permanently records what was fetched, from where, and when — even if
+the remote later vanishes or silently changes.
+
+For reproducibility the pulled data must be **committed** to the
+project repository (the ordinary commit-canonical flow; badges show
+the drift after a pull). Because a re-run would overwrite that
+canonical copy, any run covering a remote-pull step whose declared
+files already exist is refused with a confirmation question — in the
+browser as a modal, for the in-container agent as a `runRefused`
+event it must relay to the researcher (`--confirm-remote-overwrite`
+after an explicit yes). A first-ever pull never prompts.

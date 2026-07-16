@@ -296,10 +296,11 @@ def flistCanonicalTrackedFilesFromScans(
 def _fnAppendStepTrackedPaths(
     dictStep, dictVars, listPaths, setSeen, setExcluded,
 ):
-    """Append one step's scripts, outputs, standards, and test files."""
+    """Append one step's scripts, outputs, inputs, standards, tests."""
     for listIncoming in (
         _flistStepScriptRepoPaths(dictStep),
         _flistStepOutputRepoPaths(dictStep, dictVars),
+        manifestPaths.flistStepInputRepoPaths(dictStep),
         _flistStepStandardsRepoPaths(dictStep),
         _flistStepTestFileRepoPaths(dictStep),
         manifestPaths.flistStepDeclarationRepoPaths(dictStep),

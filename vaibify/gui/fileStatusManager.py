@@ -1176,13 +1176,17 @@ def _fbAllPathsTrackedByManifest(filesRepo, listRelPaths):
 
 
 def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
-    """Return repo-relative output paths declared on a step.
+    """Return repo-relative output + input paths declared on a step.
 
     Resolves each ``saOutputDataFiles``/``saPlotFiles`` entry against the
     step directory the same way ``_fsResolveStepFilePath`` does, then
     strips the repo root so the result lines up with manifest keys
     (which are repo-relative POSIX strings written by
-    ``manifestWriter``).
+    ``manifestWriter``). ``saInputDataFiles`` entries append as-is —
+    they are repo-relative by contract and the manifest tracks them
+    through ``manifestPaths.flistStepInputRepoPaths`` — so the
+    fresh-clone short-circuit only fires when the step's inputs are
+    manifest-clean too.
     """
     from .pathContract import fsAbsToRepoRelative
     sStepDir = dictStep.get("sDirectory", "")
@@ -1195,6 +1199,10 @@ def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
             sFile, sStepDir, {"sRepoRoot": sRepoRoot},
         )
         listRelative.append(fsAbsToRepoRelative(sAbs, sRepoRoot))
+    for sFile in dictStep.get("saInputDataFiles", []) or []:
+        if not sFile or "{" in sFile:
+            continue
+        listRelative.append(posixpath.normpath(sFile))
     return listRelative
 
 
