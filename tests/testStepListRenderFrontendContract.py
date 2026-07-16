@@ -524,3 +524,42 @@ def test_no_input_data_checkbox_bound():
     sSource = _fsReadStaticFile("scriptEventBindings.js")
     assert "no-input-data-checkbox" in sSource
     assert "fnToggleNoInputData" in sSource
+
+
+# -----------------------------------------------------------------------
+# Remote-data overwrite gate — browser lane
+# -----------------------------------------------------------------------
+
+
+def test_remote_overwrite_refusal_confirms_then_redispatches():
+    """The remoteDataOverwrite refusal must open a confirm modal and,
+    on confirm, re-dispatch with bConfirmRemoteOverwrite — not just
+    toast like the busy refusal."""
+    sSource = _fsReadStaticFile("scriptPipelineRunner.js")
+    iHandler = sSource.find(
+        "function _fnHandleRemoteOverwriteRefusal")
+    assert iHandler != -1
+    sBlock = sSource[iHandler:iHandler + 1200]
+    assert "bConfirmRemoteOverwrite: true" in sBlock
+    assert "fnShowConfirmModal" in sBlock
+    assert "fnSendPipelineAction" in sBlock
+    assert '"remoteDataOverwrite"' in sSource
+
+
+def test_all_three_interactive_lanes_pass_the_overwrite_gate():
+    """Run-in-Terminal never reaches the server dispatch, so each of
+    the three interactive entry points must route its launch through
+    fnConfirmRemoteOverwriteThen."""
+    sSource = _fsReadStaticFile("scriptPipelineRunner.js")
+    for sFunction in (
+        "function fnRunInteractiveStep",
+        "function fnRunInteractivePlots",
+        "function fnExecuteStepCombined",
+    ):
+        iStart = sSource.find(sFunction)
+        assert iStart != -1, sFunction
+        iEnd = sSource.find("\n    function ", iStart + 10)
+        sBody = sSource[iStart:iEnd]
+        assert "fnConfirmRemoteOverwriteThen" in sBody, (
+            sFunction + " must gate its terminal launch"
+        )

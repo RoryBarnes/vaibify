@@ -119,6 +119,10 @@ var PipeleyenPipelineRunner = (function () {
             PipeleyenApp.fnResetQueuedSteps(
                 dictEvent.listStepIndices || []);
             PipeleyenApp.fnRenderStepList();
+            if (dictEvent.sReason === "remoteDataOverwrite") {
+                _fnHandleRemoteOverwriteRefusal(dictEvent);
+                return;
+            }
             PipeleyenApp.fnShowToast(
                 dictEvent.sMessage ||
                 "A pipeline action is already running.", "error");
@@ -496,6 +500,80 @@ var PipeleyenPipelineRunner = (function () {
         elOutput.scrollTop = elOutput.scrollHeight;
     }
 
+    /* --- Remote-data overwrite confirmation --- */
+
+    function _fnHandleRemoteOverwriteRefusal(dictEvent) {
+        // The server refused because the run would re-pull remote
+        // data over the canonical committed copy. The refusal echoes
+        // the original request, so a confirmed retry re-dispatches
+        // without any client-side caching.
+        var dictRetry = Object.assign(
+            {}, dictEvent.dictOriginalRequest || {},
+            {
+                sAction: dictEvent.sAction,
+                bConfirmRemoteOverwrite: true,
+            });
+        PipeleyenApp.fnShowConfirmModal(
+            "Overwrite canonical data?",
+            "Step(s) " +
+            (dictEvent.listStepLabels || []).join(", ") +
+            " pull remote data over the committed copy:\n" +
+            (dictEvent.listRemoteOverwritePaths || []).join("\n") +
+            "\n\nThe remote source may have changed since the " +
+            "canonical results were generated. Overwrite and " +
+            "re-pull?",
+            function () { fnSendPipelineAction(dictRetry); }
+        );
+    }
+
+    function fnConfirmRemoteOverwriteThen(step, fnProceed) {
+        // Frontend-only gate for the interactive terminal lane: the
+        // Run-in-Terminal buttons compose a shell command and never
+        // reach the server dispatch choke point, so the check runs
+        // here. Same rule as the server gate: a first pull (nothing
+        // on disk) proceeds silently.
+        var listPaths = (step.listRemoteData || [])
+            .map(function (dictRemote) {
+                return (dictRemote && dictRemote.sPath) || "";
+            })
+            .filter(Boolean);
+        if (listPaths.length === 0) {
+            fnProceed();
+            return;
+        }
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        VaibifyApi.fdictPost(
+            "/api/files/" + sContainerId + "/exist",
+            {saRelativePaths: listPaths}
+        ).then(function (dictResponse) {
+            var dictExists = (dictResponse &&
+                dictResponse.dictExists) || {};
+            var listExisting = listPaths.filter(function (sPath) {
+                return dictExists[sPath];
+            });
+            if (listExisting.length === 0) {
+                fnProceed();
+                return;
+            }
+            PipeleyenApp.fnShowConfirmModal(
+                "Overwrite canonical data?",
+                "This step pulls remote data over the committed " +
+                "copy:\n" + listExisting.join("\n") +
+                "\n\nThe remote source may have changed since the " +
+                "canonical results were generated. Overwrite and " +
+                "re-pull?",
+                fnProceed);
+        }).catch(function () {
+            // The existence check could not run — fail safe: ask.
+            PipeleyenApp.fnShowConfirmModal(
+                "Overwrite canonical data?",
+                "This step declares remote-pulled data and the " +
+                "current files could not be checked. Overwrite if " +
+                "present?",
+                fnProceed);
+        });
+    }
+
     /* --- Execution --- */
 
     function fnRunSingleStep(iIndex) {
@@ -526,18 +604,9 @@ var PipeleyenPipelineRunner = (function () {
         var listCmds = (step.saDataCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
-        if (listCmds.length === 0) return;
-        var sDir = VaibifyUtilities.fsResolveTemplate(
-            step.sDirectory, dictVars);
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCmd = _fsBuildInteractiveCommand(
-            sDir, listCmds, sSentinel
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+        fnConfirmRemoteOverwriteThen(step, function () {
+            _fnLaunchInteractiveCommands(iIndex, step, listCmds);
+        });
     }
 
     function fnRunInteractivePlots(iIndex) {
@@ -552,7 +621,17 @@ var PipeleyenPipelineRunner = (function () {
         var listCmds = (step.saPlotCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
+        fnConfirmRemoteOverwriteThen(step, function () {
+            _fnLaunchInteractiveCommands(iIndex, step, listCmds);
+        });
+    }
+
+    function _fnLaunchInteractiveCommands(iIndex, step, listCmds) {
+        // Shared terminal launch for the three interactive entry
+        // points (data, plots, combined) — identical before the
+        // remote-overwrite gate forced the extraction (rule of three).
         if (listCmds.length === 0) return;
+        var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var sDir = VaibifyUtilities.fsResolveTemplate(
             step.sDirectory, dictVars);
         var sUuid = _fsGenerateUuid();
@@ -610,18 +689,9 @@ var PipeleyenPipelineRunner = (function () {
         }
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = flistResolveStepCommands(step, dictVars);
-        if (listCmds.length === 0) return;
-        var sDir = VaibifyUtilities.fsResolveTemplate(
-            step.sDirectory, dictVars);
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCmd = _fsBuildInteractiveCommand(
-            sDir, listCmds, sSentinel
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+        fnConfirmRemoteOverwriteThen(step, function () {
+            _fnLaunchInteractiveCommands(iIndex, step, listCmds);
+        });
     }
 
     function flistResolveStepCommands(step, dictVars) {
