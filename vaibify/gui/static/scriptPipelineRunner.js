@@ -62,6 +62,14 @@ var PipeleyenPipelineRunner = (function () {
                     dictEvent.dictRunStats;
                 PipeleyenApp.fnRenderStepList();
             }
+        } else if (dictEvent.sType === "remoteDataRecorded") {
+            var iRemoteIdx = dictEvent.iStepNumber - 1;
+            var dictWfRemote = PipeleyenApp.fdictGetWorkflow();
+            if (dictWfRemote && dictWfRemote.listSteps[iRemoteIdx]) {
+                dictWfRemote.listSteps[iRemoteIdx].listRemoteData =
+                    dictEvent.listRemoteData || [];
+                PipeleyenApp.fnRenderStepList();
+            }
         } else if (dictEvent.sType === "stepSkipped") {
             PipeleyenApp.fnSetStepStatus(
                 dictEvent.iStepNumber - 1, "skipped");

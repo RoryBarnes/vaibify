@@ -2762,7 +2762,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
     # per-step run orchestration it extends.
-    "pipelineRunner.py": 1408,
+    # +87 (2026-07-16): the remote-data provenance recorder — after a
+    # successful pull step, one exec sha256-hashes the declared
+    # remote files, updates listRemoteData records, and emits
+    # remoteDataRecorded. Cohesive with the step execution it stamps.
+    "pipelineRunner.py": 1495,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,

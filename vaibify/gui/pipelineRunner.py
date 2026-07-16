@@ -1081,12 +1081,99 @@ async def _fiExecuteAndRecord(
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],
     })
+    if iExitCode == 0:
+        await _fnRecordRemoteDataProvenance(
+            connectionDocker, sContainerId, dictStep,
+            dictVariables, iStepNumber, fnStatusCallback,
+        )
     await _fnEmitDiscoveredOutputs(
         connectionDocker, sContainerId, sStepDir,
         setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
     )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
+
+
+async def _fnRecordRemoteDataProvenance(
+    connectionDocker, sContainerId, dictStep, dictVariables,
+    iStepNumber, fnStatusCallback,
+):
+    """Refresh listRemoteData provenance after a successful pull.
+
+    One docker exec hashes every declared remote-pulled file; each
+    record's ``sSha256`` updates and ``sRetrievedUtc`` is stamped
+    when the content changed or was hashed for the first time. An
+    unchanged file keeps its original retrieval stamp, a failed or
+    missing hash leaves the record untouched — provenance never
+    guesses. Persistence rides the end-of-run workflow save. The
+    fresh data is NOT auto-committed: it flows through the normal
+    badges / commit-canonical review so the researcher decides when
+    the new pull becomes canonical.
+    """
+    listPaths = workflowManager.flistStepRemoteDataPaths(dictStep)
+    if not listPaths:
+        return
+    sRepoRoot = (dictVariables or {}).get("sRepoRoot", "")
+    if not sRepoRoot:
+        return
+    dictShaByPath = await asyncio.to_thread(
+        _fdictHashRemoteDataFiles,
+        connectionDocker, sContainerId, sRepoRoot, listPaths,
+    )
+    if not _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
+        return
+    await fnStatusCallback({
+        "sType": "remoteDataRecorded",
+        "iStepNumber": iStepNumber,
+        "listRemoteData": dictStep.get("listRemoteData", []),
+    })
+
+
+def _fdictHashRemoteDataFiles(
+    connectionDocker, sContainerId, sRepoRoot, listRelPaths,
+):
+    """Return {repoRelPath: sha256} for the paths that exist; one exec."""
+    listQuoted = [
+        fsShellQuote(posixpath.join(sRepoRoot, sRelPath))
+        for sRelPath in listRelPaths
+    ]
+    sCommand = (
+        "sha256sum -- " + " ".join(listQuoted) + " 2>/dev/null || true"
+    )
+    _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    dictResult = {}
+    sPrefix = sRepoRoot.rstrip("/") + "/"
+    for sLine in (sOutput or "").splitlines():
+        listParts = sLine.split(None, 1)
+        if len(listParts) != 2:
+            continue
+        sSha = listParts[0].strip()
+        sAbsPath = listParts[1].strip()
+        if len(sSha) != 64:
+            continue
+        if sAbsPath.startswith(sPrefix):
+            dictResult[sAbsPath[len(sPrefix):]] = sSha
+    return dictResult
+
+
+def _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
+    """Update sSha256/sRetrievedUtc in place; True when anything moved."""
+    from datetime import datetime, timezone
+    sNowUtc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    bChanged = False
+    for dictRemote in dictStep.get("listRemoteData", []) or []:
+        if not isinstance(dictRemote, dict):
+            continue
+        sSha = dictShaByPath.get(dictRemote.get("sPath", ""))
+        if not sSha:
+            continue
+        if dictRemote.get("sSha256") != sSha:
+            dictRemote["sSha256"] = sSha
+            dictRemote["sRetrievedUtc"] = sNowUtc
+            bChanged = True
+    return bChanged
 
 
 # ---------------------------------------------------------------------------
