@@ -118,6 +118,7 @@ class StepCreateRequest(BaseModel):
     saTestCommands: List[str] = []
     saPlotCommands: List[str] = []
     saPlotFiles: List[str] = []
+    saInputDataFiles: List[str] = []
 
 
 class StepUpdateRequest(BaseModel):
@@ -131,6 +132,14 @@ class StepUpdateRequest(BaseModel):
     saTestCommands: Optional[List[str]] = None
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
+    saInputDataFiles: Optional[List[str]] = None
+    # Explicit "this step consumes no raw input data" declaration;
+    # the third state (undeclared) is inputs empty + flag False.
+    bNoInputData: Optional[bool] = None
+    # Remote-pull provenance records: {sPath, sSourceUrl,
+    # sRetrievedUtc, sSha256} per pulled file. sSourceUrl is inert
+    # metadata — never fetched, never rendered as a hyperlink.
+    listRemoteData: Optional[List[dict]] = None
     saDependencies: Optional[List[str]] = None
     # Advisory per-step wall-clock ceiling in seconds; when the active
     # step outruns it the dashboard flags it as possibly hung. 0/absent
@@ -315,6 +324,7 @@ def fdictStepFromRequest(request):
         saTestCommands=request.saTestCommands,
         saPlotCommands=request.saPlotCommands,
         saPlotFiles=request.saPlotFiles,
+        saInputDataFiles=request.saInputDataFiles,
     )
 
 

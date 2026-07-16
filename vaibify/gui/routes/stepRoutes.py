@@ -242,14 +242,18 @@ def _fnRequireFingerprintMatch(dictWorkflow, sBaseFingerprint):
 def _fnRequireDestructiveConfirm(
     dictWorkflow, iStepIndex, dictUpdates, bConfirm,
 ):
-    """Refuse edits that empty saTestCommands/saOutputDataFiles unless confirmed."""
+    """Refuse edits that empty destructive-to-lose lists unless confirmed.
+
+    Emptying ``saInputDataFiles`` silently disables input-staleness
+    detection, the same hazard class as emptying the other two.
+    """
     if bConfirm:
         return
     listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return
     dictStep = listSteps[iStepIndex]
-    for sKey in ("saTestCommands", "saOutputDataFiles"):
+    for sKey in ("saTestCommands", "saOutputDataFiles", "saInputDataFiles"):
         listNew = dictUpdates.get(sKey)
         if listNew is None or listNew:
             continue

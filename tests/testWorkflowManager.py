@@ -248,6 +248,18 @@ def test_fdictCreateStep_defaults():
     assert dictStep["saDataCommands"] == []
     assert dictStep["saPlotCommands"] == []
     assert dictStep["saPlotFiles"] == []
+    assert dictStep["saInputDataFiles"] == []
+    assert dictStep["bNoInputData"] is False
+    assert dictStep["listRemoteData"] == []
+
+
+def test_fdictCreateStep_accepts_input_data_files():
+    dictStep = fdictCreateStep(
+        sName="Posteriors",
+        sDirectory="posteriors",
+        saInputDataFiles=["data/observations.csv"],
+    )
+    assert dictStep["saInputDataFiles"] == ["data/observations.csv"]
 
 
 def test_fnInsertStep_renumbers_references():
@@ -828,6 +840,101 @@ def test_flistValidateOutputFilePaths_empty_workflow_returns_empty():
     from vaibify.gui.workflowManager import flistValidateOutputFilePaths
     assert flistValidateOutputFilePaths({}) == []
     assert flistValidateOutputFilePaths({"listSteps": []}) == []
+
+
+def _fdictWorkflowWithInputEntries(saInputDataFiles=None, listRemoteData=None):
+    return {
+        "listSteps": [{
+            "sName": "Posteriors",
+            "sDirectory": "posteriors",
+            "saOutputDataFiles": [],
+            "saPlotFiles": [],
+            "saInputDataFiles": list(saInputDataFiles or []),
+            "listRemoteData": list(listRemoteData or []),
+        }],
+    }
+
+
+def test_input_data_files_accept_repo_relative_paths():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["data/observations.csv", "raw/lightcurve.fits"],
+    )
+    assert flistValidateOutputFilePaths(dictWorkflow) == []
+
+
+def test_input_data_files_reject_absolute_path():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["/etc/passwd"],
+    )
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 1
+    assert "repo-relative" in listWarnings[0]
+    assert "saInputDataFiles" in listWarnings[0]
+
+
+def test_input_data_files_reject_escaping_path():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["../outside.csv"],
+    )
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 1
+    assert "escapes" in listWarnings[0]
+
+
+def test_input_data_files_reject_step_tokens():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    for sToken in ("{Step03.samples}", "{step:refit.samples}"):
+        dictWorkflow = _fdictWorkflowWithInputEntries(
+            saInputDataFiles=[sToken],
+        )
+        listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+        assert len(listWarnings) == 1
+        assert "must not reference a step product" in listWarnings[0]
+
+
+def test_input_data_files_skip_non_step_templates():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["{sDataDirectory}/observations.csv"],
+    )
+    assert flistValidateOutputFilePaths(dictWorkflow) == []
+
+
+def test_remote_data_path_rejects_traversal_and_non_dict_entries():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        listRemoteData=[
+            {"sPath": "../../escape.fits", "sSourceUrl": ""},
+            "not-a-dict",
+        ],
+    )
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 2
+    assert "escapes" in listWarnings[0]
+    assert "must be objects" in listWarnings[1]
+
+
+def test_flistStepRemoteDataPaths_returns_only_safe_paths():
+    from vaibify.gui.workflowManager import flistStepRemoteDataPaths
+    dictStep = {
+        "listRemoteData": [
+            {"sPath": "data/archive_pull.fits", "sSourceUrl": "x"},
+            {"sPath": "/absolute.fits"},
+            {"sPath": "../escape.fits"},
+            {"sPath": "{sTemplate}/file.fits"},
+            {"sPath": ""},
+            "not-a-dict",
+        ],
+    }
+    assert flistStepRemoteDataPaths(dictStep) == ["data/archive_pull.fits"]
+
+
+def test_flistStepRemoteDataPaths_empty_for_step_without_field():
+    from vaibify.gui.workflowManager import flistStepRemoteDataPaths
+    assert flistStepRemoteDataPaths({}) == []
 
 
 class TestOutputTokenStemCollisions:

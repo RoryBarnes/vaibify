@@ -151,7 +151,7 @@ def _fnAddStepToDag(dictStep, listNodes, listEdges):
     """Append nodes and edges for a single step."""
     sStepName = dictStep.get("sName", "unknown")
     listNodes.append(sStepName)
-    for sInput in dictStep.get("saInputFiles", []):
+    for sInput in dictStep.get("saInputDataFiles", []):
         listEdges.append({"sFrom": sInput, "sTo": sStepName})
     for sOutput in dictStep.get("saPlotFiles", []):
         listEdges.append({"sFrom": sStepName, "sTo": sOutput})

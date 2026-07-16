@@ -540,12 +540,93 @@ def flistValidateOutputFilePaths(dictWorkflow):
                 if sWarning:
                     listWarnings.append(sWarning)
     listWarnings.extend(_flistValidateDatasetDestinations(dictWorkflow))
+    listWarnings.extend(_flistValidateInputDataFilePaths(dictWorkflow))
     sPlotWarning = _fsCheckPlotDirectoryBoundary(
         dictWorkflow.get("sPlotDirectory", ""),
     )
     if sPlotWarning:
         listWarnings.append(sPlotWarning)
     return listWarnings
+
+
+def _flistValidateInputDataFilePaths(dictWorkflow):
+    """Return warnings for input-data declarations that break the contract.
+
+    ``saInputDataFiles`` entries and ``listRemoteData[].sPath`` entries
+    are repo-relative raw-data paths, so they get the same boundary
+    check as dataset destinations. Cross-step products are forbidden
+    in ``saInputDataFiles`` — a step token there would hide a
+    dependency edge the command parser cannot see.
+    """
+    listWarnings = []
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        sLabel = f"Step{iIndex + 1:02d}"
+        for sPath in dictStep.get("saInputDataFiles", []) or []:
+            sWarning = _fsCheckInputPathBoundary(
+                sPath, sLabel, "saInputDataFiles",
+            )
+            if sWarning:
+                listWarnings.append(sWarning)
+        for dictRemote in dictStep.get("listRemoteData", []) or []:
+            if not isinstance(dictRemote, dict):
+                listWarnings.append(
+                    f"{sLabel}: listRemoteData entries must be objects "
+                    f"with an sPath field"
+                )
+                continue
+            sWarning = _fsCheckInputPathBoundary(
+                dictRemote.get("sPath", ""), sLabel, "listRemoteData",
+            )
+            if sWarning:
+                listWarnings.append(sWarning)
+    return listWarnings
+
+
+def _fsCheckInputPathBoundary(sPath, sLabel, sKey):
+    """Return a warning for one repo-relative input path, or ''."""
+    if not isinstance(sPath, str) or not sPath:
+        return ""
+    if "{Step" in sPath or "{step:" in sPath:
+        return (
+            f"{sLabel}: {sKey} '{sPath}' must not reference a step "
+            f"product — inputs are raw data no step produces; declare "
+            f"cross-step files as tokens in commands instead"
+        )
+    if "{" in sPath:
+        return ""
+    if posixpath.isabs(sPath):
+        return (
+            f"{sLabel}: {sKey} '{sPath}' must be repo-relative, "
+            f"not absolute"
+        )
+    sNorm = posixpath.normpath(sPath)
+    if sNorm == ".." or sNorm.startswith("../"):
+        return (
+            f"{sLabel}: {sKey} '{sPath}' escapes the project repo "
+            f"(resolves to '{sNorm}')"
+        )
+    return ""
+
+
+def flistStepRemoteDataPaths(dictStep):
+    """Return the repo-relative paths of a step's remote-pulled files.
+
+    Single accessor for the ``listRemoteData`` provenance records so
+    the gate, the provenance recorder, and any future reader agree on
+    the shape. Boundary-violating and template-bearing entries are
+    excluded — callers stat and hash these paths.
+    """
+    listPaths = []
+    for dictRemote in dictStep.get("listRemoteData", []) or []:
+        if not isinstance(dictRemote, dict):
+            continue
+        sPath = dictRemote.get("sPath", "")
+        if not isinstance(sPath, str) or not sPath or "{" in sPath:
+            continue
+        if _fsCheckInputPathBoundary(sPath, "", "listRemoteData"):
+            continue
+        listPaths.append(sPath)
+    return listPaths
 
 
 def _fsCheckPlotDirectoryBoundary(sPlotDirectory):
@@ -831,6 +912,7 @@ def fdictCreateStep(
     saTestCommands=None,
     saPlotCommands=None,
     saPlotFiles=None,
+    saInputDataFiles=None,
 ):
     """Return a new step dictionary with validated fields."""
     return {
@@ -844,6 +926,9 @@ def fdictCreateStep(
         "saTestCommands": saTestCommands if saTestCommands else [],
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
+        "saInputDataFiles": saInputDataFiles if saInputDataFiles else [],
+        "bNoInputData": False,
+        "listRemoteData": [],
         "dictTests": {
             "dictQualitative": {"saCommands": [], "sFilePath": ""},
             "dictQuantitative": {

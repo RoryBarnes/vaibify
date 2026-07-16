@@ -569,7 +569,7 @@ def test_v7_to_v8_preserves_existing_new_key_entries():
     ]
 
 
-def test_v8_document_is_untouched_by_reapplied_migrations():
+def test_current_version_document_is_untouched_by_reapplied_migrations():
     dictWorkflow = {
         S_VERSION_KEY: I_CURRENT_WORKFLOW_VERSION,
         "sPlotDirectory": "Plot",
@@ -580,9 +580,58 @@ def test_v8_document_is_untouched_by_reapplied_migrations():
                 "saPlotCommands": [],
                 "saPlotFiles": [],
                 "saOutputDataFiles": ["out.npz"],
+                "saInputDataFiles": ["data/raw.csv"],
+                "bNoInputData": False,
+                "listRemoteData": [],
             },
         ],
     }
     listStepsBefore = [dict(s) for s in dictWorkflow["listSteps"]]
     fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert dictWorkflow["listSteps"][0] == listStepsBefore[0]
+
+
+def test_v8_to_v9_seeds_input_declaration_fields():
+    dictWorkflow = {
+        S_VERSION_KEY: 8,
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "Analysis",
+                "sDirectory": "Analysis",
+                "saPlotCommands": [],
+                "saPlotFiles": [],
+                "saOutputDataFiles": [],
+            },
+        ],
+    }
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["saInputDataFiles"] == []
+    assert dictStep["bNoInputData"] is False
+    assert dictStep["listRemoteData"] == []
+
+
+def test_v8_to_v9_preserves_existing_declarations():
+    """Re-migration must not reset a hand-authored declaration."""
+    dictWorkflow = {
+        S_VERSION_KEY: 8,
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "Analysis",
+                "sDirectory": "Analysis",
+                "saPlotCommands": [],
+                "saPlotFiles": [],
+                "saOutputDataFiles": [],
+                "saInputDataFiles": ["data/raw.csv"],
+                "bNoInputData": True,
+                "listRemoteData": [{"sPath": "data/raw.csv"}],
+            },
+        ],
+    }
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["saInputDataFiles"] == ["data/raw.csv"]
+    assert dictStep["bNoInputData"] is True
+    assert dictStep["listRemoteData"] == [{"sPath": "data/raw.csv"}]

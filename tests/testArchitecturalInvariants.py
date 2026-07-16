@@ -1525,10 +1525,9 @@ _REGEX_SA_FILES_LITERAL = re.compile(r'["\'](sa[A-Z][A-Za-z]*Files)["\']')
 # fields are runtime-decorated views, not declarations. Each entry is
 # annotated with where it lives so a future contributor can audit quickly.
 SET_NON_OUTPUT_SA_FILES_KEYS = {
-    # Step-level input list; provenanceTracker uses it to draw DAG edges
-    # from inputs to the step. Inputs are produced upstream, not by this
-    # step, so they belong to the upstream step's outputs.
-    "saInputFiles",
+    # Step-level raw-input declaration (Input Data block). Inputs are
+    # consumed, not produced, so they never belong in _OUTPUT_KEYS.
+    "saInputDataFiles",
     # stepRoutes decorates the response with a resolved view of the
     # step's outputs; this is a runtime projection, not a declaration.
     "saResolvedOutputFiles",
@@ -2703,7 +2702,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # legacy .vaibify/workflows suffix as a dual-read fallback, so
     # discovery and repo-path derivation accept a Project file in either
     # directory. Cohesive with the on-disk contract already here.
-    "workflowManager.py": 2170,
+    # +84 (2026-07-16): the input-data declaration contract —
+    # saInputDataFiles/listRemoteData boundary validation
+    # (_flistValidateInputDataFilePaths, _fsCheckInputPathBoundary)
+    # alongside the sibling boundary checks it mirrors, plus the
+    # flistStepRemoteDataPaths accessor every remote-data reader
+    # shares. Cohesive with the schema this module owns.
+    "workflowManager.py": 2254,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -2726,7 +2731,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-07-15): connect path-validation accepts a Project file
     # under either .vaibify/projects (canonical) or .vaibify/workflows
     # (legacy) via T_VAIBIFY_PROJECT_SUFFIXES.
-    "pipelineServer.py": 1788,
+    # +10 (2026-07-16): input-data declaration fields on the step
+    # request models (saInputDataFiles, bNoInputData, listRemoteData)
+    # and threading into fdictStepFromRequest.
+    "pipelineServer.py": 1798,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

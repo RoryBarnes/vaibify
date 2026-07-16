@@ -45,7 +45,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 8
+I_CURRENT_WORKFLOW_VERSION = 9
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -600,6 +600,23 @@ def _fnMigrateV7ToV8(dictWorkflow, sProjectRepoPath):
             )
 
 
+def _fnMigrateV8ToV9(dictWorkflow, sProjectRepoPath):
+    """Seed the input-data declaration fields on every step.
+
+    ``saInputDataFiles`` lists repo-relative raw-data files the step
+    consumes; ``bNoInputData`` is the explicit "no inputs needed"
+    declaration (both empty/False means the step is *undeclared*,
+    which blocks AICS Level 1); ``listRemoteData`` carries per-file
+    provenance records for remote-pulled data.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []):
+        if not isinstance(dictStep, dict):
+            continue
+        dictStep.setdefault("saInputDataFiles", [])
+        dictStep.setdefault("bNoInputData", False)
+        dictStep.setdefault("listRemoteData", [])
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -609,4 +626,5 @@ T_MIGRATORS = (
     (5, _fnMigrateV5ToV6),
     (6, _fnMigrateV6ToV7),
     (7, _fnMigrateV7ToV8),
+    (8, _fnMigrateV8ToV9),
 )

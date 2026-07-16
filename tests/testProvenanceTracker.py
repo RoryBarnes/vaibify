@@ -42,12 +42,12 @@ def test_fdictBuildDagFromWorkflow():
         "listSteps": [
             {
                 "sName": "Generate Data",
-                "saInputFiles": [],
+                "saInputDataFiles": [],
                 "saPlotFiles": ["data.csv"],
             },
             {
                 "sName": "Plot Results",
-                "saInputFiles": ["data.csv"],
+                "saInputDataFiles": ["data.csv"],
                 "saPlotFiles": ["figure.pdf"],
             },
         ],
@@ -102,7 +102,7 @@ def test_flistDetectChangedOutputs(tmp_path):
         "listSteps": [
             {
                 "sName": "Compute",
-                "saInputFiles": [],
+                "saInputDataFiles": [],
                 "saPlotFiles": [str(pathOutput)],
             },
         ],
@@ -129,7 +129,7 @@ def test_flistDetectChangedOutputs_missing_file(tmp_path):
         "listSteps": [
             {
                 "sName": "Gone",
-                "saInputFiles": [],
+                "saInputDataFiles": [],
                 "saPlotFiles": [sMissingPath],
             },
         ],
