@@ -407,12 +407,12 @@ def test_mutation_test_command_resolves_cross_step_tokens():
         "listSteps": [
             {"sDirectory": "samplerStage",
              "saDataCommands": ["python drawSamples.py"],
-             "saDataFiles": ["samples.npy"], "saPlotFiles": []},
+             "saOutputDataFiles": ["samples.npy"], "saPlotFiles": []},
             {"sDirectory": S_STEP_DIRECTORY,
              "saDataCommands": [
                  "python computeSummary.py --input {Step01.samples}",
              ],
-             "saDataFiles": ["summary.json"], "saPlotFiles": []},
+             "saOutputDataFiles": ["summary.json"], "saPlotFiles": []},
         ],
     }
     dictCtx = {

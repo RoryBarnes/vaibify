@@ -25,7 +25,7 @@ def _fdictBuildStep(iIndex):
         "bRunEnabled": True,
         "bInteractive": False,
         "saDataCommands": [],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saTestCommands": [],
         "saPlotCommands": [],
         "saPlotFiles": [],

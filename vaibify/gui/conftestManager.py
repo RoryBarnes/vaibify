@@ -37,7 +37,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # The constant is embedded in every generated file as a comment line
 # beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
 # stale copies without parsing the source.
-S_CONFTEST_VERSION = "2"
+S_CONFTEST_VERSION = "3"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
@@ -596,7 +596,7 @@ def _flistStepOutputFiles(sStepDir):
             )
             if sCandidateRel != sWantedRel:
                 continue
-            for sKey in ("saDataFiles", "saPlotFiles"):
+            for sKey in ("saOutputDataFiles", "saPlotFiles"):
                 for sFile in dictStep.get(sKey, []):
                     if "{" in sFile:
                         continue

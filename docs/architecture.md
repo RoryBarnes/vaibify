@@ -295,7 +295,7 @@ workspace. The helper lives in
 `containerGit.fsDetectProjectRepoInContainer`; the routes read it from
 the active workflow dict.
 
-Per-step output paths (`saOutputFiles`, `saDataFiles`, `saPlotFiles`)
+Per-step output paths (`saOutputDataFiles`, `saPlotFiles`)
 must be repo-relative and must stay inside the repository. Absolute
 paths and `..`-escaping paths are rejected by
 `flistValidateOutputFilePaths` on save. Step directories (`sDirectory`

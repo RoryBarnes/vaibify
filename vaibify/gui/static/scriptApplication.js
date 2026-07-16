@@ -818,7 +818,7 @@ const PipeleyenApp = (function () {
             var sStepDir = step.sDirectory || "";
             var iNum = iIdx + 1;
             var sPrefix = "Step" + String(iNum).padStart(2, "0");
-            var listFiles = (step.saDataFiles || []).concat(
+            var listFiles = (step.saOutputDataFiles || []).concat(
                 step.saPlotFiles || []);
             listFiles.forEach(function (sFile) {
                 var sResolved = sFile.replace(
@@ -2834,7 +2834,7 @@ const PipeleyenApp = (function () {
     function fbDirectoryOverlap(dictEarlierStep, sCurrentDirectory) {
         if (!dictEarlierStep.sDirectory) return false;
         var sPrefix = sCurrentDirectory + "/";
-        var listFileKeys = ["saDataFiles", "saPlotFiles", "saOutputFiles"];
+        var listFileKeys = ["saOutputDataFiles", "saPlotFiles"];
         for (var iKey = 0; iKey < listFileKeys.length; iKey++) {
             var listFiles = dictEarlierStep[listFileKeys[iKey]] || [];
             for (var iFile = 0; iFile < listFiles.length; iFile++) {
@@ -2862,9 +2862,8 @@ const PipeleyenApp = (function () {
         var step = listSteps[iStep];
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
-            "saTestCommands", "saDataFiles", "saPlotFiles",
-            "saDependencies", "saSetupCommands", "saCommands",
-            "saOutputFiles"];
+            "saTestCommands", "saOutputDataFiles", "saPlotFiles",
+            "saDependencies", "saSetupCommands", "saCommands"];
         listArrays.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sVal) {
                 var rRef = /\{Step(\d+)\.\w+\}/g;
@@ -2900,7 +2899,7 @@ const PipeleyenApp = (function () {
         // git badge).
         var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (!step) return;
-        var listFileKeys = ["saDataFiles", "saPlotFiles",
+        var listFileKeys = ["saOutputDataFiles", "saPlotFiles",
             "saStepScripts", "saTestStandards"];
         listFileKeys.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sFile) {
@@ -3056,7 +3055,7 @@ const PipeleyenApp = (function () {
             var dictPlot = dictStep.dictPlotFileCategories || {};
             return dictPlot[sFilePath] || "archive";
         }
-        var dictData = dictStep.dictDataFileCategories || {};
+        var dictData = dictStep.dictOutputDataFileCategories || {};
         return dictData[sFilePath] || "archive";
     }
 

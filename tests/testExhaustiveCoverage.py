@@ -180,7 +180,7 @@ class TestFlistBuildCleanCommands:
     def test_builds_rm_commands(self):
         dictWorkflow = {"listSteps": [
             {"sDirectory": "/work/step01",
-             "saDataFiles": ["data.h5"],
+             "saOutputDataFiles": ["data.h5"],
              "saPlotFiles": ["Plot/fig.pdf"],
              "dictRunStats": {"sLastRun": "old"},
              "dictVerification": {"sUnitTest": "passed"}},
@@ -193,7 +193,7 @@ class TestFlistBuildCleanCommands:
     def test_resets_run_stats(self):
         dictWorkflow = {"listSteps": [
             {"sDirectory": "/work",
-             "saDataFiles": ["a.h5"], "saPlotFiles": [],
+             "saOutputDataFiles": ["a.h5"], "saPlotFiles": [],
              "dictRunStats": {"sLastRun": "old"},
              "dictVerification": {"sUnitTest": "passed"}},
         ]}
@@ -203,7 +203,7 @@ class TestFlistBuildCleanCommands:
     def test_resets_verification(self):
         dictWorkflow = {"listSteps": [
             {"sDirectory": "/work",
-             "saDataFiles": [], "saPlotFiles": [],
+             "saOutputDataFiles": [], "saPlotFiles": [],
              "dictRunStats": {},
              "dictVerification": {
                  "sUnitTest": "passed", "sUser": "passed"}},
@@ -217,7 +217,7 @@ class TestFlistBuildCleanCommands:
     def test_skips_interactive_steps(self):
         dictWorkflow = {"listSteps": [
             {"bInteractive": True,
-             "saDataFiles": ["a.h5"], "saPlotFiles": [],
+             "saOutputDataFiles": ["a.h5"], "saPlotFiles": [],
              "dictRunStats": {}, "dictVerification": {}},
         ]}
         assert _flistBuildCleanCommands(dictWorkflow) == []
@@ -225,7 +225,7 @@ class TestFlistBuildCleanCommands:
     def test_skips_template_variables(self):
         dictWorkflow = {"listSteps": [
             {"sDirectory": "/work",
-             "saDataFiles": ["{sPlotDirectory}/fig.pdf"],
+             "saOutputDataFiles": ["{sPlotDirectory}/fig.pdf"],
              "saPlotFiles": [],
              "dictRunStats": {}, "dictVerification": {}},
         ]}
@@ -235,7 +235,7 @@ class TestFlistBuildCleanCommands:
     def test_absolute_path_preserved(self):
         dictWorkflow = {"listSteps": [
             {"sDirectory": "/work",
-             "saDataFiles": ["/abs/data.h5"],
+             "saOutputDataFiles": ["/abs/data.h5"],
              "saPlotFiles": [],
              "dictRunStats": {}, "dictVerification": {}},
         ]}
@@ -256,7 +256,7 @@ class TestFlistBuildCleanCommands:
             "sProjectRepoPath": "/workspace/GJ1132_XUV",
             "listSteps": [
                 {"sDirectory": "TessFlareLightcurves",
-                 "saDataFiles": [],
+                 "saOutputDataFiles": [],
                  "saPlotFiles": ["Plot/GJ1132_flares.pdf"],
                  "dictRunStats": {}, "dictVerification": {}},
             ],
@@ -421,7 +421,7 @@ class TestFdictBuildVariables:
             "listSteps": [
                 {"sName": "Step A",
                  "sDirectory": "/work/step01",
-                 "saDataFiles": ["data.h5"],
+                 "saOutputDataFiles": ["data.h5"],
                  "saPlotFiles": []},
             ],
         }
@@ -444,7 +444,7 @@ class TestFlistBuildStepCopyCommandList:
                  "saDataCommands": ["python run.py"],
                  "saPlotCommands": [],
                  "saPlotFiles": [],
-                 "saDataFiles": []},
+                 "saOutputDataFiles": []},
             ],
         }
         listCmds = _flistBuildStepCopyCommandList(dictWorkflow)
@@ -463,7 +463,7 @@ class TestFlistBuildStepCopyCommandList:
                  "saDataCommands": [],
                  "saPlotCommands": [],
                  "saPlotFiles": [],
-                 "saDataFiles": []},
+                 "saOutputDataFiles": []},
             ],
         }
         assert _flistBuildStepCopyCommandList(dictWorkflow) == []
@@ -622,7 +622,7 @@ class TestFlistCollectReferenceStrings:
 class TestFnCheckCommandReferences:
     def test_detects_beyond_last_step(self):
         dictWorkflow = {"listSteps": [
-            {"sName": "A", "saDataFiles": []},
+            {"sName": "A", "saOutputDataFiles": []},
         ]}
         dictRegistry = fdictBuildStemRegistry(dictWorkflow)
         listWarnings = []
@@ -636,8 +636,8 @@ class TestFnCheckCommandReferences:
 
     def test_detects_circular(self):
         dictWorkflow = {"listSteps": [
-            {"sName": "A", "saDataFiles": ["out.h5"]},
-            {"sName": "B", "saDataFiles": ["res.h5"]},
+            {"sName": "A", "saOutputDataFiles": ["out.h5"]},
+            {"sName": "B", "saOutputDataFiles": ["res.h5"]},
         ]}
         dictRegistry = fdictBuildStemRegistry(dictWorkflow)
         listWarnings = []
@@ -649,8 +649,8 @@ class TestFnCheckCommandReferences:
 
     def test_valid_reference_no_warning(self):
         dictWorkflow = {"listSteps": [
-            {"sName": "A", "saDataFiles": ["out.h5"]},
-            {"sName": "B", "saDataFiles": []},
+            {"sName": "A", "saOutputDataFiles": ["out.h5"]},
+            {"sName": "B", "saOutputDataFiles": []},
         ]}
         dictRegistry = fdictBuildStemRegistry(dictWorkflow)
         listWarnings = []
@@ -674,8 +674,8 @@ class TestFnCheckCommandReferences:
 
     def test_missing_output_warning(self):
         dictWorkflow = {"listSteps": [
-            {"sName": "A", "saDataFiles": []},
-            {"sName": "B", "saDataFiles": []},
+            {"sName": "A", "saOutputDataFiles": []},
+            {"sName": "B", "saOutputDataFiles": []},
         ]}
         dictRegistry = fdictBuildStemRegistry(dictWorkflow)
         listWarnings = []

@@ -252,7 +252,7 @@ def test_gates_compute_same_level_from_snapshot_and_live(tmp_path):
         "sProjectRepoPath": str(tmp_path),
         "listSteps": [{
             "sName": "OnlyStep",
-            "saDataFiles": ["out.csv"],
+            "saOutputDataFiles": ["out.csv"],
             "dictVerification": {"sUser": "untested"},
         }],
     }

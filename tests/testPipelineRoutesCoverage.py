@@ -1476,7 +1476,7 @@ def _fdictActivePollStep():
     """
     return {
         "sDirectory": "stepA", "sName": "A",
-        "saDataFiles": ["stepA/output.json"],
+        "saOutputDataFiles": ["stepA/output.json"],
         "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
     }
 
@@ -1551,7 +1551,7 @@ class TestPollLevelStatePayload:
         this is the wire-level guard."""
         dictStep = {
             "sDirectory": "stepA", "sName": "A",
-            "saDataFiles": ["stepA/output.json"],
+            "saOutputDataFiles": ["stepA/output.json"],
             "dictVerification": {"sUser": "untested"},
         }
         dictWorkflow = _fdictBuildLevelWorkflow([dictStep])

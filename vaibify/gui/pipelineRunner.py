@@ -696,7 +696,7 @@ async def _fsetSnapshotDirectory(
 def _flistFilterUnexpectedFiles(setNewFiles, sDirectory, dictStep):
     """Return list of unexpected output file dicts from new files."""
     setExpected = set()
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             setExpected.add(sFile)
     listUnexpected = []
@@ -827,7 +827,7 @@ def _flistBuildStepOutputAbsPaths(dictStep, dictVars, sStepDirectory):
     """Resolve a step's output files into absolute container paths."""
     listOutputFiles = (
         dictStep.get("saPlotFiles", [])
-        + dictStep.get("saDataFiles", [])
+        + dictStep.get("saOutputDataFiles", [])
     )
     listAbsolute = []
     for sOutputFile in listOutputFiles:

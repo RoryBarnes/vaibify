@@ -105,7 +105,7 @@ def _fdictGreenStep(sName="A"):
     """Return a step dict that satisfies every L1 criterion."""
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [sName + "/data.csv"],
+        "saOutputDataFiles": [sName + "/data.csv"],
         "saPlotFiles": [sName + "/plot.pdf"],
         "dictVerification": {
             "sUser": "passed",
@@ -328,7 +328,7 @@ def testFigureNotFrozenFiresForStepWithUnpushedPlot(tmp_path):
         _fdictGreenStep(sName="A"),
         {
             "sName": "B", "sDirectory": "Plot/A12",
-            "saDataFiles": [], "saPlotFiles": ["Plot/A12/foo.pdf"],
+            "saOutputDataFiles": [], "saPlotFiles": ["Plot/A12/foo.pdf"],
             "dictVerification": {
                 "sUser": "passed", "sUnitTest": "passed",
                 "sIntegrity": "passed", "sQualitative": "passed",

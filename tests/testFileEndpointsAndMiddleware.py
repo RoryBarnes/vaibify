@@ -27,7 +27,7 @@ DICT_WORKFLOW = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
-            "saDataFiles": ["output.dat"],
+            "saOutputDataFiles": ["output.dat"],
             "saTestCommands": [],
             "saPlotCommands": ["python plotResults.py"],
             "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],
@@ -871,7 +871,7 @@ def test_fnHandleTerminalText_resize_clamped():
 def test_fnInvalidateStepFiles_marks_modified():
     dictStep = {
         "dictVerification": {"sUnitTest": "passed"},
-        "saDataFiles": ["a.npy"],
+        "saOutputDataFiles": ["a.npy"],
     }
     pipelineServer._fnInvalidateStepFiles(
         dictStep, ["/workspace/a.npy"]

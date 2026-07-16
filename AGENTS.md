@@ -231,7 +231,7 @@ root. Routes in `vaibify/gui/routes/gitRoutes.py` must thread
 and no module may hardcode `/workspace/.vaibify/test_markers`
 (`testNoWorkspaceRootedMarkerHardcodeInSource` enforces this — test
 markers live at `<sProjectRepoPath>/.vaibify/test_markers/`). Step
-`sDirectory` values and all `saOutputFiles` / `saDataFiles` /
+`sDirectory` values and all `saOutputDataFiles` /
 `saPlotFiles` paths are repo-relative; absolute or `..`-escaping
 values are rejected at load time. A silent fallback to the
 `/workspace` default reintroduces the all-grey-badges bug and

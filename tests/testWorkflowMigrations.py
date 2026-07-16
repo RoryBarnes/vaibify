@@ -43,7 +43,7 @@ def _fdictBuildModernV2Fixture():
                 "sDirectory": "Analysis",
                 "saPlotCommands": ["python plot.py"],
                 "saPlotFiles": ["fig1.pdf"],
-                "saOutputFiles": ["out.npz"],
+                "saOutputDataFiles": ["out.npz"],
                 "bRunEnabled": True,
                 "dictTests": {
                     "dictQualitative": {"saCommands": [], "sFilePath": ""},
@@ -116,7 +116,8 @@ def test_v1_to_v2_strips_absolute_workspace_prefix_from_step_dir():
     )
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["sDirectory"] == "Analysis"
-    assert dictStep["saOutputFiles"] == ["out.npz"]
+    assert dictStep["saOutputDataFiles"] == ["out.npz"]
+    assert "saOutputFiles" not in dictStep
 
 
 def test_v1_to_v2_infers_repo_root_when_context_missing():
@@ -125,7 +126,8 @@ def test_v1_to_v2_infers_repo_root_when_context_missing():
     fnApplyMigrations(dictWorkflow, sProjectRepoPath="")
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["sDirectory"] == "Analysis"
-    assert dictStep["saOutputFiles"] == ["out.npz"]
+    assert dictStep["saOutputDataFiles"] == ["out.npz"]
+    assert "saOutputFiles" not in dictStep
 
 
 def test_v0_to_v1_archive_tracking_uses_supplied_repo_path():
@@ -303,7 +305,7 @@ def test_rewrite_positional_to_symbolic_uses_target_step_id():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {"sName": "Refit", "sStepId": "refit", "sDirectory": "R",
-             "saDataFiles": ["chains.npz"], "saPlotCommands": []},
+             "saOutputDataFiles": ["chains.npz"], "saPlotCommands": []},
             {"sName": "Plot", "sStepId": "plot", "sDirectory": "P",
              "saPlotCommands": ["plot {Step01.chains}"], "saPlotFiles": []},
         ],
@@ -319,7 +321,7 @@ def test_rewrite_positional_is_idempotent_and_leaves_symbolic():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {"sName": "Refit", "sStepId": "refit", "sDirectory": "R",
-             "saDataFiles": ["chains.npz"], "saPlotCommands": []},
+             "saOutputDataFiles": ["chains.npz"], "saPlotCommands": []},
             {"sName": "Plot", "sStepId": "plot", "sDirectory": "P",
              "saPlotCommands": ["plot {step:refit.chains}"],
              "saPlotFiles": []},
@@ -345,6 +347,9 @@ def test_full_migration_from_v0_produces_symbolic_tokens():
     }
     fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert dictWorkflow["listSteps"][0]["sStepId"] == "generate-samples"
+    assert dictWorkflow["listSteps"][0]["saOutputDataFiles"] == [
+        "samples.npy",
+    ]
     assert dictWorkflow["listSteps"][1]["saPlotCommands"] == [
         "plot {step:generate-samples.samples}",
     ]
@@ -506,3 +511,78 @@ def test_load_derives_unnecessary_for_empty_command_categories():
     assert dictV["sQualitative"] == "unnecessary"
     assert dictV["sQuantitative"] == "unnecessary"
     assert dictV["sUnitTest"] == "unnecessary"
+
+
+def test_v7_to_v8_renames_data_files_and_merges_legacy_outputs():
+    """A v7 document with both old keys merges without loss or dupes.
+
+    Order must be preserved (data files first, then legacy outputs)
+    and an entry present in both lists must appear exactly once.
+    """
+    dictWorkflow = {
+        S_VERSION_KEY: 7,
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "Analysis",
+                "sDirectory": "Analysis",
+                "saPlotCommands": [],
+                "saPlotFiles": [],
+                "saDataFiles": ["samples.npy", "shared.csv"],
+                "saOutputFiles": ["shared.csv", "extra.log"],
+                "dictDataFileCategories": {"samples.npy": "archive"},
+            },
+        ],
+    }
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["saOutputDataFiles"] == [
+        "samples.npy", "shared.csv", "extra.log",
+    ]
+    assert "saDataFiles" not in dictStep
+    assert "saOutputFiles" not in dictStep
+    assert dictStep["dictOutputDataFileCategories"] == {
+        "samples.npy": "archive",
+    }
+    assert "dictDataFileCategories" not in dictStep
+
+
+def test_v7_to_v8_preserves_existing_new_key_entries():
+    """A hand-edited v7 doc already carrying the new key keeps it first."""
+    dictWorkflow = {
+        S_VERSION_KEY: 7,
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "Analysis",
+                "sDirectory": "Analysis",
+                "saPlotCommands": [],
+                "saPlotFiles": [],
+                "saOutputDataFiles": ["already.npz"],
+                "saDataFiles": ["late.npy"],
+            },
+        ],
+    }
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    assert dictWorkflow["listSteps"][0]["saOutputDataFiles"] == [
+        "already.npz", "late.npy",
+    ]
+
+
+def test_v8_document_is_untouched_by_reapplied_migrations():
+    dictWorkflow = {
+        S_VERSION_KEY: I_CURRENT_WORKFLOW_VERSION,
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {
+                "sName": "Analysis",
+                "sDirectory": "Analysis",
+                "saPlotCommands": [],
+                "saPlotFiles": [],
+                "saOutputDataFiles": ["out.npz"],
+            },
+        ],
+    }
+    listStepsBefore = [dict(s) for s in dictWorkflow["listSteps"]]
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    assert dictWorkflow["listSteps"][0] == listStepsBefore[0]

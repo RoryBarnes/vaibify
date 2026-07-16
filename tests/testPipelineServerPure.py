@@ -125,7 +125,7 @@ def test_flistCollectOutputPaths_resolves():
         "listSteps": [
             {
                 "sDirectory": "step1",
-                "saDataFiles": ["data.csv"],
+                "saOutputDataFiles": ["data.csv"],
                 "saPlotFiles": ["{sPlotDirectory}/fig.pdf"],
             },
         ],

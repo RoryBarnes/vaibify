@@ -93,7 +93,7 @@ def test_fdictMatchFiguresToSteps_maps():
             {
                 "sName": "Make Data",
                 "saPlotFiles": ["figures/plot.pdf"],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
             },
         ],
     }

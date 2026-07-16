@@ -21,7 +21,7 @@ def _fdictMinimalStep(sName):
     """Step satisfying every L1 axis so the blocker list stays empty."""
     return {
         "sName": sName, "sDirectory": sName, "bInteractive": False,
-        "saDataFiles": [sName + "/data.csv"],
+        "saOutputDataFiles": [sName + "/data.csv"],
         "saPlotFiles": [sName + "/plot.pdf"],
         "saDataCommands": [], "saPlotCommands": [],
         "saTestCommands": [], "saDependencies": [],

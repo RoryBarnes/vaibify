@@ -411,7 +411,7 @@ def fnGenerateFromWorkflow(sWorkflowPath, iStepIndex, fDefaultRtol=1e-6,
         dictWorkflow = json.load(fileHandle)
     dictStep = dictWorkflow["listSteps"][iStepIndex]
     sStepDir = _fsResolveStepDir(sWorkflowPath, dictStep["sDirectory"])
-    listDataFiles = dictStep.get("saDataFiles", [])
+    listDataFiles = dictStep.get("saOutputDataFiles", [])
     sStepName = dictStep.get("sName", f"Step {iStepIndex + 1}")
     print(f"\n{'=' * 60}\nGenerating standards for: {sStepName}")
     print(f"  Directory: {sStepDir}\n  Data files: {listDataFiles}")

@@ -108,7 +108,7 @@ def testMissingFromManifestCriterionFires(fixtureL3Repo):
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saDataFiles": ["A/missing.csv"],
+        "saOutputDataFiles": ["A/missing.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -133,7 +133,7 @@ def testDominantEntryCarriesEveryFailingCriterion(fixtureL3Repo):
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saDataFiles": ["A/missing.csv"],
+        "saOutputDataFiles": ["A/missing.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -175,7 +175,7 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     ]
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saDataFiles": [sRel],
+        "saOutputDataFiles": [sRel],
         "saPlotFiles": [],
         "saDataCommands": ["vplanet input.in"],
         "saPlotCommands": [],
@@ -205,7 +205,7 @@ def _fdictWaivedWorkflowWithCommand(sCommand, sRel):
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saDataFiles": [sRel],
+        "saOutputDataFiles": [sRel],
         "saPlotFiles": [],
         "saDataCommands": [sCommand],
         "saPlotCommands": [],
@@ -265,7 +265,7 @@ def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
     ]
     dictWorkflow["listSteps"] = [{
         "sName": "A", "sDirectory": "A",
-        "saDataFiles": [sRel],
+        "saOutputDataFiles": [sRel],
         "saPlotFiles": [],
         "saDataCommands": ["vplanet input.in"],
         "saPlotCommands": [],

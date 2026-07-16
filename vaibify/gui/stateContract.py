@@ -117,7 +117,7 @@ def _flistStepOutputRepoPaths(dictStep, dictVars=None):
     """
     sDirectory = dictStep.get("sDirectory", "")
     listPaths = []
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             if "{" in sFile:
                 if dictVars is None:

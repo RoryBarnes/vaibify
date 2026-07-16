@@ -24,7 +24,7 @@ DICT_WORKFLOW = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
-            "saDataFiles": ["output.dat"],
+            "saOutputDataFiles": ["output.dat"],
             "saTestCommands": [],
             "saPlotCommands": ["python plotResults.py"],
             "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],

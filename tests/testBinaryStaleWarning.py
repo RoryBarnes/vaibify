@@ -35,7 +35,7 @@ def _dictStep(saBinaryDependencies=None, saDataCommands=None):
     return {
         "sName": "MaxLikelihood", "sDirectory": "MaxLev",
         "saDataCommands": saDataCommands or ["maxlev config.in"],
-        "saDataFiles": ["MaxLev/out.json"],
+        "saOutputDataFiles": ["MaxLev/out.json"],
         "saBinaryDependencies": saBinaryDependencies or ["vplanet"],
     }
 
@@ -88,7 +88,7 @@ def test_step_not_depending_on_binary_is_not_stale():
     declares the binary is unaffected by its mtime."""
     dictStep = {
         "sDirectory": "Plot", "saDataCommands": ["python plot.py"],
-        "saDataFiles": ["Plot/fig.pdf"], "saBinaryDependencies": [],
+        "saOutputDataFiles": ["Plot/fig.pdf"], "saBinaryDependencies": [],
     }
     dictWorkflow = _fdictWorkflow([dictStep])
     dictStale = fdictBinaryStaleByStep(

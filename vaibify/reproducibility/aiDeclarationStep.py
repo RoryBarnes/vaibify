@@ -141,7 +141,7 @@ def _fdictEmptyCommandBlock():
     """Return the empty command and file-list fields shared by step kinds."""
     return {
         "saDataCommands": [],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saTestCommands": [],
         "saPlotCommands": [],
         "saPlotFiles": [],

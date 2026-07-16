@@ -31,7 +31,7 @@ def _fdictBuildWorkflow():
                 "sDirectory": "compute",
                 "saPlotCommands": ["python plot.py"],
                 "saPlotFiles": ["output.pdf"],
-                "saDataFiles": ["data.csv"],
+                "saOutputDataFiles": ["data.csv"],
                 "saDataCommands": [],
             },
             {
@@ -39,7 +39,7 @@ def _fdictBuildWorkflow():
                 "sDirectory": "viz",
                 "saPlotCommands": ["python viz.py"],
                 "saPlotFiles": ["fig.png"],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saDataCommands": [],
             },
         ],
@@ -343,9 +343,9 @@ def test_fnMigrateArchiveToTracking_seeds_flags_for_archive_files():
             {
                 "sDirectory": "StepA",
                 "saPlotFiles": ["a.pdf"],
-                "saDataFiles": ["a.h5"],
+                "saOutputDataFiles": ["a.h5"],
                 "dictPlotFileCategories": {"a.pdf": "archive"},
-                "dictDataFileCategories": {"a.h5": "supporting"},
+                "dictOutputDataFileCategories": {"a.h5": "supporting"},
             },
         ],
     }
@@ -949,7 +949,7 @@ def test_fsGetFileCategory_from_plot_categories():
 def test_fsGetFileCategory_from_data_categories():
     from vaibify.gui.workflowManager import fsGetFileCategory
     dictStep = {
-        "dictDataFileCategories": {"data.csv": "supporting"},
+        "dictOutputDataFileCategories": {"data.csv": "supporting"},
     }
     assert fsGetFileCategory(dictStep, "data.csv") == "supporting"
 
@@ -962,7 +962,7 @@ def test_fsGetFileCategory_from_data_categories():
 def test_flistResolveOutputPaths_basic():
     dictStep = {
         "sDirectory": "step01",
-        "saDataFiles": ["results.csv"],
+        "saOutputDataFiles": ["results.csv"],
         "saPlotFiles": ["fig.pdf"],
     }
     listPaths = _flistResolveOutputPaths(dictStep)
@@ -981,7 +981,7 @@ def test_flistResolveOutputPaths_skips_templates():
 
 
 def test_flistResolveOutputPaths_empty_directory():
-    dictStep = {"sDirectory": "", "saDataFiles": ["data.csv"]}
+    dictStep = {"sDirectory": "", "saOutputDataFiles": ["data.csv"]}
     assert _flistResolveOutputPaths(dictStep) == []
 
 
@@ -996,12 +996,12 @@ def test_fdictBuildImplicitDependencies_shared_directory():
             {
                 "sName": "Produce",
                 "sDirectory": "/workspace/analysis/sub",
-                "saDataFiles": ["output.csv"],
+                "saOutputDataFiles": ["output.csv"],
             },
             {
                 "sName": "Consume",
                 "sDirectory": "/workspace/analysis",
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
             },
         ],
     }
@@ -1016,12 +1016,12 @@ def test_fdictBuildImplicitDependencies_no_overlap():
             {
                 "sName": "A",
                 "sDirectory": "/workspace/alpha",
-                "saDataFiles": ["a.csv"],
+                "saOutputDataFiles": ["a.csv"],
             },
             {
                 "sName": "B",
                 "sDirectory": "/workspace/beta",
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
             },
         ],
     }
@@ -1040,7 +1040,7 @@ def test_fdictBuildImplicitDependencies_template_excluded():
             {
                 "sName": "B",
                 "sDirectory": ".",
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
             },
         ],
     }
@@ -1059,7 +1059,7 @@ def test_fdictBuildDirectDependencies_includes_implicit():
             {
                 "sName": "Upstream",
                 "sDirectory": "/workspace/shared/sub",
-                "saDataFiles": ["data.csv"],
+                "saOutputDataFiles": ["data.csv"],
                 "saPlotFiles": [],
                 "saPlotCommands": [],
                 "saDataCommands": [],
@@ -1069,7 +1069,7 @@ def test_fdictBuildDirectDependencies_includes_implicit():
                 "sDirectory": "/workspace/other",
                 "saDataCommands": ["{Step01.data}"],
                 "saPlotCommands": [],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotFiles": [],
             },
             {
@@ -1077,7 +1077,7 @@ def test_fdictBuildDirectDependencies_includes_implicit():
                 "sDirectory": "/workspace/shared",
                 "saDataCommands": [],
                 "saPlotCommands": [],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotFiles": [],
             },
         ],
@@ -1428,7 +1428,7 @@ def test_fbValidateWorkflow_rejects_absolute_output_paths():
         "listSteps": [{
             "sName": "A", "sDirectory": "step01",
             "saPlotCommands": [], "saPlotFiles": [],
-            "saDataFiles": ["/etc/passwd"],
+            "saOutputDataFiles": ["/etc/passwd"],
         }],
     }
     assert fbValidateWorkflow(dictWorkflow) is False
@@ -1531,26 +1531,26 @@ def test_fnInsertStep_renumbers_downstream_references():
             {
                 "sName": "A", "sDirectory": "a",
                 "saPlotCommands": [], "saPlotFiles": [],
-                "saDataFiles": [], "saTestCommands": [],
+                "saOutputDataFiles": [], "saTestCommands": [],
                 "saDataCommands": [],
             },
             {
                 "sName": "B", "sDirectory": "b",
                 "saPlotCommands": [], "saPlotFiles": [],
-                "saDataFiles": [], "saTestCommands": [],
-                "saDataCommands": ["use {Step2.saDataFiles[0]}"],
+                "saOutputDataFiles": [], "saTestCommands": [],
+                "saDataCommands": ["use {Step2.saOutputDataFiles[0]}"],
             },
         ],
     }
     fnInsertStep(dictWorkflow, 1, {
         "sName": "NEW", "sDirectory": "new",
         "saPlotCommands": [], "saPlotFiles": [],
-        "saDataFiles": [], "saTestCommands": [],
+        "saOutputDataFiles": [], "saTestCommands": [],
         "saDataCommands": [],
     })
     sCmd = dictWorkflow["listSteps"][2]["saDataCommands"][0]
     # Remap normalizes to zero-padded format (Step03)
-    assert "{Step03.saDataFiles[0]}" in sCmd
+    assert "{Step03.saOutputDataFiles[0]}" in sCmd
 
 
 def test_fnDeleteStep_renumbers_downstream_references():
@@ -1562,21 +1562,21 @@ def test_fnDeleteStep_renumbers_downstream_references():
             {
                 "sName": "A", "sDirectory": "a",
                 "saPlotCommands": [], "saPlotFiles": [],
-                "saDataFiles": ["a.dat"], "saTestCommands": [],
+                "saOutputDataFiles": ["a.dat"], "saTestCommands": [],
                 "saDataCommands": [],
             },
             {
                 "sName": "B", "sDirectory": "b",
                 "saPlotCommands": [], "saPlotFiles": [],
-                "saDataFiles": [], "saTestCommands": [],
+                "saOutputDataFiles": [], "saTestCommands": [],
                 "saDataCommands": [],
             },
             {
                 "sName": "C", "sDirectory": "c",
                 "saPlotCommands": [], "saPlotFiles": [],
-                "saDataFiles": [], "saTestCommands": [],
+                "saOutputDataFiles": [], "saTestCommands": [],
                 "saDataCommands": [
-                    "use {Step1.saDataFiles[0]} + {Step3.sName}",
+                    "use {Step1.saOutputDataFiles[0]} + {Step3.sName}",
                 ],
             },
         ],
@@ -1586,7 +1586,7 @@ def test_fnDeleteStep_renumbers_downstream_references():
     # Downstream ref (Step3) shifts to Step02; upstream ref (Step1)
     # stays as-is (remap returned the original number untouched).
     assert "{Step02.sName}" in sCmd
-    assert "{Step1.saDataFiles[0]}" in sCmd
+    assert "{Step1.saOutputDataFiles[0]}" in sCmd
 
 
 def test_fiRemapReorder_unrelated_number_unchanged():

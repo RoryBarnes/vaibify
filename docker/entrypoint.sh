@@ -829,7 +829,7 @@ Both actions are read-only and agent-safe. Use them BEFORE asking the researcher
 Each vaibified repository has a `.vaibify/projects/` directory with JSON files defining pipeline steps. Each step has:
 
 - **Data Analysis Commands** (`saDataCommands`): Heavy computation
-- **Data Files** (`saDataFiles`): Output files from data analysis
+- **Data Files** (`saOutputDataFiles`): Output files from data analysis
 - **Plot Commands** (`saPlotCommands`): Visualization commands
 - **Plot Files** (`saPlotFiles`): Expected figure outputs
 - **Test Commands** (`saTestCommands`): Unit tests for data outputs

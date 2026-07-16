@@ -41,7 +41,7 @@ DICT_WORKFLOW_SYNC = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python run.py"],
-            "saDataFiles": ["output.dat"],
+            "saOutputDataFiles": ["output.dat"],
             "saTestCommands": [],
             "saPlotCommands": ["python plot.py"],
             "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],

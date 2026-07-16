@@ -41,7 +41,7 @@ DICT_WORKFLOW_MULTI = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python generate.py"],
-            "saDataFiles": ["data.csv"],
+            "saOutputDataFiles": ["data.csv"],
             "saTestCommands": ["python -m pytest test_step01.py -v"],
             "saPlotCommands": ["python plotData.py"],
             "saPlotFiles": ["{sPlotDirectory}/fig1.{sFigureType}"],
@@ -63,7 +63,7 @@ DICT_WORKFLOW_MULTI = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": [],
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saTestCommands": [],
             "saPlotCommands": [
                 "python analyze.py {Step01.data}",
@@ -82,7 +82,7 @@ DICT_WORKFLOW_MULTI = {
             "bRunEnabled": True,
             "bInteractive": True,
             "saDataCommands": [],
-            "saDataFiles": ["review.txt"],
+            "saOutputDataFiles": ["review.txt"],
             "saTestCommands": [],
             "saPlotCommands": [],
             "saPlotFiles": [],
@@ -324,7 +324,7 @@ def test_fnInvalidateStepFiles_marks_modified():
             "sUnitTest": "passed",
             "sUser": "untested",
         },
-        "saDataFiles": ["a.py"],
+        "saOutputDataFiles": ["a.py"],
     }
     pipelineServer._fnInvalidateStepFiles(
         dictStep, ["/workspace/a.py"],
@@ -587,7 +587,7 @@ def test_fnClearDownstreamUpstreamFlags():
                 "sName": "Step1",
                 "sDirectory": "step1",
                 "saDataCommands": ["python gen.py"],
-                "saDataFiles": ["data.csv"],
+                "saOutputDataFiles": ["data.csv"],
                 "saPlotCommands": [],
                 "saPlotFiles": [],
                 "saTestCommands": [],
@@ -599,7 +599,7 @@ def test_fnClearDownstreamUpstreamFlags():
                 "saDataCommands": [
                     "python analyze.py {Step01.data}",
                 ],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotCommands": [],
                 "saPlotFiles": [],
                 "saTestCommands": [],
@@ -679,7 +679,7 @@ def test_fdictCollectOutputPathsByStep_resolves():
         "listSteps": [
             {
                 "sDirectory": "step1",
-                "saDataFiles": ["data.csv"],
+                "saOutputDataFiles": ["data.csv"],
                 "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],
             },
         ],
@@ -697,7 +697,7 @@ def test_fdictCollectOutputPathsByStep_with_vars():
         "listSteps": [
             {
                 "sDirectory": "step1",
-                "saDataFiles": ["{sPlotDirectory}/out.dat"],
+                "saOutputDataFiles": ["{sPlotDirectory}/out.dat"],
                 "saPlotFiles": [],
             },
         ],
@@ -722,7 +722,7 @@ def test_fdictBuildDownstreamMap_linear_chain():
                 "saDataCommands": [],
                 "saPlotCommands": [],
                 "saTestCommands": [],
-                "saDataFiles": ["data.csv"],
+                "saOutputDataFiles": ["data.csv"],
                 "saPlotFiles": [],
             },
             {
@@ -732,7 +732,7 @@ def test_fdictBuildDownstreamMap_linear_chain():
                 ],
                 "saPlotCommands": [],
                 "saTestCommands": [],
-                "saDataFiles": ["result.csv"],
+                "saOutputDataFiles": ["result.csv"],
                 "saPlotFiles": [],
             },
             {
@@ -742,7 +742,7 @@ def test_fdictBuildDownstreamMap_linear_chain():
                 ],
                 "saPlotCommands": [],
                 "saTestCommands": [],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotFiles": [],
             },
         ],
@@ -764,7 +764,7 @@ def test_fdictBuildDownstreamMap_no_deps():
                 "saDataCommands": [],
                 "saPlotCommands": [],
                 "saTestCommands": [],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotFiles": [],
             },
             {
@@ -772,7 +772,7 @@ def test_fdictBuildDownstreamMap_no_deps():
                 "saDataCommands": [],
                 "saPlotCommands": [],
                 "saTestCommands": [],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotFiles": [],
             },
         ],
@@ -792,7 +792,7 @@ def test_fdictBuildDirectDependencies():
                 "saDataCommands": [],
                 "saPlotCommands": [],
                 "saTestCommands": [],
-                "saDataFiles": ["out.dat"],
+                "saOutputDataFiles": ["out.dat"],
                 "saPlotFiles": [],
             },
             {
@@ -802,7 +802,7 @@ def test_fdictBuildDirectDependencies():
                 ],
                 "saPlotCommands": [],
                 "saTestCommands": [],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotFiles": [],
             },
         ],
@@ -836,7 +836,7 @@ def test_fsGetFileCategory_plot_category():
 
 def test_fsGetFileCategory_data_category():
     dictStep = {
-        "dictDataFileCategories": {"data.csv": "supporting"},
+        "dictOutputDataFileCategories": {"data.csv": "supporting"},
     }
     assert workflowManager.fsGetFileCategory(
         dictStep, "data.csv"
@@ -890,7 +890,7 @@ def test_flistCollectArchivePlots():
 def test_flistCollectArchiveDataFiles():
     dictWorkflow = {
         "listSteps": [
-            {"saDataFiles": ["data.csv"]},
+            {"saOutputDataFiles": ["data.csv"]},
         ],
     }
     listData = workflowManager.flistCollectArchiveDataFiles(
@@ -938,8 +938,8 @@ def test_flistCollectSupportingDataFiles():
     dictWorkflow = {
         "listSteps": [
             {
-                "saDataFiles": ["data.csv"],
-                "dictDataFileCategories": {
+                "saOutputDataFiles": ["data.csv"],
+                "dictOutputDataFileCategories": {
                     "data.csv": "supporting",
                 },
             },

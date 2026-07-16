@@ -283,7 +283,7 @@ var PipeleyenFileOps = (function () {
         var iStep = parseInt(el.dataset.step);
         var sArray = el.dataset.array;
         var sRaw = el.dataset.raw || "";
-        var bNecessaryData = sArray === "saDataFiles" &&
+        var bNecessaryData = sArray === "saOutputDataFiles" &&
             PipeleyenApp.fsGetFileCategory(
                 iStep, sRaw, sArray) === "archive";
         if (bNecessaryData) {
@@ -335,10 +335,10 @@ var PipeleyenFileOps = (function () {
     }
 
     function _flistNecessaryDataFiles(step, iStep) {
-        var listData = step.saDataFiles || [];
+        var listData = step.saOutputDataFiles || [];
         return listData.filter(function (sFile) {
             return PipeleyenApp.fsGetFileCategory(
-                iStep, sFile, "saDataFiles"
+                iStep, sFile, "saOutputDataFiles"
             ) === "archive";
         });
     }

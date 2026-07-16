@@ -97,7 +97,7 @@ def test_flistStepOutputFiles_matches_step_by_directory(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
             "sDirectory": "step1",
-            "saDataFiles": ["data/out.csv"],
+            "saOutputDataFiles": ["data/out.csv"],
             "saPlotFiles": ["Plot/fig.pdf"],
         }],
     })
@@ -111,7 +111,7 @@ def test_flistStepOutputFiles_skips_template_placeholders(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
             "sDirectory": "step1",
-            "saDataFiles": ["out_{iteration}.csv", "out.csv"],
+            "saOutputDataFiles": ["out_{iteration}.csv", "out.csv"],
         }],
     })
     ns = _fnExecTemplateWithRoot(tmp_path)
@@ -120,7 +120,7 @@ def test_flistStepOutputFiles_skips_template_placeholders(tmp_path):
 
 
 def test_flistStepOutputFiles_includes_both_data_and_plot_files(tmp_path):
-    """saPlotFiles must produce hashed marker entries alongside saDataFiles.
+    """saPlotFiles must produce hashed marker entries alongside saOutputDataFiles.
 
     A regression in plot coverage would leave the dashboard unable to
     detect drift on figure outputs after the fact, so the contract is
@@ -129,7 +129,7 @@ def test_flistStepOutputFiles_includes_both_data_and_plot_files(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
             "sDirectory": "step1",
-            "saDataFiles": ["data/out.csv"],
+            "saOutputDataFiles": ["data/out.csv"],
             "saPlotFiles": ["Plot/fig.pdf", "Plot/extra.png"],
         }],
     })
@@ -148,7 +148,7 @@ def test_fdictComputeOutputHashes_covers_every_declared_plot_file(tmp_path):
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
             "sDirectory": "step1",
-            "saDataFiles": ["data/out.csv"],
+            "saOutputDataFiles": ["data/out.csv"],
             "saPlotFiles": ["Plot/fig.pdf", "Plot/extra.png"],
         }],
     })

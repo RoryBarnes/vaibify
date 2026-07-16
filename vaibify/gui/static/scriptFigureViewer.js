@@ -1381,7 +1381,7 @@ const PipeleyenFigureViewer = (function () {
 
     function fbPathBelongsToStep(sBasename, dictStep) {
         var listFiles = (dictStep.saPlotFiles || []).concat(
-            dictStep.saDataFiles || []
+            dictStep.saOutputDataFiles || []
         );
         for (var i = 0; i < listFiles.length; i++) {
             var sStepBase = listFiles[i].split("/").pop();

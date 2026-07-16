@@ -38,7 +38,7 @@ def test_fsTestFilePath_index_nine():
 def test_fsBuildPrompt_includes_directory():
     dictStep = {
         "saDataCommands": ["python analysis.py"],
-        "saDataFiles": ["data.npy"],
+        "saOutputDataFiles": ["data.npy"],
     }
     sPrompt = fsBuildPrompt(
         "/workspace/dir", dictStep,

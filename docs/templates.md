@@ -52,7 +52,7 @@ to `project.json`:
     "bRunEnabled": true,
     "bPlotOnly": false,
     "saDataCommands": [],
-    "saDataFiles": [],
+    "saOutputDataFiles": [],
     "saPlotCommands": ["latexmk -pdf manuscript.tex"],
     "saPlotFiles": []
 }

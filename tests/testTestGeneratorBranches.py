@@ -287,7 +287,7 @@ def test_writeAllDeterministic_force_overwrite_no_confirm():
 def test_fdictGenerateAllTests_dispatches_to_llm_when_not_deterministic():
     dictWorkflow = {
         "listSteps": [{
-            "sDirectory": "/ws/step", "saDataFiles": [],
+            "sDirectory": "/ws/step", "saOutputDataFiles": [],
             "saDataCommands": [], "saPlotCommands": [],
             "sName": "Step 1",
         }],
@@ -310,7 +310,7 @@ def test_fdictGenerateAllTests_dispatches_to_llm_when_not_deterministic():
 def test_fdictGenerateAllTests_dispatches_to_deterministic_by_default():
     dictWorkflow = {
         "listSteps": [{
-            "sDirectory": "/ws/step", "saDataFiles": [],
+            "sDirectory": "/ws/step", "saOutputDataFiles": [],
             "saDataCommands": [], "saPlotCommands": [],
             "sName": "Step 1",
         }],

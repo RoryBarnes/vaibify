@@ -28,7 +28,7 @@ def _fdictBuildStep(dictOverrides=None):
         "saPlotCommands": ["python plot.py"],
         "saSetupCommands": [],
         "saCommands": [],
-        "saDataFiles": ["data.out"],
+        "saOutputDataFiles": ["data.out"],
         "saPlotFiles": ["figure.pdf"],
         "dictVerification": {},
     }
@@ -227,7 +227,7 @@ def test_user_stale_check_skipped_when_sUser_untested():
 def test_plot_only_step_not_stale_by_test_branch():
     dictStep = _fdictBuildStep({
         "saDataCommands": [],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
     })
     dictScripts = _tBuildScriptPaths(dictStep)
     bStale, _listStale = _fbStepIsPencilStale(
@@ -245,7 +245,7 @@ def test_plot_only_step_not_stale_by_test_branch():
 def test_plot_only_step_unset_user_not_stale():
     dictStep = _fdictBuildStep({
         "saDataCommands": [],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
     })
     dictScripts = _tBuildScriptPaths(dictStep)
     bStale, _listStale = _fbStepIsPencilStale(
@@ -261,7 +261,7 @@ def test_setup_and_generic_commands_counted_as_data_scripts():
         "saPlotCommands": [],
         "saSetupCommands": ["python setup.py"],
         "saCommands": ["python misc.py"],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": [],
     })
     dictScripts = _tBuildScriptPaths(dictStep)
@@ -296,7 +296,7 @@ def test_fdictBuildScriptStatus_reports_per_step():
         "saPlotCommands": [],
         "saSetupCommands": [],
         "saCommands": [],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": [],
     })
     dictWorkflow = {"listSteps": [dictStepFresh, dictStepStale]}
@@ -349,7 +349,7 @@ def test_compute_max_data_mtime_ignores_plot_files():
 
 def test_compute_max_data_mtime_picks_max_of_multiple():
     dictStep = _fdictBuildStep({
-        "saDataFiles": ["a.dat", "b.dat", "c.dat"],
+        "saOutputDataFiles": ["a.dat", "b.dat", "c.dat"],
     })
     dictWorkflow = {"listSteps": [dictStep]}
     dictResult = _fdictComputeMaxDataMtimeByStep(
@@ -364,7 +364,7 @@ def test_compute_max_data_mtime_picks_max_of_multiple():
 
 
 def test_compute_max_data_mtime_omits_step_without_files():
-    dictStep = _fdictBuildStep({"saDataFiles": []})
+    dictStep = _fdictBuildStep({"saOutputDataFiles": []})
     dictWorkflow = {"listSteps": [dictStep]}
     dictResult = _fdictComputeMaxDataMtimeByStep(dictWorkflow, {})
     assert dictResult == {}
@@ -513,7 +513,7 @@ def _fdictBuildStepWithTests(sStepDir="stepA"):
         "sDirectory": sStepDir,
         "saDataCommands": ["python data.py"],
         "saPlotCommands": ["python plot.py"],
-        "saDataFiles": ["data.out"],
+        "saOutputDataFiles": ["data.out"],
         "saPlotFiles": ["figure.pdf"],
         "dictTests": {
             "dictQualitative": {"saCommands": [], "sFilePath": ""},

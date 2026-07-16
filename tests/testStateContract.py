@@ -62,7 +62,7 @@ def _fdictStep(
         "sName": sName,
         "sDirectory": sDirectory,
         "saPlotFiles": listPlots or [],
-        "saDataFiles": listData or [],
+        "saOutputDataFiles": listData or [],
         "saDataCommands": listDataCommands or [],
         "saPlotCommands": listPlotCommands or [],
         "dictPlotFileCategories": dictCategories or {},

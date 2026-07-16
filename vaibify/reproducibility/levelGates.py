@@ -214,7 +214,7 @@ def _fdictBlockerRelevantStep(dictStep):
     """Capture the per-step fields that determine blocker output."""
     return {sKey: dictStep.get(sKey) for sKey in (
         "sName", "sDirectory", "sLabel",
-        "saDataFiles", "saPlotFiles", "saOutputFiles",
+        "saOutputDataFiles", "saPlotFiles",
         "saDataCommands", "saPlotCommands", "saTestCommands",
         "saSetupCommands", "saCommands", "saDependencies",
         "dictVerification", "dictTests", "sLastUserUpdate",
@@ -877,7 +877,7 @@ def _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
 def _flistStepOutputsRepoRelative(dictStep, filesRepo):
     """Return repo-relative output paths declared on a step.
 
-    Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
+    Resolves each ``saOutputDataFiles``/``saPlotFiles`` entry against the
     step directory the same way ``_fsResolveStepFilePath`` does, then
     strips the repo root so the result lines up with manifest keys.
     Lazily imports the GUI helper so the reproducibility leaf stays
@@ -888,7 +888,7 @@ def _flistStepOutputsRepoRelative(dictStep, filesRepo):
     sRepoRoot = fsRepoRootOf(filesRepo)
     sStepDir = dictStep.get("sDirectory", "") or ""
     listRelative = []
-    for sFile in (dictStep.get("saDataFiles", []) or []) + (
+    for sFile in (dictStep.get("saOutputDataFiles", []) or []) + (
         dictStep.get("saPlotFiles", []) or []
     ):
         if not sFile:
@@ -932,7 +932,7 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
 def _flistStepOutputFiles(dictStep):
     """Return repo-relative data + plot file paths declared on a step."""
     listFiles = []
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sPath in dictStep.get(sKey, []) or []:
             if isinstance(sPath, str) and sPath:
                 listFiles.append(sPath)
@@ -2635,7 +2635,7 @@ def flistStepDependedBinaryPaths(dictStep, listDeclaredBinaries):
 # every present test axis untested, never attested) AND none of its
 # declared outputs exist on disk; all three of its cells read
 # not-started. ``unassessed`` — the same total absence of recorded
-# activity, but at least one declared output (``saDataFiles`` /
+# activity, but at least one declared output (``saOutputDataFiles`` /
 # ``saPlotFiles``) exists on disk: material is present, assessment has
 # not begun. The split keeps hours of compute performed outside the
 # dashboard visible as progress without ever claiming verification —

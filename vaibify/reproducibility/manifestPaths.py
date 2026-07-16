@@ -45,7 +45,7 @@ __all__ = [
 
 S_CONTAINER_WORKSPACE_PREFIX = "/workspace/"
 
-TUPLE_OUTPUT_KEYS = ("saOutputFiles", "saPlotFiles", "saDataFiles")
+TUPLE_OUTPUT_KEYS = ("saPlotFiles", "saOutputDataFiles")
 TUPLE_COMMAND_KEYS = ("saDataCommands", "saPlotCommands")
 TUPLE_TEST_CATEGORY_KEYS = (
     "dictQualitative",

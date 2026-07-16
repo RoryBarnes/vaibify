@@ -89,7 +89,7 @@ Three conventions matter:
 - **CLI arguments are kebab-case** (`--flare-samples`).
 - **The token variable name is snake_case** (`{Step02.flare_samples}`)
   — it matches the basename (without extension) of the producer step's
-  `saDataFiles` entry. So `flare_samples.npy` in `saDataFiles` becomes
+  `saOutputDataFiles` entry. So `flare_samples.npy` in `saOutputDataFiles` becomes
   `{Step02.flare_samples}` in any consumer's command.
 - **Use `argparse`, not raw `sys.argv` indexing.** The CLI is part of
   the project contract; argparse makes it explicit and self-documenting.
@@ -127,7 +127,7 @@ to anyone reading the command.
 ## Handling colliding basenames
 
 The runtime resolver keys `{StepNN.varname}` lookups by the basename
-(without extension) of each entry in the producer step's `saDataFiles`.
+(without extension) of each entry in the producer step's `saOutputDataFiles`.
 When a single step declares two outputs with the same basename — for
 example, `EngleBarnes/output/Converged_Param_Dictionary.json` and
 `RibasBarnes/output/Converged_Param_Dictionary.json` — each colliding
@@ -190,7 +190,7 @@ plt.savefig(dictArgs["sPlotPath"])
       "sName": "Sampler",
       "sDirectory": "Sampler",
       "saDataCommands": ["python dataSample.py --output samples.npy"],
-      "saDataFiles": ["samples.npy"]
+      "saOutputDataFiles": ["samples.npy"]
     },
     {
       "iIndex": 2,

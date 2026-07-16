@@ -47,8 +47,8 @@ const PipeleyenStepEditor = (function () {
             dictStep.bPlotOnly !== false;
         document.getElementById("inputSetupCommands").value =
             (dictStep.saDataCommands || []).join("\n");
-        document.getElementById("inputDataFiles").value =
-            (dictStep.saDataFiles || []).join("\n");
+        document.getElementById("inputOutputDataFiles").value =
+            (dictStep.saOutputDataFiles || []).join("\n");
         document.getElementById("inputTestCommands").value =
             (dictStep.saTestCommands || []).join("\n");
         document.getElementById("inputCommands").value =
@@ -67,7 +67,7 @@ const PipeleyenStepEditor = (function () {
         document.getElementById("inputInteractive").checked = false;
         document.getElementById("inputPlotOnly").checked = true;
         document.getElementById("inputSetupCommands").value = "";
-        document.getElementById("inputDataFiles").value = "";
+        document.getElementById("inputOutputDataFiles").value = "";
         document.getElementById("inputTestCommands").value = "";
         document.getElementById("inputCommands").value = "";
         document.getElementById("inputOutputFiles").value = "";
@@ -113,7 +113,7 @@ const PipeleyenStepEditor = (function () {
             saDataCommands: flistParseTextarea(
                 "inputSetupCommands"
             ),
-            saDataFiles: flistParseTextarea("inputDataFiles"),
+            saOutputDataFiles: flistParseTextarea("inputOutputDataFiles"),
             saTestCommands: flistParseTextarea("inputTestCommands"),
             saPlotCommands: flistParseTextarea("inputCommands"),
             saPlotFiles: flistParseTextarea("inputOutputFiles"),

@@ -127,9 +127,8 @@ def test_manifest_with_escaped_path_is_handled(tmp_path):
         "listSteps": [
             {
                 "sName": "S1",
-                "saOutputFiles": [],
                 "saPlotFiles": [],
-                "saDataFiles": [sRelativePath],
+                "saOutputDataFiles": [sRelativePath],
             },
         ],
     }

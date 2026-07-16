@@ -132,7 +132,7 @@ def _flistBuildCleanCommands(dictWorkflow):
         if dictStep.get("bInteractive", False):
             continue
         sDir = dictStep.get("sDirectory", "")
-        for sKey in ("saDataFiles", "saPlotFiles"):
+        for sKey in ("saOutputDataFiles", "saPlotFiles"):
             for sFile in dictStep.get(sKey, []):
                 if sFile.startswith("{"):
                     continue

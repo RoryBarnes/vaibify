@@ -242,14 +242,14 @@ def _fnRequireFingerprintMatch(dictWorkflow, sBaseFingerprint):
 def _fnRequireDestructiveConfirm(
     dictWorkflow, iStepIndex, dictUpdates, bConfirm,
 ):
-    """Refuse edits that empty saTestCommands/saDataFiles unless confirmed."""
+    """Refuse edits that empty saTestCommands/saOutputDataFiles unless confirmed."""
     if bConfirm:
         return
     listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return
     dictStep = listSteps[iStepIndex]
-    for sKey in ("saTestCommands", "saDataFiles"):
+    for sKey in ("saTestCommands", "saOutputDataFiles"):
         listNew = dictUpdates.get(sKey)
         if listNew is None or listNew:
             continue

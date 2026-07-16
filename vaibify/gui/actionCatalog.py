@@ -185,7 +185,7 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Edit properties of an existing step. "
                      "Args: a partial step object. Edits that would "
-                     "empty saTestCommands or saDataFiles on a step "
+                     "empty saTestCommands or saOutputDataFiles on a step "
                      "that currently has them require an explicit "
                      "bConfirmDestructive=true flag in the body."},
     {"sName": "delete-step", "sCategory": "workflow",

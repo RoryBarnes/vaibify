@@ -14,7 +14,7 @@
             "saDataCommands": [
                 "python dataGenerateSamples.py --output samples.npy"
             ],
-            "saDataFiles": [
+            "saOutputDataFiles": [
                 "samples.npy"
             ],
             "saPlotCommands": [],
@@ -27,7 +27,7 @@
             "bRunEnabled": true,
             "bPlotOnly": true,
             "saDataCommands": [],
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saPlotCommands": [
                 "python plotHistogram.py --samples {step:generate-samples.samples} {sPlotDirectory}/histogram.{sFigureType}"
             ],

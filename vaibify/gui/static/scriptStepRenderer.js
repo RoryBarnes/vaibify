@@ -8,16 +8,16 @@ var VaibifyStepRenderer = (function () {
 
     var _DICT_CATEGORY_TO_REMOTE_KEYS = {
         saPlotFiles: ["sGithub", "sOverleaf", "sZenodo", "sArxiv"],
-        saDataFiles: ["sGithub", "sZenodo"],
+        saOutputDataFiles: ["sGithub", "sZenodo"],
         saStepScripts: ["sGithub", "sZenodo"],
         saTestStandards: ["sGithub", "sZenodo"],
     };
 
     var _DICT_STALE_ROW_LABELS = {
         "test|dataScript": "Tests older than data scripts",
-        "test|dataFile": "Tests older than data files",
+        "test|dataFile": "Tests older than output data",
         "user|dataScript": "User verification older than data scripts",
-        "user|dataFile": "User verification older than data files",
+        "user|dataFile": "User verification older than output data",
         "user|plotScript": "User verification older than plot scripts",
         "user|plotFile": "User verification older than plot files",
     };
@@ -284,12 +284,12 @@ var VaibifyStepRenderer = (function () {
         }
 
         sHtml += fsRenderSectionLabel(
-            "Data Files", iIndex, "saDataFiles"
+            "Output Data", iIndex, "saOutputDataFiles"
         );
-        if (step.saDataFiles) {
-            step.saDataFiles.forEach(function (sFile, iFileIdx) {
+        if (step.saOutputDataFiles) {
+            step.saOutputDataFiles.forEach(function (sFile, iFileIdx) {
                 sHtml += fsRenderDetailItem(
-                    sFile, dictVars, "output", "saDataFiles",
+                    sFile, dictVars, "output", "saOutputDataFiles",
                     iIndex, iFileIdx, sResolvedDir, dictContext
                 );
             });
@@ -847,7 +847,7 @@ var VaibifyStepRenderer = (function () {
         )[String(iIndex)];
         if (!sMtime) return "";
         return '<div class="run-stats"><span class="run-stat">' +
-            'Data files last modified: ' +
+            'Output data last modified: ' +
             fsFormatUnixTimestamp(sMtime) +
             '</span></div>';
     }
@@ -1019,7 +1019,7 @@ var VaibifyStepRenderer = (function () {
             );
         }
         if (sType === "output" && !bInvalid &&
-            (sArrayKey === "saDataFiles" ||
+            (sArrayKey === "saOutputDataFiles" ||
                 sArrayKey === "saPlotFiles") &&
             dictContext.fbFileIsL1Offending &&
             dictContext.fbFileIsL1Offending(iStepIdx, sRaw)) {
@@ -1032,7 +1032,7 @@ var VaibifyStepRenderer = (function () {
                 : dictContext.fsBuildL1FailureGlyph(sFileHint);
         }
         if ((sArrayKey === "saPlotFiles" ||
-            sArrayKey === "saDataFiles") && !bInvalid) {
+            sArrayKey === "saOutputDataFiles") && !bInvalid) {
             sHtml += _fsBuildTrackedFileBadgeRow(
                 sResolved, sArrayKey, sWorkdir);
         }
@@ -1082,7 +1082,7 @@ var VaibifyStepRenderer = (function () {
                 '<span class="discovered-file">[+] ' +
                 fnEscapeHtml(sFile) + '</span>' +
                 '<button class="btn-discovered" ' +
-                'data-target="saDataFiles">Add as data</button>' +
+                'data-target="saOutputDataFiles">Add as data</button>' +
                 '<button class="btn-discovered" ' +
                 'data-target="saPlotFiles">Add as plot</button>' +
                 '</div>';
@@ -1091,7 +1091,7 @@ var VaibifyStepRenderer = (function () {
             sHtml += '<div class="discovered-summary">' +
                 'Showing ' + listDiscovered.length + ' of ' + iTotal +
                 '. To see them all, raise iDiscoveryMaxDepth on this ' +
-                'step or add a glob to saDataFiles / saPlotFiles.' +
+                'step or add a glob to saOutputDataFiles / saPlotFiles.' +
                 '</div>';
         }
         return sHtml;

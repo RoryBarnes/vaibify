@@ -46,7 +46,7 @@ def test_fnInvalidateStepFiles_demotes_passed_states_on_data_change(
     (frozenset shrinks to {'passed'})
     """
     dictStep = {
-        "saDataFiles": ["data.out"],
+        "saOutputDataFiles": ["data.out"],
         "saPlotFiles": [],
         "dictVerification": {
             "sUnitTest": sPassedState,
@@ -93,7 +93,7 @@ def test_fnInvalidateStepFiles_plot_standards_goes_stale_on_plot_change():
     instead of 'stale' on a plot-file change
     """
     dictStep = {
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": ["fig.pdf"],
         "dictVerification": {"sPlotStandards": "passed"},
     }
@@ -112,7 +112,7 @@ def test_fnInvalidateStepFiles_plot_standards_kept_on_non_plot_change():
     plot badge).
     """
     dictStep = {
-        "saDataFiles": ["data.out"],
+        "saOutputDataFiles": ["data.out"],
         "saPlotFiles": ["fig.pdf"],
         "dictVerification": {"sPlotStandards": "passed"},
     }
@@ -137,7 +137,7 @@ def _dictWorkflowSingleStep():
     return {
         "listSteps": [{
             "sDirectory": "/ws/step0",
-            "saDataFiles": ["out.dat"],
+            "saOutputDataFiles": ["out.dat"],
             "saPlotFiles": [],
             "dictVerification": {},
         }],
@@ -195,13 +195,13 @@ def _dictWorkflowWithUpstreamEdge(dictDownVerification):
         "listSteps": [
             {
                 "sDirectory": "/ws/step0",
-                "saDataFiles": ["a.out"],
+                "saOutputDataFiles": ["a.out"],
                 "dictVerification": {},
             },
             {
                 "sDirectory": "/ws/step1",
                 "saDataCommands": ["python run.py {Step01.x}"],
-                "saDataFiles": ["b.out"],
+                "saOutputDataFiles": ["b.out"],
                 "dictVerification": dictDownVerification,
             },
         ],

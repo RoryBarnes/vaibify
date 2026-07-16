@@ -29,10 +29,10 @@ def _fdictTwoStepSymbolicWorkflow():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {"sName": "Refit", "sStepId": "refit", "sDirectory": "Refit",
-             "saDataFiles": ["chains.npz"], "saPlotCommands": [],
+             "saOutputDataFiles": ["chains.npz"], "saPlotCommands": [],
              "saPlotFiles": []},
             {"sName": "Plot", "sStepId": "plot", "sDirectory": "Plot",
-             "saDataFiles": [],
+             "saOutputDataFiles": [],
              "saPlotCommands": ["plot {step:refit.chains}"],
              "saPlotFiles": ["out.pdf"]},
         ],
@@ -62,7 +62,7 @@ def test_symbolic_edge_survives_reorder_positional_would_not():
     dictWorkflow = _fdictTwoStepSymbolicWorkflow()
     fnInsertStep(dictWorkflow, 0, {
         "sName": "Prelude", "sStepId": "prelude", "sDirectory": "Prelude",
-        "saDataFiles": ["note.txt"], "saPlotCommands": [], "saPlotFiles": [],
+        "saOutputDataFiles": ["note.txt"], "saPlotCommands": [], "saPlotFiles": [],
     })
     # Refit is now at index 1, Plot at index 2. The command text is
     # unchanged (symbolic tokens are never renumbered).
@@ -82,7 +82,7 @@ def test_positional_reference_earns_deprecation_warning():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {"sName": "A", "sStepId": "a", "sDirectory": "A",
-             "saDataFiles": ["x.npz"], "saPlotCommands": [],
+             "saOutputDataFiles": ["x.npz"], "saPlotCommands": [],
              "saPlotFiles": []},
             {"sName": "B", "sStepId": "b", "sDirectory": "B",
              "saPlotCommands": ["run {Step01.x}"], "saPlotFiles": []},
@@ -123,7 +123,7 @@ def test_resolve_workflow_commands_flags_dangling_token():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {"sName": "Refit", "sStepId": "refit", "sDirectory": "Refit",
-             "saDataFiles": ["chains.npz"], "saPlotCommands": [],
+             "saOutputDataFiles": ["chains.npz"], "saPlotCommands": [],
              "saPlotFiles": []},
             {"sName": "Plot", "sStepId": "plot", "sDirectory": "Plot",
              "saPlotCommands": ["plot {step:refit.ghost}"],
@@ -749,8 +749,7 @@ def test_flistValidateOutputFilePaths_accepts_repo_relative():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["figure.pdf", "data/result.csv"],
-            "saDataFiles": [],
+            "saOutputDataFiles": ["figure.pdf", "data/result.csv"],
             "saPlotFiles": [],
         }],
     }
@@ -763,8 +762,7 @@ def test_flistValidateOutputFilePaths_rejects_absolute_path():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["/tmp/leak.pdf"],
-            "saDataFiles": [],
+            "saOutputDataFiles": ["/tmp/leak.pdf"],
             "saPlotFiles": [],
         }],
     }
@@ -780,8 +778,7 @@ def test_flistValidateOutputFilePaths_rejects_escaping_parent():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["../../escape.pdf"],
-            "saDataFiles": [],
+            "saOutputDataFiles": ["../../escape.pdf"],
             "saPlotFiles": [],
         }],
     }
@@ -796,9 +793,8 @@ def test_flistValidateOutputFilePaths_skips_template_paths():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["{sPlotDirectory}/foo.pdf"],
+            "saOutputDataFiles": ["{sPlotDirectory}/foo.pdf"],
             "saPlotFiles": ["{Step02.result}.png"],
-            "saDataFiles": [],
         }],
     }
     assert flistValidateOutputFilePaths(dictWorkflow) == []
@@ -811,15 +807,13 @@ def test_flistValidateOutputFilePaths_reports_all_violations():
             {
                 "sName": "Step 1",
                 "sDirectory": "s1",
-                "saOutputFiles": ["/absolute.pdf"],
-                "saDataFiles": [],
+                "saOutputDataFiles": ["/absolute.pdf"],
                 "saPlotFiles": [],
             },
             {
                 "sName": "Step 2",
                 "sDirectory": "s2",
-                "saOutputFiles": [],
-                "saDataFiles": ["../../outside.csv"],
+                "saOutputDataFiles": ["../../outside.csv"],
                 "saPlotFiles": [],
             },
         ],
@@ -864,7 +858,7 @@ class TestOutputTokenStemCollisions:
     def test_fdictBuildStemRegistry_registers_qualified_tokens(self):
         from vaibify.gui.workflowManager import fdictBuildStemRegistry
         dictWorkflow = {"listSteps": [{
-            "saDataFiles": [
+            "saOutputDataFiles": [
                 "EngleBarnes/output/Converged_Param_Dictionary.json",
                 "RibasBarnes/output/Converged_Param_Dictionary.json",
             ],
@@ -878,7 +872,7 @@ class TestOutputTokenStemCollisions:
         from vaibify.gui.workflowManager import fdictBuildStepVariables
         dictWorkflow = {"listSteps": [{
             "sDirectory": "XuvEvolution",
-            "saDataFiles": [
+            "saOutputDataFiles": [
                 "EngleBarnes/output/Converged_Param_Dictionary.json",
                 "RibasBarnes/output/Converged_Param_Dictionary.json",
             ],

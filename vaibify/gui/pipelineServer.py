@@ -114,7 +114,7 @@ class StepCreateRequest(BaseModel):
     bPlotOnly: bool = True
     bInteractive: bool = False
     saDataCommands: List[str] = []
-    saDataFiles: List[str] = []
+    saOutputDataFiles: List[str] = []
     saTestCommands: List[str] = []
     saPlotCommands: List[str] = []
     saPlotFiles: List[str] = []
@@ -127,7 +127,7 @@ class StepUpdateRequest(BaseModel):
     bInteractive: Optional[bool] = None
     bRunEnabled: Optional[bool] = None
     saDataCommands: Optional[List[str]] = None
-    saDataFiles: Optional[List[str]] = None
+    saOutputDataFiles: Optional[List[str]] = None
     saTestCommands: Optional[List[str]] = None
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
@@ -140,7 +140,7 @@ class StepUpdateRequest(BaseModel):
     dictTests: Optional[dict] = None
     dictRunStats: Optional[dict] = None
     dictPlotFileCategories: Optional[dict] = None
-    dictDataFileCategories: Optional[dict] = None
+    dictOutputDataFileCategories: Optional[dict] = None
     bConfirmDestructive: bool = False
     # Optional compare-and-swap guard: the workflow fingerprint the
     # caller read. When present and stale, the edit is rejected 409
@@ -311,7 +311,7 @@ def fdictStepFromRequest(request):
         bPlotOnly=request.bPlotOnly,
         bInteractive=request.bInteractive,
         saDataCommands=request.saDataCommands,
-        saDataFiles=request.saDataFiles,
+        saOutputDataFiles=request.saOutputDataFiles,
         saTestCommands=request.saTestCommands,
         saPlotCommands=request.saPlotCommands,
         saPlotFiles=request.saPlotFiles,

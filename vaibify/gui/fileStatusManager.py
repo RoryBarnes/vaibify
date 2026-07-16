@@ -225,7 +225,7 @@ def _flistResolveStepPaths(dictStep, dictGlobalVars):
     """Return resolved output paths for a single step."""
     sStepDir = dictStep.get("sDirectory", "")
     listPaths = []
-    for sFile in (dictStep.get("saDataFiles", [])
+    for sFile in (dictStep.get("saOutputDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
         listPaths.append(_fsResolveStepFilePath(
             sFile, sStepDir, dictGlobalVars,
@@ -453,7 +453,7 @@ def _flistResolveDataPaths(dictStep, dictVars):
     """Return resolved data file paths for a single step."""
     sStepDir = dictStep.get("sDirectory", "")
     listPaths = []
-    for sFile in dictStep.get("saDataFiles", []):
+    for sFile in dictStep.get("saOutputDataFiles", []):
         listPaths.append(_fsResolveStepFilePath(
             sFile, sStepDir, dictVars,
         ))
@@ -760,7 +760,7 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
     dictVerification = dictStep.get("dictVerification", {})
     _fnApplyDataInvalidation(
         dictVerification, listChangedPaths,
-        dictStep.get("saDataFiles", []),
+        dictStep.get("saOutputDataFiles", []),
     )
     _fnApplyPlotInvalidation(
         dictStep, dictVerification, listChangedPaths, dictModTimes,
@@ -1093,7 +1093,7 @@ def _fbAllPathsTrackedByManifest(filesRepo, listRelPaths):
 def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
     """Return repo-relative output paths declared on a step.
 
-    Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
+    Resolves each ``saOutputDataFiles``/``saPlotFiles`` entry against the
     step directory the same way ``_fsResolveStepFilePath`` does, then
     strips the repo root so the result lines up with manifest keys
     (which are repo-relative POSIX strings written by
@@ -1102,7 +1102,7 @@ def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
     from .pathContract import fsAbsToRepoRelative
     sStepDir = dictStep.get("sDirectory", "")
     listRelative = []
-    for sFile in (dictStep.get("saDataFiles", [])
+    for sFile in (dictStep.get("saOutputDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
         if not sFile:
             continue
@@ -1707,7 +1707,7 @@ def flistStepRemoteFiles(dictWorkflow, iStepIndex, sService):
     """Return repo-relative paths for a step's files tracked on sService.
 
     ``sService`` is "Overleaf" or "Zenodo". Files are enumerated from
-    the step's saPlotFiles + saDataFiles, resolved against the repo
+    the step's saPlotFiles + saOutputDataFiles, resolved against the repo
     root, then filtered by the matching b<Service> flag in
     dictSyncStatus.
     """

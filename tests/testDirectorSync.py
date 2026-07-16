@@ -42,7 +42,7 @@ def test_fbValidateWorkflow_valid():
             "sName": "Test",
             "sDirectory": "Test",
             "saDataCommands": ["python data.py"],
-            "saDataFiles": ["output.npy"],
+            "saOutputDataFiles": ["output.npy"],
             "saPlotCommands": ["python plot.py out.pdf"],
             "saPlotFiles": ["out.pdf"],
             "saTestCommands": [],

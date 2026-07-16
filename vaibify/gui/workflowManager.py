@@ -519,7 +519,7 @@ def fsDescribeValidationFailure(dictWorkflow):
 def flistValidateOutputFilePaths(dictWorkflow):
     """Return warnings for output paths that leave the project repo.
 
-    Scans ``saOutputFiles``, ``saDataFiles``, ``saPlotFiles``, and
+    Scans ``saOutputDataFiles``, ``saPlotFiles``, and
     ``saScratchDirs`` on every step plus ``listDatasets[].sDestination``
     and the workflow-level ``sPlotDirectory``. Absolute paths and
     ``..``-escaping paths are flagged; template-bearing paths
@@ -531,7 +531,7 @@ def flistValidateOutputFilePaths(dictWorkflow):
         sLabel = f"Step{iIndex + 1:02d}"
         sDirectory = dictStep.get("sDirectory", "")
         for sKey in (
-            "saOutputFiles", "saDataFiles", "saPlotFiles", "saScratchDirs",
+            "saOutputDataFiles", "saPlotFiles", "saScratchDirs",
         ):
             for sPath in dictStep.get(sKey, []):
                 sWarning = _fsCheckOutputPathBoundary(
@@ -692,7 +692,7 @@ def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
 def flistResolveOutputFiles(dictStep, dictVariables):
     """Return output file paths with template variables resolved."""
     listResolved = []
-    for sPath in dictStep.get("saDataFiles", []):
+    for sPath in dictStep.get("saOutputDataFiles", []):
         listResolved.append(fsResolveVariables(sPath, dictVariables))
     for sPath in dictStep.get("saPlotFiles", []):
         listResolved.append(fsResolveVariables(sPath, dictVariables))
@@ -827,7 +827,7 @@ def fdictCreateStep(
     bPlotOnly=True,
     bInteractive=False,
     saDataCommands=None,
-    saDataFiles=None,
+    saOutputDataFiles=None,
     saTestCommands=None,
     saPlotCommands=None,
     saPlotFiles=None,
@@ -840,7 +840,7 @@ def fdictCreateStep(
         "bPlotOnly": bPlotOnly,
         "bInteractive": bInteractive,
         "saDataCommands": saDataCommands if saDataCommands else [],
-        "saDataFiles": saDataFiles if saDataFiles else [],
+        "saOutputDataFiles": saOutputDataFiles if saOutputDataFiles else [],
         "saTestCommands": saTestCommands if saTestCommands else [],
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
@@ -891,7 +891,7 @@ def fnRenumberAllReferences(dictWorkflow, fnRemap):
         for sKey in ("saDataCommands", "saTestCommands",
                      "saPlotCommands", "saPlotFiles",
                      "saDependencies", "saSetupCommands",
-                     "saCommands", "saOutputFiles"):
+                     "saCommands"):
             if sKey in dictStep and dictStep[sKey]:
                 dictStep[sKey] = [
                     fsRemapStepReferences(sItem, fnRemap)
@@ -1135,9 +1135,8 @@ def fdictBuildStemRegistry(dictWorkflow):
 def _flistStepDeclaredOutputs(dictStep):
     """Return every declared output file path for a step."""
     return (
-        dictStep.get("saDataFiles", [])
+        dictStep.get("saOutputDataFiles", [])
         + dictStep.get("saPlotFiles", [])
-        + dictStep.get("saOutputFiles", [])
     )
 
 
@@ -1487,7 +1486,7 @@ def fsGetFileCategory(dictStep, sFilePath):
     dictPlot = dictStep.get("dictPlotFileCategories", {})
     if sFilePath in dictPlot:
         return dictPlot[sFilePath]
-    dictData = dictStep.get("dictDataFileCategories", {})
+    dictData = dictStep.get("dictOutputDataFileCategories", {})
     if sFilePath in dictData:
         return dictData[sFilePath]
     return "archive"
@@ -1516,7 +1515,7 @@ def flistCollectArchivePlots(dictWorkflow):
 
 def flistCollectArchiveDataFiles(dictWorkflow):
     """Return all data files categorized as archive."""
-    return flistCollectArchiveFiles(dictWorkflow, "saDataFiles")
+    return flistCollectArchiveFiles(dictWorkflow, "saOutputDataFiles")
 
 
 def flistCollectSupportingFiles(dictWorkflow, sArrayKey):
@@ -1536,7 +1535,7 @@ def flistCollectSupportingPlots(dictWorkflow):
 
 def flistCollectSupportingDataFiles(dictWorkflow):
     """Return all data files categorized as supporting."""
-    return flistCollectSupportingFiles(dictWorkflow, "saDataFiles")
+    return flistCollectSupportingFiles(dictWorkflow, "saOutputDataFiles")
 
 
 # ---------------------------------------------------------------------------
@@ -1892,7 +1891,7 @@ def _flistResolveOutputPaths(dictStep):
     if not sDirectory:
         return []
     listPaths = []
-    for sKey in ("saDataFiles", "saPlotFiles", "saOutputFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             if "{" in sFile:
                 continue
@@ -1921,8 +1920,8 @@ def _fsWorkflowDepCacheKey(dictWorkflow):
             continue
         dictRelevant = {sKey: dictStep.get(sKey, []) for sKey in (
             "saDataCommands", "saPlotCommands", "saTestCommands",
-            "saDataFiles", "saPlotFiles",
-            "saSetupCommands", "saCommands", "saOutputFiles",
+            "saOutputDataFiles", "saPlotFiles",
+            "saSetupCommands", "saCommands",
         )}
         # saDependencies is a set semantically; sort so reorderings
         # within the list don't bust the cache (Review B observation).
@@ -2024,9 +2023,9 @@ def _fdictComputeDirectDependencies(dictWorkflow):
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         setUpstream = set()
         for sKey in ("saDataCommands", "saPlotCommands",
-                     "saTestCommands", "saDataFiles", "saPlotFiles",
+                     "saTestCommands", "saOutputDataFiles", "saPlotFiles",
                      "saDependencies", "saSetupCommands",
-                     "saCommands", "saOutputFiles"):
+                     "saCommands"):
             for sItem in dictStep.get(sKey, []):
                 setUpstream |= fsetExtractUpstreamIndices(
                     sItem, dictIdToIndex,

@@ -45,7 +45,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 7
+I_CURRENT_WORKFLOW_VERSION = 8
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -161,11 +161,17 @@ def fnEnsureStepIds(dictWorkflow):
 
 
 def fnNormalizeSceneReferences(dictStep):
-    """Replace deprecated {SceneNN.var} tokens with {StepNN.var}."""
+    """Replace deprecated {SceneNN.var} tokens with {StepNN.var}.
+
+    Runs during the v0->v1 stage, before the v7->v8 key rename, so it
+    scans the historical ``saDataFiles`` key alongside the current
+    ``saOutputDataFiles`` name; absent keys are skipped.
+    """
     for sKey in (
         "saDataCommands", "saPlotCommands", "saTestCommands",
         "saSetupCommands", "saCommands", "saDependencies",
-        "saDataFiles", "saPlotFiles", "saOutputFiles",
+        "saDataFiles", "saOutputDataFiles", "saPlotFiles",
+        "saOutputFiles",
     ):
         listValues = dictStep.get(sKey)
         if not listValues:
@@ -181,7 +187,7 @@ def fnMigrateArchiveToTracking(dictWorkflow):
 
     Before the badge rework, each output file carried an "archive"
     vs. "supporting" designation in ``dictPlotFileCategories`` /
-    ``dictDataFileCategories``. Archive files were the ones pushed
+    ``dictOutputDataFileCategories``. Archive files were the ones pushed
     to Overleaf and Zenodo in batch operations. This function seeds
     ``dictSyncStatus`` entries with ``bOverleaf=True`` and
     ``bZenodo=True`` for each previously-archive file so badges
@@ -196,7 +202,7 @@ def fnMigrateArchiveToTracking(dictWorkflow):
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     for dictStep in dictWorkflow.get("listSteps", []):
         sStepDir = dictStep.get("sDirectory", "")
-        for sArrayKey in ("saDataFiles", "saPlotFiles"):
+        for sArrayKey in ("saDataFiles", "saOutputDataFiles", "saPlotFiles"):
             for sFile in dictStep.get(sArrayKey, []):
                 if _fsGetFileCategory(dictStep, sFile) != "archive":
                     continue
@@ -243,7 +249,7 @@ def fnMigrateAbsoluteContainerPaths(dictWorkflow, sProjectRepoPath):
 
     Backfills workflows authored before vaibify enforced
     repo-relative paths in step ``sDirectory``, ``saOutputFiles``,
-    ``saDataFiles``, and ``saPlotFiles``. Falls back to inferring the
+    ``saOutputDataFiles``, and ``saPlotFiles``. Falls back to inferring the
     project repo prefix from each step's existing ``sDirectory`` when
     ``sProjectRepoPath`` is empty (the legacy shape was always
     ``/workspace/<repo>/<stepDir>``).
@@ -269,7 +275,8 @@ def fnMigrateAbsoluteContainerPaths(dictWorkflow, sProjectRepoPath):
             sLegacyDirectory, sStepRoot,
         )
         for sArrayKey in (
-            "saOutputFiles", "saDataFiles", "saPlotFiles",
+            "saOutputFiles", "saDataFiles", "saOutputDataFiles",
+            "saPlotFiles",
         ):
             listExisting = dictStep.get(sArrayKey)
             if not listExisting:
@@ -363,13 +370,21 @@ def _fsStripRoot(sPath, sRoot):
 
 
 def _fsGetFileCategory(dictStep, sFilePath):
-    """Return 'archive' or 'supporting' for a data or plot file."""
+    """Return 'archive' or 'supporting' for a data or plot file.
+
+    Reads the historical ``dictDataFileCategories`` key alongside the
+    current name because this runs during the v0->v1 stage, before
+    the v7->v8 key rename.
+    """
     dictPlot = dictStep.get("dictPlotFileCategories", {})
     if sFilePath in dictPlot:
         return dictPlot[sFilePath]
-    dictData = dictStep.get("dictDataFileCategories", {})
-    if sFilePath in dictData:
-        return dictData[sFilePath]
+    for sCategoriesKey in (
+        "dictDataFileCategories", "dictOutputDataFileCategories",
+    ):
+        dictData = dictStep.get(sCategoriesKey, {})
+        if sFilePath in dictData:
+            return dictData[sFilePath]
     return "archive"
 
 
@@ -561,6 +576,30 @@ def _fnMigrateV6ToV7(dictWorkflow, sProjectRepoPath):
     fnRewritePositionalToSymbolic(dictWorkflow)
 
 
+def _fnMigrateV7ToV8(dictWorkflow, sProjectRepoPath):
+    """Rename the output-data key and retire the legacy outputs bucket.
+
+    ``saDataFiles`` becomes ``saOutputDataFiles`` for symmetry with
+    the input-data declaration, and the legacy general-outputs bucket
+    ``saOutputFiles`` is merged into it (deduplicated, order
+    preserved) and removed. ``dictDataFileCategories`` becomes
+    ``dictOutputDataFileCategories``.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []):
+        if not isinstance(dictStep, dict):
+            continue
+        listMerged = list(dictStep.get("saOutputDataFiles", []) or [])
+        for sLegacyKey in ("saDataFiles", "saOutputFiles"):
+            for sPath in dictStep.pop(sLegacyKey, []) or []:
+                if sPath not in listMerged:
+                    listMerged.append(sPath)
+        dictStep["saOutputDataFiles"] = listMerged
+        if "dictDataFileCategories" in dictStep:
+            dictStep["dictOutputDataFileCategories"] = dictStep.pop(
+                "dictDataFileCategories"
+            )
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -569,4 +608,5 @@ T_MIGRATORS = (
     (4, _fnMigrateV4ToV5),
     (5, _fnMigrateV5ToV6),
     (6, _fnMigrateV6ToV7),
+    (7, _fnMigrateV7ToV8),
 )

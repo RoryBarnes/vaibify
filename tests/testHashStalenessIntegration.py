@@ -41,7 +41,7 @@ def _fdictBuildOneStepWorkflow(sProjectRepoPath, sUnitTestState):
         "listSteps": [{
             "sLabel": "A01",
             "sDirectory": "step1",
-            "saDataFiles": ["out.json"],
+            "saOutputDataFiles": ["out.json"],
             "saPlotFiles": [],
             "dictVerification": {
                 "sUnitTest": sUnitTestState,

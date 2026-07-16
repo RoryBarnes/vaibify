@@ -365,7 +365,7 @@ def test_step_l3_counts_zero_without_repo():
     'return (0, len(_T_STEP_LEVEL3_CRITERIA))' -> (1, ...).
     """
     tCounts = levelGates._ftStepLevel3Counts(
-        {"saDataFiles": ["out.dat"]}, set(), {"bHasRepo": False},
+        {"saOutputDataFiles": ["out.dat"]}, set(), {"bHasRepo": False},
     )
     assert tCounts == (0, len(levelGates._T_STEP_LEVEL3_CRITERIA))
     assert tCounts[1] == 6
@@ -380,7 +380,7 @@ def test_step_l3_satisfied_arithmetic_is_subtraction():
     -> 'iTotal >> len(...)'.
     """
     dictStep = {
-        "saDataFiles": ["results/output.dat"],
+        "saOutputDataFiles": ["results/output.dat"],
         "bUnseededRandomnessWarning": True,
         "saDataCommands": ["simtool run config.in"],
     }

@@ -14,7 +14,7 @@ dependency graph the backend can parse mechanically.
    `find /workspace -maxdepth 4 \( -path '*/.vaibify/projects/*.json' -o -path '*/.vaibify/workflows/*.json' \)`
 2. Read `listSteps`: existing steps, their outputs, available
    variables.
-3. Backward dependencies: which steps' `saDataFiles` produce the
+3. Backward dependencies: which steps' `saOutputDataFiles` produce the
    inputs this step needs?
 4. Forward dependents: search all steps for `{StepNN.*}` references.
    **Strongly prefer appending** at the end — inserting renumbers
@@ -40,7 +40,7 @@ contract. Own-step files may be hardcoded; the boundary is the step.
 
 - Argument names kebab-case (`--flare-samples`); the matching token
   snake_case (`{Step02.flare_samples}`) — the token's varname is the
-  extensionless basename of the producer's `saDataFiles` entry.
+  extensionless basename of the producer's `saOutputDataFiles` entry.
 - Use argparse, never raw sys.argv, so the contract is explicit.
 - When two producers declare colliding basenames, use the qualified
   token form (producer-prefixed); the project's `saDependencies`
@@ -51,7 +51,7 @@ Worked example — producer declares, consumer tokenizes:
 ```json
 {"iIndex": 2, "sName": "KeplerFfd",
  "saDataCommands": ["python dataKeplerFfd.py"],
- "saDataFiles": ["flare_samples.npy"]}
+ "saOutputDataFiles": ["flare_samples.npy"]}
 {"iIndex": 3, "sName": "FfdAgeComparison",
  "saPlotCommands": ["python plotFfd.py --flare-samples {Step02.flare_samples} {sPlotDirectory}/ffd.{sFigureType}"]}
 ```
@@ -63,7 +63,7 @@ Hungarian notation, return-type function prefixes, functions ~20
 lines, `import vplot` for any matplotlib figure.
 
 Project entry rules:
-- EVERY output file declared in `saDataFiles` or `saPlotFiles` — no
+- EVERY output file declared in `saOutputDataFiles` or `saPlotFiles` — no
   untracked outputs.
 - `saTestCommands` should include at least a basic sanity check.
 - `bPlotOnly: true` only when the step has no data commands;

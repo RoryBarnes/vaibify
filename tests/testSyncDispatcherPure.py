@@ -40,7 +40,7 @@ def test_fsBuildDagDot_empty_workflow():
 def test_fsBuildDagDot_with_steps():
     dictWorkflow = {"listSteps": [
         {"sName": "Step A", "saDataCommands": [],
-         "saPlotCommands": [], "saDataFiles": [],
+         "saPlotCommands": [], "saOutputDataFiles": [],
          "saPlotFiles": []},
     ]}
     sDot = fsBuildDagDot(dictWorkflow)

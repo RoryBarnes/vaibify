@@ -224,7 +224,7 @@ def _fsResolveLanguage(
 
 
 def _flistCollectUpstreamOutputs(dictWorkflow, iStepIndex):
-    """Collect saDataFiles entries from steps preceding iStepIndex."""
+    """Collect saOutputDataFiles entries from steps preceding iStepIndex."""
     listUpstream = []
     listSteps = dictWorkflow.get("listSteps", [])
     for iIndex in range(min(iStepIndex, len(listSteps))):
@@ -232,7 +232,7 @@ def _flistCollectUpstreamOutputs(dictWorkflow, iStepIndex):
         sStepName = dictStep.get(
             "sName", f"Step {iIndex + 1}")
         iStepNumber = iIndex + 1
-        for sFileName in dictStep.get("saDataFiles", []):
+        for sFileName in dictStep.get("saOutputDataFiles", []):
             sStem = os.path.splitext(
                 os.path.basename(sFileName))[0]
             sTemplateVariable = (
@@ -291,7 +291,7 @@ def _fsetCollectCurrentStepOutputs(
         return set()
     dictStep = listSteps[iCurrentStep]
     setOutputs = set()
-    for sFile in dictStep.get("saDataFiles", []):
+    for sFile in dictStep.get("saOutputDataFiles", []):
         setOutputs.add(os.path.basename(sFile))
     for sFile in dictStep.get("saPlotFiles", []):
         setOutputs.add(os.path.basename(sFile))

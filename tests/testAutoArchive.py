@@ -149,7 +149,7 @@ def _fdictBuildWorkflow():
             {
                 "sDirectory": "/workspace/repo/stepA",
                 "saPlotFiles": ["Plot/figure.pdf"],
-                "saDataFiles": ["data.out"],
+                "saOutputDataFiles": ["data.out"],
             },
         ],
         "dictSyncStatus": {

@@ -80,7 +80,7 @@ trigger it.
 
 A GNU-coreutils shasum-format file at the repository root listing
 every declared project output (everything in each step's
-`saOutputFiles`, `saPlotFiles`, and `saDataFiles`) by repo-relative
+`saPlotFiles` and `saOutputDataFiles`) by repo-relative
 POSIX path with its SHA-256 hash:
 
 ```
@@ -105,7 +105,7 @@ sha256sum -c MANIFEST.sha256
 ```
 
 An architectural-invariants test enforces that every path-list field
-in `project.json` (`saOutputFiles`, `saPlotFiles`, `saDataFiles`,
+in `project.json` (`saPlotFiles`, `saOutputDataFiles`,
 and any future addition) is reflected in `MANIFEST.sha256` — guarding
 against silent under-tracking when the project schema is extended.
 

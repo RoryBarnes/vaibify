@@ -587,7 +587,7 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fbStepHasOutputFiles(step) {
-        var listData = step.saDataFiles || [];
+        var listData = step.saOutputDataFiles || [];
         var listPlots = step.saPlotFiles || [];
         return listData.length > 0 || listPlots.length > 0;
     }

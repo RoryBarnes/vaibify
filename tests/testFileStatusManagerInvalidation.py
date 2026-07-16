@@ -129,7 +129,7 @@ def test_fbPlotNewer_returns_true_when_plot_newer():
 
 def test_fnInvalidateStepFiles_user_passed_plot_newer_resets():
     dictStep = {
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": ["figure.pdf"],
         "dictVerification": {
             "sUser": "passed",
@@ -147,7 +147,7 @@ def test_fnInvalidateStepFiles_user_passed_plot_newer_resets():
 
 def test_fnInvalidateStepFiles_user_passed_plot_older_preserved():
     dictStep = {
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": ["figure.pdf"],
         "dictVerification": {
             "sUser": "passed",
@@ -171,7 +171,7 @@ def test_fnInvalidateStepFiles_preserves_unnecessary_categories():
     in the first place.
     """
     dictStep = {
-        "saDataFiles": ["data.out"],
+        "saOutputDataFiles": ["data.out"],
         "saPlotFiles": [],
         "dictVerification": {
             "sUnitTest": "passed",
@@ -212,7 +212,7 @@ def test_fnInvalidateDownstreamStep_preserves_unnecessary_categories():
 
 def test_fnInvalidateStepFiles_user_passed_no_plot_changed_preserved():
     dictStep = {
-        "saDataFiles": ["data.out"],
+        "saOutputDataFiles": ["data.out"],
         "saPlotFiles": ["figure.pdf"],
         "dictVerification": {
             "sUser": "passed",
@@ -298,7 +298,7 @@ def test_flistDetectAndInvalidate_saves_when_changes_found():
     }
     dictStep = {
         "sDirectory": "/ws/step0",
-        "saDataFiles": ["out.dat"],
+        "saOutputDataFiles": ["out.dat"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -329,7 +329,7 @@ def test_flistDetectAndInvalidate_no_save_when_no_changes():
     }
     dictStep = {
         "sDirectory": "/ws/step0",
-        "saDataFiles": ["out.dat"],
+        "saOutputDataFiles": ["out.dat"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -410,7 +410,7 @@ def test_fbAnyMtimeNewerThan_all_below_threshold():
 def test_fnInvalidateStepFiles_writes_repo_relative_paths():
     """The persisted listModifiedFiles must use repo-relative keys."""
     dictStep = {
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": [],
         "dictVerification": {},
     }
@@ -428,7 +428,7 @@ def test_fnInvalidateStepFiles_writes_repo_relative_paths():
 def test_fnInvalidateStepFiles_two_files_same_step_both_match():
     """A09 repro: two changed files in sibling subdirs both stored."""
     dictStep = {
-        "saDataFiles": [
+        "saOutputDataFiles": [
             "EngleBarnes/output/Converged_Param_Dictionary.json",
             "RibasBarnes/output/Converged_Param_Dictionary.json",
         ],
@@ -456,7 +456,7 @@ def test_fnInvalidateStepFiles_two_files_same_step_both_match():
 def test_fnInvalidateStepFiles_dedupes_existing_abs_with_new_rel():
     """If an old abs entry survives, it merges with the new rel form."""
     dictStep = {
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": [],
         "dictVerification": {
             "listModifiedFiles": [
@@ -478,7 +478,7 @@ def test_fnInvalidateStepFiles_dedupes_existing_abs_with_new_rel():
 def test_fnInvalidateStepFiles_no_repo_root_keeps_paths():
     """Pre-repo workflows pass empty sRepoRoot; behavior unchanged."""
     dictStep = {
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": [],
         "dictVerification": {},
     }
@@ -504,7 +504,7 @@ def test_flistDetectAndInvalidate_threads_repo_root_into_persisted_list():
     }
     dictStep = {
         "sDirectory": "step0",
-        "saDataFiles": ["out.dat"],
+        "saOutputDataFiles": ["out.dat"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -624,7 +624,7 @@ def test_fnInvalidateStepFiles_step_directory_dot_normalizes_to_basename():
     """A step at the repo root (sDirectory='.') stores bare filenames."""
     dictStep = {
         "sDirectory": ".",
-        "saDataFiles": ["summary.csv"],
+        "saOutputDataFiles": ["summary.csv"],
         "saPlotFiles": [],
         "dictVerification": {},
     }
@@ -644,7 +644,7 @@ def test_fnInvalidateStepFiles_sibling_directory_plot_path():
     the full repo-relative path, not just the basename."""
     dictStep = {
         "sDirectory": "stepOne",
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
         "saPlotFiles": ["../shared/figure.pdf"],
         "dictVerification": {},
     }
@@ -664,7 +664,7 @@ def test_fnInvalidateStepFiles_wire_format_has_no_absolute_paths():
     repo root is supplied — that is the wire-format contract."""
     dictStep = {
         "sDirectory": "stepOne",
-        "saDataFiles": ["out.dat"],
+        "saOutputDataFiles": ["out.dat"],
         "saPlotFiles": ["plot.pdf"],
         "dictVerification": {},
     }
@@ -713,7 +713,7 @@ def test_step_status_unchanged_when_mtime_stale_but_hash_clean(tmp_path):
     dictStep = {
         "sName": "OnlyStep",
         "sDirectory": sStepDir,
-        "saDataFiles": ["out.csv"],
+        "saOutputDataFiles": ["out.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],
@@ -755,7 +755,7 @@ def test_step_status_modified_when_mtime_stale_and_hash_drifted(tmp_path):
     dictStep = {
         "sName": "OnlyStep",
         "sDirectory": sStepDir,
-        "saDataFiles": ["out.csv"],
+        "saOutputDataFiles": ["out.csv"],
         "saPlotFiles": [],
         "saDataCommands": [],
         "saPlotCommands": [],

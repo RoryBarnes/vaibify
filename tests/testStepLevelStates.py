@@ -36,7 +36,7 @@ def _fdictActiveCleanStep(sName="stepOne"):
     """
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [sName + "/output.json"], "saPlotFiles": [],
+        "saOutputDataFiles": [sName + "/output.json"], "saPlotFiles": [],
         "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
     }
 
@@ -266,7 +266,7 @@ def testInactiveStepWithOutputsOnDiskIsUnassessedAtEveryLevel():
     presentation this state exists to fix)."""
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
-        "saDataFiles": ["stepOne/output.json"],
+        "saOutputDataFiles": ["stepOne/output.json"],
         "dictVerification": {"sUser": "untested"},
     }
     dictStates = fdictComputeStepLevelStates(
@@ -819,7 +819,7 @@ def testProjectionAgreesWithRealLevel1Blockers():
     from vaibify.reproducibility.levelGates import flistLevel1Blockers
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
-        "saDataFiles": [], "saPlotFiles": [],
+        "saOutputDataFiles": [], "saPlotFiles": [],
         "dictVerification": {"sUser": "untested", "sUnitTest": "failed"},
     }
     dictWorkflow = {

@@ -1599,7 +1599,7 @@ def _fnAppendStepOutputFiles(
     dictStep, dictSyncStatus, dictVars, sWorkflowRoot, listFiles,
 ):
     """Append one step's data and plot files with resolved paths."""
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             listFiles.append(_fdictBuildOutputEntry(
                 dictStep, sKey, sFile, dictSyncStatus,

@@ -19,13 +19,13 @@ def _fdictBuildSimpleWorkflow():
             {
                 "sName": "Producer",
                 "sDirectory": "Producer",
-                "saDataFiles": ["output.npy"],
+                "saOutputDataFiles": ["output.npy"],
                 "saPlotFiles": [],
             },
             {
                 "sName": "Consumer",
                 "sDirectory": "Consumer",
-                "saDataFiles": ["consumed.json"],
+                "saOutputDataFiles": ["consumed.json"],
                 "saPlotFiles": ["plot.pdf"],
             },
         ],
@@ -99,13 +99,13 @@ def testSiblingHeuristicSuppresses():
             {
                 "sName": "A",
                 "sDirectory": "Suite/A",
-                "saDataFiles": ["result.json"],
+                "saOutputDataFiles": ["result.json"],
                 "saPlotFiles": [],
             },
             {
                 "sName": "B",
                 "sDirectory": "Suite/B",
-                "saDataFiles": ["result.json"],
+                "saOutputDataFiles": ["result.json"],
                 "saPlotFiles": [],
             },
         ],
@@ -152,7 +152,7 @@ def testMarginFilterAcceptsLargerDelta():
 def testClusterIntoOneEntryPerPair():
     """Multiple offending consumer files from one producer cluster into one advisory."""
     dictWorkflow = _fdictBuildSimpleWorkflow()
-    dictWorkflow["listSteps"][1]["saDataFiles"] = ["a.json", "b.json", "c.json"]
+    dictWorkflow["listSteps"][1]["saOutputDataFiles"] = ["a.json", "b.json", "c.json"]
     dictWorkflow["listSteps"][1]["saPlotFiles"] = ["d.pdf", "e.pdf"]
     dictMtimes = {
         "Producer/output.npy": 5000.0,

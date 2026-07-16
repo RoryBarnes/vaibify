@@ -61,15 +61,15 @@ def test_output_entry_resolving_to_repo_parent_is_rejected():
     _fsCheckOutputPathBoundary (line 605); only startswith('../')
     remains."""
     sWarnEmpty = _fsCheckOutputPathBoundary(
-        "..", "", "Step01", "saOutputFiles",
+        "..", "", "Step01", "saOutputDataFiles",
     )
     sWarnSub = _fsCheckOutputPathBoundary(
-        "../..", "sub", "Step01", "saOutputFiles",
+        "../..", "sub", "Step01", "saOutputDataFiles",
     )
     assert "escapes the project repo" in sWarnEmpty
     assert "escapes the project repo" in sWarnSub
     dictWorkflow = fdictMakeWorkflow(
-        [fdictMakeStep("a", saOutputFiles=[".."])],
+        [fdictMakeStep("a", saOutputDataFiles=[".."])],
     )
     assert fbValidateWorkflow(dictWorkflow) is False
 
@@ -175,7 +175,7 @@ def test_self_referencing_step_flagged_as_circular():
     dictWorkflow = fdictMakeWorkflow([
         fdictMakeStep(
             "a",
-            saOutputFiles=["result.csv"],
+            saOutputDataFiles=["result.csv"],
             saCommands=["run {Step01.result}"],
         ),
         fdictMakeStep("b"),
@@ -198,7 +198,7 @@ def test_reference_to_last_step_is_circular_not_beyond():
     in _fsClassifyReference (line 1092)."""
     dictWorkflow = fdictMakeWorkflow([
         fdictMakeStep("a", saCommands=["run {Step02.result}"]),
-        fdictMakeStep("b", saOutputFiles=["result.csv"]),
+        fdictMakeStep("b", saOutputDataFiles=["result.csv"]),
     ])
     listWarnings = flistValidateReferences(dictWorkflow)
     assert any("circular dependency" in s for s in listWarnings)

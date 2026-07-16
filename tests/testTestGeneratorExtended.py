@@ -78,7 +78,7 @@ def test_fsParseGeneratedCode_plain_code_returned():
 
 
 def test_fsBuildPrompt_no_data_commands():
-    dictStep = {"saDataFiles": ["data.npy"]}
+    dictStep = {"saOutputDataFiles": ["data.npy"]}
     sPrompt = fsBuildPrompt(
         "/workspace", dictStep, "scripts", "previews")
     assert "(none)" in sPrompt
@@ -96,7 +96,7 @@ def test_fsBuildPrompt_no_data_files():
 def test_fsBuildPrompt_includes_script_contents():
     dictStep = {
         "saDataCommands": ["python run.py"],
-        "saDataFiles": ["out.npy"],
+        "saOutputDataFiles": ["out.npy"],
     }
     sPrompt = fsBuildPrompt(
         "/workspace", dictStep,
@@ -134,7 +134,7 @@ def test_fsBuildStepContext_reads_scripts():
     dictStep = {
         "sDirectory": "step1",
         "saDataCommands": ["python analyze.py"],
-        "saDataFiles": ["output.npy"],
+        "saOutputDataFiles": ["output.npy"],
     }
     sScripts, sPreviews = fsBuildStepContext(
         mockConn, "cid123", dictStep, {})
@@ -147,7 +147,7 @@ def test_fsBuildStepContext_no_scripts():
     dictStep = {
         "sDirectory": ".",
         "saDataCommands": [],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
     }
     sScripts, sPreviews = fsBuildStepContext(
         mockConn, "cid123", dictStep, {})
@@ -162,7 +162,7 @@ def test_fsBuildStepContext_handles_fetch_failure():
     dictStep = {
         "sDirectory": ".",
         "saDataCommands": ["python missing.py"],
-        "saDataFiles": ["data.csv"],
+        "saOutputDataFiles": ["data.csv"],
     }
     sScripts, sPreviews = fsBuildStepContext(
         mockConn, "cid123", dictStep, {})
@@ -217,7 +217,7 @@ def test_fdictGenerateAllTests_creates_three_categories(
             "sName": "Process",
             "sDirectory": "/work/step01",
             "saDataCommands": ["python run.py"],
-            "saDataFiles": ["output.csv"],
+            "saOutputDataFiles": ["output.csv"],
             "saTestCommands": [],
             "dictTests": {
                 "dictQualitative": {
@@ -263,7 +263,7 @@ def test_fsBuildStepContext_joins_relative_dir_with_repo_root():
     dictStep = {
         "sDirectory": "XuvEvolution/EngleBarnes",
         "saDataCommands": ["python analyze.py"],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
     }
     fsBuildStepContext(
         mockConn, "cid123", dictStep,
@@ -279,7 +279,7 @@ def test_fsBuildStepContext_preserves_absolute_step_dir():
     dictStep = {
         "sDirectory": "/already/abs",
         "saDataCommands": ["python script.py"],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
     }
     fsBuildStepContext(
         mockConn, "cid123", dictStep,
@@ -295,7 +295,7 @@ def test_fsBuildStepContext_no_repo_root_keeps_relative():
     dictStep = {
         "sDirectory": "step1",
         "saDataCommands": ["python script.py"],
-        "saDataFiles": [],
+        "saOutputDataFiles": [],
     }
     fsBuildStepContext(mockConn, "cid123", dictStep, {})
     sFetched = mockConn.fbaFetchFile.call_args[0][1]

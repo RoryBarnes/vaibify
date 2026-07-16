@@ -257,7 +257,7 @@ def test_fnEmitDiscoveredOutputs_unexpected():
     mockDocker = _fMockDocker(0, "/a/old.txt\n/a/new.dat\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = {"/a/old.txt"}
-    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -274,7 +274,7 @@ def test_fnEmitDiscoveredOutputs_expected():
     mockDocker = _fMockDocker(0, "/a/data.npy\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = set()
-    dictStep = {"saDataFiles": ["data.npy"], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": ["data.npy"], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -291,7 +291,7 @@ def test_fnEmitDiscoveredOutputs_caps_at_five():
     mockDocker = _fMockDocker(0, "\n".join(listFiles) + "\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = set()
-    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -309,7 +309,7 @@ def test_fnEmitDiscoveredOutputs_under_cap_unchanged():
     mockDocker = _fMockDocker(0, "\n".join(listFiles) + "\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = set()
-    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -455,7 +455,7 @@ def test_fbVerifyStepOutputs_uses_single_exec_for_many_files():
     sOutput = "\n".join(f"/work/{s}" for s in listFiles) + "\n"
     mockDocker = _fMockDocker(0, sOutput)
     fnCallback, _ = _fMockCallback()
-    dictStep = {"sDirectory": "/work", "saDataFiles": listFiles}
+    dictStep = {"sDirectory": "/work", "saOutputDataFiles": listFiles}
     dictVars = {"sPlotDirectory": "Plot"}
     bResult = _fnRunAsync(_fbVerifyStepOutputs(
         mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
@@ -472,7 +472,7 @@ def test_fbVerifyStepOutputs_partial_missing_reports_first_gap():
     # Only b.dat reports present; a.dat and c.dat are missing.
     mockDocker = _fMockDocker(0, "/work/b.dat\n")
     fnCallback, listCaptured = _fMockCallback()
-    dictStep = {"sDirectory": "/work", "saDataFiles": listFiles}
+    dictStep = {"sDirectory": "/work", "saOutputDataFiles": listFiles}
     dictVars = {"sPlotDirectory": "Plot"}
     bResult = _fnRunAsync(_fbVerifyStepOutputs(
         mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
@@ -1085,7 +1085,7 @@ def test_verify_step_exec_timeout_does_not_hang():
         "sPlotDirectory": "Plot",
         "listSteps": [
             {"sName": "S", "sDirectory": "S",
-             "saDataFiles": ["out.dat"], "saPlotFiles": []},
+             "saOutputDataFiles": ["out.dat"], "saPlotFiles": []},
         ],
     }
     fnCallback, listCaptured = _fMockCallback()

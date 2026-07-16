@@ -344,7 +344,7 @@ def fnRegisterStepOutputs(dictStep, dictVariables, sStepLabel, sWorkflowRoot):
         dictStep["sDirectory"], dictVariables)
     sAbsDirectory = _fsJoinStepDirectory(dictVariables, sDirectory)
     listDeclared = (
-        dictStep.get("saDataFiles", []) + dictStep["saPlotFiles"])
+        dictStep.get("saOutputDataFiles", []) + dictStep["saPlotFiles"])
     _fnRegisterFiles(
         fdictMapOutputTokenStems(listDeclared),
         dictVariables, sStepLabel, sAbsDirectory)

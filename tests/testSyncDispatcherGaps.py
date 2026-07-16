@@ -41,7 +41,7 @@ DICT_STEP_WITH_SCRIPTS = {
     "saPlotCommands": [],
     "saTestCommands": [],
     "saDependencies": [],
-    "saDataFiles": [],
+    "saOutputDataFiles": [],
     "saPlotFiles": [],
 }
 
@@ -52,7 +52,7 @@ DICT_STEP_EMPTY = {
     "saPlotCommands": [],
     "saTestCommands": [],
     "saDependencies": [],
-    "saDataFiles": [],
+    "saOutputDataFiles": [],
     "saPlotFiles": [],
 }
 
@@ -269,7 +269,7 @@ class TestBuildDagEdgesIncludesImplicitDeps:
                 {
                     "sName": "Produce",
                     "sDirectory": "/workspace/shared/sub",
-                    "saDataFiles": ["output.csv"],
+                    "saOutputDataFiles": ["output.csv"],
                     "saPlotFiles": [],
                     "saDataCommands": [],
                     "saPlotCommands": [],
@@ -277,7 +277,7 @@ class TestBuildDagEdgesIncludesImplicitDeps:
                 {
                     "sName": "Consume",
                     "sDirectory": "/workspace/shared",
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                     "saPlotFiles": [],
                     "saDataCommands": [],
                     "saPlotCommands": [],

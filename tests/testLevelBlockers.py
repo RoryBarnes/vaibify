@@ -28,7 +28,7 @@ def _fdictAllGreenStep(sName="A"):
     """Return a step dict that satisfies every L1 criterion."""
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [sName + "/data.csv"],
+        "saOutputDataFiles": [sName + "/data.csv"],
         "saPlotFiles": [sName + "/plot.pdf"],
         "dictVerification": {
             "sUser": "passed",
@@ -95,7 +95,7 @@ def test_flistLevel1Blockers_axis_not_green_offending_files():
 
 def test_flistLevel1Blockers_axis_not_green_handles_empty_files():
     dictStep = _fdictAllGreenStep()
-    dictStep["saDataFiles"] = []
+    dictStep["saOutputDataFiles"] = []
     dictStep["saPlotFiles"] = []
     dictStep["dictVerification"]["sQuantitative"] = "failed"
     listBlockers = flistLevel1Blockers(
@@ -466,11 +466,11 @@ def _fdictManifestFriendlyStep():
     """Return a step whose declared outputs resolve cleanly under
     ``sDirectory``. The shared ``_fdictAllGreenStep`` doubles the
     directory prefix at resolution time; this fixture matches the
-    production convention where ``saDataFiles`` entries are step-
+    production convention where ``saOutputDataFiles`` entries are step-
     directory-relative names (e.g. ``data.csv``), not repo-relative."""
     return {
         "sName": "stepOne", "sDirectory": "stepOne",
-        "saDataFiles": ["data.csv"],
+        "saOutputDataFiles": ["data.csv"],
         "saPlotFiles": ["plot.pdf"],
         "dictVerification": {
             "sUser": "passed",

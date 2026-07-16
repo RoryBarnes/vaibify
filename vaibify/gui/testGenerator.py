@@ -257,7 +257,7 @@ def _fsBuildDataPreviews(
 ):
     """Generate previews for each data output file."""
     listParts = []
-    for sFile in dictStep.get("saDataFiles", []):
+    for sFile in dictStep.get("saOutputDataFiles", []):
         sPreview = fsPreviewDataFile(
             connectionDocker, sContainerId, sFile, sDirectory
         )
@@ -685,7 +685,7 @@ def fdictGenerateAllTestsDeterministic(
     """Generate all three test categories deterministically."""
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
-    listDataFiles = dictStep.get("saDataFiles", [])
+    listDataFiles = dictStep.get("saOutputDataFiles", [])
     if not listDataFiles:
         logger.warning(
             "No data files for step %d; generating minimal tests",
@@ -934,7 +934,7 @@ def _fdictGenerateAllTestsViaLlm(
     """Generate all three test categories via LLM."""
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
-    sDataFiles = ", ".join(dictStep.get("saDataFiles", []))
+    sDataFiles = ", ".join(dictStep.get("saOutputDataFiles", []))
     sScripts, sPreviews = fsBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables,
     )

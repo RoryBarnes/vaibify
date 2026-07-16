@@ -1532,6 +1532,13 @@ SET_NON_OUTPUT_SA_FILES_KEYS = {
     # stepRoutes decorates the response with a resolved view of the
     # step's outputs; this is a runtime projection, not a declaration.
     "saResolvedOutputFiles",
+    # Historical key names that survive only inside workflowMigrations
+    # (pre-v8 documents used saDataFiles for output data and
+    # saOutputFiles as a legacy general-outputs bucket; the v7->v8
+    # migrator merges both into saOutputDataFiles). Migration code must
+    # keep reading the old names; the manifest never sees them.
+    "saDataFiles",
+    "saOutputFiles",
 }
 
 
@@ -1899,7 +1906,7 @@ def _fnSeedHashStaleStep(tmp_path, sUnitTestState):
         "listSteps": [{
             "sLabel": "A01",
             "sDirectory": "step1",
-            "saDataFiles": ["out.json"],
+            "saOutputDataFiles": ["out.json"],
             "dictVerification": {
                 "sUnitTest": sUnitTestState,
                 "sIntegrity": sUnitTestState,
@@ -1978,7 +1985,7 @@ def _fnWritePlotCoverageWorkflow(tmp_path):
     (sWorkflowsDir / "main.json").write_text(jsonModule.dumps({
         "listSteps": [{
             "sDirectory": "step1",
-            "saDataFiles": ["data/out.csv", "data/{iteration}.csv"],
+            "saOutputDataFiles": ["data/out.csv", "data/{iteration}.csv"],
             "saPlotFiles": ["Plot/fig.pdf"],
         }],
     }))
@@ -1994,7 +2001,7 @@ def _fdictComputePlotCoverageHashes(tmp_path, sStepDir):
 
 
 def testMarkerCoversAllDeclaredOutputs(tmp_path):
-    """Every literal saDataFiles / saPlotFiles entry hashes into the marker."""
+    """Every literal saOutputDataFiles / saPlotFiles entry hashes into the marker."""
     sStepDir = _fnSeedPlotCoverageFiles(tmp_path)
     _fnWritePlotCoverageWorkflow(tmp_path)
     dictHashes = _fdictComputePlotCoverageHashes(tmp_path, sStepDir)

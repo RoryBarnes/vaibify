@@ -11,8 +11,8 @@ The manifest envelope covers the full input-to-output chain so that a
 third party can verify the *code* that produced the outputs as well as
 the outputs themselves:
 
-* Output artefacts: every path in ``saOutputFiles``, ``saPlotFiles``,
-  and ``saDataFiles`` for every step.
+* Output artefacts: every path in ``saPlotFiles`` and
+  ``saOutputDataFiles`` for every step.
 * Step scripts: every ``.py`` file referenced by ``saDataCommands``
   and ``saPlotCommands``. Without these in the manifest, a downstream
   consumer could verify the outputs match but could not detect that
@@ -118,7 +118,7 @@ def fnWriteManifest(filesRepo, dictWorkflow):
     """Write a sorted SHA-256 manifest of every declared workflow artefact.
 
     Walks ``dictWorkflow['listSteps']`` and collects every output path
-    (``saOutputFiles``, ``saPlotFiles``, ``saDataFiles``), every step
+    (``saPlotFiles``, ``saOutputDataFiles``), every step
     script referenced by ``saDataCommands`` / ``saPlotCommands``, and
     every test ``sStandardsPath`` under ``dictTests``. Hashes the
     files in one adapter batch and writes GNU shasum format

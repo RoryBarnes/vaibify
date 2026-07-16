@@ -142,7 +142,7 @@ class TestFlistCollectOutputFiles:
     def test_collects_data_and_plot_files(self):
         dictWorkflow = {"listSteps": [
             {"sName": "A",
-             "saDataFiles": ["data.h5"],
+             "saOutputDataFiles": ["data.h5"],
              "saPlotFiles": ["plot.pdf"]},
         ]}
         listResult = flistCollectOutputFiles(dictWorkflow, {})
@@ -153,7 +153,7 @@ class TestFlistCollectOutputFiles:
 
     def test_sync_status_attached(self):
         dictWorkflow = {"listSteps": [
-            {"sName": "A", "saDataFiles": ["data.h5"],
+            {"sName": "A", "saOutputDataFiles": ["data.h5"],
              "saPlotFiles": []},
         ]}
         dictSync = {"data.h5": {"bPushed": True}}

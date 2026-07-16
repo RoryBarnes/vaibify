@@ -36,7 +36,7 @@ DICT_WORKFLOW = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": [],
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saTestCommands": [],
             "saPlotCommands": [],
             "saPlotFiles": [],
