@@ -37,7 +37,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # The constant is embedded in every generated file as a comment line
 # beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
 # stale copies without parsing the source.
-S_CONFTEST_VERSION = "3"
+S_CONFTEST_VERSION = "4"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
@@ -632,6 +632,47 @@ def _fdictComputeOutputHashes(sStepDir):
     return dictHashes
 
 
+def _flistStepInputFiles(sStepDir):
+    """Return repo-relative posix paths of the step's input data files.
+
+    Unlike output entries, ``saInputDataFiles`` values are already
+    repo-relative — they are never joined onto the step directory.
+    """
+    listResult = []
+    setSeen = set()
+    sWantedRel = _fsStepDirRepoRel(sStepDir)
+    for pathJson in _flistProjectJsons():
+        try:
+            dictWorkflow = json.loads(pathJson.read_text())
+        except (OSError, ValueError):
+            continue
+        for dictStep in dictWorkflow.get("listSteps", []):
+            sCandidateRel = _fsStepDirRepoRel(
+                dictStep.get("sDirectory", "")
+            )
+            if sCandidateRel != sWantedRel:
+                continue
+            for sFile in dictStep.get("saInputDataFiles", []):
+                if "{" in sFile:
+                    continue
+                sRel = _fsRepoRelFromFile(sFile, "")
+                if sRel and sRel not in setSeen:
+                    listResult.append(sRel)
+                    setSeen.add(sRel)
+    return listResult
+
+
+def _fdictComputeInputHashes(sStepDir):
+    """Return {repo-rel-path: blob-sha} for the step's input data files."""
+    dictHashes = {}
+    for sRel in _flistStepInputFiles(sStepDir):
+        sAbs = str(_PROJECT_REPO / sRel)
+        sSha = _fsBlobSha(sAbs)
+        if sSha:
+            dictHashes[sRel] = sSha
+    return dictHashes
+
+
 def _fsLabelForStep(sStepDirRel):
     """Return a display label (A09, I01) for a step by repo-rel dir.
 
@@ -700,6 +741,7 @@ def pytest_sessionfinish(session, exitstatus):
         "iCollected": session.testscollected,
         "dictCategories": _fdictBuildCategoryResults(session),
         "dictOutputHashes": _fdictComputeOutputHashes(sStepDir),
+        "dictInputHashes": _fdictComputeInputHashes(sStepDir),
     }
     sMarkerDir = _MARKER_BASE / _fsActiveWorkflowSlug()
     sMarkerDir.mkdir(parents=True, exist_ok=True)

@@ -200,6 +200,90 @@ def test_flistStepOutputFiles_tolerates_corrupt_workflow(tmp_path):
 
 
 # ----------------------------------------------------------------------
+# _flistStepInputFiles / _fdictComputeInputHashes
+# ----------------------------------------------------------------------
+
+
+def test_template_mentions_input_hash_field():
+    sTemplate = conftestManager.fsConftestContent()
+    assert "dictInputHashes" in sTemplate
+
+
+def test_flistStepInputFiles_are_repo_relative_not_step_joined(tmp_path):
+    """Input entries resolve against the repo root, never the step dir.
+
+    A regression that joined inputs onto the step directory would
+    hash the wrong file (or nothing) and staleness detection would
+    silently pass on a modified input.
+    """
+    _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saInputDataFiles": ["data/observations.csv"],
+        }],
+    })
+    ns = _fnExecTemplateWithRoot(tmp_path)
+    listResult = ns._flistStepInputFiles(str(tmp_path / "step1"))
+    assert listResult == ["data/observations.csv"]
+
+
+def test_flistStepInputFiles_skips_template_placeholders(tmp_path):
+    _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saInputDataFiles": ["raw_{target}.csv", "raw.csv"],
+        }],
+    })
+    ns = _fnExecTemplateWithRoot(tmp_path)
+    listResult = ns._flistStepInputFiles(str(tmp_path / "step1"))
+    assert listResult == ["raw.csv"]
+
+
+def test_fdictComputeInputHashes_hashes_declared_inputs(tmp_path):
+    _fsWrite(str(tmp_path), "data/observations.csv", "time,flux\n1,2\n")
+    _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saInputDataFiles": ["data/observations.csv"],
+        }],
+    })
+    ns = _fnExecTemplateWithRoot(tmp_path)
+    dictHashes = ns._fdictComputeInputHashes(str(tmp_path / "step1"))
+    assert list(dictHashes) == ["data/observations.csv"]
+    sExpected = ns._fsBlobSha(str(tmp_path / "data" / "observations.csv"))
+    assert dictHashes["data/observations.csv"] == sExpected
+
+
+def test_fdictComputeInputHashes_empty_when_none_declared(tmp_path):
+    _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saOutputDataFiles": ["out.csv"],
+        }],
+    })
+    ns = _fnExecTemplateWithRoot(tmp_path)
+    assert ns._fdictComputeInputHashes(str(tmp_path / "step1")) == {}
+
+
+def test_input_hash_changes_when_input_content_changes(tmp_path):
+    sInputPath = "data/observations.csv"
+    _fsWrite(str(tmp_path), sInputPath, "time,flux\n1,2\n")
+    _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
+        "listSteps": [{
+            "sDirectory": "step1",
+            "saInputDataFiles": [sInputPath],
+        }],
+    })
+    ns = _fnExecTemplateWithRoot(tmp_path)
+    sBefore = ns._fdictComputeInputHashes(
+        str(tmp_path / "step1"))[sInputPath]
+    _fsWrite(str(tmp_path), sInputPath, "time,flux\n1,999\n")
+    sAfter = ns._fdictComputeInputHashes(
+        str(tmp_path / "step1"))[sInputPath]
+    assert sBefore != sAfter
+
+
+# ----------------------------------------------------------------------
 # _fsBlobSha
 # ----------------------------------------------------------------------
 
