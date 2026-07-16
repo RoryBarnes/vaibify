@@ -8,6 +8,17 @@ var PipeleyenPipelineRunner = (function () {
     var _sStreamingViewer = null;
     var dictAcknowledgedAt = {};
     var MAX_PIPELINE_OUTPUT_LINES = 1000;
+    // Set by the remoteDataRecorded event; consumed at run end so
+    // freshly pulled remote data is offered for commit immediately
+    // instead of sitting silently uncommitted.
+    var _bRemoteDataPulledThisRun = false;
+
+    function _fnOfferCommitIfRemoteDataPulled() {
+        if (!_bRemoteDataPulledThisRun) return;
+        _bRemoteDataPulledThisRun = false;
+        VaibifyManifestCheck.fbOfferCommitAfterGenerate(
+            PipeleyenApp.fsGetContainerId());
+    }
 
     /* --- WebSocket --- */
 
@@ -70,6 +81,10 @@ var PipeleyenPipelineRunner = (function () {
                     dictEvent.listRemoteData || [];
                 PipeleyenApp.fnRenderStepList();
             }
+            // Remember that this run changed pulled data so the
+            // end-of-run handler can offer to commit it — canonical
+            // data must not sit silently uncommitted.
+            _bRemoteDataPulledThisRun = true;
         } else if (dictEvent.sType === "stepSkipped") {
             PipeleyenApp.fnSetStepStatus(
                 dictEvent.iStepNumber - 1, "skipped");
@@ -106,6 +121,7 @@ var PipeleyenPipelineRunner = (function () {
                 _fsCompletedToast(dictEvent.sCommand), "success");
             PipeleyenApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
+            _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "failed") {
             PipeleyenApp.fnClearRunningStatuses();
             PipeleyenApp.fnStartFileChangePolling();
@@ -115,6 +131,10 @@ var PipeleyenPipelineRunner = (function () {
             );
             PipeleyenApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
+            // A later step failing does not un-pull the data: the
+            // successful pull still left fresh files that need review
+            // and commit, so the offer fires here too.
+            _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "runRefused") {
             PipeleyenApp.fnResetQueuedSteps(
                 dictEvent.listStepIndices || []);
@@ -739,6 +759,17 @@ var PipeleyenPipelineRunner = (function () {
         var sVerb = iExitCode === 0 ? "completed" : "failed";
         PipeleyenApp.fnShowToast("Step " + sLabel + " " + sVerb,
             iExitCode === 0 ? "success" : "error");
+        // A standalone Run-in-Terminal pull never produces the
+        // remoteDataRecorded event (no server runner), so the commit
+        // offer keys off the step's declaration directly.
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var step = dictWorkflow &&
+            dictWorkflow.listSteps[iStepIndex];
+        if (iExitCode === 0 && step &&
+            (step.listRemoteData || []).length > 0) {
+            VaibifyManifestCheck.fbOfferCommitAfterGenerate(
+                PipeleyenApp.fsGetContainerId());
+        }
     }
 
     /* --- Actions --- */

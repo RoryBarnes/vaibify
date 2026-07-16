@@ -563,3 +563,23 @@ def test_all_three_interactive_lanes_pass_the_overwrite_gate():
         assert "fnConfirmRemoteOverwriteThen" in sBody, (
             sFunction + " must gate its terminal launch"
         )
+
+
+def test_confirmed_pull_offers_commit_of_fresh_canonical_data():
+    """After a run that recorded remote data (and after a standalone
+    Run-in-Terminal pull), the browser must offer to commit the fresh
+    files via the shared fbOfferCommitAfterGenerate flow — canonical
+    data must never sit silently uncommitted."""
+    sSource = _fsReadStaticFile("scriptPipelineRunner.js")
+    assert sSource.count("fbOfferCommitAfterGenerate") >= 2, (
+        "both the run-end path and the standalone interactive path "
+        "must offer the commit"
+    )
+    iRecorded = sSource.find('"remoteDataRecorded"')
+    assert iRecorded != -1
+    assert "_bRemoteDataPulledThisRun" in sSource[
+        iRecorded:iRecorded + 1200
+    ], (
+        "the remoteDataRecorded event must arm the end-of-run "
+        "commit offer"
+    )
