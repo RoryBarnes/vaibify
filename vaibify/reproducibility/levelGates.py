@@ -213,8 +213,9 @@ def _fsWorkflowBlockerFingerprint(dictWorkflow):
 def _fdictBlockerRelevantStep(dictStep):
     """Capture the per-step fields that determine blocker output."""
     return {sKey: dictStep.get(sKey) for sKey in (
-        "sName", "sDirectory", "sLabel",
+        "sName", "sDirectory", "sLabel", "sStepKind",
         "saOutputDataFiles", "saPlotFiles",
+        "saInputDataFiles", "bNoInputData",
         "saDataCommands", "saPlotCommands", "saTestCommands",
         "saSetupCommands", "saCommands", "saDependencies",
         "dictVerification", "dictTests", "sLastUserUpdate",
@@ -372,12 +373,17 @@ def flistLevel1Blockers(
          "listOffendingUpstreamSteps": [0-based step indices],
          "sRemediationHint": str}
 
-    ``sCriterion`` is one of ``"user-not-approved"``,
+    ``sCriterion`` is one of ``"input-data-undeclared"``,
+    ``"user-not-approved"``,
     ``"upstream-modified"``, ``"script-stale"``, ``"axis-not-green"``,
-    or ``"attestation-stale"``. ``script-stale`` fires when the step's
-    script has been edited after its declared outputs landed; suppressed
-    when the outputs' hashes still match ``MANIFEST.sha256`` (fresh
-    clones). Priority order is ``upstream-modified`` > ``script-stale``
+    or ``"attestation-stale"``. ``input-data-undeclared`` fires when a
+    step neither lists ``saInputDataFiles`` nor carries the explicit
+    ``bNoInputData`` declaration — a Project whose input contract is
+    unstated is not self-consistent. ``script-stale`` fires when the
+    step's script has been edited after its declared outputs landed;
+    suppressed when the outputs' hashes still match ``MANIFEST.sha256``
+    (fresh clones). Priority order is ``input-data-undeclared`` >
+    ``upstream-modified`` > ``script-stale``
     > ``axis-not-green`` > ``attestation-stale`` > ``user-not-approved``.
     The list is sorted by ``iStepIndex`` so rendering order is
     deterministic. Returns ``[]`` for an L1-clean workflow or one with
@@ -453,8 +459,12 @@ def _fdictBuildStepBlocker(
 ):
     """Return the single dominant blocker dict for a step, or None.
 
-    Priority: ``upstream-modified`` > ``script-stale`` >
-    ``axis-not-green`` > ``attestation-stale`` > ``user-not-approved``.
+    Priority: ``input-data-undeclared`` > ``upstream-modified`` >
+    ``script-stale`` > ``axis-not-green`` > ``attestation-stale`` >
+    ``user-not-approved``. The declaration criterion leads because it
+    is a contract gap, not a freshness signal — until the researcher
+    states what raw data the step consumes (or that it consumes
+    none), no freshness verdict about the step is meaningful.
     The first applicable criterion wins so a step never emits two
     blockers; the dashboard's banner glyph therefore has a deterministic
     single source. Corrupt step entries (``None``, non-dict, missing
@@ -468,6 +478,8 @@ def _fdictBuildStepBlocker(
         return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
     if fbStepIsAiDeclaration(dictStep):
         return None
+    if _fbStepInputDataUndeclared(dictStep):
+        return _fdictInputUndeclaredBlocker(dictWorkflow, iStepIndex)
     if not fbStepTimingClean(dictStep):
         return _fdictUpstreamModifiedBlocker(
             dictWorkflow, iStepIndex, dictStep,
@@ -508,6 +520,39 @@ def _fdictUserDispositionBlocker(dictWorkflow, iStepIndex, dictStep):
             dictWorkflow, iStepIndex, dictStep,
         )
     return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
+
+
+def _fbStepInputDataUndeclared(dictStep):
+    """Return True when the step's input contract is unstated.
+
+    Declared means either at least one ``saInputDataFiles`` entry or
+    the explicit ``bNoInputData`` flag. Both absent is the third
+    state — *undeclared* — and an undeclared step cannot be
+    self-consistent: nothing distinguishes "verified there are no raw
+    inputs" from "nobody looked."
+    """
+    return (
+        not dictStep.get("saInputDataFiles")
+        and not dictStep.get("bNoInputData")
+    )
+
+
+def _fdictInputUndeclaredBlocker(dictWorkflow, iStepIndex):
+    """Build the ``input-data-undeclared`` blocker entry for one step."""
+    return {
+        "iLevel": 1,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "input-data-undeclared",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": (
+            "Declare the step's raw input data files in its Input "
+            "Data block, or check 'No input data needed' — Level 1 "
+            "requires an explicit declaration"
+        ),
+    }
 
 
 def _fdictUpstreamModifiedBlocker(

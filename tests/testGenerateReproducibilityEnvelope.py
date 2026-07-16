@@ -264,6 +264,7 @@ def _fdictAllGreenStep(saOutputDataFiles):
         "sName": "OnlyStep",
         "saPlotFiles": [],
         "saOutputDataFiles": list(saOutputDataFiles or []),
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",

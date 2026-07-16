@@ -115,8 +115,8 @@ def test_fbAtLeastLevel1_all_unnecessary_steps_are_green():
         "sQuantitative": "unnecessary",
     }
     dictWorkflow = {"listSteps": [
-        {"dictVerification": dict(dictV)},
-        {"dictVerification": dict(dictV)},
+        {"bNoInputData": True, "dictVerification": dict(dictV)},
+        {"bNoInputData": True, "dictVerification": dict(dictV)},
     ]}
     assert fbAtLeastLevel1(dictWorkflow, "/repo") is True
 
@@ -150,6 +150,7 @@ def _fdictBuildWorkflow():
                 "sDirectory": "/workspace/repo/stepA",
                 "saPlotFiles": ["Plot/figure.pdf"],
                 "saOutputDataFiles": ["data.out"],
+                "bNoInputData": True,
             },
         ],
         "dictSyncStatus": {

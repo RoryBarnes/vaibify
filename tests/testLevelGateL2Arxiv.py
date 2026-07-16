@@ -107,6 +107,7 @@ def _fdictGreenStep(sName="A"):
         "sName": sName, "sDirectory": sName,
         "saOutputDataFiles": [sName + "/data.csv"],
         "saPlotFiles": [sName + "/plot.pdf"],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",

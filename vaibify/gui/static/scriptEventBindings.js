@@ -321,6 +321,12 @@ var PipeleyenEventBindings = (function () {
             elMatch);
     }
 
+    function _fnHandleBulkDeclareNoInput(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnBulkDeclareNoInputData();
+    }
+
     function _fnHandleOpenArxivConfig(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -394,6 +400,7 @@ var PipeleyenEventBindings = (function () {
         ".requirement-row-header": _fnHandleRequirementRowToggle,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
         ".btn-ai-declaration-untrack": _fnHandleAiDeclarationUntrack,
+        ".wf-declare-no-input": _fnHandleBulkDeclareNoInput,
         ".envelope-open-repos": _fnHandleOpenReposPanel,
     };
 

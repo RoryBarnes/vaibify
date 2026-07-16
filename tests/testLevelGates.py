@@ -58,6 +58,7 @@ def _fdictAllGreenStep(sStepKind=None):
     """Return one L1-satisfying step, with optional sStepKind."""
     dictStep = {
         "sName": "A", "sDirectory": "A",
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",

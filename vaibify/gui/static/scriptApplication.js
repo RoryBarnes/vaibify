@@ -1887,6 +1887,12 @@ const PipeleyenApp = (function () {
     }
 
     var _DICT_BLOCKER_CRITERION_GLYPHS = {
+        "input-data-undeclared": {
+            sIcon: "—",
+            sLabel: "Input data undeclared — list the step's raw " +
+                "inputs or check 'No input data needed'",
+            sClass: "step-blocker-glyph-user",
+        },
         "upstream-modified": {
             sIcon: "✎",
             sLabel: "Upstream changed; re-run to clear blocker",
@@ -3134,6 +3140,33 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
+    async function fnBulkDeclareNoInputData() {
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/steps/" + sContainerId
+                + "/declare-no-input-data", {});
+            var listDeclared =
+                dictResult.listDeclaredStepIndices || [];
+            listDeclared.forEach(function (iStep) {
+                var step =
+                    _dictWorkflowState.dictWorkflow.listSteps[iStep];
+                if (step) step.bNoInputData = true;
+            });
+            fnShowToast(
+                listDeclared.length === 0
+                    ? "Every step already declares its input data"
+                    : listDeclared.length
+                        + " step(s) declared as needing no input data",
+                "success");
+            fnRenderStepList();
+            VaibifyPolling.fnStartFilePolling(sContainerId);
+        } catch (error) {
+            fnShowToast("Declaration failed", "error");
+        }
+    }
+
     function fnToggleDepsExpand(iStep) {
         if (_dictUiState.setExpandedDeps.has(iStep)) {
             _dictUiState.setExpandedDeps.delete(iStep);
@@ -4225,6 +4258,7 @@ const PipeleyenApp = (function () {
         fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnToggleNoInputData: fnToggleNoInputData,
+        fnBulkDeclareNoInputData: fnBulkDeclareNoInputData,
         fnSetStepBudget: fnSetStepBudget,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,

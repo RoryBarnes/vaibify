@@ -1849,15 +1849,16 @@ def testEmptyCommandCategoryIsUnnecessaryAfterLoad():
 def testAtLeastLevel1IffAllFourCriteria():
     """``fbAtLeastLevel1`` is True iff every L1 criterion holds.
 
-    Enumerates the 2^4 truth table over the four orthogonal
+    Enumerates the 2^5 truth table over the five orthogonal
     criteria (repo present, user approved, timing clean, tests
-    passing) and asserts the gate fires exactly when all four are
-    True. Catches future regressions where someone weakens one
-    predicate or adds a fifth without updating the composition.
+    passing, input data declared) and asserts the gate fires exactly
+    when all five are True. Catches future regressions where someone
+    weakens one predicate or adds a sixth without updating the
+    composition.
     """
     from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     listCriteria = (
-        "bRepo", "bUser", "bTiming", "bTests",
+        "bRepo", "bUser", "bTiming", "bTests", "bDeclared",
     )
     for iMask in range(1 << len(listCriteria)):
         dictFlags = {
@@ -1873,6 +1874,7 @@ def testAtLeastLevel1IffAllFourCriteria():
             dictVerification["sUnitTest"] = "failed"
         dictWorkflow = {"listSteps": [{
             "sName": "A", "sDirectory": "A",
+            "bNoInputData": dictFlags["bDeclared"],
             "dictVerification": dictVerification,
         }]}
         sRepo = "/workspace/repo" if dictFlags["bRepo"] else ""

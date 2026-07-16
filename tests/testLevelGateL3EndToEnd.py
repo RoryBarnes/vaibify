@@ -95,6 +95,7 @@ def _fdictBuildLevel3Workflow():
         "listSteps": [
             {
                 "sName": "A", "sDirectory": "A",
+                "bNoInputData": True,
                 "dictVerification": {
                     "sUser": "passed", "sUnitTest": "passed",
                     "sIntegrity": "passed",

@@ -852,6 +852,50 @@ var VaibifyWorkflowRequirements = (function () {
             }}];
     }
 
+    function _flistInputDeclarationRows(dictContext) {
+        // The Level 1 input-data contract made visible: every step
+        // must list its raw inputs or explicitly declare it needs
+        // none. The detail names the undeclared steps and offers the
+        // one-click retrofit for a Project predating the contract.
+        var listSteps = ((dictContext.dictWorkflow || {})
+            .listSteps) || [];
+        var listUndeclared = [];
+        listSteps.forEach(function (step, iStep) {
+            if (step.sStepKind === "ai-declaration") return;
+            var bDeclared =
+                (step.saInputDataFiles || []).length > 0 ||
+                step.bNoInputData === true;
+            if (!bDeclared) {
+                listUndeclared.push(
+                    dictContext.fsComputeStepLabel(iStep));
+            }
+        });
+        var bAllDeclared = listUndeclared.length === 0;
+        return [{
+            sKey: "inputDeclaration", iLevel: 1,
+            sTitle: "Input data declared",
+            sState: bAllDeclared ? "green" : "red",
+            fsDetail: function () {
+                var sStatus = bAllDeclared
+                    ? "Every step lists its raw input data or " +
+                      "explicitly declares it needs none."
+                    : "Undeclared steps: " +
+                      listUndeclared.join(", ") + ". A step " +
+                      "reaches Level 1 only with an explicit " +
+                      "input-data declaration — an input file " +
+                      "modified after outputs were generated means " +
+                      "the Project is no longer self-consistent.";
+                var sAction = bAllDeclared ? "" :
+                    '<button type="button" class="btn btn-small ' +
+                    'wf-declare-no-input">Declare &quot;no input ' +
+                    'data&quot; for all undeclared steps</button>';
+                return '<div class="requirement-row-detail">' +
+                    '<div class="requirement-row-status">' +
+                    fnEscapeHtml(sStatus) + '</div>' + sAction +
+                    '</div>';
+            }}];
+    }
+
     function _fdictGroupStateByLevel(listRows) {
         // Aggregate the group's rows per level with the shared
         // banner rule (VaibifyUtilities.fsSummarizeLevelStates):
@@ -943,7 +987,9 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
         if (!bOpen) return sHtml;
         var listSections = [
-            ["repository", _flistRepositoryRows(dictContext), ""],
+            ["repository",
+             _flistRepositoryRows(dictContext).concat(
+                 _flistInputDeclarationRows(dictContext)), ""],
             ["software", _flistSoftwareRows(dictDetail),
              _fsRenderBinaryAddForm(
                  dictContext.bBinaryAddFormOpen === true)],
