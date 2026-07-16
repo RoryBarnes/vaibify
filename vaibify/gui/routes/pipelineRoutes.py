@@ -36,6 +36,7 @@ from ..fileStatusManager import (
     _fdictBuildScriptStatus,
     _fdictComputeMarkerMtimeByStep,
     _fdictComputeMaxDataMtimeByStep,
+    _fdictComputeMaxInputMtimeByStep,
     _fdictComputeMaxMtimeByStep,
     _fdictComputeMaxPlotMtimeByStep,
     _fdictComputeMaxTestSourceMtimeByStep,
@@ -49,6 +50,7 @@ from ..fileStatusManager import (
     _fnUpdateModTimeBaseline,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
+    fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
     fsMarkerNameFromStepDirectory,
@@ -679,13 +681,19 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
             _flistResolveTestSourcePaths(dictStep, dictVars),
         )
     listWorkflowPaths = [sWorkflowPath] if sWorkflowPath else []
+    listInputPaths = []
+    for listStepInputs in fdictCollectInputPathsByStep(
+        dictWorkflow, dictVars,
+    ).values():
+        listInputPaths.extend(listStepInputs)
     # Declared binaries are absolute, out-of-repo paths; their mtimes
     # drive the L1 binary-changed warning (the L3 drift check uses the
     # snapshot-carried hashes instead).
     listBinaryPaths = flistWorkflowBinaryPaths(dictWorkflow)
     return list(set(
         listOutputPaths + listScriptPaths + listMarkerPaths
-        + listTestSourcePaths + listWorkflowPaths + listBinaryPaths,
+        + listTestSourcePaths + listWorkflowPaths + listBinaryPaths
+        + listInputPaths,
     ))
 
 
@@ -844,6 +852,9 @@ def _fdictComputeAllPerStepMtimes(
             dictWorkflow, dictModTimes, dictVars,
         ),
         "dictMaxDataMtimeByStep": _fdictComputeMaxDataMtimeByStep(
+            dictWorkflow, dictModTimes, dictVars,
+        ),
+        "dictMaxInputMtimeByStep": _fdictComputeMaxInputMtimeByStep(
             dictWorkflow, dictModTimes, dictVars,
         ),
         "dictMarkerMtimeByStep": _fdictComputeMarkerMtimeByStep(

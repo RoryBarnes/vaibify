@@ -2645,7 +2645,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # wall-clock-budget status (over-budget flag + elapsed/budget) so a
     # hung-but-heartbeating step is distinguishable from a legitimately
     # long one. Computed live, non-gating. Cohesive with poll assembly.
-    "routes/pipelineRoutes.py": 2246,
+    # +11 (2026-07-16): input-data files join the poll — their paths in
+    # the stat batch and dictMaxInputMtimeByStep on the wire. Cohesive
+    # with the mtime groupings already assembled here.
+    "routes/pipelineRoutes.py": 2257,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2676,7 +2679,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
-    "fileStatusManager.py": 2002,
+    # +97 (2026-07-16): the input-data staleness lane — resolution and
+    # collection of saInputDataFiles, full-path input invalidation,
+    # the inputFile pencil bucket, and dictInputHashes drift folded
+    # into the marker-hash pass. Mirrors the output lane this module
+    # owns; splitting it out would smear one behavior across modules.
+    "fileStatusManager.py": 2099,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -2731,10 +2739,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-07-15): connect path-validation accepts a Project file
     # under either .vaibify/projects (canonical) or .vaibify/workflows
     # (legacy) via T_VAIBIFY_PROJECT_SUFFIXES.
-    # +10 (2026-07-16): input-data declaration fields on the step
-    # request models (saInputDataFiles, bNoInputData, listRemoteData)
-    # and threading into fdictStepFromRequest.
-    "pipelineServer.py": 1798,
+    # +11 (2026-07-16): input-data declaration fields on the step
+    # request models (saInputDataFiles, bNoInputData, listRemoteData),
+    # threading into fdictStepFromRequest, and the
+    # fdictCollectInputPathsByStep re-export shim line.
+    "pipelineServer.py": 1799,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

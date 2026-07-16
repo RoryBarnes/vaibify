@@ -1447,6 +1447,7 @@ from .fileStatusManager import (  # noqa: F401
     fbStepUserApproved,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
+    fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     flistStepRemoteFiles,
     fnCollectMarkerPathsByStep,
