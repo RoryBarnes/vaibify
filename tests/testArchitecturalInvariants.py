@@ -2746,7 +2746,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # threading into fdictStepFromRequest, the
     # fdictCollectInputPathsByStep re-export shim line, and the
     # InputDataAddRequest model for the add-input-data-file action.
-    "pipelineServer.py": 1805,
+    # +167 (2026-07-16): the remote-data overwrite gate at the
+    # dispatch choke point — step-set resolution per run action, one
+    # existence exec, and the runRefused remoteDataOverwrite event.
+    # Cohesive with the message loop and busy-refusal it sits beside;
+    # every lane (browser, agent CLI) must meet the same gate here.
+    "pipelineServer.py": 1972,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

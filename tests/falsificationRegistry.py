@@ -1199,4 +1199,10 @@ def _fdictEntry(sRel):
         old='        sHash = (dictHashed.get(sRelPath) or {}).get("sSha256")\n        if not sHash:\n            return ""',
         new='        sHash = (dictHashed.get(sRelPath) or {}).get("sSha256")\n        if not sHash:\n            continue',
     ),
+    Falsification(
+        nodeid='tests/testRemoteDataOverwriteGate.py::test_gated_run_is_refused_and_never_dispatched',
+        source='vaibify/gui/pipelineServer.py',
+        old='    if dictRequest.get("bConfirmRemoteOverwrite"):\n        return None',
+        new='    if True:\n        return None',
+    ),
 ]

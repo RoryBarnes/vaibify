@@ -65,20 +65,32 @@ def fnAgentAction(sName):
 
 LIST_AGENT_ACTIONS = [
     # ---- Execution (WebSocket except kill + acknowledge) ----
+    # Remote-data gate (all run actions): a run covering a step whose
+    # listRemoteData files already exist on disk is answered with
+    # runRefused sReason=remoteDataOverwrite. Relay the question to
+    # the researcher; only after their yes re-issue with
+    # --confirm-remote-overwrite (bConfirmRemoteOverwrite=true).
     {"sName": "run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step in the active workflow in order."},
+     "sDescription": "Run every step in the active workflow in order. "
+                     "Refused with sReason=remoteDataOverwrite when a "
+                     "covered step would re-pull remote data over the "
+                     "canonical copy — ask the researcher, then retry "
+                     "with --confirm-remote-overwrite."},
     {"sName": "force-run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "forceRunAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step unconditionally, ignoring cache."},
+     "sDescription": "Run every step unconditionally, ignoring cache. "
+                     "Subject to the same remote-data overwrite gate "
+                     "as run-all."},
     {"sName": "run-from-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runFrom",
      "bAgentSafe": True,
      "sDescription": "Run from the given step to the end. "
                      "Args: {iStartStep: int} or {sStartStepLabel: 'A09'}. "
-                     "CLI accepts labels directly: run-from-step A09."},
+                     "CLI accepts labels directly: run-from-step A09. "
+                     "Subject to the remote-data overwrite gate."},
     {"sName": "run-selected-steps", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
@@ -86,12 +98,14 @@ LIST_AGENT_ACTIONS = [
                      "Args: {listStepIndices: [int, ...]} or "
                      "{listStepLabels: ['A09', ...]}; both may be combined. "
                      "CLI accepts labels as positionals: "
-                     "run-selected-steps A09 A10 A11."},
+                     "run-selected-steps A09 A10 A11. "
+                     "Subject to the remote-data overwrite gate."},
     {"sName": "run-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
      "sDescription": "Run a single step by label (A09 / I01) or 0-based "
-                     "index. Alias for run-selected-steps with one entry."},
+                     "index. Alias for run-selected-steps with one entry. "
+                     "Subject to the remote-data overwrite gate."},
     {"sName": "run-data-only", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,

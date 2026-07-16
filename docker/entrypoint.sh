@@ -815,6 +815,10 @@ Both actions are read-only and agent-safe. Use them BEFORE asking the researcher
 
 **User-only action protocol.** If `vaibify-do` responds with a JSON object containing `sRefusal: "user-only-action"`, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.
 
+**Remote-data overwrite protocol.** If a run action is answered with a `runRefused` event whose `sReason` is `remoteDataOverwrite`, the run would re-pull remote data over the canonical committed copy (the refusal names the steps and files). Do NOT confirm on your own authority: relay the question to the researcher, and only after their explicit yes re-issue the same command with `--confirm-remote-overwrite`. After a confirmed re-pull, the fresh data is NOT auto-committed — the researcher reviews and commits it (or reverts) through the normal canonical flow.
+
+**Declaring input data.** Every step must state its input contract to reach Level 1: raw files the step reads go in its Input Data block (`vaibify-do add-input-data-file <step> sPath=<repo-relative path>`), and a step that reads no raw data is declared with `bNoInputData` (per step via `update-step`, or `vaibify-do declare-no-input-data` to declare every still-undeclared step at once). Files produced by other steps are NOT input data — reference them as `{StepNN.*}` tokens in commands.
+
 **Failure modes.** If `vaibify-do` reports `vaibify session not initialized` or `/tmp/vaibify-session.env` is missing, vaibify is not currently connected to this container — tell the researcher to open the dashboard and click the container so it reconnects. This is a "not connected yet" condition, not a "vaibify-do is host-only" condition. If it reports the host is unreachable or the session token is invalid, same fix: reconnect from the dashboard. Do not try workarounds.
 
 ## Key Paths
