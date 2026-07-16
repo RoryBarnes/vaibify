@@ -157,6 +157,12 @@ class StepUpdateRequest(BaseModel):
     sBaseFingerprint: Optional[str] = None
 
 
+class InputDataAddRequest(BaseModel):
+    # One repo-relative raw-data path to append to a step's
+    # saInputDataFiles; boundary-validated server-side.
+    sPath: str
+
+
 class ReorderRequest(BaseModel):
     iFromIndex: int
     iToIndex: int

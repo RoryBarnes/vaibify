@@ -2739,11 +2739,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-07-15): connect path-validation accepts a Project file
     # under either .vaibify/projects (canonical) or .vaibify/workflows
     # (legacy) via T_VAIBIFY_PROJECT_SUFFIXES.
-    # +11 (2026-07-16): input-data declaration fields on the step
+    # +17 (2026-07-16): input-data declaration fields on the step
     # request models (saInputDataFiles, bNoInputData, listRemoteData),
-    # threading into fdictStepFromRequest, and the
-    # fdictCollectInputPathsByStep re-export shim line.
-    "pipelineServer.py": 1799,
+    # threading into fdictStepFromRequest, the
+    # fdictCollectInputPathsByStep re-export shim line, and the
+    # InputDataAddRequest model for the add-input-data-file action.
+    "pipelineServer.py": 1805,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

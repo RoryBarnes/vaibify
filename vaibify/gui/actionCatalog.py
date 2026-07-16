@@ -185,9 +185,29 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Edit properties of an existing step. "
                      "Args: a partial step object. Edits that would "
-                     "empty saTestCommands or saOutputDataFiles on a step "
-                     "that currently has them require an explicit "
-                     "bConfirmDestructive=true flag in the body."},
+                     "empty saTestCommands, saOutputDataFiles, or "
+                     "saInputDataFiles on a step that currently has "
+                     "them require an explicit bConfirmDestructive="
+                     "true flag in the body. Removing one input file "
+                     "goes through this action (send the remaining "
+                     "saInputDataFiles list)."},
+    {"sName": "add-input-data-file", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/input-data",
+     "bAgentSafe": True,
+     "sDescription": "Declare one raw input data file on a step "
+                     "(shown in its Input Data block and watched for "
+                     "modification). Args: {sPath} repo-relative; "
+                     "step products are rejected — those stay "
+                     "{StepNN.*} tokens in commands."},
+    {"sName": "declare-no-input-data", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/declare-no-input-data",
+     "bAgentSafe": True,
+     "sDescription": "Set bNoInputData=true on every step that has "
+                     "no input files listed and no declaration yet. "
+                     "A step reaches Level 1 only when it lists "
+                     "inputs or carries this declaration."},
     {"sName": "delete-step", "sCategory": "workflow",
      "sMethod": "DELETE",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}",

@@ -10,6 +10,7 @@ from ..fileStatusManager import fnMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiAICSLevel
 from ..routeContext import ffilesForWorkflow
 from ..pipelineServer import (
+    InputDataAddRequest,
     ReorderRequest,
     StepCreateRequest,
     StepUpdateRequest,
@@ -308,12 +309,71 @@ def _fnRegisterStepReorder(app, dictCtx):
         return {"listSteps": flistStepsWithLabels(dictWorkflow)}
 
 
+def _fnRegisterInputDataAdd(app, dictCtx):
+    """Register POST /api/steps/{id}/{index}/input-data route."""
+
+    @fnAgentAction("add-input-data-file")
+    @app.post("/api/steps/{sContainerId}/{iStepIndex}/input-data")
+    async def fnAddInputDataFile(
+        sContainerId: str, iStepIndex: int,
+        request: InputDataAddRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        listSteps = dictWorkflow.get("listSteps", [])
+        if not 0 <= iStepIndex < len(listSteps):
+            raise HTTPException(404, f"Step {iStepIndex} out of range")
+        sPath = (request.sPath or "").strip()
+        sWarning = workflowManager._fsCheckInputPathBoundary(
+            sPath, f"Step{iStepIndex + 1:02d}", "saInputDataFiles",
+        )
+        if not sPath or sWarning:
+            raise HTTPException(400, sWarning or "sPath is required")
+        dictStep = listSteps[iStepIndex]
+        listInputs = dictStep.setdefault("saInputDataFiles", [])
+        bAdded = sPath not in listInputs
+        if bAdded:
+            listInputs.append(sPath)
+            dictCtx["save"](sContainerId, dictWorkflow)
+        return {
+            "bAdded": bAdded,
+            "dictStep": fdictStepWithLabel(dictWorkflow, iStepIndex),
+        }
+
+
+def _fnRegisterDeclareNoInputData(app, dictCtx):
+    """Register POST /api/steps/{id}/declare-no-input-data route."""
+
+    @fnAgentAction("declare-no-input-data")
+    @app.post("/api/steps/{sContainerId}/declare-no-input-data")
+    async def fnDeclareNoInputData(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        listDeclared = []
+        for iIndex, dictStep in enumerate(
+            dictWorkflow.get("listSteps", [])
+        ):
+            if dictStep.get("saInputDataFiles"):
+                continue
+            if dictStep.get("bNoInputData"):
+                continue
+            dictStep["bNoInputData"] = True
+            listDeclared.append(iIndex)
+        if listDeclared:
+            dictCtx["save"](sContainerId, dictWorkflow)
+        return {"listDeclaredStepIndices": listDeclared}
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all step CRUD routes."""
     _fnRegisterStepsList(app, dictCtx)
     _fnRegisterStepGet(app, dictCtx)
     _fnRegisterStepCreate(app, dictCtx)
     _fnRegisterStepInsert(app, dictCtx)
+    _fnRegisterInputDataAdd(app, dictCtx)
+    _fnRegisterDeclareNoInputData(app, dictCtx)
     _fnRegisterStepUpdate(app, dictCtx)
     _fnRegisterStepDelete(app, dictCtx)
     _fnRegisterStepReorder(app, dictCtx)

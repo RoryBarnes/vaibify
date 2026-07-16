@@ -143,3 +143,85 @@ def testWarnHundredNotFlippedBelowThreshold(tClientAndWorkflow):
     assert responseHttp.status_code == 200
     assert responseHttp.json()["bShouldWarnHundredSteps"] is False
     assert dictWorkflow["bWarnedHundredSteps"] is False
+
+
+# -----------------------------------------------------------------------
+# Input-data agent lane: add-input-data-file + declare-no-input-data
+# -----------------------------------------------------------------------
+
+
+def testAddInputDataFileAppendsAndSaves(tClientAndWorkflow):
+    clientHttp, dictWorkflow, listSaves = tClientAndWorkflow(2)
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/1/input-data",
+        json={"sPath": "data/observations.csv"},
+    )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bAdded"] is True
+    assert dictWorkflow["listSteps"][1]["saInputDataFiles"] == [
+        "data/observations.csv",
+    ]
+    assert len(listSaves) == 1
+
+
+def testAddInputDataFileDeduplicatesWithoutSaving(tClientAndWorkflow):
+    clientHttp, dictWorkflow, listSaves = tClientAndWorkflow(1)
+    dictWorkflow["listSteps"][0]["saInputDataFiles"] = [
+        "data/observations.csv",
+    ]
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/input-data",
+        json={"sPath": "data/observations.csv"},
+    )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bAdded"] is False
+    assert dictWorkflow["listSteps"][0]["saInputDataFiles"] == [
+        "data/observations.csv",
+    ]
+    assert listSaves == []
+
+
+def testAddInputDataFileRejectsTraversalAndTokens(tClientAndWorkflow):
+    clientHttp, dictWorkflow, _ = tClientAndWorkflow(1)
+    for sBadPath in ("../escape.csv", "/etc/passwd", "{Step01.out}"):
+        responseHttp = clientHttp.post(
+            f"/api/steps/{S_CONTAINER_ID}/0/input-data",
+            json={"sPath": sBadPath},
+        )
+        assert responseHttp.status_code == 400, sBadPath
+    assert "saInputDataFiles" not in dictWorkflow["listSteps"][0] or \
+        dictWorkflow["listSteps"][0]["saInputDataFiles"] == []
+
+
+def testAddInputDataFileOutOfRangeIs404(tClientAndWorkflow):
+    clientHttp, _, _ = tClientAndWorkflow(1)
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/7/input-data",
+        json={"sPath": "data/raw.csv"},
+    )
+    assert responseHttp.status_code == 404
+
+
+def testDeclareNoInputDataOnlyTouchesUndeclaredSteps(tClientAndWorkflow):
+    clientHttp, dictWorkflow, listSaves = tClientAndWorkflow(3)
+    dictWorkflow["listSteps"][0]["saInputDataFiles"] = ["data/a.csv"]
+    dictWorkflow["listSteps"][1]["bNoInputData"] = True
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/declare-no-input-data",
+    )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["listDeclaredStepIndices"] == [2]
+    assert dictWorkflow["listSteps"][2]["bNoInputData"] is True
+    assert "bNoInputData" not in dictWorkflow["listSteps"][0]
+    assert len(listSaves) == 1
+
+
+def testDeclareNoInputDataNoOpWhenAllDeclared(tClientAndWorkflow):
+    clientHttp, dictWorkflow, listSaves = tClientAndWorkflow(1)
+    dictWorkflow["listSteps"][0]["bNoInputData"] = True
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/declare-no-input-data",
+    )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["listDeclaredStepIndices"] == []
+    assert listSaves == []
