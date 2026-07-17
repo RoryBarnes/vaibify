@@ -1522,20 +1522,17 @@ body.aics-level-3 .toolbar-label {
     cursor: pointer;
 }
 
-/* Undeclared input contract: a hard Level 1 blocker, shown as a
-   boxed error so the message reads at text-grade contrast while the
-   chip shape keeps the alarm. */
+/* Undeclared input contract: a Level 1 blocker, but a pending
+   declaration a single click resolves — not a breakage. Plain orange
+   text like the other "stale / pending" notes (and the banner's
+   orange dash), deliberately without the boxed-error alarm: red
+   stays reserved for genuine failures. */
 .detail-note.input-undeclared-note {
-    color: var(--color-red-text);
-    background: var(--bg-error-tint);
-    border: 1px solid var(--border-error-tint);
-    border-radius: 4px;
-    padding: 3px 8px;
-    display: inline-block;
+    color: var(--color-orange);
 }
 
 .input-undeclared-glyph {
-    color: var(--color-red);
+    color: var(--color-orange);
     font-weight: bold;
 }
 

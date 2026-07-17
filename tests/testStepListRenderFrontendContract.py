@@ -585,28 +585,32 @@ def test_confirmed_pull_offers_commit_of_fresh_canonical_data():
     )
 
 
-def test_undeclared_input_shows_red_warning_glyph_and_text():
-    """An undeclared step (no files, box unchecked) must render a red
-    warning glyph and red note in the Input Data block, and the
-    collapsed-row blocker glyph for input-data-undeclared must be the
-    red warning, not the muted user dash."""
+def test_undeclared_input_shows_orange_pending_indicator():
+    """An undeclared step (no files, box unchecked) renders a pending
+    indicator in the Input Data block, and the collapsed-row blocker
+    glyph for input-data-undeclared is the orange dash of the
+    "awaiting action" family — NOT the red of a genuine failure
+    (undeclared is a one-click declaration gap, not a breakage)."""
     sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
     iRow = sRenderer.find("function fsRenderNoInputDataRow")
     assert iRow != -1
     sBlock = sRenderer[iRow:iRow + 1000]
     assert "input-undeclared-glyph" in sBlock
-    assert "⚠" in sBlock  # the warning glyph itself
 
     sApp = _fsReadStaticFile("scriptApplication.js")
     iGlyph = sApp.find('"input-data-undeclared": {')
     assert iGlyph != -1
-    sGlyphBlock = sApp[iGlyph:iGlyph + 260]
-    assert 'sIcon: "⚠"' in sGlyphBlock
-    assert "step-blocker-glyph-axis" in sGlyphBlock  # red
+    sGlyphBlock = sApp[iGlyph:iGlyph + 600]
+    assert 'sIcon: "—"' in sGlyphBlock
+    assert "step-blocker-glyph-user" in sGlyphBlock  # orange, pending
+    assert "step-blocker-glyph-axis" not in sGlyphBlock  # not red
 
     sCss = _fsReadStaticFile("styleMain.css")
     assert ".detail-note.input-undeclared-note" in sCss
     assert "input-undeclared-glyph" in sCss
+    # the undeclared note is orange (pending), not the red error box
+    iNote = sCss.find(".detail-note.input-undeclared-note")
+    assert "var(--color-orange)" in sCss[iNote:iNote + 120]
     # input rows get their own status colours (drift = orange)
     assert 'tracked-file[data-array="saInputDataFiles"]' in sCss
     assert "file-necessary-red.file-stale-state" in sCss

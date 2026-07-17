@@ -1897,10 +1897,14 @@ const PipeleyenApp = (function () {
 
     var _DICT_BLOCKER_CRITERION_GLYPHS = {
         "input-data-undeclared": {
-            sIcon: "⚠",
+            /* Orange "pending action" family (same glyph as awaiting
+             * sign-off): undeclared input is an incomplete
+             * declaration a single click resolves, not a breakage —
+             * red stays reserved for failed/missing tests. */
+            sIcon: "—",
             sLabel: "Input data undeclared — list the step's raw " +
                 "inputs or check 'No input data needed'",
-            sClass: "step-blocker-glyph-axis",
+            sClass: "step-blocker-glyph-user",
         },
         "upstream-modified": {
             sIcon: "✎",
