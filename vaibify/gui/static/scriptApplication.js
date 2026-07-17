@@ -1888,10 +1888,10 @@ const PipeleyenApp = (function () {
 
     var _DICT_BLOCKER_CRITERION_GLYPHS = {
         "input-data-undeclared": {
-            sIcon: "—",
+            sIcon: "⚠",
             sLabel: "Input data undeclared — list the step's raw " +
                 "inputs or check 'No input data needed'",
-            sClass: "step-blocker-glyph-user",
+            sClass: "step-blocker-glyph-axis",
         },
         "upstream-modified": {
             sIcon: "✎",

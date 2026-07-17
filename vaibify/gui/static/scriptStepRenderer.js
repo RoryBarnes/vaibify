@@ -1010,6 +1010,9 @@ var VaibifyStepRenderer = (function () {
             ' No input data needed</label></div>';
         if (!bDeclaredNone) {
             sHtml += '<div class="detail-note input-undeclared-note">' +
+                '<span class="input-undeclared-glyph" ' +
+                'title="This step cannot reach Level 1 until its ' +
+                'input contract is declared">⚠</span> ' +
                 'Input data undeclared &mdash; list the raw files this ' +
                 'step reads, or check the box above.</div>';
         }

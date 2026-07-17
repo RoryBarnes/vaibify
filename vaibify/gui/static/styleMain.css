@@ -1484,6 +1484,46 @@ body.aics-level-3 .toolbar-label {
     cursor: pointer;
 }
 
+/* Input Data rows share the tracked-file chrome (not .output), so
+   they need their own status colours. A declared input that is
+   MISSING is red (the step cannot run); one that has DRIFTED since
+   the last run is orange (self-consistency lost, softer than
+   missing); an input on a not-yet-L1 step is orange; a clean input
+   on an L1 step is the highlight tint. */
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-red {
+    color: #c91111;
+    cursor: pointer;
+}
+
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-red.file-stale-state {
+    color: var(--color-orange);
+    cursor: pointer;
+}
+
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-orange {
+    color: var(--color-orange);
+    cursor: pointer;
+}
+
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-valid {
+    color: var(--highlight-color);
+    cursor: pointer;
+}
+
+/* Undeclared input contract: a hard Level 1 blocker, shown red. */
+.detail-note.input-undeclared-note {
+    color: var(--color-red);
+}
+
+.input-undeclared-glyph {
+    color: var(--color-red);
+    font-weight: bold;
+}
+
 .detail-item.output .detail-text.file-necessary-valid {
     color: var(--highlight-color);
     cursor: pointer;
