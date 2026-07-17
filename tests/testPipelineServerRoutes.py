@@ -895,12 +895,12 @@ def test_write_file_rejects_vaibify_metadata(clientHttp):
     assert responseHttp.status_code == 403
 
 
-def test_write_file_rejects_other_workflow_json(clientHttp):
+def test_write_file_rejects_other_project_json(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {"sContent": "{}"}
     responseHttp = clientHttp.put(
         f"/api/file/{S_CONTAINER_ID}"
-        f"/workspace/other-workflow/workflow.json",
+        f"/workspace/other-project/project.json",
         json=dictPayload,
     )
     assert responseHttp.status_code == 403

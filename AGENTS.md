@@ -157,7 +157,7 @@ does not mean `listSteps[9]` in general — it lands at
 automated one)]`. Use `fsLabelFromStepIndex` and
 `fiStepIndexFromLabel` from
 [vaibify/gui/pipelineUtils.py](vaibify/gui/pipelineUtils.py) — never
-inline the translation. `sLabel` is persisted in `workflow.json` and
+inline the translation. `sLabel` is persisted in `project.json` and
 recomputed on every load/save by `fnAttachStepLabels`, so insertions,
 deletions, and reorderings produce correct labels on the next save
 automatically. Error messages, logs, toasts, and agent-facing
@@ -185,7 +185,7 @@ Overleaf, GitHub, and Zenodo. Failure modes to audit against:
   run on the host, not inside the container, and they handle host
   paths in file pulls, directory browsing, sync, and workspace
   mounts. Any path that originated from a user-facing source (HTTP
-  request body, workflow.json, config file) must be validated
+  request body, project.json, config file) must be validated
   against its intended root before being opened, read, written, or
   listed. The existing helper `fnValidatePathWithinRoot(sAbsPath,
   WORKSPACE_ROOT)` in `pipelineServer.py` does this — do not remove
@@ -222,7 +222,7 @@ calling conventions remain divergent.
 
 **Do not revert to `/workspace`-as-repo.** Every vaibify workflow
 must live inside a git repository — its "project repo" —
-auto-detected from the workflow.json's parent via
+auto-detected from the project.json's parent via
 `containerGit.fsDetectProjectRepoInContainer`. `/workspace` is a
 Docker-managed named volume, not a repo; it is only the discovery
 root. Routes in `vaibify/gui/routes/gitRoutes.py` must thread
@@ -277,7 +277,7 @@ natively defaults uid/gid to 0. If that default ever leaks through, the
 file lands root-owned and the in-container agent cannot edit it (sudo
 is absent by design — commit 426f6b7). The symptom is a researcher's
 `git push` failing on `.git/objects/<prefix>` or the agent unable to
-modify `workflow.json` after a backend save. The dispatcher's
+modify `project.json` after a backend save. The dispatcher's
 `_finfoBuildTarEntry` defaults the stamps to
 `_I_CONTAINER_DEFAULT_UID`/`_GID` (1000:1000, locked to the Dockerfile
 by `testContainerUserUidIsOneThousand`); any new host→container write

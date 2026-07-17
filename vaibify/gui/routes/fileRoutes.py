@@ -36,12 +36,12 @@ class FileExistenceRequest(BaseModel):
 
 
 def _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
-    """Refuse writes to vaibify-managed metadata or other workflow.json files.
+    """Refuse writes to vaibify-managed metadata or the project contract file.
 
     Writes that target paths under ``.git/`` (git internals at any depth),
     under ``.vaibify/`` (vaibify-managed metadata), or that match the
-    basename ``workflow.json`` (which must only be edited via the dedicated
-    workflow routes) are rejected with HTTP 403.
+    basename ``project.json`` (which must only be edited via the dedicated
+    project routes) are rejected with HTTP 403.
     """
     sRepo = posixpath.normpath(sProjectRepoPath)
     sRelative = posixpath.relpath(sNormalized, sRepo)
@@ -51,7 +51,7 @@ def _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
     if ".vaibify" in listSegments:
         raise HTTPException(
             403, "Writes under .vaibify/ are not permitted")
-    if posixpath.basename(sNormalized) == "workflow.json":
+    if posixpath.basename(sNormalized) == "project.json":
         raise HTTPException(
             403, "Direct writes to project.json are not permitted")
 
