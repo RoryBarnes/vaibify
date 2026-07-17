@@ -1477,6 +1477,7 @@ def _fdictActivePollStep():
     return {
         "sDirectory": "stepA", "sName": "A",
         "saOutputDataFiles": ["stepA/output.json"],
+        "bNoInputData": True,
         "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
     }
 
@@ -1490,7 +1491,7 @@ def _fdictAttainedCell(iSatisfied, iTotal):
 
 
 _DICT_ALL_ATTAINED_STEP_CELLS = {
-    "s1": _fdictAttainedCell(3, 3),
+    "s1": _fdictAttainedCell(4, 4),
     "s2": _fdictAttainedCell(2, 2),
     "s3": _fdictAttainedCell(1, 1),
 }
@@ -1654,7 +1655,7 @@ class TestPollLevelStatePayload:
                 dictCtx, "cid1", dictWorkflow, {},
             )
         assert dictResult["dictStepLevels"]["0"]["s1"] == {
-            "sState": "partial", "iSatisfied": 2, "iTotal": 3,
+            "sState": "partial", "iSatisfied": 3, "iTotal": 4,
             "bRegression": True,
         }
         assert dictResult["dictStepLevelHighWater"]["0"] == (

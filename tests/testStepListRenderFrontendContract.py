@@ -610,3 +610,15 @@ def test_undeclared_input_shows_red_warning_glyph_and_text():
     # input rows get their own status colours (drift = orange)
     assert 'tracked-file[data-array="saInputDataFiles"]' in sCss
     assert "file-necessary-red.file-stale-state" in sCss
+
+
+def test_client_l1_predicate_requires_input_declaration():
+    """The client fbStepIsAtLeastLevel1 must gate on the input
+    declaration too, or the client L1 chip and file colours would
+    show an undeclared step as L1 while the server cell blocks it."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    iFn = sSource.find("function fbStepIsAtLeastLevel1")
+    assert iFn != -1
+    sBody = sSource[iFn:iFn + 1400]
+    assert "saInputDataFiles" in sBody
+    assert "bNoInputData" in sBody

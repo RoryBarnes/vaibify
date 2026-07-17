@@ -34,12 +34,14 @@ def test_fbStepIsAtLeastLevel1_user_failed_returns_false():
 
 
 def test_fbStepIsAtLeastLevel1_user_passed_no_tests_returns_true():
-    dictStep = {"dictVerification": {"sUser": "passed"}}
+    dictStep = {"bNoInputData": True,
+                "dictVerification": {"sUser": "passed"}}
     assert fbStepIsAtLeastLevel1(dictStep) is True
 
 
 def test_fbStepIsAtLeastLevel1_all_tests_passed_returns_true():
-    dictStep = {"dictVerification": {
+    dictStep = {"bNoInputData": True,
+                "dictVerification": {
         "sUser": "passed",
         "sUnitTest": "passed",
         "sIntegrity": "passed",
@@ -72,7 +74,8 @@ def test_fbStepIsAtLeastLevel1_no_dictVerification_returns_false():
 
 
 def test_fbStepIsAtLeastLevel1_unnecessary_counts_as_green():
-    dictStep = {"dictVerification": {
+    dictStep = {"bNoInputData": True,
+                "dictVerification": {
         "sUser": "passed",
         "sUnitTest": "unnecessary",
         "sIntegrity": "unnecessary",
@@ -83,13 +86,30 @@ def test_fbStepIsAtLeastLevel1_unnecessary_counts_as_green():
 
 
 def test_fbStepIsAtLeastLevel1_mixed_passed_and_unnecessary_is_green():
-    dictStep = {"dictVerification": {
+    dictStep = {"bNoInputData": True,
+                "dictVerification": {
         "sUser": "passed",
         "sUnitTest": "passed",
         "sIntegrity": "passed",
         "sQualitative": "unnecessary",
         "sQuantitative": "passed",
     }}
+    assert fbStepIsAtLeastLevel1(dictStep) is True
+
+
+def test_fbStepIsAtLeastLevel1_undeclared_input_blocks_despite_all_green():
+    """An all-green step with no input declaration is NOT L1 — the
+    per-step predicate must agree with the blocker and the cell, or
+    the step banner shows a check while the input contract is unmet."""
+    dictStep = {"dictVerification": {
+        "sUser": "passed",
+        "sUnitTest": "passed",
+        "sIntegrity": "passed",
+        "sQualitative": "passed",
+        "sQuantitative": "passed",
+    }}
+    assert fbStepIsAtLeastLevel1(dictStep) is False
+    dictStep["saInputDataFiles"] = ["data/raw.csv"]
     assert fbStepIsAtLeastLevel1(dictStep) is True
 
 
@@ -127,7 +147,8 @@ def test_fbStepIsAtLeastLevel1_passed_from_marker_counts_as_green():
     The gate must treat both equivalently or workflows whose state was
     rebuilt from markers on a fresh checkout never reach L1.
     """
-    dictStep = {"dictVerification": {
+    dictStep = {"bNoInputData": True,
+                "dictVerification": {
         "sUser": "passed",
         "sUnitTest": "passed-from-marker",
         "sIntegrity": "passed",

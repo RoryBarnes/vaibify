@@ -1748,6 +1748,15 @@ const PipeleyenApp = (function () {
              * showed its check while the theme never left level 0. */
             return true;
         }
+        /* Input contract must be declared — files listed or the
+         * explicit "no input data" flag — mirroring the server's L1
+         * rule. Without this the client chip and file colours showed
+         * an undeclared step as L1 while the server cell showed it
+         * blocked. */
+        var bInputDeclared =
+            (dictStep.saInputDataFiles || []).length > 0 ||
+            dictStep.bNoInputData === true;
+        if (!bInputDeclared) return false;
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;

@@ -1067,6 +1067,13 @@ def fbStepIsAtLeastLevel1(
     """
     if not isinstance(dictStep, dict):
         return False
+    if not fbStepIsAiDeclaration(dictStep) and (
+        _fbStepInputDataUndeclared(dictStep)
+    ):
+        # A step whose input contract is unstated is not
+        # self-consistent — the same rule the L1 blocker and cell
+        # enforce. ai-declaration steps are L1-not-applicable.
+        return False
     if not fbStepUserApproved(dictStep):
         return False
     if not fbStepTimingClean(dictStep):
@@ -2981,10 +2988,15 @@ def _ftStepLevel1Counts(dictStep, setCriteria):
     """Return ``(iSatisfied, iTotal)`` over the step's L1 requirements.
 
     Requirements: one per PRESENT test axis, plus user attestation,
-    plus timing cleanliness — so ``iTotal`` is axis count + 2. An
-    ai-declaration step has NO L1 requirements (``(0, 0)`` renders
-    not-applicable): the declaration is a publication artifact, so
-    its sign-off is a Level 2 requirement.
+    plus timing cleanliness, plus an explicit input-data declaration
+    (files listed in ``saInputDataFiles`` or the ``bNoInputData``
+    flag) — so ``iTotal`` is axis count + 3. The declaration
+    requirement is counted directly from the step, not from
+    ``setCriteria``, so the dominant-blocker masking (which now
+    ranks ``input-data-undeclared`` above the timing criteria)
+    cannot hide it. An ai-declaration step has NO L1 requirements
+    (``(0, 0)`` renders not-applicable): the declaration is a
+    publication artifact, so its sign-off is a Level 2 requirement.
     """
     if fbStepIsAiDeclaration(dictStep):
         return (0, 0)
@@ -2994,7 +3006,9 @@ def _ftStepLevel1Counts(dictStep, setCriteria):
         iSatisfied += 1
     if _fbStepTimingRequirementMet(dictStep, setCriteria):
         iSatisfied += 1
-    return (iSatisfied, iPresent + 2)
+    if not _fbStepInputDataUndeclared(dictStep):
+        iSatisfied += 1
+    return (iSatisfied, iPresent + 3)
 
 
 def _fbStepTimingRequirementMet(dictStep, setCriteria):
