@@ -34,7 +34,10 @@ const PipeleyenTerminal = (function () {
         cursor: "#13aed5",
         selectionBackground: "rgba(19, 174, 213, 0.3)",
         black: "#1e1e2e",
-        red: "#c91111",
+        /* Text-grade on the terminal background (4.9:1) — programs
+           print error prose in ANSI red, so it must read as text,
+           not just signal. Matches the app palette --color-red. */
+        red: "#e5484d",
         green: "#2ecc71",
         yellow: "#e09401",
         blue: "#1321d8",

@@ -447,7 +447,7 @@ var PipeleyenPipelineRunner = (function () {
                 var elLine = document.createElement("div");
                 elLine.textContent = sLine;
                 if (sLine.indexOf("FAILED") >= 0) {
-                    elLine.style.color = "var(--color-red)";
+                    elLine.style.color = "var(--color-red-text)";
                 } else if (sLine.startsWith("$")) {
                     elLine.style.color =
                         "var(--color-blue, #3498db)";
@@ -506,7 +506,7 @@ var PipeleyenPipelineRunner = (function () {
         var elLine = document.createElement("span");
         elLine.textContent = sLine + "\n";
         if (sLine.startsWith("FAILED:")) {
-            elLine.style.color = "var(--color-red, #e74c3c)";
+            elLine.style.color = "var(--color-red-text, #ff8589)";
         } else if (sLine.startsWith("$")) {
             elLine.style.color = "var(--color-blue, #3498db)";
         }

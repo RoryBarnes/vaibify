@@ -443,7 +443,7 @@ const PipeleyenFigureViewer = (function () {
 
         if (fbIsBinaryFile(sPath)) {
             elViewport.innerHTML =
-                '<span class="placeholder" style="color:var(--color-red)">' +
+                '<span class="placeholder" style="color:var(--color-red-text)">' +
                 'File cannot be viewed.</span>';
         } else if (sExtension === ".pdf") {
             fnRenderPdf(sUrl, elViewport);

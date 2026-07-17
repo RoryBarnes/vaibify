@@ -7,6 +7,14 @@
        original #c91111 / #1976d2 sat below readable contrast on
        --bg-primary. */
     --color-red: #e5484d;
+    /* --color-red is fill-grade: 4.2:1 on --bg-primary, enough for
+       dots, badges, borders, and glyphs (WCAG needs 3:1 for non-text
+       marks) but below the 4.5:1 text minimum. Error PROSE — anything
+       the user must read — uses the text-grade red (7:1). The tint
+       pair backs the boxed-error chip behind block-level messages. */
+    --color-red-text: #ff8589;
+    --bg-error-tint: rgba(229, 72, 77, 0.12);
+    --border-error-tint: rgba(229, 72, 77, 0.35);
     --color-orange: #e09401;
     --color-blue: #42a5f5;
     --color-pale-blue: #13aed5;
@@ -1475,7 +1483,7 @@ body.aics-level-3 .toolbar-label {
 }
 
 .detail-item.output .detail-text.file-necessary-red {
-    color: #c91111;
+    color: var(--color-red-text);
     cursor: pointer;
 }
 
@@ -1492,7 +1500,7 @@ body.aics-level-3 .toolbar-label {
    on an L1 step is the highlight tint. */
 .detail-item.tracked-file[data-array="saInputDataFiles"]
     .detail-text.file-necessary-red {
-    color: #c91111;
+    color: var(--color-red-text);
     cursor: pointer;
 }
 
@@ -1514,9 +1522,16 @@ body.aics-level-3 .toolbar-label {
     cursor: pointer;
 }
 
-/* Undeclared input contract: a hard Level 1 blocker, shown red. */
+/* Undeclared input contract: a hard Level 1 blocker, shown as a
+   boxed error so the message reads at text-grade contrast while the
+   chip shape keeps the alarm. */
 .detail-note.input-undeclared-note {
-    color: var(--color-red);
+    color: var(--color-red-text);
+    background: var(--bg-error-tint);
+    border: 1px solid var(--border-error-tint);
+    border-radius: 4px;
+    padding: 3px 8px;
+    display: inline-block;
 }
 
 .input-undeclared-glyph {
@@ -1551,7 +1566,12 @@ body.aics-level-3 .toolbar-label {
 }
 
 .output-missing-message {
-    color: var(--color-red) !important;
+    color: var(--color-red-text) !important;
+    background: var(--bg-error-tint);
+    border: 1px solid var(--border-error-tint);
+    border-radius: 4px;
+    padding: 2px 8px;
+    display: inline-block;
 }
 
 .run-stats {
@@ -3202,7 +3222,7 @@ body.aics-level-3 .toolbar-label {
 }
 
 .test-result-fail {
-    color: var(--color-red);
+    color: var(--color-red-text);
     font-weight: 600;
     margin-top: 12px;
 }
@@ -4474,7 +4494,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .tree-picker-error {
     min-height: 16px;
     font-size: 12px;
-    color: var(--color-red);
+    color: var(--color-red-text);
     margin-bottom: 8px;
 }
 
@@ -5179,7 +5199,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .aics-attestation-card.status-failed .aics-card-title {
-    color: #ff7070;
+    color: var(--color-red-text);
 }
 
 .aics-attestation-card.empty {
@@ -5226,7 +5246,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .aics-history-table tr.state-failed td {
-    color: #ff7070;
+    color: var(--color-red-text);
 }
 
 .aics-history-fail-glyph {
@@ -5285,16 +5305,16 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
    normally scoped to the file list (red-text modifiers) or have no
    standalone glyph (the green check). */
 .aics-legend-red-missing-sample {
-    color: var(--color-red);
+    color: var(--color-red-text);
 }
 
 .aics-legend-red-stale-sample {
-    color: var(--color-red);
+    color: var(--color-red-text);
     text-decoration: underline dotted;
 }
 
 .aics-legend-red-unattested-sample {
-    color: var(--color-red);
+    color: var(--color-red-text);
     font-style: italic;
 }
 
@@ -5340,16 +5360,16 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
    without losing the trained "red = needs attention" association.
    Applied to ``.detail-text`` inside ``.detail-item.output``. */
 .detail-item.output .detail-text.file-necessary-red.file-missing-state {
-    color: #c91111;
+    color: var(--color-red-text);
 }
 
 .detail-item.output .detail-text.file-necessary-red.file-stale-state {
-    color: #c91111;
+    color: var(--color-red-text);
     text-decoration: underline dotted;
 }
 
 .detail-item.output .detail-text.file-necessary-red.file-unattested-state {
-    color: #c91111;
+    color: var(--color-red-text);
     font-style: italic;
 }
 

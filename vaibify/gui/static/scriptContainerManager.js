@@ -27,7 +27,7 @@ var PipeleyenContainerManager = (function () {
     function _fnShowContainerListLoadError() {
         var elList = document.getElementById("listContainers");
         elList.innerHTML =
-            '<p style="color: var(--color-red);">' +
+            '<p style="color: var(--color-red-text);">' +
             "Cannot load containers</p>";
     }
 
