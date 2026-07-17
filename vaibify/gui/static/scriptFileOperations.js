@@ -19,6 +19,17 @@ var PipeleyenFileOps = (function () {
         }
     }
 
+    /* Background copies (terminal copy-on-select) must be silent and
+       must never fall back to the textarea path: the fallback steals
+       keyboard focus, which is worse than a missed automatic copy.
+       Explicit copies (Cmd+C, right-click, copy buttons) keep the
+       toast-and-fallback path above. */
+    function fnCopyToClipboardQuietly(sText) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sText).catch(function () {});
+        }
+    }
+
     function _fnCopyToClipboardFallback(sText) {
         var elTextarea = document.createElement("textarea");
         elTextarea.value = sText;
@@ -554,6 +565,7 @@ var PipeleyenFileOps = (function () {
 
     return {
         fnCopyToClipboard: fnCopyToClipboard,
+        fnCopyToClipboardQuietly: fnCopyToClipboardQuietly,
         fnInlineEditItem: fnInlineEditItem,
         fnScheduleFileExistenceCheck: fnScheduleFileExistenceCheck,
         fnCheckOutputFileExistence: fnCheckOutputFileExistence,

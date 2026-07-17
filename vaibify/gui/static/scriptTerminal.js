@@ -178,6 +178,7 @@ const PipeleyenTerminal = (function () {
             resizeObserver: null,
             bFitDeferred: false,
             iRefitTimer: null,
+            iCopyOnSelectTimer: null,
         };
         dictPane.listTabs.push(dictTab);
         fnRenderPaneTabs(iPaneId);
@@ -290,6 +291,13 @@ const PipeleyenTerminal = (function () {
             theme: dictTheme,
             scrollback: iCurrentScrollback,
             allowProposedApi: true,
+            /* When a full-screen program (agent, vim, htop) turns on
+               mouse reporting, xterm forwards drags to the program and
+               plain drag-select stops working. Shift+drag overrides
+               this on Linux unconditionally, but the macOS override
+               (Option+drag) is opt-in — without it there is no way to
+               select text on a Mac while such a program is running. */
+            macOptionClickForcesSelection: true,
         });
 
         var fitAddon = new FitAddon.FitAddon();
@@ -343,6 +351,38 @@ const PipeleyenTerminal = (function () {
         if (dictTab.fitAddon) dictTab.fitAddon.fit();
     }
 
+    /* Copy-on-select: onSelectionChange fires repeatedly during a
+       drag, so the copy is debounced until the selection has been
+       stable briefly — intermediate copies are harmless (the final
+       selection overwrites them) but pointless. The quiet clipboard
+       path never shows toasts and never uses the focus-stealing
+       textarea fallback: a missed background copy is recoverable via
+       Cmd+C or right-click, a focus theft on every selection is not. */
+    var I_COPY_ON_SELECT_DELAY_MS = 200;
+
+    function fnScheduleCopyOnSelect(dictTab, terminal) {
+        if (dictTab.iCopyOnSelectTimer) {
+            window.clearTimeout(dictTab.iCopyOnSelectTimer);
+            dictTab.iCopyOnSelectTimer = null;
+        }
+        if (!terminal.hasSelection()) return;
+        dictTab.iCopyOnSelectTimer = window.setTimeout(function () {
+            dictTab.iCopyOnSelectTimer = null;
+            if (!terminal.hasSelection()) return;
+            var sSelection = terminal.getSelection();
+            if (sSelection) {
+                PipeleyenFileOps.fnCopyToClipboardQuietly(sSelection);
+            }
+        }, I_COPY_ON_SELECT_DELAY_MS);
+    }
+
+    function fnCopySelectionOnRightClick(event, terminal) {
+        if (!terminal.hasSelection()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenFileOps.fnCopyToClipboard(terminal.getSelection());
+    }
+
     function fnBindCopyAndSelectionHandlers(dictTab, terminal) {
         terminal.attachCustomKeyEventHandler(function (event) {
             return fbHandleCopyKeyEvent(event, terminal);
@@ -350,6 +390,11 @@ const PipeleyenTerminal = (function () {
         dictTab.disposableOnSelectionChange =
             terminal.onSelectionChange(function () {
                 fnFlushDeferredFit(dictTab);
+                fnScheduleCopyOnSelect(dictTab, terminal);
+            });
+        terminal.element.addEventListener("contextmenu",
+            function (event) {
+                fnCopySelectionOnRightClick(event, terminal);
             });
     }
 
@@ -520,6 +565,10 @@ const PipeleyenTerminal = (function () {
         if (dictTab.iRefitTimer) {
             window.clearTimeout(dictTab.iRefitTimer);
             dictTab.iRefitTimer = null;
+        }
+        if (dictTab.iCopyOnSelectTimer) {
+            window.clearTimeout(dictTab.iCopyOnSelectTimer);
+            dictTab.iCopyOnSelectTimer = null;
         }
         dictTab.bFitDeferred = false;
         if (dictTab.elKillButton && dictTab.elKillButton.parentNode) {
