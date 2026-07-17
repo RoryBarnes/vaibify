@@ -12,24 +12,30 @@ This page is a tour of every panel.
 
 The dashboard has a fixed layout:
 
-- **Top toolbar** — container name, active workflow, the three AICS
+- **Top toolbar** — container name, active project, the three AICS
   level badges, the **?** Help button, and the Run, Sync, View, and
-  Admin menus.
-- **Left panel** — a tabbed panel. For workflow projects the tabs are
-  **Main**, **AICS**, **Files**, and **Logs**; for sandbox and toolkit
-  projects (no `workflow.json`) they are **Files**, **Repos**, and
-  **Logs**.
+  Admin menus. A pulsing **compute indicator** appears beside the
+  container name whenever the container's CPU is busy: theme-tinted
+  when a vaibify step owns the compute, amber when the compute is
+  happening outside the dashboard (an in-container agent or a
+  terminal session running simulations directly — no step blinks in
+  that case, because no step is running). The indicator hides when
+  no reading is available; it never claims the container is idle.
+- **Left panel** — a tabbed panel. For projects with a `project.json`
+  the tabs are **Main**, **AICS**, **Files**, and **Logs**; for sandbox
+  and toolkit projects (no `project.json`) they are **Files**, **Repos**,
+  and **Logs**.
 - **Top panels** — Two "Viewing Windows" to display plots and files.
 - **Bottom panel(s)** — Terminal window(s)/tab(s) for work inside the
   container.
 
-Beside the workflow name, three copies of the vaibify badge mark AICS
+Beside the project name, three copies of the vaibify badge mark AICS
 Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
-when the workflow attains that level, and the whole dashboard theme
+when the project attains that level, and the whole dashboard theme
 shifts colour with the highest level attained: pale blue before Level
 1, purple at Level 1, green at Level 2, and pink at Level 3. The
 badge, the logo, and every "attained" mark share the tint, so a glance
-at any corner of the screen tells you where the workflow stands.
+at any corner of the screen tells you where the project stands.
 
 ## Terminal
 
@@ -48,7 +54,7 @@ from a terminal session to start an in-container coding agent. The
 option's name sounds alarming, but inside a vaibify container it is
 the intended mode: the container is an isolated sandbox, the agent
 runs as an unprivileged user with no sudo, and everything it edits is
-tracked in git and hash-pinned in the workflow manifest. Your
+tracked in git and hash-pinned in the project manifest. Your
 protection comes from verifying results, not from approving each
 command — see the **Using AI** section of the [Help panel](#the-help-panel)
 and the [Security model](security.md). The agent can in turn ask the
@@ -57,12 +63,12 @@ see [Agent actions](#agent-actions) below.
 
 ## Viewing Window
 
-The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Workflow mode, the log is displayed in a window.
+The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
 
 ## Repos panel
 
 The Repos panel is the home tab for sandbox and toolkit projects (the
-templates without a `workflow.json`). In a workflow project the tab is
+templates without a `project.json`). In a project the tab is
 hidden, but the panel is one click away: every "Open the Repos panel"
 link in the Main tab's Project block and on the AICS tab lands there.
 It lists the git repositories inside the container with their branch,
@@ -87,23 +93,23 @@ for selecting specific files to commit.
 
 ## The Main tab
 
-The Main tab is the workflow's control surface. It contains two
+The Main tab is the project's control surface. It contains two
 top-level collapsible blocks, each with a banner you can click to
 collapse or expand:
 
-- **Steps** — the per-step work of the workflow. Level 1
+- **Steps** — the per-step work of the project. Level 1
   (Self-Consistent) is a per-step property, so this is where Level 1
   is earned.
 - **Project** — requirements that apply to the project as a whole
   rather than to any single step. Levels 2 (Published) and 3
-  (Reproducible) are workflow-wide, so this is where they are earned.
+  (Reproducible) are project-wide, so this is where they are earned.
 
 Both banners carry the same right-aligned strip of status cells as
 the rows beneath them, so a collapsed block still reports its
 aggregate state.
 
 The panel header above the blocks holds three buttons: a gear for
-workflow settings, a refresh arrow to re-poll remote status, and
+project settings, a refresh arrow to re-poll remote status, and
 **+** to create a new step.
 
 ### The Steps block
@@ -114,8 +120,9 @@ column (⚠), and **L1**. Each step row then shows, left to right:
 - **Run checkbox** — include this step in the next run.
 - **Run light** — execution only: hollow grey means the step has not
   run this session, filled grey means queued, blinking orange means
-  running now, red means the last run failed, and the theme-tinted
-  vaibify check means the last run succeeded.
+  running now, blinking red means running *past its wall-clock budget*
+  (see below), solid red means the last run failed, and the
+  theme-tinted vaibify check means the last run succeeded.
 - **Step label and name** — labels are per-type sequential: `A03` is
   the third *automated* step, `I01` the first *interactive* step.
 - **Warning column (⚠)** — every warning the step carries,
@@ -133,6 +140,26 @@ Tasks**, plus the verification sweeps **Verify Outputs**, **Run All
 Unit Tests**, and **Verify Dependencies**. Steps can be reordered by
 dragging, and an individual step's context menu offers **Run From
 Here**.
+
+#### Wall-clock budget
+
+A running step reports a heartbeat that only proves the *runner* is
+alive — a step stuck in an infinite loop keeps that heartbeat beating
+and, on its own, looks identical to a legitimately long forward-model
+run. A step's optional **wall-clock budget** closes that gap: it is a
+ceiling, in seconds, on how long the step may run before the dashboard
+flags it. Once the active step passes its budget the run light turns
+**blinking red** and its tooltip reads "running longer than its
+wall-clock budget — may be hung". This is advisory and never stops the
+run — an over-budget step keeps executing, because exceeding a declared
+expectation is not proof of a hang; the flag only tells you where to
+look.
+
+The feature is opt-in. Set a per-step budget in the step editor, or a
+project-wide default under **Settings**; a step with no budget (its
+own or the default) is never flagged, so long runs you expect are never
+mislabelled. Choose a budget generously — a small multiple of the
+step's normal runtime — so ordinary variation does not trip it.
 
 #### Adding a step
 
@@ -153,10 +180,34 @@ control to an agent for a specific stage.
 #### The expanded step view
 
 Clicking a step row expands its detail: the working directory, its
-scripts, data analysis commands, data files, plot commands, and plot
-files. File rows carry the per-file marks and remote badges described
-under [Status lights and colours](#status-lights-and-colours), and
+input data, scripts, data analysis commands, output data, plot
+commands, and plot files. File rows carry the per-file marks and
+remote badges described under
+[Status lights and colours](#status-lights-and-colours), and
 clicking a file opens it in a Viewing Window.
+
+The **Input Data** block, between Directory and Scripts, declares
+the raw files the step consumes that no step produces — for example,
+observational data committed in the repository. Paths are
+repo-relative; the **+** button opens a file picker that browses the
+container's project repository (or accepts a typed path). Vaibify
+watches declared inputs on every poll: a modified input invalidates
+the step and shows "Input data modified since last run" — the
+Project is no longer self-consistent until the step re-runs. A step
+with no raw inputs is declared explicitly with the **No input data
+needed** checkbox; a step with neither files nor the checkbox is
+*undeclared* and cannot reach Level 1. The Project block's
+"Input data declared" row names undeclared steps and offers a
+one-click bulk declaration for retrofitting an existing Project.
+
+A step that pulls data from a remote source records per-file
+provenance (`listRemoteData`: source URL, retrieval time, content
+hash, refreshed after every successful pull). Re-running such a step
+when the pulled files already exist asks before overwriting the
+canonical committed copy — as a modal in the browser, and as an
+actionable refusal for the in-container agent, which must relay the
+question to you. Fresh pulls are never auto-committed; review and
+commit them through the ordinary canonical flow.
 
 The **Verification** section at the bottom of the expanded view shows
 one row per verification axis, each with its state and a timestamp:
@@ -174,18 +225,31 @@ re-run or re-inspect. Wall-clock and CPU time for the last run, and
 the modification times of the step's data and plot files, are also
 shown.
 
+The expanded quantitative-tests block additionally carries a
+**Falsification** row with a **Check test teeth** button. It
+mutation-tests the step's own Python code against its quantitative
+tests and records the kill-rate: a statement about the tests'
+*fault-detection sensitivity* — "these tests were shown to notice
+deliberately injected faults" — never about the result's accuracy.
+It is deliberately **non-gating** (equivalent mutants make a hard
+pass/fail dishonest) and applies only to deterministic pure-Python
+steps; a step that shells out to a compiled binary reads **not
+applicable**, never green. The record is digest-keyed to the script
+and its standards, so any edit invalidates it. Runs are on-demand
+only — cost is roughly mutants × step runtime.
+
 The **Unit Tests** row expands to the three test categories, with
 buttons to generate and run them — see [Verification](#verification).
 
 ### The Project block
 
-The Project block lists workflow-scope requirements, grouped into six
+The Project block lists project-scope requirements, grouped into six
 collapsible sections:
 
 | Section | What it covers |
 |---|---|
-| **Repository** | The Level 1 workflow-scope requirement: the workflow lives inside a git repository (its *project repo*). |
-| **Software** | Standalone scientific binaries the workflow runs, each declared with an expected version and a captured version + SHA-256. |
+| **Repository** | The Level 1 project-scope requirement: the project lives inside a git repository (its *repository*). |
+| **Software** | Standalone scientific binaries the project runs, each declared with an expected version and a captured version + SHA-256. |
 | **Artifacts** | The reproducibility envelope files: `MANIFEST.sha256`, `requirements.lock`, the environment snapshot, the `Dockerfile`, and `reproduce.sh`. |
 | **Determinism** | Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance). |
 | **Published copies** | The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state. |
@@ -208,11 +272,12 @@ an action exists — a button that performs it in place:
 - **Generate reproduce.sh** to write the one-command reproduction
   script and pin it in the manifest.
 - **Declare rules** / **Delete rules…** for the determinism
-  declaration (stored directly in `workflow.json`; there is no
+  declaration (stored directly in `project.json`; there is no
   separate rules file).
 - **Configure arXiv…** to record the arXiv submission that must match
-  the frozen Overleaf figures.
-- **Add AI declaration step** if the workflow has none, and **Verify
+  the frozen Overleaf figures (optional — an untracked submission
+  reads "not tracked" and never blocks Level 2).
+- **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 
 The Dockerfile row is guidance-only: the Dockerfile is yours to edit,
@@ -290,7 +355,7 @@ rows list figure files only.
 ## The AICS tab
 
 The AICS tab is the requirements ledger for the reproducibility
-ladder. A header card names the workflow's current level (for
+ladder. A header card names the project's current level (for
 example, "Level 1: Self-Consistent") with a clickable progression
 strip, followed by three expandable sections — **Level 1 —
 Self-Consistent**, **Level 2 — Published**, **Level 3 — Reproducible**
@@ -302,8 +367,10 @@ work happens (the Main tab's blocks or the Repos panel). The tab owns
 the requirement *text*; the buttons that do the work live in the Main
 tab's Project block. The requirements are:
 
-- **Level 1**: Project repository; Every step self-consistent.
-- **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript; AI
+- **Level 1**: Repository; Every step self-consistent.
+- **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript
+  (opt-in — checked only when an arXiv submission is recorded, since
+  posting happens outside vaibify on its own timeline); AI
   Declaration attested.
 - **Level 3**: Manifest complete; Dependency lock; Environment
   snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
@@ -322,7 +389,7 @@ artifact contains and how third parties verify it without vaibify.
 
 ## The Help panel
 
-The **?** button beside the workflow name opens the Help panel. It
+The **?** button beside the project name opens the Help panel. It
 contains:
 
 - A link to the full online documentation.
@@ -384,7 +451,7 @@ assessment — the human attestation that no test can substitute for.
 
 The toolbar's **Sync** menu holds the publication actions:
 
-- **Push to GitHub** — commit and push the project repository to its
+- **Push to GitHub** — commit and push the repository to its
   configured remote.
 - **Push to Overleaf** — sync figures and any selected files to the
   configured Overleaf project.
@@ -402,6 +469,11 @@ per-service integration architecture.
 Per-file sync state is always visible as the
 [remote badges](#per-file-remote-badges) on file rows, and each remote
 has a requirement row under **Published copies** in the Project block.
+Every one of those rows carries a **Verify now** button that runs the
+authoritative remote comparison in place, and a successful Overleaf
+push re-verifies its row automatically — the row reports the last
+verification, so the action that refreshes it is always one click
+away.
 
 ### The Verify Reproducibility panel
 
@@ -414,7 +486,7 @@ four pieces of information:
 | **Status pill** | Green / yellow / red, semantics below. |
 | **Summary** | `<matching>/<total> files match SHA-256`, optionally listing the first diverged path. |
 | **Last verified** | Age of the most recent authoritative SHA-256 verify (e.g. "12m ago"). Empty when the remote has never been authoritatively verified. |
-| **Re-verify** | A button that runs an authoritative SHA-256 verify against the remote's current bytes (downloads the files, recomputes hashes, compares against `MANIFEST.sha256`). |
+| **Re-verify** | A button that runs an authoritative SHA-256 verify against the remote's current bytes (downloads the files, recomputes hashes, and compares them against the declared project files as they exist on disk right now — never against `MANIFEST.sha256`, which is the Level 3 envelope artifact). |
 
 Pill semantics:
 
@@ -438,7 +510,7 @@ remote states. The three forms produced by
 [scriptSyncManager.js](../vaibify/gui/static/scriptSyncManager.js) are:
 
 - `Remote consistency: not yet verified` — no remote has been verified
-  yet (e.g. immediately after opening a workflow for the first time).
+  yet (e.g. immediately after opening a project for the first time).
 - `Remote consistency: ✓ all <K> configured remote(s) in sync` — every
   configured remote authoritatively matched on its last verify; `<K>`
   is the count of remotes that reported a verified status. The trailing
@@ -480,6 +552,47 @@ registered in a single catalog. Each action carries a stable name, the
 arguments it accepts, and the verification it triggers when it
 finishes. The agent never invents an action; it picks one from the
 catalog or it falls back to plain shell commands.
+
+### Shipped agent skills
+
+The container also ships ready-made *skills* — task recipes the agent
+loads on demand — installed into the agent's skills directory at
+container start (edit or delete your container's copies freely; an
+image rebuild refreshes them):
+
+- **session-budget** — keeps long autonomous runs alive across Claude
+  session-usage limits: commit-per-work-unit checkpointing with a
+  running resume note as the primary defense, a conservative usage
+  reading (`claude-monitor`, documented as an account-wide lower
+  bound) as the secondary one, and a pause-until-reset mechanic for
+  the 5-hour window. Default pause threshold is 95%; override it by
+  saying so in the task prompt.
+- **read-arxiv** — token-efficient paper reading: fetch the arXiv
+  e-print TeX source instead of the PDF (far fewer tokens, and figure
+  captions arrive as searchable text), read selectively, record the
+  version read, and fall back to the PDF only when no source exists.
+- **aics-ladder** — the ordered L1→L2→L3 walkthrough for raising or
+  auditing a project's reproducibility level, with the known audit
+  traps codified (`iAICSLevel` is the only authoritative signal;
+  marker hashes are git blob SHA-1s; publication is user-only).
+- **create-pipeline-step** — the five-phase protocol for authoring a
+  fully wired step, centred on the `{StepNN.varname}` cross-step
+  token contract.
+- **vaibify-doc-map** — a question→(doc, section) table so the agent
+  reads the right 30 lines of vaibify's own docs (staged in-container
+  at `/usr/share/vaibify/docs`) instead of a whole file.
+- **diagnose-failed-run** — a triage tree over the read-only
+  `get-pipeline-state` and `get-host-log-tail` actions for a dead or
+  stuck run.
+- **read-manuscript** — pull the project's own Overleaf manuscript
+  (via the `pull-manuscript` action) into a git-ignored scratch copy
+  and read it, rather than answering from memory.
+
+Moving the ladder and step-authoring walkthroughs into on-demand
+skills also slims the always-loaded container `CLAUDE.md` from ~470 to
+~170 lines — a direct per-session token saving, with the
+safety-critical rules (authoritative level signal, user-only
+publication, the token contract) kept inline.
 
 From inside a container terminal, you can list the available actions:
 
@@ -559,7 +672,7 @@ un-greys on its own without a page reload. You can also list and stop
 live sessions from the host with `vaibify sessions` (see the
 [CLI Reference](cli.md#session-management)).
 
-The **New vaibify window** icon (⧉) in the hub, the workflow picker,
+The **New vaibify window** icon (⧉) in the hub, the project picker,
 and the dashboard's Admin menu opens a fresh vaibify session in a new
 browser tab — useful for working on **two different projects** side by
 side. Each window claims its own containers; it is not a way to open

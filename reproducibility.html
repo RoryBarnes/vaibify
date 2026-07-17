@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev483 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=232d27ef"></script>
+      <script src="_static/documentation_options.js?v=1f90faf9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -56,7 +56,9 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Reproducibility</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-stack">The Reproducibility Stack</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#l1-precondition-workflows-live-inside-a-git-repo">L1 precondition: workflows live inside a git repo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#l1-precondition-projects-live-inside-a-git-repo">L1 precondition: projects live inside a git repo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#l1-requires-a-declared-input-contract">L1 requires a declared input contract</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#canonical-remote-data">Canonical remote data</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#aics-level-3-reproducible">AICS Level 3 — Reproducible</a></li>
@@ -117,13 +119,13 @@ should be reproducible from a single command. This page describes the
 tools and practices that make this possible.</p>
 <section id="the-reproducibility-stack">
 <h2>The Reproducibility Stack<a class="headerlink" href="#the-reproducibility-stack" title="Link to this heading"></a></h2>
-<p>A Vaibify project captures four layers of provenance:</p>
+<p>A Vaibify repository captures four layers of provenance:</p>
 <ol class="arabic simple">
 <li><p><strong>Environment</strong> – The Docker image pins the operating system, compilers,
 system libraries, Python version, and all package versions.</p></li>
 <li><p><strong>Code</strong> – <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> lists every repository with its branch or
 tag, so the exact source code is recorded.</p></li>
-<li><p><strong>Pipeline</strong> – <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> defines the commands to run and their
+<li><p><strong>Pipeline</strong> – <code class="docutils literal notranslate"><span class="pre">project.json</span></code> defines the commands to run and their
 order, removing ambiguity about how results were produced.</p></li>
 <li><p><strong>Configuration</strong> – <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> records all settings, so a
 collaborator can rebuild the identical environment.</p></li>
@@ -131,31 +133,62 @@ collaborator can rebuild the identical environment.</p></li>
 <p>Together, these four files constitute a reproducibility manifest. Sharing
 them (or the repository that contains them) is sufficient for anyone with
 Docker to reproduce the results.</p>
-<section id="l1-precondition-workflows-live-inside-a-git-repo">
-<h3>L1 precondition: workflows live inside a git repo<a class="headerlink" href="#l1-precondition-workflows-live-inside-a-git-repo" title="Link to this heading"></a></h3>
+<section id="l1-precondition-projects-live-inside-a-git-repo">
+<h3>L1 precondition: projects live inside a git repo<a class="headerlink" href="#l1-precondition-projects-live-inside-a-git-repo" title="Link to this heading"></a></h3>
 <p>Vaibify enforces the lowest rung of the reproducibility ladder as a
-precondition, not a best practice. Every workflow must live inside a
-git repository — its <em>project repo</em> — which vaibify auto-detects as
-the git work tree enclosing the <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> file. A workflow saved
+precondition, not a best practice. Every project must live inside a
+git repository — its <em>repository</em> — which vaibify auto-detects as
+the git work tree enclosing the <code class="docutils literal notranslate"><span class="pre">project.json</span></code> file. A project saved
 to a directory that is not a git work tree is rejected at both
 creation and connect time with a clear error pointing the user to run
 <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">init</span></code>. The dashboard cannot display a meaningful reproducibility
 level for code that cannot be committed, so asking for one would be
 dishonest.</p>
-<p>The project-repo path is auto-detected once per connect via
+<p>The repository path is auto-detected once per connect via
 <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">rev-parse</span> <span class="pre">--show-toplevel</span></code>, stamped on the in-memory workflow
 dict, and threaded through every subsequent status, badge, and
-manifest call. A single container may host multiple workflows in
-separate project-repo subdirectories (for example, a paper pipeline
+manifest call. A single container may host multiple projects in
+separate repository subdirectories (for example, a paper pipeline
 and a follow-on cross-system analysis that share the same dependency
-clones); the active workflow determines the scope of every per-file
+clones); the active project determines the scope of every per-file
 badge.</p>
 <p>Test markers (the JSON files that record the last pytest outcome +
-output-file hashes for each step) live inside the project repo under
-<code class="docutils literal notranslate"><span class="pre">.vaibify/test_markers/</span></code> and are committed alongside <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>.
-This makes a workflow’s verification state — which tests have run,
+output-file hashes for each step) live inside the repository under
+<code class="docutils literal notranslate"><span class="pre">.vaibify/test_markers/</span></code> and are committed alongside <code class="docutils literal notranslate"><span class="pre">project.json</span></code>.
+This makes a project’s verification state — which tests have run,
 what they produced, whether the outputs have drifted — reproducible
 from a fresh clone without rerunning anything.</p>
+</section>
+<section id="l1-requires-a-declared-input-contract">
+<h3>L1 requires a declared input contract<a class="headerlink" href="#l1-requires-a-declared-input-contract" title="Link to this heading"></a></h3>
+<p>Every step must state what raw data it consumes: files listed in its
+<code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code> (repo-relative, watched for modification) or the
+explicit <code class="docutils literal notranslate"><span class="pre">bNoInputData</span></code> declaration. An <em>undeclared</em> step — neither
+inputs listed nor the declaration — cannot reach Level 1, because
+nothing distinguishes “verified there are no raw inputs” from
+“nobody looked.” An input file modified after outputs or plots were
+generated does not satisfy Level 1 either: the results no longer
+follow from the recorded inputs, so the Project is not
+self-consistent until the affected steps re-run. Markers record a
+per-input content hash (<code class="docutils literal notranslate"><span class="pre">dictInputHashes</span></code>) at every run, so both
+verdicts survive a fresh clone.</p>
+</section>
+<section id="canonical-remote-data">
+<h3>Canonical remote data<a class="headerlink" href="#canonical-remote-data" title="Link to this heading"></a></h3>
+<p>Data pulled from a remote source (an archive query, a survey
+release) must be committed to the repository — the remote may vanish
+or silently change, and a Project whose raw data cannot be
+re-obtained is not reproducible. Each pulled file carries a
+provenance record in the pulling step’s <code class="docutils literal notranslate"><span class="pre">listRemoteData</span></code>
+(<code class="docutils literal notranslate"><span class="pre">sPath</span></code>, <code class="docutils literal notranslate"><span class="pre">sSourceUrl</span></code>, <code class="docutils literal notranslate"><span class="pre">sRetrievedUtc</span></code>, <code class="docutils literal notranslate"><span class="pre">sSha256</span></code>), refreshed
+automatically after every successful pull; the URL is inert
+metadata, never fetched by vaibify. Because a re-pull overwrites the
+canonical copy, any run covering such a step whose files already
+exist is refused pending explicit confirmation (browser modal;
+<code class="docutils literal notranslate"><span class="pre">--confirm-remote-overwrite</span></code> for the agent CLI after relaying the
+question to the researcher), and the fresh data is never
+auto-committed — it flows through the normal review-and-commit
+canonical flow.</p>
 </section>
 </section>
 <section id="aics-level-3-reproducible">
@@ -163,8 +196,8 @@ from a fresh clone without rerunning anything.</p>
 <p>Vaibify targets <strong>AICS Level 3 (“Reproducible”)</strong> on the AI
 Containment Scale: third parties can confirm, at the bit level, that
 the artefacts they hold are byte-for-byte identical to the artefacts
-the original workflow produced. Level 3 is a claim about <em>file-byte
-identity</em>, not numerical re-derivation. Re-running the workflow on a
+the original project produced. Level 3 is a claim about <em>file-byte
+identity</em>, not numerical re-derivation. Re-running the project on a
 different machine may produce slightly different bytes for the same
 inputs (CPU/BLAS variance, see <a class="reference internal" href="#known-limitations"><span class="xref myst">Known
 limitations</span></a>); the hashes recorded in
@@ -175,9 +208,9 @@ installed.</p>
 <section id="the-reproducibility-envelope">
 <h2>The Reproducibility Envelope<a class="headerlink" href="#the-reproducibility-envelope" title="Link to this heading"></a></h2>
 <p>An honest L3 claim covers three tiers. Vaibify writes one file per
-tier into the project repo, and each tier is independently verifiable
+tier into the repository, and each tier is independently verifiable
 with standard tools — vaibify is the orchestrator, not a dependency.</p>
-<p>The envelope is regenerated automatically when the workflow
+<p>The envelope is regenerated automatically when the project
 transitions to all-green (every step fully verified), and on demand
 via the <strong>Regenerate now</strong> buttons in the Artifacts section of the
 Main tab’s Project block. This keeps the manifest in sync with the
@@ -185,10 +218,10 @@ latest verified state without requiring the user to remember to
 trigger it.</p>
 <section id="tier-1-artifacts-manifest-sha256">
 <h3>Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)<a class="headerlink" href="#tier-1-artifacts-manifest-sha256" title="Link to this heading"></a></h3>
-<p>A GNU-coreutils shasum-format file at the project-repo root listing
-every declared workflow output (everything in each step’s
-<code class="docutils literal notranslate"><span class="pre">saOutputFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, and <code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code>) by repo-relative
-POSIX path with its SHA-256 hash:</p>
+<p>A GNU-coreutils shasum-format file at the repository root listing
+every declared project artefact (everything in each step’s
+<code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code>, and <code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code>) by
+repo-relative POSIX path with its SHA-256 hash:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">1</span><span class="n">a2b3c</span><span class="o">...</span>  <span class="n">scripts</span><span class="o">/</span><span class="n">runAnalysis</span><span class="o">.</span><span class="n">py</span>
 <span class="mi">4</span><span class="n">d5e6f</span><span class="o">...</span>  <span class="n">data</span><span class="o">/</span><span class="n">results</span><span class="o">.</span><span class="n">csv</span>
 <span class="mi">7</span><span class="n">g8h9i</span><span class="o">...</span>  <span class="n">plots</span><span class="o">/</span><span class="n">figure1</span><span class="o">.</span><span class="n">pdf</span>
@@ -207,14 +240,14 @@ verifiable on any system that ships <code class="docutils literal notranslate"><
 </pre></div>
 </div>
 <p>An architectural-invariants test enforces that every path-list field
-in <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> (<code class="docutils literal notranslate"><span class="pre">saOutputFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code>,
+in <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (<code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code>,
 and any future addition) is reflected in <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> — guarding
-against silent under-tracking when the workflow schema is extended.</p>
+against silent under-tracking when the project schema is extended.</p>
 <p>No vaibify install is required.</p>
 </section>
 <section id="tier-2-python-dependencies-requirements-lock">
 <h3>Tier 2 — Python dependencies (<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>)<a class="headerlink" href="#tier-2-python-dependencies-requirements-lock" title="Link to this heading"></a></h3>
-<p>A pinned, hash-augmented Python dependency lockfile at the project-repo
+<p>A pinned, hash-augmented Python dependency lockfile at the repository
 root. Generated by
 <a class="reference download internal" download="" href="_downloads/888e1fec7153b0865c96042fd2fdd1a0/dependencyPinning.py"><span class="xref download myst">fnGenerateRequirementsLock</span></a>
 which shells out to <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">pip</span> <span class="pre">compile</span> <span class="pre">--generate-hashes</span></code> against
@@ -239,9 +272,9 @@ from three orthogonal capture helpers:</p>
 <code class="docutils literal notranslate"><span class="pre">&lt;image&gt;&#64;sha256:...</span></code> digest of the running container image, via
 <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">inspect</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureHostBinaryHashes(listBinaryPaths)</span></code> — for each binary
-the workflow declares as a host-side dependency (e.g., a compiled
+the project declares as a host-side dependency (e.g., a compiled
 scientific executable referenced from <code class="docutils literal notranslate"><span class="pre">saHostBinaries</span></code> in
-<code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>), the SHA-256 of the file plus the first line of
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code>), the SHA-256 of the file plus the first line of
 its <code class="docutils literal notranslate"><span class="pre">--version</span></code> output.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureSystemTools()</span></code> — Python interpreter version, <code class="docutils literal notranslate"><span class="pre">gcc</span> <span class="pre">--version</span></code>, <code class="docutils literal notranslate"><span class="pre">platform.libc_ver()</span></code>, and the contents of
 <code class="docutils literal notranslate"><span class="pre">/etc/os-release</span></code> from inside the container.</p></li>
@@ -255,7 +288,7 @@ architectures.</p>
 <h2>The verification ceremony: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code><a class="headerlink" href="#the-verification-ceremony-vaibify-reproduce" title="Link to this heading"></a></h2>
 <p>For users who want one command instead of three,
 <a class="reference download internal" download="" href="_downloads/4f83724733e5920691f294794a74b101/commandReproduce.py"><span class="xref download myst">vaibify reproduce</span></a> walks the
-three tiers in sequence and (optionally) re-runs the workflow:</p>
+three tiers in sequence and (optionally) re-runs the project:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ git clone &lt;project-url&gt; &amp;&amp; cd &lt;project&gt;
 $ vaibify reproduce
 [1/4] Verifying file integrity (MANIFEST.sha256) ... 47/47 OK
@@ -268,14 +301,14 @@ L3 reproduction confirmed.
 </div>
 <p>Flags:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">&lt;path&gt;</span></code> — path to the project repo (defaults to the current
+<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">&lt;path&gt;</span></code> — path to the repository (defaults to the current
 directory).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code> — also run step 4, the full workflow
-re-execution. Off by default; opt-in because workflows can be
+<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code> — also run step 4, the full project
+re-execution. Off by default; opt-in because projects can be
 expensive and Tier 4 is best-effort (see <a class="reference internal" href="#known-limitations"><span class="xref myst">Known
 limitations</span></a>). When enabled, vaibify dispatches
 to the same pipeline runner that <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code> uses, against a
-running container resolved from the project repo.</p></li>
+running container resolved from the repository.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span> <span class="pre">1|2|3</span></code> — skip a tier; may be repeated. Useful when a
 verifier only wants to confirm artefact identity without installing
 Python packages.</p></li>
@@ -301,7 +334,7 @@ who reads the three files.</p>
 </section>
 <section id="remote-mirror-verification">
 <h2>Remote-mirror verification<a class="headerlink" href="#remote-mirror-verification" title="Link to this heading"></a></h2>
-<p>When a workflow is pushed to a public mirror — GitHub, Overleaf, or
+<p>When a project is pushed to a public mirror — GitHub, Overleaf, or
 Zenodo — vaibify verifies that the <em>remote</em> copy of every manifested
 file still matches the SHA-256 recorded at archive time. Each remote
 exposes a uniform <code class="docutils literal notranslate"><span class="pre">fdictFetchRemoteHashes(...)</span></code> API
@@ -320,7 +353,7 @@ loop in
 <a class="reference download internal" download="" href="_downloads/e2066a77e9b4dc87922c6b32d990341a/scheduledReverify.py"><span class="xref download myst">scheduledReverify.py</span></a>.
 The cadence is currently a single global default (6 hours) set when
 the FastAPI app is constructed and applied uniformly to every loaded
-workflow; per-workflow overrides are deferred to a future commit.</p></li>
+project; per-project overrides are deferred to a future commit.</p></li>
 </ul>
 <p>Results are cached in <code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/syncStatus.json</span></code> keyed
 by service so the dashboard always shows ground truth without a
@@ -335,15 +368,15 @@ resulting UI.</p>
 <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if any declared output is a symlink. Following them
 silently would let the manifest hash a target the declared path no
 longer points to; refusing is the only honest behaviour.</p>
-<p><strong>Tier 1 is bit-perfect; re-running the workflow is best-effort.</strong>
+<p><strong>Tier 1 is bit-perfect; re-running the project is best-effort.</strong>
 <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> records the exact bytes a particular run produced,
 and <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span></code> confirms those bytes were preserved. Re-executing
-the workflow on a different CPU, BLAS implementation, or compiler
+the project on a different CPU, BLAS implementation, or compiler
 toolchain may produce numerically near-identical but
 <strong>byte-different</strong> outputs because of floating-point order-of-operation
 variance. This is a science-of-reproducibility limitation, not a
 vaibify defect, and we document it rather than try to engineer around
-it. Tier 4 (workflow re-run via <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>) is
+it. Tier 4 (project re-run via <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>) is
 therefore advisory.</p>
 <p><strong>The unfixable failure mode.</strong> If <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> itself is
 replaced by a tampered binary on the verifier’s machine, vaibify
@@ -358,7 +391,7 @@ verifier can fall back to plain coreutils.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>publish<span class="w"> </span>workflow
 </pre></div>
 </div>
-<p>This reads <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, renders the Jinja2
+<p>This reads <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, renders the Jinja2
 template at <code class="docutils literal notranslate"><span class="pre">templates/workflow.yml.j2</span></code>, and writes the result to
 <code class="docutils literal notranslate"><span class="pre">.github/workflows/vaibify.yml</span></code>.</p>
 <p>The generated workflow:</p>
@@ -405,7 +438,7 @@ are captured in the image.</p>
 <h2>Sharing Results<a class="headerlink" href="#sharing-results" title="Link to this heading"></a></h2>
 <p>The recommended workflow for sharing reproducible results:</p>
 <ol class="arabic simple">
-<li><p>Commit <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> to
+<li><p>Commit <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> to
 your repository.</p></li>
 <li><p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> to add CI automation.</p></li>
 <li><p>Tag a release when results are final.</p></li>

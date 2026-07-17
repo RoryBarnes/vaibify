@@ -54,7 +54,10 @@ from datetime import datetime, timezone
 from vaibify.reproducibility.credentialRedactor import (
     fsRedactCredentials,
 )
-from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
+from vaibify.reproducibility.gitHardening import (
+    LIST_GIT_CREDENTIAL_ISOLATION_CONFIG,
+    LIST_GIT_HARDENING_CONFIG,
+)
 from vaibify.reproducibility.overleafAuth import (
     fnValidateOverleafProjectId,
     fsWriteAskpassScript,
@@ -157,9 +160,15 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
     """Run a git command and return a CompletedProcess; never raises.
 
     Always sets ``GIT_TERMINAL_PROMPT=0`` so a misconfigured git
-    credential helper cannot hang the server thread waiting for input.
-    A wall-clock ``timeout`` keeps a network-stalled git from hanging
-    the verification worker indefinitely; on timeout we synthesise a
+    credential helper cannot hang the server thread waiting for input,
+    and always prepends ``LIST_GIT_CREDENTIAL_ISOLATION_CONFIG`` so an
+    ambient credential helper (e.g. macOS ``osxkeychain`` holding a
+    ``git.overleaf.com`` entry) can never answer instead of the
+    vaibify-managed askpass token — without the reset, mirror clones
+    keep authenticating while the managed slot honestly reads
+    disconnected, and the two states silently diverge. A wall-clock
+    ``timeout`` keeps a network-stalled git from hanging the
+    verification worker indefinitely; on timeout we synthesise a
     non-zero CompletedProcess instead of letting ``TimeoutExpired``
     propagate — the caller already maps non-zero returncode to a
     redacted ``RuntimeError``. When ``sCwd`` points at a missing
@@ -171,7 +180,9 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
         dictEnv = _fdictBaseGitEnv()
     try:
         return subprocess.run(
-            ["git"] + listArgs,
+            ["git"]
+            + list(LIST_GIT_CREDENTIAL_ISOLATION_CONFIG)
+            + listArgs,
             cwd=sCwd, env=dictEnv,
             capture_output=True, text=True,
             timeout=_F_GIT_TIMEOUT_SECONDS,

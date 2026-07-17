@@ -4,9 +4,9 @@ A pipeline defines a sequence of steps to execute inside the Vaibify.
 Steps are self-contained units of work -- each one runs a series of
 commands in order and produces output files such as figures or data products.
 
-## Workflow File
+## Project File
 
-Pipelines are defined in `workflow.json` at the project root. The file has
+Pipelines are defined in `project.json` at the repository root. The file has
 four top-level fields:
 
 | Field              | Type    | Description                              |
@@ -35,27 +35,27 @@ And these optional fields:
 | `bPlotOnly`        | boolean      | `true`  | Step produces only plots       |
 | `bInteractive`     | boolean      | `false` | Pause pipeline for user input  |
 | `saDataCommands`   | string array | `[]`    | Commands to run before plots   |
-| `saDataFiles`      | string array | `[]`    | Output data files to verify    |
+| `saOutputDataFiles`      | string array | `[]`    | Output data files to verify    |
 | `saTestCommands`   | string array | `[]`    | Pytest commands for the step   |
 
-### Workflow size limits
+### Project size limits
 
-Vaibify shows a one-shot "Workflow milestone" modal the first time a
-workflow's `listSteps` reaches 100 entries. The acknowledgment is
-persisted in the project repo's `.vaibify/state.json` as
+Vaibify shows a one-shot "Project milestone" modal the first time a
+project's `listSteps` reaches 100 entries. The acknowledgment is
+persisted in the repository's `.vaibify/state.json` as
 `bWarnedHundredSteps`, so the warning does not reappear on reload or
 on subsequent additions. The threshold exists because polling cost
 (file-status, repos, discovery) grows roughly linearly with the
 number of tracked outputs, scripts, and markers, and beyond about
 100 steps users typically notice some latency in the dashboard.
 
-Vaibify refuses to add a 501st step to any workflow. The dashboard
+Vaibify refuses to add a 501st step to any project. The dashboard
 shows a "Step limit reached" modal; the backend rejects direct API
 calls with HTTP 400. The rationale is that the per-poll Docker exec
 budget and the dashboard render budget both break down beyond this
 scale. If a project requires more than 500 steps, split it into
-sibling workflows within the same project repo — vaibify supports
-multiple workflows per container.
+sibling projects within the same repository — vaibify supports
+multiple projects per container.
 
 ## Example
 
@@ -121,11 +121,11 @@ does not exist.
 ## Integration with GitHub Actions
 
 Use `vaibify publish workflow` to generate a GitHub Actions workflow
-from `workflow.json`. The generated workflow builds the Docker image and
+from `project.json`. The generated workflow builds the Docker image and
 runs each step inside the container. See [Reproducibility](reproducibility.md)
 for details.
 
-## Multi-Container Workflows
+## Multi-Container Projects
 
 Each Vaibify project gets its own Docker image, container, and workspace
 volume. Multiple projects can run simultaneously on the same machine

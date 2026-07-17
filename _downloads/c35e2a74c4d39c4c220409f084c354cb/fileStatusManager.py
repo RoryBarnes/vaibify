@@ -61,6 +61,7 @@ _LIST_CATEGORY_KEYS = (
 
 __all__ = [
     "fdictCollectOutputPathsByStep",
+    "fdictCollectInputPathsByStep",
     "fnCollectScriptPathsByStep",
     "fnCollectMarkerPathsByStep",
     "fsMarkerNameFromStepDirectory",
@@ -225,7 +226,7 @@ def _flistResolveStepPaths(dictStep, dictGlobalVars):
     """Return resolved output paths for a single step."""
     sStepDir = dictStep.get("sDirectory", "")
     listPaths = []
-    for sFile in (dictStep.get("saDataFiles", [])
+    for sFile in (dictStep.get("saOutputDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
         listPaths.append(_fsResolveStepFilePath(
             sFile, sStepDir, dictGlobalVars,
@@ -453,11 +454,67 @@ def _flistResolveDataPaths(dictStep, dictVars):
     """Return resolved data file paths for a single step."""
     sStepDir = dictStep.get("sDirectory", "")
     listPaths = []
-    for sFile in dictStep.get("saDataFiles", []):
+    for sFile in dictStep.get("saOutputDataFiles", []):
         listPaths.append(_fsResolveStepFilePath(
             sFile, sStepDir, dictVars,
         ))
     return listPaths
+
+
+def _flistResolveInputPaths(dictStep, dictVars):
+    """Return resolved input-data paths for a single step.
+
+    ``saInputDataFiles`` entries are repo-relative — they resolve
+    against the project repo root, never the step directory. Entries
+    that stay template-bearing after variable resolution, or that
+    cannot be anchored without a repo root, are skipped: callers stat
+    and hash these paths.
+    """
+    listPaths = []
+    for sFile in dictStep.get("saInputDataFiles", []):
+        sResolved = workflowManager.fsResolveVariables(
+            sFile, dictVars or {},
+        )
+        if "{" in sResolved:
+            continue
+        if not posixpath.isabs(sResolved):
+            sRepoRoot = (dictVars or {}).get("sRepoRoot", "")
+            if not sRepoRoot:
+                continue
+            sResolved = posixpath.join(sRepoRoot, sResolved)
+        listPaths.append(sResolved)
+    return listPaths
+
+
+def fdictCollectInputPathsByStep(dictWorkflow, dictVars=None):
+    """Return {iStepIndex: [resolved input paths]} for each step."""
+    if dictVars is None:
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        dictResult[iIndex] = _flistResolveInputPaths(dictStep, dictVars)
+    return dictResult
+
+
+def _fdictComputeMaxInputMtimeByStep(dictWorkflow, dictModTimes,
+                                     dictVars=None):
+    """Return {stepIndex: maxInputMtimeString} using only input files."""
+    if dictVars is None:
+        dictVars = _fdictBuildFileStatusVars(dictWorkflow)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", [])
+    ):
+        listInputPaths = _flistResolveInputPaths(dictStep, dictVars)
+        listMtimes = [
+            int(dictModTimes[sPath])
+            for sPath in listInputPaths if sPath in dictModTimes
+        ]
+        if listMtimes:
+            dictResult[str(iIndex)] = str(max(listMtimes))
+    return dictResult
 
 
 def _fdictComputeMarkerMtimeByStep(dictMarkerPathsByStep, dictModTimes):
@@ -714,12 +771,38 @@ def _fnApplyDataInvalidation(
         return
     if not _fbAnyDataFileChanged(listChangedPaths, listDataFiles):
         return
+    _fnDemoteTestVerifications(dictVerification)
+
+
+def _fnDemoteTestVerifications(dictVerification):
+    """Demote sUnitTest and category verifications to ``untested``.
+
+    ``unnecessary`` stays sticky — there is nothing to re-run for a
+    category with no commands. Shared by the data, input, and
+    downstream invalidation paths.
+    """
     dictVerification["sUnitTest"] = "untested"
     for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
         if dictVerification.get(sVerifKey) == "unnecessary":
             continue
         if sVerifKey in dictVerification:
             dictVerification[sVerifKey] = "untested"
+
+
+def _fnApplyInputInvalidation(
+    dictVerification, listChangedPaths, listResolvedInputPaths,
+):
+    """Reset test verifications when a declared input data file changed.
+
+    Inputs match by full resolved path — they resolve unambiguously
+    against the repo root, so the basename shortcut the output
+    matchers use (and its collision weakness) is not inherited.
+    """
+    if dictVerification.get("sUnitTest") not in _SET_PASSED_TEST_STATES:
+        return
+    if not set(listChangedPaths) & set(listResolvedInputPaths):
+        return
+    _fnDemoteTestVerifications(dictVerification)
 
 
 def _fnApplyPlotInvalidation(
@@ -760,7 +843,11 @@ def _fnInvalidateStepFiles(dictStep, listChangedPaths,
     dictVerification = dictStep.get("dictVerification", {})
     _fnApplyDataInvalidation(
         dictVerification, listChangedPaths,
-        dictStep.get("saDataFiles", []),
+        dictStep.get("saOutputDataFiles", []),
+    )
+    _fnApplyInputInvalidation(
+        dictVerification, listChangedPaths,
+        _flistResolveInputPaths(dictStep, {"sRepoRoot": sRepoRoot}),
     )
     _fnApplyPlotInvalidation(
         dictStep, dictVerification, listChangedPaths, dictModTimes,
@@ -786,12 +873,7 @@ def _fnInvalidateDownstreamStep(dictStep):
     """Mark a downstream step as affected by upstream changes."""
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUnitTest") in _SET_PASSED_TEST_STATES:
-        dictVerification["sUnitTest"] = "untested"
-        for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS:
-            if dictVerification.get(sVerifKey) == "unnecessary":
-                continue
-            if sVerifKey in dictVerification:
-                dictVerification[sVerifKey] = "untested"
+        _fnDemoteTestVerifications(dictVerification)
     dictVerification["bUpstreamModified"] = True
     dictStep["dictVerification"] = dictVerification
 
@@ -918,19 +1000,17 @@ def _fnAppendStaleArtifacts(
 
 
 def _fnAppendTestStale(listStale, listBuckets, iEpoch, dictModTimes):
-    """Append test-validator stale artifacts for data scripts and files."""
-    _fnAppendStaleArtifacts(listStale, _flistNewerPaths(
-        listBuckets["dataScript"], dictModTimes, iEpoch,
-    ), "test", "dataScript")
-    _fnAppendStaleArtifacts(listStale, _flistNewerPaths(
-        listBuckets["dataFile"], dictModTimes, iEpoch,
-    ), "test", "dataFile")
+    """Append test-validator stale artifacts for scripts, data, inputs."""
+    for sCategory in ("dataScript", "dataFile", "inputFile"):
+        _fnAppendStaleArtifacts(listStale, _flistNewerPaths(
+            listBuckets[sCategory], dictModTimes, iEpoch,
+        ), "test", sCategory)
 
 
 def _fnAppendUserStale(listStale, listBuckets, iEpoch, dictModTimes):
-    """Append user-validator stale artifacts for all four categories."""
+    """Append user-validator stale artifacts for every artifact bucket."""
     for sCategory in ("dataScript", "dataFile",
-                      "plotScript", "plotFile"):
+                      "plotScript", "plotFile", "inputFile"):
         _fnAppendStaleArtifacts(listStale, _flistNewerPaths(
             listBuckets[sCategory], dictModTimes, iEpoch,
         ), "user", sCategory)
@@ -939,6 +1019,7 @@ def _fnAppendUserStale(listStale, listBuckets, iEpoch, dictModTimes):
 def _fbStepIsPencilStale(
     dictStep, dictStepScripts, listStepOutputPaths, dictModTimes,
     iMarkerMtime=None, setResolvedPlotPaths=None,
+    listStepInputPaths=None,
 ):
     """Return (bStale, listStaleArtifacts) via timestamp comparisons.
 
@@ -952,7 +1033,7 @@ def _fbStepIsPencilStale(
     bUserPassed = dictVerify.get("sUser") == "passed"
     listBuckets = _fdictBuildArtifactBuckets(
         dictStep, dictStepScripts, listStepOutputPaths,
-        setResolvedPlotPaths,
+        setResolvedPlotPaths, listStepInputPaths,
     )
     listStale = []
     if iMarkerMtime is not None:
@@ -966,9 +1047,9 @@ def _fbStepIsPencilStale(
 
 def _fdictBuildArtifactBuckets(
     dictStep, dictStepScripts, listStepOutputPaths,
-    setResolvedPlotPaths,
+    setResolvedPlotPaths, listStepInputPaths=None,
 ):
-    """Return {category: [paths]} for each of the four artifact buckets."""
+    """Return {category: [paths]} for each artifact bucket."""
     listDataFiles, listPlotFiles = _flistSplitOutputPaths(
         dictStep, listStepOutputPaths, setResolvedPlotPaths,
     )
@@ -977,6 +1058,7 @@ def _fdictBuildArtifactBuckets(
         "plotScript": dictStepScripts.get("plot", []),
         "dataFile": listDataFiles,
         "plotFile": listPlotFiles,
+        "inputFile": list(listStepInputPaths or []),
     }
 
 
@@ -1031,6 +1113,9 @@ def _fdictBuildStepStatusEntry(
         dictStep, dictStepScripts, listOutputs, dictModTimes,
         iMarkerMtime=iMarkerMtime,
         setResolvedPlotPaths=setPlotPaths,
+        listStepInputPaths=_flistResolveInputPaths(
+            dictStep, dictResolvedVars,
+        ),
     )
     if bStale and _fbStepHashesMatchManifest(
         dictStep, dictResolvedVars, dictManifestCache, filesRepo,
@@ -1091,18 +1176,22 @@ def _fbAllPathsTrackedByManifest(filesRepo, listRelPaths):
 
 
 def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
-    """Return repo-relative output paths declared on a step.
+    """Return repo-relative output + input paths declared on a step.
 
-    Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
+    Resolves each ``saOutputDataFiles``/``saPlotFiles`` entry against the
     step directory the same way ``_fsResolveStepFilePath`` does, then
     strips the repo root so the result lines up with manifest keys
     (which are repo-relative POSIX strings written by
-    ``manifestWriter``).
+    ``manifestWriter``). ``saInputDataFiles`` entries append as-is —
+    they are repo-relative by contract and the manifest tracks them
+    through ``manifestPaths.flistStepInputRepoPaths`` — so the
+    fresh-clone short-circuit only fires when the step's inputs are
+    manifest-clean too.
     """
     from .pathContract import fsAbsToRepoRelative
     sStepDir = dictStep.get("sDirectory", "")
     listRelative = []
-    for sFile in (dictStep.get("saDataFiles", [])
+    for sFile in (dictStep.get("saOutputDataFiles", [])
                   + dictStep.get("saPlotFiles", [])):
         if not sFile:
             continue
@@ -1110,6 +1199,10 @@ def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
             sFile, sStepDir, {"sRepoRoot": sRepoRoot},
         )
         listRelative.append(fsAbsToRepoRelative(sAbs, sRepoRoot))
+    for sFile in dictStep.get("saInputDataFiles", []) or []:
+        if not sFile or "{" in sFile:
+            continue
+        listRelative.append(posixpath.normpath(sFile))
     return listRelative
 
 
@@ -1180,6 +1273,13 @@ def _fdictDetectChangedFiles(dictCtx, sContainerId,
         return {}
     dictPathsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars)
+    dictInputsByStep = fdictCollectInputPathsByStep(
+        dictWorkflow, dictVars)
+    for iIndex, listInputPaths in dictInputsByStep.items():
+        if listInputPaths:
+            dictPathsByStep[iIndex] = (
+                dictPathsByStep.get(iIndex, []) + listInputPaths
+            )
     return _fdictFindChangedFiles(
         dictPathsByStep, dictOldModTimes, dictNewModTimes,
     )
@@ -1239,12 +1339,15 @@ def _flistStaleOutputsForStepIndex(
     dictMarker = _fdictMarkerForStep(dictStep, iIndex, dictMarkersByStep)
     if dictMarker is None:
         return []
-    if not hashStaleness.fbMarkerHasHashes(dictMarker):
-        return []
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, sWorkspaceRoot, dictCache,
-        dictMtimeHints=dictHintsByStep.get(iIndex),
-    )
+    setStale = set()
+    for sHashKey in ("dictOutputHashes", "dictInputHashes"):
+        if not hashStaleness.fbMarkerHasHashes(dictMarker, sHashKey):
+            continue
+        setStale |= hashStaleness.fsetStaleOutputsForStep(
+            dictMarker, sWorkspaceRoot, dictCache,
+            dictMtimeHints=dictHintsByStep.get(iIndex),
+            sHashKey=sHashKey,
+        )
     return sorted(setStale) if setStale else []
 
 
@@ -1412,9 +1515,11 @@ def _fdictBuildMtimeHintsByStep(
 def _fdictMtimeHintsForStep(
     dictStep, dictMarker, dictNewModTimes, sRepoRoot,
 ):
-    """Return ``{sRepoRelPath: fMtime}`` mtime hints for one step's outputs."""
+    """Return ``{sRepoRelPath: fMtime}`` hints for a step's hashed files."""
     dictHints = {}
-    for sRelPath in (dictMarker.get("dictOutputHashes") or {}):
+    listRelPaths = list(dictMarker.get("dictOutputHashes") or {})
+    listRelPaths += list(dictMarker.get("dictInputHashes") or {})
+    for sRelPath in listRelPaths:
         sAbs = _fsAbsFromRepoRelative(sRelPath, sRepoRoot)
         sMtime = dictNewModTimes.get(sAbs)
         if sMtime is None:
@@ -1707,7 +1812,7 @@ def flistStepRemoteFiles(dictWorkflow, iStepIndex, sService):
     """Return repo-relative paths for a step's files tracked on sService.
 
     ``sService`` is "Overleaf" or "Zenodo". Files are enumerated from
-    the step's saPlotFiles + saDataFiles, resolved against the repo
+    the step's saPlotFiles + saOutputDataFiles, resolved against the repo
     root, then filtered by the matching b<Service> flag in
     dictSyncStatus.
     """

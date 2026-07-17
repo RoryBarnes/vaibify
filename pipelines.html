@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pipelines &mdash; Vaibify 0.0.1.dev483 documentation</title>
+  <title>Pipelines &mdash; Vaibify 0.0.1.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=232d27ef"></script>
+      <script src="_static/documentation_options.js?v=1f90faf9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -50,9 +50,9 @@
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Pipelines</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#workflow-file">Workflow File</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#project-file">Project File</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-object">Step Object</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#workflow-size-limits">Workflow size limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#project-size-limits">Project size limits</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#example">Example</a></li>
@@ -60,7 +60,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#running-a-pipeline">Running a Pipeline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pipeline-output">Pipeline Output</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#integration-with-github-actions">Integration with GitHub Actions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#multi-container-workflows">Multi-Container Workflows</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#multi-container-projects">Multi-Container Projects</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
@@ -106,9 +106,9 @@
 <p>A pipeline defines a sequence of steps to execute inside the Vaibify.
 Steps are self-contained units of work – each one runs a series of
 commands in order and produces output files such as figures or data products.</p>
-<section id="workflow-file">
-<h2>Workflow File<a class="headerlink" href="#workflow-file" title="Link to this heading"></a></h2>
-<p>Pipelines are defined in <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> at the project root. The file has
+<section id="project-file">
+<h2>Project File<a class="headerlink" href="#project-file" title="Link to this heading"></a></h2>
+<p>Pipelines are defined in <code class="docutils literal notranslate"><span class="pre">project.json</span></code> at the repository root. The file has
 four top-level fields:</p>
 <table class="docutils align-default">
 <thead>
@@ -196,7 +196,7 @@ four top-level fields:</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
 <td><p>Commands to run before plots</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code></p></td>
 <td><p>string array</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
 <td><p>Output data files to verify</p></td>
@@ -208,23 +208,23 @@ four top-level fields:</p>
 </tr>
 </tbody>
 </table>
-<section id="workflow-size-limits">
-<h3>Workflow size limits<a class="headerlink" href="#workflow-size-limits" title="Link to this heading"></a></h3>
-<p>Vaibify shows a one-shot “Workflow milestone” modal the first time a
-workflow’s <code class="docutils literal notranslate"><span class="pre">listSteps</span></code> reaches 100 entries. The acknowledgment is
-persisted in the project repo’s <code class="docutils literal notranslate"><span class="pre">.vaibify/state.json</span></code> as
+<section id="project-size-limits">
+<h3>Project size limits<a class="headerlink" href="#project-size-limits" title="Link to this heading"></a></h3>
+<p>Vaibify shows a one-shot “Project milestone” modal the first time a
+project’s <code class="docutils literal notranslate"><span class="pre">listSteps</span></code> reaches 100 entries. The acknowledgment is
+persisted in the repository’s <code class="docutils literal notranslate"><span class="pre">.vaibify/state.json</span></code> as
 <code class="docutils literal notranslate"><span class="pre">bWarnedHundredSteps</span></code>, so the warning does not reappear on reload or
 on subsequent additions. The threshold exists because polling cost
 (file-status, repos, discovery) grows roughly linearly with the
 number of tracked outputs, scripts, and markers, and beyond about
 100 steps users typically notice some latency in the dashboard.</p>
-<p>Vaibify refuses to add a 501st step to any workflow. The dashboard
+<p>Vaibify refuses to add a 501st step to any project. The dashboard
 shows a “Step limit reached” modal; the backend rejects direct API
 calls with HTTP 400. The rationale is that the per-poll Docker exec
 budget and the dashboard render budget both break down beyond this
 scale. If a project requires more than 500 steps, split it into
-sibling workflows within the same project repo — vaibify supports
-multiple workflows per container.</p>
+sibling projects within the same repository — vaibify supports
+multiple projects per container.</p>
 </section>
 </section>
 <section id="example">
@@ -289,12 +289,12 @@ does not exist.</p>
 <section id="integration-with-github-actions">
 <h2>Integration with GitHub Actions<a class="headerlink" href="#integration-with-github-actions" title="Link to this heading"></a></h2>
 <p>Use <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> to generate a GitHub Actions workflow
-from <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>. The generated workflow builds the Docker image and
+from <code class="docutils literal notranslate"><span class="pre">project.json</span></code>. The generated workflow builds the Docker image and
 runs each step inside the container. See <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>
 for details.</p>
 </section>
-<section id="multi-container-workflows">
-<h2>Multi-Container Workflows<a class="headerlink" href="#multi-container-workflows" title="Link to this heading"></a></h2>
+<section id="multi-container-projects">
+<h2>Multi-Container Projects<a class="headerlink" href="#multi-container-projects" title="Link to this heading"></a></h2>
 <p>Each Vaibify project gets its own Docker image, container, and workspace
 volume. Multiple projects can run simultaneously on the same machine
 without interference. Use the <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code> flag to target a specific

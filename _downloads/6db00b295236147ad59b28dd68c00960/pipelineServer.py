@@ -114,10 +114,11 @@ class StepCreateRequest(BaseModel):
     bPlotOnly: bool = True
     bInteractive: bool = False
     saDataCommands: List[str] = []
-    saDataFiles: List[str] = []
+    saOutputDataFiles: List[str] = []
     saTestCommands: List[str] = []
     saPlotCommands: List[str] = []
     saPlotFiles: List[str] = []
+    saInputDataFiles: List[str] = []
 
 
 class StepUpdateRequest(BaseModel):
@@ -127,17 +128,39 @@ class StepUpdateRequest(BaseModel):
     bInteractive: Optional[bool] = None
     bRunEnabled: Optional[bool] = None
     saDataCommands: Optional[List[str]] = None
-    saDataFiles: Optional[List[str]] = None
+    saOutputDataFiles: Optional[List[str]] = None
     saTestCommands: Optional[List[str]] = None
     saPlotCommands: Optional[List[str]] = None
     saPlotFiles: Optional[List[str]] = None
+    saInputDataFiles: Optional[List[str]] = None
+    # Explicit "this step consumes no raw input data" declaration;
+    # the third state (undeclared) is inputs empty + flag False.
+    bNoInputData: Optional[bool] = None
+    # Remote-pull provenance records: {sPath, sSourceUrl,
+    # sRetrievedUtc, sSha256} per pulled file. sSourceUrl is inert
+    # metadata — never fetched, never rendered as a hyperlink.
+    listRemoteData: Optional[List[dict]] = None
     saDependencies: Optional[List[str]] = None
+    # Advisory per-step wall-clock ceiling in seconds; when the active
+    # step outruns it the dashboard flags it as possibly hung. 0/absent
+    # inherits the workflow default (also opt-in). Never gates a run.
+    fWallClockBudgetSeconds: Optional[float] = None
     dictVerification: Optional[dict] = None
     dictTests: Optional[dict] = None
     dictRunStats: Optional[dict] = None
     dictPlotFileCategories: Optional[dict] = None
-    dictDataFileCategories: Optional[dict] = None
+    dictOutputDataFileCategories: Optional[dict] = None
     bConfirmDestructive: bool = False
+    # Optional compare-and-swap guard: the workflow fingerprint the
+    # caller read. When present and stale, the edit is rejected 409
+    # instead of silently clobbering a concurrent writer.
+    sBaseFingerprint: Optional[str] = None
+
+
+class InputDataAddRequest(BaseModel):
+    # One repo-relative raw-data path to append to a step's
+    # saInputDataFiles; boundary-validated server-side.
+    sPath: str
 
 
 class ReorderRequest(BaseModel):
@@ -151,6 +174,10 @@ class WorkflowSettingsRequest(BaseModel):
     iNumberOfCores: Optional[int] = None
     fTolerance: Optional[float] = None
     bAutoArchive: Optional[bool] = None
+    # Workflow-wide default wall-clock budget in seconds applied to any
+    # step without its own fWallClockBudgetSeconds. 0/absent = no
+    # default (feature stays dormant).
+    fDefaultWallClockBudgetSeconds: Optional[float] = None
 
 
 class RunRequest(BaseModel):
@@ -280,6 +307,9 @@ def fdictExtractSettings(dictWorkflow):
         "iNumberOfCores": dictWorkflow.get("iNumberOfCores", -1),
         "fTolerance": dictWorkflow.get("fTolerance", 1e-6),
         "bAutoArchive": dictWorkflow.get("bAutoArchive", False),
+        "fDefaultWallClockBudgetSeconds": dictWorkflow.get(
+            "fDefaultWallClockBudgetSeconds", 0.0,
+        ),
     }
 
 
@@ -296,10 +326,11 @@ def fdictStepFromRequest(request):
         bPlotOnly=request.bPlotOnly,
         bInteractive=request.bInteractive,
         saDataCommands=request.saDataCommands,
-        saDataFiles=request.saDataFiles,
+        saOutputDataFiles=request.saOutputDataFiles,
         saTestCommands=request.saTestCommands,
         saPlotCommands=request.saPlotCommands,
         saPlotFiles=request.saPlotFiles,
+        saInputDataFiles=request.saInputDataFiles,
     )
 
 
@@ -698,6 +729,13 @@ async def fnPipelineMessageLoop(
                     _fdictBusyRefusalEvent(sAction, dictRequest),
                 )
                 continue
+            dictOverwriteRefusal = await _fdictRemoteOverwriteRefusal(
+                sAction, dictRequest, connectionDocker,
+                sContainerId, dictWorkflow,
+            )
+            if dictOverwriteRefusal is not None:
+                await fnCallback(dictOverwriteRefusal)
+                continue
             taskPipeline = asyncio.create_task(
                 _fnSafeDispatch(
                     sAction, dictRequest, connectionDocker,
@@ -762,6 +800,175 @@ def _fbRefuseWhilePipelineTaskLive(dictPipelineTasks, sContainerId):
         return False
     taskLive = dictPipelineTasks.get(sContainerId)
     return taskLive is not None and not taskLive.done()
+
+
+_SET_REMOTE_GATED_ACTIONS = frozenset({
+    "runAll", "forceRunAll", "runFrom", "runSelected",
+})
+
+
+def _flistGateStepIndices(sAction, dictRequest, dictWorkflow):
+    """Return the 0-based indices the action would run; [] when ungated.
+
+    Mirrors the runner's real step selection (``_fbShouldRunStep`` in
+    pipelineRunner.py) exactly so the gate never disagrees with what
+    executes: ``runAll``/``forceRunAll``/``runFrom`` all honor each
+    step's ``bRunEnabled`` flag (forceRunAll only clears run-stats, it
+    does not force disabled steps), and ``runFrom`` additionally bounds
+    the range by the 1-based start step. ``runSelected`` ignores
+    ``bRunEnabled`` because the explicit index set overrides it, again
+    matching the runner.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    if sAction == "runSelected":
+        return [
+            iIndex for iIndex in _flistResolveSelectedIndices(
+                dictRequest, dictWorkflow,
+            )
+            if 0 <= iIndex < len(listSteps)
+        ]
+    if sAction not in ("runAll", "forceRunAll", "runFrom"):
+        return []
+    iStartStep = (
+        _fiResolveStartStep(dictRequest, dictWorkflow)
+        if sAction == "runFrom" else 1
+    )
+    return [
+        iIndex for iIndex, dictStep in enumerate(listSteps)
+        if isinstance(dictStep, dict)
+        and dictStep.get("bRunEnabled", True) is not False
+        and (iIndex + 1) >= iStartStep
+    ]
+
+
+def _fdictCollectRemoteOverwritePaths(sAction, dictRequest, dictWorkflow):
+    """Return {iStepIndex: [repo-rel paths]} of remote data in the run."""
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    dictByStep = {}
+    for iIndex in _flistGateStepIndices(
+        sAction, dictRequest, dictWorkflow,
+    ):
+        dictStep = listSteps[iIndex]
+        if not isinstance(dictStep, dict):
+            continue
+        listPaths = workflowManager.flistStepRemoteDataPaths(dictStep)
+        if listPaths:
+            dictByStep[iIndex] = listPaths
+    return dictByStep
+
+
+def _flistExistingRemotePaths(
+    connectionDocker, sContainerId, sRepoRoot, listRelPaths,
+):
+    """Return the subset of repo-relative paths present on disk.
+
+    One container exec; the heredoc form keeps hostile filenames out
+    of shell-interpretation reach (same discipline as the existence
+    batch in fileRoutes, duplicated here because routes import this
+    module, not the other way around).
+    """
+    if not listRelPaths:
+        return []
+    listAbsPaths = [
+        posixpath.join(sRepoRoot, sRelPath)
+        for sRelPath in listRelPaths
+    ]
+    sJoined = "\n".join(listAbsPaths)
+    sScript = (
+        "while IFS= read -r p; do "
+        "if [ -e \"$p\" ]; then echo \"$p\"; fi; "
+        "done <<'__VAIBIFY_EOF__'\n" + sJoined + "\n__VAIBIFY_EOF__"
+    )
+    _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sScript,
+    )
+    setExisting = {
+        sLine for sLine in (sOutput or "").splitlines() if sLine
+    }
+    return [
+        sRelPath
+        for sRelPath, sAbsPath in zip(listRelPaths, listAbsPaths)
+        if sAbsPath in setExisting
+    ]
+
+
+async def _fdictRemoteOverwriteRefusal(
+    sAction, dictRequest, connectionDocker, sContainerId, dictWorkflow,
+):
+    """Return the remoteDataOverwrite refusal event, or None to proceed.
+
+    The gate fires when a gated run action covers a step whose
+    ``listRemoteData`` files already exist on disk and the request
+    does not carry ``bConfirmRemoteOverwrite`` — a first-ever pull
+    (nothing on disk yet) never prompts. Enforced at dispatch so
+    every lane (browser buttons, agent CLI) meets the same gate.
+    """
+    if dictRequest.get("bConfirmRemoteOverwrite"):
+        return None
+    if sAction not in _SET_REMOTE_GATED_ACTIONS:
+        return None
+    dictByStep = _fdictCollectRemoteOverwritePaths(
+        sAction, dictRequest, dictWorkflow,
+    )
+    if not dictByStep:
+        return None
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    if not sRepoRoot:
+        return None
+    listAllPaths = sorted({
+        sPath
+        for listPaths in dictByStep.values()
+        for sPath in listPaths
+    })
+    listExisting = await asyncio.to_thread(
+        _flistExistingRemotePaths,
+        connectionDocker, sContainerId, sRepoRoot, listAllPaths,
+    )
+    if not listExisting:
+        return None
+    return _fdictRemoteOverwriteEvent(
+        sAction, dictRequest, dictWorkflow, dictByStep, listExisting,
+    )
+
+
+def _fdictRemoteOverwriteEvent(
+    sAction, dictRequest, dictWorkflow, dictByStep, listExisting,
+):
+    """Build the refusal event, echoing what a confirm needs to resend."""
+    from .pipelineUtils import fsLabelFromStepIndex
+    setExisting = set(listExisting)
+    listGatedIndices = sorted(
+        iIndex for iIndex, listPaths in dictByStep.items()
+        if setExisting & set(listPaths)
+    )
+    listLabels = [
+        fsLabelFromStepIndex(dictWorkflow, iIndex)
+        for iIndex in listGatedIndices
+    ]
+    return {
+        "sType": "runRefused",
+        "sReason": "remoteDataOverwrite",
+        "sAction": sAction,
+        "listStepIndices": listGatedIndices,
+        "listStepLabels": listLabels,
+        "listRemoteOverwritePaths": listExisting,
+        "dictOriginalRequest": {
+            sKey: dictRequest.get(sKey)
+            for sKey in (
+                "iStartStep", "sStartStepLabel",
+                "listStepIndices", "listStepLabels", "sRunMode",
+            )
+            if dictRequest.get(sKey) is not None
+        },
+        "sMessage": (
+            f"Refused '{sAction}': step(s) "
+            f"{', '.join(listLabels)} pull remote data that would "
+            f"overwrite the canonical committed copy "
+            f"({', '.join(listExisting)}). Ask the researcher, then "
+            "re-issue with bConfirmRemoteOverwrite=true "
+            "(CLI: --confirm-remote-overwrite)."
+        ),
+    }
 
 
 def _fdictBusyRefusalEvent(sAction, dictRequest):
@@ -1115,11 +1322,14 @@ def _fsValidateConnectWorkflowPath(sWorkflowPath):
     if not sNormalized.endswith(".json"):
         raise HTTPException(
             400, "sWorkflowPath must point at a .json file")
-    if workflowManager.S_VAIBIFY_WORKFLOWS_SUFFIX not in sNormalized:
+    if not any(
+        sSuffix in sNormalized
+        for sSuffix in workflowManager.T_VAIBIFY_PROJECT_SUFFIXES
+    ):
         raise HTTPException(
             400,
-            "sWorkflowPath must be under .vaibify/workflows/ "
-            "inside a project repo",
+            "sWorkflowPath must be under .vaibify/projects/ "
+            "inside a repository",
         )
     return sNormalized
 
@@ -1177,6 +1387,9 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             "sLeaseId": dictCtx.get("sViewerLease", ""),
             "iWorkflowEpoch": fiGetWorkflowEpoch(
                 dictCtx, sContainerId,
+            ),
+            "sWorkflowFingerprint": (
+                workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),
         }
     except HTTPException:
@@ -1416,6 +1629,7 @@ from .fileStatusManager import (  # noqa: F401
     fbStepUserApproved,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
+    fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     flistStepRemoteFiles,
     fnCollectMarkerPathsByStep,
@@ -1664,6 +1878,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.sessionRoutes.fnRegisterAll(app, dictCtx)
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
+    routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

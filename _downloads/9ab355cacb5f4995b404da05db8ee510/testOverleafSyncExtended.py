@@ -223,12 +223,18 @@ def test_flistBuildCredentialHelperArgs_embeds_token_path():
 
 
 def test_flistBuildCredentialHelperArgs_returns_inline_c_args():
-    """Helper args must be inline ``-c`` flags, not a ``git config`` mutation."""
+    """Helper args must be inline ``-c`` flags, not a ``git config`` mutation.
+
+    The first pair resets ambient credential helpers (e.g. macOS
+    ``osxkeychain``) so the supplied token is the only credential the
+    command can use; the second pair adds the one-shot helper.
+    """
     listArgs = flistBuildCredentialHelperArgs("/tmp/tok")
     assert "config" not in listArgs
     assert "--global" not in listArgs
-    assert len(listArgs) == 2
-    assert listArgs[0] == "-c"
+    assert len(listArgs) == 4
+    assert listArgs[:2] == ["-c", "credential.helper="]
+    assert listArgs[2] == "-c"
 
 
 # -----------------------------------------------------------------------

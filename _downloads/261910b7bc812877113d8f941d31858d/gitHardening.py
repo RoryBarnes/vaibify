@@ -21,6 +21,7 @@ import from the ``vaibify`` package; see that module's docstring.
 """
 
 __all__ = [
+    "LIST_GIT_CREDENTIAL_ISOLATION_CONFIG",
     "LIST_GIT_HARDENING_CONFIG",
 ]
 
@@ -30,4 +31,25 @@ LIST_GIT_HARDENING_CONFIG = [
     "-c", "protocol.allow=user",
     "-c", "core.symlinks=false",
     "-c", "submodule.recurse=false",
+]
+
+
+# Credential isolation for host-side git calls that authenticate with a
+# vaibify-managed token. The empty value RESETS the credential-helper
+# list inherited from the system/global gitconfig (e.g. macOS
+# ``osxkeychain``), so only a helper configured AFTER this flag — or
+# the ``GIT_ASKPASS`` script — can answer. Without it, an ambient
+# keychain entry for the remote host silently masks the managed token:
+# clones and verifies authenticate while the "connected?" probe of the
+# managed slot honestly reports disconnected, and a live validation of
+# a newly entered token validates the ambient credential instead of
+# the token being stored.
+#
+# Deliberately NOT merged into ``LIST_GIT_HARDENING_CONFIG``: the
+# container push composes its explicit credential-helper ``-c`` args
+# BEFORE the hardening list, and ``-c`` flags apply in order — a reset
+# appearing after the explicit helper would disable it. Prepend this
+# list ahead of any explicit credential configuration.
+LIST_GIT_CREDENTIAL_ISOLATION_CONFIG = [
+    "-c", "credential.helper=",
 ]

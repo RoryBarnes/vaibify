@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>External-service integrations: Overleaf, GitHub, Zenodo &mdash; Vaibify 0.0.1.dev483 documentation</title>
+  <title>External-service integrations: Overleaf, GitHub, Zenodo &mdash; Vaibify 0.0.1.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=232d27ef"></script>
+      <script src="_static/documentation_options.js?v=1f90faf9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -58,6 +58,7 @@
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">External-service integrations: Overleaf, GitHub, Zenodo</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#mental-model">Mental model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reading-the-manuscript-back-pull-manuscript">Reading the manuscript back (pull-manuscript)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#what-to-reuse-from-overleaf">What to reuse from Overleaf</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#token-auth-plumbing">Token + auth plumbing</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#error-classification">Error classification</a></li>
@@ -159,6 +160,21 @@ installed in the container. Anything that needs vaibify internals
 (workflow manager, route helpers) lives host-side. Respect this
 boundary religiously — several rounds of debugging went into
 restoring it.</p>
+</section>
+<section id="reading-the-manuscript-back-pull-manuscript">
+<h2>Reading the manuscript back (pull-manuscript)<a class="headerlink" href="#reading-the-manuscript-back-pull-manuscript" title="Link to this heading"></a></h2>
+<p>Overleaf sync is figure-<em>out</em>, but the in-container agent sometimes
+needs to read the manuscript <em>in</em> — to check the paper against the
+project’s results. The <code class="docutils literal notranslate"><span class="pre">pull-manuscript</span></code> agent action
+(<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/overleaf/{id}/pull-manuscript</span></code>, registered agent-safe in
+<code class="docutils literal notranslate"><span class="pre">actionCatalog.py</span></code>) mirrors the project’s <code class="docutils literal notranslate"><span class="pre">.tex</span></code>/<code class="docutils literal notranslate"><span class="pre">.bib</span></code>/<code class="docutils literal notranslate"><span class="pre">.bbl</span></code>/<code class="docutils literal notranslate"><span class="pre">.sty</span></code>
+/<code class="docutils literal notranslate"><span class="pre">.cls</span></code> sources — derived from the Overleaf mirror listing, never from
+request input — into <code class="docutils literal notranslate"><span class="pre">&lt;repository&gt;/.vaibify/manuscript/</span></code>. That
+directory is git-ignored (via <code class="docutils literal notranslate"><span class="pre">stateManager.py</span></code>’s <code class="docutils literal notranslate"><span class="pre">.vaibify/.gitignore</span></code>
+body and a self-ignoring <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> the pull writes into the target),
+so the convenience copy can never dirty the repo. The <code class="docutils literal notranslate"><span class="pre">read-manuscript</span></code>
+agent skill drives it. Reuses <code class="docutils literal notranslate"><span class="pre">syncDispatcher.ftResultPullFromOverleaf</span></code>
+and <code class="docutils literal notranslate"><span class="pre">overleafMirror.flistListMirrorTree</span></code>.</p>
 </section>
 <section id="what-to-reuse-from-overleaf">
 <h2>What to reuse from Overleaf<a class="headerlink" href="#what-to-reuse-from-overleaf" title="Link to this heading"></a></h2>

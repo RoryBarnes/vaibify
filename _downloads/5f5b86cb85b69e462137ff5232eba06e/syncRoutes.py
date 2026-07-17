@@ -267,14 +267,12 @@ def _fdictCollectPostPushDigests(
     sProjectId, listLocalPaths, sTargetDirectory,
 ):
     """Map each local path to its post-push mirror digest."""
-    from vaibify.reproducibility import overleafMirror
+    from vaibify.reproducibility import overleafMirror, overleafSync
     dictRemoteBlobs = overleafMirror.fdictIndexMirrorBlobs(sProjectId)
     dictDigests = {}
     for sLocalPath in listLocalPaths:
-        sBasename = os.path.basename(sLocalPath)
-        sRemotePath = (
-            posixpath.join(sTargetDirectory, sBasename)
-            if sTargetDirectory else sBasename
+        sRemotePath = overleafSync.fsOverleafRemotePathFor(
+            sLocalPath, sTargetDirectory,
         )
         sDigest = dictRemoteBlobs.get(sRemotePath, "")
         if sDigest:
@@ -313,7 +311,7 @@ async def _fnFinalizeOverleafPush(
     dictCtx, sContainerId, dictWorkflow, sProjectId,
     listFilePaths, sTargetDirectory,
 ):
-    """Run the post-push bookkeeping: sync status, digests, save."""
+    """Run the post-push bookkeeping: sync status, digests, provenance, save."""
     workflowManager.fnUpdateSyncStatus(
         dictWorkflow, listFilePaths, "Overleaf")
     await asyncio.to_thread(
@@ -321,7 +319,62 @@ async def _fnFinalizeOverleafPush(
         dictWorkflow, sProjectId,
         listFilePaths, sTargetDirectory,
     )
+    await asyncio.to_thread(
+        _fnRecordPushProvenance,
+        dictCtx, sContainerId, dictWorkflow,
+        listFilePaths, sTargetDirectory,
+    )
     dictCtx["save"](sContainerId, dictWorkflow)
+
+
+def _fnRecordPushProvenance(
+    dictCtx, sContainerId, dictWorkflow,
+    listFilePaths, sTargetDirectory,
+):
+    """Record which figures this push froze, keyed by the repo's HEAD.
+
+    Writes the push manifest (local→remote path map at the current
+    project-repo commit) and stamps ``dictRemotes.overleaf
+    .sLastPushCommit``. These are the authority behind the L2
+    figure-freeze blockers, the arXiv correspondence gate, and the
+    Overleaf/arXiv verify scope — a push that skips this record is
+    invisible to all three. Best-effort like the digest persistence:
+    a provenance failure must never fail a push that already landed —
+    the honest degradation is figures reading not-frozen until the
+    next successful push records them.
+    """
+    from .. import containerGit
+    from vaibify.reproducibility import overleafSync
+    try:
+        sRepo = dictWorkflow.get("sProjectRepoPath", "")
+        if not sRepo:
+            return
+        sHeadSha = containerGit.fsGitHeadShaInContainer(
+            dictCtx["docker"], sContainerId, sWorkspace=sRepo,
+        )
+        if not sHeadSha:
+            return
+        listRepoRelative = [
+            workflowManager.fsToSyncStatusKey(sPath, sRepo)
+            for sPath in listFilePaths
+        ]
+        overleafSync.fnRecordOverleafPushManifest(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            sHeadSha, listRepoRelative, sTargetDirectory,
+        )
+        dictRemotes = dictWorkflow.setdefault("dictRemotes", {})
+        dictOverleaf = dictRemotes.setdefault("overleaf", {})
+        dictOverleaf.setdefault(
+            "sProjectId", dictWorkflow.get("sOverleafProjectId", ""),
+        )
+        dictOverleaf["sLastPushCommit"] = sHeadSha
+    except Exception:
+        logger.warning(
+            "Overleaf push provenance recording failed for "
+            "container %s; figures will read not-frozen until the "
+            "next successful push",
+            sContainerId, exc_info=True,
+        )
 
 
 async def _fdictRunOverleafPushFlow(
@@ -377,7 +430,123 @@ async def _fdictHandleOverleafPushRequest(
         dictCtx, sContainerId, dictWorkflow, sProjectId,
         request.listFilePaths, sTargetDirectory,
     )
+    # AFTER finalize: the verify's comparison set is the push manifest
+    # + sLastPushCommit that finalize just recorded. Same shared hop
+    # as the GitHub push routes — the requirement row reads the verify
+    # cache, which would otherwise stay stale until the next sweep.
+    sVerifyWarning = await fsRefreshVerifyCacheAfterPush(
+        dictCtx, sContainerId, dictWorkflow, "overleaf",
+    )
+    if sVerifyWarning:
+        dictResult["sPostPushVerifyWarning"] = sVerifyWarning
     return dictResult
+
+
+_T_MANUSCRIPT_EXTENSIONS = (".tex", ".bib", ".bbl", ".sty", ".cls")
+
+
+def _flistManuscriptMirrorPaths(syncDispatcher, sProjectId):
+    """Return the mirror-listed manuscript source paths for a project.
+
+    Refreshes an absent mirror once. Only blob entries with manuscript
+    extensions qualify — the pull list derives entirely from the
+    mirror listing, never from request input, so a caller cannot
+    steer the container-side pull at arbitrary paths.
+    """
+    from vaibify.reproducibility import overleafMirror
+    listEntries = overleafMirror.flistListMirrorTree(sProjectId)
+    if not listEntries:
+        bRefreshed, _resultDetail = (
+            syncDispatcher.ftRefreshOverleafMirror(sProjectId)
+        )
+        if bRefreshed:
+            listEntries = overleafMirror.flistListMirrorTree(sProjectId)
+    return [
+        dictEntry["sPath"] for dictEntry in listEntries
+        if dictEntry.get("sType") == "blob"
+        and str(dictEntry.get("sPath", "")).lower().endswith(
+            _T_MANUSCRIPT_EXTENSIONS,
+        )
+    ]
+
+
+async def _fdictHandlePullManuscript(
+    syncDispatcher, dictCtx, sContainerId,
+):
+    """Pull the Overleaf manuscript sources into the project repo.
+
+    Lands them in ``<sProjectRepoPath>/.vaibify/manuscript/`` — a
+    read-only convenience copy for the in-container agent (the
+    read-manuscript skill), never a canonical artifact. A
+    self-ignoring ``.gitignore`` is written into the target so the
+    pull can never dirty the project repo, even in containers whose
+    ``.vaibify/.gitignore`` predates the ``manuscript/`` entry.
+    """
+    dictCtx["require"]()
+    _fnRequireNetworkAccess(sContainerId)
+    dictWorkflow = fdictRequireWorkflow(
+        dictCtx["workflows"], sContainerId,
+    )
+    sProjectId = dictWorkflow.get("sOverleafProjectId", "")
+    if not sProjectId:
+        raise HTTPException(
+            status_code=409,
+            detail="No Overleaf project is bound to this project.",
+        )
+    sRepo = dictWorkflow.get("sProjectRepoPath", "")
+    if not sRepo:
+        raise HTTPException(
+            status_code=409,
+            detail="The project has no repository path.",
+        )
+    listPullPaths = await asyncio.to_thread(
+        _flistManuscriptMirrorPaths, syncDispatcher, sProjectId,
+    )
+    if not listPullPaths:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The Overleaf mirror lists no manuscript sources "
+                "(.tex/.bib/.bbl). Refresh the mirror from the Repos "
+                "panel, or check the project binding."
+            ),
+        )
+    sTargetDirectory = posixpath.join(sRepo, ".vaibify", "manuscript")
+    iExitCode, sOutput = await asyncio.to_thread(
+        syncDispatcher.ftResultPullFromOverleaf,
+        dictCtx["docker"], sContainerId, sProjectId,
+        listPullPaths, sTargetDirectory,
+    )
+    if iExitCode != 0:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Manuscript pull failed: "
+                + _fsRedactRemoteError((sOutput or "")[-400:])
+            ),
+        )
+    dictCtx["docker"].fnWriteFile(
+        sContainerId,
+        posixpath.join(sTargetDirectory, ".gitignore"),
+        b"*\n",
+    )
+    return {
+        "bSuccess": True,
+        "sManuscriptDirectory": sTargetDirectory,
+        "listPulledFiles": listPullPaths,
+    }
+
+
+def _fnRegisterPullManuscript(app, dictCtx):
+    """Register POST /api/overleaf/{id}/pull-manuscript."""
+    from .. import syncDispatcher
+
+    @fnAgentAction("pull-manuscript")
+    @app.post("/api/overleaf/{sContainerId}/pull-manuscript")
+    async def fnPullManuscript(sContainerId: str):
+        return await _fdictHandlePullManuscript(
+            syncDispatcher, dictCtx, sContainerId,
+        )
 
 
 def _fnRegisterOverleafPush(app, dictCtx):
@@ -1167,24 +1336,177 @@ async def _fdictStoreValidateCredential(
     dictCtx, sContainerId, sService, sToken, sProjectId,
     sZenodoInstance="",
 ):
-    """Store credential, verify connectivity, validate; clean up on failure."""
+    """Store credential, verify connectivity, validate; roll back on failure.
+
+    Stage-validate-commit: the previously stored credential (when the
+    service keeps one on the host) is captured before the new token
+    overwrites it, and a validation failure RESTORES it instead of
+    deleting — a mistyped token or a transient network failure must
+    never destroy a credential that worked an hour earlier. Only when
+    no previous credential existed does the failure path delete the
+    freshly staged token. The response message states which happened
+    so the researcher is never left guessing what survived.
+    """
     from .. import syncDispatcher
+    sPreviousToken = _fsFetchPreviousHostCredential(sService)
+    tSlots = _ftSnapshotContainerCredential(
+        syncDispatcher, dictCtx, sContainerId, sService,
+        sZenodoInstance,
+    )
     dictStoreFail = _fdictStoreCredentialSafely(
         syncDispatcher, dictCtx, sContainerId, sService, sToken,
         sZenodoInstance,
     )
     if dictStoreFail is not None:
+        _fnDropContainerSnapshot(
+            syncDispatcher, dictCtx, sContainerId, tSlots[1],
+        )
         return dictStoreFail
     dictResult = await _fdictValidateStoredCredential(
         dictCtx, sContainerId, sService, sProjectId,
         sZenodoInstance,
     )
     if not dictResult["bConnected"]:
-        _fnCleanupCredential(
-            syncDispatcher, dictCtx["docker"],
-            sContainerId, sService, sZenodoInstance,
+        _fnRollBackFailedCredential(
+            syncDispatcher, dictCtx, sContainerId, sService,
+            sZenodoInstance, sPreviousToken, dictResult, tSlots,
+        )
+    else:
+        _fnDropContainerSnapshot(
+            syncDispatcher, dictCtx, sContainerId, tSlots[1],
         )
     return dictResult
+
+
+def _ftSnapshotContainerCredential(
+    syncDispatcher, dictCtx, sContainerId, sService, sZenodoInstance,
+):
+    """Copy the container token slot aside before a new token lands.
+
+    Returns ``(sPrimarySlot, sBackupSlot)``. ``sBackupSlot`` is None
+    when the service keeps no container-side credential (Overleaf's
+    token is host-side), when no previous token existed, or when the
+    snapshot attempt failed — the caller then falls back to the
+    historical delete-on-failure behavior for that attempt. The copy
+    runs entirely inside the container so the token value never
+    crosses the docker-exec boundary.
+    """
+    if sService != "zenodo":
+        return (None, None)
+    sPrimarySlot = syncDispatcher.fsZenodoTokenNameForInstance(
+        sZenodoInstance or "sandbox",
+    )
+    sBackupSlot = sPrimarySlot + "_backup"
+    try:
+        bCopied = syncDispatcher.fbCopyCredentialInContainer(
+            dictCtx["docker"], sContainerId, sPrimarySlot, sBackupSlot,
+        )
+    except Exception:
+        return (sPrimarySlot, None)
+    return (sPrimarySlot, sBackupSlot if bCopied else None)
+
+
+def _fnDropContainerSnapshot(
+    syncDispatcher, dictCtx, sContainerId, sBackupSlot,
+):
+    """Best-effort removal of a no-longer-needed snapshot slot."""
+    if not sBackupSlot:
+        return
+    try:
+        syncDispatcher.fnDeleteCredentialFromContainer(
+            dictCtx["docker"], sContainerId, sBackupSlot,
+        )
+    except Exception:
+        pass
+
+
+def _fbRestoreContainerSnapshot(
+    syncDispatcher, dictCtx, sContainerId, tSlots,
+):
+    """Copy the snapshot back over the failed token; drop the snapshot."""
+    sPrimarySlot, sBackupSlot = tSlots
+    if not sBackupSlot:
+        return False
+    try:
+        bRestored = syncDispatcher.fbCopyCredentialInContainer(
+            dictCtx["docker"], sContainerId, sBackupSlot, sPrimarySlot,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to restore the previous container token after a "
+            "validation failure", exc_info=True,
+        )
+        return False
+    _fnDropContainerSnapshot(
+        syncDispatcher, dictCtx, sContainerId, sBackupSlot,
+    )
+    return bRestored
+
+
+def _fsFetchPreviousHostCredential(sService):
+    """Return the currently stored host-keyring token, or None.
+
+    Only Overleaf keeps its token in the host keyring; the container-
+    side services (Zenodo) would require echoing the secret through a
+    ``docker exec`` round trip to capture it, so they keep the
+    historical delete-on-failure behavior. Any read error is treated
+    as "nothing stored" so a broken keyring cannot block the connect
+    flow.
+    """
+    if sService != "overleaf":
+        return None
+    from vaibify.config.secretManager import fsRetrieveSecret
+    try:
+        return fsRetrieveSecret("overleaf_token", "keyring")
+    except Exception:
+        return None
+
+
+def _fnRollBackFailedCredential(
+    syncDispatcher, dictCtx, sContainerId, sService,
+    sZenodoInstance, sPreviousToken, dictResult, tSlots=(None, None),
+):
+    """Undo a failed-validation store: restore the previous token or delete.
+
+    Overleaf restores from the host keyring capture; container-side
+    services (Zenodo) restore from the in-container snapshot slot.
+    Appends the disposition to the result message so the dashboard
+    states plainly whether a previously saved token survived.
+    """
+    if sPreviousToken is not None and sService == "overleaf":
+        from vaibify.config.secretManager import fnStoreSecret
+        try:
+            fnStoreSecret("overleaf_token", sPreviousToken, "keyring")
+            _fnAppendTokenDisposition(dictResult, bRestored=True)
+            return
+        except Exception:
+            logger.warning(
+                "Failed to restore the previous %s token after a "
+                "validation failure", sService, exc_info=True,
+            )
+    if _fbRestoreContainerSnapshot(
+        syncDispatcher, dictCtx, sContainerId, tSlots,
+    ):
+        _fnAppendTokenDisposition(dictResult, bRestored=True)
+        return
+    _fnCleanupCredential(
+        syncDispatcher, dictCtx["docker"],
+        sContainerId, sService, sZenodoInstance,
+    )
+    _fnAppendTokenDisposition(dictResult, bRestored=False)
+
+
+def _fnAppendTokenDisposition(dictResult, bRestored):
+    """State what happened to the stored token after a failed validation."""
+    sDisposition = (
+        " — the entered token was not saved; your previously saved "
+        "token was restored"
+        if bRestored
+        else " — the entered token was not saved"
+    )
+    dictResult["sMessage"] = (
+        dictResult.get("sMessage") or "Validation failed"
+    ) + sDisposition
 
 
 async def _fdictValidateStoredCredential(
@@ -1981,6 +2303,23 @@ def _fdictRunArxivVerifyAfterConfig(dictWorkflow, filesRepo):
         return {"dictArxivStatus": None, "sVerifyError": str(errorAny)}
 
 
+def _fsClearArxivSyncCache(filesRepo):
+    """Drop the cached arXiv verify result; return an error string or "".
+
+    Removing the connection must also remove the last verify report,
+    or the requirements panel keeps rendering a ghost divergence count
+    for a remote the workflow no longer tracks. Best-effort: a cache
+    that cannot be cleared must not block the removal itself, so the
+    error is surfaced on the response instead of raised.
+    """
+    from vaibify.reproducibility import scheduledReverify
+    try:
+        scheduledReverify.fnDeleteSyncStatus(filesRepo, "arxiv")
+        return ""
+    except Exception as errorAny:
+        return str(errorAny)
+
+
 def _fnRegisterArxivConfigure(app, dictCtx):
     """Register POST /api/sync/{id}/arxiv/configure endpoint."""
 
@@ -1995,7 +2334,11 @@ def _fnRegisterArxivConfigure(app, dictCtx):
         if request.bRemove:
             _fnPersistArxivConfig(
                 dictCtx, sContainerId, dictWorkflow, None)
-            return {"dictArxivConfig": {}, "sVerifyError": ""}
+            sClearError = await asyncio.to_thread(
+                _fsClearArxivSyncCache,
+                ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            )
+            return {"dictArxivConfig": {}, "sVerifyError": sClearError}
         _fnValidateArxivId(request.sArxivId)
         _fnValidateArxivPathMap(request.dictPathMap)
         dictConfig = _fdictBuildArxivConfig(request)
@@ -2015,6 +2358,7 @@ def _fnRegisterArxivConfigure(app, dictCtx):
 def fnRegisterAll(app, dictCtx):
     """Register all sync and reproducibility routes."""
     _fnRegisterOverleafPush(app, dictCtx)
+    _fnRegisterPullManuscript(app, dictCtx)
     _fnRegisterOverleafMirrorRefresh(app, dictCtx)
     _fnRegisterOverleafMirrorTree(app, dictCtx)
     _fnRegisterOverleafDiff(app, dictCtx)

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vision &mdash; Vaibify 0.0.1.dev483 documentation</title>
+  <title>Vision &mdash; Vaibify 0.0.1.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=232d27ef"></script>
+      <script src="_static/documentation_options.js?v=1f90faf9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -135,7 +135,7 @@ metrological traceability, art-world provenance. At each level we
 state what it proves and, equally important, what it does not.</p>
 <section id="l1-self-consistent">
 <h3>L1 — Self-Consistent<a class="headerlink" href="#l1-self-consistent" title="Link to this heading"></a></h3>
-<p>All workflow tests pass. Every file declared as canonical matches
+<p>All project tests pass. Every file declared as canonical matches
 the workspace’s last local commit. Test markers reproduce on a
 fresh clone: the recorded content hashes match what the author
 verified.</p>
@@ -164,7 +164,7 @@ be re-executed to yield the same bits.</p></li>
 <h3>L3 — Reproducible<a class="headerlink" href="#l3-reproducible" title="Link to this heading"></a></h3>
 <p>The Docker image is reproducibly buildable: <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">build</span> <span class="pre">.</span></code> at the
 committed Dockerfile produces a byte-identical image hash on any
-capable host. The workflow is deterministic — random seeds declared,
+capable host. The project is deterministic — random seeds declared,
 BLAS threading pinned, no nondeterministic libraries. Running
 <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">&lt;url&gt;</span></code> on a fresh clone regenerates output files
 whose hashes match the committed baseline.</p>
@@ -196,7 +196,7 @@ verified the re-execution.</p></li>
 <section id="l5-attested">
 <h3>L5 — Attested<a class="headerlink" href="#l5-attested" title="Link to this heading"></a></h3>
 <p>Independent third parties — CI services, collaborators, archival
-bots — have re-run the workflow and published signed attestations
+bots — have re-run the project and published signed attestations
 that their output hashes match the committed baseline. Attestations
 are in a transparency log (Sigstore / Rekor style), so revocation
 and provenance of the attestation itself are public.</p>
@@ -219,9 +219,9 @@ could claim levels on it. Vaibify is <em>an</em> implementation, not <em>the</em
 implementation.</p>
 <p>Two properties we deliberately keep off the ladder:</p>
 <ul class="simple">
-<li><p><strong>Test meaningfulness.</strong> Whether a workflow’s tests are actually
+<li><p><strong>Test meaningfulness.</strong> Whether a project’s tests are actually
 strong enough to catch subtle errors (mutation-testing coverage,
-adversarial robustness) is a property a workflow should have at
+adversarial robustness) is a property a project should have at
 any level. It is a property of the tests, not of reproducibility.</p></li>
 <li><p><strong>Physics-informed validation.</strong> Whether the numerical result
 respects conservation laws, symmetries, or asymptotic limits is a
@@ -249,7 +249,7 @@ their work and avoids creating yet another platform lock-in.</p>
 <p><strong>AI agents as equal participants in the authorship graph.</strong>
 Infrastructure that assumes “the author” is a human and “tools” are
 what agents use cannot cleanly accommodate a future where significant
-portions of a workflow are produced by agents. Vaibify’s pre-push
+portions of a project are produced by agents. Vaibify’s pre-push
 manifest check, content-hash-bound test markers, and per-remote
 freshness badges exist so that agent output is subject to the same
 verification gates as human output, with no special privilege in

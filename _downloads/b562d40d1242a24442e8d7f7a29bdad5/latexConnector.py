@@ -167,7 +167,7 @@ def fdictMatchFiguresToSteps(listFigureNames, dictWorkflow):
     ):
         sStepName = dictStep.get("sName", "")
         sCamelDir = _fsCamelCaseDirectoryLocal(sStepName)
-        for sKey in ("saPlotFiles", "saDataFiles"):
+        for sKey in ("saPlotFiles", "saOutputDataFiles"):
             for sFile in dictStep.get(sKey, []):
                 sBasename = os.path.basename(sFile)
                 if sBasename in listFigureNames:

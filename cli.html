@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.1.dev483 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.1.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=232d27ef"></script>
+      <script src="_static/documentation_options.js?v=1f90faf9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -197,7 +197,7 @@ directory. Projects are registered automatically when you run
 </tr>
 </tbody>
 </table>
-<p>Creates <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> in the current
+<p>Creates <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> in the current
 directory.</p>
 </section>
 <section id="vaibify-register">
@@ -462,7 +462,7 @@ stdout as the run progresses.</p>
 </section>
 <section id="vaibify-workflow">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">workflow</span></code><a class="headerlink" href="#vaibify-workflow" title="Link to this heading"></a></h3>
-<p>Print a summary of the current workflow, or details for a single step.
+<p>Print a summary of the current project, or details for a single step.
 Without <code class="docutils literal notranslate"><span class="pre">--step</span></code>, emits a table of all steps with their last verification
 status and run timestamp. With <code class="docutils literal notranslate"><span class="pre">--step</span> <span class="pre">N</span></code>, emits the step’s name,
 directory, run flags, and verification block.</p>
@@ -574,7 +574,7 @@ release triggers — is specified once in the
 <a class="reference internal" href="architecture.html#single-browser-session-per-container"><span class="std std-ref">architecture reference</span></a>;
 that section is the normative source of truth, including the
 holder-payload field table.
-The <strong>New vaibify window</strong> button on the container hub, workflow
+The <strong>New vaibify window</strong> button on the container hub, project
 picker, and Admin menu spawns a detached hub on a free port and
 opens it in a new browser tab.</p>
 </section>
@@ -638,7 +638,7 @@ CLI counterparts will land in a future release. Until then, both
 subcommands print <code class="docutils literal notranslate"><span class="pre">Not</span> <span class="pre">yet</span> <span class="pre">implemented.</span></code> and exit.</p>
 <section id="vaibify-publish-workflow-coming-soon">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> <em>(coming soon)</em><a class="headerlink" href="#vaibify-publish-workflow-coming-soon" title="Link to this heading"></a></h3>
-<p>Generate a GitHub Actions workflow from <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.
+<p>Generate a GitHub Actions workflow from <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.
 The output will be written to <code class="docutils literal notranslate"><span class="pre">.github/workflows/vaibify.yml</span></code>.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>publish<span class="w"> </span>workflow
 </pre></div>

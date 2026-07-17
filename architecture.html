@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev483 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=232d27ef"></script>
+      <script src="_static/documentation_options.js?v=1f90faf9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -63,7 +63,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#architectural-decisions-with-tradeoffs">Architectural decisions with tradeoffs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#workflow-git-repo">Workflow = git repo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#project-git-repo">Project = git repo</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#single-browser-session-per-container">Single browser session per container</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-lease-is-the-access-principal">The lease is the access principal</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-owner-of-record-map-is-the-sole-authority">The owner-of-record map is the sole authority</a></li>
@@ -166,11 +166,11 @@ them in the abstract makes the module layout below much easier to read.</p>
 researcher’s scripts, their Python environment, and any ephemeral files
 the agent produces. The agent launched inside the container sees only what is inside. The host sees
 the container through a narrow, audited interface.</p>
-<p><strong>Workflow.</strong> A <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> file that declares an ordered sequence
-of steps. Workflows are checked into git, travel with the project, and
-reconstruct the same pipeline on a different machine. A workflow is a
+<p><strong>Project.</strong> A <code class="docutils literal notranslate"><span class="pre">project.json</span></code> file that declares an ordered sequence
+of steps. Projects are checked into git, travel with the repository, and
+reconstruct the same pipeline on a different machine. A project is a
 portable unit of reproducibility.</p>
-<p><strong>Step.</strong> One unit of work in a workflow: typically a data command, a
+<p><strong>Step.</strong> One unit of work in a project: typically a data command, a
 plot command, or a test command. Steps declare their script and their
 outputs, and they carry dependencies on the outputs of earlier steps.
 Each step carries verification state.</p>
@@ -178,11 +178,11 @@ Each step carries verification state.</p>
 questions. Did the unit tests pass the last time they ran? Has the
 researcher looked at the output since it last changed? Has an upstream
 step been modified without this step being rerun? Verification state
-lives on the step, is persisted with the workflow, and degrades
+lives on the step, is persisted with the project, and degrades
 automatically when the world underneath it changes. The full state
 machine is defined in <a class="reference download internal" download="" href="_downloads/c35e2a74c4d39c4c220409f084c354cb/fileStatusManager.py"><span class="xref download myst">fileStatusManager.py</span></a>.</p>
 <p><strong>Dashboard as ground truth.</strong> The browser GUI is the only place where
-container status, workflow state, and verification state are surfaced
+container status, project state, and verification state are surfaced
 together. This is a rule, not an aesthetic. Nothing in vaibify may lie
 to the dashboard: no optimistic status, no cached-past-lifetime state,
 no quietly swallowed errors. If the truth is slow or ugly, the
@@ -191,7 +191,7 @@ list treats dashboard honesty as a hard invariant.</p>
 </section>
 <section id="the-happy-path">
 <h2>The happy path<a class="headerlink" href="#the-happy-path" title="Link to this heading"></a></h2>
-<p>The most concrete way to understand how vaibify verifies a workflow is to watch what happens
+<p>The most concrete way to understand how vaibify verifies a project is to watch what happens
 when a researcher clicks <strong>Run All</strong> in the browser.</p>
 <ol class="arabic simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">PipeleyenPipelineRunner.fnRunAll()</span></code> fires in <code class="docutils literal notranslate"><span class="pre">scriptPipelineRunner.js</span></code>.
@@ -202,7 +202,7 @@ the singleton in <code class="docutils literal notranslate"><span class="pre">sc
 backend. The payload is <code class="docutils literal notranslate"><span class="pre">{sAction:</span> <span class="pre">&quot;runAll&quot;}</span></code>.</p></li>
 <li><p>On the backend, the WebSocket handler in <code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code>
 dispatches actions to <code class="docutils literal notranslate"><span class="pre">pipelineRunner.fnRunAllSteps()</span></code>. The runner
-validates the workflow (via <code class="docutils literal notranslate"><span class="pre">pipelineValidator</span></code>), opens a log file
+validates the project (via <code class="docutils literal notranslate"><span class="pre">pipelineValidator</span></code>), opens a log file
 (via <code class="docutils literal notranslate"><span class="pre">pipelineLogger</span></code>), and walks the step list.</p></li>
 <li><p>For each step, the runner executes the step’s command inside the
 container, streaming stdout and stderr back over the same WebSocket
@@ -245,7 +245,7 @@ stream back, debounced render.</p>
 the dashboard honest while nothing is running — the researcher is
 editing a script in the container terminal, or the agent just finished
 a long analysis off-dashboard. Every five seconds the frontend polls
-the backend for the current state of every file the workflow cares
+the backend for the current state of every file the project cares
 about.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Every</span> <span class="mi">5</span> <span class="n">seconds</span> <span class="p">(</span><span class="n">VaibifyPolling</span><span class="p">):</span>
   <span class="o">-&gt;</span> <span class="n">VaibifyApi</span><span class="o">.</span><span class="n">fdictGet</span><span class="p">(</span><span class="s2">&quot;/api/pipeline/</span><span class="si">{id}</span><span class="s2">/file-status&quot;</span><span class="p">)</span>
@@ -264,6 +264,24 @@ about.</p>
 When an upstream step is modified, downstream steps are flagged as
 upstream-modified. The researcher sees verification badges dim
 automatically; no one has to remember to invalidate anything by hand.</p>
+<p>Declared input data (<code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code> — raw files a step consumes
+that no step produces) rides the same poll: input paths join the
+stat batch, an mtime delta on a declared input invalidates every
+step that declares it (matched by full resolved path against the
+repository root, never by basename), and the marker-hash pass reads
+<code class="docutils literal notranslate"><span class="pre">dictInputHashes</span></code> alongside <code class="docutils literal notranslate"><span class="pre">dictOutputHashes</span></code> so content drift with
+a preserved mtime is caught while a fresh clone with identical
+content stays green. The staleness rows label the input lane
+distinctly (“Input data modified since last run”).</p>
+<p>Run dispatch carries one more gate beside the busy-refusal: a run
+covering a step whose <code class="docutils literal notranslate"><span class="pre">listRemoteData</span></code> files already exist on disk
+is answered with <code class="docutils literal notranslate"><span class="pre">runRefused</span></code> <code class="docutils literal notranslate"><span class="pre">sReason=remoteDataOverwrite</span></code> unless
+the request confirms the overwrite. The gate lives at the single
+WebSocket dispatch choke point so the browser and the in-container
+agent meet the identical rule; the interactive Run-in-Terminal
+buttons never reach dispatch (they compose a shell command
+client-side), so that one lane carries the same check in the
+frontend — a documented exception, not an enforcement path.</p>
 <p>Each poll’s path-mtime collection is one <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> total, fed by
 a path list written to <code class="docutils literal notranslate"><span class="pre">/tmp/vaibifyPoll.list</span></code> via
 <code class="docutils literal notranslate"><span class="pre">connectionDocker.fnWriteFileViaTar</span></code> and consumed by
@@ -280,7 +298,7 @@ on an in-place rewrite of an existing child, so the optimization
 silently fed stale mtimes back to the reload detector and the
 “step source modified” invalidation pass whenever an out-of-band
 editor (the in-container agent’s <code class="docutils literal notranslate"><span class="pre">Edit</span></code> tool, <code class="docutils literal notranslate"><span class="pre">vim</span> <span class="pre">:w</span></code>, <code class="docutils literal notranslate"><span class="pre">sed</span> <span class="pre">-i</span></code> on
-some platforms) modified <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> or a step script in place.
+some platforms) modified <code class="docutils literal notranslate"><span class="pre">project.json</span></code> or a step script in place.
 The cache layer has been removed: every poll stats the polled paths
 directly. This still costs exactly one <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> per poll
 (the dominant wire cost) and trades a small per-poll byte increase
@@ -321,7 +339,7 @@ read and write the workspace volume from the host side, and it needs
 to serve the GUI over localhost. This is what makes features like pull
 files to host, browse host directories, and sync to GitHub possible at
 all. The cost is that path traversal is a live concern: any path that
-originates from an HTTP request body, a <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> field, or a
+originates from an HTTP request body, a <code class="docutils literal notranslate"><span class="pre">project.json</span></code> field, or a
 config file must be validated against its intended root before the
 backend opens it. <code class="docutils literal notranslate"><span class="pre">fnValidatePathWithinRoot(sAbsPath,</span> <span class="pre">WORKSPACE_ROOT)</span></code>
 in <code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code> is the canonical guard; the trap list in
@@ -371,36 +389,36 @@ until a cross-platform user hit it. The divergence is load-bearing;
 the <span class="xref myst">AGENTS.md</span> trap list and
 <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> both guard it.</p>
 </section>
-<section id="workflow-git-repo">
-<h2>Workflow = git repo<a class="headerlink" href="#workflow-git-repo" title="Link to this heading"></a></h2>
-<p>Every vaibify workflow lives inside a git repository — its “project
-repo”. The <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> file belongs to that repo, not to the
+<section id="project-git-repo">
+<h2>Project = git repo<a class="headerlink" href="#project-git-repo" title="Link to this heading"></a></h2>
+<p>Every vaibify project lives inside a git repository — its
+“repository”. The <code class="docutils literal notranslate"><span class="pre">project.json</span></code> file belongs to that repo, not to the
 container, not to <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>, and not to a shared vaibify-managed
 location. This constraint is enforced at discovery time
 (<code class="docutils literal notranslate"><span class="pre">flistFindWorkflowsInContainer</span></code> drops any candidate not inside a git
 work tree) and at creation time (<code class="docutils literal notranslate"><span class="pre">_fsValidateRepoDirectory</span></code> rejects
 target directories that are not git repos). It maps directly to L1 of
-the reproducibility ladder in <a class="reference internal" href="vision.html"><span class="std std-doc">vision.md</span></a>: a workflow that
+the reproducibility ladder in <a class="reference internal" href="vision.html"><span class="std std-doc">vision.md</span></a>: a project that
 cannot be committed cannot be reproduced.</p>
 <p><code class="docutils literal notranslate"><span class="pre">/workspace</span></code> itself is a Docker-managed named volume, not a repo. It
-is the <em>discovery root</em> — the search origin for workflow.json files —
+is the <em>discovery root</em> — the search origin for project.json files —
 but not a git target. Inside a container, <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> contains N
-project-repo subdirectories (each a standalone git clone) plus some
+repository subdirectories (each a standalone git clone) plus some
 shared configuration. A single container can therefore host multiple
-workflows: GJ1132_XUV’s paper pipeline today, XUVCatalog’s
+projects: GJ1132_XUV’s paper pipeline today, XUVCatalog’s
 cross-system analysis tomorrow, both reusing the same heavy dependency
 clones without needing a rebuild.</p>
-<p>The <strong>active workflow determines the badge scope</strong>. At connect time,
+<p>The <strong>active project determines the badge scope</strong>. At connect time,
 <code class="docutils literal notranslate"><span class="pre">fdictHandleConnect</span></code> runs <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">rev-parse</span> <span class="pre">--show-toplevel</span></code> inside the
 container, starting from the directory that contains the loaded
-<code class="docutils literal notranslate"><span class="pre">workflow.json</span></code>. The result is stamped on the workflow dict as
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code>. The result is stamped on the workflow dict as
 <code class="docutils literal notranslate"><span class="pre">dictWorkflow[&quot;sProjectRepoPath&quot;]</span></code> and every subsequent git / badge /
 manifest call threads it through <code class="docutils literal notranslate"><span class="pre">containerGit</span></code> as the authoritative
 workspace. The helper lives in
 <code class="docutils literal notranslate"><span class="pre">containerGit.fsDetectProjectRepoInContainer</span></code>; the routes read it from
 the active workflow dict.</p>
-<p>Per-step output paths (<code class="docutils literal notranslate"><span class="pre">saOutputFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saDataFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>)
-must be repo-relative and must stay inside the project repo. Absolute
+<p>Per-step output paths (<code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>)
+must be repo-relative and must stay inside the repository. Absolute
 paths and <code class="docutils literal notranslate"><span class="pre">..</span></code>-escaping paths are rejected by
 <code class="docutils literal notranslate"><span class="pre">flistValidateOutputFilePaths</span></code> on save. Step directories (<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>
 on each step) are held to the same rule by <code class="docutils literal notranslate"><span class="pre">flistValidateStepDirectories</span></code>
@@ -409,12 +427,12 @@ repo-relative form <code class="docutils literal notranslate"><span class="pre">
 inside <code class="docutils literal notranslate"><span class="pre">saCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code> are
 deliberately <em>not</em> validated — a step may legitimately read an
 absolute <code class="docutils literal notranslate"><span class="pre">/workspace/GJ1132_XUV/Plot/foo.pdf</span></code> produced by a sibling
-workflow. Badges are emitted only for the producing workflow; a
-consumer workflow sees the file as a read path, not as a tracked
+project. Badges are emitted only for the producing project; a
+consumer project sees the file as a read path, not as a tracked
 artifact.</p>
 <p>Test markers — JSON files that record the outcome of the last pytest
 session for each step, including <code class="docutils literal notranslate"><span class="pre">dictOutputHashes</span></code> for staleness
-detection — live inside the project repo at
+detection — live inside the repository at
 <code class="docutils literal notranslate"><span class="pre">&lt;sProjectRepoPath&gt;/.vaibify/test_markers/&lt;slug&gt;.json</span></code> where the slug
 is derived from the step’s (repo-relative) <code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>. Marker
 <em>writes</em> (by the conftest plugin deployed into each step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code>
@@ -422,19 +440,19 @@ directory) and <em>reads</em> (by <code class="docutils literal notranslate"><sp
 <code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code>) both resolve the directory through
 <code class="docutils literal notranslate"><span class="pre">dictWorkflow[&quot;sProjectRepoPath&quot;]</span></code> — no module hardcodes
 <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code>. Together with committing the
-markers alongside the workflow, this makes test-verification state
-survive a clone of the project repo.</p>
+markers alongside the project, this makes test-verification state
+survive a clone of the repository.</p>
 <p>This choice has two architectural consequences worth naming:</p>
 <ul class="simple">
-<li><p><strong>No workspace-root workflows.</strong> A <code class="docutils literal notranslate"><span class="pre">workflow.json</span></code> at <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>
+<li><p><strong>No workspace-root projects.</strong> A <code class="docutils literal notranslate"><span class="pre">project.json</span></code> at <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>
 (outside any enclosing git repo) cannot be reproduced and is not
 allowed. The <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code> surfaces this by stamping an empty
 <code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>, at which point the four <code class="docutils literal notranslate"><span class="pre">/api/git/*</span></code> endpoints
 return the explicit “Workflow is not in a git repository” payload
 rather than silently reporting <code class="docutils literal notranslate"><span class="pre">bIsRepo:</span> <span class="pre">false</span></code> against <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>.</p></li>
-<li><p><strong>Forward-compatible multi-workflow model.</strong> The workflow-dict field
-is the anchor for a future workflow-selector UI: when the user
-switches active workflows in a container, the cache key widens to
+<li><p><strong>Forward-compatible multi-project model.</strong> The workflow-dict field
+is the anchor for a future project-selector UI: when the user
+switches active projects in a container, the cache key widens to
 <code class="docutils literal notranslate"><span class="pre">(sContainerId,</span> <span class="pre">sWorkflowPath)</span></code> and the badge scope re-scopes
 automatically — no changes to the git, badge, or manifest code.</p></li>
 </ul>
@@ -446,7 +464,7 @@ reintroduce the all-grey-badges bug that motivated this design. A
 companion invariant <code class="docutils literal notranslate"><span class="pre">testNoWorkspaceRootedMarkerHardcodeInSource</span></code>
 bans the literal <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code> in any module
 under <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> — enforcing that marker paths are always
-resolved from the active workflow’s <code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>.</p>
+resolved from the active project’s <code class="docutils literal notranslate"><span class="pre">sProjectRepoPath</span></code>.</p>
 </section>
 <section id="single-browser-session-per-container">
 <h2>Single browser session per container<a class="headerlink" href="#single-browser-session-per-container" title="Link to this heading"></a></h2>
@@ -583,7 +601,7 @@ that copied the lease out of <code class="docutils literal notranslate"><span cl
 claim, so exclusivity for that case is enforced at the WebSocket gate —
 but scoped to the <strong>pipeline lane</strong>. One legitimate session holds
 several sockets at once: the terminal strip opens a terminal WebSocket
-on workflow entry, Run Step opens the pipeline WebSocket on demand, and
+on project entry, Run Step opens the pipeline WebSocket on demand, and
 extra terminal tabs add more. Budgeting <em>all</em> sockets shipped the
 Run-Step-always-refused bug: the terminal held the single slot, every
 pipeline connection was closed 4409, and the browser reported a healthy
@@ -778,7 +796,7 @@ updates during execution.</p></li>
 protocol.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineState.py</span></code> — pipeline state persistence to
 <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/pipeline_state.json</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> — workflow CRUD, variable resolution, step
+<li><p><code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> — project CRUD, variable resolution, step
 references, dependency graph. Uses <code class="docutils literal notranslate"><span class="pre">posixpath</span></code> because it operates
 on container paths.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fileStatusManager.py</span></code> — file-status polling, mtime tracking, step
@@ -886,7 +904,7 @@ layout.</p>
 </section>
 <section id="verification-state-machine">
 <h2>Verification state machine<a class="headerlink" href="#verification-state-machine" title="Link to this heading"></a></h2>
-<p>Each workflow step carries a <code class="docutils literal notranslate"><span class="pre">dictVerification</span></code> dict. The formal state
+<p>Each project step carries a <code class="docutils literal notranslate"><span class="pre">dictVerification</span></code> dict. The formal state
 machine is documented in <code class="docutils literal notranslate"><span class="pre">fileStatusManager.py</span></code>’s module docstring.
 Key fields:</p>
 <ul class="simple">
@@ -907,7 +925,7 @@ results.</p></li>
 <code class="docutils literal notranslate"><span class="pre">untested</span></code>.</p></li>
 </ul>
 <p>This state machine is load-bearing for the dashboard’s honesty
-guarantee: the GUI must always reflect the true state of the workflow.
+guarantee: the GUI must always reflect the true state of the project.
 See the relevant trap in <span class="xref myst">../AGENTS.md</span>.</p>
 </section>
 <section id="two-aics-level-truth-systems">
@@ -917,30 +935,31 @@ deliberately different shapes, and misreading one as the other is the
 most likely way to misjudge the dashboard:</p>
 <ol class="arabic simple">
 <li><p><strong>The scalar aggregate</strong> — <code class="docutils literal notranslate"><span class="pre">levelGates.fiAICSLevel</span></code> /
-<code class="docutils literal notranslate"><span class="pre">fbAtLeastLevelN</span></code>. Strictly additive over the whole workflow: L1
+<code class="docutils literal notranslate"><span class="pre">fbAtLeastLevelN</span></code>. Strictly additive over the whole project: L1
 requires every step’s L1 blockers clear, L2 requires L1, L3
-requires L2. This is “what level is this workflow at,” and it is
+requires L2. This is “what level is this project at,” and it is
 what the AICS chip in the dashboard header renders. (Historical
 note: an early boolean <code class="docutils literal notranslate"><span class="pre">bVaibified</span></code> predated the ladder and meant
-what <code class="docutils literal notranslate"><span class="pre">fiAICSLevel</span> <span class="pre">&gt;=</span> <span class="pre">1</span></code> means now; the v4 workflow migration drops
+what <code class="docutils literal notranslate"><span class="pre">fiAICSLevel</span> <span class="pre">&gt;=</span> <span class="pre">1</span></code> means now; the v4 project migration drops
 the key on load, which is the excision mechanism — do not remove
 the migration.)</p></li>
 <li><p><strong>The independent cell projections</strong> —
 <code class="docutils literal notranslate"><span class="pre">fdictComputeStepLevelStates</span></code> (per step) and
-<code class="docutils literal notranslate"><span class="pre">fdictComputeWorkflowScopeLevelStates</span></code> (the Workflow header row).
+<code class="docutils literal notranslate"><span class="pre">fdictComputeWorkflowScopeLevelStates</span></code> (the Project header row).
 Each cell answers “which requirements <em>at this scope and level</em>
 are satisfied,” with no propagation between levels or scopes. A
 step can honestly read L1 partial + L3 attained; that is a
 feature (the researcher sees exactly which rung needs what), not
 a contradiction.</p></li>
 </ol>
-<p>The corollary that trips readers: <strong>the Workflow row is not a summary
+<p>The corollary that trips readers: <strong>the Project row is not a summary
 row.</strong> Its cells cover only the requirements that attach to no single
-step — L1: the project repo exists; L2: sync-verify freshness plus
-the arXiv criteria; L3: the envelope artifacts (pinned Dockerfile,
+step — L1: the repository exists; L2: sync-verify freshness plus
+the arXiv criteria (only when an arXiv submission is recorded — the
+arXiv claim is opt-in); L3: the envelope artifacts (pinned Dockerfile,
 dependency lock, environment snapshot, reproduce script, attestation,
-binary declarations). A Workflow-row L1 check above red step rows is
-therefore a consistent display: the workflow-wide L1 requirement is
+binary declarations). A Project-row L1 check above red step rows is
+therefore a consistent display: the project-scope L1 requirement is
 met while per-step L1 work remains, and the chip — the aggregate —
 still says Level 0. The cell tooltips state this scoping.</p>
 <p>Honesty floors inside the cell projection: a stale sync cache renders
@@ -1032,7 +1051,7 @@ other modules call.</p></li>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">_fnResetWorkflowState()</span></code> uses a factory function to reset all fields
-atomically, preventing state leaks across workflow switches. Sets use
+atomically, preventing state leaks across project switches. Sets use
 <code class="docutils literal notranslate"><span class="pre">.clear()</span></code> rather than reassignment so that references held by the
 render context stay valid.</p>
 </section>
@@ -1045,7 +1064,7 @@ available for the rare case where the DOM must be read immediately
 after rendering.</p>
 <p>Every render calls <code class="docutils literal notranslate"><span class="pre">fnUpdateHighlightState()</span></code> to synchronize the
 toolbar verification indicator (checkmark and color shift) with the
-current workflow state.</p>
+current project state.</p>
 </section>
 </section>
 <section id="testing">

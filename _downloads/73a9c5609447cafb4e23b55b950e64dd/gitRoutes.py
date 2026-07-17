@@ -174,6 +174,7 @@ def _flistCanonicalFromContainer(
     """Return canonical tracked paths using one docker exec per scan."""
     listVaibify = containerGit.flistListContainerFiles(
         docker, sContainerId, [
+            stateContract.S_VAIBIFY_PROJECTS_GLOB,
             stateContract.S_VAIBIFY_WORKFLOWS_GLOB,
             stateContract.S_VAIBIFY_MARKERS_GLOB,
             stateContract.S_VAIBIFY_ZENODO_REFS,

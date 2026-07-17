@@ -28,10 +28,18 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # isolation here.
 RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
 
-# Generic build tools required by the base image
+# Generic build tools required by the base image. gfortran, cmake,
+# and LAPACK/BLAS are baseline (not per-project system-packages.txt
+# entries, which is a gitignored user config) because the Dockerfile
+# itself needs them unconditionally to build the MultiNest native
+# library below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    gfortran \
+    cmake \
+    liblapack-dev \
+    libblas-dev \
     make \
     git \
     openssh-client \
@@ -166,6 +174,48 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
 RUN pip install --no-cache-dir keyring keyrings.alt
 ENV PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring
 
+# Mutation-testing engine for the per-step falsification attestation
+# (the dashboard's "Check test teeth" action). Installed at the
+# baseline so every project container can grade its quantitative
+# tests' fault-detection sensitivity without per-project
+# configuration. Runs as the unprivileged container user against
+# files inside the workspace volume; adds no network service.
+RUN pip install --no-cache-dir cosmic-ray
+
+# claude-monitor: the session-usage instrument behind the
+# session-budget agent skill. Parses the LOCAL Claude Code
+# transcripts only (an account-wide lower bound, never an exact
+# gauge — the skill documents this caveat); pure Python, no Node
+# runtime, no network service.
+RUN pip install --no-cache-dir claude-monitor
+
+# Nested-sampling Bayesian inference stack. ultranest is pure pip;
+# pymultinest is only a ctypes wrapper around the native MultiNest
+# library, so MultiNest is built from source here (gfortran, cmake,
+# and LAPACK/BLAS all from the baseline toolchain above — never from
+# the user-configurable system-packages.txt) and its shared libraries
+# installed where the loader finds them — a bare "pip install
+# pymultinest" imports fine and then fails at first use with
+# "libmultinest.so not found".
+#
+# Build ONLY the library targets (multinest_shared / multinest_static)
+# — a bare "make" also compiles the bundled example executables, and a
+# single example's compile failure aborts the whole build (exit 2)
+# even though libmultinest.so built cleanly. pymultinest needs only
+# the shared library, so the examples are pure liability. The upstream
+# CMake already adds -std=legacy -fallow-argument-mismatch for
+# gfortran >= 10, so no compatibility flag is needed here.
+RUN git clone --depth 1 \
+        https://github.com/JohannesBuchner/MultiNest.git \
+        /tmp/MultiNest \
+    && cmake -S /tmp/MultiNest -B /tmp/MultiNest/build \
+    && make -C /tmp/MultiNest/build -j"$(nproc)" \
+        multinest_shared multinest_static \
+    && cp -a /tmp/MultiNest/lib/. /usr/local/lib/ \
+    && ldconfig \
+    && rm -rf /tmp/MultiNest
+RUN pip install --no-cache-dir ultranest pymultinest
+
 # Conditional conda/mamba install for non-pip package managers.
 # Wrap the network call so a TLS or routing failure to GitHub /
 # objects.githubusercontent.com produces an actionable diagnostic —
@@ -239,6 +289,8 @@ RUN mkdir -p /etc/vaibify
 COPY container.conf /etc/vaibify/container.conf
 COPY binaries.env /etc/vaibify/binaries.env
 COPY director.py /usr/share/vaibify/director.py
+COPY skills /usr/share/vaibify/skills
+COPY docs-staged /usr/share/vaibify/docs
 COPY overleafSync.py /usr/share/vaibify/overleafSync.py
 COPY latexConnector.py /usr/share/vaibify/latexConnector.py
 COPY zenodoClient.py /usr/share/vaibify/zenodoClient.py
