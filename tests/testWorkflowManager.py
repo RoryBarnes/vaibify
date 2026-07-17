@@ -16,8 +16,125 @@ from vaibify.gui.workflowManager import (
     fsCamelCaseDirectory,
     flistExtractStepScripts,
     fdictBuildStepDirectoryMap,
+    fdictBuildStepVariables,
+    fdictBuildDirectDependencies,
+    fdictStepIdToIndex,
     DEFAULT_SEARCH_ROOT,
 )
+
+
+def _fdictTwoStepSymbolicWorkflow():
+    """Refit (id 'refit') → Plot, wired with a symbolic token."""
+    return {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Refit", "sStepId": "refit", "sDirectory": "Refit",
+             "saOutputDataFiles": ["chains.npz"], "saPlotCommands": [],
+             "saPlotFiles": []},
+            {"sName": "Plot", "sStepId": "plot", "sDirectory": "Plot",
+             "saOutputDataFiles": [],
+             "saPlotCommands": ["plot {step:refit.chains}"],
+             "saPlotFiles": ["out.pdf"]},
+        ],
+    }
+
+
+def test_symbolic_token_resolves_to_output_path():
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    dictVars = {"sRepoRoot": "/repo"}
+    dictStepVars = fdictBuildStepVariables(dictWorkflow, dictVars)
+    assert dictStepVars["step:refit.chains"] == "/repo/Refit/chains.npz"
+    # The positional alias still resolves during the transition.
+    assert dictStepVars["Step01.chains"] == "/repo/Refit/chains.npz"
+
+
+def test_symbolic_dependency_edge_is_detected():
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    # Refit (index 0) is upstream of Plot (index 1).
+    assert 1 in dictDirect.get(0, set())
+
+
+def test_symbolic_edge_survives_reorder_positional_would_not():
+    """The whole point of stable ids: insert a step ABOVE the producer
+    and the symbolic reference still points at it. A positional
+    {Step01.chains} would now silently name the inserted step."""
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    fnInsertStep(dictWorkflow, 0, {
+        "sName": "Prelude", "sStepId": "prelude", "sDirectory": "Prelude",
+        "saOutputDataFiles": ["note.txt"], "saPlotCommands": [], "saPlotFiles": [],
+    })
+    # Refit is now at index 1, Plot at index 2. The command text is
+    # unchanged (symbolic tokens are never renumbered).
+    assert dictWorkflow["listSteps"][2]["saPlotCommands"] == [
+        "plot {step:refit.chains}",
+    ]
+    dictIdToIndex = fdictStepIdToIndex(dictWorkflow)
+    assert dictIdToIndex["refit"] == 1
+    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
+    # Edge still runs Refit(1) -> Plot(2), NOT Prelude(0) -> Plot.
+    assert 2 in dictDirect.get(1, set())
+    assert 2 not in dictDirect.get(0, set())
+
+
+def test_positional_reference_earns_deprecation_warning():
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "A", "sStepId": "a", "sDirectory": "A",
+             "saOutputDataFiles": ["x.npz"], "saPlotCommands": [],
+             "saPlotFiles": []},
+            {"sName": "B", "sStepId": "b", "sDirectory": "B",
+             "saPlotCommands": ["run {Step01.x}"], "saPlotFiles": []},
+        ],
+    }
+    listWarnings = flistValidateReferences(dictWorkflow)
+    assert any("deprecated" in s for s in listWarnings)
+
+
+def test_symbolic_reference_to_unknown_id_warns():
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "B", "sStepId": "b", "sDirectory": "B",
+             "saPlotCommands": ["run {step:ghost.x}"], "saPlotFiles": []},
+        ],
+    }
+    listWarnings = flistValidateReferences(dictWorkflow)
+    assert any("names no step id" in s for s in listWarnings)
+
+
+def test_resolve_workflow_commands_substitutes_symbolic_token():
+    from vaibify.gui.workflowManager import fdictResolveWorkflowCommands
+    dictWorkflow = _fdictTwoStepSymbolicWorkflow()
+    dictReport = fdictResolveWorkflowCommands(
+        dictWorkflow, {"sRepoRoot": "/repo"},
+    )
+    dictPlotCmd = dictReport["listSteps"][1]["listCommands"][0]
+    assert dictPlotCmd["sResolved"] == "plot /repo/Refit/chains.npz"
+    assert dictPlotCmd["listUnresolvedTokens"] == []
+
+
+def test_resolve_workflow_commands_flags_dangling_token():
+    """A reference to a nonexistent output stays unresolved and is
+    reported — the whole point of the dry-run."""
+    from vaibify.gui.workflowManager import fdictResolveWorkflowCommands
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "Refit", "sStepId": "refit", "sDirectory": "Refit",
+             "saOutputDataFiles": ["chains.npz"], "saPlotCommands": [],
+             "saPlotFiles": []},
+            {"sName": "Plot", "sStepId": "plot", "sDirectory": "Plot",
+             "saPlotCommands": ["plot {step:refit.ghost}"],
+             "saPlotFiles": []},
+        ],
+    }
+    dictReport = fdictResolveWorkflowCommands(
+        dictWorkflow, {"sRepoRoot": "/repo"},
+    )
+    dictPlotCmd = dictReport["listSteps"][1]["listCommands"][0]
+    assert dictPlotCmd["listUnresolvedTokens"] == ["{step:refit.ghost}"]
 
 
 def _fdictBuildMinimalWorkflow(iStepCount=2):
@@ -131,6 +248,18 @@ def test_fdictCreateStep_defaults():
     assert dictStep["saDataCommands"] == []
     assert dictStep["saPlotCommands"] == []
     assert dictStep["saPlotFiles"] == []
+    assert dictStep["saInputDataFiles"] == []
+    assert dictStep["bNoInputData"] is False
+    assert dictStep["listRemoteData"] == []
+
+
+def test_fdictCreateStep_accepts_input_data_files():
+    dictStep = fdictCreateStep(
+        sName="Posteriors",
+        sDirectory="posteriors",
+        saInputDataFiles=["data/observations.csv"],
+    )
+    assert dictStep["saInputDataFiles"] == ["data/observations.csv"]
 
 
 def test_fnInsertStep_renumbers_references():
@@ -632,8 +761,7 @@ def test_flistValidateOutputFilePaths_accepts_repo_relative():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["figure.pdf", "data/result.csv"],
-            "saDataFiles": [],
+            "saOutputDataFiles": ["figure.pdf", "data/result.csv"],
             "saPlotFiles": [],
         }],
     }
@@ -646,8 +774,7 @@ def test_flistValidateOutputFilePaths_rejects_absolute_path():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["/tmp/leak.pdf"],
-            "saDataFiles": [],
+            "saOutputDataFiles": ["/tmp/leak.pdf"],
             "saPlotFiles": [],
         }],
     }
@@ -663,8 +790,7 @@ def test_flistValidateOutputFilePaths_rejects_escaping_parent():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["../../escape.pdf"],
-            "saDataFiles": [],
+            "saOutputDataFiles": ["../../escape.pdf"],
             "saPlotFiles": [],
         }],
     }
@@ -679,9 +805,8 @@ def test_flistValidateOutputFilePaths_skips_template_paths():
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": "analysis",
-            "saOutputFiles": ["{sPlotDirectory}/foo.pdf"],
+            "saOutputDataFiles": ["{sPlotDirectory}/foo.pdf"],
             "saPlotFiles": ["{Step02.result}.png"],
-            "saDataFiles": [],
         }],
     }
     assert flistValidateOutputFilePaths(dictWorkflow) == []
@@ -694,15 +819,13 @@ def test_flistValidateOutputFilePaths_reports_all_violations():
             {
                 "sName": "Step 1",
                 "sDirectory": "s1",
-                "saOutputFiles": ["/absolute.pdf"],
-                "saDataFiles": [],
+                "saOutputDataFiles": ["/absolute.pdf"],
                 "saPlotFiles": [],
             },
             {
                 "sName": "Step 2",
                 "sDirectory": "s2",
-                "saOutputFiles": [],
-                "saDataFiles": ["../../outside.csv"],
+                "saOutputDataFiles": ["../../outside.csv"],
                 "saPlotFiles": [],
             },
         ],
@@ -717,6 +840,123 @@ def test_flistValidateOutputFilePaths_empty_workflow_returns_empty():
     from vaibify.gui.workflowManager import flistValidateOutputFilePaths
     assert flistValidateOutputFilePaths({}) == []
     assert flistValidateOutputFilePaths({"listSteps": []}) == []
+
+
+def _fdictWorkflowWithInputEntries(saInputDataFiles=None, listRemoteData=None):
+    return {
+        "listSteps": [{
+            "sName": "Posteriors",
+            "sDirectory": "posteriors",
+            "saOutputDataFiles": [],
+            "saPlotFiles": [],
+            "saInputDataFiles": list(saInputDataFiles or []),
+            "listRemoteData": list(listRemoteData or []),
+        }],
+    }
+
+
+def test_input_data_files_accept_repo_relative_paths():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["data/observations.csv", "raw/lightcurve.fits"],
+    )
+    assert flistValidateOutputFilePaths(dictWorkflow) == []
+
+
+def test_input_data_files_reject_absolute_path():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["/etc/passwd"],
+    )
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 1
+    assert "repo-relative" in listWarnings[0]
+    assert "saInputDataFiles" in listWarnings[0]
+
+
+def test_input_data_files_reject_escaping_path():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["../outside.csv"],
+    )
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 1
+    assert "escapes" in listWarnings[0]
+
+
+def test_input_data_files_reject_control_characters():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    for sBad in ("data/x\n__VAIBIFY_EOF__", "data/y\x00z", "data/z\r"):
+        dictWorkflow = _fdictWorkflowWithInputEntries(
+            saInputDataFiles=[sBad],
+        )
+        listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+        assert len(listWarnings) == 1, sBad
+        assert "control character" in listWarnings[0]
+
+
+def test_remote_data_path_rejects_control_characters():
+    from vaibify.gui.workflowManager import flistStepRemoteDataPaths
+    dictStep = {
+        "listRemoteData": [
+            {"sPath": "data/good.fits"},
+            {"sPath": "data/evil\n__VAIBIFY_EOF__"},
+        ],
+    }
+    assert flistStepRemoteDataPaths(dictStep) == ["data/good.fits"]
+
+
+def test_input_data_files_reject_step_tokens():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    for sToken in ("{Step03.samples}", "{step:refit.samples}"):
+        dictWorkflow = _fdictWorkflowWithInputEntries(
+            saInputDataFiles=[sToken],
+        )
+        listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+        assert len(listWarnings) == 1
+        assert "must not reference a step product" in listWarnings[0]
+
+
+def test_input_data_files_skip_non_step_templates():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        saInputDataFiles=["{sDataDirectory}/observations.csv"],
+    )
+    assert flistValidateOutputFilePaths(dictWorkflow) == []
+
+
+def test_remote_data_path_rejects_traversal_and_non_dict_entries():
+    from vaibify.gui.workflowManager import flistValidateOutputFilePaths
+    dictWorkflow = _fdictWorkflowWithInputEntries(
+        listRemoteData=[
+            {"sPath": "../../escape.fits", "sSourceUrl": ""},
+            "not-a-dict",
+        ],
+    )
+    listWarnings = flistValidateOutputFilePaths(dictWorkflow)
+    assert len(listWarnings) == 2
+    assert "escapes" in listWarnings[0]
+    assert "must be objects" in listWarnings[1]
+
+
+def test_flistStepRemoteDataPaths_returns_only_safe_paths():
+    from vaibify.gui.workflowManager import flistStepRemoteDataPaths
+    dictStep = {
+        "listRemoteData": [
+            {"sPath": "data/archive_pull.fits", "sSourceUrl": "x"},
+            {"sPath": "/absolute.fits"},
+            {"sPath": "../escape.fits"},
+            {"sPath": "{sTemplate}/file.fits"},
+            {"sPath": ""},
+            "not-a-dict",
+        ],
+    }
+    assert flistStepRemoteDataPaths(dictStep) == ["data/archive_pull.fits"]
+
+
+def test_flistStepRemoteDataPaths_empty_for_step_without_field():
+    from vaibify.gui.workflowManager import flistStepRemoteDataPaths
+    assert flistStepRemoteDataPaths({}) == []
 
 
 class TestOutputTokenStemCollisions:
@@ -747,7 +987,7 @@ class TestOutputTokenStemCollisions:
     def test_fdictBuildStemRegistry_registers_qualified_tokens(self):
         from vaibify.gui.workflowManager import fdictBuildStemRegistry
         dictWorkflow = {"listSteps": [{
-            "saDataFiles": [
+            "saOutputDataFiles": [
                 "EngleBarnes/output/Converged_Param_Dictionary.json",
                 "RibasBarnes/output/Converged_Param_Dictionary.json",
             ],
@@ -761,7 +1001,7 @@ class TestOutputTokenStemCollisions:
         from vaibify.gui.workflowManager import fdictBuildStepVariables
         dictWorkflow = {"listSteps": [{
             "sDirectory": "XuvEvolution",
-            "saDataFiles": [
+            "saOutputDataFiles": [
                 "EngleBarnes/output/Converged_Param_Dictionary.json",
                 "RibasBarnes/output/Converged_Param_Dictionary.json",
             ],

@@ -1476,7 +1476,8 @@ def _fdictActivePollStep():
     """
     return {
         "sDirectory": "stepA", "sName": "A",
-        "saDataFiles": ["stepA/output.json"],
+        "saOutputDataFiles": ["stepA/output.json"],
+        "bNoInputData": True,
         "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
     }
 
@@ -1490,7 +1491,7 @@ def _fdictAttainedCell(iSatisfied, iTotal):
 
 
 _DICT_ALL_ATTAINED_STEP_CELLS = {
-    "s1": _fdictAttainedCell(3, 3),
+    "s1": _fdictAttainedCell(4, 4),
     "s2": _fdictAttainedCell(2, 2),
     "s3": _fdictAttainedCell(1, 1),
 }
@@ -1551,7 +1552,7 @@ class TestPollLevelStatePayload:
         this is the wire-level guard."""
         dictStep = {
             "sDirectory": "stepA", "sName": "A",
-            "saDataFiles": ["stepA/output.json"],
+            "saOutputDataFiles": ["stepA/output.json"],
             "dictVerification": {"sUser": "untested"},
         }
         dictWorkflow = _fdictBuildLevelWorkflow([dictStep])
@@ -1573,7 +1574,7 @@ class TestPollLevelStatePayload:
     async def test_response_carries_envelope_detail_keys(self):
         """The envelope-detail payload arrives with all its sections.
 
-        Four render sections plus the three workflow-wide status
+        Four render sections plus the four project-wide status
         booleans the Publication/Reproducibility rows consume.
         """
         dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
@@ -1587,7 +1588,7 @@ class TestPollLevelStatePayload:
             "listBinaries", "dictArtifacts",
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
-            "bOverleafBound",
+            "bOverleafBound", "bArxivConfigured",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None
@@ -1595,6 +1596,7 @@ class TestPollLevelStatePayload:
             "github", "zenodo", "overleaf", "arxiv",
         }
         assert dictDetail["bOverleafBound"] is False
+        assert dictDetail["bArxivConfigured"] is False
         assert dictDetail["bRebuildAttestationCurrent"] is False
 
     @pytest.mark.asyncio
@@ -1653,7 +1655,7 @@ class TestPollLevelStatePayload:
                 dictCtx, "cid1", dictWorkflow, {},
             )
         assert dictResult["dictStepLevels"]["0"]["s1"] == {
-            "sState": "partial", "iSatisfied": 2, "iTotal": 3,
+            "sState": "partial", "iSatisfied": 3, "iTotal": 4,
             "bRegression": True,
         }
         assert dictResult["dictStepLevelHighWater"]["0"] == (
@@ -1863,3 +1865,28 @@ class TestBuildWorkflowEnvelopeDetail:
             "github": None, "zenodo": None,
             "overleaf": None, "arxiv": None,
         }
+
+
+def test_run_state_for_wire_surfaces_active_step():
+    """The poll payload's compact run-state carries the reconciled
+    bRunning + 1-based iActiveStep so the continuously-polled dashboard
+    can light the marker for ANY dispatched run (agent or browser).
+
+    It also carries the live wall-clock-budget status; with no budget
+    declared the step is never flagged over budget. (Over-budget
+    detection itself is covered in testWallClockBudget.py.)"""
+    from vaibify.gui.routes.pipelineRoutes import _fdictRunStateForWire
+    dictWire = _fdictRunStateForWire(
+        {"bRunning": True, "iActiveStep": 3},
+    )
+    assert dictWire["bRunning"] is True
+    assert dictWire["iActiveStep"] == 3
+    assert dictWire["bActiveStepOverBudget"] is False
+    # Missing / empty state degrades to "no run", never a false active.
+    dictEmpty = _fdictRunStateForWire({})
+    assert dictEmpty["bRunning"] is False
+    assert dictEmpty["iActiveStep"] == -1
+    assert dictEmpty["bActiveStepOverBudget"] is False
+    assert _fdictRunStateForWire(
+        {"bRunning": False, "iActiveStep": -1},
+    )["bRunning"] is False

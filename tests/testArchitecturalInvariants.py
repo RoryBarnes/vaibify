@@ -1525,13 +1525,19 @@ _REGEX_SA_FILES_LITERAL = re.compile(r'["\'](sa[A-Z][A-Za-z]*Files)["\']')
 # fields are runtime-decorated views, not declarations. Each entry is
 # annotated with where it lives so a future contributor can audit quickly.
 SET_NON_OUTPUT_SA_FILES_KEYS = {
-    # Step-level input list; provenanceTracker uses it to draw DAG edges
-    # from inputs to the step. Inputs are produced upstream, not by this
-    # step, so they belong to the upstream step's outputs.
-    "saInputFiles",
+    # Step-level raw-input declaration (Input Data block). Inputs are
+    # consumed, not produced, so they never belong in _OUTPUT_KEYS.
+    "saInputDataFiles",
     # stepRoutes decorates the response with a resolved view of the
     # step's outputs; this is a runtime projection, not a declaration.
     "saResolvedOutputFiles",
+    # Historical key names that survive only inside workflowMigrations
+    # (pre-v8 documents used saDataFiles for output data and
+    # saOutputFiles as a legacy general-outputs bucket; the v7->v8
+    # migrator merges both into saOutputDataFiles). Migration code must
+    # keep reading the old names; the manifest never sees them.
+    "saDataFiles",
+    "saOutputFiles",
 }
 
 
@@ -1843,15 +1849,16 @@ def testEmptyCommandCategoryIsUnnecessaryAfterLoad():
 def testAtLeastLevel1IffAllFourCriteria():
     """``fbAtLeastLevel1`` is True iff every L1 criterion holds.
 
-    Enumerates the 2^4 truth table over the four orthogonal
+    Enumerates the 2^5 truth table over the five orthogonal
     criteria (repo present, user approved, timing clean, tests
-    passing) and asserts the gate fires exactly when all four are
-    True. Catches future regressions where someone weakens one
-    predicate or adds a fifth without updating the composition.
+    passing, input data declared) and asserts the gate fires exactly
+    when all five are True. Catches future regressions where someone
+    weakens one predicate or adds a sixth without updating the
+    composition.
     """
     from vaibify.reproducibility.levelGates import fbAtLeastLevel1
     listCriteria = (
-        "bRepo", "bUser", "bTiming", "bTests",
+        "bRepo", "bUser", "bTiming", "bTests", "bDeclared",
     )
     for iMask in range(1 << len(listCriteria)):
         dictFlags = {
@@ -1867,6 +1874,7 @@ def testAtLeastLevel1IffAllFourCriteria():
             dictVerification["sUnitTest"] = "failed"
         dictWorkflow = {"listSteps": [{
             "sName": "A", "sDirectory": "A",
+            "bNoInputData": dictFlags["bDeclared"],
             "dictVerification": dictVerification,
         }]}
         sRepo = "/workspace/repo" if dictFlags["bRepo"] else ""
@@ -1899,7 +1907,7 @@ def _fnSeedHashStaleStep(tmp_path, sUnitTestState):
         "listSteps": [{
             "sLabel": "A01",
             "sDirectory": "step1",
-            "saDataFiles": ["out.json"],
+            "saOutputDataFiles": ["out.json"],
             "dictVerification": {
                 "sUnitTest": sUnitTestState,
                 "sIntegrity": sUnitTestState,
@@ -1978,7 +1986,7 @@ def _fnWritePlotCoverageWorkflow(tmp_path):
     (sWorkflowsDir / "main.json").write_text(jsonModule.dumps({
         "listSteps": [{
             "sDirectory": "step1",
-            "saDataFiles": ["data/out.csv", "data/{iteration}.csv"],
+            "saOutputDataFiles": ["data/out.csv", "data/{iteration}.csv"],
             "saPlotFiles": ["Plot/fig.pdf"],
         }],
     }))
@@ -1994,7 +2002,7 @@ def _fdictComputePlotCoverageHashes(tmp_path, sStepDir):
 
 
 def testMarkerCoversAllDeclaredOutputs(tmp_path):
-    """Every literal saDataFiles / saPlotFiles entry hashes into the marker."""
+    """Every literal saOutputDataFiles / saPlotFiles entry hashes into the marker."""
     sStepDir = _fnSeedPlotCoverageFiles(tmp_path)
     _fnWritePlotCoverageWorkflow(tmp_path)
     dictHashes = _fdictComputePlotCoverageHashes(tmp_path, sStepDir)
@@ -2049,8 +2057,8 @@ def _flistScanCommandForHardcodedPaths(sCommand, sStepDirectory):
 
 
 def _flistCollectTemplateWorkflows():
-    """Return every workflow.json under vaibify/templates/."""
-    return sorted(_TEMPLATES_DIR.rglob("workflow.json"))
+    """Return every Project template file under templates/."""
+    return sorted(_TEMPLATES_DIR.rglob("project.json"))
 
 
 def _flistFindTemplateViolations(pathWorkflow):
@@ -2095,6 +2103,48 @@ def testTemplateCommandsUseStepTokens():
     )
 
 
+def testTemplateCommandsUseSymbolicNotPositionalTokens():
+    """Shipped templates use the canonical ``{step:<id>.stem}`` form.
+
+    Positional ``{StepNN.stem}`` tokens are deprecated (they renumber
+    on any insert/reorder — the reorder-drops-a-step hazard). Templates
+    are seeds for new workflows, so they must ship in the canonical
+    symbolic form. Any step referenced symbolically must also carry the
+    ``sStepId`` its token names.
+    """
+    import json as jsonModule
+    import re as reModule
+    listViolations = []
+    for pathWorkflow in _flistCollectTemplateWorkflows():
+        dictWorkflow = jsonModule.loads(pathWorkflow.read_text())
+        setDeclaredIds = {
+            dictStep.get("sStepId")
+            for dictStep in dictWorkflow.get("listSteps", [])
+        }
+        for dictStep in dictWorkflow.get("listSteps", []):
+            for sField in ("saDataCommands", "saPlotCommands",
+                           "saTestCommands", "saDependencies"):
+                for sCommand in dictStep.get(sField, []):
+                    if reModule.search(r"\{Step\d+\.", sCommand):
+                        listViolations.append(
+                            (pathWorkflow, "positional-token", sCommand),
+                        )
+                    for sId in reModule.findall(
+                        r"\{step:([a-z0-9][a-z0-9-]*)\.", sCommand,
+                    ):
+                        if sId not in setDeclaredIds:
+                            listViolations.append(
+                                (pathWorkflow, "unknown-id:" + sId, sCommand),
+                            )
+    assert listViolations == [], (
+        "Deprecated positional or dangling symbolic tokens in "
+        "templates:\n" + "\n".join(
+            f"  {p.relative_to(REPO_ROOT)} [{sWhy}]: {sCmd!r}"
+            for p, sWhy, sCmd in listViolations
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Reproducibility IO goes through the repo-file adapter, never a raw
 # container path string (the host cannot read container files).
@@ -2121,6 +2171,10 @@ SET_REPRO_FILES_ENTRY_POINTS = frozenset({
     "fnGenerateReproducibilityEnvelope",
     "fbManifestExists", "fsetStaleOutputsAgainstManifest",
     "fbDeclarationFileExists", "fnWriteDeclarationTemplate",
+    "fdictClassifyFalsificationApplicability",
+    "fdictBuildFalsificationStatus",
+    "fdictReadFalsificationRecord", "fnWriteFalsificationRecord",
+    "fbFalsificationRecordCurrent", "fsCurrentFalsificationDigest",
 })
 
 SET_RAW_REPO_PATH_NAMES = frozenset({
@@ -2561,45 +2615,171 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
     # (bAiDeclarationAttested / bRebuildAttestationCurrent /
-    # bOverleafBound) for the Workflow-wide requirement rows — a
+    # bOverleafBound) for the Project-block requirement rows — a
     # cohesive extension of the poll-assembly responsibility.
     # +7 (2026-07-08): degenerate-envelope guard — a failed poll
     # snapshot ships null instead of an empty envelope so the client
     # never overwrites good state with "no binaries".
-    # +3 (2026-07-09): thread the poll's dictMaxMtimeByStep into the
-    # level projection so inactive steps with outputs on disk read
-    # "unassessed" instead of "not-started".
-    # +38 (2026-07-10): workflow-epoch reconciliation on the
-    # file-status route (_fnReconcileWorkflowEpoch) — re-sends the
-    # workflow to any client whose epoch is stale, replacing the
-    # lost-if-dropped one-shot bWorkflowReloaded delivery.
-    "routes/pipelineRoutes.py": 2200,
-    "routes/syncRoutes.py": 2041,
-    # +59 (2026-07-10): content-fingerprint piggyback in the polling
-    # stat batch (_ftStatAndFingerprintViaPathfile) — same exec, one
-    # sha256 line — feeding the reload detector's same-second-proof
-    # content comparison.
-    "fileStatusManager.py": 2002,
-    # +35 (2026-07-10): single serialization authority
+    # +3 (2026-07-09): the bArxivConfigured envelope boolean — the
+    # arXiv L2 criteria are opt-in, keyed on the recorded connection.
+    # main +3 (2026-07-09): dictMaxMtimeByStep threaded into the level
+    # projection so inactive steps with outputs read "unassessed".
+    # main +38 (2026-07-10): workflow-epoch reconciliation
+    # (_fnReconcileWorkflowEpoch) replacing one-shot reload delivery.
+    # +8 (2026-07-12): the poll now hashes declared-binary absolute
+    # paths (flistWorkflowBinaryPaths threaded through the snapshot
+    # fetch and the collected-mtimes union) so L3 binary-drift is
+    # detected out-of-repo. Cohesive with the poll assembly it extends.
+    # +7 (2026-07-12): the non-gating L1 binary-staleness warning —
+    # fdictBinaryStaleByStep (binary mtime vs step-output mtime)
+    # threaded through the level-state payload into the warning
+    # projection. Cohesive with the poll assembly it extends.
+    # −50 (2026-07-13): removed the container-activity sample /
+    # toolbar busy indicator (f07685a) — its load-average threshold
+    # false-positived over an idle container, misrepresenting state.
+    # +4 (2026-07-14): poll payload exposes sWorkflowFingerprint (the
+    # compare-and-swap baseline the frontend sends back on edits).
+    # +13 (2026-07-14): poll payload surfaces dictRunState (reconciled
+    # bRunning + iActiveStep) so the continuously-polled dashboard
+    # reflects any dispatched run — including an in-container agent's —
+    # without a separate pipeline-state poll. Cohesive with poll assembly.
+    # +11 (2026-07-14): dictRunState now also carries the live
+    # wall-clock-budget status (over-budget flag + elapsed/budget) so a
+    # hung-but-heartbeating step is distinguishable from a legitimately
+    # long one. Computed live, non-gating. Cohesive with poll assembly.
+    # +11 (2026-07-16): input-data files join the poll — their paths in
+    # the stat batch and dictMaxInputMtimeByStep on the wire. Cohesive
+    # with the mtime groupings already assembled here.
+    "routes/pipelineRoutes.py": 2257,
+    # +21 (2026-07-09): removing the arXiv connection also clears its
+    # cached verify result (_fsClearArxivSyncCache) so the dashboard
+    # cannot render a ghost divergence count — cohesive with the
+    # configure route it extends.
+    # +53 (2026-07-09): Overleaf push provenance
+    # (_fnRecordPushProvenance) — the push manifest + sLastPushCommit
+    # write that the figure-freeze/arXiv/verify machinery reads;
+    # previously never recorded in production. Cohesive with the
+    # push finalize it extends.
+    # +65 (2026-07-10): stage-validate-commit for the connect flow
+    # (_fsFetchPreviousHostCredential + _fnRollBackFailedCredential) —
+    # a failed token validation restores the previously working
+    # credential instead of deleting it, and the response says which
+    # happened. Cohesive with the setup flow it hardens.
+    # +88 (2026-07-10): the same rollback extended to container-side
+    # Zenodo tokens via an in-container snapshot slot (the value
+    # never crosses the docker-exec boundary).
+    # +9 (2026-07-10): the Overleaf push now calls the shared
+    # fsRefreshVerifyCacheAfterPush hop ("shared by every push
+    # route" — this was the missed call site), so the requirement
+    # row updates without a manual re-verify.
+    # +108 (2026-07-12): the pull-manuscript agent action — mirrors
+    # the manuscript sources into the project repo's .vaibify/
+    # manuscript/ so the read-manuscript skill reads the real paper
+    # instead of hallucinating it. Cohesive with the Overleaf route
+    # family it sits in.
+    "routes/syncRoutes.py": 2385,
+    # main +59 (2026-07-10): content-fingerprint piggyback in the
+    # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
+    # exec, one sha256 line — feeding the reload detector.
+    # +97 (2026-07-16): the input-data staleness lane — resolution and
+    # collection of saInputDataFiles, full-path input invalidation,
+    # the inputFile pencil bucket, and dictInputHashes drift folded
+    # into the marker-hash pass. Mirrors the output lane this module
+    # owns; splitting it out would smear one behavior across modules.
+    # +8 (2026-07-16): inputs join _flistStepOutputsRepoRelative so
+    # the fresh-clone manifest short-circuit requires manifest-clean
+    # inputs too (landed with manifestWriter input coverage).
+    "fileStatusManager.py": 2107,
+    # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
-    # and the loader's _sSourceFingerprint stamp, so self-write
-    # baselines are byte-exact and race-free.
-    "workflowManager.py": 1970,
+    # and the loader's _sSourceFingerprint stamp for byte-exact,
+    # race-free self-write baselines.
+    # +2 (2026-07-14): fnEnsureStepIds on the load and save paths —
+    # stable sStepId identity (the primitive behind symbolic
+    # cross-step references); the helper itself lives in
+    # workflowMigrations.py.
+    # +84 (2026-07-14): symbolic cross-step references
+    # ({step:<id>.stem}) alongside the deprecated positional form —
+    # fdictStepIdToIndex, symbolic resolution in the resolver /
+    # registry / dependency scan / validation (with a deprecation
+    # warning), all cohesive with the token machinery already here.
+    # +64 (2026-07-14): the workflow dry-run (fdictResolveWorkflowCommands
+    # + flistResidualStepTokens) — the graph's `make -n`, substituting
+    # every command without running; cohesive with the resolver.
+    # +30 (2026-07-14): ffResolveStepWallClockBudget (+ coercion helper)
+    # — the step > workflow-default > none budget resolution the run
+    # loop stamps onto each step start. Cohesive with the step-config
+    # resolvers already here.
+    # +20 (2026-07-15): Project-directory rename contract —
+    # VAIBIFY_PROJECTS_DIR/S_VAIBIFY_PROJECTS_SUFFIX canonical with the
+    # legacy .vaibify/workflows suffix as a dual-read fallback, so
+    # discovery and repo-path derivation accept a Project file in either
+    # directory. Cohesive with the on-disk contract already here.
+    # +84 (2026-07-16): the input-data declaration contract —
+    # saInputDataFiles/listRemoteData boundary validation
+    # (_flistValidateInputDataFilePaths, _fsCheckInputPathBoundary)
+    # alongside the sibling boundary checks it mirrors, plus the
+    # flistStepRemoteDataPaths accessor every remote-data reader
+    # shares. Cohesive with the schema this module owns.
+    # +8 (2026-07-16): control-character rejection in the input-path
+    # boundary check (closes a heredoc-split vector for the new fields).
+    "workflowManager.py": 2262,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
     # the message loop it guards.
-    # +8 (2026-07-09): fnDispatchAction threads the active workflow
-    # and its cached path into every runner call and logs the
-    # dispatch — the runner no longer rediscovers workflows, so a
-    # multi-workflow container always runs the selected one.
-    # +17 (2026-07-10): fingerprint-based self-write baselines at
+    # +1 (2026-07-11): one registration line for falsificationRoutes
+    # in _fnRegisterAllRoutes.
+    # main +8 (2026-07-09): fnDispatchAction threads the active
+    # workflow + cached path into every runner call and logs dispatch.
+    # main +17 (2026-07-10): fingerprint-based self-write baselines at
     # connect and save, plus iWorkflowEpoch in the connect response.
-    "pipelineServer.py": 1766,
+    # +4 (2026-07-14): sBaseFingerprint on StepUpdateRequest — the
+    # optional compare-and-swap guard for update-step (409 on a stale
+    # concurrent edit).
+    # +3 (2026-07-14): connect response exposes sWorkflowFingerprint so
+    # the frontend has a compare-and-swap baseline to send back.
+    # +11 (2026-07-14): the wall-clock-budget fields —
+    # fWallClockBudgetSeconds on StepUpdateRequest,
+    # fDefaultWallClockBudgetSeconds on WorkflowSettingsRequest, and the
+    # settings-subset default — making the opt-in budget settable.
+    # +3 (2026-07-15): connect path-validation accepts a Project file
+    # under either .vaibify/projects (canonical) or .vaibify/workflows
+    # (legacy) via T_VAIBIFY_PROJECT_SUFFIXES.
+    # +17 (2026-07-16): input-data declaration fields on the step
+    # request models (saInputDataFiles, bNoInputData, listRemoteData),
+    # threading into fdictStepFromRequest, the
+    # fdictCollectInputPathsByStep re-export shim line, and the
+    # InputDataAddRequest model for the add-input-data-file action.
+    # +167 (2026-07-16): the remote-data overwrite gate at the
+    # dispatch choke point — step-set resolution per run action, one
+    # existence exec, and the runRefused remoteDataOverwrite event.
+    # Cohesive with the message loop and busy-refusal it sits beside;
+    # every lane (browser, agent CLI) must meet the same gate here.
+    # +9 (2026-07-16): the gate step-selection mirrors the runner
+    # exactly (bRunEnabled + runFrom start bound), diverged from a
+    # range() that over-included disabled steps.
+    "pipelineServer.py": 1981,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
-    "syncDispatcher.py": 1627,
-    "pipelineRunner.py": 1399,
+    # +13 (2026-07-10): the host ls-remote validation resets ambient
+    # git credential helpers (credential isolation) so it can only
+    # exercise the vaibify-managed token, never a keychain entry for
+    # the same host.
+    # +33 (2026-07-10): fbCopyCredentialInContainer — the in-container
+    # keyring snapshot/restore primitive for the connect flow's
+    # stage-validate-commit; the secret never crosses the exec
+    # boundary.
+    "syncDispatcher.py": 1673,
+    # +9 (2026-07-14): the run loop resolves each step's wall-clock
+    # budget and threads it onto the stepStarted event so the state
+    # writer can stamp it beside the step start time. Cohesive with the
+    # per-step run orchestration it extends.
+    # +87 (2026-07-16): the remote-data provenance recorder — after a
+    # successful pull step, one exec sha256-hashes the declared
+    # remote files, updates listRemoteData records, and emits
+    # remoteDataRecorded. Cohesive with the step execution it stamps.
+    "pipelineRunner.py": 1495,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,

@@ -121,7 +121,7 @@ class TestFsWrapWithTime:
 
 class TestFlistFilterUnexpectedFiles:
     def test_no_expected_returns_all(self):
-        dictStep = {"saDataFiles": [], "saPlotFiles": []}
+        dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
         setNew = {"/work/output.csv"}
         listResult = _flistFilterUnexpectedFiles(
             setNew, "/work", dictStep)
@@ -130,7 +130,7 @@ class TestFlistFilterUnexpectedFiles:
 
     def test_expected_files_excluded(self):
         dictStep = {
-            "saDataFiles": ["data.h5"],
+            "saOutputDataFiles": ["data.h5"],
             "saPlotFiles": ["plot.pdf"],
         }
         setNew = {"/work/data.h5", "/work/surprise.txt"}
@@ -140,13 +140,13 @@ class TestFlistFilterUnexpectedFiles:
         assert listResult[0]["sFilePath"] == "surprise.txt"
 
     def test_empty_new_files(self):
-        dictStep = {"saDataFiles": [], "saPlotFiles": []}
+        dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
         assert _flistFilterUnexpectedFiles(
             set(), "/work", dictStep) == []
 
     def test_absolute_path_matching(self):
         dictStep = {
-            "saDataFiles": ["/work/abs.npy"],
+            "saOutputDataFiles": ["/work/abs.npy"],
             "saPlotFiles": [],
         }
         setNew = {"/work/abs.npy"}

@@ -445,3 +445,184 @@ def test_first_render_after_invalidate_takes_full_path():
         "path; otherwise the incremental path would target an empty "
         "DOM."
     )
+
+
+# -----------------------------------------------------------------------
+# Input Data block
+# -----------------------------------------------------------------------
+
+
+def test_input_data_section_renders_before_scripts():
+    """The Input Data block must sit between Directory and Scripts.
+
+    Checked structurally: inside fsRenderStepItem the call to
+    fsRenderInputDataSection must appear after the Directory field
+    and before the Scripts tracked-file section.
+    """
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    iBody = sSource.find("function fsRenderStepItem")
+    assert iBody != -1
+    iDirectory = sSource.find(">Directory</div>", iBody)
+    iInputCall = sSource.find("fsRenderInputDataSection(", iBody)
+    iScripts = sSource.find('"Scripts", "saStepScripts"', iBody)
+    assert iDirectory != -1 and iInputCall != -1 and iScripts != -1
+    assert iDirectory < iInputCall < iScripts, (
+        "fsRenderInputDataSection must be invoked between the "
+        "Directory field and the Scripts section."
+    )
+
+
+def test_input_data_section_always_offers_add_button():
+    """The section label must be the editable variant so the + button
+    exists even on a step with no inputs declared yet."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    iSection = sSource.find("function fsRenderInputDataSection")
+    assert iSection != -1
+    sBlock = sSource[iSection:iSection + 900]
+    assert 'fsRenderSectionLabel(' in sBlock
+    assert '"Input Data", iIndex, "saInputDataFiles"' in sBlock
+
+
+def test_input_data_registered_for_remote_badges():
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    assert 'saInputDataFiles: ["sGithub", "sZenodo"]' in sSource
+
+
+def test_input_stale_row_labels_defined():
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    assert '"test|inputFile"' in sSource
+    assert '"user|inputFile"' in sSource
+
+
+def test_input_mtime_map_participates_in_render_hash():
+    """dictMaxInputMtimeByStep must be in _fsContextSliceForStep or a
+    poll that only moves an input mtime leaves a stale card."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    iSlice = sSource.find("function _fsContextSliceForStep")
+    iEnd = sSource.find("function _flistBlockerAndLevelSlice")
+    assert iSlice != -1 and iEnd != -1
+    assert "dictMaxInputMtimeByStep" in sSource[iSlice:iEnd], (
+        "dictMaxInputMtimeByStep missing from the per-step context "
+        "slice — input-mtime-only polls would not re-render the card."
+    )
+
+
+def test_input_rows_join_existence_batch():
+    sSource = _fsReadStaticFile("scriptFileOperations.js")
+    assert 'data-array="saInputDataFiles"' in sSource, (
+        "Existence planner must include Input Data rows so a "
+        "declared-but-absent input renders the honest red."
+    )
+
+
+def test_file_picker_modal_exported():
+    sSource = _fsReadStaticFile("scriptModals.js")
+    assert "fnShowFilePickerModal: fnShowFilePickerModal" in sSource
+
+
+def test_no_input_data_checkbox_bound():
+    sSource = _fsReadStaticFile("scriptEventBindings.js")
+    assert "no-input-data-checkbox" in sSource
+    assert "fnToggleNoInputData" in sSource
+
+
+# -----------------------------------------------------------------------
+# Remote-data overwrite gate — browser lane
+# -----------------------------------------------------------------------
+
+
+def test_remote_overwrite_refusal_confirms_then_redispatches():
+    """The remoteDataOverwrite refusal must open a confirm modal and,
+    on confirm, re-dispatch with bConfirmRemoteOverwrite — not just
+    toast like the busy refusal."""
+    sSource = _fsReadStaticFile("scriptPipelineRunner.js")
+    iHandler = sSource.find(
+        "function _fnHandleRemoteOverwriteRefusal")
+    assert iHandler != -1
+    sBlock = sSource[iHandler:iHandler + 1200]
+    assert "bConfirmRemoteOverwrite: true" in sBlock
+    assert "fnShowConfirmModal" in sBlock
+    assert "fnSendPipelineAction" in sBlock
+    assert '"remoteDataOverwrite"' in sSource
+
+
+def test_all_three_interactive_lanes_pass_the_overwrite_gate():
+    """Run-in-Terminal never reaches the server dispatch, so each of
+    the three interactive entry points must route its launch through
+    fnConfirmRemoteOverwriteThen."""
+    sSource = _fsReadStaticFile("scriptPipelineRunner.js")
+    for sFunction in (
+        "function fnRunInteractiveStep",
+        "function fnRunInteractivePlots",
+        "function fnExecuteStepCombined",
+    ):
+        iStart = sSource.find(sFunction)
+        assert iStart != -1, sFunction
+        iEnd = sSource.find("\n    function ", iStart + 10)
+        sBody = sSource[iStart:iEnd]
+        assert "fnConfirmRemoteOverwriteThen" in sBody, (
+            sFunction + " must gate its terminal launch"
+        )
+
+
+def test_confirmed_pull_offers_commit_of_fresh_canonical_data():
+    """After a run that recorded remote data (and after a standalone
+    Run-in-Terminal pull), the browser must offer to commit the fresh
+    files via the shared fbOfferCommitAfterGenerate flow — canonical
+    data must never sit silently uncommitted."""
+    sSource = _fsReadStaticFile("scriptPipelineRunner.js")
+    assert sSource.count("fbOfferCommitAfterGenerate") >= 2, (
+        "both the run-end path and the standalone interactive path "
+        "must offer the commit"
+    )
+    iRecorded = sSource.find('"remoteDataRecorded"')
+    assert iRecorded != -1
+    assert "_bRemoteDataPulledThisRun" in sSource[
+        iRecorded:iRecorded + 1200
+    ], (
+        "the remoteDataRecorded event must arm the end-of-run "
+        "commit offer"
+    )
+
+
+def test_undeclared_input_shows_orange_pending_indicator():
+    """An undeclared step (no files, box unchecked) renders a pending
+    indicator in the Input Data block, and the collapsed-row blocker
+    glyph for input-data-undeclared is the orange dash of the
+    "awaiting action" family — NOT the red of a genuine failure
+    (undeclared is a one-click declaration gap, not a breakage)."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    iRow = sRenderer.find("function fsRenderNoInputDataRow")
+    assert iRow != -1
+    sBlock = sRenderer[iRow:iRow + 1000]
+    assert "input-undeclared-glyph" in sBlock
+
+    sApp = _fsReadStaticFile("scriptApplication.js")
+    iGlyph = sApp.find('"input-data-undeclared": {')
+    assert iGlyph != -1
+    sGlyphBlock = sApp[iGlyph:iGlyph + 600]
+    assert 'sIcon: "—"' in sGlyphBlock
+    assert "step-blocker-glyph-user" in sGlyphBlock  # orange, pending
+    assert "step-blocker-glyph-axis" not in sGlyphBlock  # not red
+
+    sCss = _fsReadStaticFile("styleMain.css")
+    assert ".detail-note.input-undeclared-note" in sCss
+    assert "input-undeclared-glyph" in sCss
+    # the undeclared note is orange (pending), not the red error box
+    iNote = sCss.find(".detail-note.input-undeclared-note")
+    assert "var(--color-orange)" in sCss[iNote:iNote + 120]
+    # input rows get their own status colours (drift = orange)
+    assert 'tracked-file[data-array="saInputDataFiles"]' in sCss
+    assert "file-necessary-red.file-stale-state" in sCss
+
+
+def test_client_l1_predicate_requires_input_declaration():
+    """The client fbStepIsAtLeastLevel1 must gate on the input
+    declaration too, or the client L1 chip and file colours would
+    show an undeclared step as L1 while the server cell blocks it."""
+    sSource = _fsReadStaticFile("scriptApplication.js")
+    iFn = sSource.find("function fbStepIsAtLeastLevel1")
+    assert iFn != -1
+    sBody = sSource[iFn:iFn + 1400]
+    assert "saInputDataFiles" in sBody
+    assert "bNoInputData" in sBody

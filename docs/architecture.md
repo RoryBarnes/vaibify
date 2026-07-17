@@ -38,12 +38,12 @@ researcher's scripts, their Python environment, and any ephemeral files
 the agent produces. The agent launched inside the container sees only what is inside. The host sees
 the container through a narrow, audited interface.
 
-**Workflow.** A `workflow.json` file that declares an ordered sequence
-of steps. Workflows are checked into git, travel with the project, and
-reconstruct the same pipeline on a different machine. A workflow is a
+**Project.** A `project.json` file that declares an ordered sequence
+of steps. Projects are checked into git, travel with the repository, and
+reconstruct the same pipeline on a different machine. A project is a
 portable unit of reproducibility.
 
-**Step.** One unit of work in a workflow: typically a data command, a
+**Step.** One unit of work in a project: typically a data command, a
 plot command, or a test command. Steps declare their script and their
 outputs, and they carry dependencies on the outputs of earlier steps.
 Each step carries verification state.
@@ -52,12 +52,12 @@ Each step carries verification state.
 questions. Did the unit tests pass the last time they ran? Has the
 researcher looked at the output since it last changed? Has an upstream
 step been modified without this step being rerun? Verification state
-lives on the step, is persisted with the workflow, and degrades
+lives on the step, is persisted with the project, and degrades
 automatically when the world underneath it changes. The full state
 machine is defined in [fileStatusManager.py](../vaibify/gui/fileStatusManager.py).
 
 **Dashboard as ground truth.** The browser GUI is the only place where
-container status, workflow state, and verification state are surfaced
+container status, project state, and verification state are surfaced
 together. This is a rule, not an aesthetic. Nothing in vaibify may lie
 to the dashboard: no optimistic status, no cached-past-lifetime state,
 no quietly swallowed errors. If the truth is slow or ugly, the
@@ -66,7 +66,7 @@ list treats dashboard honesty as a hard invariant.
 
 ## The happy path
 
-The most concrete way to understand how vaibify verifies a workflow is to watch what happens
+The most concrete way to understand how vaibify verifies a project is to watch what happens
 when a researcher clicks **Run All** in the browser.
 
 1. `PipeleyenPipelineRunner.fnRunAll()` fires in `scriptPipelineRunner.js`.
@@ -79,7 +79,7 @@ when a researcher clicks **Run All** in the browser.
 
 3. On the backend, the WebSocket handler in `pipelineServer.py`
    dispatches actions to `pipelineRunner.fnRunAllSteps()`. The runner
-   validates the workflow (via `pipelineValidator`), opens a log file
+   validates the project (via `pipelineValidator`), opens a log file
    (via `pipelineLogger`), and walks the step list.
 
 4. For each step, the runner executes the step's command inside the
@@ -128,7 +128,7 @@ Running the pipeline is only half the story. The other half is keeping
 the dashboard honest while nothing is running — the researcher is
 editing a script in the container terminal, or the agent just finished
 a long analysis off-dashboard. Every five seconds the frontend polls
-the backend for the current state of every file the workflow cares
+the backend for the current state of every file the project cares
 about.
 
 ```
@@ -150,6 +150,26 @@ When an upstream step is modified, downstream steps are flagged as
 upstream-modified. The researcher sees verification badges dim
 automatically; no one has to remember to invalidate anything by hand.
 
+Declared input data (`saInputDataFiles` — raw files a step consumes
+that no step produces) rides the same poll: input paths join the
+stat batch, an mtime delta on a declared input invalidates every
+step that declares it (matched by full resolved path against the
+repository root, never by basename), and the marker-hash pass reads
+`dictInputHashes` alongside `dictOutputHashes` so content drift with
+a preserved mtime is caught while a fresh clone with identical
+content stays green. The staleness rows label the input lane
+distinctly ("Input data modified since last run").
+
+Run dispatch carries one more gate beside the busy-refusal: a run
+covering a step whose `listRemoteData` files already exist on disk
+is answered with `runRefused` `sReason=remoteDataOverwrite` unless
+the request confirms the overwrite. The gate lives at the single
+WebSocket dispatch choke point so the browser and the in-container
+agent meet the identical rule; the interactive Run-in-Terminal
+buttons never reach dispatch (they compose a shell command
+client-side), so that one lane carries the same check in the
+frontend — a documented exception, not an enforcement path.
+
 Each poll's path-mtime collection is one `docker exec` total, fed by
 a path list written to `/tmp/vaibifyPoll.list` via
 `connectionDocker.fnWriteFileViaTar` and consumed by
@@ -167,7 +187,7 @@ on an in-place rewrite of an existing child, so the optimization
 silently fed stale mtimes back to the reload detector and the
 "step source modified" invalidation pass whenever an out-of-band
 editor (the in-container agent's `Edit` tool, `vim :w`, `sed -i` on
-some platforms) modified `workflow.json` or a step script in place.
+some platforms) modified `project.json` or a step script in place.
 The cache layer has been removed: every poll stats the polled paths
 directly. This still costs exactly one `docker exec` per poll
 (the dominant wire cost) and trades a small per-poll byte increase
@@ -210,7 +230,7 @@ read and write the workspace volume from the host side, and it needs
 to serve the GUI over localhost. This is what makes features like pull
 files to host, browse host directories, and sync to GitHub possible at
 all. The cost is that path traversal is a live concern: any path that
-originates from an HTTP request body, a `workflow.json` field, or a
+originates from an HTTP request body, a `project.json` field, or a
 config file must be validated against its intended root before the
 backend opens it. `fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)`
 in `pipelineServer.py` is the canonical guard; the trap list in
@@ -264,39 +284,39 @@ until a cross-platform user hit it. The divergence is load-bearing;
 the [AGENTS.md](../AGENTS.md) trap list and
 `tests/testArchitecturalInvariants.py` both guard it.
 
-## Workflow = git repo
+## Project = git repo
 
-Every vaibify workflow lives inside a git repository — its "project
-repo". The `workflow.json` file belongs to that repo, not to the
+Every vaibify project lives inside a git repository — its
+"repository". The `project.json` file belongs to that repo, not to the
 container, not to `/workspace`, and not to a shared vaibify-managed
 location. This constraint is enforced at discovery time
 (`flistFindWorkflowsInContainer` drops any candidate not inside a git
 work tree) and at creation time (`_fsValidateRepoDirectory` rejects
 target directories that are not git repos). It maps directly to L1 of
-the reproducibility ladder in [vision.md](vision.md): a workflow that
+the reproducibility ladder in [vision.md](vision.md): a project that
 cannot be committed cannot be reproduced.
 
 `/workspace` itself is a Docker-managed named volume, not a repo. It
-is the *discovery root* — the search origin for workflow.json files —
+is the *discovery root* — the search origin for project.json files —
 but not a git target. Inside a container, `/workspace` contains N
-project-repo subdirectories (each a standalone git clone) plus some
+repository subdirectories (each a standalone git clone) plus some
 shared configuration. A single container can therefore host multiple
-workflows: GJ1132_XUV's paper pipeline today, XUVCatalog's
+projects: GJ1132_XUV's paper pipeline today, XUVCatalog's
 cross-system analysis tomorrow, both reusing the same heavy dependency
 clones without needing a rebuild.
 
-The **active workflow determines the badge scope**. At connect time,
+The **active project determines the badge scope**. At connect time,
 `fdictHandleConnect` runs `git rev-parse --show-toplevel` inside the
 container, starting from the directory that contains the loaded
-`workflow.json`. The result is stamped on the workflow dict as
+`project.json`. The result is stamped on the workflow dict as
 `dictWorkflow["sProjectRepoPath"]` and every subsequent git / badge /
 manifest call threads it through `containerGit` as the authoritative
 workspace. The helper lives in
 `containerGit.fsDetectProjectRepoInContainer`; the routes read it from
 the active workflow dict.
 
-Per-step output paths (`saOutputFiles`, `saDataFiles`, `saPlotFiles`)
-must be repo-relative and must stay inside the project repo. Absolute
+Per-step output paths (`saOutputDataFiles`, `saPlotFiles`)
+must be repo-relative and must stay inside the repository. Absolute
 paths and `..`-escaping paths are rejected by
 `flistValidateOutputFilePaths` on save. Step directories (`sDirectory`
 on each step) are held to the same rule by `flistValidateStepDirectories`
@@ -305,13 +325,13 @@ repo-relative form `KeplerFfdCorner` is required. Input references
 inside `saCommands` / `saPlotCommands` / `saDataCommands` are
 deliberately *not* validated — a step may legitimately read an
 absolute `/workspace/GJ1132_XUV/Plot/foo.pdf` produced by a sibling
-workflow. Badges are emitted only for the producing workflow; a
-consumer workflow sees the file as a read path, not as a tracked
+project. Badges are emitted only for the producing project; a
+consumer project sees the file as a read path, not as a tracked
 artifact.
 
 Test markers — JSON files that record the outcome of the last pytest
 session for each step, including `dictOutputHashes` for staleness
-detection — live inside the project repo at
+detection — live inside the repository at
 `<sProjectRepoPath>/.vaibify/test_markers/<slug>.json` where the slug
 is derived from the step's (repo-relative) `sDirectory`. Marker
 *writes* (by the conftest plugin deployed into each step's `tests/`
@@ -319,20 +339,20 @@ directory) and *reads* (by `fileStatusManager`, `gitRoutes`,
 `syncDispatcher`) both resolve the directory through
 `dictWorkflow["sProjectRepoPath"]` — no module hardcodes
 `/workspace/.vaibify/test_markers`. Together with committing the
-markers alongside the workflow, this makes test-verification state
-survive a clone of the project repo.
+markers alongside the project, this makes test-verification state
+survive a clone of the repository.
 
 This choice has two architectural consequences worth naming:
 
-- **No workspace-root workflows.** A `workflow.json` at `/workspace`
+- **No workspace-root projects.** A `project.json` at `/workspace`
   (outside any enclosing git repo) cannot be reproduced and is not
   allowed. The `pipelineServer` surfaces this by stamping an empty
   `sProjectRepoPath`, at which point the four `/api/git/*` endpoints
   return the explicit "Workflow is not in a git repository" payload
   rather than silently reporting `bIsRepo: false` against `/workspace`.
-- **Forward-compatible multi-workflow model.** The workflow-dict field
-  is the anchor for a future workflow-selector UI: when the user
-  switches active workflows in a container, the cache key widens to
+- **Forward-compatible multi-project model.** The workflow-dict field
+  is the anchor for a future project-selector UI: when the user
+  switches active projects in a container, the cache key widens to
   `(sContainerId, sWorkflowPath)` and the badge scope re-scopes
   automatically — no changes to the git, badge, or manifest code.
 
@@ -344,7 +364,7 @@ reintroduce the all-grey-badges bug that motivated this design. A
 companion invariant `testNoWorkspaceRootedMarkerHardcodeInSource`
 bans the literal `/workspace/.vaibify/test_markers` in any module
 under `vaibify/gui/` — enforcing that marker paths are always
-resolved from the active workflow's `sProjectRepoPath`.
+resolved from the active project's `sProjectRepoPath`.
 
 ## Single browser session per container
 
@@ -458,7 +478,7 @@ that copied the lease out of `sessionStorage` passes the idempotent
 claim, so exclusivity for that case is enforced at the WebSocket gate —
 but scoped to the **pipeline lane**. One legitimate session holds
 several sockets at once: the terminal strip opens a terminal WebSocket
-on workflow entry, Run Step opens the pipeline WebSocket on demand, and
+on project entry, Run Step opens the pipeline WebSocket on demand, and
 extra terminal tabs add more. Budgeting *all* sockets shipped the
 Run-Step-always-refused bug: the terminal held the single slot, every
 pipeline connection was closed 4409, and the browser reported a healthy
@@ -658,7 +678,7 @@ These carry the core execution logic:
   protocol.
 - `pipelineState.py` — pipeline state persistence to
   `/workspace/.vaibify/pipeline_state.json`.
-- `workflowManager.py` — workflow CRUD, variable resolution, step
+- `workflowManager.py` — project CRUD, variable resolution, step
   references, dependency graph. Uses `posixpath` because it operates
   on container paths.
 - `fileStatusManager.py` — file-status polling, mtime tracking, step
@@ -762,7 +782,7 @@ layout.
 
 ## Verification state machine
 
-Each workflow step carries a `dictVerification` dict. The formal state
+Each project step carries a `dictVerification` dict. The formal state
 machine is documented in `fileStatusManager.py`'s module docstring.
 Key fields:
 
@@ -783,7 +803,7 @@ State transitions:
   `untested`.
 
 This state machine is load-bearing for the dashboard's honesty
-guarantee: the GUI must always reflect the true state of the workflow.
+guarantee: the GUI must always reflect the true state of the project.
 See the relevant trap in [../AGENTS.md](../AGENTS.md).
 
 ## Two AICS-level truth systems
@@ -793,31 +813,32 @@ deliberately different shapes, and misreading one as the other is the
 most likely way to misjudge the dashboard:
 
 1. **The scalar aggregate** — `levelGates.fiAICSLevel` /
-   `fbAtLeastLevelN`. Strictly additive over the whole workflow: L1
+   `fbAtLeastLevelN`. Strictly additive over the whole project: L1
    requires every step's L1 blockers clear, L2 requires L1, L3
-   requires L2. This is "what level is this workflow at," and it is
+   requires L2. This is "what level is this project at," and it is
    what the AICS chip in the dashboard header renders. (Historical
    note: an early boolean `bVaibified` predated the ladder and meant
-   what `fiAICSLevel >= 1` means now; the v4 workflow migration drops
+   what `fiAICSLevel >= 1` means now; the v4 project migration drops
    the key on load, which is the excision mechanism — do not remove
    the migration.)
 
 2. **The independent cell projections** —
    `fdictComputeStepLevelStates` (per step) and
-   `fdictComputeWorkflowScopeLevelStates` (the Workflow header row).
+   `fdictComputeWorkflowScopeLevelStates` (the Project header row).
    Each cell answers "which requirements *at this scope and level*
    are satisfied," with no propagation between levels or scopes. A
    step can honestly read L1 partial + L3 attained; that is a
    feature (the researcher sees exactly which rung needs what), not
    a contradiction.
 
-The corollary that trips readers: **the Workflow row is not a summary
+The corollary that trips readers: **the Project row is not a summary
 row.** Its cells cover only the requirements that attach to no single
-step — L1: the project repo exists; L2: sync-verify freshness plus
-the arXiv criteria; L3: the envelope artifacts (pinned Dockerfile,
+step — L1: the repository exists; L2: sync-verify freshness plus
+the arXiv criteria (only when an arXiv submission is recorded — the
+arXiv claim is opt-in); L3: the envelope artifacts (pinned Dockerfile,
 dependency lock, environment snapshot, reproduce script, attestation,
-binary declarations). A Workflow-row L1 check above red step rows is
-therefore a consistent display: the workflow-wide L1 requirement is
+binary declarations). A Project-row L1 check above red step rows is
+therefore a consistent display: the project-scope L1 requirement is
 met while per-step L1 work remains, and the chip — the aggregate —
 still says Level 0. The cell tooltips state this scoping.
 
@@ -912,7 +933,7 @@ _dictUiState = {
 ```
 
 `_fnResetWorkflowState()` uses a factory function to reset all fields
-atomically, preventing state leaks across workflow switches. Sets use
+atomically, preventing state leaks across project switches. Sets use
 `.clear()` rather than reassignment so that references held by the
 render context stay valid.
 
@@ -926,7 +947,7 @@ after rendering.
 
 Every render calls `fnUpdateHighlightState()` to synchronize the
 toolbar verification indicator (checkmark and color shift) with the
-current workflow state.
+current project state.
 
 ## Testing
 

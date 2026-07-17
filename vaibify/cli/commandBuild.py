@@ -251,6 +251,7 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWriteBinariesEnv(config, sDockerDir)
     fnCopyDirectorScript(sDockerDir)
     fnCopyContainerScripts(sDockerDir)
+    fnStageCuratedDocs(sDockerDir)
 
 
 _RE_APT_PACKAGE_NAME = re.compile(r"^[a-z0-9][a-z0-9._+-]*$")
@@ -348,6 +349,45 @@ def fnCopyContainerScripts(sDockerDir):
         sSourcePath = str(pathReproducibility / sFileName)
         sDestPath = os.path.join(sDockerDir, sFileName)
         shutil.copy2(sSourcePath, sDestPath)
+
+
+# Curated docs the in-container agent may need to consult. Staged into
+# the build context and COPYed to /usr/share/vaibify/docs so the
+# vaibify-doc-map skill can point at real files that cost zero context
+# until read. Each entry is (source-relative-to-repo-root, dest-name).
+# When adding one, also extend the vaibify-doc-map skill's table.
+_T_STAGED_DOCS = (
+    ("docs/dashboard.md", "dashboard.md"),
+    ("docs/reproducibility.md", "reproducibility.md"),
+    ("docs/vision.md", "vision.md"),
+    ("docs/pipelines.md", "pipelines.md"),
+    ("docs/testFormats.md", "testFormats.md"),
+    ("vaibify/docs/scriptAuthoring.md", "scriptAuthoring.md"),
+)
+
+
+def fnStageCuratedDocs(sDockerDir):
+    """Copy the curated agent doc set into ``<build>/docs-staged/``.
+
+    A missing source is skipped with a warning rather than aborting
+    the build — a doc the agent cannot read is a degraded skill, not
+    a broken image. The Dockerfile COPYs the whole directory to
+    /usr/share/vaibify/docs.
+    """
+    import shutil
+    import pathlib
+    pathRepoRoot = pathlib.Path(__file__).resolve().parents[2]
+    sStagedDir = os.path.join(sDockerDir, "docs-staged")
+    os.makedirs(sStagedDir, exist_ok=True)
+    for sRelSource, sDestName in _T_STAGED_DOCS:
+        pathSource = pathRepoRoot / sRelSource
+        if not pathSource.is_file():
+            print(
+                f"[vaibify] warning: staged doc missing, skipped: "
+                f"{sRelSource}"
+            )
+            continue
+        shutil.copy2(str(pathSource), os.path.join(sStagedDir, sDestName))
 
 
 def fnIncludeProjectRepo(config):

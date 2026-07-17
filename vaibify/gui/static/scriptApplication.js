@@ -34,6 +34,7 @@ const PipeleyenApp = (function () {
             dictOutputMtimes: {},
             dictPlotMtimes: {},
             dictMaxDataMtimeByStep: {},
+            dictMaxInputMtimeByStep: {},
             dictMarkerMtimeByStep: {},
             dictTestSourceMtimeByStep: {},
             dictTestCategoryMtimes: {},
@@ -52,6 +53,7 @@ const PipeleyenApp = (function () {
             iL3BlockerCount: 0,
             iCachedAicsLevel: null,
             iWorkflowEpoch: -1,
+            sWorkflowFingerprint: "",
             iFileCheckTimer: null,
             bFileCheckInProgress: false,
             iInflightRequests: 0,
@@ -76,7 +78,7 @@ const PipeleyenApp = (function () {
         setExpandedRequirementGroups: new Set(),
         setExpandedRequirementRows: new Set(),
         bStepsCollapsed: false,
-        bWorkflowWideCollapsed: false,
+        bProjectBlockCollapsed: false,
         bBinaryAddFormOpen: false,
         bShowTimestamps: false,
         iContextStepIndex: -1,
@@ -332,6 +334,8 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.iWorkflowEpoch =
             typeof data.iWorkflowEpoch === "number" ?
                 data.iWorkflowEpoch : -1;
+        _dictWorkflowState.sWorkflowFingerprint =
+            data.sWorkflowFingerprint || "";
         _fnLoadStepsCollapsed();
         _dictSessionState.dictDashboardMode = DICT_MODE_WORKFLOW;
         _fnSurfaceStateLoadNotice(data.dictWorkflow);
@@ -341,8 +345,8 @@ const PipeleyenApp = (function () {
         var iStepCount = (_dictWorkflowState.dictWorkflow.listSteps || []).length;
         if (iStepCount > 500) {
             fnShowToast(
-                "This workflow has " + iStepCount + " steps. " +
-                "Large workflows may use significant memory. " +
+                "This project has " + iStepCount + " steps. " +
+                "Large projects may use significant memory. " +
                 "Avoid expanding many steps simultaneously.",
                 "error"
             );
@@ -403,6 +407,13 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.iWorkflowEpoch =
                 dictData.iWorkflowEpoch;
         }
+        // Adopt the fresh compare-and-swap baseline immediately so the
+        // very next edit is validated against current state, not the
+        // stale fingerprint that provoked the reload.
+        if (typeof dictData.sWorkflowFingerprint === "string") {
+            _dictWorkflowState.sWorkflowFingerprint =
+                dictData.sWorkflowFingerprint;
+        }
         _fnClearFileCaches();
         _fnInvalidateAllRenderCaches();
         fnRenderStepList();
@@ -426,7 +437,7 @@ const PipeleyenApp = (function () {
         _fnRestoreExpansionSets(dictPriorExpanded, iStepCount);
         fnRenderStepList();
         fnShowToast(
-            "Workflow definition reloaded from disk", "info");
+            "Project definition reloaded from disk", "info");
     }
 
     function _fdictSnapshotExpansionSets() {
@@ -481,6 +492,7 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictOutputMtimes = {};
         _dictWorkflowState.dictPlotMtimes = {};
         _dictWorkflowState.dictMaxDataMtimeByStep = {};
+        _dictWorkflowState.dictMaxInputMtimeByStep = {};
         _dictWorkflowState.dictMarkerMtimeByStep = {};
         _dictWorkflowState.dictTestSourceMtimeByStep = {};
         _dictWorkflowState.dictTestCategoryMtimes = {};
@@ -573,7 +585,7 @@ const PipeleyenApp = (function () {
             var dictWf = dictByPath[sPath];
             if (!dictWf) return;
             fnShowToast(
-                "New workflow available: " + dictWf.sName
+                "New project available: " + dictWf.sName
                 + ". Click to load.",
                 "info",
                 function () {
@@ -785,7 +797,10 @@ const PipeleyenApp = (function () {
         if (!_dictWorkflowState.dictWorkflow) return {};
         var sWorkflowDir = fsGetWorkflowDirectory();
         var sRepoRoot = sWorkflowDir;
-        if (sRepoRoot.endsWith("/.vaibify/workflows")) {
+        if (sRepoRoot.endsWith("/.vaibify/projects")) {
+            sRepoRoot = sRepoRoot.replace(
+                "/.vaibify/projects", "");
+        } else if (sRepoRoot.endsWith("/.vaibify/workflows")) {
             sRepoRoot = sRepoRoot.replace(
                 "/.vaibify/workflows", "");
         } else if (sRepoRoot.endsWith("/.vaibify")) {
@@ -805,7 +820,7 @@ const PipeleyenApp = (function () {
             var sStepDir = step.sDirectory || "";
             var iNum = iIdx + 1;
             var sPrefix = "Step" + String(iNum).padStart(2, "0");
-            var listFiles = (step.saDataFiles || []).concat(
+            var listFiles = (step.saOutputDataFiles || []).concat(
                 step.saPlotFiles || []);
             listFiles.forEach(function (sFile) {
                 var sResolved = sFile.replace(
@@ -904,6 +919,15 @@ const PipeleyenApp = (function () {
             (_dictWorkflowState.dictWorkflow.bAutoArchive
                 ? " checked" : "") +
             ' title="Push verified files to Overleaf/Zenodo automatically">') +
+            fsSettingsRowHtml("Runtime limit (s)",
+            '<input class="gs-input" id="gsDefaultWallClockBudget"' +
+            ' type="number" min="0" step="1" value="' +
+            (_dictWorkflowState.dictWorkflow
+                .fDefaultWallClockBudgetSeconds || 0) + '"' +
+            ' title="Default expected runtime in seconds applied to' +
+            ' every step without its own value. A step that runs longer' +
+            ' turns its run light red as a possibly-hung warning; the' +
+            ' run is never stopped. 0 = no limit.">') +
             fsClaudeSettingsHtml();
     }
 
@@ -1125,6 +1149,9 @@ const PipeleyenApp = (function () {
         var iExp = parseInt(
             document.getElementById("gsTolerance").value, 10);
         var elAutoArchive = document.getElementById("gsAutoArchive");
+        var elBudget = document.getElementById(
+            "gsDefaultWallClockBudget");
+        var fBudget = elBudget ? parseFloat(elBudget.value) : 0;
         var dictUpdates = {
             sPlotDirectory: document.getElementById("gsPlotDirectory").value,
             sFigureType: document.getElementById("gsFigureType").value,
@@ -1134,6 +1161,8 @@ const PipeleyenApp = (function () {
             fTolerance: Math.pow(10, iExp),
             bAutoArchive: elAutoArchive
                 ? elAutoArchive.checked : false,
+            fDefaultWallClockBudgetSeconds:
+                (isNaN(fBudget) || fBudget < 0) ? 0 : fBudget,
         };
         try {
             var result = await VaibifyApi.fdictPut(
@@ -1148,6 +1177,11 @@ const PipeleyenApp = (function () {
                 _dictWorkflowState.dictWorkflow.bAutoArchive =
                     result.bAutoArchive;
             }
+            if (result.fDefaultWallClockBudgetSeconds !== undefined) {
+                _dictWorkflowState.dictWorkflow
+                    .fDefaultWallClockBudgetSeconds =
+                    result.fDefaultWallClockBudgetSeconds;
+            }
             fnShowToast("Settings saved", "success");
             fnRenderStepList();
         } catch (error) {
@@ -1159,7 +1193,7 @@ const PipeleyenApp = (function () {
 
     function _fsFindAiDeclarationFile() {
         // The declaration file of the workflow's ai-declaration step,
-        // for the Workflow-wide Publication "AI Declaration" row.
+        // for the Project-block Publication "AI Declaration" row.
         var listSteps = (_dictWorkflowState.dictWorkflow || {})
             .listSteps || [];
         for (var i = 0; i < listSteps.length; i++) {
@@ -1180,12 +1214,14 @@ const PipeleyenApp = (function () {
                 _dictUiState.setExpandedRequirementGroups,
             setExpandedRequirementRows:
                 _dictUiState.setExpandedRequirementRows,
-            bWorkflowWideCollapsed: _dictUiState.bWorkflowWideCollapsed,
+            bProjectBlockCollapsed: _dictUiState.bProjectBlockCollapsed,
             bBinaryAddFormOpen: _dictUiState.bBinaryAddFormOpen,
             sProjectRepoPath: (_dictWorkflowState.dictWorkflow || {})
                 .sProjectRepoPath || "",
             sAiDeclarationFile: _fsFindAiDeclarationFile(),
             setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
+            fdictGetFalsificationState:
+                PipeleyenTestManager.fdictGetFalsificationState,
             setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,
@@ -1194,6 +1230,8 @@ const PipeleyenApp = (function () {
             dictOutputMtimes: _dictWorkflowState.dictOutputMtimes,
             dictMaxDataMtimeByStep:
                 _dictWorkflowState.dictMaxDataMtimeByStep,
+            dictMaxInputMtimeByStep:
+                _dictWorkflowState.dictMaxInputMtimeByStep,
             dictMaxPlotMtimeByStep: _dictWorkflowState.dictPlotMtimes,
             dictMarkerMtimeByStep:
                 _dictWorkflowState.dictMarkerMtimeByStep,
@@ -1308,7 +1346,7 @@ const PipeleyenApp = (function () {
         // column header + step-type banners) instead of only swapping
         // individual step wrappers.
         //
-        // The Workflow-wide block is NOT part of this signature: it
+        // The Project block is NOT part of this signature: it
         // lives in its own container and is rebuilt on every render,
         // so its expansion Sets can never cause a skip-repaint. A
         // future maintainer who memoizes that block MUST fold
@@ -1357,8 +1395,11 @@ const PipeleyenApp = (function () {
             dictContext.dictOutputMtimes[sIdx] || "",
             dictContext.dictMarkerMtimeByStep[sIdx] || "",
             dictContext.dictMaxDataMtimeByStep[sIdx] || "",
+            (dictContext.dictMaxInputMtimeByStep || {})[sIdx] || "",
             dictContext.dictMaxPlotMtimeByStep[sIdx] || "",
             dictContext.dictTestCategoryMtimes[sIdx] || null,
+            dictContext.fdictGetFalsificationState ?
+                dictContext.fdictGetFalsificationState(iIndex) : null,
         ].concat(_flistBlockerAndLevelSlice(iIndex, dictContext)));
     }
 
@@ -1432,7 +1473,7 @@ const PipeleyenApp = (function () {
             _fnRenderStepListIncremental(
                 elList, listSteps, dictVars, dictContext);
         }
-        _fnRenderWorkflowWideBlock(dictContext);
+        _fnRenderProjectBlock(dictContext);
         _fnApplyStepsCollapsedClass();
         fnApplyTimestampVisibility();
         fnBindStepEvents();
@@ -1463,9 +1504,9 @@ const PipeleyenApp = (function () {
         _sLastBoundarySignature = sBoundary;
     }
 
-    var _sLastWorkflowWideHtml = null;
+    var _sLastProjectBlockHtml = null;
 
-    function _fnRenderWorkflowWideBlock(dictContext) {
+    function _fnRenderProjectBlock(dictContext) {
         // Rebuilt from data on every render — the block lives in its
         // own container, never in the incremental step-hash path, so
         // the requirement group/row expansion Sets need no render
@@ -1473,19 +1514,19 @@ const PipeleyenApp = (function () {
         // DOM write is skipped when the output is byte-identical so a
         // steady-state poll never wipes in-progress form input (the
         // determinism declare form) or a text selection.
-        var elBlock = document.getElementById("workflowWideBlock");
+        var elBlock = document.getElementById("projectBlock");
         if (!elBlock) return;
         if (!_dictWorkflowState.dictWorkflow) {
             elBlock.innerHTML = "";
-            _sLastWorkflowWideHtml = null;
+            _sLastProjectBlockHtml = null;
             return;
         }
         var sHtml =
-            VaibifyWorkflowRequirements.fsRenderWorkflowWideBlock(
+            VaibifyWorkflowRequirements.fsRenderProjectBlock(
                 dictContext);
-        if (sHtml === _sLastWorkflowWideHtml) return;
+        if (sHtml === _sLastProjectBlockHtml) return;
         elBlock.innerHTML = sHtml;
-        _sLastWorkflowWideHtml = sHtml;
+        _sLastProjectBlockHtml = sHtml;
     }
 
     function _fnApplyStepsCollapsedClass() {
@@ -1531,8 +1572,8 @@ const PipeleyenApp = (function () {
     function _fsRenderStepsAggregateLight() {
         // A full L1|L2|L3 strip (with a leading warning-column
         // spacer) so the collapsed Steps banner lines up with the
-        // Workflow-wide banner strip. L1 carries the aggregate step
-        // state; L2/L3 are dashes — those levels are workflow-wide,
+        // Project banner strip. L1 carries the aggregate step
+        // state; L2/L3 are dashes — those levels are project-wide,
         // not per-step.
         var sState = _fsAggregateStepsL1State();
         var sLevelCell = VaibifyUtilities.fsBuildLevelCell(
@@ -1597,9 +1638,40 @@ const PipeleyenApp = (function () {
     function fnClearRunningStatuses() {
         for (var sKey in _dictWorkflowState.dictStepStatus) {
             var sVal = _dictWorkflowState.dictStepStatus[sKey];
-            if (sVal === "running" || sVal === "queued") {
+            if (sVal === "running" || sVal === "queued"
+                || sVal === "overBudget") {
                 delete _dictWorkflowState.dictStepStatus[sKey];
             }
+        }
+    }
+
+    var _bReflectedDispatchRun = false;
+
+    function _fnReflectDispatchedRunState(dictRunState) {
+        // The continuously-polled /status payload surfaces any
+        // dispatched run's active step — including an in-container
+        // agent's run-step/runSelected — so the running marker lights
+        // even for runs this browser did not initiate. Only the active
+        // step is touched; the pipeline-run poll owns the fuller
+        // queued/completed vocabulary for browser-initiated runs. The
+        // marker is cleared on the running->idle transition so a
+        // finished out-of-band run never sticks as "running".
+        if (!dictRunState) return;
+        if (dictRunState.bRunning && dictRunState.iActiveStep > 0) {
+            // An active step that has outrun its declared wall-clock
+            // budget still runs, but is flagged distinctly so a hung
+            // step is no longer indistinguishable from a legitimately
+            // long one. The backend computes this live each poll.
+            _dictWorkflowState.dictStepStatus[
+                dictRunState.iActiveStep - 1] =
+                dictRunState.bActiveStepOverBudget
+                    ? "overBudget" : "running";
+            _bReflectedDispatchRun = true;
+            fnRenderStepList();
+        } else if (_bReflectedDispatchRun) {
+            fnClearRunningStatuses();
+            _bReflectedDispatchRun = false;
+            fnRenderStepList();
         }
     }
 
@@ -1676,6 +1748,15 @@ const PipeleyenApp = (function () {
              * showed its check while the theme never left level 0. */
             return true;
         }
+        /* Input contract must be declared — files listed or the
+         * explicit "no input data" flag — mirroring the server's L1
+         * rule. Without this the client chip and file colours showed
+         * an undeclared step as L1 while the server cell showed it
+         * blocked. */
+        var bInputDeclared =
+            (dictStep.saInputDataFiles || []).length > 0 ||
+            dictStep.bNoInputData === true;
+        if (!bInputDeclared) return false;
         var dictVerify = fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) return false;
@@ -1815,6 +1896,16 @@ const PipeleyenApp = (function () {
     }
 
     var _DICT_BLOCKER_CRITERION_GLYPHS = {
+        "input-data-undeclared": {
+            /* Orange "pending action" family (same glyph as awaiting
+             * sign-off): undeclared input is an incomplete
+             * declaration a single click resolves, not a breakage —
+             * red stays reserved for failed/missing tests. */
+            sIcon: "—",
+            sLabel: "Input data undeclared — list the step's raw " +
+                "inputs or check 'No input data needed'",
+            sClass: "step-blocker-glyph-user",
+        },
         "upstream-modified": {
             sIcon: "✎",
             sLabel: "Upstream changed; re-run to clear blocker",
@@ -1913,13 +2004,6 @@ const PipeleyenApp = (function () {
                 "push manuscript figures",
             sClass: "step-blocker-glyph-l2-figure",
         },
-        "arxiv-not-submitted": {
-            sIcon: "—",
-            sLabel: "No arXiv ID recorded — submit the manuscript, " +
-                "then record the ID under Published copies in the " +
-                "Project block",
-            sClass: "step-blocker-glyph-l2-arxiv-submit",
-        },
         "arxiv-mismatch": {
             sIcon: "⚠",
             sLabel: "arXiv submission doesn't match the Overleaf " +
@@ -1969,6 +2053,15 @@ const PipeleyenApp = (function () {
             sLabel: "Declared program's version and hash not yet " +
                 "recorded — use Capture in the Software section",
             sClass: "step-blocker-glyph-l3-binary-captured",
+        },
+        "binary-drifted": {
+            sIcon: "⚠",
+            sLabel: "The program on disk no longer matches the hash " +
+                "recorded for reproducibility — it was rebuilt or " +
+                "replaced after the outputs were produced. Re-run " +
+                "with the current program and re-capture, or restore " +
+                "the published binary.",
+            sClass: "step-blocker-glyph-l3-binary-drifted",
         },
         "dockerfile-not-pinned": {
             sIcon: "⚠",
@@ -2206,7 +2299,7 @@ const PipeleyenApp = (function () {
                 (_DICT_LEVEL_CELL_STATE_PHRASES[sState] || sState),
         ];
         if (iStepIndex < 0) {
-            // The Project row covers workflow-wide requirements
+            // The Project row covers project-scope requirements
             // only; it is NOT a roll-up of the step rows. The
             // all-steps aggregate renders as the header checkmarks
             // and the AICS tab.
@@ -2214,7 +2307,7 @@ const PipeleyenApp = (function () {
                 "These requirements apply to the project as a " +
                 "whole, not to any single step. Each step row " +
                 "tracks its own. The overall level is shown by " +
-                "the checkmarks next to the workflow name and in " +
+                "the checkmarks next to the project name and in " +
                 "the AICS tab.");
         }
         if (dictCell && sState !== "not-applicable") {
@@ -2329,9 +2422,9 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    function fnToggleWorkflowWideBlockExpand() {
-        _dictUiState.bWorkflowWideCollapsed =
-            !_dictUiState.bWorkflowWideCollapsed;
+    function fnToggleProjectBlockExpand() {
+        _dictUiState.bProjectBlockCollapsed =
+            !_dictUiState.bProjectBlockCollapsed;
         fnRenderStepList();
     }
 
@@ -2351,7 +2444,7 @@ const PipeleyenApp = (function () {
             _dictUiState.setExpandedRequirementRows, sReqKey);
     }
 
-    var _DICT_WORKFLOW_WIDE_ACTIONS = {
+    var _DICT_PROJECT_ACTIONS = {
         "capture-binary": {
             sPath: "/binaries/capture",
             fdictBody: function (sArg) {
@@ -2443,7 +2536,7 @@ const PipeleyenApp = (function () {
                 return {sMessage: listBad.length + " of " + iTotal +
                     " files differ from the manifest (first: " +
                     (listBad[0].sPath || listBad[0]) + "). Re-run " +
-                    "the workflow or regenerate the envelope.",
+                    "the project or regenerate the envelope.",
                     sType: "warning"};
             },
         },
@@ -2480,7 +2573,7 @@ const PipeleyenApp = (function () {
             dictConfirm: {
                 sTitle: "Delete reproducibility rules",
                 sMessage: "Remove the declared repeatability rules " +
-                    "from workflow.json? Level 3 requires a " +
+                    "from project.json? Level 3 requires a " +
                     "declaration, so you will need to declare again.",
             },
             sToast: "Reproducibility rules deleted.",
@@ -2556,15 +2649,15 @@ const PipeleyenApp = (function () {
         };
     }
 
-    async function fnRunWorkflowWideAction(sAction, sArg, elButton) {
-        // Runs a workflow-wide action in place from the expanded
+    async function fnRunProjectAction(sAction, sArg, elButton) {
+        // Runs a project action in place from the expanded
         // blocks (capture/declare binaries, regenerate the envelope,
         // verify the manifest, generate reproduce.sh, declare/delete
         // determinism, verify Level 3), then refreshes so the status
         // lights update. Destructive actions confirm first; actions
         // with a response-aware formatter report what actually
         // happened rather than a fixed message.
-        var dictAction = _DICT_WORKFLOW_WIDE_ACTIONS[sAction];
+        var dictAction = _DICT_PROJECT_ACTIONS[sAction];
         var sContainerId = _dictSessionState.sContainerId;
         if (!dictAction || !sContainerId) return;
         if (dictAction.dictConfirm) {
@@ -2574,16 +2667,16 @@ const PipeleyenApp = (function () {
                 dictAction.dictConfirm.sTitle,
                 dictAction.dictConfirm.sMessage,
                 function () {
-                    _fnExecuteWorkflowWideAction(
+                    _fnExecuteProjectAction(
                         dictNoConfirm, sContainerId, sArg, elButton);
                 });
             return;
         }
-        await _fnExecuteWorkflowWideAction(
+        await _fnExecuteProjectAction(
             dictAction, sContainerId, sArg, elButton);
     }
 
-    async function _fnExecuteWorkflowWideAction(
+    async function _fnExecuteProjectAction(
         dictAction, sContainerId, sArg, elButton
     ) {
         var oBody = {};
@@ -2765,7 +2858,7 @@ const PipeleyenApp = (function () {
     function fbDirectoryOverlap(dictEarlierStep, sCurrentDirectory) {
         if (!dictEarlierStep.sDirectory) return false;
         var sPrefix = sCurrentDirectory + "/";
-        var listFileKeys = ["saDataFiles", "saPlotFiles", "saOutputFiles"];
+        var listFileKeys = ["saOutputDataFiles", "saPlotFiles"];
         for (var iKey = 0; iKey < listFileKeys.length; iKey++) {
             var listFiles = dictEarlierStep[listFileKeys[iKey]] || [];
             for (var iFile = 0; iFile < listFiles.length; iFile++) {
@@ -2793,9 +2886,8 @@ const PipeleyenApp = (function () {
         var step = listSteps[iStep];
         var setDeps = {};
         var listArrays = ["saDataCommands", "saPlotCommands",
-            "saTestCommands", "saDataFiles", "saPlotFiles",
-            "saDependencies", "saSetupCommands", "saCommands",
-            "saOutputFiles"];
+            "saTestCommands", "saOutputDataFiles", "saPlotFiles",
+            "saDependencies", "saSetupCommands", "saCommands"];
         listArrays.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sVal) {
                 var rRef = /\{Step(\d+)\.\w+\}/g;
@@ -2831,7 +2923,7 @@ const PipeleyenApp = (function () {
         // git badge).
         var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         if (!step) return;
-        var listFileKeys = ["saDataFiles", "saPlotFiles",
+        var listFileKeys = ["saOutputDataFiles", "saPlotFiles",
             "saStepScripts", "saTestStandards"];
         listFileKeys.forEach(function (sKey) {
             (step[sKey] || []).forEach(function (sFile) {
@@ -2987,7 +3079,7 @@ const PipeleyenApp = (function () {
             var dictPlot = dictStep.dictPlotFileCategories || {};
             return dictPlot[sFilePath] || "archive";
         }
-        var dictData = dictStep.dictDataFileCategories || {};
+        var dictData = dictStep.dictOutputDataFileCategories || {};
         return dictData[sFilePath] || "archive";
     }
 
@@ -2998,15 +3090,93 @@ const PipeleyenApp = (function () {
         PipeleyenEventBindings.fnSetupDelegatedEvents(elList);
     }
 
+    async function fnPutStepEdit(iStep, dictUpdate) {
+        // Single choke-point for every step edit. Attaches the
+        // compare-and-swap fingerprint so a concurrent writer (the
+        // in-container agent) is never silently overwritten, and keeps
+        // the tracked fingerprint fresh for the next edit. On a 409 the
+        // local optimistic edit is stale, so we re-sync from the server
+        // rather than trust it. Returns the response dict on success,
+        // null on any failure (the caller shows nothing extra).
+        var dictBody = Object.assign({}, dictUpdate, {
+            sBaseFingerprint:
+                _dictWorkflowState.sWorkflowFingerprint || null,
+        });
+        try {
+            var dictResult = await VaibifyApi.fdictPut(
+                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
+                dictBody);
+            if (dictResult && dictResult.sWorkflowFingerprint) {
+                _dictWorkflowState.sWorkflowFingerprint =
+                    dictResult.sWorkflowFingerprint;
+            }
+            return dictResult;
+        } catch (error) {
+            if (error && error.iStatus === 409) {
+                fnShowToast(
+                    "The project changed since you loaded it — "
+                    + "reloaded to stay in sync so your edit didn't "
+                    + "overwrite it. Re-apply it if you still want it.",
+                    "warning");
+                // Reload the CURRENT workflow in place (refreshes the
+                // fingerprint baseline and re-renders the dashboard).
+                // The old path called fnConnectToContainer, which shows
+                // the workflow picker — a 409 on a routine step edit
+                // must never eject the researcher from their dashboard.
+                VaibifyWorkflowManager.fnRefreshWorkflow();
+            } else {
+                fnShowToast("Save failed", "error");
+            }
+            return null;
+        }
+    }
+
+    async function fnSetStepBudget(iStep, fBudget) {
+        // The wall-clock budget in seconds (0 = inherit the workflow
+        // default). Mirror it into local state before the PUT so the
+        // input stays sticky across re-renders, exactly as the
+        // plot-only toggle does.
+        _dictWorkflowState.dictWorkflow.listSteps[iStep]
+            .fWallClockBudgetSeconds = fBudget;
+        await fnPutStepEdit(iStep, {fWallClockBudgetSeconds: fBudget});
+    }
+
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
         _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
+        await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
+    }
+
+    async function fnToggleNoInputData(iStep, bNoInputData) {
+        _dictWorkflowState.dictWorkflow.listSteps[iStep].bNoInputData =
+            bNoInputData;
+        await fnPutStepEdit(iStep, {bNoInputData: bNoInputData});
+        fnRenderStepList();
+    }
+
+    async function fnBulkDeclareNoInputData() {
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
         try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                {bPlotOnly: bPlotOnly}
-            );
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/steps/" + sContainerId
+                + "/declare-no-input-data", {});
+            var listDeclared =
+                dictResult.listDeclaredStepIndices || [];
+            listDeclared.forEach(function (iStep) {
+                var step =
+                    _dictWorkflowState.dictWorkflow.listSteps[iStep];
+                if (step) step.bNoInputData = true;
+            });
+            fnShowToast(
+                listDeclared.length === 0
+                    ? "Every step already declares its input data"
+                    : listDeclared.length
+                        + " step(s) declared as needing no input data",
+                "success");
+            fnRenderStepList();
+            VaibifyPolling.fnStartFilePolling(sContainerId);
         } catch (error) {
-            fnShowToast("Save failed", "error");
+            fnShowToast("Declaration failed", "error");
         }
     }
 
@@ -3070,13 +3240,7 @@ const PipeleyenApp = (function () {
     var fnShowInputModal = PipeleyenModals.fnShowInputModal;
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                dictUpdate);
-        } catch (error) {
-            fnShowToast("Save failed", "error");
-        }
+        await fnPutStepEdit(iStep, dictUpdate);
     }
 
     async function fnCycleUserVerification(iStep) {
@@ -3097,14 +3261,7 @@ const PipeleyenApp = (function () {
         }
         dictStep.dictVerification = dictVerify;
         _dictWorkflowState.dictUserVerifiedAt[iStep] = Date.now();
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                {dictVerification: dictVerify}
-            );
-        } catch (error) {
-            fnShowToast("Save failed", "error");
-        }
+        await fnPutStepEdit(iStep, {dictVerification: dictVerify});
         fnRenderStepList();
         fnUpdateHighlightState();
     }
@@ -3292,6 +3449,16 @@ const PipeleyenApp = (function () {
     }
 
     function fnAddNewItem(iStep, sArrayKey) {
+        if (sArrayKey === "saInputDataFiles") {
+            PipeleyenModals.fnShowFilePickerModal(
+                "Add Input Data",
+                "Pick the raw data file this step reads, or type "
+                    + "its repo-relative path.",
+                function (sPath) {
+                    fnCommitNewItem(iStep, sArrayKey, sPath);
+                });
+            return;
+        }
         var sPlaceholder = sArrayKey === "saPlotFiles" ?
             "File path..." : "Command...";
         PipeleyenModals.fnShowInlineInput(
@@ -3344,13 +3511,7 @@ const PipeleyenApp = (function () {
     async function fnSaveStepArray(iStep, sArray, bScanDeps) {
         var dictUpdate = {};
         dictUpdate[sArray] = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray];
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
-                dictUpdate);
-        } catch (error) {
-            fnShowToast("Save failed", "error");
-        }
+        await fnPutStepEdit(iStep, dictUpdate);
         if (sArray === "saDataCommands" && bScanDeps) {
             PipeleyenDependencyScanner.fnScanDependencies(iStep);
         }
@@ -3371,14 +3532,11 @@ const PipeleyenApp = (function () {
     }
 
     async function fnToggleStepEnabled(iIndex, bRunEnabled) {
-        try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + _dictSessionState.sContainerId + "/" + iIndex,
-                {bRunEnabled: bRunEnabled}
-            );
-            _dictWorkflowState.dictWorkflow.listSteps[iIndex].bRunEnabled = bRunEnabled;
-        } catch (error) {
-            fnShowToast("Failed to update step", "error");
+        var dictResult = await fnPutStepEdit(
+            iIndex, {bRunEnabled: bRunEnabled});
+        if (dictResult) {
+            _dictWorkflowState.dictWorkflow
+                .listSteps[iIndex].bRunEnabled = bRunEnabled;
         }
     }
 
@@ -3595,7 +3753,7 @@ const PipeleyenApp = (function () {
     function fnProcessFileStatusResponse(dictStatus) {
         if (dictStatus.sWorkflowReloadError) {
             fnShowToast(
-                "workflow.json error: " +
+                "project.json error: " +
                 dictStatus.sWorkflowReloadError +
                 ". Showing last good state.",
                 "warning");
@@ -3608,6 +3766,11 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.iWorkflowEpoch =
                 dictStatus.iWorkflowEpoch;
         }
+        if (typeof dictStatus.sWorkflowFingerprint === "string") {
+            _dictWorkflowState.sWorkflowFingerprint =
+                dictStatus.sWorkflowFingerprint;
+        }
+        _fnReflectDispatchedRunState(dictStatus.dictRunState);
         PipeleyenFileOps.fnDetectOutputFileChanges(
             dictStatus.dictModTimes || {}, _dictWorkflowState);
         if (dictStatus.dictMaxMtimeByStep) {
@@ -3621,6 +3784,10 @@ const PipeleyenApp = (function () {
         if (dictStatus.dictMaxDataMtimeByStep) {
             _dictWorkflowState.dictMaxDataMtimeByStep =
                 dictStatus.dictMaxDataMtimeByStep;
+        }
+        if (dictStatus.dictMaxInputMtimeByStep) {
+            _dictWorkflowState.dictMaxInputMtimeByStep =
+                dictStatus.dictMaxInputMtimeByStep;
         }
         if (dictStatus.dictMarkerMtimeByStep) {
             _dictWorkflowState.dictMarkerMtimeByStep =
@@ -4096,13 +4263,16 @@ const PipeleyenApp = (function () {
         fnToggleDepsExpand: fnToggleDepsExpand,
         fnToggleStepExpand: fnToggleStepExpand,
         fnToggleStepsBlockExpand: fnToggleStepsBlockExpand,
-        fnToggleWorkflowWideBlockExpand:
-            fnToggleWorkflowWideBlockExpand,
+        fnToggleProjectBlockExpand:
+            fnToggleProjectBlockExpand,
         fnToggleBinaryAddForm: fnToggleBinaryAddForm,
         fnToggleRequirementGroup: fnToggleRequirementGroup,
         fnToggleRequirementRow: fnToggleRequirementRow,
-        fnRunWorkflowWideAction: fnRunWorkflowWideAction,
+        fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
+        fnToggleNoInputData: fnToggleNoInputData,
+        fnBulkDeclareNoInputData: fnBulkDeclareNoInputData,
+        fnSetStepBudget: fnSetStepBudget,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
         fnReorderStep: fnReorderStep,

@@ -10,6 +10,7 @@ from ..fileStatusManager import fnMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiAICSLevel
 from ..routeContext import ffilesForWorkflow
 from ..pipelineServer import (
+    InputDataAddRequest,
     ReorderRequest,
     StepCreateRequest,
     StepUpdateRequest,
@@ -63,6 +64,15 @@ def _fnRegisterStepsList(app, dictCtx):
                 dictWorkflow
             )
         }
+
+    @app.get("/api/steps/{sContainerId}/resolve-commands")
+    @fnAgentAction("resolve-commands")
+    async def fnResolveCommands(sContainerId: str):
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        return workflowManager.fdictResolveWorkflowCommands(
+            dictWorkflow, dictCtx["variables"](sContainerId),
+        )
 
     @app.get("/api/steps/{sContainerId}/by-label/{sLabel}")
     async def fnResolveStepLabel(sContainerId: str, sLabel: str):
@@ -171,6 +181,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
+        _fnRequireFingerprintMatch(dictWorkflow, request.sBaseFingerprint)
         dictUpdates = _fdictExtractStepUpdates(request)
         _fnRequireDestructiveConfirm(
             dictWorkflow, iStepIndex, dictUpdates,
@@ -191,27 +202,59 @@ def _fnRegisterStepUpdate(app, dictCtx):
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
-        return fdictStepWithLabel(dictWorkflow, iStepIndex)
+        dictResult = fdictStepWithLabel(dictWorkflow, iStepIndex)
+        dictResult["sWorkflowFingerprint"] = (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        )
+        return dictResult
 
 
 def _fdictExtractStepUpdates(request):
-    """Return the non-None update dict with the confirm flag stripped."""
+    """Return the non-None update dict with control fields stripped."""
     dictRaw = request.model_dump()
     dictRaw.pop("bConfirmDestructive", None)
+    dictRaw.pop("sBaseFingerprint", None)
     return fdictFilterNonNone(dictRaw)
+
+
+def _fnRequireFingerprintMatch(dictWorkflow, sBaseFingerprint):
+    """Reject a stale compare-and-swap edit with 409 Conflict.
+
+    A ``None`` fingerprint opts out (unconditional write, the legacy
+    behavior). When supplied, it must equal the workflow's current
+    fingerprint — otherwise a concurrent writer (the dashboard or
+    another agent) has moved the workflow since the caller read it,
+    and applying the edit would silently clobber that change.
+    """
+    if sBaseFingerprint is None:
+        return
+    sCurrent = workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+    if sBaseFingerprint != sCurrent:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Workflow changed since you read it "
+                f"(expected {sBaseFingerprint[:12]}…, now "
+                f"{sCurrent[:12]}…). Re-read and retry."
+            ),
+        )
 
 
 def _fnRequireDestructiveConfirm(
     dictWorkflow, iStepIndex, dictUpdates, bConfirm,
 ):
-    """Refuse edits that empty saTestCommands/saDataFiles unless confirmed."""
+    """Refuse edits that empty destructive-to-lose lists unless confirmed.
+
+    Emptying ``saInputDataFiles`` silently disables input-staleness
+    detection, the same hazard class as emptying the other two.
+    """
     if bConfirm:
         return
     listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return
     dictStep = listSteps[iStepIndex]
-    for sKey in ("saTestCommands", "saDataFiles"):
+    for sKey in ("saTestCommands", "saOutputDataFiles", "saInputDataFiles"):
         listNew = dictUpdates.get(sKey)
         if listNew is None or listNew:
             continue
@@ -266,12 +309,71 @@ def _fnRegisterStepReorder(app, dictCtx):
         return {"listSteps": flistStepsWithLabels(dictWorkflow)}
 
 
+def _fnRegisterInputDataAdd(app, dictCtx):
+    """Register POST /api/steps/{id}/{index}/input-data route."""
+
+    @fnAgentAction("add-input-data-file")
+    @app.post("/api/steps/{sContainerId}/{iStepIndex}/input-data")
+    async def fnAddInputDataFile(
+        sContainerId: str, iStepIndex: int,
+        request: InputDataAddRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        listSteps = dictWorkflow.get("listSteps", [])
+        if not 0 <= iStepIndex < len(listSteps):
+            raise HTTPException(404, f"Step {iStepIndex} out of range")
+        sPath = (request.sPath or "").strip()
+        sWarning = workflowManager._fsCheckInputPathBoundary(
+            sPath, f"Step{iStepIndex + 1:02d}", "saInputDataFiles",
+        )
+        if not sPath or sWarning:
+            raise HTTPException(400, sWarning or "sPath is required")
+        dictStep = listSteps[iStepIndex]
+        listInputs = dictStep.setdefault("saInputDataFiles", [])
+        bAdded = sPath not in listInputs
+        if bAdded:
+            listInputs.append(sPath)
+            dictCtx["save"](sContainerId, dictWorkflow)
+        return {
+            "bAdded": bAdded,
+            "dictStep": fdictStepWithLabel(dictWorkflow, iStepIndex),
+        }
+
+
+def _fnRegisterDeclareNoInputData(app, dictCtx):
+    """Register POST /api/steps/{id}/declare-no-input-data route."""
+
+    @fnAgentAction("declare-no-input-data")
+    @app.post("/api/steps/{sContainerId}/declare-no-input-data")
+    async def fnDeclareNoInputData(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        listDeclared = []
+        for iIndex, dictStep in enumerate(
+            dictWorkflow.get("listSteps", [])
+        ):
+            if dictStep.get("saInputDataFiles"):
+                continue
+            if dictStep.get("bNoInputData"):
+                continue
+            dictStep["bNoInputData"] = True
+            listDeclared.append(iIndex)
+        if listDeclared:
+            dictCtx["save"](sContainerId, dictWorkflow)
+        return {"listDeclaredStepIndices": listDeclared}
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all step CRUD routes."""
     _fnRegisterStepsList(app, dictCtx)
     _fnRegisterStepGet(app, dictCtx)
     _fnRegisterStepCreate(app, dictCtx)
     _fnRegisterStepInsert(app, dictCtx)
+    _fnRegisterInputDataAdd(app, dictCtx)
+    _fnRegisterDeclareNoInputData(app, dictCtx)
     _fnRegisterStepUpdate(app, dictCtx)
     _fnRegisterStepDelete(app, dictCtx)
     _fnRegisterStepReorder(app, dictCtx)

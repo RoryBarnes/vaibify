@@ -77,7 +77,7 @@ var VaibifyZenodoDepositCard = (function () {
     function _fsBuildEmptyHtml() {
         return (
             '<p class="zdc-empty">' +
-            'This workflow has not been published to Zenodo yet. ' +
+            'This project has not been published to Zenodo yet. ' +
             'Use <strong>Sync \u2192 Archive to Zenodo</strong> to ' +
             'publish the tracked files and mint a DOI.' +
             '</p>'

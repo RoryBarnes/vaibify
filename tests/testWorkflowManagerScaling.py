@@ -39,7 +39,7 @@ def _fdictLinearChainWorkflow(iSteps):
             "sDirectory": f"step{iNumber:03d}",
             "saDataCommands": [],
             "saPlotCommands": [],
-            "saDataFiles": [f"output{iNumber:03d}.csv"],
+            "saOutputDataFiles": [f"output{iNumber:03d}.csv"],
             "saPlotFiles": [],
             "saDependencies": [],
         }
@@ -64,7 +64,7 @@ def _fdictNestedDirectoryWorkflow(iSteps):
             "sName": f"Step{iIndex + 1:03d}",
             "sDirectory": "shared"
             if iIndex == iSteps - 1 else f"shared/sub{iIndex:03d}",
-            "saDataFiles": [f"output{iIndex:03d}.csv"],
+            "saOutputDataFiles": [f"output{iIndex:03d}.csv"],
             "saPlotFiles": [],
             "saDataCommands": [],
             "saPlotCommands": [],
@@ -107,7 +107,7 @@ class TestDepGraphCache:
         dictFirst = fdictBuildDirectDependencies(dictWorkflow)
         dictWorkflow["listSteps"].append({
             "sName": "Tail", "sDirectory": "tail",
-            "saDataFiles": ["tail.csv"], "saPlotFiles": [],
+            "saOutputDataFiles": ["tail.csv"], "saPlotFiles": [],
             "saDataCommands": [], "saPlotCommands": [],
             "saDependencies": [],
         })
@@ -172,25 +172,25 @@ def _fdictDiamondWorkflow():
         "listSteps": [
             {
                 "sName": "Root", "sDirectory": "root",
-                "saDataFiles": ["root.csv"],
+                "saOutputDataFiles": ["root.csv"],
                 "saPlotFiles": [], "saDataCommands": [],
                 "saPlotCommands": [],
             },
             {
                 "sName": "Left", "sDirectory": "left",
-                "saDataFiles": ["left.csv"], "saPlotFiles": [],
+                "saOutputDataFiles": ["left.csv"], "saPlotFiles": [],
                 "saDataCommands": ["use {Step01.root}"],
                 "saPlotCommands": [],
             },
             {
                 "sName": "Right", "sDirectory": "right",
-                "saDataFiles": ["right.csv"], "saPlotFiles": [],
+                "saOutputDataFiles": ["right.csv"], "saPlotFiles": [],
                 "saDataCommands": ["use {Step01.root}"],
                 "saPlotCommands": [],
             },
             {
                 "sName": "Tail", "sDirectory": "tail",
-                "saDataFiles": ["tail.csv"], "saPlotFiles": [],
+                "saOutputDataFiles": ["tail.csv"], "saPlotFiles": [],
                 "saDataCommands": [
                     "merge {Step02.left} {Step03.right}",
                 ],

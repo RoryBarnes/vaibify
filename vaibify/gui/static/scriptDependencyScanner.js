@@ -713,7 +713,7 @@ var PipeleyenDependencyScanner = (function () {
         if (!sStem) return sPath;
         var listSteps = dictWorkflow.listSteps || [];
         for (var i = 0; i < listSteps.length; i++) {
-            var saFiles = (listSteps[i].saDataFiles || []).concat(
+            var saFiles = (listSteps[i].saOutputDataFiles || []).concat(
                 listSteps[i].saPlotFiles || []
             );
             for (var j = 0; j < saFiles.length; j++) {

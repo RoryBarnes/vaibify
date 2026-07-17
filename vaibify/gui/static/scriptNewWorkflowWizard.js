@@ -4,7 +4,7 @@ var VaibifyNewWorkflowWizard = (function () {
     "use strict";
 
     var _LIST_STEP_TITLES = [
-        "Name your workflow",
+        "Name your project",
         "Choose where it lives",
         "Confirm and create"
     ];
@@ -167,7 +167,7 @@ var VaibifyNewWorkflowWizard = (function () {
             return;
         }
         elNext.textContent = _iWizardStep === _I_LAST_STEP
-            ? "Create Workflow" : "Next";
+            ? "Create Project" : "Next";
         elNext.disabled = !_fbStepIsValid(_iWizardStep);
     }
 
@@ -177,7 +177,7 @@ var VaibifyNewWorkflowWizard = (function () {
         elContent.innerHTML =
             '<div class="form-group">' +
             '<label for="newWorkflowName">' +
-            'Workflow display name</label>' +
+            'Project display name</label>' +
             '<input type="text" id="newWorkflowName" ' +
             'autocomplete="off" />' +
             '<div class="wizard-helper-text" ' +
@@ -215,7 +215,7 @@ var VaibifyNewWorkflowWizard = (function () {
             return;
         }
         elHelp.textContent =
-            "Saved as " + sSlug + ".json inside the project repo.";
+            "Saved as " + sSlug + ".json inside the repository.";
     }
 
     /* ---------- Render: Step 2 (Location) ---------- */
@@ -392,7 +392,7 @@ var VaibifyNewWorkflowWizard = (function () {
         var sLocation = _fsResolveLocationName();
         var bWillInit = _fbLocationNeedsInit();
         var sLines = "";
-        sLines += _fsBuildSummaryRow("Workflow", sName);
+        sLines += _fsBuildSummaryRow("Project", sName);
         sLines += _fsBuildSummaryRow("File", sSlug + ".json");
         sLines += _fsBuildSummaryRow(
             "Location", "/workspace/" + sLocation);
@@ -433,7 +433,7 @@ var VaibifyNewWorkflowWizard = (function () {
                 "an empty initial commit");
         }
         listSteps.push(
-            "Write .vaibify/workflows/" + sSlug + ".json");
+            "Write .vaibify/projects/" + sSlug + ".json");
         var sBody = listSteps.map(function (sStep) {
             return '<li>' + VaibifyUtilities.fnEscapeHtml(sStep) +
                 '</li>';
@@ -454,7 +454,7 @@ var VaibifyNewWorkflowWizard = (function () {
             _fnHideModal();
             VaibifyWorkflowManager.fnSelectWorkflow(
                 _sContainerId, dictResult.sPath, dictResult.sName);
-            PipeleyenApp.fnShowToast("Workflow created", "success");
+            PipeleyenApp.fnShowToast("Project created", "success");
             _fnResetWorkflowState();
         } catch (error) {
             _fnHandleSubmitError(error);

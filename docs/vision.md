@@ -53,7 +53,7 @@ state what it proves and, equally important, what it does not.
 
 ### L1 — Self-Consistent
 
-All workflow tests pass. Every file declared as canonical matches
+All project tests pass. Every file declared as canonical matches
 the workspace's last local commit. Test markers reproduce on a
 fresh clone: the recorded content hashes match what the author
 verified.
@@ -80,7 +80,7 @@ for bundled data. The commit SHA is reachable on the public branch.
 
 The Docker image is reproducibly buildable: `docker build .` at the
 committed Dockerfile produces a byte-identical image hash on any
-capable host. The workflow is deterministic — random seeds declared,
+capable host. The project is deterministic — random seeds declared,
 BLAS threading pinned, no nondeterministic libraries. Running
 `vaibify reproduce <url>` on a fresh clone regenerates output files
 whose hashes match the committed baseline.
@@ -112,7 +112,7 @@ Machine) hold snapshots in case the source disappears.
 ### L5 — Attested
 
 Independent third parties — CI services, collaborators, archival
-bots — have re-run the workflow and published signed attestations
+bots — have re-run the project and published signed attestations
 that their output hashes match the committed baseline. Attestations
 are in a transparency log (Sigstore / Rekor style), so revocation
 and provenance of the attestation itself are public.
@@ -134,9 +134,9 @@ implementation.
 
 Two properties we deliberately keep off the ladder:
 
-- **Test meaningfulness.** Whether a workflow's tests are actually
+- **Test meaningfulness.** Whether a project's tests are actually
   strong enough to catch subtle errors (mutation-testing coverage,
-  adversarial robustness) is a property a workflow should have at
+  adversarial robustness) is a property a project should have at
   any level. It is a property of the tests, not of reproducibility.
 - **Physics-informed validation.** Whether the numerical result
   respects conservation laws, symmetries, or asymptotic limits is a
@@ -167,7 +167,7 @@ their work and avoids creating yet another platform lock-in.
 **AI agents as equal participants in the authorship graph.**
 Infrastructure that assumes "the author" is a human and "tools" are
 what agents use cannot cleanly accommodate a future where significant
-portions of a workflow are produced by agents. Vaibify's pre-push
+portions of a project are produced by agents. Vaibify's pre-push
 manifest check, content-hash-bound test markers, and per-remote
 freshness badges exist so that agent output is subject to the same
 verification gates as human output, with no special privilege in

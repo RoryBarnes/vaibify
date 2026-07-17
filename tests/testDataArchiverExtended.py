@@ -91,7 +91,7 @@ def _fdictBuildWorkflowWithTests():
     return {"listSteps": [{
         "sName": "S1",
         "sDirectory": "stepA",
-        "saDataFiles": ["stepA/data.csv"],
+        "saOutputDataFiles": ["stepA/data.csv"],
         "saPlotFiles": ["stepA/figure.pdf"],
         "saTestCommands": ["pytest tests/test_step01.py"],
         "dictTests": {

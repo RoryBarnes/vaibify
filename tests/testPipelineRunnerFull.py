@@ -257,7 +257,7 @@ def test_fnEmitDiscoveredOutputs_unexpected():
     mockDocker = _fMockDocker(0, "/a/old.txt\n/a/new.dat\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = {"/a/old.txt"}
-    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -274,7 +274,7 @@ def test_fnEmitDiscoveredOutputs_expected():
     mockDocker = _fMockDocker(0, "/a/data.npy\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = set()
-    dictStep = {"saDataFiles": ["data.npy"], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": ["data.npy"], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -291,7 +291,7 @@ def test_fnEmitDiscoveredOutputs_caps_at_five():
     mockDocker = _fMockDocker(0, "\n".join(listFiles) + "\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = set()
-    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -309,7 +309,7 @@ def test_fnEmitDiscoveredOutputs_under_cap_unchanged():
     mockDocker = _fMockDocker(0, "\n".join(listFiles) + "\n")
     fnCallback, listCaptured = _fMockCallback()
     setBefore = set()
-    dictStep = {"saDataFiles": [], "saPlotFiles": []}
+    dictStep = {"saOutputDataFiles": [], "saPlotFiles": []}
     _fnRunAsync(_fnEmitDiscoveredOutputs(
         mockDocker, "cid", "/a",
         setBefore, dictStep, 1, fnCallback,
@@ -455,7 +455,7 @@ def test_fbVerifyStepOutputs_uses_single_exec_for_many_files():
     sOutput = "\n".join(f"/work/{s}" for s in listFiles) + "\n"
     mockDocker = _fMockDocker(0, sOutput)
     fnCallback, _ = _fMockCallback()
-    dictStep = {"sDirectory": "/work", "saDataFiles": listFiles}
+    dictStep = {"sDirectory": "/work", "saOutputDataFiles": listFiles}
     dictVars = {"sPlotDirectory": "Plot"}
     bResult = _fnRunAsync(_fbVerifyStepOutputs(
         mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
@@ -472,7 +472,7 @@ def test_fbVerifyStepOutputs_partial_missing_reports_first_gap():
     # Only b.dat reports present; a.dat and c.dat are missing.
     mockDocker = _fMockDocker(0, "/work/b.dat\n")
     fnCallback, listCaptured = _fMockCallback()
-    dictStep = {"sDirectory": "/work", "saDataFiles": listFiles}
+    dictStep = {"sDirectory": "/work", "saOutputDataFiles": listFiles}
     dictVars = {"sPlotDirectory": "Plot"}
     bResult = _fnRunAsync(_fbVerifyStepOutputs(
         mockDocker, "cid", dictStep, dictVars, "/work", fnCallback,
@@ -1060,3 +1060,53 @@ def test_fnRunHeartbeatLoop_logs_and_continues_on_write_failure(caplog):
 
 # Need to import threading at module level for the heartbeat test
 import threading  # noqa: E402
+
+
+def test_verify_step_exec_timeout_does_not_hang():
+    """A stalled container exec during verify must not hang forever.
+
+    Reproduces the reported incident: a dispatched verify that never
+    completes. With a bounded per-step exec timeout, verify reports the
+    stalled step as unverified and still emits its completion event,
+    so the WebSocket client is released instead of hanging.
+    """
+    import asyncio as _asyncio
+    import time as _time
+    from vaibify.gui import pipelineRunner
+
+    mockDocker = _fMockDocker(0, "")
+
+    def fnSlowExec(*args, **kwargs):
+        _time.sleep(1.0)   # far longer than the patched timeout
+        return (0, "")
+
+    mockDocker.ftResultExecuteCommand.side_effect = fnSlowExec
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "listSteps": [
+            {"sName": "S", "sDirectory": "S",
+             "saOutputDataFiles": ["out.dat"], "saPlotFiles": []},
+        ],
+    }
+    fnCallback, listCaptured = _fMockCallback()
+    with patch.object(
+        pipelineRunner, "_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS", 0.05,
+    ):
+        iExit = _asyncio.run(pipelineRunner.fnVerifyOnly(
+            mockDocker, "cid", dictWorkflow, "wf.json", "/repo",
+            fnCallback,
+        ))
+    # Verify completed and reported the step unverified. The timeout
+    # branch fires ONLY on asyncio.TimeoutError, so the "timed out"
+    # line proves the exec was bounded rather than awaited to
+    # completion — the fix for the never-completing-verify incident.
+    assert iExit == 1
+    sTypes = [dictEvent.get("sType") for dictEvent in listCaptured]
+    assert "failed" in sTypes            # completion event emitted
+    # The timeout rides a distinct event type so the dashboard can
+    # raise a warning toast instead of burying it in the log.
+    assert "verifyTimeout" in sTypes
+    assert any(
+        "timed out" in (dictEvent.get("sLine") or "")
+        for dictEvent in listCaptured
+    )

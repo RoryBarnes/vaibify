@@ -696,7 +696,7 @@ async def _fsetSnapshotDirectory(
 def _flistFilterUnexpectedFiles(setNewFiles, sDirectory, dictStep):
     """Return list of unexpected output file dicts from new files."""
     setExpected = set()
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             setExpected.add(sFile)
     listUnexpected = []
@@ -745,6 +745,10 @@ async def _fnEmitDiscoveredOutputs(
 
 
 _S_VERIFY_PATHFILE_PREFIX = "/tmp/vaibifyVerify."
+# A per-step output-existence check is one cheap exec; 30s is generous.
+# The bound exists so a stalled docker exec surfaces as a loud
+# unverified result instead of an invisible, unbounded hang.
+_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS = 30.0
 
 
 def _fsVerifyPathfileForCall():
@@ -781,10 +785,33 @@ async def _fbVerifyStepOutputs(
     )
     if not listAbsolutePaths:
         return True
-    setMissing = await asyncio.to_thread(
-        _fsetMissingPathsBatched,
-        connectionDocker, sContainerId, listAbsolutePaths,
-    )
+    try:
+        setMissing = await asyncio.wait_for(
+            asyncio.to_thread(
+                _fsetMissingPathsBatched,
+                connectionDocker, sContainerId, listAbsolutePaths,
+            ),
+            timeout=_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        # A stalled container exec must NEVER hang the whole verify
+        # forever (the reported 2h33m no-completion incident). Report
+        # the step as unverifiable and let verify finish and emit its
+        # completion, exactly as the OSError degradation does. This is
+        # an abnormal condition, so it rides a distinct event type the
+        # dashboard raises as a warning toast rather than burying in
+        # the log.
+        await fnStatusCallback({
+            "sType": "verifyTimeout",
+            "sLine": (
+                "Verification timed out checking outputs for step "
+                + repr(dictStep.get("sName", "?"))
+                + " after "
+                + str(int(_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS))
+                + "s — reporting it unverified rather than hanging."
+            ),
+        })
+        return False
     if setMissing:
         sFirstMissing = next(
             sPath for sPath in listAbsolutePaths if sPath in setMissing
@@ -800,7 +827,7 @@ def _flistBuildStepOutputAbsPaths(dictStep, dictVars, sStepDirectory):
     """Resolve a step's output files into absolute container paths."""
     listOutputFiles = (
         dictStep.get("saPlotFiles", [])
-        + dictStep.get("saDataFiles", [])
+        + dictStep.get("saOutputDataFiles", [])
     )
     listAbsolute = []
     for sOutputFile in listOutputFiles:
@@ -994,9 +1021,15 @@ async def _fiCheckDependencies(
 async def _fnRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
-    sStepLabel=None, sRunMode="full",
+    sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
 ):
-    """Run a single automatic step with timing and result."""
+    """Run a single automatic step with timing and result.
+
+    ``fWallClockBudgetSeconds`` is the resolved per-step budget (0 = no
+    budget). It rides the ``stepStarted`` event so the state writer can
+    stamp it next to the step start time; the poll then flags an
+    over-budget step live without re-reading the workflow.
+    """
     iDepResult = await _fiCheckDependencies(
         connectionDocker, sContainerId, dictStep,
         dictVariables, iStepNumber, fnStatusCallback,
@@ -1010,6 +1043,7 @@ async def _fnRunOneStep(
     )
     await fnStatusCallback({
         "sType": "stepStarted", "iStepNumber": iStepNumber,
+        "fWallClockBudgetSeconds": fWallClockBudgetSeconds,
     })
     return await _fiExecuteAndRecord(
         connectionDocker, sContainerId, dictStep,
@@ -1047,12 +1081,99 @@ async def _fiExecuteAndRecord(
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],
     })
+    if iExitCode == 0:
+        await _fnRecordRemoteDataProvenance(
+            connectionDocker, sContainerId, dictStep,
+            dictVariables, iStepNumber, fnStatusCallback,
+        )
     await _fnEmitDiscoveredOutputs(
         connectionDocker, sContainerId, sStepDir,
         setFilesBefore, dictStep, iStepNumber, fnStatusCallback,
     )
     await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
     return iExitCode
+
+
+async def _fnRecordRemoteDataProvenance(
+    connectionDocker, sContainerId, dictStep, dictVariables,
+    iStepNumber, fnStatusCallback,
+):
+    """Refresh listRemoteData provenance after a successful pull.
+
+    One docker exec hashes every declared remote-pulled file; each
+    record's ``sSha256`` updates and ``sRetrievedUtc`` is stamped
+    when the content changed or was hashed for the first time. An
+    unchanged file keeps its original retrieval stamp, a failed or
+    missing hash leaves the record untouched — provenance never
+    guesses. Persistence rides the end-of-run workflow save. The
+    fresh data is NOT auto-committed: it flows through the normal
+    badges / commit-canonical review so the researcher decides when
+    the new pull becomes canonical.
+    """
+    listPaths = workflowManager.flistStepRemoteDataPaths(dictStep)
+    if not listPaths:
+        return
+    sRepoRoot = (dictVariables or {}).get("sRepoRoot", "")
+    if not sRepoRoot:
+        return
+    dictShaByPath = await asyncio.to_thread(
+        _fdictHashRemoteDataFiles,
+        connectionDocker, sContainerId, sRepoRoot, listPaths,
+    )
+    if not _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
+        return
+    await fnStatusCallback({
+        "sType": "remoteDataRecorded",
+        "iStepNumber": iStepNumber,
+        "listRemoteData": dictStep.get("listRemoteData", []),
+    })
+
+
+def _fdictHashRemoteDataFiles(
+    connectionDocker, sContainerId, sRepoRoot, listRelPaths,
+):
+    """Return {repoRelPath: sha256} for the paths that exist; one exec."""
+    listQuoted = [
+        fsShellQuote(posixpath.join(sRepoRoot, sRelPath))
+        for sRelPath in listRelPaths
+    ]
+    sCommand = (
+        "sha256sum -- " + " ".join(listQuoted) + " 2>/dev/null || true"
+    )
+    _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    dictResult = {}
+    sPrefix = sRepoRoot.rstrip("/") + "/"
+    for sLine in (sOutput or "").splitlines():
+        listParts = sLine.split(None, 1)
+        if len(listParts) != 2:
+            continue
+        sSha = listParts[0].strip()
+        sAbsPath = listParts[1].strip()
+        if len(sSha) != 64:
+            continue
+        if sAbsPath.startswith(sPrefix):
+            dictResult[sAbsPath[len(sPrefix):]] = sSha
+    return dictResult
+
+
+def _fbApplyRemoteDataHashes(dictStep, dictShaByPath):
+    """Update sSha256/sRetrievedUtc in place; True when anything moved."""
+    from datetime import datetime, timezone
+    sNowUtc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    bChanged = False
+    for dictRemote in dictStep.get("listRemoteData", []) or []:
+        if not isinstance(dictRemote, dict):
+            continue
+        sSha = dictShaByPath.get(dictRemote.get("sPath", ""))
+        if not sSha:
+            continue
+        if dictRemote.get("sSha256") != sSha:
+            dictRemote["sSha256"] = sSha
+            dictRemote["sRetrievedUtc"] = sNowUtc
+            bChanged = True
+    return bChanged
 
 
 # ---------------------------------------------------------------------------
@@ -1082,11 +1203,14 @@ async def _fiRunStepList(
                 iStepNumber, fnStatusCallback, dictInteractive,
             )
         else:
+            fBudget = workflowManager.ffResolveStepWallClockBudget(
+                dictWorkflow, dictStep,
+            )
             iExitCode = await _fnRunOneStep(
                 connectionDocker, sContainerId, dictStep,
                 iStepNumber, sWorkdir, dictVariables,
                 fnStatusCallback, sStepLabel=sStepLabel,
-                sRunMode=sRunMode,
+                sRunMode=sRunMode, fWallClockBudgetSeconds=fBudget,
             )
         if iExitCode != 0:
             iFinalExitCode = iExitCode

@@ -18,7 +18,34 @@ from .workflowMigrations import (
 )
 
 S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
+# Symbolic cross-step reference: {step:<sStepId>.<stem>}. This is the
+# canonical form; the positional S_STEP_REF_PATTERN above is deprecated
+# and normalized to symbolic on load (migration) and save. The two are
+# unambiguous — positional is capitalized "Step" + digits, symbolic is
+# lowercase "step:" + a kebab id.
+S_STEP_SYMBOLIC_PATTERN = r"\{step:([a-z0-9][a-z0-9-]*)\.([^}]+)\}"
+S_VAIBIFY_PROJECTS_SUFFIX = "/.vaibify/projects/"
 S_VAIBIFY_WORKFLOWS_SUFFIX = "/.vaibify/workflows/"
+# Both the canonical and the legacy suffix, longest first, so path
+# derivation and validation accept a Project file in either directory.
+T_VAIBIFY_PROJECT_SUFFIXES = (
+    S_VAIBIFY_PROJECTS_SUFFIX,
+    S_VAIBIFY_WORKFLOWS_SUFFIX,
+)
+
+
+def fdictStepIdToIndex(dictWorkflow):
+    """Return ``{sStepId: iStepIndex}`` (0-based) for the workflow.
+
+    The resolution table for symbolic cross-step references. Steps
+    without an id (only possible transiently, before
+    ``fnEnsureStepIds`` runs) are omitted.
+    """
+    dictOut = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", []) or []):
+        if isinstance(dictStep, dict) and dictStep.get("sStepId"):
+            dictOut[dictStep["sStepId"]] = iIndex
+    return dictOut
 
 __all__ = [
     "fbDeriveUnnecessaryVerification",
@@ -82,6 +109,7 @@ __all__ = [
     "fsGetFileCategory",
     "fsGetPlotCategory",
     "fsResolveCommand",
+    "ffResolveStepWallClockBudget",
     "fsResolveStepWorkdir",
     "fsResolveVariables",
     "fsTestsDirectory",
@@ -91,6 +119,12 @@ __all__ = [
 DEFAULT_SEARCH_ROOT = "/workspace"
 
 VAIBIFY_DIRECTORY = ".vaibify"
+# On-disk home for Project definitions. The canonical directory is
+# ``.vaibify/projects`` (a "Project" is what users see; the git repo
+# that contains Projects is a "repository"). ``.vaibify/workflows`` is
+# the legacy directory: discovery still reads it so existing repos keep
+# loading, but new Projects are written under ``.vaibify/projects``.
+VAIBIFY_PROJECTS_DIR = ".vaibify/projects"
 VAIBIFY_WORKFLOWS_DIR = ".vaibify/workflows"
 VAIBIFY_LOGS_DIR = ".vaibify/logs"
 
@@ -101,10 +135,16 @@ T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
 def _flistDiscoverCandidatePaths(
     connectionDocker, sContainerId, sSearchRoot,
 ):
-    """Run find inside the container, return candidate workflow.json paths."""
+    """Run find inside the container, return candidate Project-file paths.
+
+    Scans both the canonical ``.vaibify/projects`` directory and the
+    legacy ``.vaibify/workflows`` directory so existing repos keep
+    loading after the rename.
+    """
     sCommand = (
         f"find {sSearchRoot} -maxdepth 4"
-        f" -path '*/.vaibify/workflows/*.json'"
+        f" \\( -path '*/.vaibify/projects/*.json'"
+        f" -o -path '*/.vaibify/workflows/*.json' \\)"
         f" -type f 2>/dev/null"
     )
     _iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
@@ -228,7 +268,7 @@ def _fsResolveWorkflowPathOrDefault(
     )
     if not listWorkflows:
         raise FileNotFoundError(
-            "No workflow.json found under search root"
+            "No project file found under search root"
         )
     return listWorkflows[0]["sPath"]
 
@@ -270,6 +310,7 @@ def fdictLoadWorkflowFromContainer(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
     )
     fbDeriveUnnecessaryVerification(dictWorkflow)
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
     _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
@@ -430,18 +471,19 @@ def _fdictBuildStateLoadNotice(sStatus):
 def fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath):
     """Return the project repo root that contains a workflow file.
 
-    By contract every vaibify workflow lives at
-    ``<sProjectRepoPath>/.vaibify/workflows/<name>.json``. Stripping
-    that suffix yields the repo root. Returns ``""`` when the path
-    does not match (callers should treat that as no migration
-    context, not an error).
+    By contract every Project file lives at
+    ``<sProjectRepoPath>/.vaibify/projects/<name>.json`` (or the legacy
+    ``.vaibify/workflows/`` directory). Stripping that suffix yields the
+    repo root. Returns ``""`` when the path does not match (callers
+    should treat that as no migration context, not an error).
     """
     if not sWorkflowPath:
         return ""
-    iSplit = sWorkflowPath.find(S_VAIBIFY_WORKFLOWS_SUFFIX)
-    if iSplit <= 0:
-        return ""
-    return sWorkflowPath[:iSplit]
+    for sSuffix in T_VAIBIFY_PROJECT_SUFFIXES:
+        iSplit = sWorkflowPath.find(sSuffix)
+        if iSplit > 0:
+            return sWorkflowPath[:iSplit]
+    return ""
 
 
 def fbValidateWorkflow(dictWorkflow):
@@ -477,7 +519,7 @@ def fsDescribeValidationFailure(dictWorkflow):
 def flistValidateOutputFilePaths(dictWorkflow):
     """Return warnings for output paths that leave the project repo.
 
-    Scans ``saOutputFiles``, ``saDataFiles``, ``saPlotFiles``, and
+    Scans ``saOutputDataFiles``, ``saPlotFiles``, and
     ``saScratchDirs`` on every step plus ``listDatasets[].sDestination``
     and the workflow-level ``sPlotDirectory``. Absolute paths and
     ``..``-escaping paths are flagged; template-bearing paths
@@ -489,7 +531,7 @@ def flistValidateOutputFilePaths(dictWorkflow):
         sLabel = f"Step{iIndex + 1:02d}"
         sDirectory = dictStep.get("sDirectory", "")
         for sKey in (
-            "saOutputFiles", "saDataFiles", "saPlotFiles", "saScratchDirs",
+            "saOutputDataFiles", "saPlotFiles", "saScratchDirs",
         ):
             for sPath in dictStep.get(sKey, []):
                 sWarning = _fsCheckOutputPathBoundary(
@@ -498,12 +540,101 @@ def flistValidateOutputFilePaths(dictWorkflow):
                 if sWarning:
                     listWarnings.append(sWarning)
     listWarnings.extend(_flistValidateDatasetDestinations(dictWorkflow))
+    listWarnings.extend(_flistValidateInputDataFilePaths(dictWorkflow))
     sPlotWarning = _fsCheckPlotDirectoryBoundary(
         dictWorkflow.get("sPlotDirectory", ""),
     )
     if sPlotWarning:
         listWarnings.append(sPlotWarning)
     return listWarnings
+
+
+def _flistValidateInputDataFilePaths(dictWorkflow):
+    """Return warnings for input-data declarations that break the contract.
+
+    ``saInputDataFiles`` entries and ``listRemoteData[].sPath`` entries
+    are repo-relative raw-data paths, so they get the same boundary
+    check as dataset destinations. Cross-step products are forbidden
+    in ``saInputDataFiles`` — a step token there would hide a
+    dependency edge the command parser cannot see.
+    """
+    listWarnings = []
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        sLabel = f"Step{iIndex + 1:02d}"
+        for sPath in dictStep.get("saInputDataFiles", []) or []:
+            sWarning = _fsCheckInputPathBoundary(
+                sPath, sLabel, "saInputDataFiles",
+            )
+            if sWarning:
+                listWarnings.append(sWarning)
+        for dictRemote in dictStep.get("listRemoteData", []) or []:
+            if not isinstance(dictRemote, dict):
+                listWarnings.append(
+                    f"{sLabel}: listRemoteData entries must be objects "
+                    f"with an sPath field"
+                )
+                continue
+            sWarning = _fsCheckInputPathBoundary(
+                dictRemote.get("sPath", ""), sLabel, "listRemoteData",
+            )
+            if sWarning:
+                listWarnings.append(sWarning)
+    return listWarnings
+
+
+def _fsCheckInputPathBoundary(sPath, sLabel, sKey):
+    """Return a warning for one repo-relative input path, or ''."""
+    if not isinstance(sPath, str) or not sPath:
+        return ""
+    if any(sChar in sPath for sChar in ("\n", "\r", "\x00")):
+        # A repo-relative data path never contains a newline or null.
+        # Rejecting them keeps a hostile filename from splitting the
+        # newline-delimited existence heredoc the run gate builds.
+        return (
+            f"{sLabel}: {sKey} path contains an illegal control "
+            f"character (newline or null byte)"
+        )
+    if "{Step" in sPath or "{step:" in sPath:
+        return (
+            f"{sLabel}: {sKey} '{sPath}' must not reference a step "
+            f"product — inputs are raw data no step produces; declare "
+            f"cross-step files as tokens in commands instead"
+        )
+    if "{" in sPath:
+        return ""
+    if posixpath.isabs(sPath):
+        return (
+            f"{sLabel}: {sKey} '{sPath}' must be repo-relative, "
+            f"not absolute"
+        )
+    sNorm = posixpath.normpath(sPath)
+    if sNorm == ".." or sNorm.startswith("../"):
+        return (
+            f"{sLabel}: {sKey} '{sPath}' escapes the project repo "
+            f"(resolves to '{sNorm}')"
+        )
+    return ""
+
+
+def flistStepRemoteDataPaths(dictStep):
+    """Return the repo-relative paths of a step's remote-pulled files.
+
+    Single accessor for the ``listRemoteData`` provenance records so
+    the gate, the provenance recorder, and any future reader agree on
+    the shape. Boundary-violating and template-bearing entries are
+    excluded — callers stat and hash these paths.
+    """
+    listPaths = []
+    for dictRemote in dictStep.get("listRemoteData", []) or []:
+        if not isinstance(dictRemote, dict):
+            continue
+        sPath = dictRemote.get("sPath", "")
+        if not isinstance(sPath, str) or not sPath or "{" in sPath:
+            continue
+        if _fsCheckInputPathBoundary(sPath, "", "listRemoteData"):
+            continue
+        listPaths.append(sPath)
+    return listPaths
 
 
 def _fsCheckPlotDirectoryBoundary(sPlotDirectory):
@@ -650,7 +781,7 @@ def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
 def flistResolveOutputFiles(dictStep, dictVariables):
     """Return output file paths with template variables resolved."""
     listResolved = []
-    for sPath in dictStep.get("saDataFiles", []):
+    for sPath in dictStep.get("saOutputDataFiles", []):
         listResolved.append(fsResolveVariables(sPath, dictVariables))
     for sPath in dictStep.get("saPlotFiles", []):
         listResolved.append(fsResolveVariables(sPath, dictVariables))
@@ -785,10 +916,11 @@ def fdictCreateStep(
     bPlotOnly=True,
     bInteractive=False,
     saDataCommands=None,
-    saDataFiles=None,
+    saOutputDataFiles=None,
     saTestCommands=None,
     saPlotCommands=None,
     saPlotFiles=None,
+    saInputDataFiles=None,
 ):
     """Return a new step dictionary with validated fields."""
     return {
@@ -798,10 +930,13 @@ def fdictCreateStep(
         "bPlotOnly": bPlotOnly,
         "bInteractive": bInteractive,
         "saDataCommands": saDataCommands if saDataCommands else [],
-        "saDataFiles": saDataFiles if saDataFiles else [],
+        "saOutputDataFiles": saOutputDataFiles if saOutputDataFiles else [],
         "saTestCommands": saTestCommands if saTestCommands else [],
         "saPlotCommands": saPlotCommands if saPlotCommands else [],
         "saPlotFiles": saPlotFiles if saPlotFiles else [],
+        "saInputDataFiles": saInputDataFiles if saInputDataFiles else [],
+        "bNoInputData": False,
+        "listRemoteData": [],
         "dictTests": {
             "dictQualitative": {"saCommands": [], "sFilePath": ""},
             "dictQuantitative": {
@@ -849,7 +984,7 @@ def fnRenumberAllReferences(dictWorkflow, fnRemap):
         for sKey in ("saDataCommands", "saTestCommands",
                      "saPlotCommands", "saPlotFiles",
                      "saDependencies", "saSetupCommands",
-                     "saCommands", "saOutputFiles"):
+                     "saCommands"):
             if sKey in dictStep and dictStep[sKey]:
                 dictStep[sKey] = [
                     fsRemapStepReferences(sItem, fnRemap)
@@ -1010,6 +1145,8 @@ def fnSaveWorkflowToContainer(
     from .pipelineUtils import fnAttachStepLabels
     if sWorkflowPath is None:
         raise ValueError("sWorkflowPath is required for saving")
+    workflowMigrations.fnEnsureStepIds(dictWorkflow)
+    workflowMigrations.fnRewritePositionalToSymbolic(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnMigrateLegacyRemotes(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
@@ -1078,19 +1215,21 @@ def fdictBuildStemRegistry(dictWorkflow):
     dictRegistry = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
+        sStepId = dictStep.get("sStepId")
         dictTokenStems = fdictMapOutputTokenStems(
             _flistStepDeclaredOutputs(dictStep))
         for sStem in dictTokenStems:
             dictRegistry[f"Step{iNumber:02d}.{sStem}"] = iNumber
+            if sStepId:
+                dictRegistry[f"step:{sStepId}.{sStem}"] = iNumber
     return dictRegistry
 
 
 def _flistStepDeclaredOutputs(dictStep):
     """Return every declared output file path for a step."""
     return (
-        dictStep.get("saDataFiles", [])
+        dictStep.get("saOutputDataFiles", [])
         + dictStep.get("saPlotFiles", [])
-        + dictStep.get("saOutputFiles", [])
     )
 
 
@@ -1105,8 +1244,14 @@ def flistCollectReferenceStrings(dictStep):
 
 
 def flistValidateReferences(dictWorkflow):
-    """Return a list of warnings about cross-step reference problems."""
+    """Return a list of warnings about cross-step reference problems.
+
+    Validates both cross-step reference forms: the canonical symbolic
+    ``{step:<id>.<stem>}`` and the deprecated positional
+    ``{StepNN.<stem>}`` (which additionally earns a migration warning).
+    """
     dictRegistry = fdictBuildStemRegistry(dictWorkflow)
+    dictIdToIndex = fdictStepIdToIndex(dictWorkflow)
     listWarnings = []
 
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
@@ -1117,6 +1262,10 @@ def flistValidateReferences(dictWorkflow):
             _fnCheckCommandReferences(
                 sText, sStepLabel, iNumber,
                 dictWorkflow, dictRegistry, listWarnings,
+            )
+            _fnCheckSymbolicReferences(
+                sText, sStepLabel, iNumber,
+                dictRegistry, dictIdToIndex, listWarnings,
             )
 
     return listWarnings
@@ -1137,17 +1286,47 @@ def _fnCheckCommandReferences(
     sCommand, sStepLabel, iNumber,
     dictWorkflow, dictRegistry, listWarnings,
 ):
-    """Append warnings for invalid references in a single command."""
+    """Append warnings for invalid/deprecated positional references."""
     iStepCount = len(dictWorkflow["listSteps"])
     for sRefNumber, sRefVariable in fsetExtractStepReferences(sCommand):
         iRefNumber = int(sRefNumber)
         sRefKey = f"Step{iRefNumber:02d}.{sRefVariable}"
+        listWarnings.append(
+            f"{sStepLabel}: reference {{{sRefKey}}} uses the deprecated "
+            f"positional form — migrate to the symbolic "
+            f"{{step:<id>.{sRefVariable}}} form"
+        )
         sSuffix = _fsClassifyReference(
             iRefNumber, sRefKey, iNumber, iStepCount, dictRegistry
         )
         if sSuffix:
             listWarnings.append(
                 f"{sStepLabel}: reference {{{sRefKey}}} {sSuffix}"
+            )
+
+
+def _fnCheckSymbolicReferences(
+    sCommand, sStepLabel, iNumber,
+    dictRegistry, dictIdToIndex, listWarnings,
+):
+    """Append warnings for invalid symbolic ``{step:<id>.<stem>}`` refs."""
+    for sId, sVariable in re.findall(S_STEP_SYMBOLIC_PATTERN, sCommand):
+        sRefKey = f"step:{sId}.{sVariable}"
+        if sId not in dictIdToIndex:
+            listWarnings.append(
+                f"{sStepLabel}: reference {{{sRefKey}}} names no step id"
+            )
+            continue
+        if sRefKey not in dictRegistry:
+            listWarnings.append(
+                f"{sStepLabel}: reference {{{sRefKey}}} has no matching "
+                f"output file in that step"
+            )
+            continue
+        if dictIdToIndex[sId] + 1 >= iNumber:
+            listWarnings.append(
+                f"{sStepLabel}: reference {{{sRefKey}}} points to a later "
+                f"step (circular dependency)"
             )
 
 
@@ -1162,6 +1341,7 @@ def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
     dictStepVars = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iNumber = iIndex + 1
+        sStepId = dictStep.get("sStepId")
         sStepDirectory = dictStep.get("sDirectory", "")
         dictTokenStems = fdictMapOutputTokenStems(
             _flistStepDeclaredOutputs(dictStep))
@@ -1171,6 +1351,8 @@ def fdictBuildStepVariables(dictWorkflow, dictGlobalVars):
                 sResolved, sStepDirectory, dictGlobalVars
             )
             dictStepVars[f"Step{iNumber:02d}.{sStem}"] = sAbsPath
+            if sStepId:
+                dictStepVars[f"step:{sStepId}.{sStem}"] = sAbsPath
     return dictStepVars
 
 
@@ -1186,6 +1368,99 @@ def _fsResolveStepOutputPath(sResolvedFile, sStepDirectory, dictGlobalVars):
 def fsResolveCommand(sCommand, dictVariables):
     """Resolve template variables in a command string."""
     return fsResolveVariables(sCommand, dictVariables)
+
+
+_T_COMMAND_FIELDS = (
+    "saDataCommands", "saPlotCommands", "saTestCommands",
+    "saSetupCommands", "saCommands",
+)
+
+
+def flistResidualStepTokens(sResolvedCommand):
+    """Return cross-step tokens that a substitution failed to resolve.
+
+    After :func:`fsResolveCommand`, a resolved token becomes a path, so
+    any cross-step token still present names an output that does not
+    exist (unknown step id / number, or an undeclared stem).
+    """
+    listTokens = []
+    for sNum, sVar in re.findall(S_STEP_REF_PATTERN, sResolvedCommand):
+        listTokens.append(f"{{Step{sNum}.{sVar}}}")
+    for sId, sVar in re.findall(S_STEP_SYMBOLIC_PATTERN, sResolvedCommand):
+        listTokens.append(f"{{step:{sId}.{sVar}}}")
+    return listTokens
+
+
+def fdictResolveWorkflowCommands(dictWorkflow, dictGlobalVars):
+    """Return a dry-run report of every step command, without running.
+
+    The workflow's ``make -n``: each command is substituted against the
+    live graph, so an agent (or the dashboard) can verify a rewire —
+    every token resolves, no dangling references — in the time of a
+    dict build instead of an actual step run. Per command it reports
+    the original text, the fully substituted text, and any residual
+    cross-step tokens that failed to resolve; the top-level
+    ``listWarnings`` carries :func:`flistValidateReferences` (including
+    the positional-form deprecation nudge).
+    """
+    dictAllVars = dict(dictGlobalVars or {})
+    dictAllVars.update(fdictBuildStepVariables(dictWorkflow, dictGlobalVars))
+    listStepReports = []
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []) or [],
+    ):
+        listCommands = []
+        for sField in _T_COMMAND_FIELDS:
+            for sCommand in dictStep.get(sField, []) or []:
+                sResolved = fsResolveCommand(sCommand, dictAllVars)
+                listCommands.append({
+                    "sField": sField,
+                    "sOriginal": sCommand,
+                    "sResolved": sResolved,
+                    "listUnresolvedTokens": flistResidualStepTokens(
+                        sResolved,
+                    ),
+                })
+        listStepReports.append({
+            "iStepIndex": iIndex,
+            "sStepId": dictStep.get("sStepId"),
+            "sName": dictStep.get("sName"),
+            "listCommands": listCommands,
+        })
+    return {
+        "sWorkflowFingerprint": fsComputeWorkflowFingerprint(dictWorkflow),
+        "listSteps": listStepReports,
+        "listWarnings": flistValidateReferences(dictWorkflow),
+    }
+
+
+def _ffCoerceWallClockBudget(value):
+    """Coerce a budget field to a non-negative float (0.0 on bad input)."""
+    try:
+        fValue = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return fValue if fValue > 0 else 0.0
+
+
+def ffResolveStepWallClockBudget(dictWorkflow, dictStep):
+    """Return the resolved wall-clock budget in seconds for a step.
+
+    A step's own ``fWallClockBudgetSeconds`` wins; if absent or
+    non-positive, the workflow-level ``fDefaultWallClockBudgetSeconds``
+    applies; if that is also absent/non-positive the step has no budget
+    (``0.0``) and is never flagged over-budget. The feature is opt-in: a
+    workflow that declares no budgets behaves exactly as before. There
+    is deliberately no built-in default — a legitimate forward-model run
+    can take seconds or days, so guessing a ceiling would spuriously
+    flag honest long runs, the very dashboard-dishonesty this avoids.
+    """
+    fStep = _ffCoerceWallClockBudget(dictStep.get("fWallClockBudgetSeconds"))
+    if fStep > 0:
+        return fStep
+    return _ffCoerceWallClockBudget(
+        dictWorkflow.get("fDefaultWallClockBudgetSeconds"),
+    )
 
 
 def fsResolveStepWorkdir(sStepDirectory, dictVariables):
@@ -1304,7 +1579,7 @@ def fsGetFileCategory(dictStep, sFilePath):
     dictPlot = dictStep.get("dictPlotFileCategories", {})
     if sFilePath in dictPlot:
         return dictPlot[sFilePath]
-    dictData = dictStep.get("dictDataFileCategories", {})
+    dictData = dictStep.get("dictOutputDataFileCategories", {})
     if sFilePath in dictData:
         return dictData[sFilePath]
     return "archive"
@@ -1333,7 +1608,7 @@ def flistCollectArchivePlots(dictWorkflow):
 
 def flistCollectArchiveDataFiles(dictWorkflow):
     """Return all data files categorized as archive."""
-    return flistCollectArchiveFiles(dictWorkflow, "saDataFiles")
+    return flistCollectArchiveFiles(dictWorkflow, "saOutputDataFiles")
 
 
 def flistCollectSupportingFiles(dictWorkflow, sArrayKey):
@@ -1353,7 +1628,7 @@ def flistCollectSupportingPlots(dictWorkflow):
 
 def flistCollectSupportingDataFiles(dictWorkflow):
     """Return all data files categorized as supporting."""
-    return flistCollectSupportingFiles(dictWorkflow, "saDataFiles")
+    return flistCollectSupportingFiles(dictWorkflow, "saOutputDataFiles")
 
 
 # ---------------------------------------------------------------------------
@@ -1684,9 +1959,23 @@ def _flistNormalizeKeywords(listKeywords):
     return listOut
 
 
-def fsetExtractUpstreamIndices(sText):
-    """Return set of step indices (0-based) referenced by {StepNN.} tokens."""
-    return set(int(s) - 1 for s in re.findall(r"\{Step(\d+)\.", sText))
+def fsetExtractUpstreamIndices(sText, dictIdToIndex=None):
+    """Return 0-based step indices referenced by cross-step tokens.
+
+    Resolves both the deprecated positional ``{StepNN.}`` form (index
+    from the number) and the canonical symbolic ``{step:<id>.}`` form
+    (index from ``dictIdToIndex``, when supplied). A symbolic id absent
+    from the map contributes no edge — the same tolerant behavior the
+    positional path has for an out-of-range number.
+    """
+    setIndices = set(
+        int(s) - 1 for s in re.findall(r"\{Step(\d+)\.", sText)
+    )
+    if dictIdToIndex:
+        for sId in re.findall(r"\{step:([a-z0-9][a-z0-9-]*)\.", sText):
+            if sId in dictIdToIndex:
+                setIndices.add(dictIdToIndex[sId])
+    return setIndices
 
 
 def _flistResolveOutputPaths(dictStep):
@@ -1695,7 +1984,7 @@ def _flistResolveOutputPaths(dictStep):
     if not sDirectory:
         return []
     listPaths = []
-    for sKey in ("saDataFiles", "saPlotFiles", "saOutputFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             if "{" in sFile:
                 continue
@@ -1724,8 +2013,8 @@ def _fsWorkflowDepCacheKey(dictWorkflow):
             continue
         dictRelevant = {sKey: dictStep.get(sKey, []) for sKey in (
             "saDataCommands", "saPlotCommands", "saTestCommands",
-            "saDataFiles", "saPlotFiles",
-            "saSetupCommands", "saCommands", "saOutputFiles",
+            "saOutputDataFiles", "saPlotFiles",
+            "saSetupCommands", "saCommands",
         )}
         # saDependencies is a set semantically; sort so reorderings
         # within the list don't bust the cache (Review B observation).
@@ -1822,15 +2111,18 @@ def _fnMergeImplicitDependencies(dictDirect, dictWorkflow):
 
 def _fdictComputeDirectDependencies(dictWorkflow):
     """Uncached direct-dependency computation; see fdictBuildDirectDependencies."""
+    dictIdToIndex = fdictStepIdToIndex(dictWorkflow)
     dictDirect = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         setUpstream = set()
         for sKey in ("saDataCommands", "saPlotCommands",
-                     "saTestCommands", "saDataFiles", "saPlotFiles",
+                     "saTestCommands", "saOutputDataFiles", "saPlotFiles",
                      "saDependencies", "saSetupCommands",
-                     "saCommands", "saOutputFiles"):
+                     "saCommands"):
             for sItem in dictStep.get(sKey, []):
-                setUpstream |= fsetExtractUpstreamIndices(sItem)
+                setUpstream |= fsetExtractUpstreamIndices(
+                    sItem, dictIdToIndex,
+                )
         for iUpstream in setUpstream:
             dictDirect.setdefault(iUpstream, set()).add(iIndex)
     _fnMergeImplicitDependencies(dictDirect, dictWorkflow)

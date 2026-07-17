@@ -443,7 +443,7 @@ const PipeleyenFigureViewer = (function () {
 
         if (fbIsBinaryFile(sPath)) {
             elViewport.innerHTML =
-                '<span class="placeholder" style="color:var(--color-red)">' +
+                '<span class="placeholder" style="color:var(--color-red-text)">' +
                 'File cannot be viewed.</span>';
         } else if (sExtension === ".pdf") {
             fnRenderPdf(sUrl, elViewport);
@@ -1381,7 +1381,7 @@ const PipeleyenFigureViewer = (function () {
 
     function fbPathBelongsToStep(sBasename, dictStep) {
         var listFiles = (dictStep.saPlotFiles || []).concat(
-            dictStep.saDataFiles || []
+            dictStep.saOutputDataFiles || []
         );
         for (var i = 0; i < listFiles.length; i++) {
             var sStepBase = listFiles[i].split("/").pop();

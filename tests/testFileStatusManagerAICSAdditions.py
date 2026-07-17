@@ -30,8 +30,9 @@ def _fdictBuildL1ReadyWorkflow():
             {
                 "sName": "S0",
                 "sDirectory": "S0",
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
                 "saPlotFiles": [],
+                "bNoInputData": True,
                 "dictVerification": {
                     "sUser": "passed",
                     "sUnitTest": "passed",

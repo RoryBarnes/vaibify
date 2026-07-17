@@ -26,6 +26,7 @@ def _fdictAllGreenStep():
     """Return a single dict step that satisfies every L1 criterion."""
     return {
         "sName": "A", "sDirectory": "A",
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",

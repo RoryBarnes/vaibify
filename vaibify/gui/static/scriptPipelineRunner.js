@@ -8,6 +8,17 @@ var PipeleyenPipelineRunner = (function () {
     var _sStreamingViewer = null;
     var dictAcknowledgedAt = {};
     var MAX_PIPELINE_OUTPUT_LINES = 1000;
+    // Set by the remoteDataRecorded event; consumed at run end so
+    // freshly pulled remote data is offered for commit immediately
+    // instead of sitting silently uncommitted.
+    var _bRemoteDataPulledThisRun = false;
+
+    function _fnOfferCommitIfRemoteDataPulled() {
+        if (!_bRemoteDataPulledThisRun) return;
+        _bRemoteDataPulledThisRun = false;
+        VaibifyManifestCheck.fbOfferCommitAfterGenerate(
+            PipeleyenApp.fsGetContainerId());
+    }
 
     /* --- WebSocket --- */
 
@@ -29,6 +40,11 @@ var PipeleyenPipelineRunner = (function () {
             }
         } else if (dictEvent.sType === "output") {
             fnAppendPipelineOutput(dictEvent.sLine);
+        } else if (dictEvent.sType === "verifyTimeout") {
+            fnAppendPipelineOutput(dictEvent.sLine);
+            PipeleyenApp.fnShowToast(
+                "Verification timed out on a step — it's reported "
+                + "unverified. See the run log.", "warning");
         } else if (dictEvent.sType === "commandFailed") {
             var sMessage =
                 "FAILED: " + dictEvent.sCommand +
@@ -57,6 +73,18 @@ var PipeleyenPipelineRunner = (function () {
                     dictEvent.dictRunStats;
                 PipeleyenApp.fnRenderStepList();
             }
+        } else if (dictEvent.sType === "remoteDataRecorded") {
+            var iRemoteIdx = dictEvent.iStepNumber - 1;
+            var dictWfRemote = PipeleyenApp.fdictGetWorkflow();
+            if (dictWfRemote && dictWfRemote.listSteps[iRemoteIdx]) {
+                dictWfRemote.listSteps[iRemoteIdx].listRemoteData =
+                    dictEvent.listRemoteData || [];
+                PipeleyenApp.fnRenderStepList();
+            }
+            // Remember that this run changed pulled data so the
+            // end-of-run handler can offer to commit it — canonical
+            // data must not sit silently uncommitted.
+            _bRemoteDataPulledThisRun = true;
         } else if (dictEvent.sType === "stepSkipped") {
             PipeleyenApp.fnSetStepStatus(
                 dictEvent.iStepNumber - 1, "skipped");
@@ -93,6 +121,7 @@ var PipeleyenPipelineRunner = (function () {
                 _fsCompletedToast(dictEvent.sCommand), "success");
             PipeleyenApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
+            _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "failed") {
             PipeleyenApp.fnClearRunningStatuses();
             PipeleyenApp.fnStartFileChangePolling();
@@ -102,10 +131,18 @@ var PipeleyenPipelineRunner = (function () {
             );
             PipeleyenApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
+            // A later step failing does not un-pull the data: the
+            // successful pull still left fresh files that need review
+            // and commit, so the offer fires here too.
+            _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "runRefused") {
             PipeleyenApp.fnResetQueuedSteps(
                 dictEvent.listStepIndices || []);
             PipeleyenApp.fnRenderStepList();
+            if (dictEvent.sReason === "remoteDataOverwrite") {
+                _fnHandleRemoteOverwriteRefusal(dictEvent);
+                return;
+            }
             PipeleyenApp.fnShowToast(
                 dictEvent.sMessage ||
                 "A pipeline action is already running.", "error");
@@ -410,7 +447,7 @@ var PipeleyenPipelineRunner = (function () {
                 var elLine = document.createElement("div");
                 elLine.textContent = sLine;
                 if (sLine.indexOf("FAILED") >= 0) {
-                    elLine.style.color = "var(--color-red)";
+                    elLine.style.color = "var(--color-red-text)";
                 } else if (sLine.startsWith("$")) {
                     elLine.style.color =
                         "var(--color-blue, #3498db)";
@@ -469,7 +506,7 @@ var PipeleyenPipelineRunner = (function () {
         var elLine = document.createElement("span");
         elLine.textContent = sLine + "\n";
         if (sLine.startsWith("FAILED:")) {
-            elLine.style.color = "var(--color-red, #e74c3c)";
+            elLine.style.color = "var(--color-red-text, #ff8589)";
         } else if (sLine.startsWith("$")) {
             elLine.style.color = "var(--color-blue, #3498db)";
         }
@@ -481,6 +518,80 @@ var PipeleyenPipelineRunner = (function () {
             iExcessCount--;
         }
         elOutput.scrollTop = elOutput.scrollHeight;
+    }
+
+    /* --- Remote-data overwrite confirmation --- */
+
+    function _fnHandleRemoteOverwriteRefusal(dictEvent) {
+        // The server refused because the run would re-pull remote
+        // data over the canonical committed copy. The refusal echoes
+        // the original request, so a confirmed retry re-dispatches
+        // without any client-side caching.
+        var dictRetry = Object.assign(
+            {}, dictEvent.dictOriginalRequest || {},
+            {
+                sAction: dictEvent.sAction,
+                bConfirmRemoteOverwrite: true,
+            });
+        PipeleyenApp.fnShowConfirmModal(
+            "Overwrite canonical data?",
+            "Step(s) " +
+            (dictEvent.listStepLabels || []).join(", ") +
+            " pull remote data over the committed copy:\n" +
+            (dictEvent.listRemoteOverwritePaths || []).join("\n") +
+            "\n\nThe remote source may have changed since the " +
+            "canonical results were generated. Overwrite and " +
+            "re-pull?",
+            function () { fnSendPipelineAction(dictRetry); }
+        );
+    }
+
+    function fnConfirmRemoteOverwriteThen(step, fnProceed) {
+        // Frontend-only gate for the interactive terminal lane: the
+        // Run-in-Terminal buttons compose a shell command and never
+        // reach the server dispatch choke point, so the check runs
+        // here. Same rule as the server gate: a first pull (nothing
+        // on disk) proceeds silently.
+        var listPaths = (step.listRemoteData || [])
+            .map(function (dictRemote) {
+                return (dictRemote && dictRemote.sPath) || "";
+            })
+            .filter(Boolean);
+        if (listPaths.length === 0) {
+            fnProceed();
+            return;
+        }
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        VaibifyApi.fdictPost(
+            "/api/files/" + sContainerId + "/exist",
+            {saRelativePaths: listPaths}
+        ).then(function (dictResponse) {
+            var dictExists = (dictResponse &&
+                dictResponse.dictExists) || {};
+            var listExisting = listPaths.filter(function (sPath) {
+                return dictExists[sPath];
+            });
+            if (listExisting.length === 0) {
+                fnProceed();
+                return;
+            }
+            PipeleyenApp.fnShowConfirmModal(
+                "Overwrite canonical data?",
+                "This step pulls remote data over the committed " +
+                "copy:\n" + listExisting.join("\n") +
+                "\n\nThe remote source may have changed since the " +
+                "canonical results were generated. Overwrite and " +
+                "re-pull?",
+                fnProceed);
+        }).catch(function () {
+            // The existence check could not run — fail safe: ask.
+            PipeleyenApp.fnShowConfirmModal(
+                "Overwrite canonical data?",
+                "This step declares remote-pulled data and the " +
+                "current files could not be checked. Overwrite if " +
+                "present?",
+                fnProceed);
+        });
     }
 
     /* --- Execution --- */
@@ -513,18 +624,9 @@ var PipeleyenPipelineRunner = (function () {
         var listCmds = (step.saDataCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
-        if (listCmds.length === 0) return;
-        var sDir = VaibifyUtilities.fsResolveTemplate(
-            step.sDirectory, dictVars);
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCmd = _fsBuildInteractiveCommand(
-            sDir, listCmds, sSentinel
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+        fnConfirmRemoteOverwriteThen(step, function () {
+            _fnLaunchInteractiveCommands(iIndex, step, listCmds);
+        });
     }
 
     function fnRunInteractivePlots(iIndex) {
@@ -539,7 +641,17 @@ var PipeleyenPipelineRunner = (function () {
         var listCmds = (step.saPlotCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
+        fnConfirmRemoteOverwriteThen(step, function () {
+            _fnLaunchInteractiveCommands(iIndex, step, listCmds);
+        });
+    }
+
+    function _fnLaunchInteractiveCommands(iIndex, step, listCmds) {
+        // Shared terminal launch for the three interactive entry
+        // points (data, plots, combined) — identical before the
+        // remote-overwrite gate forced the extraction (rule of three).
         if (listCmds.length === 0) return;
+        var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var sDir = VaibifyUtilities.fsResolveTemplate(
             step.sDirectory, dictVars);
         var sUuid = _fsGenerateUuid();
@@ -582,7 +694,7 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fbStepHasOutputFiles(step) {
-        var listData = step.saDataFiles || [];
+        var listData = step.saOutputDataFiles || [];
         var listPlots = step.saPlotFiles || [];
         return listData.length > 0 || listPlots.length > 0;
     }
@@ -597,18 +709,9 @@ var PipeleyenPipelineRunner = (function () {
         }
         var dictVars = PipeleyenApp.fdictBuildClientVariables();
         var listCmds = flistResolveStepCommands(step, dictVars);
-        if (listCmds.length === 0) return;
-        var sDir = VaibifyUtilities.fsResolveTemplate(
-            step.sDirectory, dictVars);
-        var sUuid = _fsGenerateUuid();
-        var sSentinel = "__VAIBIFY_DONE_" + sUuid + "__";
-        var sFullCmd = _fsBuildInteractiveCommand(
-            sDir, listCmds, sSentinel
-        );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+        fnConfirmRemoteOverwriteThen(step, function () {
+            _fnLaunchInteractiveCommands(iIndex, step, listCmds);
+        });
     }
 
     function flistResolveStepCommands(step, dictVars) {
@@ -656,6 +759,17 @@ var PipeleyenPipelineRunner = (function () {
         var sVerb = iExitCode === 0 ? "completed" : "failed";
         PipeleyenApp.fnShowToast("Step " + sLabel + " " + sVerb,
             iExitCode === 0 ? "success" : "error");
+        // A standalone Run-in-Terminal pull never produces the
+        // remoteDataRecorded event (no server runner), so the commit
+        // offer keys off the step's declaration directly.
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var step = dictWorkflow &&
+            dictWorkflow.listSteps[iStepIndex];
+        if (iExitCode === 0 && step &&
+            (step.listRemoteData || []).length > 0) {
+            VaibifyManifestCheck.fbOfferCommitAfterGenerate(
+                PipeleyenApp.fsGetContainerId());
+        }
     }
 
     /* --- Actions --- */
@@ -876,11 +990,11 @@ var PipeleyenPipelineRunner = (function () {
         if (iStepsWithTime === 0) return "";
         var sTime = fsFormatDurationLong(fTotalSeconds);
         if (iStepsWithTime < iEnabledSteps) {
-            return "This workflow will require at least " + sTime +
+            return "This project will require at least " + sTime +
                 " (based on " + iStepsWithTime + " of " +
                 iEnabledSteps + " steps).";
         }
-        return "This workflow will require at least " + sTime + ".";
+        return "This project will require at least " + sTime + ".";
     }
 
     function fsFormatDurationLong(fSeconds) {

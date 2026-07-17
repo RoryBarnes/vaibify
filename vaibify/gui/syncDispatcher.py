@@ -71,6 +71,11 @@ SET_VALID_TOKEN_NAMES = {
     "zenodo_token_sandbox",
     "zenodo_token_production",
     "gh_token",
+    # Stage-validate-commit snapshot slots: the connect flow copies a
+    # working token aside before a new one overwrites it, so a failed
+    # validation can restore instead of destroying it.
+    "zenodo_token_sandbox_backup",
+    "zenodo_token_production_backup",
 }
 SET_VALID_ZENODO_INSTANCES = {"sandbox", "production"}
 _DICT_ZENODO_INSTANCE_TO_SERVICE = {
@@ -937,6 +942,34 @@ def fnStoreCredentialInContainer(
         )
 
 
+def fbCopyCredentialInContainer(
+    connectionDocker, sContainerId, sSourceName, sTargetName,
+):
+    """Copy a container-keyring entry to another slot; value stays inside.
+
+    Returns True iff the source entry existed and the copy landed.
+    The secret never crosses the docker-exec boundary: the read and
+    the write happen inside one in-container python process, so the
+    token cannot leak into exec output or host logs. Used by the
+    connect flow's stage-validate-commit to snapshot a working token
+    before a newly entered one overwrites it.
+    """
+    for sName in (sSourceName, sTargetName):
+        if sName not in SET_VALID_TOKEN_NAMES:
+            raise ValueError(f"Invalid token name: {sName}")
+    sCommand = fsPythonCommand(
+        "import keyring",
+        f"v=keyring.get_password('vaibify',{repr(sSourceName)}); "
+        f"v is not None and keyring.set_password("
+        f"'vaibify',{repr(sTargetName)},v); "
+        f"print('copied' if v is not None else 'missing')",
+    )
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand
+    )
+    return iExitCode == 0 and "copied" in (sOutput or "")
+
+
 def fnDeleteCredentialFromContainer(
     connectionDocker, sContainerId, sName,
 ):
@@ -998,15 +1031,28 @@ def _fbValidateOverleafOnHost(sProjectId):
 
 
 def _ftRunHostLsRemote(sProjectId, sAskpass):
-    """Execute git ls-remote under the prepared askpass and env."""
+    """Execute git ls-remote under the prepared askpass and env.
+
+    Prepends ``LIST_GIT_CREDENTIAL_ISOLATION_CONFIG`` so this
+    validation exercises ONLY the vaibify-managed token: without the
+    reset, an ambient credential helper (e.g. macOS ``osxkeychain``)
+    answers first and a mistyped or expired token "validates" against
+    someone else's credential, then fails later in the container where
+    no ambient helper exists.
+    """
     import os
+    from vaibify.reproducibility.gitHardening import (
+        LIST_GIT_CREDENTIAL_ISOLATION_CONFIG,
+    )
     from vaibify.reproducibility.overleafMirror import fsRedactStderr
     sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
     dictEnv = os.environ.copy()
     dictEnv["GIT_ASKPASS"] = sAskpass
     dictEnv["GIT_TERMINAL_PROMPT"] = "0"
     resultProcess = subprocess.run(
-        ["git", "ls-remote", sUrl, "HEAD"],
+        ["git"]
+        + list(LIST_GIT_CREDENTIAL_ISOLATION_CONFIG)
+        + ["ls-remote", sUrl, "HEAD"],
         capture_output=True, text=True, env=dictEnv,
     )
     sDetail = fsRedactStderr((resultProcess.stderr or "").strip())
@@ -1553,7 +1599,7 @@ def _fnAppendStepOutputFiles(
     dictStep, dictSyncStatus, dictVars, sWorkflowRoot, listFiles,
 ):
     """Append one step's data and plot files with resolved paths."""
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             listFiles.append(_fdictBuildOutputEntry(
                 dictStep, sKey, sFile, dictSyncStatus,

@@ -61,7 +61,7 @@ var VaibifyAicsTab = (function () {
         1: [
             {sStateKey: "gitRepo",
              sLabel: "Project repository",
-             sWhat: "The workflow and every file it touches live " +
+             sWhat: "The project and every file it touches live " +
                  "inside a git repository, so each change is " +
                  "tracked from the start.",
              sHow: "Vaibify detects this automatically — see the " +
@@ -82,9 +82,10 @@ var VaibifyAicsTab = (function () {
         2: [
             {sStateKey: "bGithubFullySynced",
              sLabel: "GitHub mirror",
-             sWhat: "Every canonical file — scripts, outputs, tests, " +
-                 "the manifest — matches your public GitHub " +
-                 "repository at a recently verified commit.",
+             sWhat: "Every canonical file — scripts, outputs, tests " +
+                 "— matches your public GitHub repository at a " +
+                 "recently verified commit, hashed as it exists on " +
+                 "disk at verification time.",
              sHow: "Commit and push from the Repos panel, then " +
                  "re-verify; per-file state is under Published " +
                  "copies in the Project block.",
@@ -101,19 +102,20 @@ var VaibifyAicsTab = (function () {
              sFixLabel: "Open the Repos panel"},
             {sStateKey: "bArxivFullySynced",
              sLabel: "arXiv manuscript",
-             sWhat: "When an Overleaf manuscript is bound, its " +
-                 "frozen figures must match the recorded arXiv " +
-                 "submission. A workflow without a manuscript " +
-                 "meets this automatically.",
-             sHow: "Push figures to Overleaf, then configure the " +
-                 "arXiv submission under Published copies in the " +
-                 "Project block.",
+             sWhat: "When an arXiv submission is recorded, the " +
+                 "posted e-print's figures must match the frozen " +
+                 "Overleaf figures. Recording a submission is " +
+                 "optional — a project without one meets this " +
+                 "automatically.",
+             sHow: "After posting to arXiv, record the submission " +
+                 "under Published copies in the Project block to " +
+                 "verify it.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
             {sStateKey: "bAiDeclarationAttested",
              sLabel: "AI Declaration attested",
              sWhat: "A committed, signed declaration of how AI was " +
-                 "used to build this workflow — part of the " +
+                 "used to build this project — part of the " +
                  "published record.",
              sHow: "Add the AI Declaration step, review the " +
                  "declaration file, sign off, and commit it (the " +
@@ -135,7 +137,7 @@ var VaibifyAicsTab = (function () {
             {sStateKey: "bDependencyLockHashed",
              sLabel: "Dependency lock",
              sWhat: "requirements.lock pins every Python dependency " +
-                 "(when the workflow uses Python) by exact version " +
+                 "(when the project uses Python) by exact version " +
                  "with hashes, so the software stack is rebuildable.",
              sHow: "Regenerated with the envelope; check it from " +
                  "the Artifacts section of the Project block.",
@@ -163,7 +165,7 @@ var VaibifyAicsTab = (function () {
             {sStateKey: "bReproduceScriptPinned",
              sLabel: "Reproduce script",
              sWhat: "One script at the repository root, reproduce.sh, " +
-                 "reruns the whole workflow, and its hash is pinned " +
+                 "reruns the whole project, and its hash is pinned " +
                  "in the manifest.",
              sHow: "Generate it from the Artifacts section of the " +
                  "Project block (regenerating also re-pins " +
@@ -191,7 +193,7 @@ var VaibifyAicsTab = (function () {
              sFixLabel: "Open the Main tab"},
             {sStateKey: "bL3AttestationCurrent",
              sLabel: "Rebuild attestation",
-             sWhat: "A full rebuild reran the workflow and " +
+             sWhat: "A full rebuild reran the project and " +
                  "reproduced your outputs with matching hashes, " +
                  "recorded against the current manifest.",
              sHow: "Run the verification below once every other " +
@@ -220,7 +222,7 @@ var VaibifyAicsTab = (function () {
         if (!elContent) return;
         if (!_sContainerId) {
             elContent.innerHTML = '<div class="aics-empty">' +
-                'Connect to a workflow to see AICS status.</div>';
+                'Connect to a project to see AICS status.</div>';
             return;
         }
         if (_dictLastReadiness === null) {

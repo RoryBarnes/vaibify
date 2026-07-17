@@ -24,7 +24,7 @@ DICT_WORKFLOW = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
-            "saDataFiles": ["output.dat"],
+            "saOutputDataFiles": ["output.dat"],
             "saTestCommands": [],
             "saPlotCommands": ["python plotResults.py"],
             "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],
@@ -413,6 +413,76 @@ def test_update_step_invalid_index(clientHttp):
         json=dictPayload,
     )
     assert responseHttp.status_code == 404
+
+
+def test_connect_exposes_workflow_fingerprint(clientHttp):
+    dictConnect = _fnConnectToContainer(clientHttp)
+    assert dictConnect.get("sWorkflowFingerprint")
+
+
+def test_cas_round_trip_from_connect_fingerprint(clientHttp):
+    """The end-to-end contract the frontend uses: read the fingerprint
+    from connect, edit with it, succeed; a second edit with the now-old
+    fingerprint conflicts."""
+    dictConnect = _fnConnectToContainer(clientHttp)
+    sFingerprint = dictConnect["sWorkflowFingerprint"]
+    responseOne = clientHttp.put(
+        f"/api/steps/{S_CONTAINER_ID}/0",
+        json={"sName": "First", "sBaseFingerprint": sFingerprint},
+    )
+    assert responseOne.status_code == 200
+    # The workflow moved; reusing the stale fingerprint now conflicts.
+    responseTwo = clientHttp.put(
+        f"/api/steps/{S_CONTAINER_ID}/0",
+        json={"sName": "Second", "sBaseFingerprint": sFingerprint},
+    )
+    assert responseTwo.status_code == 409
+
+
+def test_resolve_commands_returns_fingerprint_and_report(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.get(
+        f"/api/steps/{S_CONTAINER_ID}/resolve-commands"
+    )
+    assert responseHttp.status_code == 200
+    dictReport = responseHttp.json()
+    assert dictReport["sWorkflowFingerprint"]
+    assert "listSteps" in dictReport
+    assert "listWarnings" in dictReport
+
+
+def test_update_step_matching_fingerprint_succeeds(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    sFingerprint = clientHttp.get(
+        f"/api/steps/{S_CONTAINER_ID}/resolve-commands"
+    ).json()["sWorkflowFingerprint"]
+    responseHttp = clientHttp.put(
+        f"/api/steps/{S_CONTAINER_ID}/0",
+        json={"sName": "Renamed", "sBaseFingerprint": sFingerprint},
+    )
+    assert responseHttp.status_code == 200
+    # The response carries the NEW fingerprint for the next edit.
+    assert responseHttp.json()["sWorkflowFingerprint"] != sFingerprint
+
+
+def test_update_step_stale_fingerprint_conflicts(clientHttp):
+    """A compare-and-swap with a stale fingerprint is refused 409,
+    never silently applied over a concurrent writer."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.put(
+        f"/api/steps/{S_CONTAINER_ID}/0",
+        json={"sName": "Renamed", "sBaseFingerprint": "0" * 64},
+    )
+    assert responseHttp.status_code == 409
+
+
+def test_update_step_without_fingerprint_opts_out(clientHttp):
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.put(
+        f"/api/steps/{S_CONTAINER_ID}/0",
+        json={"sName": "Renamed"},
+    )
+    assert responseHttp.status_code == 200
 
 
 def test_delete_step(clientHttp):
@@ -825,12 +895,12 @@ def test_write_file_rejects_vaibify_metadata(clientHttp):
     assert responseHttp.status_code == 403
 
 
-def test_write_file_rejects_other_workflow_json(clientHttp):
+def test_write_file_rejects_other_project_json(clientHttp):
     _fnConnectToContainer(clientHttp)
     dictPayload = {"sContent": "{}"}
     responseHttp = clientHttp.put(
         f"/api/file/{S_CONTAINER_ID}"
-        f"/workspace/other-workflow/workflow.json",
+        f"/workspace/other-project/project.json",
         json=dictPayload,
     )
     assert responseHttp.status_code == 403

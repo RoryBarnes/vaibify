@@ -54,9 +54,9 @@ rebuilds are much faster because Docker caches the layers.
 When the build finishes, the wizard closes and the dashboard opens.
 
 You are now inside the container's dashboard. The toolbar shows the
-container name, the active workflow (for workflow projects) with its
+container name, the active project (for workflow projects) with its
 AICS level badges, and the **?** Help button. The left panel is
-tabbed: workflow projects get **Main** (the workflow's steps and
+tabbed: workflow projects get **Main** (the project's steps and
 project-wide requirements), **AICS** (the reproducibility-ladder
 requirements ledger), **Files**, and **Logs**; sandbox and toolkit
 projects get **Files**, **Repos**, and **Logs**. Above the terminal,
@@ -92,7 +92,7 @@ deeper.
   it does not. Worth reading before you let any agent write code in
   your container.
 - **[Configuration reference](configuration.md)** — every field in
-  `vaibify.yml`, `container.conf`, and `workflow.json`. You almost
+  `vaibify.yml`, `container.conf`, and `project.json`. You almost
   never need to hand-edit these; the wizard writes them for you. 
 - **[External services](externalServices.md)** — how vaibify pushes to
   GitHub, syncs with Overleaf, and archives a result on Zenodo from

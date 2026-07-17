@@ -10,6 +10,8 @@ var PipeleyenTestManager = (function () {
     var dictTestMarkerTimestamps = {};
     var _dictSeenNewTestFiles = {};
     var _bFirstTestFilePoll = true;
+    var _dictFalsificationByStep = {};
+    var _setFalsificationFetchInFlight = new Set();
 
     /* --- Test Generation --- */
 
@@ -315,6 +317,66 @@ var PipeleyenTestManager = (function () {
             PipeleyenApp.fnShowErrorModal(
                 "Test run failed: " + error.message);
         }
+    }
+
+    /* --- Falsification attestation (non-gating) --- */
+
+    function fdictGetFalsificationState(iStepIndex) {
+        return _dictFalsificationByStep[iStepIndex] || null;
+    }
+
+    async function fnFetchFalsificationState(iStepIndex) {
+        if (_setFalsificationFetchInFlight.has(iStepIndex)) return;
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        _setFalsificationFetchInFlight.add(iStepIndex);
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/steps/" + sContainerId + "/" + iStepIndex +
+                "/falsification"
+            );
+            _dictFalsificationByStep[iStepIndex] = dictResult;
+            PipeleyenApp.fnRenderStepList();
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                "Falsification status fetch failed: " +
+                error.message, "error");
+        } finally {
+            _setFalsificationFetchInFlight.delete(iStepIndex);
+        }
+    }
+
+    async function fnRunFalsification(iStepIndex) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        if (!sContainerId) return;
+        try {
+            await VaibifyApi.fdictPostRaw(
+                "/api/steps/" + sContainerId + "/" + iStepIndex +
+                "/run-falsification"
+            );
+        } catch (error) {
+            PipeleyenApp.fnShowErrorModal(
+                "Falsification check refused: " + error.message);
+            return;
+        }
+        var dictState = _dictFalsificationByStep[iStepIndex] || {};
+        dictState.dictInFlight = {sPhase: "starting"};
+        _dictFalsificationByStep[iStepIndex] = dictState;
+        PipeleyenApp.fnRenderStepList();
+        _fnPollFalsificationUntilDone(iStepIndex);
+    }
+
+    function _fnPollFalsificationUntilDone(iStepIndex) {
+        // Transient completion poll: alive only while a run this
+        // session started is in flight, then stops. Not a standing
+        // poll loop.
+        setTimeout(async function () {
+            await fnFetchFalsificationState(iStepIndex);
+            var dictState = _dictFalsificationByStep[iStepIndex];
+            if (dictState && dictState.dictInFlight) {
+                _fnPollFalsificationUntilDone(iStepIndex);
+            }
+        }, 5000);
     }
 
     async function fnRunStepTests(iStepIndex) {
@@ -832,10 +894,12 @@ var PipeleyenTestManager = (function () {
         dictTestMarkerTimestamps = {};
         _dictSeenNewTestFiles = {};
         _bFirstTestFilePoll = true;
+        _dictFalsificationByStep = {};
         setStepsWithData.clear();
         setExpandedUnitTests.clear();
         setGeneratingInFlight.clear();
         setGeneratedTestsPending.clear();
+        _setFalsificationFetchInFlight.clear();
     }
 
     return {
@@ -848,6 +912,9 @@ var PipeleyenTestManager = (function () {
         fnGenerateTestsWithApi: fnGenerateTestsWithApi,
         fnBindApiConfirmModal: fnBindApiConfirmModal,
         fnRunCategoryTests: fnRunCategoryTests,
+        fdictGetFalsificationState: fdictGetFalsificationState,
+        fnFetchFalsificationState: fnFetchFalsificationState,
+        fnRunFalsification: fnRunFalsification,
         fnRunStepTests: fnRunStepTests,
         fnApplyCategoryResults: fnApplyCategoryResults,
         fsCollectTestOutput: fsCollectTestOutput,

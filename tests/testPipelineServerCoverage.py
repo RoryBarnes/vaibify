@@ -398,7 +398,7 @@ class TestFdictFindChangedFiles:
 class TestFnInvalidateStepFiles:
     def test_data_change_resets_unit_test(self):
         dictStep = {
-            "saDataFiles": ["data.h5"],
+            "saOutputDataFiles": ["data.h5"],
             "saPlotFiles": [],
             "dictVerification": {"sUnitTest": "passed"},
         }
@@ -408,7 +408,7 @@ class TestFnInvalidateStepFiles:
 
     def test_plot_change_does_not_reset_unit_test(self):
         dictStep = {
-            "saDataFiles": ["data.h5"],
+            "saOutputDataFiles": ["data.h5"],
             "saPlotFiles": ["Plot/fig.pdf"],
             "dictVerification": {"sUnitTest": "passed"},
         }
@@ -418,7 +418,7 @@ class TestFnInvalidateStepFiles:
 
     def test_tracks_modified_files(self):
         dictStep = {
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saPlotFiles": [],
             "dictVerification": {},
         }
@@ -431,7 +431,7 @@ class TestFnInvalidateStepFiles:
 
     def test_accumulates_modified_files(self):
         dictStep = {
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saPlotFiles": [],
             "dictVerification": {
                 "listModifiedFiles": ["/work/old.txt"]},
@@ -446,7 +446,7 @@ class TestFnInvalidateStepFiles:
 
     def test_data_change_resets_category_states(self):
         dictStep = {
-            "saDataFiles": ["data.h5"],
+            "saOutputDataFiles": ["data.h5"],
             "saPlotFiles": [],
             "dictVerification": {
                 "sUnitTest": "passed",
@@ -465,7 +465,7 @@ class TestFnInvalidateStepFiles:
 
     def test_data_change_skips_absent_categories(self):
         dictStep = {
-            "saDataFiles": ["data.h5"],
+            "saOutputDataFiles": ["data.h5"],
             "saPlotFiles": [],
             "dictVerification": {"sUnitTest": "passed"},
         }
@@ -557,9 +557,9 @@ class TestFlistCollectUpstreamOutputs:
     def test_collects_upstream_data_files(self):
         dictWorkflow = {"listSteps": [
             {"sName": "Step A",
-             "saDataFiles": ["output.h5"]},
+             "saOutputDataFiles": ["output.h5"]},
             {"sName": "Step B",
-             "saDataFiles": ["result.npy"]},
+             "saOutputDataFiles": ["result.npy"]},
         ]}
         listResult = _flistCollectUpstreamOutputs(dictWorkflow, 1)
         assert len(listResult) == 1
@@ -568,14 +568,14 @@ class TestFlistCollectUpstreamOutputs:
 
     def test_no_upstream(self):
         dictWorkflow = {"listSteps": [
-            {"sName": "Step A", "saDataFiles": ["a.h5"]},
+            {"sName": "Step A", "saOutputDataFiles": ["a.h5"]},
         ]}
         assert _flistCollectUpstreamOutputs(dictWorkflow, 0) == []
 
     def test_template_variable_format(self):
         dictWorkflow = {"listSteps": [
             {"sName": "Step A",
-             "saDataFiles": ["evolution.h5"]},
+             "saOutputDataFiles": ["evolution.h5"]},
         ]}
         listResult = _flistCollectUpstreamOutputs(dictWorkflow, 1)
         assert "{Step01.evolution}" in listResult[0][
@@ -599,7 +599,7 @@ class TestFsJoinStepPath:
 class TestFsetCollectCurrentStepOutputs:
     def test_collects_basenames(self):
         dictWorkflow = {"listSteps": [
-            {"saDataFiles": ["/work/data.h5"],
+            {"saOutputDataFiles": ["/work/data.h5"],
              "saPlotFiles": ["Plot/fig.pdf"]},
         ]}
         setResult = _fsetCollectCurrentStepOutputs(dictWorkflow, 0)

@@ -75,6 +75,7 @@ async def test_poll_response_carries_iAICSLevel_one_when_all_green():
         "listSteps": [
             {
                 "sName": "A", "sDirectory": "A",
+                "bNoInputData": True,
                 "dictVerification": {
                     "sUser": "passed",
                     "sUnitTest": "passed",

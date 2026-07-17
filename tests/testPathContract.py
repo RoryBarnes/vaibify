@@ -213,3 +213,35 @@ def test_flistNormalizeModifiedFiles_empty_root_keeps_paths():
         ["/abs/path", "rel/path"], "",
     )
     assert listResult == ["/abs/path", "rel/path"]
+
+
+def test_abs_keys_drops_out_of_repo_binary_paths_without_warning(caplog):
+    """Declared binaries live outside the repo. They ride the poll's
+    mtime batch for the host-side staleness check, but must be dropped
+    from the repo-relative wire dict WITHOUT the per-key warning that
+    otherwise floods the log every poll (the observed 31k-line spam)."""
+    dictByAbs = {
+        "/workspace/Proj/Step/out.dat": 100,          # in-repo output
+        "/home/vplanet/.local/bin/vplanet": 200,       # out-of-repo binary
+        "/home/vplanet/.local/bin/maxlev": 201,        # out-of-repo binary
+    }
+    with caplog.at_level("WARNING", logger="vaibify"):
+        dictResult = fdictAbsKeysToRepoRelative(
+            dictByAbs, "/workspace/Proj",
+        )
+    assert dictResult == {"Step/out.dat": 100}
+    assert "not under repo root" not in caplog.text
+
+
+def test_abs_keys_empty_root_keeps_everything():
+    dictByAbs = {"/abs/x": 1, "rel/y": 2}
+    assert fdictAbsKeysToRepoRelative(dictByAbs, "") == dictByAbs
+
+
+def test_is_under_repo_root():
+    from vaibify.gui.pathContract import fbIsUnderRepoRoot
+    assert fbIsUnderRepoRoot("/repo/a/b", "/repo") is True
+    assert fbIsUnderRepoRoot("/repo", "/repo") is True
+    assert fbIsUnderRepoRoot("/home/u/.local/bin/vplanet", "/repo") is False
+    assert fbIsUnderRepoRoot("rel/path", "/repo") is True   # relative → in-repo
+    assert fbIsUnderRepoRoot("/repo2/x", "/repo") is False  # sibling, not under

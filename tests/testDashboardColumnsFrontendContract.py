@@ -139,13 +139,13 @@ def test_step_rows_carry_no_hover_edit_button():
 # -----------------------------------------------------------------------
 
 
-def test_workflow_block_is_labeled_project():
+def test_project_block_is_labeled_project():
     """The block header must read "Project", not "Workflow" — the
     bare word reads as a summary of the step rows, which it is not,
     and "Workflow-wide" was rejected as clunky (2026-07-08)."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sHeader = _fsExtractFunctionBlock(
-        sSource, "fsRenderWorkflowWideBlock",
+        sSource, "fsRenderProjectBlock",
     )
     assert ">Project" in sHeader
     assert ">Workflow<" not in sHeader, (
@@ -156,7 +156,7 @@ def test_workflow_block_is_labeled_project():
     )
 
 
-def test_workflow_scope_tooltip_is_plain_english():
+def test_project_scope_tooltip_is_plain_english():
     """The Project cell tooltip must explain the scoping without
     internal jargon (no "AICS chip", no "wire", no "scope")."""
     sSource = _fsReadStaticFile("scriptApplication.js")
@@ -382,7 +382,7 @@ def test_repos_tab_shows_attention_badge():
 
 
 # -----------------------------------------------------------------------
-# Workflow-wide envelope (2026-07-02 redesign): expandable sections,
+# Project-block envelope (2026-07-02 redesign): expandable sections,
 # theme-tinted checks for passing items, one home for repo status
 # -----------------------------------------------------------------------
 
@@ -390,19 +390,19 @@ def test_repos_tab_shows_attention_badge():
 def test_workflow_wide_block_rebuilds_unconditionally():
     """The 2026-07-02 skip-repaint bug (a toggle whose expansion set
     was not in the render signature repainted nothing) is retired
-    structurally: the Workflow-wide block lives in its own container
+    structurally: the Project block lives in its own container
     and is rebuilt on every render, so its group/row expansion Sets
     can never cause a skipped repaint. Guard that the rebuild stays
     unconditional and outside the memoized step-hash path."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     sRebuild = _fsExtractFunctionBlock(
-        sSource, "_fnRenderWorkflowWideBlock",
+        sSource, "_fnRenderProjectBlock",
     )
-    assert "workflowWideBlock" in sRebuild, (
-        "the block must render into its own #workflowWideBlock "
+    assert "projectBlock" in sRebuild, (
+        "the block must render into its own #projectBlock "
         "container"
     )
-    assert "fsRenderWorkflowWideBlock" in sRebuild, (
+    assert "fsRenderProjectBlock" in sRebuild, (
         "the block must rebuild from the module renderer each pass"
     )
     # It must not be gated behind the boundary signature (which is the
@@ -412,7 +412,7 @@ def test_workflow_wide_block_rebuilds_unconditionally():
 
 def test_every_column_header_carries_a_tooltip():
     """The per-step column headers (run, warnings, L1) must explain
-    themselves on hover. L2/L3 are workflow-wide, not per-step, so they
+    themselves on hover. L2/L3 are project-wide, not per-step, so they
     are no longer headed on the step rows."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     sHeader = _fsExtractFunctionBlock(
@@ -425,20 +425,20 @@ def test_every_column_header_carries_a_tooltip():
             "column header missing its tooltip: " + sNeedle
         )
     assert "Level 2 Published" not in sHeader, (
-        "L2 is workflow-wide and must not be a per-step column"
+        "L2 is project-wide and must not be a per-step column"
     )
     assert "Level 3 Reproducible" not in sHeader, (
-        "L3 is workflow-wide and must not be a per-step column"
+        "L3 is project-wide and must not be a per-step column"
     )
 
 
 def test_workflow_wide_groups_and_rows_are_expandable():
-    """The Workflow-wide block groups requirements into the four
+    """The Project block groups requirements into the four
     envelope categories plus Attestation; each section and each
     requirement row is independently expandable with a status light."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     sBlock = _fsExtractFunctionBlock(
-        sSource, "fsRenderWorkflowWideBlock",
+        sSource, "fsRenderProjectBlock",
     )
     for sKey in ('"software"', '"artifacts"', '"determinism"',
                  '"publishedCopies"', '"attestation"'):
@@ -494,7 +494,7 @@ def test_envelope_passing_items_use_the_vaibify_favicon():
 def test_envelope_mark_columns_have_lettered_headers():
     """The Software (V/H) and Artifacts (F/R) mark columns carry
     one-letter headers with instructive tooltips, rendered inside the
-    Workflow-wide requirement-row detail bodies."""
+    Project-block requirement-row detail bodies."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
     assert "_fsRenderEnvelopeMarkHeader" in sSource
     sSoftware = _fsExtractFunctionBlock(
@@ -936,26 +936,105 @@ def test_client_level_gate_exempts_declaration_steps():
 
 def test_published_copies_exempt_overleaf_and_arxiv_when_unbound():
     """When no Overleaf project is bound, the backend exempts the
-    Overleaf and arXiv Level 2 gates (levelGates), so the Project
-    block must render those rows not-applicable — never as hollow
-    "refresh to find out" rows a data-only workflow can never
+    figure-freeze Level 2 gate (levelGates), so the Project block
+    must render the Overleaf row not-applicable — never as a hollow
+    "refresh to find out" row a data-only workflow can never
     satisfy. The development workflow had a manuscript bound, which
     is exactly how this gap shipped unseen."""
     sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
-    sRows = _fsExtractFunctionBlock(
-        sSource, "_flistPublishedCopiesRows",
-    )
+    sRows = _fsExtractFunctionBlock(sSource, "_fdictOverleafRow")
     assert "bOverleafBound" in sRows, (
-        "the Published-copies rows must read the poll's "
-        "bOverleafBound exemption flag"
+        "the Overleaf row must read the poll's bOverleafBound "
+        "exemption flag"
     )
     assert "_fdictNotApplicableRow" in sRows, (
-        "unbound workflows must get not-applicable rows, not "
-        "unknown sync rows"
+        "unbound workflows must get a not-applicable row, not an "
+        "unknown sync row"
     )
     assert '"not-applicable": "not-applicable"' in sSource, (
         "the mark-to-level-state map must carry not-applicable "
         "through to the dash cell"
+    )
+
+
+def test_sync_row_never_renders_zero_of_zero_as_attained():
+    """A verify that compared no files must not paint green.
+
+    Observed live: a verify whose comparison set intersected to empty
+    recorded "0 of 0 matching", which the counts-based state logic
+    would render as attained — a vacuous pass. The backend now
+    refuses to write that shape, but legacy cache entries can carry
+    it, so the renderer must treat iTotalFiles === 0 as unknown.
+    """
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sState = _fsExtractFunctionBlock(sSource, "_fsSyncRowState")
+    assert "iTotalFiles" in sState, (
+        "the row state must special-case an empty comparison set"
+    )
+    sDescribe = _fsExtractFunctionBlock(
+        sSource, "_fsDescribeSyncState",
+    )
+    assert "compared no files" in sDescribe, (
+        "the row text must explain a vacuous verify instead of "
+        "printing 0 of 0 matching"
+    )
+
+
+def test_sync_rows_carry_verify_now_button():
+    """Every Published-copies sync row offers Verify now in place.
+
+    The row reports the last verify result, so the action that moves
+    it to the passing state must be reachable from the row itself —
+    a how-to sentence pointing at another panel is not a path to
+    green. The button dispatches through the shared click-handler
+    registry to the sync manager's verify call.
+    """
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sRow = _fsExtractFunctionBlock(sSource, "_fdictSyncRow")
+    assert "wf-verify-remote" in sRow, (
+        "sync rows must render the Verify now button"
+    )
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert '".wf-verify-remote"' in sBindings, (
+        "the Verify now button must be registered in the click-"
+        "handler registry"
+    )
+    sSyncManager = _fsReadStaticFile("scriptSyncManager.js")
+    assert "fnVerifyRemoteFromDashboard" in sSyncManager, (
+        "the dashboard verify entry point must exist in the sync "
+        "manager"
+    )
+
+
+def test_overleaf_rows_do_not_reference_the_gear_button():
+    """The workflow-settings gear has no Overleaf options.
+
+    The historical how-to said "bind one in Workflow settings (the
+    gear button above)" — a dead end: the binding actually happens
+    through the connect dialog raised by Push to Overleaf. Row text
+    must direct researchers to a control that exists.
+    """
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    assert "gear button" not in sSource
+
+
+def test_published_copies_arxiv_row_keys_on_recorded_connection():
+    """The arXiv row is opt-in: it must key on the poll's
+    bArxivConfigured flag, not on the Overleaf binding, and an
+    unconfigured connection must render the neutral not-applicable
+    state — never red (fake gap) and never a green check (fake
+    sync claim)."""
+    sSource = _fsReadStaticFile("scriptWorkflowRequirements.js")
+    sRow = _fsExtractFunctionBlock(sSource, "_fdictArxivRow")
+    assert "bArxivConfigured" in sRow, (
+        "the arXiv row must key on the recorded connection"
+    )
+    sNotTracked = _fsExtractFunctionBlock(
+        sSource, "_fdictArxivNotTrackedRow",
+    )
+    assert '"not-applicable"' in sNotTracked, (
+        "an untracked arXiv submission must render the neutral "
+        "not-applicable state"
     )
 
 

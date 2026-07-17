@@ -27,7 +27,7 @@ DICT_WORKFLOW = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
-            "saDataFiles": ["output.dat"],
+            "saOutputDataFiles": ["output.dat"],
             "saTestCommands": [],
             "saPlotCommands": ["python plotResults.py"],
             "saPlotFiles": ["{sPlotDirectory}/fig.{sFigureType}"],
@@ -225,12 +225,12 @@ def test_file_upload_rejects_dotvaibify_destination(clientHttp):
     assert responseHttp.status_code == 403
 
 
-def test_file_upload_rejects_workflow_json_basename(clientHttp):
-    """Audit C4 follow-up: upload must refuse a workflow.json overwrite."""
+def test_file_upload_rejects_project_json_basename(clientHttp):
+    """Audit C4 follow-up: upload must refuse a project.json overwrite."""
     _fnConnectToContainer(clientHttp)
     sContent = base64.b64encode(b"payload").decode("ascii")
     dictPayload = {
-        "sFilename": "workflow.json",
+        "sFilename": "project.json",
         "sDestination": "/workspace",
         "sContentBase64": sContent,
     }
@@ -871,7 +871,7 @@ def test_fnHandleTerminalText_resize_clamped():
 def test_fnInvalidateStepFiles_marks_modified():
     dictStep = {
         "dictVerification": {"sUnitTest": "passed"},
-        "saDataFiles": ["a.npy"],
+        "saOutputDataFiles": ["a.npy"],
     }
     pipelineServer._fnInvalidateStepFiles(
         dictStep, ["/workspace/a.npy"]

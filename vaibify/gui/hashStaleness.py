@@ -36,31 +36,34 @@ __all__ = [
 _MANIFEST_FILENAME = "MANIFEST.sha256"
 
 
-def fbMarkerHasHashes(dictMarker):
-    """Return True when a marker carries content hashes for outputs."""
+def fbMarkerHasHashes(dictMarker, sHashKey="dictOutputHashes"):
+    """Return True when a marker carries content hashes under sHashKey."""
     if not isinstance(dictMarker, dict):
         return False
-    dictHashes = dictMarker.get("dictOutputHashes")
+    dictHashes = dictMarker.get(sHashKey)
     return isinstance(dictHashes, dict) and len(dictHashes) > 0
 
 
 def fsetStaleOutputsForStep(
     dictMarker, sWorkspaceRoot, dictCache, dictMtimeHints=None,
+    sHashKey="dictOutputHashes",
 ):
     """Return the set of repo-relative paths whose content has drifted.
 
-    Reads ``dictMarker['dictOutputHashes']`` as the baseline and
-    compares each file's current blob SHA (via the mtime cache) to
-    its baseline digest. Missing files are treated as stale; markers
-    lacking hashes yield an empty set (nothing to compare).
-    ``dictMtimeHints`` is an optional ``{sRepoRelPath: fMtime}`` map
-    so a caller that already stat'd the files can spare the redundant
-    ``os.stat`` per cache lookup; ``None`` falls back to live stats.
+    Reads ``dictMarker[sHashKey]`` as the baseline (the step's output
+    hashes by default; pass ``"dictInputHashes"`` for the input-data
+    baseline) and compares each file's current blob SHA (via the
+    mtime cache) to its baseline digest. Missing files are treated as
+    stale; markers lacking hashes yield an empty set (nothing to
+    compare). ``dictMtimeHints`` is an optional
+    ``{sRepoRelPath: fMtime}`` map so a caller that already stat'd
+    the files can spare the redundant ``os.stat`` per cache lookup;
+    ``None`` falls back to live stats.
     """
     setStale = set()
-    if not fbMarkerHasHashes(dictMarker):
+    if not fbMarkerHasHashes(dictMarker, sHashKey):
         return setStale
-    dictBaseline = dictMarker["dictOutputHashes"]
+    dictBaseline = dictMarker[sHashKey]
     dictHints = dictMtimeHints or {}
     for sRelPath, sBaselineSha in dictBaseline.items():
         bMatches = mtimeCache.fbFileMatchesDigest(

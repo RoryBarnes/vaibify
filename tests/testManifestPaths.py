@@ -339,3 +339,73 @@ def test_flistStepDeclarationRepoPaths_normalizes_container_paths():
         "sDeclarationFile": "/workspace/AI_USAGE.md",
     }
     assert flistStepDeclarationRepoPaths(dictStep) == ["AI_USAGE.md"]
+
+
+# ----------------------------------------------------------------------
+# Templated output declarations (workflow-level {token} paths)
+# ----------------------------------------------------------------------
+
+
+def test_templated_plot_resolves_repo_relative_not_step_joined():
+    """A ``{sPlotDirectory}`` declaration resolves to a repo-root path.
+
+    The GJ-class workflow shape: every figure declared as
+    ``{sPlotDirectory}/name.{sFigureType}`` from a step directory.
+    Resolution must produce the repo-relative collection path
+    (``Plot/corner.pdf``), never a step-joined phantom
+    (``StepDir/Plot/corner.pdf``) — matching the semantics of
+    ``stateContract._flistStepOutputRepoPaths``.
+    """
+    from vaibify.reproducibility.manifestPaths import (
+        flistStepOutputRepoPaths,
+    )
+    dictStep = {
+        "sDirectory": "KeplerFfdCorner",
+        "saPlotFiles": ["{sPlotDirectory}/corner.{sFigureType}"],
+    }
+    dictValues = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
+    assert flistStepOutputRepoPaths(dictStep, dictValues) == [
+        "Plot/corner.pdf",
+    ]
+
+
+def test_templated_plot_skipped_without_template_values():
+    """Legacy contract: no values means templated entries are skipped."""
+    from vaibify.reproducibility.manifestPaths import (
+        flistStepOutputRepoPaths,
+    )
+    dictStep = {
+        "sDirectory": "KeplerFfdCorner",
+        "saPlotFiles": ["{sPlotDirectory}/corner.pdf"],
+    }
+    assert flistStepOutputRepoPaths(dictStep) == []
+    assert flistStepOutputRepoPaths(dictStep, {}) == []
+
+
+def test_templated_plot_with_unresolved_token_is_skipped():
+    """A token the workflow does not define must not half-resolve."""
+    from vaibify.reproducibility.manifestPaths import (
+        flistStepOutputRepoPaths,
+    )
+    dictStep = {
+        "saPlotFiles": ["{sPlotDirectory}/x.{sUnknownToken}"],
+    }
+    assert flistStepOutputRepoPaths(
+        dictStep, {"sPlotDirectory": "Plot"},
+    ) == []
+
+
+def test_workflow_template_values_are_top_level_strings_only():
+    """Only scalar string fields may substitute into a path."""
+    from vaibify.reproducibility.manifestPaths import (
+        fdictWorkflowTemplateValues,
+    )
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "sFigureType": "pdf",
+        "listSteps": [{"sName": "A"}],
+        "iCores": 4,
+    }
+    assert fdictWorkflowTemplateValues(dictWorkflow) == {
+        "sPlotDirectory": "Plot", "sFigureType": "pdf",
+    }

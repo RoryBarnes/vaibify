@@ -115,6 +115,7 @@ def fnPrintDescribe(dictEntry):
 
 DICT_LONG_FLAG_ALIASES = {
     "lines": "iLines",
+    "confirm-remote-overwrite": "bConfirmRemoteOverwrite",
 }
 
 
@@ -144,6 +145,14 @@ def ftParsePositionalArgs(listArgs):
             dictBody[sKey] = _fnCoerceScalar(sValue)
         elif sArg.startswith("{"):
             dictBody.update(json.loads(sArg))
+        elif (
+            sArg.startswith("--")
+            and sArg.lstrip("-") in DICT_LONG_FLAG_ALIASES
+            and DICT_LONG_FLAG_ALIASES[sArg.lstrip("-")].startswith("b")
+        ):
+            # A bare aliased boolean flag (e.g.
+            # --confirm-remote-overwrite) means True.
+            dictBody[DICT_LONG_FLAG_ALIASES[sArg.lstrip("-")]] = True
         else:
             listPositional.append(sArg)
     return listPositional, dictBody

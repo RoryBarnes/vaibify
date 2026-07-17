@@ -54,8 +54,9 @@ def _fdictGreenStep(sName="A"):
     """Return a step dict that satisfies every L1 criterion."""
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [sName + "/data.csv"],
+        "saOutputDataFiles": [sName + "/data.csv"],
         "saPlotFiles": [sName + "/plot.pdf"],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",
@@ -433,7 +434,8 @@ def testSchemaUnificationAppliedToL1():
     """
     dictStepUpstreamModified = {
         "sName": "Up", "sDirectory": "Up",
-        "saDataFiles": ["Up/data.csv"], "saPlotFiles": [],
+        "saOutputDataFiles": ["Up/data.csv"], "saPlotFiles": [],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",
@@ -445,12 +447,14 @@ def testSchemaUnificationAppliedToL1():
     }
     dictStepUserUntested = {
         "sName": "A", "sDirectory": "A",
-        "saDataFiles": ["A/data.csv"], "saPlotFiles": [],
+        "saOutputDataFiles": ["A/data.csv"], "saPlotFiles": [],
+        "bNoInputData": True,
         "dictVerification": {"sUser": "untested"},
     }
     dictStepAxisFail = {
         "sName": "B", "sDirectory": "B",
-        "saDataFiles": ["B/data.csv"], "saPlotFiles": [],
+        "saOutputDataFiles": ["B/data.csv"], "saPlotFiles": [],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "failed",
@@ -461,10 +465,22 @@ def testSchemaUnificationAppliedToL1():
     }
     dictStepAttestStale = {
         "sName": "C", "sDirectory": "C",
-        "saDataFiles": ["C/data.csv"], "saPlotFiles": [],
+        "saOutputDataFiles": ["C/data.csv"], "saPlotFiles": [],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "stale",
             "sLastUserUpdate": "2026-01-01T00:00:00Z",
+            "sUnitTest": "passed",
+            "sIntegrity": "passed",
+            "sQualitative": "passed",
+            "sQuantitative": "passed",
+        },
+    }
+    dictStepUndeclared = {
+        "sName": "D", "sDirectory": "D",
+        "saOutputDataFiles": ["D/data.csv"], "saPlotFiles": [],
+        "dictVerification": {
+            "sUser": "passed",
             "sUnitTest": "passed",
             "sIntegrity": "passed",
             "sQualitative": "passed",
@@ -475,14 +491,16 @@ def testSchemaUnificationAppliedToL1():
         {"listSteps": [
             dictStepUpstreamModified, dictStepUserUntested,
             dictStepAxisFail, dictStepAttestStale,
+            dictStepUndeclared,
         ]},
         {}, "/repo",
     )
-    assert len(listBlockers) == 4
+    assert len(listBlockers) == 5
     setCriteria = {dictEntry["sCriterion"] for dictEntry in listBlockers}
     assert setCriteria == {
         "upstream-modified", "axis-not-green",
         "attestation-stale", "user-not-approved",
+        "input-data-undeclared",
     }
     for dictEntry in listBlockers:
         assert dictEntry["iLevel"] == 1

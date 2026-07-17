@@ -12,7 +12,7 @@ var VaibifyWorkflowManager = (function () {
             sCardsHtml =
                 '<p style="color: var(--text-muted);' +
                 ' text-align: center;">' +
-                'No workflows found. Create one to get ' +
+                'No projects found. Create one to get ' +
                 'started.</p>';
         } else {
             sCardsHtml = listWorkflows.map(function (dictWf) {
@@ -130,7 +130,7 @@ var VaibifyWorkflowManager = (function () {
             PipeleyenApp.fnRefreshWorkflowData(dictResult);
             await fnCheckOriginDrift(sId, false);
             PipeleyenApp.fnShowToast(
-                "Workflow refreshed", "info");
+                "Project refreshed", "info");
         } catch (error) {
             PipeleyenApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
@@ -273,7 +273,7 @@ var VaibifyWorkflowManager = (function () {
         return '<div class="drift-banner-message">' +
             'Cannot fast-forward: working tree has uncommitted ' +
             'changes. Commit canonical state files (test markers, ' +
-            'MANIFEST.sha256, requirements.lock, workflow.json) and ' +
+            'MANIFEST.sha256, requirements.lock, project.json) and ' +
             'pull, or handle them yourself first.' +
             '<ul class="drift-banner-dirty-list">' +
             listItems.join("") + '</ul></div>' +
@@ -311,7 +311,7 @@ var VaibifyWorkflowManager = (function () {
             elDropdown.classList.add("active");
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                "Could not load workflows", "error");
+                "Could not load projects", "error");
         }
     }
 
@@ -328,12 +328,12 @@ var VaibifyWorkflowManager = (function () {
         var bInNoWorkflow = !sWorkflowPath && !dictWorkflow;
         var sHtml = '<div class="workflow-dropdown-item new-workflow"'
             + ' data-action="newWorkflow">'
-            + '<span class="wf-name">+ New Workflow&hellip;</span>'
+            + '<span class="wf-name">+ New Project&hellip;</span>'
             + '</div>';
         sHtml += '<div class="workflow-dropdown-item' +
             (bInNoWorkflow ? " current" : "") +
             '" data-action="noWorkflow">' +
-            '<span class="wf-name">No Workflow</span></div>';
+            '<span class="wf-name">Blank Project</span></div>';
         sHtml += listWorkflows.map(function (dictWf) {
             var bCurrent = dictWf.sPath === sWorkflowPath;
             return (
@@ -385,9 +385,9 @@ var VaibifyWorkflowManager = (function () {
 
     function fnConfirmWorkflowSwitch(sNewPath, sNewName) {
         PipeleyenApp.fnShowConfirmModal(
-            "Switch Workflow",
+            "Switch Project",
             "Switch to \"" + sNewName + "\"?\n\n" +
-            "Current workflow state will be saved.",
+            "Current project state will be saved.",
             async function () {
                 await fnSaveCurrentWorkflow();
                 fnSelectWorkflow(
@@ -410,7 +410,7 @@ var VaibifyWorkflowManager = (function () {
             );
         } catch (error) {
             PipeleyenApp.fnShowToast(
-                "Could not save workflow", "error");
+                "Could not save project", "error");
         }
     }
 

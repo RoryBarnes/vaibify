@@ -40,6 +40,7 @@ from vaibify.reproducibility import manifestWriter
 __all__ = [
     "I_LARGE_FILE_THRESHOLD_BYTES",
     "S_CONTAINER_WORKSPACE_PREFIX",
+    "S_VAIBIFY_PROJECTS_GLOB",
     "S_VAIBIFY_WORKFLOWS_GLOB",
     "S_VAIBIFY_MARKERS_GLOB",
     "S_VAIBIFY_ZENODO_REFS",
@@ -57,6 +58,8 @@ I_LARGE_FILE_THRESHOLD_BYTES = 50 * 1024 * 1024
 
 S_CONTAINER_WORKSPACE_PREFIX = "/workspace/"
 
+S_VAIBIFY_PROJECTS_GLOB = ".vaibify/projects/*.json"
+# Legacy directory, still tracked so pre-rename repos keep working.
 S_VAIBIFY_WORKFLOWS_GLOB = ".vaibify/workflows/*.json"
 S_VAIBIFY_MARKERS_GLOB = ".vaibify/test_markers/*/*.json"
 S_VAIBIFY_ZENODO_REFS = ".vaibify/zenodo-refs.json"
@@ -114,7 +117,7 @@ def _flistStepOutputRepoPaths(dictStep, dictVars=None):
     """
     sDirectory = dictStep.get("sDirectory", "")
     listPaths = []
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sFile in dictStep.get(sKey, []):
             if "{" in sFile:
                 if dictVars is None:
@@ -293,10 +296,11 @@ def flistCanonicalTrackedFilesFromScans(
 def _fnAppendStepTrackedPaths(
     dictStep, dictVars, listPaths, setSeen, setExcluded,
 ):
-    """Append one step's scripts, outputs, standards, and test files."""
+    """Append one step's scripts, outputs, inputs, standards, tests."""
     for listIncoming in (
         _flistStepScriptRepoPaths(dictStep),
         _flistStepOutputRepoPaths(dictStep, dictVars),
+        manifestPaths.flistStepInputRepoPaths(dictStep),
         _flistStepStandardsRepoPaths(dictStep),
         _flistStepTestFileRepoPaths(dictStep),
         manifestPaths.flistStepDeclarationRepoPaths(dictStep),

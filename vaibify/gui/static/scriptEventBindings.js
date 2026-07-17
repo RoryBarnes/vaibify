@@ -60,12 +60,20 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleSubTestRow(event, elMatch) {
         var sSubApprover = elMatch.dataset.approver;
         var iSubStep = parseInt(elMatch.dataset.step);
+        if (!sSubApprover) return;
         var setSubExp = PipeleyenApp.fsetGetExpandedCategory(
             sSubApprover);
         if (setSubExp.has(iSubStep)) {
             setSubExp.delete(iSubStep);
         } else {
             setSubExp.add(iSubStep);
+            if (sSubApprover === "quantitative") {
+                // On-demand only: the falsification state is read
+                // when the researcher opens the quantitative block,
+                // never on the poll path.
+                PipeleyenTestManager.fnFetchFalsificationState(
+                    iSubStep);
+            }
         }
         PipeleyenApp.fnRenderStepList();
     }
@@ -131,6 +139,11 @@ var PipeleyenEventBindings = (function () {
         PipeleyenTestManager.fnRunCategoryTests(
             parseInt(elMatch.dataset.step),
             elMatch.dataset.category);
+    }
+
+    function _fnHandleRunFalsification(event, elMatch) {
+        PipeleyenTestManager.fnRunFalsification(
+            parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleRunData(event, elMatch) {
@@ -288,8 +301,8 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnToggleStepsBlockExpand();
     }
 
-    function _fnHandleWorkflowWideToggle(event, elMatch) {
-        PipeleyenApp.fnToggleWorkflowWideBlockExpand();
+    function _fnHandleProjectBlockToggle(event, elMatch) {
+        PipeleyenApp.fnToggleProjectBlockExpand();
     }
 
     function _fnHandleRequirementGroupToggle(event, elMatch) {
@@ -300,12 +313,18 @@ var PipeleyenEventBindings = (function () {
         PipeleyenApp.fnToggleRequirementRow(elMatch.dataset.req);
     }
 
-    function _fnHandleWorkflowWideAction(event, elMatch) {
+    function _fnHandleProjectAction(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnRunWorkflowWideAction(
+        PipeleyenApp.fnRunProjectAction(
             elMatch.dataset.wfAction, elMatch.dataset.wfArg || "",
             elMatch);
+    }
+
+    function _fnHandleBulkDeclareNoInput(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnBulkDeclareNoInputData();
     }
 
     function _fnHandleOpenArxivConfig(event, elMatch) {
@@ -314,13 +333,20 @@ var PipeleyenEventBindings = (function () {
         VaibifyArxivConfig.fnOpen();
     }
 
+    function _fnHandleVerifyRemote(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifySyncManager.fnVerifyRemoteFromDashboard(
+            elMatch.dataset.service || "", elMatch);
+    }
+
     function _fnHandleToggleBinaryForm(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
         PipeleyenApp.fnToggleBinaryAddForm();
     }
 
-    function _fnHandleWorkflowWideFileLink(event, elMatch) {
+    function _fnHandleProjectFileLink(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
         PipeleyenFigureViewer.fnDisplayFileFromContainer(
@@ -350,6 +376,7 @@ var PipeleyenEventBindings = (function () {
         ".btn-run-tests": _fnHandleRunTests,
         ".btn-run-all-tests": _fnHandleRunTests,
         ".btn-run-category": _fnHandleRunCategory,
+        ".btn-run-falsification": _fnHandleRunFalsification,
         ".btn-run-data": _fnHandleRunData,
         ".btn-run-plots": _fnHandleRunPlots,
         ".btn-add-deps": _fnHandleAddDeps,
@@ -362,16 +389,18 @@ var PipeleyenEventBindings = (function () {
         ".test-delete-cmd": _fnHandleTestDeleteCmd,
         ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
-        ".wf-action-btn": _fnHandleWorkflowWideAction,
+        ".wf-action-btn": _fnHandleProjectAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
+        ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
-        ".wf-file-link": _fnHandleWorkflowWideFileLink,
+        ".wf-file-link": _fnHandleProjectFileLink,
         ".steps-block-header": _fnHandleStepsBlockToggle,
-        ".workflow-wide-header": _fnHandleWorkflowWideToggle,
+        ".project-block-header": _fnHandleProjectBlockToggle,
         ".requirement-group-header": _fnHandleRequirementGroupToggle,
         ".requirement-row-header": _fnHandleRequirementRowToggle,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
         ".btn-ai-declaration-untrack": _fnHandleAiDeclarationUntrack,
+        ".wf-declare-no-input": _fnHandleBulkDeclareNoInput,
         ".envelope-open-repos": _fnHandleOpenReposPanel,
     };
 
@@ -415,6 +444,18 @@ var PipeleyenEventBindings = (function () {
         if (elTarget.classList.contains("plot-only-checkbox")) {
             PipeleyenApp.fnTogglePlotOnly(
                 parseInt(elTarget.dataset.step), elTarget.checked
+            );
+        }
+        if (elTarget.classList.contains("no-input-data-checkbox")) {
+            PipeleyenApp.fnToggleNoInputData(
+                parseInt(elTarget.dataset.step), elTarget.checked
+            );
+        }
+        if (elTarget.classList.contains("step-budget-input")) {
+            var fBudget = parseFloat(elTarget.value);
+            if (isNaN(fBudget) || fBudget < 0) fBudget = 0;
+            PipeleyenApp.fnSetStepBudget(
+                parseInt(elTarget.dataset.step), fBudget
             );
         }
     }
@@ -493,7 +534,7 @@ var PipeleyenEventBindings = (function () {
     function fnSetupDelegatedEvents(elList) {
         // Click delegation attaches to the whole Steps panel, not just
         // #listSteps, because the Steps-block header and the
-        // Workflow-wide block are siblings of #listSteps — their header
+        // Project block are siblings of #listSteps — their header
         // clicks bubble to #panelSteps, never through #listSteps. The
         // step-specific change/drag/contextmenu handlers stay on
         // #listSteps (they only ever act on step elements).
@@ -659,7 +700,7 @@ var PipeleyenEventBindings = (function () {
             },
             btnAdminWorkflows: function () {
                 PipeleyenModals.fnShowConfirmModal(
-                    "Switch Workflow",
+                    "Switch Project",
                     "This will leave the current dashboard " +
                     "and end any running sessions. Continue?",
                     PipeleyenApp.fnReconnectToCurrentContainer);

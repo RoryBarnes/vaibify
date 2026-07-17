@@ -7,13 +7,14 @@
     "listSteps": [
         {
             "sName": "GenerateSamples",
+            "sStepId": "generate-samples",
             "sDirectory": "Sampler",
             "bRunEnabled": true,
             "bPlotOnly": false,
             "saDataCommands": [
                 "python dataGenerateSamples.py --output samples.npy"
             ],
-            "saDataFiles": [
+            "saOutputDataFiles": [
                 "samples.npy"
             ],
             "saPlotCommands": [],
@@ -21,13 +22,14 @@
         },
         {
             "sName": "PlotHistogram",
+            "sStepId": "plot-histogram",
             "sDirectory": "Plot",
             "bRunEnabled": true,
             "bPlotOnly": true,
             "saDataCommands": [],
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saPlotCommands": [
-                "python plotHistogram.py --samples {Step01.samples} {sPlotDirectory}/histogram.{sFigureType}"
+                "python plotHistogram.py --samples {step:generate-samples.samples} {sPlotDirectory}/histogram.{sFigureType}"
             ],
             "saPlotFiles": [
                 "{sPlotDirectory}/histogram.{sFigureType}"

@@ -158,9 +158,9 @@ def _fbStepsAreSiblings(dictStepA, dictStepB):
 
 
 def _fsetOutputBasenames(dictStep):
-    """Return basenames of saDataFiles + saPlotFiles for sibling comparison."""
+    """Return basenames of saOutputDataFiles + saPlotFiles for sibling comparison."""
     setNames = set()
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sPath in dictStep.get(sKey, []) or []:
             sBasename = posixpath.basename(sPath)
             if sBasename and "{" not in sBasename:
@@ -182,7 +182,7 @@ def _fdictMtimesForStep(dictStep, dictNewModTimes, sRepoRoot):
     """Return ``{sPath: fMtime}`` for one step's declared outputs."""
     dictResult = {}
     sDirectory = dictStep.get("sDirectory", "") or ""
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sRelPath in dictStep.get(sKey, []) or []:
             if "{" in sRelPath:
                 continue

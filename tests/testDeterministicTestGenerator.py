@@ -347,7 +347,7 @@ def test_fdictGenerateAllTestsDeterministic_mock():
             "sName": "Analyze",
             "sDirectory": "/work/step01",
             "saDataCommands": ["python run.py"],
-            "saDataFiles": ["output.npy"],
+            "saOutputDataFiles": ["output.npy"],
         }],
         "fTolerance": 1e-6,
     }
@@ -2208,7 +2208,7 @@ def test_fdictGenerateAllTestsDeterministic_written_content():
             "sName": "Analyze",
             "sDirectory": "/work/step01",
             "saDataCommands": ["python run.py"],
-            "saDataFiles": ["data.csv"],
+            "saOutputDataFiles": ["data.csv"],
         }],
         "fTolerance": 1e-6,
     }
@@ -2280,7 +2280,7 @@ def test_fdictGenerateAllTestsDeterministic_no_data_files():
             "sName": "Empty",
             "sDirectory": "/work/step02",
             "saDataCommands": [],
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
         }],
         "fTolerance": 1e-4,
     }

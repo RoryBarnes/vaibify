@@ -66,7 +66,7 @@ def _fiRunPipeline(connectionDocker, sContainerName, iStep, iFrom):
         connectionDocker, sContainerName,
     )
     if not sWorkflowPath:
-        click.echo("Error: No workflow found in container.")
+        click.echo("Error: No project found in container.")
         return 2
     if iFrom is not None:
         return asyncio.run(fnRunFromStep(
@@ -104,7 +104,7 @@ def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
         connectionDocker, sContainerName,
     )
     if not sWorkflowPath:
-        click.echo("Error: No workflow found in container.")
+        click.echo("Error: No project found in container.")
         return 2
     iStepIndex = iStep - 1
     iStepCount = len(dictWorkflow.get("listSteps", []))

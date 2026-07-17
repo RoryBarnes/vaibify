@@ -104,7 +104,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": ["data.h5"],
+                    "saOutputDataFiles": ["data.h5"],
                     "saPlotFiles": ["fig.pdf"],
                 },
             ],
@@ -120,7 +120,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                     "saPlotFiles": ["fig.pdf"],
                     "dictPlotFileCategories": {
                         "fig.pdf": "supporting",
@@ -135,7 +135,7 @@ class TestCollectOutputFiles:
         from vaibify.gui.syncDispatcher import flistCollectOutputFiles
         dictWorkflow = {
             "listSteps": [
-                {"saDataFiles": ["data.h5"], "saPlotFiles": []},
+                {"saOutputDataFiles": ["data.h5"], "saPlotFiles": []},
             ],
         }
         listFiles = flistCollectOutputFiles(dictWorkflow, {})
@@ -146,7 +146,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                     "saPlotFiles": [
                         "{sPlotDirectory}/fig.{sFigureType}",
                     ],
@@ -165,7 +165,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": [
+                    "saOutputDataFiles": [
                         "data.json", "samples.npy", "notes.txt",
                     ],
                     "saPlotFiles": [
@@ -187,7 +187,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": ["out.csv", "arr.npz"],
+                    "saOutputDataFiles": ["out.csv", "arr.npz"],
                     "saPlotFiles": ["model.pkl"],
                 },
             ],
@@ -201,7 +201,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                     "saPlotFiles": ["Figure.PDF", "Photo.JPEG"],
                 },
             ],
@@ -215,7 +215,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": ["data.h5", "log.txt"],
+                    "saOutputDataFiles": ["data.h5", "log.txt"],
                     "saPlotFiles": ["fig.pdf"],
                 },
             ],
@@ -229,7 +229,7 @@ class TestCollectOutputFiles:
         dictWorkflow = {
             "listSteps": [
                 {
-                    "saDataFiles": ["Makefile"],
+                    "saOutputDataFiles": ["Makefile"],
                     "saPlotFiles": ["fig.pdf"],
                 },
             ],
@@ -244,7 +244,7 @@ class TestCollectOutputFiles:
             "listSteps": [
                 {
                     "sDirectory": "CumulativeXuvAndCosmicShoreline",
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                     "saPlotFiles": [
                         "{sPlotDirectory}/CosmicShoreline."
                         "{sFigureType}",
@@ -270,7 +270,7 @@ class TestCollectOutputFiles:
             "listSteps": [
                 {
                     "sDirectory": "/workspace/already/absolute",
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                     "saPlotFiles": ["fig.pdf"],
                 },
             ],
@@ -288,7 +288,7 @@ class TestCollectOutputFiles:
             "listSteps": [
                 {
                     "sDirectory": "step1",
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                     "saPlotFiles": ["fig.pdf"],
                 },
             ],

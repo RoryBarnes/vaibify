@@ -19,6 +19,7 @@ __all__ = [
     "sessionRoutes",
     "levelRoutes",
     "reproducibilityRoutes",
+    "falsificationRoutes",
 ]
 
 from . import (
@@ -40,4 +41,5 @@ from . import (
     sessionRoutes,
     levelRoutes,
     reproducibilityRoutes,
+    falsificationRoutes,
 )

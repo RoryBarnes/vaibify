@@ -1,5 +1,6 @@
 """Tests for the verify/status remote routes in syncRoutes.py."""
 
+import hashlib
 import json
 import os
 from unittest.mock import patch
@@ -18,6 +19,10 @@ from vaibify.reproducibility import scheduledReverify
 S_CONTAINER_ID = "verify_remote_cid"
 
 
+_BA_DATA_CONTENT = b"canonical data bytes\n"
+S_DATA_SHA = hashlib.sha256(_BA_DATA_CONTENT).hexdigest()
+
+
 def _fdictBuildWorkflow(sProjectRepo):
     """Return a workflow dict with three configured remotes."""
     return {
@@ -34,30 +39,26 @@ def _fdictBuildWorkflow(sProjectRepo):
         "listSteps": [
             {
                 "sDirectory": "step01",
-                "saDataFiles": ["step01/data.csv"],
+                "saOutputDataFiles": ["data.csv"],
                 "saPlotFiles": [],
-                "saOutputFiles": [],
             },
         ],
     }
 
 
-def _fnWriteManifestForOneFile(sProjectRepo, sExpectedHash):
-    """Write a single-entry MANIFEST.sha256 for the test repo."""
-    sManifest = os.path.join(sProjectRepo, "MANIFEST.sha256")
-    with open(sManifest, "w", encoding="utf-8") as fileHandle:
-        fileHandle.write(
-            "# SHA-256 manifest of workflow outputs\n"
-            f"{sExpectedHash}  step01/data.csv\n"
-        )
-
-
 @pytest.fixture
 def fixtureProjectRepo(tmp_path):
-    """Create a temp project repo with a manifest entry."""
+    """Create a temp project repo with the declared file on disk.
+
+    The verifies hash the declared files live, so the fixture creates
+    real content instead of a manifest entry.
+    """
     sRepo = str(tmp_path / "project")
     os.makedirs(os.path.join(sRepo, "step01"), exist_ok=True)
-    _fnWriteManifestForOneFile(sRepo, "a" * 64)
+    with open(
+        os.path.join(sRepo, "step01", "data.csv"), "wb",
+    ) as fileHandle:
+        fileHandle.write(_BA_DATA_CONTENT)
     return sRepo
 
 
@@ -111,7 +112,7 @@ def testVerifyGithubReturnsStatus(
     fixtureClientNoNetworkBlock, fixtureProjectRepo,
 ):
     """GitHub verify returns iMatching/iTotalFiles for a matching remote."""
-    sExpected = "a" * 64
+    sExpected = S_DATA_SHA
     with _fnPatchService(
         "githubMirror", {"step01/data.csv": sExpected},
     ):
@@ -127,12 +128,24 @@ def testVerifyGithubReturnsStatus(
 
 
 def testVerifyOverleafReturnsStatus(
-    fixtureClientNoNetworkBlock, fixtureProjectRepo,
+    fixtureClientNoNetworkBlock, fixtureCtxAndApp,
 ):
-    """Overleaf verify returns the right service name."""
-    sExpected = "a" * 64
+    """Overleaf verify returns the right service name.
+
+    The Overleaf comparison set is the pushed-figure list hashed at
+    the remote paths the push flattened them to, so the test records
+    a push and keys the mock by the remote path.
+    """
+    from vaibify.reproducibility import overleafSync
+    dictCtx, _, sProjectRepo = fixtureCtxAndApp
+    overleafSync.fnRecordOverleafPushManifest(
+        sProjectRepo, "commit1", ["step01/data.csv"], "figures",
+    )
+    dictWorkflow = dictCtx["workflows"][S_CONTAINER_ID]
+    dictWorkflow["dictRemotes"]["overleaf"][
+        "sLastPushCommit"] = "commit1"
     with _fnPatchService(
-        "overleafMirror", {"step01/data.csv": sExpected},
+        "overleafMirror", {"figures/data.csv": S_DATA_SHA},
     ):
         response = fixtureClientNoNetworkBlock.post(
             f"/api/sync/{S_CONTAINER_ID}/overleaf/verify",
@@ -141,11 +154,22 @@ def testVerifyOverleafReturnsStatus(
     assert response.json()["sService"] == "overleaf"
 
 
+def testVerifyOverleafWithoutRecordedPushReturns409(
+    fixtureClientNoNetworkBlock,
+):
+    """No recorded push maps to a 409 precondition, not a 500."""
+    response = fixtureClientNoNetworkBlock.post(
+        f"/api/sync/{S_CONTAINER_ID}/overleaf/verify",
+    )
+    assert response.status_code == 409
+    assert "push" in response.json()["detail"].lower()
+
+
 def testVerifyZenodoReturnsStatus(
     fixtureClientNoNetworkBlock, fixtureProjectRepo,
 ):
     """Zenodo verify routes through zenodoClient.fdictFetchRemoteHashes."""
-    sExpected = "a" * 64
+    sExpected = S_DATA_SHA
     with _fnPatchService(
         "zenodoClient", {"step01/data.csv": sExpected},
     ):
@@ -163,7 +187,7 @@ def testVerifyPersistsStatusToSyncStatusJson(
     fixtureClientNoNetworkBlock, fixtureProjectRepo,
 ):
     """A successful verify writes <repo>/.vaibify/syncStatus.json."""
-    sExpected = "a" * 64
+    sExpected = S_DATA_SHA
     with _fnPatchService(
         "githubMirror", {"step01/data.csv": sExpected},
     ):
@@ -224,21 +248,29 @@ def testVerifyReturns400OnPathTraversalServiceName(
     assert response.status_code in (400, 404)
 
 
-def testVerifyReturns422OnMalformedManifest(
+def testVerifySucceedsDespiteMalformedManifest(
     fixtureClientNoNetworkBlock, fixtureProjectRepo,
 ):
-    """A corrupt MANIFEST.sha256 yields 422 (unprocessable), not 500."""
+    """A corrupt MANIFEST.sha256 cannot block an L2 verify.
+
+    Ladder separation (ruling 2026-07-10): the manifest is the L3
+    reproducibility-envelope artifact; L2 verifies hash the declared
+    files live and never read it. Under the old manifest-based verify
+    this exact fixture 422'd — pinning success here is what keeps the
+    L2 path decoupled.
+    """
     sManifest = os.path.join(fixtureProjectRepo, "MANIFEST.sha256")
     with open(sManifest, "w", encoding="utf-8") as fileHandle:
         fileHandle.write("# malformed: no two-space separator below\n")
         fileHandle.write("garbage_line_no_separator\n")
-    response = fixtureClientNoNetworkBlock.post(
-        f"/api/sync/{S_CONTAINER_ID}/github/verify",
-    )
-    assert response.status_code == 422
-    sDetail = response.json()["detail"]
-    # No absolute path leak from the parser's f-string.
-    assert fixtureProjectRepo not in sDetail
+    with _fnPatchService(
+        "githubMirror", {"step01/data.csv": S_DATA_SHA},
+    ):
+        response = fixtureClientNoNetworkBlock.post(
+            f"/api/sync/{S_CONTAINER_ID}/github/verify",
+        )
+    assert response.status_code == 200
+    assert response.json()["iMatching"] == 1
 
 
 def testVerifyReturns422OnInvalidGithubOwnerInWorkflow(

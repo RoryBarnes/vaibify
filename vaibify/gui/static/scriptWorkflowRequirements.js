@@ -1,7 +1,7 @@
-/* Vaibify — Workflow-wide requirements block (VaibifyWorkflowRequirements)
+/* Vaibify — Project requirements block (VaibifyWorkflowRequirements)
 
    L1 is a per-step property; L2 ("Published") and L3 ("Reproducible")
-   are workflow-wide gates. This module owns the "Project" block:
+   are project-wide gates. This module owns the "Project" block:
    an at-a-glance L1/L2/L3 banner plus two concern groups — Publication
    (GitHub / Zenodo / arXiv / AI Declaration) and Reproducibility
    (manifest, dependency lock, environment digest, Dockerfile,
@@ -13,12 +13,12 @@
 
    Everything renders verbatim from the poll's
    ``dictWorkflowEnvelopeDetail`` (the four render sections plus the
-   three workflow-wide booleans bAiDeclarationAttested /
-   bRebuildAttestationCurrent / bOverleafBound). A null remote-sync
-   cache renders the hollow "never verified" light — never green
-   (the dashboard-ground-truth honesty rule).
+   four project-wide booleans bAiDeclarationAttested /
+   bRebuildAttestationCurrent / bOverleafBound / bArxivConfigured).
+   A null remote-sync cache renders the hollow "never verified"
+   light — never green (the dashboard-ground-truth honesty rule).
 
-   This block lives in its own ``#workflowWideBlock`` container and is
+   This block lives in its own ``#projectBlock`` container and is
    rebuilt unconditionally on every render, so it never participates in
    the incremental step-hash memoization. If a future maintainer ever
    memoizes it, the requirement group/row expansion Sets
@@ -105,6 +105,13 @@ var VaibifyWorkflowRequirements = (function () {
         // A null cache means the remote was never verified; the hollow
         // grey mark is the honest rendering — never a pass.
         if (!dictSync) return "unknown";
+        if ((dictSync.iTotalFiles || 0) === 0) {
+            // A verify that compared zero files demonstrated nothing:
+            // "0 of 0 matching" must never render as attained
+            // (vacuous-attainment rule). Legacy cache entries can
+            // carry this shape; the backend now refuses to write it.
+            return "unknown";
+        }
         if ((dictSync.iDivergedCount || 0) > 0) {
             // Some files already match the remote → partial progress
             // (orange), not "nothing published" (red). Only a total
@@ -123,6 +130,13 @@ var VaibifyWorkflowRequirements = (function () {
         if (!dictSync) {
             return "Never verified — refresh remote status from the " +
                 "Repos panel";
+        }
+        if ((dictSync.iTotalFiles || 0) === 0) {
+            return "The last verification compared no files — " +
+                "verify again" +
+                (dictSync.sLastVerified
+                    ? " · last attempted " + dictSync.sLastVerified
+                    : "");
         }
         var sText = (dictSync.iMatching || 0) + " of " +
             (dictSync.iTotalFiles || 0) + " files matching";
@@ -380,7 +394,7 @@ var VaibifyWorkflowRequirements = (function () {
                 '<div class="requirement-row-howto">These rules tell ' +
                 'a verifier how exactly a rerun must match your ' +
                 'results. There is no separate rules file — this is ' +
-                'the exact entry stored in workflow.json:</div>' +
+                'the exact entry stored in project.json:</div>' +
                 '<pre class="determinism-raw">"dictDeterminism": ' +
                 fnEscapeHtml(JSON.stringify(dictDeterminism, null, 2)) +
                 '</pre>' +
@@ -394,7 +408,7 @@ var VaibifyWorkflowRequirements = (function () {
         return '<div class="requirement-row-detail">' +
             '<div class="requirement-row-status">No repeatability ' +
             'rules declared yet. State how exactly a rerun must ' +
-            'reproduce your numbers (stored in workflow.json):</div>' +
+            'reproduce your numbers (stored in project.json):</div>' +
             _fsRenderDeterminismForm(null) + '</div>';
     }
 
@@ -416,7 +430,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div class="requirement-row-howto">Multi-threaded ' +
             'linear algebra can sum in a different order on each ' +
             'run, changing the last digits. Pinning the OpenMP ' +
-            'thread count makes runs comparable; most workflows ' +
+            'thread count makes runs comparable; most projects ' +
             'can leave this blank.</div>' +
             '<label class="determinism-form-row">' +
             'Pin OpenMP threads: ' +
@@ -429,7 +443,7 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _fsRenderActionButton(sAction, sArg, sLabel) {
-        // A button that runs a workflow-wide action in place (the
+        // A button that runs a project action in place (the
         // functionality that used to live only on the AICS card).
         return '<div class="requirement-row-actions">' +
             '<button type="button" class="btn wf-action-btn" ' +
@@ -530,12 +544,21 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fdictSyncRow(sTitle, sKey, dictSync, sBadgeKey, sHowto,
                            sExtraHtml) {
+        // Every sync row carries a Verify-now button: the row reports
+        // the last verify result, so the action that moves it to the
+        // passing state must be reachable from the row itself, not
+        // hidden behind a panel the how-to text points at.
+        var sVerifyButton = '<div class="requirement-row-actions">' +
+            '<button type="button" class="btn wf-verify-remote" ' +
+            'data-service="' + fnEscapeHtml(sKey) + '">' +
+            'Verify now</button></div>';
         return {
             sKey: sKey, sTitle: sTitle, iLevel: 2,
             sState: _fsSyncRowState(dictSync),
             fsDetail: function () {
                 return _fsRenderSyncRequirementDetail(
-                    dictSync, sBadgeKey, sHowto, sExtraHtml);
+                    dictSync, sBadgeKey, sHowto,
+                    sVerifyButton + (sExtraHtml || ""));
             }};
     }
 
@@ -545,49 +568,82 @@ var VaibifyWorkflowRequirements = (function () {
             sState: "not-applicable",
             fsDetail: function () {
                 return _fsRenderPlainDetail(
-                    "Not required for this workflow.", sExplanation);
+                    "Not required for this project.", sExplanation);
             }};
     }
 
     function _flistPublishedCopiesRows(dictDetail) {
         var dictSyncs = dictDetail.dictRemoteSyncs || {};
-        var listRows = [
+        return [
             _fdictSyncRow("GitHub mirror", "github", dictSyncs.github,
                 "sGithub", "Push and re-verify from the Repos panel."),
             _fdictSyncRow("Zenodo deposit", "zenodo", dictSyncs.zenodo,
                 "sZenodo",
                 "Publish or re-verify from the Repos panel."),
+            _fdictOverleafRow(dictDetail, dictSyncs),
+            _fdictArxivRow(dictDetail, dictSyncs),
         ];
+    }
+
+    function _fdictOverleafRow(dictDetail, dictSyncs) {
         if (dictDetail.bOverleafBound !== true) {
-            // The backend exempts Overleaf and arXiv from Level 2
-            // when no manuscript is bound (levelGates), so a
-            // data-only workflow must not surface a fake gap here.
-            return listRows.concat([
-                _fdictNotApplicableRow("Overleaf manuscript",
-                    "overleaf",
-                    "No Overleaf project is bound. To publish " +
-                    "manuscript figures, bind one in Workflow " +
-                    "settings (the gear button above)."),
-                _fdictNotApplicableRow("arXiv submission", "arxiv",
-                    "Applies only when an Overleaf manuscript is " +
-                    "bound."),
-            ]);
+            // The backend exempts figure freezing from Level 2 when
+            // no manuscript is bound (levelGates), so a data-only
+            // workflow must not surface a fake gap here.
+            return _fdictNotApplicableRow("Overleaf manuscript",
+                "overleaf",
+                "No Overleaf project is bound. To publish " +
+                "manuscript figures, open the Repos panel and " +
+                "choose Push to Overleaf — it will prompt to " +
+                "connect the project.");
         }
-        var sArxivConfig = '<div class="requirement-row-actions">' +
-            '<button type="button" class="btn wf-open-arxiv-config">' +
-            'Configure arXiv…</button></div>';
-        return listRows.concat([
-            _fdictSyncRow("Overleaf manuscript", "overleaf",
-                dictSyncs.overleaf, "sOverleaf",
-                "Only figure files (.pdf, .png, …) travel to the " +
-                "manuscript. Bind an Overleaf project in Workflow " +
-                "settings (the gear button above), then push figures " +
-                "from the Repos panel."),
-            _fdictSyncRow("arXiv submission", "arxiv", dictSyncs.arxiv,
-                "sArxiv",
-                "Record the arXiv submission and match it to the " +
-                "frozen figures.", sArxivConfig),
-        ]);
+        return _fdictSyncRow("Overleaf manuscript", "overleaf",
+            dictSyncs.overleaf, "sOverleaf",
+            "Only figure files (.pdf, .png, …) travel to the " +
+            "manuscript. Push figures from the Repos panel — a " +
+            "successful push re-verifies this row automatically.");
+    }
+
+    var _S_ARXIV_CONFIG_BUTTON =
+        '<div class="requirement-row-actions">' +
+        '<button type="button" class="btn wf-open-arxiv-config">' +
+        'Configure arXiv…</button></div>';
+
+    function _fdictArxivRow(dictDetail, dictSyncs) {
+        // The arXiv criterion is opt-in: recording an ID claims
+        // correspondence with the posted e-print, so the claim is
+        // checked; without one the row is neutral ("not tracked"),
+        // never red and never a green check (levelGates).
+        if (dictDetail.bArxivConfigured === true) {
+            return _fdictSyncRow("arXiv submission", "arxiv",
+                dictSyncs.arxiv, "sArxiv",
+                "The posted e-print's figures must match the " +
+                "frozen Overleaf figures.", _S_ARXIV_CONFIG_BUTTON);
+        }
+        return _fdictArxivNotTrackedRow(
+            dictDetail.bOverleafBound === true);
+    }
+
+    function _fdictArxivNotTrackedRow(bOverleafBound) {
+        var sHowto = bOverleafBound
+            ? "Optional: after posting the manuscript to arXiv, " +
+              "record its ID here to verify the e-print's figures " +
+              "match the frozen figures. Not required for Level 2."
+            : "Optional, once an Overleaf manuscript is bound and " +
+              "figures are pushed: record the posted e-print's ID " +
+              "to verify its figures. Not required for Level 2.";
+        return {
+            sKey: "arxiv", sTitle: "arXiv submission", iLevel: 2,
+            sState: "not-applicable",
+            fsDetail: function () {
+                return '<div class="requirement-row-detail">' +
+                    '<div class="requirement-row-status">' +
+                    'Not tracked — optional.</div>' +
+                    '<div class="requirement-row-howto">' +
+                    fnEscapeHtml(sHowto) + '</div>' +
+                    (bOverleafBound ? _S_ARXIV_CONFIG_BUTTON : "") +
+                    '</div>';
+            }};
     }
 
     function _flistAttestationRows(dictDetail, dictContext) {
@@ -629,7 +685,7 @@ var VaibifyWorkflowRequirements = (function () {
         manifest: "The list of every pinned file and its SHA-256 " +
             "hash. Regenerated automatically at each Level 1 pass, " +
             "or on demand with the button below.",
-        dependencyLock: "Every Python dependency (when the workflow " +
+        dependencyLock: "Every Python dependency (when the project " +
             "uses Python) pinned by exact version and hash. " +
             "Regenerated automatically at each Level 1 pass, or on " +
             "demand with the button below.",
@@ -641,8 +697,8 @@ var VaibifyWorkflowRequirements = (function () {
             "image to an exact digest (FROM <image>@sha256:…) so " +
             "the build environment is reproducible. You can ask the " +
             "in-container agent to pin it for you.",
-        reproduceScript: "One script, at the project repository " +
-            "root, that reruns the whole workflow. It must match " +
+        reproduceScript: "One script, at the repository " +
+            "root, that reruns the whole project. It must match " +
             "the current manifest; Generate rewrites it and makes " +
             "this row's check pass. (This is one Level 3 " +
             "requirement — the full Level 3 badge also needs the " +
@@ -780,12 +836,12 @@ var VaibifyWorkflowRequirements = (function () {
             sState: bPresent ? "green" : "red",
             fsDetail: function () {
                 var sStatus = bPresent
-                    ? "The workflow lives inside a git repository " +
+                    ? "The project lives inside a git repository " +
                       "(detected at " + sRepoPath + ") — the " +
-                      "Level 1 workflow-scope requirement."
+                      "Level 1 project-scope requirement."
                     : "No git repository detected around this " +
-                      "workflow. Every vaibify workflow must live " +
-                      "inside its project repository.";
+                      "project. Every vaibify project must live " +
+                      "inside its repository.";
                 return '<div class="requirement-row-detail">' +
                     '<div class="requirement-row-status">' +
                     fnEscapeHtml(sStatus) + '</div>' +
@@ -793,6 +849,50 @@ var VaibifyWorkflowRequirements = (function () {
                     'status and actions live in the ' +
                     '<a href="#" class="envelope-open-repos">Repos ' +
                     'panel</a>.</div></div>';
+            }}];
+    }
+
+    function _flistInputDeclarationRows(dictContext) {
+        // The Level 1 input-data contract made visible: every step
+        // must list its raw inputs or explicitly declare it needs
+        // none. The detail names the undeclared steps and offers the
+        // one-click retrofit for a Project predating the contract.
+        var listSteps = ((dictContext.dictWorkflow || {})
+            .listSteps) || [];
+        var listUndeclared = [];
+        listSteps.forEach(function (step, iStep) {
+            if (step.sStepKind === "ai-declaration") return;
+            var bDeclared =
+                (step.saInputDataFiles || []).length > 0 ||
+                step.bNoInputData === true;
+            if (!bDeclared) {
+                listUndeclared.push(
+                    dictContext.fsComputeStepLabel(iStep));
+            }
+        });
+        var bAllDeclared = listUndeclared.length === 0;
+        return [{
+            sKey: "inputDeclaration", iLevel: 1,
+            sTitle: "Input data declared",
+            sState: bAllDeclared ? "green" : "red",
+            fsDetail: function () {
+                var sStatus = bAllDeclared
+                    ? "Every step lists its raw input data or " +
+                      "explicitly declares it needs none."
+                    : "Undeclared steps: " +
+                      listUndeclared.join(", ") + ". A step " +
+                      "reaches Level 1 only with an explicit " +
+                      "input-data declaration — an input file " +
+                      "modified after outputs were generated means " +
+                      "the Project is no longer self-consistent.";
+                var sAction = bAllDeclared ? "" :
+                    '<button type="button" class="btn btn-small ' +
+                    'wf-declare-no-input">Declare &quot;no input ' +
+                    'data&quot; for all undeclared steps</button>';
+                return '<div class="requirement-row-detail">' +
+                    '<div class="requirement-row-status">' +
+                    fnEscapeHtml(sStatus) + '</div>' + sAction +
+                    '</div>';
             }}];
     }
 
@@ -874,11 +974,11 @@ var VaibifyWorkflowRequirements = (function () {
             '</div></div>';
     }
 
-    function fsRenderWorkflowWideBlock(dictContext) {
+    function fsRenderProjectBlock(dictContext) {
         var dictDetail = dictContext.dictWorkflowEnvelopeDetail || {};
-        var bOpen = dictContext.bWorkflowWideCollapsed !== true;
-        var sHtml = '<div class="workflow-wide-header">' +
-            '<span class="workflow-wide-title" ' +
+        var bOpen = dictContext.bProjectBlockCollapsed !== true;
+        var sHtml = '<div class="project-block-header">' +
+            '<span class="project-block-title" ' +
             'title="Requirements that apply to the project as a ' +
             'whole rather than to any single step. Click the banner ' +
             'to collapse or expand.">Project' +
@@ -887,7 +987,9 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
         if (!bOpen) return sHtml;
         var listSections = [
-            ["repository", _flistRepositoryRows(dictContext), ""],
+            ["repository",
+             _flistRepositoryRows(dictContext).concat(
+                 _flistInputDeclarationRows(dictContext)), ""],
             ["software", _flistSoftwareRows(dictDetail),
              _fsRenderBinaryAddForm(
                  dictContext.bBinaryAddFormOpen === true)],
@@ -898,7 +1000,7 @@ var VaibifyWorkflowRequirements = (function () {
             ["attestation",
              _flistAttestationRows(dictDetail, dictContext), ""],
         ];
-        var sBody = '<div class="workflow-wide-body">';
+        var sBody = '<div class="project-block-body">';
         for (var i = 0; i < listSections.length; i++) {
             sBody += _fsRenderRequirementGroup(
                 listSections[i][0], listSections[i][1],
@@ -910,6 +1012,6 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     return {
-        fsRenderWorkflowWideBlock: fsRenderWorkflowWideBlock,
+        fsRenderProjectBlock: fsRenderProjectBlock,
     };
 })();

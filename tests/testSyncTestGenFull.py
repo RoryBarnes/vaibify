@@ -952,7 +952,7 @@ def test_fdictGenerateTest_via_claude():
         "listSteps": [{
             "sDirectory": "step1",
             "saDataCommands": ["python analyze.py"],
-            "saDataFiles": ["out.npy"],
+            "saOutputDataFiles": ["out.npy"],
         }],
     }
     dictResult = fdictGenerateTest(
@@ -1148,11 +1148,11 @@ def test_flistBuildDagEdges_merges_cached_deps():
     from vaibify.gui.syncDispatcher import _flistBuildDagEdges
     dictWorkflow = {"listSteps": [
         {"sName": "A", "saDataCommands": [],
-         "saPlotCommands": [], "saDataFiles": [], "saPlotFiles": []},
+         "saPlotCommands": [], "saOutputDataFiles": [], "saPlotFiles": []},
         {"sName": "B", "saDataCommands": [],
-         "saPlotCommands": [], "saDataFiles": [], "saPlotFiles": []},
+         "saPlotCommands": [], "saOutputDataFiles": [], "saPlotFiles": []},
         {"sName": "C", "saDataCommands": [],
-         "saPlotCommands": [], "saDataFiles": [], "saPlotFiles": []},
+         "saPlotCommands": [], "saOutputDataFiles": [], "saPlotFiles": []},
     ]}
     # Cached: Step1 (0) -> Step3 (2)
     dictCached = {0: {2}}

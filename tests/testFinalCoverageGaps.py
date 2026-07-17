@@ -178,7 +178,7 @@ def test_fnUpdateProvenance_hashes_files(tmp_path):
         "listSteps": [{
             "sName": "Step 1",
             "sDirectory": str(tmp_path),
-            "saDataFiles": ["data.txt"],
+            "saOutputDataFiles": ["data.txt"],
             "saPlotFiles": [],
         }],
     }
@@ -192,7 +192,7 @@ def test_fnHashStepOutputs_skips_missing():
     )
     dictStep = {
         "sDirectory": "/nonexistent",
-        "saDataFiles": ["missing.npy"],
+        "saOutputDataFiles": ["missing.npy"],
         "saPlotFiles": [],
     }
     dictHashes = {}

@@ -569,7 +569,7 @@ def test_reproduce_tier1_warns_when_workflow_declares_more(fixtureRepo):
         "sName": "S",
         "sDirectory": "src",
         "saDataCommands": ["python compute.py"],
-        "saOutputFiles": [_S_FIXTURE_FILE_NAME],
+        "saOutputDataFiles": [_S_FIXTURE_FILE_NAME],
     }]})
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
@@ -621,13 +621,13 @@ def test_reproduce_tier1_aggregates_multiple_workflows(fixtureRepo):
         "sName": "A",
         "sDirectory": "src",
         "saDataCommands": ["python compute.py"],
-        "saOutputFiles": [_S_FIXTURE_FILE_NAME],
+        "saOutputDataFiles": [_S_FIXTURE_FILE_NAME],
     }]}))
     (pathDir / "wfB.json").write_text(json.dumps({"listSteps": [{
         "sName": "B",
         "sDirectory": "analysis",
         "saPlotCommands": ["python plot.py"],
-        "saOutputFiles": [_S_FIXTURE_FILE_NAME],
+        "saOutputDataFiles": [_S_FIXTURE_FILE_NAME],
     }]}))
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(

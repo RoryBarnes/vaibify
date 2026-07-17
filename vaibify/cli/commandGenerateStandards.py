@@ -56,7 +56,7 @@ def _fnRefreshOrGenerateForStepDir(sStepDir, fRtol):
     if not listDataFiles:
         click.echo(
             "Error: no data files found under step directory. "
-            "Pass --workflow + --step-label to use saDataFiles from the workflow."
+            "Pass --workflow + --step-label to use saOutputDataFiles from the workflow."
         )
         sys.exit(2)
     dictStandards = fdictGenerateQuantitativeStandards(

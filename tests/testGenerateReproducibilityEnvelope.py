@@ -21,15 +21,14 @@ def _fnWriteFile(pathRepo, sRelPath, sContent=""):
     return pathFile
 
 
-def _fdictWorkflow(saDataFiles=None):
+def _fdictWorkflow(saOutputDataFiles=None):
     """Build a single-step workflow dict declaring the given outputs."""
     return {
         "listSteps": [
             {
                 "sName": "OnlyStep",
-                "saOutputFiles": [],
                 "saPlotFiles": [],
-                "saDataFiles": list(saDataFiles or []),
+                "saOutputDataFiles": list(saOutputDataFiles or []),
             },
         ],
     }
@@ -77,7 +76,7 @@ def test_happy_path_writes_all_three_tiers(tmp_path):
     """When every prerequisite is present the envelope has all 3 tiers."""
     _fnWriteFile(tmp_path, "out.csv", "alpha,beta\n")
     _fnWriteFile(tmp_path, "pyproject.toml", "[project]\nname='x'\n")
-    dictWorkflow = _fdictWorkflow(saDataFiles=["out.csv"])
+    dictWorkflow = _fdictWorkflow(saOutputDataFiles=["out.csv"])
     with patch(
         "vaibify.reproducibility.dependencyPinning.fbIsUvAvailable",
         return_value=True,
@@ -110,7 +109,7 @@ def test_happy_path_writes_all_three_tiers(tmp_path):
 def test_tier_two_skipped_when_uv_missing(tmp_path, caplog):
     """Missing uv is logged but the other tiers still run."""
     _fnWriteFile(tmp_path, "out.csv", "x\n")
-    dictWorkflow = _fdictWorkflow(saDataFiles=["out.csv"])
+    dictWorkflow = _fdictWorkflow(saOutputDataFiles=["out.csv"])
     with patch(
         "vaibify.reproducibility.dependencyPinning.fbIsUvAvailable",
         return_value=False,
@@ -135,7 +134,7 @@ def test_tier_two_skipped_when_uv_missing(tmp_path, caplog):
 def test_tier_three_skipped_when_container_none(tmp_path):
     """No container name => environment.json is not written."""
     _fnWriteFile(tmp_path, "out.csv", "x\n")
-    dictWorkflow = _fdictWorkflow(saDataFiles=["out.csv"])
+    dictWorkflow = _fdictWorkflow(saOutputDataFiles=["out.csv"])
     with patch(
         "vaibify.reproducibility.dependencyPinning.fbIsUvAvailable",
         return_value=False,
@@ -156,7 +155,7 @@ def test_partial_failure_tier_two_does_not_block_others(tmp_path, caplog):
     """A uv compile failure is logged but doesn't propagate."""
     _fnWriteFile(tmp_path, "out.csv", "x\n")
     _fnWriteFile(tmp_path, "pyproject.toml", "[project]\nname='x'\n")
-    dictWorkflow = _fdictWorkflow(saDataFiles=["out.csv"])
+    dictWorkflow = _fdictWorkflow(saOutputDataFiles=["out.csv"])
 
     def _fnFailingUv(*args, **kwargs):
         return subprocess.CompletedProcess(
@@ -201,7 +200,7 @@ def test_partial_failure_tier_two_does_not_block_others(tmp_path, caplog):
 def test_tier_one_is_byte_exact_on_repeat(tmp_path):
     """Calling envelope twice with identical content yields identical files."""
     _fnWriteFile(tmp_path, "out.csv", "alpha,beta\n")
-    dictWorkflow = _fdictWorkflow(saDataFiles=["out.csv"])
+    dictWorkflow = _fdictWorkflow(saOutputDataFiles=["out.csv"])
     with patch(
         "vaibify.reproducibility.dependencyPinning.fbIsUvAvailable",
         return_value=False,
@@ -259,13 +258,13 @@ def test_fnArchiveOutputs_invokes_envelope_generator(
 # ----------------------------------------------------------------------
 
 
-def _fdictAllGreenStep(saDataFiles):
+def _fdictAllGreenStep(saOutputDataFiles):
     """Build a single fully-verified step declaring the given outputs."""
     return {
         "sName": "OnlyStep",
-        "saOutputFiles": [],
         "saPlotFiles": [],
-        "saDataFiles": list(saDataFiles or []),
+        "saOutputDataFiles": list(saOutputDataFiles or []),
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",

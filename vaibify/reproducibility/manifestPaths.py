@@ -45,7 +45,7 @@ __all__ = [
 
 S_CONTAINER_WORKSPACE_PREFIX = "/workspace/"
 
-TUPLE_OUTPUT_KEYS = ("saOutputFiles", "saPlotFiles", "saDataFiles")
+TUPLE_OUTPUT_KEYS = ("saPlotFiles", "saOutputDataFiles")
 TUPLE_COMMAND_KEYS = ("saDataCommands", "saPlotCommands")
 TUPLE_TEST_CATEGORY_KEYS = (
     "dictQualitative",
@@ -161,33 +161,102 @@ def fsResolveStepPathToRepoPath(sPath, sDirectory):
     return fsToRepoRelative(sPath)
 
 
-def flistStepOutputRepoPaths(dictStep):
+def fdictWorkflowTemplateValues(dictWorkflow):
+    """Return the workflow's top-level string fields for ``{token}`` paths.
+
+    Declared file paths may reference workflow-level template tokens
+    (``{sPlotDirectory}/corner.{sFigureType}``). The values those
+    tokens name are the workflow's own scalar string fields, so the
+    reproducibility layer can resolve file declarations without
+    importing the GUI variable engine. Non-string values are excluded
+    — a token that would not substitute to a path fragment stays
+    unresolved and the declaration is skipped.
+    """
+    return {
+        sKey: sValue
+        for sKey, sValue in (dictWorkflow or {}).items()
+        if isinstance(sKey, str) and isinstance(sValue, str)
+    }
+
+
+def fsResolveWorkflowTokens(sPath, dictTemplateValues):
+    """Substitute ``{token}`` references from the template values.
+
+    Unknown tokens are left in place (mirroring the GUI resolver's
+    behavior) so the caller's ``"{" in`` check can skip declarations
+    that did not fully resolve.
+    """
+    sResolved = str(sPath)
+    for sKey, sValue in (dictTemplateValues or {}).items():
+        sResolved = sResolved.replace("{" + sKey + "}", sValue)
+    return sResolved
+
+
+def flistStepOutputRepoPaths(dictStep, dictTemplateValues=None):
     """Return repo-relative declared output paths for one step.
 
-    Covers every ``TUPLE_OUTPUT_KEYS`` entry, resolved against the
-    step directory. Templated entries (``{sPlotDirectory}/foo.pdf``)
-    are skipped: the reproducibility layer cannot resolve workflow
-    globals (that lives in ``vaibify.gui``), and a literal placeholder
-    must not enter the manifest envelope as a phantom missing file.
-    Callers that can resolve globals (``stateContract``) handle the
-    templated entries themselves. Absolute entries pass through
-    unchanged so the manifest writer's absolute-path guard rejects
-    the declaration loudly instead of reinterpreting it as a repo
-    path.
+    Covers every ``TUPLE_OUTPUT_KEYS`` entry. Non-templated entries
+    resolve against the step directory (where the step writes them).
+    Templated entries (``{sPlotDirectory}/foo.pdf``) resolve to
+    repo-relative paths via ``dictTemplateValues`` — the workflow's
+    top-level string fields — and are NOT joined with the step
+    directory, matching ``stateContract._flistStepOutputRepoPaths``.
+    Without ``dictTemplateValues``, or when a token stays unresolved,
+    the templated entry is skipped so a literal placeholder never
+    enters the manifest envelope as a phantom missing file. (Skipping
+    was previously unconditional, which meant a workflow declaring
+    every figure through ``{sPlotDirectory}`` never had any figure
+    pinned — no figure hash existed for the Overleaf/arXiv verifies
+    to compare against.) Absolute entries pass through unchanged so
+    the manifest writer's absolute-path guard rejects the declaration
+    loudly instead of reinterpreting it as a repo path.
     """
     sDirectory = dictStep.get("sDirectory", "") or ""
     listPaths = []
     for sKey in TUPLE_OUTPUT_KEYS:
         for sFile in dictStep.get(sKey, []) or []:
-            if not sFile or "{" in str(sFile):
+            if not sFile:
                 continue
             sPath = str(sFile)
+            if "{" in sPath:
+                sPath = fsResolveWorkflowTokens(
+                    sPath, dictTemplateValues,
+                )
+                if "{" in sPath:
+                    continue
+                listPaths.append(
+                    fsToRepoRelative(posixpath.normpath(sPath))
+                )
+                continue
             if sPath.startswith("/"):
                 listPaths.append(sPath)
                 continue
             listPaths.append(
                 fsResolveStepPathToRepoPath(sPath, sDirectory)
             )
+    return listPaths
+
+
+def flistStepInputRepoPaths(dictStep):
+    """Return repo-relative declared input-data paths for one step.
+
+    ``saInputDataFiles`` entries are repo-relative by contract —
+    never joined onto the step directory. Templated entries are
+    skipped (unresolvable here); absolute entries pass through
+    unchanged so the manifest writer's absolute-path guard rejects
+    the declaration loudly.
+    """
+    listPaths = []
+    for sFile in dictStep.get("saInputDataFiles", []) or []:
+        if not sFile:
+            continue
+        sPath = str(sFile)
+        if "{" in sPath:
+            continue
+        if sPath.startswith("/"):
+            listPaths.append(sPath)
+            continue
+        listPaths.append(posixpath.normpath(sPath))
     return listPaths
 
 

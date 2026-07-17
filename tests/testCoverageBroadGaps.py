@@ -1201,7 +1201,7 @@ class TestPipelineServerFileTracking:
         dictStep = {
             "dictVerification": {"sUnitTest": "passed"},
             "saPlotFiles": [],
-            "saDataFiles": ["data.py"],
+            "saOutputDataFiles": ["data.py"],
         }
         _fnInvalidateStepFiles(dictStep, ["/workspace/data.py"])
         assert dictStep["dictVerification"]["sUnitTest"] == "untested"

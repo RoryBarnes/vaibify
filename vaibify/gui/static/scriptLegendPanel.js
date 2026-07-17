@@ -74,7 +74,7 @@ var VaibifyLegendPanel = (function () {
         },
     ];
 
-    // Marks on the Workflow-wide sections (Repository, Software,
+    // Marks on the Project-block sections (Repository, Software,
     // Artifacts, Determinism, Published copies, Attestation) and
     // their requirement rows.
     var _LIST_WORKFLOW_MARKS = [
@@ -266,7 +266,7 @@ var VaibifyLegendPanel = (function () {
             _fsRenderUsingAiSection() +
             '<div class="aics-help-heading">Legend</div>' +
             _fsRenderStepsDivision() +
-            _fsRenderWorkflowWideDivision() +
+            _fsRenderProjectDivision() +
             _fsRenderLevelLightsDivision() +
             _fsRenderFilesAndRemotesDivision() +
             _fsRenderFooter();
@@ -312,7 +312,7 @@ var VaibifyLegendPanel = (function () {
             'as an unprivileged user with no sudo, and it can only ' +
             'touch files on the container’s workspace volume ' +
             '— never your host machine. Every file it edits ' +
-            'is tracked in git, hash-pinned in the workflow ' +
+            'is tracked in git, hash-pinned in the project ' +
             'manifest, and ultimately checked by a full rebuild of ' +
             'the analysis — that is what AICS Level 3 ' +
             '(Reproducible) certifies.</p>' +
@@ -337,7 +337,7 @@ var VaibifyLegendPanel = (function () {
             '</div>';
     }
 
-    function _fsRenderWorkflowWideDivision() {
+    function _fsRenderProjectDivision() {
         var dictCatalog = _fdictGlyphCatalog();
         return '<div class="aics-legend-section">' +
             '<div class="aics-legend-section-title">' +
@@ -432,7 +432,7 @@ var VaibifyLegendPanel = (function () {
 
     function _fsRenderFooter() {
         return '<div class="aics-legend-footer">' +
-            'Getting started: pick a container, open a workflow, ' +
+            'Getting started: pick a container, open a project, ' +
             'then run and verify each step in the Steps block to ' +
             'reach Level 1; climb further through the ' +
             'Project rows. The requirements themselves ' +

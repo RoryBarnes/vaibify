@@ -105,7 +105,7 @@ class TestFdictComputeMaxPlotMtimeByStep:
         dictWorkflow = {
             "listSteps": [
                 {"sDirectory": "/work",
-                 "saDataFiles": ["data.h5"],
+                 "saOutputDataFiles": ["data.h5"],
                  "saPlotFiles": []},
             ],
         }
@@ -122,7 +122,7 @@ class TestFlistResolveStepPaths:
     def test_resolves_data_and_plot(self):
         dictStep = {
             "sDirectory": "/work/step01",
-            "saDataFiles": ["data.h5"],
+            "saOutputDataFiles": ["data.h5"],
             "saPlotFiles": ["Plot/fig.pdf"],
         }
         dictVars = {"sPlotDirectory": "Plot", "sFigureType": "pdf"}
@@ -134,7 +134,7 @@ class TestFlistResolveStepPaths:
     def test_absolute_paths_unchanged(self):
         dictStep = {
             "sDirectory": "/work",
-            "saDataFiles": ["/abs/data.h5"],
+            "saOutputDataFiles": ["/abs/data.h5"],
             "saPlotFiles": [],
         }
         listPaths = _flistResolveStepPaths(dictStep, {})
@@ -143,7 +143,7 @@ class TestFlistResolveStepPaths:
     def test_template_variables_resolved(self):
         dictStep = {
             "sDirectory": "/work",
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saPlotFiles": [
                 "{sPlotDirectory}/fig.{sFigureType}"],
         }
@@ -154,7 +154,7 @@ class TestFlistResolveStepPaths:
     def test_empty_files(self):
         dictStep = {
             "sDirectory": "/work",
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
             "saPlotFiles": [],
         }
         assert _flistResolveStepPaths(dictStep, {}) == []
@@ -162,7 +162,7 @@ class TestFlistResolveStepPaths:
     def test_relative_step_dir_joined_onto_repo_root(self):
         dictStep = {
             "sDirectory": "StepDir",
-            "saDataFiles": ["data.txt"],
+            "saOutputDataFiles": ["data.txt"],
             "saPlotFiles": [],
         }
         dictVars = {"sRepoRoot": "/workspace/Proj"}
@@ -172,7 +172,7 @@ class TestFlistResolveStepPaths:
     def test_relative_step_dir_without_repo_root_stays_relative(self):
         dictStep = {
             "sDirectory": "StepDir",
-            "saDataFiles": ["data.txt"],
+            "saOutputDataFiles": ["data.txt"],
             "saPlotFiles": [],
         }
         listPaths = _flistResolveStepPaths(dictStep, {})
@@ -184,9 +184,9 @@ class TestFdictCollectOutputPathsByStep:
         dictWorkflow = {
             "listSteps": [
                 {"sDirectory": "/work/s1",
-                 "saDataFiles": ["a.h5"], "saPlotFiles": []},
+                 "saOutputDataFiles": ["a.h5"], "saPlotFiles": []},
                 {"sDirectory": "/work/s2",
-                 "saDataFiles": [], "saPlotFiles": ["p.pdf"]},
+                 "saOutputDataFiles": [], "saPlotFiles": ["p.pdf"]},
             ],
         }
         dictResult = fdictCollectOutputPathsByStep(dictWorkflow)
@@ -205,7 +205,7 @@ class TestFlistCollectOutputPaths:
         dictWorkflow = {
             "listSteps": [
                 {"sDirectory": "/work",
-                 "saDataFiles": ["a.h5"],
+                 "saOutputDataFiles": ["a.h5"],
                  "saPlotFiles": ["b.pdf"]},
             ],
         }
@@ -218,7 +218,7 @@ class TestFdictInvalidateAffectedSteps:
         dictWorkflow = {
             "listSteps": [
                 {"sName": "A",
-                 "saDataFiles": ["data.h5"],
+                 "saOutputDataFiles": ["data.h5"],
                  "saPlotFiles": [],
                  "saDataCommands": [],
                  "saPlotCommands": [],
@@ -234,13 +234,13 @@ class TestFdictInvalidateAffectedSteps:
         dictWorkflow = {
             "listSteps": [
                 {"sName": "A",
-                 "saDataFiles": ["data.h5"],
+                 "saOutputDataFiles": ["data.h5"],
                  "saPlotFiles": [],
                  "saDataCommands": [],
                  "saPlotCommands": [],
                  "dictVerification": {}},
                 {"sName": "B",
-                 "saDataFiles": [],
+                 "saOutputDataFiles": [],
                  "saPlotFiles": [],
                  "saDataCommands": ["{Step1.data}"],
                  "saPlotCommands": [],

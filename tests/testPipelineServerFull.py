@@ -31,7 +31,7 @@ DICT_WORKFLOW = {
             "bRunEnabled": True,
             "bInteractive": False,
             "saDataCommands": ["python dataGenerate.py"],
-            "saDataFiles": ["output.dat"],
+            "saOutputDataFiles": ["output.dat"],
             "saTestCommands": ["pytest test_step01.py"],
             "saPlotCommands": ["python plotResults.py"],
             "saPlotFiles": [
@@ -391,7 +391,7 @@ def test_flistCollectOutputPaths():
         "listSteps": [
             {
                 "sDirectory": "step1",
-                "saDataFiles": ["data.npy"],
+                "saOutputDataFiles": ["data.npy"],
                 "saPlotFiles": [
                     "{sPlotDirectory}/fig.{sFigureType}"
                 ],

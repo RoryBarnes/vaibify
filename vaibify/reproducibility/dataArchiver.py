@@ -166,8 +166,8 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
 def flistCollectArchiveFilePaths(dictWorkflow, sWorkdir):
     """Return absolute paths of every artefact the archive should cover.
 
-    Spans every declared output (``saOutputFiles``, ``saPlotFiles``,
-    ``saDataFiles``) plus — unless the workflow opts out via
+    Spans every declared output (``saPlotFiles``,
+    ``saOutputDataFiles``) plus — unless the workflow opts out via
     ``bArchiveTests`` (default True) — each step's declared test files
     and test standards. Enumeration is pure path logic; existence is
     the caller's concern so a missing file surfaces as a divergence

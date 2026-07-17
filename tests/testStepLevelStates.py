@@ -36,7 +36,8 @@ def _fdictActiveCleanStep(sName="stepOne"):
     """
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [sName + "/output.json"], "saPlotFiles": [],
+        "saOutputDataFiles": [sName + "/output.json"], "saPlotFiles": [],
+        "bNoInputData": True,
         "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
     }
 
@@ -106,7 +107,7 @@ def testCleanStepAttainsAllThreeLevelsWithFullCounts():
         _fdictWorkflowWithCleanSteps(1), [], [], [],
     )
     assert dictStates == {0: {
-        "s1": _fdictCell("attained", 3, 3),
+        "s1": _fdictCell("attained", 4, 4),
         "s2": _fdictCell("attained", 2, 2),
         "s3": _fdictCell("attained", 1, 1),
     }}
@@ -126,7 +127,7 @@ def testLevel2PartialWhileLevel1None():
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), listLevel1, listLevel2, [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("none", 0, 3)
+    assert dictStates[0]["s1"] == _fdictCell("none", 0, 4)
     assert dictStates[0]["s2"] == _fdictCell("partial", 1, 2)
 
 
@@ -163,7 +164,7 @@ def testBlockersOnlyAffectTheirOwnStep():
         dictWorkflow, listLevel1, [], [],
     )
     assert dictStates[0]["s1"]["sState"] == "attained"
-    assert dictStates[1]["s1"] == _fdictCell("partial", 2, 3)
+    assert dictStates[1]["s1"] == _fdictCell("partial", 3, 4)
     assert dictStates[2]["s1"]["sState"] == "attained"
 
 
@@ -179,13 +180,13 @@ def testProjectionCoversEveryStepIndex():
 # ------------------------------------------------------------------------
 
 
-def testLevel1TotalCountsEachPresentAxisPlusUserPlusTiming():
+def testLevel1TotalCountsEachPresentAxisPlusUserPlusTimingPlusInput():
     dictStep = _fdictActiveCleanStep()
     dictStep["dictVerification"]["sQuantitative"] = "passed"
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("attained", 4, 4)
+    assert dictStates[0]["s1"] == _fdictCell("attained", 5, 5)
 
 
 def testLevel1FailedAxisAndMissingAttestationCountedSeparately():
@@ -199,7 +200,7 @@ def testLevel1FailedAxisAndMissingAttestationCountedSeparately():
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("partial", 2, 4)
+    assert dictStates[0]["s1"] == _fdictCell("partial", 2, 5)
 
 
 def testLevel1TimingRequirementFailsOnUpstreamModifiedFlag():
@@ -208,7 +209,7 @@ def testLevel1TimingRequirementFailsOnUpstreamModifiedFlag():
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("partial", 2, 3)
+    assert dictStates[0]["s1"] == _fdictCell("partial", 3, 4)
 
 
 def testLevel1TimingRequirementFailsOnScriptStaleBlocker():
@@ -216,7 +217,7 @@ def testLevel1TimingRequirementFailsOnScriptStaleBlocker():
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithCleanSteps(1), listLevel1, [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("partial", 2, 3)
+    assert dictStates[0]["s1"] == _fdictCell("partial", 3, 4)
 
 
 def testLevel1TimingRequirementFailsOnStaleAttestation():
@@ -228,7 +229,7 @@ def testLevel1TimingRequirementFailsOnStaleAttestation():
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("partial", 1, 3)
+    assert dictStates[0]["s1"] == _fdictCell("partial", 2, 4)
 
 
 # ------------------------------------------------------------------------
@@ -266,7 +267,7 @@ def testInactiveStepWithOutputsOnDiskIsUnassessedAtEveryLevel():
     presentation this state exists to fix)."""
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
-        "saDataFiles": ["stepOne/output.json"],
+        "saOutputDataFiles": ["stepOne/output.json"],
         "dictVerification": {"sUser": "untested"},
     }
     dictStates = fdictComputeStepLevelStates(
@@ -294,36 +295,39 @@ def testRecordedActivityBeatsUnassessed():
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
         "dictRunStats": {"fLastDurationSeconds": 1.0},
+        "bNoInputData": True,
         "dictVerification": {"sUser": "untested"},
     }
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
         dictMaxMtimeByStep={"0": "1750000000"},
     )
-    assert dictStates[0]["s1"] == _fdictCell("partial", 1, 2)
+    assert dictStates[0]["s1"] == _fdictCell("partial", 2, 3)
 
 
 def testRunStatsAloneCountAsActivity():
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
         "dictRunStats": {"fLastDurationSeconds": 1.0},
+        "bNoInputData": True,
         "dictVerification": {"sUser": "untested"},
     }
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("partial", 1, 2)
+    assert dictStates[0]["s1"] == _fdictCell("partial", 2, 3)
 
 
 def testAttestationAloneCountsAsActivity():
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
+        "bNoInputData": True,
         "dictVerification": {"sUser": "passed"},
     }
     dictStates = fdictComputeStepLevelStates(
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("attained", 2, 2)
+    assert dictStates[0]["s1"] == _fdictCell("attained", 3, 3)
 
 
 # ------------------------------------------------------------------------
@@ -402,6 +406,7 @@ def _fdictAttestedArtifactFreeStep(sName="aiDeclaration"):
     """Return an active interactive step with nothing to reproduce."""
     return {
         "sName": sName, "sDirectory": sName,
+        "bNoInputData": True,
         "dictVerification": {"sUser": "passed"},
     }
 
@@ -755,14 +760,29 @@ def testWorkflowScopeBothCachesStaleReadsNone():
     assert dictStates["s2"] == _fdictCell("none", 0, 2)
 
 
-def testWorkflowScopeArxivCriteriaApplicableOnlyWithOverleafBinding():
+def testWorkflowScopeArxivCriteriaApplicableOnlyWithArxivConnection():
+    """The two arXiv criteria join the L2 cell only when an arXiv
+    submission is recorded — an Overleaf binding alone must not
+    widen the requirement set (the arXiv claim is opt-in)."""
     dictWorkflow = _fdictWorkflowWithCleanSteps(1)
-    dictWorkflow["dictRemotes"] = {"overleaf": {"sProjectId": "abc"}}
-    listLevel2 = [_fdictWorkflowBlocker(2, "arxiv-not-submitted")]
+    dictWorkflow["dictRemotes"] = {
+        "overleaf": {"sProjectId": "abc"},
+        "arxiv": {"sArxivId": "2401.00001"},
+    }
+    listLevel2 = [_fdictWorkflowBlocker(2, "arxiv-mismatch")]
     dictStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2, [],
     )
-    assert dictStates["s2"] == _fdictCell("partial", 4, 5)
+    assert dictStates["s2"] == _fdictCell("partial", 3, 4)
+
+
+def testWorkflowScopeOverleafBindingAloneAddsNoArxivCriteria():
+    dictWorkflow = _fdictWorkflowWithCleanSteps(1)
+    dictWorkflow["dictRemotes"] = {"overleaf": {"sProjectId": "abc"}}
+    dictStates = fdictComputeWorkflowScopeLevelStates(
+        dictWorkflow, [], [],
+    )
+    assert dictStates["s2"] == _fdictCell("attained", 2, 2)
 
 
 def testWorkflowScopeIgnoresPerStepBlockerEntries():
@@ -804,7 +824,7 @@ def testProjectionAgreesWithRealLevel1Blockers():
     from vaibify.reproducibility.levelGates import flistLevel1Blockers
     dictStep = {
         "sName": "stepOne", "sDirectory": "stepOne",
-        "saDataFiles": [], "saPlotFiles": [],
+        "saOutputDataFiles": [], "saPlotFiles": [],
         "dictVerification": {"sUser": "untested", "sUnitTest": "failed"},
     }
     dictWorkflow = {
@@ -814,5 +834,30 @@ def testProjectionAgreesWithRealLevel1Blockers():
     dictStates = fdictComputeStepLevelStates(
         dictWorkflow, listLevel1, [], [],
     )
-    assert dictStates[0]["s1"] == _fdictCell("partial", 1, 3)
+    assert dictStates[0]["s1"] == _fdictCell("partial", 1, 4)
     assert fiStepAICSLevel(dictStates[0]) == 0
+
+
+def testUndeclaredInputBlocksLevel1Cell():
+    """The reported bug: an all-green step with no input declaration
+    must NOT show the L1 cell attained. The declaration is a counted
+    L1 requirement, so an undeclared step reads partial."""
+    dictStep = {
+        "sName": "stepOne", "sDirectory": "stepOne",
+        "saOutputDataFiles": ["stepOne/out.json"],
+        "dictVerification": {
+            "sUser": "passed", "sUnitTest": "passed",
+            "sIntegrity": "passed", "sQualitative": "passed",
+            "sQuantitative": "passed",
+        },
+    }
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    assert dictStates[0]["s1"]["sState"] == "partial"
+    # Declaring closes the gap -> attained.
+    dictStep["bNoInputData"] = True
+    dictStates = fdictComputeStepLevelStates(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    assert dictStates[0]["s1"]["sState"] == "attained"

@@ -219,13 +219,36 @@ def test_unmigrated_legacy_workflow_hits_verify_409_guard(
 def test_migrated_legacy_workflow_unblocks_verify_409_guard(
     tmp_path, sService,
 ):
+    """A migrated workflow's remotes verify without a config 409.
+
+    The Overleaf verify additionally requires a recorded push (its
+    comparison set is the pushed-figure list, hashed at the remote
+    paths the push flattened them to), so the overleaf case arranges
+    that record — migration alone clears only the *config* guard and
+    never invents push provenance.
+    """
+    import hashlib
+    from vaibify.reproducibility import overleafSync
     sRepo = _fsBuildRepoWithManifest(tmp_path)
+    baPlotContent = b"%PDF-1.4 migrated figure\n"
+    sPlotSha = hashlib.sha256(baPlotContent).hexdigest()
+    os.makedirs(os.path.join(sRepo, "d"), exist_ok=True)
+    with open(os.path.join(sRepo, "d", "f.pdf"), "wb") as fileHandle:
+        fileHandle.write(baPlotContent)
     dictWorkflow = _fdictLegacyKeyedWorkflow()
     fnMigrateLegacyRemotes(dictWorkflow)
+    dictRemoteHashes = {"d/f.pdf": sPlotSha}
+    if sService == "overleaf":
+        overleafSync.fnRecordOverleafPushManifest(
+            sRepo, "commit1", ["d/f.pdf"], "figures",
+        )
+        dictWorkflow["dictRemotes"]["overleaf"][
+            "sLastPushCommit"] = "commit1"
+        dictRemoteHashes = {"figures/f.pdf": sPlotSha}
     sMirrorModule = DICT_MIRROR_MODULE_BY_SERVICE[sService]
     with patch(
         f"vaibify.reproducibility.{sMirrorModule}.fdictFetchRemoteHashes",
-        return_value={"step01/data.csv": "a" * 64},
+        return_value=dictRemoteHashes,
     ):
         dictStatus = scheduledReverify.fdictVerifyRemoteService(
             sRepo, dictWorkflow, sService,

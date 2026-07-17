@@ -66,12 +66,16 @@ __all__ = [
     "fbVerifyReproduceScript",
     "fbWorkflowDeclaresBinaries",
     "fbWorkflowFullySyncedWithArxiv",
+    "flistStepDependedBinaryPaths",
+    "flistWorkflowBinaryPaths",
+    "fbWorkflowHasArxivConnection",
     "fbWorkflowFullySyncedWithGithub",
     "fbWorkflowFullySyncedWithZenodo",
     "fbWorkflowAiDeclarationAttested",
     "fbWorkflowHasAiDeclarationStep",
     "fbWorkflowHasOverleafBinding",
     "fbWorkflowHasProjectRepo",
+    "fdictBinaryStaleByStep",
     "fdictComputeStepLevelStates",
     "fdictComputeStepLevelWarnings",
     "fdictComputeWorkflowScopeLevelStates",
@@ -209,8 +213,9 @@ def _fsWorkflowBlockerFingerprint(dictWorkflow):
 def _fdictBlockerRelevantStep(dictStep):
     """Capture the per-step fields that determine blocker output."""
     return {sKey: dictStep.get(sKey) for sKey in (
-        "sName", "sDirectory", "sLabel",
-        "saDataFiles", "saPlotFiles", "saOutputFiles",
+        "sName", "sDirectory", "sLabel", "sStepKind",
+        "saOutputDataFiles", "saPlotFiles",
+        "saInputDataFiles", "bNoInputData",
         "saDataCommands", "saPlotCommands", "saTestCommands",
         "saSetupCommands", "saCommands", "saDependencies",
         "dictVerification", "dictTests", "sLastUserUpdate",
@@ -219,11 +224,16 @@ def _fdictBlockerRelevantStep(dictStep):
 
 
 def _fdictWorkflowTopLevelFingerprint(dictWorkflow):
-    """Capture top-level workflow keys that influence blocker output."""
+    """Capture top-level workflow keys that influence blocker output.
+
+    ``dictRemotes`` matters here: the arXiv criteria are keyed on the
+    recorded connection, so adding or removing a remote must bust the
+    cached L2 blocker list on the next poll.
+    """
     return {sKey: (dictWorkflow or {}).get(sKey) for sKey in (
         "sPlotDirectory", "sProjectRepoPath", "sFigureType",
         "listDeclaredBinaries", "bNoStandaloneBinaries",
-        "dictDeterminism", "dictRemoteServices", "dictAttestation",
+        "dictDeterminism", "dictRemotes", "dictAttestation",
     )}
 
 
@@ -363,12 +373,17 @@ def flistLevel1Blockers(
          "listOffendingUpstreamSteps": [0-based step indices],
          "sRemediationHint": str}
 
-    ``sCriterion`` is one of ``"user-not-approved"``,
+    ``sCriterion`` is one of ``"input-data-undeclared"``,
+    ``"user-not-approved"``,
     ``"upstream-modified"``, ``"script-stale"``, ``"axis-not-green"``,
-    or ``"attestation-stale"``. ``script-stale`` fires when the step's
-    script has been edited after its declared outputs landed; suppressed
-    when the outputs' hashes still match ``MANIFEST.sha256`` (fresh
-    clones). Priority order is ``upstream-modified`` > ``script-stale``
+    or ``"attestation-stale"``. ``input-data-undeclared`` fires when a
+    step neither lists ``saInputDataFiles`` nor carries the explicit
+    ``bNoInputData`` declaration — a Project whose input contract is
+    unstated is not self-consistent. ``script-stale`` fires when the
+    step's script has been edited after its declared outputs landed;
+    suppressed when the outputs' hashes still match ``MANIFEST.sha256``
+    (fresh clones). Priority order is ``input-data-undeclared`` >
+    ``upstream-modified`` > ``script-stale``
     > ``axis-not-green`` > ``attestation-stale`` > ``user-not-approved``.
     The list is sorted by ``iStepIndex`` so rendering order is
     deterministic. Returns ``[]`` for an L1-clean workflow or one with
@@ -444,8 +459,12 @@ def _fdictBuildStepBlocker(
 ):
     """Return the single dominant blocker dict for a step, or None.
 
-    Priority: ``upstream-modified`` > ``script-stale`` >
-    ``axis-not-green`` > ``attestation-stale`` > ``user-not-approved``.
+    Priority: ``input-data-undeclared`` > ``upstream-modified`` >
+    ``script-stale`` > ``axis-not-green`` > ``attestation-stale`` >
+    ``user-not-approved``. The declaration criterion leads because it
+    is a contract gap, not a freshness signal — until the researcher
+    states what raw data the step consumes (or that it consumes
+    none), no freshness verdict about the step is meaningful.
     The first applicable criterion wins so a step never emits two
     blockers; the dashboard's banner glyph therefore has a deterministic
     single source. Corrupt step entries (``None``, non-dict, missing
@@ -459,6 +478,8 @@ def _fdictBuildStepBlocker(
         return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
     if fbStepIsAiDeclaration(dictStep):
         return None
+    if _fbStepInputDataUndeclared(dictStep):
+        return _fdictInputUndeclaredBlocker(dictWorkflow, iStepIndex)
     if not fbStepTimingClean(dictStep):
         return _fdictUpstreamModifiedBlocker(
             dictWorkflow, iStepIndex, dictStep,
@@ -499,6 +520,39 @@ def _fdictUserDispositionBlocker(dictWorkflow, iStepIndex, dictStep):
             dictWorkflow, iStepIndex, dictStep,
         )
     return _fdictUserNotApprovedBlocker(dictWorkflow, iStepIndex)
+
+
+def _fbStepInputDataUndeclared(dictStep):
+    """Return True when the step's input contract is unstated.
+
+    Declared means either at least one ``saInputDataFiles`` entry or
+    the explicit ``bNoInputData`` flag. Both absent is the third
+    state — *undeclared* — and an undeclared step cannot be
+    self-consistent: nothing distinguishes "verified there are no raw
+    inputs" from "nobody looked."
+    """
+    return (
+        not dictStep.get("saInputDataFiles")
+        and not dictStep.get("bNoInputData")
+    )
+
+
+def _fdictInputUndeclaredBlocker(dictWorkflow, iStepIndex):
+    """Build the ``input-data-undeclared`` blocker entry for one step."""
+    return {
+        "iLevel": 1,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "input-data-undeclared",
+        "listOffendingFiles": [],
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint": (
+            "Declare the step's raw input data files in its Input "
+            "Data block, or check 'No input data needed' — Level 1 "
+            "requires an explicit declaration"
+        ),
+    }
 
 
 def _fdictUpstreamModifiedBlocker(
@@ -868,7 +922,7 @@ def _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
 def _flistStepOutputsRepoRelative(dictStep, filesRepo):
     """Return repo-relative output paths declared on a step.
 
-    Resolves each ``saDataFiles``/``saPlotFiles`` entry against the
+    Resolves each ``saOutputDataFiles``/``saPlotFiles`` entry against the
     step directory the same way ``_fsResolveStepFilePath`` does, then
     strips the repo root so the result lines up with manifest keys.
     Lazily imports the GUI helper so the reproducibility leaf stays
@@ -879,7 +933,7 @@ def _flistStepOutputsRepoRelative(dictStep, filesRepo):
     sRepoRoot = fsRepoRootOf(filesRepo)
     sStepDir = dictStep.get("sDirectory", "") or ""
     listRelative = []
-    for sFile in (dictStep.get("saDataFiles", []) or []) + (
+    for sFile in (dictStep.get("saOutputDataFiles", []) or []) + (
         dictStep.get("saPlotFiles", []) or []
     ):
         if not sFile:
@@ -923,7 +977,7 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
 def _flistStepOutputFiles(dictStep):
     """Return repo-relative data + plot file paths declared on a step."""
     listFiles = []
-    for sKey in ("saDataFiles", "saPlotFiles"):
+    for sKey in ("saOutputDataFiles", "saPlotFiles"):
         for sPath in dictStep.get(sKey, []) or []:
             if isinstance(sPath, str) and sPath:
                 listFiles.append(sPath)
@@ -1013,6 +1067,13 @@ def fbStepIsAtLeastLevel1(
     """
     if not isinstance(dictStep, dict):
         return False
+    if not fbStepIsAiDeclaration(dictStep) and (
+        _fbStepInputDataUndeclared(dictStep)
+    ):
+        # A step whose input contract is unstated is not
+        # self-consistent — the same rule the L1 blocker and cell
+        # enforce. ai-declaration steps are L1-not-applicable.
+        return False
     if not fbStepUserApproved(dictStep):
         return False
     if not fbStepTimingClean(dictStep):
@@ -1060,11 +1121,12 @@ def fbAtLeastLevel2(dictWorkflow, filesRepo):
 def _fbComputeLevel2(dictWorkflow, filesRepo):
     """Uncached L2 evaluation — the body of the original gate.
 
-    Stage 4 adds the arXiv conjunct so a workflow with an Overleaf
-    binding must also be synced to a recorded arXiv submission. A
-    workflow with no Overleaf binding is treated as data-only and the
-    arXiv conjunct returns True trivially, preserving the L2 contract
-    for manuscript-free reproducibility.
+    The arXiv conjunct is opt-in: recording an arXiv ID claims
+    correspondence with the posted e-print, so the claim is checked.
+    A workflow with no recorded arXiv submission (whether or not an
+    Overleaf manuscript is bound) leaves the conjunct trivially True —
+    manuscript posting happens outside vaibify on its own timeline and
+    must not block publication of the code and data.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel1(dictWorkflow, filesRepo):
@@ -1444,30 +1506,44 @@ def _fbZenodoEndpointMatches(dictWorkflow, dictStatus):
 def fbWorkflowHasOverleafBinding(dictWorkflow):
     """Return True iff the workflow has a non-empty Overleaf binding.
 
-    The L2 arXiv criteria, plus the per-step ``figure-not-frozen``
-    criterion, are entirely suppressed when this returns False: a
-    data-only workflow is L2-publishable without a manuscript.
+    The per-step ``figure-not-frozen`` criterion is suppressed when
+    this returns False: a data-only workflow is L2-publishable without
+    a manuscript. The L2 arXiv criteria key on
+    :func:`fbWorkflowHasArxivConnection` instead — binding a
+    manuscript for figure tracking must not force an arXiv submission.
     """
     dictRemotes = (dictWorkflow or {}).get("dictRemotes") or {}
     dictOverleaf = dictRemotes.get("overleaf") or {}
     return bool(dictOverleaf.get("sProjectId") or "")
 
 
+def fbWorkflowHasArxivConnection(dictWorkflow):
+    """Return True iff the workflow records an arXiv submission ID.
+
+    This is the opt-in trigger for every L2 arXiv criterion: recording
+    an ID claims correspondence with the posted e-print, so the claim
+    is checked; a workflow without one is "not tracked" — neutral,
+    never a gap. arXiv verification is only possible after a posting
+    exists, so an unconfigured connection must not block L2.
+    """
+    return bool(_fdictArxivConfig(dictWorkflow).get("sArxivId") or "")
+
+
 def fbWorkflowFullySyncedWithArxiv(dictWorkflow, filesRepo):
     """Return True iff the workflow's arXiv submission matches the manuscript.
 
-    True trivially without an Overleaf binding (data-only workflows
-    reach L2 without a manuscript). With a binding, requires a non-empty
-    ``sArxivId``, arXiv-tarball hashes that match the local Overleaf
-    push manifest, and an ``sArxivVersion`` equal to the latest arXiv
-    advertises. ``ArxivError`` from the client is treated as "not
-    synced".
+    True trivially when no arXiv submission is recorded — the arXiv
+    criterion is an opt-in claim, not a publication prerequisite. With
+    a recorded ``sArxivId``, requires every Overleaf-pushed figure's
+    arXiv-tarball hash to equal the hash of its current local content
+    (the same live authority the L2 verifies use — the L3 manifest
+    plays no role at this level) and an ``sArxivVersion`` equal to
+    the latest arXiv advertises. ``ArxivError`` from the client is
+    treated as "not synced".
     """
-    if not fbWorkflowHasOverleafBinding(dictWorkflow):
+    if not fbWorkflowHasArxivConnection(dictWorkflow):
         return True
     dictArxiv = _fdictArxivConfig(dictWorkflow)
-    if not (dictArxiv.get("sArxivId") or ""):
-        return False
     if not _fbArxivTarballMatchesPushManifest(
         dictWorkflow, filesRepo,
     ):
@@ -1483,7 +1559,7 @@ def _fdictArxivConfig(dictWorkflow):
 
 
 def _fbArxivTarballMatchesPushManifest(dictWorkflow, filesRepo):
-    """Return True iff arXiv hashes match the Overleaf push manifest paths."""
+    """Return True iff the e-print matches every pushed figure's content."""
     from .overleafSync import flistOverleafPushedFiguresAt
     sCommit = _fsOverleafRecordedCommit(dictWorkflow)
     listPushed = flistOverleafPushedFiguresAt(
@@ -1499,8 +1575,19 @@ def _fbArxivTarballMatchesPushManifest(dictWorkflow, filesRepo):
 def _fbArxivHashesCoverPushList(
     dictWorkflow, filesRepo, listPushed,
 ):
-    """Return True iff every pushed path resolves to a hash in the tarball."""
+    """Return True iff the e-print matches every pushed figure's live hash.
+
+    The expected side is each pushed figure's CURRENT local content —
+    the same authority the L2 verifies use — so the gate demands
+    content equality with the figures as they exist now, never
+    name-level presence and never the L3 manifest's possibly-lagging
+    pins. Conservative on every error path: an unhashable or missing
+    local figure, or any client failure, returns False.
+    """
     from . import arxivClient
+    dictExpected = _fdictLiveHashesOrNone(filesRepo, listPushed)
+    if dictExpected is None:
+        return False
     dictArxiv = _fdictArxivConfig(dictWorkflow)
     sArxivId = dictArxiv.get("sArxivId") or ""
     dictPathMap = dictArxiv.get("dictPathMap") or None
@@ -1512,7 +1599,31 @@ def _fbArxivHashesCoverPushList(
         )
     except arxivClient.ArxivError:
         return False
-    return all(dictHashes.get(sPath) for sPath in listPushed)
+    return all(
+        dictExpected.get(sPath)
+        and dictHashes.get(sPath) == dictExpected.get(sPath)
+        for sPath in listPushed
+    )
+
+
+def _fdictLiveHashesOrNone(filesRepo, listRelPaths):
+    """Hash the current local content of the paths, or None on error.
+
+    Ensures the adapter BEFORE the guarded call: callers hand in raw
+    path strings on some routes, and letting the resulting
+    ``AttributeError`` disappear into the conservative None would
+    silently fail every gate evaluation on those routes.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    try:
+        dictEntries = filesRepo.fdictHashFiles(listRelPaths)
+    except Exception:
+        return None
+    return {
+        sPath: dictEntry.get("sSha256")
+        for sPath, dictEntry in dictEntries.items()
+        if isinstance(dictEntry, dict) and dictEntry.get("sSha256")
+    }
 
 
 def _fbArxivVersionCurrent(dictArxiv):
@@ -1553,8 +1664,8 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
 
     The frontend AICS tab consumes this dict directly; each False
     entry maps to a red row with a "fix here" link. ``bArxivFullySynced``
-    is True trivially when the workflow has no Overleaf binding so
-    data-only workflows do not surface a fake gap.
+    is True trivially when the workflow records no arXiv submission so
+    an untracked manuscript does not surface a fake gap.
     ``bAiDeclarationAttested`` requires the step to exist AND carry
     the researcher's sign-off — the declaration is a publication
     artifact, so both halves are L2 requirements.
@@ -1616,10 +1727,11 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
     The list is sorted by ``iStepIndex`` (workflow-scope entries with
     ``iStepIndex=-1`` sort to the front). Returns ``[]`` when the
     workflow has no project repo. Stage 4 adds the Overleaf
-    ``figure-not-frozen`` per-step criterion and the workflow-scope
-    arXiv criteria (``arxiv-not-submitted`` / ``arxiv-mismatch`` /
-    ``arxiv-version-stale``); both sets are suppressed when the
-    workflow has no Overleaf binding (data-only workflows pass).
+    ``figure-not-frozen`` per-step criterion (suppressed when the
+    workflow has no Overleaf binding — data-only workflows pass) and
+    the workflow-scope arXiv criteria (``arxiv-mismatch`` /
+    ``arxiv-version-stale``, suppressed when no arXiv submission is
+    recorded — the arXiv claim is opt-in).
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     tCacheKey = (
@@ -1837,11 +1949,13 @@ def _fdictZenodoVerifyStaleBlocker():
 # ----------------------------------------------------------------------
 # L2 Overleaf + arXiv blocker surfaces (Stage 4 of the AICS-ladder plan).
 #
-# All five criteria are suppressed entirely when the workflow has no
-# Overleaf binding — a data-only workflow is L2-publishable without a
-# manuscript. The Overleaf helper emits per-step ``figure-not-frozen``
-# blockers; the arXiv helper emits workflow-scope ``arxiv-not-submitted``,
-# ``arxiv-mismatch``, and ``arxiv-version-stale`` blockers.
+# The Overleaf helper emits per-step ``figure-not-frozen`` blockers,
+# suppressed when the workflow has no Overleaf binding — a data-only
+# workflow is L2-publishable without a manuscript. The arXiv helper
+# emits workflow-scope ``arxiv-mismatch`` and ``arxiv-version-stale``
+# blockers, suppressed when no arXiv submission is recorded — the
+# arXiv criteria are an opt-in claim, so an unconfigured connection
+# is neutral ("not tracked"), never a gap.
 # ----------------------------------------------------------------------
 
 
@@ -1898,12 +2012,15 @@ def _fdictFigureNotFrozenBlocker(
 
 
 def _flistArxivLevel2Blockers(dictWorkflow, filesRepo):
-    """Return workflow-scope arXiv L2 blockers, or empty list."""
-    if not fbWorkflowHasOverleafBinding(dictWorkflow):
+    """Return workflow-scope arXiv L2 blockers, or empty list.
+
+    Suppressed entirely when no arXiv submission is recorded — an
+    unconfigured connection is neutral, not a gap, so it must not
+    paint a workflow-scope warning.
+    """
+    if not fbWorkflowHasArxivConnection(dictWorkflow):
         return []
     dictArxiv = _fdictArxivConfig(dictWorkflow)
-    if not (dictArxiv.get("sArxivId") or ""):
-        return [_fdictArxivNotSubmittedBlocker()]
     listBlockers = []
     if not _fbArxivTarballMatchesPushManifest(
         dictWorkflow, filesRepo,
@@ -1912,22 +2029,6 @@ def _flistArxivLevel2Blockers(dictWorkflow, filesRepo):
     if not _fbArxivVersionCurrent(dictArxiv):
         listBlockers.append(_fdictArxivVersionStaleBlocker())
     return listBlockers
-
-
-def _fdictArxivNotSubmittedBlocker():
-    """Build the workflow-scope ``arxiv-not-submitted`` blocker entry."""
-    return {
-        "iLevel": 2,
-        "iStepIndex": -1,
-        "sStepLabel": _S_WORKFLOW_SCOPE_LABEL,
-        "sScope": "workflow",
-        "sCriterion": "arxiv-not-submitted",
-        "listOffendingFiles": [],
-        "listOffendingUpstreamSteps": [],
-        "sRemediationHint":
-            "No arXiv ID recorded — submit manuscript and record "
-            "the arXiv ID",
-    }
 
 
 def _fdictArxivMismatchBlocker():
@@ -1991,6 +2092,7 @@ def flistLevel3Blockers(dictWorkflow, filesRepo):
         _fsWorkflowBlockerFingerprint(dictWorkflow),
         _fsRepoFingerprint(filesRepo),
         _fsSyncStatusFingerprint(filesRepo),
+        _fsBinaryStateFingerprint(dictWorkflow, filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -1998,6 +2100,33 @@ def flistLevel3Blockers(dictWorkflow, filesRepo):
     listResult = _flistComputeLevel3Blockers(dictWorkflow, filesRepo)
     _fnBlockerCacheStore(tCacheKey, listResult)
     return listResult
+
+
+def _fsBinaryStateFingerprint(dictWorkflow, filesRepo):
+    """SHA over each declared binary's live hash + its env.json capture.
+
+    The L3 blocker cache is keyed by workflow content, which does not
+    change when a binary is rebuilt. Without this component a
+    ``binary-drifted`` transition (or its clearing) would be masked by
+    a stale cache — the same class of bug the sync-status fingerprint
+    fixes for the remote caches. Reads the snapshot's pre-fetched
+    hashes, so on the poll path it costs no extra exec. Returns
+    ``"none"`` when the workflow declares no binaries.
+    """
+    listPaths = flistWorkflowBinaryPaths(dictWorkflow)
+    if not listPaths:
+        return "none"
+    dictCaptured = _fdictCapturedBinaryHashes(filesRepo)
+    try:
+        dictLive = filesRepo.fdictHashAbsolutePaths(listPaths)
+    except Exception:
+        dictLive = {}
+    listEntries = [
+        (sPath, dictLive.get(sPath), dictCaptured.get(sPath))
+        for sPath in listPaths
+    ]
+    sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
 def _flistComputeLevel3Blockers(dictWorkflow, filesRepo):
@@ -2075,6 +2204,11 @@ _DICT_L3_REMEDIATION_HINTS = {
     "binary-not-captured":
         "Declared binary lacks an environment.json entry — click "
         "'Capture version + SHA' next to it.",
+    "binary-drifted":
+        "The binary on disk no longer matches the hash captured in "
+        ".vaibify/environment.json — it was rebuilt or replaced after "
+        "the outputs were produced. Re-run the step with the current "
+        "binary and re-capture, or restore the published binary.",
 }
 
 
@@ -2132,10 +2266,66 @@ def _fdictL3PerStepContext(dictWorkflow, filesRepo):
         "listDeclaredBinaries": _flistDeclaredBinariesNormalized(
             dictWorkflow,
         ),
+        "setDriftedBinaryPaths": _fsetDriftedBinaryPaths(
+            dictWorkflow, filesRepo,
+        ),
         "bWaiver": bool(
             (dictWorkflow or {}).get("bNoStandaloneBinaries", False),
         ),
     }
+
+
+def _fsetDriftedBinaryPaths(dictWorkflow, filesRepo):
+    """Return declared-binary paths whose live hash != the env snapshot.
+
+    "Reproducible" (L3) means a third party rebuilding gets the same
+    bytes, so the binary present must match the hash captured in
+    ``environment.json``. This recomputes each declared binary's live
+    hash (via the poll snapshot's pre-fetched batch, or a live adapter
+    off the poll path) and compares. A binary with no captured hash is
+    NOT reported here — ``binary-not-captured`` owns that gap; drift is
+    only meaningful against a real captured hash. On a fresh clone this
+    doubles as a build-reproducibility test: a rebuilt binary that does
+    not match the published hash correctly drifts.
+    """
+    listPaths = flistWorkflowBinaryPaths(dictWorkflow)
+    if not listPaths:
+        return set()
+    dictCaptured = _fdictCapturedBinaryHashes(filesRepo)
+    if not dictCaptured:
+        return set()
+    try:
+        dictLive = filesRepo.fdictHashAbsolutePaths(listPaths)
+    except Exception:
+        return set()
+    setDrifted = set()
+    for sPath in listPaths:
+        sCaptured = dictCaptured.get(sPath)
+        sLive = dictLive.get(sPath)
+        if sCaptured and sLive and sLive != sCaptured:
+            setDrifted.add(sPath)
+    return setDrifted
+
+
+def _fdictCapturedBinaryHashes(filesRepo):
+    """Return ``{sBinaryPath: sSha256}`` recorded in environment.json."""
+    from .environmentSnapshot import (
+        _flistResolveCapturedBinaries,
+        fdictReadEnvironmentJson,
+    )
+    try:
+        dictEnv = fdictReadEnvironmentJson(filesRepo) or {}
+    except Exception:
+        return {}
+    dictResult = {}
+    for dictCapture in _flistResolveCapturedBinaries(dictEnv):
+        if not isinstance(dictCapture, dict):
+            continue
+        sPath = dictCapture.get("sBinaryPath") or ""
+        sSha = dictCapture.get("sSha256") or ""
+        if sPath and sSha:
+            dictResult[sPath] = sSha
+    return dictResult
 
 
 def _flistAllStepScriptPaths(dictWorkflow):
@@ -2246,7 +2436,21 @@ def _flistL3StepFailures(iStepIndex, dictStep, dictContext):
     )
     if listUncaptured:
         listFailures.append(("binary-not-captured", listUncaptured))
+    listDriftedBinaries = _flistStepDriftedBinaries(dictStep, dictContext)
+    if listDriftedBinaries:
+        listFailures.append(("binary-drifted", listDriftedBinaries))
     return listFailures
+
+
+def _flistStepDriftedBinaries(dictStep, dictContext):
+    """Return the step's depended-on binaries that drifted from the snapshot."""
+    setDrifted = dictContext.get("setDriftedBinaryPaths") or set()
+    if not setDrifted:
+        return []
+    listDepended = flistStepDependedBinaryPaths(
+        dictStep, dictContext["listDeclaredBinaries"],
+    )
+    return [sPath for sPath in listDepended if sPath in setDrifted]
 
 
 def _fdictBuildL3StepEntry(
@@ -2410,6 +2614,57 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
     return False
 
 
+def flistWorkflowBinaryPaths(dictWorkflow):
+    """Return every declared binary's absolute path for a workflow.
+
+    The poll hashes this set in its single exec so the L3 drift check
+    can compare the live binary against the environment snapshot. A
+    workflow that declares no binaries yields ``[]`` — the poll then
+    hashes nothing extra.
+    """
+    listPaths = []
+    for dictEntry in _flistDeclaredBinariesNormalized(dictWorkflow):
+        sPath = dictEntry.get("sBinaryPath") or ""
+        if sPath:
+            listPaths.append(sPath)
+    return sorted(set(listPaths))
+
+
+def flistStepDependedBinaryPaths(dictStep, listDeclaredBinaries):
+    """Return the declared-binary paths a single step depends on.
+
+    A step depends on a declared binary when EITHER its command
+    strings invoke it (the historical command scan) OR its explicit
+    ``saBinaryDependencies`` list names the binary by path or
+    basename. The explicit list is the authority for IMPLICIT
+    dependencies — e.g. a step whose command runs ``maxlev`` while
+    ``maxlev`` invokes ``vplanet`` internally, which no command scan
+    can surface. Shared by the L1 warning and the L3 drift criterion
+    so both attribute the same binaries to the same steps.
+    """
+    if not isinstance(dictStep, dict):
+        return []
+    listCommands = _flistStepCommandStrings(dictStep)
+    setDeclared = {
+        (dictEntry.get("sBinaryPath") or "")
+        for dictEntry in (listDeclaredBinaries or [])
+    }
+    setExplicit = {
+        str(sItem) for sItem in
+        (dictStep.get("saBinaryDependencies") or [])
+        if isinstance(sItem, str) and sItem
+    }
+    listResult = []
+    for sPath in setDeclared:
+        if not sPath:
+            continue
+        if _fbStepReferencesDeclaredBinary(listCommands, sPath):
+            listResult.append(sPath)
+        elif sPath in setExplicit or Path(sPath).name in setExplicit:
+            listResult.append(sPath)
+    return sorted(set(listResult))
+
+
 # ----------------------------------------------------------------------
 # Per-step and workflow-scope level-state projection (independent levels).
 #
@@ -2432,7 +2687,7 @@ def _fbStepReferencesDeclaredBinary(listCommands, sBinaryPath):
 # every present test axis untested, never attested) AND none of its
 # declared outputs exist on disk; all three of its cells read
 # not-started. ``unassessed`` — the same total absence of recorded
-# activity, but at least one declared output (``saDataFiles`` /
+# activity, but at least one declared output (``saOutputDataFiles`` /
 # ``saPlotFiles``) exists on disk: material is present, assessment has
 # not begun. The split keeps hours of compute performed outside the
 # dashboard visible as progress without ever claiming verification —
@@ -2463,7 +2718,7 @@ _T_TIMING_BLOCKER_CRITERIA = (
 _T_STEP_LEVEL3_CRITERIA = (
     "missing-from-manifest", "script-not-pinned",
     "nondeterminism-undeclared", "binary-not-declared",
-    "binary-not-captured",
+    "binary-not-captured", "binary-drifted",
 )
 
 _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
@@ -2471,7 +2726,7 @@ _T_WORKFLOW_LEVEL2_BASE_CRITERIA = (
 )
 
 _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA = (
-    "arxiv-not-submitted", "arxiv-mismatch", "arxiv-version-stale",
+    "arxiv-mismatch", "arxiv-version-stale",
 )
 
 _T_WORKFLOW_LEVEL3_CRITERIA = (
@@ -2733,10 +2988,15 @@ def _ftStepLevel1Counts(dictStep, setCriteria):
     """Return ``(iSatisfied, iTotal)`` over the step's L1 requirements.
 
     Requirements: one per PRESENT test axis, plus user attestation,
-    plus timing cleanliness — so ``iTotal`` is axis count + 2. An
-    ai-declaration step has NO L1 requirements (``(0, 0)`` renders
-    not-applicable): the declaration is a publication artifact, so
-    its sign-off is a Level 2 requirement.
+    plus timing cleanliness, plus an explicit input-data declaration
+    (files listed in ``saInputDataFiles`` or the ``bNoInputData``
+    flag) — so ``iTotal`` is axis count + 3. The declaration
+    requirement is counted directly from the step, not from
+    ``setCriteria``, so the dominant-blocker masking (which now
+    ranks ``input-data-undeclared`` above the timing criteria)
+    cannot hide it. An ai-declaration step has NO L1 requirements
+    (``(0, 0)`` renders not-applicable): the declaration is a
+    publication artifact, so its sign-off is a Level 2 requirement.
     """
     if fbStepIsAiDeclaration(dictStep):
         return (0, 0)
@@ -2746,7 +3006,9 @@ def _ftStepLevel1Counts(dictStep, setCriteria):
         iSatisfied += 1
     if _fbStepTimingRequirementMet(dictStep, setCriteria):
         iSatisfied += 1
-    return (iSatisfied, iPresent + 2)
+    if not _fbStepInputDataUndeclared(dictStep):
+        iSatisfied += 1
+    return (iSatisfied, iPresent + 3)
 
 
 def _fbStepTimingRequirementMet(dictStep, setCriteria):
@@ -2860,8 +3122,11 @@ def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
     A criterion applies only when the step owns something it can fail
     on: declared paths for the manifest, scripts for pinning, an
     unseeded-randomness flag for determinism, and binary invocations
-    for declaration + capture. Interactive or attestation-only steps
-    typically return an empty set.
+    for declaration + capture + drift. Interactive or attestation-only
+    steps typically return an empty set. ``binary-drifted`` applies to
+    any step that depends on a declared binary — including an IMPLICIT
+    dependency named only in ``saBinaryDependencies`` (e.g.
+    maxlev->vplanet), which the command scan cannot see.
     """
     from .manifestPaths import flistStepScriptRepoPaths
     if not isinstance(dictStep, dict):
@@ -2880,6 +3145,8 @@ def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):
         listCommands, listDeclaredBinaries,
     ):
         setApplicable.add("binary-not-captured")
+    if flistStepDependedBinaryPaths(dictStep, listDeclaredBinaries):
+        setApplicable.add("binary-drifted")
     return setApplicable
 
 
@@ -2987,8 +3254,71 @@ def fiLowestNonAttainedLevel(dictStepStates):
     return fiStepAICSLevel(dictStepStates) + 1
 
 
+_S_BINARY_STALE_WARNING_HINT = (
+    "A binary this step depends on was modified after the step's "
+    "outputs were produced — re-run the step to confirm the results "
+    "still hold"
+)
+
+
+def fdictBinaryStaleByStep(
+    dictWorkflow, dictBinaryMtimes, dictMaxMtimeByStep,
+):
+    """Return ``{iStepIndex: bool}`` — a depended binary is newer than
+    the step's own outputs.
+
+    A NON-gating Level 1 signal feeding the regression-column warning.
+    ``dictBinaryMtimes`` is the poll's absolute-path→mtime map (declared
+    binaries live outside the repo, so their keys are absolute);
+    ``dictMaxMtimeByStep`` is the per-step newest OUTPUT mtime
+    (string-keyed by step index). Mtime only — the authoritative hash
+    comparison is the L3 ``binary-drifted`` criterion.
+    """
+    listDeclared = _flistDeclaredBinariesNormalized(dictWorkflow)
+    dictMtimes = dictBinaryMtimes or {}
+    dictMaxByStep = dictMaxMtimeByStep or {}
+    dictResult = {}
+    listSteps = (dictWorkflow or {}).get("listSteps", []) or []
+    for iStepIndex, dictStep in enumerate(listSteps):
+        dictResult[iStepIndex] = _fbStepBinaryNewerThanOutputs(
+            dictStep, listDeclared, dictMtimes,
+            dictMaxByStep.get(str(iStepIndex)),
+        )
+    return dictResult
+
+
+def _fbStepBinaryNewerThanOutputs(
+    dictStep, listDeclared, dictBinaryMtimes, sOutputMtime,
+):
+    """Return True iff a depended binary's mtime exceeds the step's
+    newest output mtime.
+
+    No outputs yet (``sOutputMtime`` is None) → not stale: there is
+    nothing produced to be out of date against. A binary absent from
+    the mtime map (never built, or the poll could not stat it) is
+    skipped rather than treated as stale.
+    """
+    if not isinstance(dictStep, dict) or sOutputMtime is None:
+        return False
+    try:
+        iOutputMtime = int(sOutputMtime)
+    except (TypeError, ValueError):
+        return False
+    for sPath in flistStepDependedBinaryPaths(dictStep, listDeclared):
+        sBinMtime = dictBinaryMtimes.get(sPath)
+        if sBinMtime is None:
+            continue
+        try:
+            if int(sBinMtime) > iOutputMtime:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def fdictComputeStepLevelWarnings(
     dictWorkflow, dictStepStates, listLevel1Blockers,
+    dictBinaryStaleByStep=None,
 ):
     """Return ``{iStepIndex: dictWarning}`` for the regression column.
 
@@ -2999,16 +3329,23 @@ def fdictComputeStepLevelWarnings(
          "sWarningSeverity": "red" | "orange" | None,
          "sWarningHint": str}
 
-    A warning fires ONLY when, AT the lowest non-attained level, the
-    cell carries ``bRegression`` or — level 1 only — a
+    A gate-level warning fires when, AT the lowest non-attained level,
+    the cell carries ``bRegression`` or — level 1 only — a
     timestamp-out-of-order blocker (upstream-modified / script-stale /
     attestation-stale) applies. A regression strictly above the lowest
     non-attained level emits no warning: the researcher's next action
     lives at the lower rung. Severity is ``red`` when the cause
     includes failed tests at that level, ``orange`` for pure
     staleness or regression.
+
+    ``dictBinaryStaleByStep`` (``{iStepIndex: bool}``) adds a NON-gating
+    orange Level 1 warning for a step whose depended binary is newer
+    than its outputs — surfaced only when no gate-level warning already
+    speaks for the step. It never drops the L1 gate (mtime cannot prove
+    drift; the L3 ``binary-drifted`` hash check is the authority).
     """
     dictCriteriaByStep = _fdictCriteriaByStep(listLevel1Blockers)
+    dictBinaryStale = dictBinaryStaleByStep or {}
     dictResult = {}
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     for iStepIndex, dictStep in enumerate(listSteps):
@@ -3016,21 +3353,50 @@ def fdictComputeStepLevelWarnings(
             dictStep,
             (dictStepStates or {}).get(iStepIndex) or {},
             dictCriteriaByStep.get(iStepIndex, set()),
+            bool(dictBinaryStale.get(iStepIndex)),
         )
     return dictResult
 
 
-def _fdictOneStepWarning(dictStep, dictStates, setLevel1Criteria):
-    """Return one step's consolidated warning dict (or the no-warning shape)."""
+def _fdictOneStepWarning(
+    dictStep, dictStates, setLevel1Criteria, bBinaryStale=False,
+):
+    """Return one step's consolidated warning dict (or the no-warning shape).
+
+    The gate-level warning (regression / timing at the lowest
+    non-attained level) takes precedence. When the gate levels are
+    clean, a depended binary newer than the step's outputs raises a
+    NON-gating orange Level 1 warning. It is suppressed once every
+    level is attained (``iLowest > 3``): an attained L3 means the hash
+    already matched, so a newer mtime would be a false alarm.
+    """
     iLowest = fiLowestNonAttainedLevel(dictStates)
+    dictGateWarning = _fdictGateLevelWarning(
+        dictStep, dictStates, setLevel1Criteria, iLowest,
+    )
+    if dictGateWarning is not None:
+        return dictGateWarning
+    if bBinaryStale and iLowest <= 3:
+        return {
+            "iLowestNonAttainedLevel": iLowest,
+            "iWarningLevel": 1,
+            "sWarningSeverity": "orange",
+            "sWarningHint": _S_BINARY_STALE_WARNING_HINT,
+        }
+    return _fdictNoWarning(iLowest)
+
+
+def _fdictGateLevelWarning(dictStep, dictStates, setLevel1Criteria, iLowest):
+    """Return the regression/timing warning at the lowest non-attained
+    level, or None when the gate levels are clean."""
     if iLowest > 3:
-        return _fdictNoWarning(iLowest)
+        return None
     dictCell = dictStates.get(f"s{iLowest}") or {}
     bTimingBlocker = iLowest == 1 and bool(
         set(setLevel1Criteria) & set(_T_TIMING_BLOCKER_CRITERIA),
     )
     if not (dictCell.get("bRegression") or bTimingBlocker):
-        return _fdictNoWarning(iLowest)
+        return None
     bFailedTests = iLowest == 1 and _fbStepHasFailedAxis(dictStep)
     sSeverity = "red" if bFailedTests else "orange"
     return {
@@ -3092,7 +3458,7 @@ def fdictComputeWorkflowScopeLevelStates(
     Same independent-cell wire shape as the per-step projection, over
     the workflow-scope requirement sets: L1 — project repo present
     (one requirement); L2 — github/zenodo verify freshness plus the
-    three arXiv criteria when an Overleaf binding exists, EXCLUDING
+    two arXiv criteria when an arXiv submission is recorded, EXCLUDING
     ``missing-ai-declaration-step`` (re-homed to the ghost
     AI-declaration step row); L3 — the six workflow-scope checks in
     :data:`_T_WORKFLOW_LEVEL3_CRITERIA`. Workflow cells never report
@@ -3132,7 +3498,7 @@ def _fdictBuildWorkflowScopeCells(dictWorkflow, dictCountsByLevel):
 def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
     """Return ``(iSatisfied, iTotal)`` for the workflow-scope L2 cell."""
     tApplicable = _T_WORKFLOW_LEVEL2_BASE_CRITERIA
-    if fbWorkflowHasOverleafBinding(dictWorkflow):
+    if fbWorkflowHasArxivConnection(dictWorkflow):
         tApplicable = tApplicable + _T_WORKFLOW_LEVEL2_ARXIV_CRITERIA
     return _ftCountWorkflowCriteria(
         listLevel2Blockers, tApplicable, bHasRepo,

@@ -309,7 +309,7 @@ def fixtureWorkflow(tmp_path):
             "sName": "Compute", "sDirectory": "stepA",
             "saPlotCommands": [], "saPlotFiles": [],
             "saDataCommands": ["python run.py"],
-            "saDataFiles": ["result.npy"],
+            "saOutputDataFiles": ["result.npy"],
         }],
     }
     with open(sWorkflowPath, "w") as fileHandle:
@@ -340,14 +340,14 @@ def test_fnGenerateFromWorkflow_writes_standards_file(fixtureWorkflow):
 
 
 def test_fnGenerateFromWorkflow_no_data_files_returns_early(tmp_path, capsys):
-    """A step with no saDataFiles is a no-op and prints a skip message."""
+    """A step with no saOutputDataFiles is a no-op and prints a skip message."""
     sWorkflowPath = os.path.join(str(tmp_path), "workflow.json")
     dictWorkflow = {
         "sPlotDirectory": "Plot",
         "listSteps": [{
             "sName": "Empty", "sDirectory": "stepEmpty",
             "saPlotCommands": [], "saPlotFiles": [],
-            "saDataFiles": [],
+            "saOutputDataFiles": [],
         }],
     }
     with open(sWorkflowPath, "w") as fileHandle:
@@ -377,7 +377,7 @@ def test_fnGenerateFromWorkflow_check_seeds_invokes_detector(
             "sName": "S", "sDirectory": "stepSeed",
             "saPlotCommands": [], "saPlotFiles": [],
             "saDataCommands": ["python run.py"],
-            "saDataFiles": ["out.npy"],
+            "saOutputDataFiles": ["out.npy"],
         }],
     }
     with open(sWorkflowPath, "w") as fileHandle:
@@ -407,7 +407,7 @@ def test_resolve_step_dir_handles_nested_workflow_layout(tmp_path):
         "listSteps": [{
             "sName": "S", "sDirectory": "stepNested",
             "saPlotCommands": [], "saPlotFiles": [],
-            "saDataFiles": ["out.npy"],
+            "saOutputDataFiles": ["out.npy"],
         }],
     }
     with open(sWorkflowPath, "w") as fileHandle:

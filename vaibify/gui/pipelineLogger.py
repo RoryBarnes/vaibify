@@ -299,7 +299,10 @@ def _fnDispatchEventToWriter(stateWriter, dictEvent):
             stateWriter.fnEnqueueOutputLine(sLine)
     elif sEventType == "stepStarted":
         stateWriter.fnEnqueueUpdate(
-            pipelineState.fdictBuildStepStarted(dictEvent["iStepNumber"])
+            pipelineState.fdictBuildStepStarted(
+                dictEvent["iStepNumber"],
+                dictEvent.get("fWallClockBudgetSeconds", 0.0),
+            )
         )
     elif sEventType in _DICT_STEP_RESULT_STATUS:
         stateWriter.fnEnqueueStepResult(
@@ -331,7 +334,8 @@ def _fnDispatchEventInline(
             pipelineState.fnUpdateState(
                 connectionDocker, sContainerId, dictState,
                 pipelineState.fdictBuildStepStarted(
-                    dictEvent["iStepNumber"]))
+                    dictEvent["iStepNumber"],
+                    dictEvent.get("fWallClockBudgetSeconds", 0.0)))
     elif sEventType in _DICT_STEP_RESULT_STATUS:
         _fnApplyStepResultEvent(
             connectionDocker, sContainerId, dictState, dictEvent,

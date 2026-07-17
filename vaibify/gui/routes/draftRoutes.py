@@ -51,7 +51,7 @@ def _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     sWorkflowPath = dictCtx.get("paths", {}).get(sContainerId, "")
     if not sProjectRepoPath or not sWorkflowPath:
         raise HTTPException(
-            400, "Active workflow lacks project repo or workflow path",
+            400, "Active project lacks repository or project-file path",
         )
     return sProjectRepoPath, sWorkflowPath
 

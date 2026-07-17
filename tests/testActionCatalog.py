@@ -164,3 +164,17 @@ def test_shared_constants_are_stable_strings():
     )
     assert actionCatalog.S_SESSION_HEADER_NAME == "X-Vaibify-Session"
     assert actionCatalog.S_CATALOG_SCHEMA_VERSION == "1.0"
+
+
+def test_push_to_github_description_names_its_required_body_field():
+    """push-to-github requires a listFilePaths body (SyncPushRequest);
+    a bare invocation 422s with a raw 'body / Field required'. The
+    catalog description must name the required field and state that the
+    action publishes specific files — NOT a general git push — so the
+    agent constructs a valid call instead of reaching for it to push
+    commits (the reported incident)."""
+    dictEntry = actionCatalog.fdictLookupAction("push-to-github")
+    assert dictEntry is not None
+    sDesc = dictEntry["sDescription"]
+    assert "listFilePaths" in sDesc
+    assert "git push" in sDesc          # disambiguated from a branch push

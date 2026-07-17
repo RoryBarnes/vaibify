@@ -138,7 +138,7 @@ var PipeleyenDirectoryBrowser = (function () {
             _fnApplyBrowseResult(dictResult);
         } catch (error) {
             elEntries.innerHTML =
-                '<p style="color:var(--color-red);">Error loading</p>';
+                '<p style="color:var(--color-red-text);">Error loading</p>';
         }
     }
 

@@ -195,13 +195,13 @@
     </div>
 </div>
 
-<!-- Workflow Selector -->
+<!-- Project Selector -->
 <div id="workflowPicker" style="display: none;">
     <img src="/static/vaibify_logo_paleblue_dark.png" alt="Vaibify"
          class="vaibify-logo-large">
     <div class="picker-content">
         <div class="picker-section-header">
-            <h3 class="picker-section-label">Available Workflows:</h3>
+            <h3 class="picker-section-label">Available Projects:</h3>
             <div style="display: flex; gap: 6px;">
                 <button class="btn-icon picker-refresh"
                         id="btnRefreshWorkflows"
@@ -213,7 +213,7 @@
         </div>
         <div style="margin-bottom: 10px;">
             <div class="container-card" id="btnNoWorkflow">
-                <span class="name">No Workflow</span>
+                <span class="name">Blank Project</span>
                 <span class="image">Work directly in the container</span>
             </div>
         </div>
@@ -222,12 +222,12 @@
              hidden role="status" aria-live="polite">
             <span class="workflow-loading-spinner" aria-hidden="true"></span>
             <span class="workflow-loading-text"
-                  id="workflowLoadingText">Loading workflow...</span>
+                  id="workflowLoadingText">Loading project...</span>
         </div>
         <div style="margin-top: 16px; display: flex; gap: 8px;">
             <button class="btn" id="btnWorkflowBack">Back</button>
             <button class="btn btn-primary" id="btnNewWorkflow">
-                New Workflow</button>
+                New Project</button>
         </div>
     </div>
 </div>
@@ -241,10 +241,10 @@
         <div class="toolbar-title-group">
             <span class="toolbar-label">Container:</span>
             <span id="activeContainerName" class="toolbar-value"></span>
-            <span class="toolbar-label">Workflow:</span>
+            <span class="toolbar-label">Project:</span>
             <div id="workflowSwitcher" class="workflow-switcher">
                 <span id="activeWorkflowName" class="toolbar-workflow"
-                      title="Click to switch workflow"></span>
+                      title="Click to switch project"></span>
                 <span class="vaibify-checkmark" data-aics-level="1"
                       title="AICS L1: Self-Consistent"><img
                       src="/static/favicon.png" alt="L1"></span>
@@ -335,7 +335,7 @@
                 <div class="toolbar-menu-item" id="btnAdminContainers">
                     Containers</div>
                 <div class="toolbar-menu-item" id="btnAdminWorkflows">
-                    Workflows</div>
+                    Projects</div>
                 <div class="toolbar-menu-item" id="btnAdminNewWindow">
                     New vaibify window</div>
                 <div class="toolbar-menu-separator"></div>
@@ -367,7 +367,7 @@
         <div id="panelSteps" class="active">
             <div class="panel-header">
                 <button class="btn-icon" id="btnGlobalSettings"
-                        title="Workflow settings">&#9881;</button>
+                        title="Project settings">&#9881;</button>
                 <button class="btn-icon" id="btnRefreshWorkflow"
                         title="Refresh remote status">&#8635;</button>
                 <button class="btn-icon" id="btnNewStep"
@@ -376,7 +376,7 @@
             <div id="globalSettingsPanel" class="global-settings"></div>
             <div class="panel-scroll-area">
                 <div id="stepsBlock" class="steps-block">
-                    <div class="steps-block-header" title="The steps of this workflow. Each step must be self-consistent (Level 1). The light on the right shows whether every step is passing; click the banner to collapse or expand.">
+                    <div class="steps-block-header" title="The steps of this project. Each step must be self-consistent (Level 1). The light on the right shows whether every step is passing; click the banner to collapse or expand.">
                         <span class="steps-block-title">Steps</span>
                         <span class="steps-block-status"></span>
                     </div>
@@ -384,8 +384,8 @@
                         <div id="listSteps"></div>
                     </div>
                 </div>
-                <div id="workflowWideBlock"
-                     class="workflow-wide-block"></div>
+                <div id="projectBlock"
+                     class="project-block"></div>
             </div>
         </div>
 
@@ -488,6 +488,15 @@
                 <h3>Terminal</h3>
                 <p>The terminal behaves like a native terminal.
                 All keystrokes are passed directly to the container.</p>
+                <p><strong>Copying text:</strong> Drag to select —
+                the selection is copied to the clipboard
+                automatically. Cmd+C (macOS) or Ctrl+Shift+C (Linux)
+                and right-clicking a selection also copy it.</p>
+                <p><strong>Option+drag (macOS) / Shift+drag
+                (Linux):</strong> Selects text even while a
+                full-screen program (an agent, vim, htop) is
+                capturing the mouse for its own scrolling and
+                clicks.</p>
                 <p><strong>Kill button</strong> (red square on tab):
                 Kills the foreground process if Ctrl+C is unresponsive.</p>
                 <p><strong>Ctrl+Z / Cmd+Z</strong> is reserved by
@@ -535,8 +544,8 @@
                       placeholder="Commands that generate raw data..."></textarea>
         </div>
         <div class="form-group">
-            <label>Data Files (one per line)</label>
-            <textarea id="inputDataFiles"
+            <label>Output Data (one per line)</label>
+            <textarea id="inputOutputDataFiles"
                       placeholder="Output data files from analysis..."></textarea>
         </div>
         <div class="form-group">
@@ -800,7 +809,7 @@
     <div class="modal modal-medium">
         <h2 style="color: var(--color-pale-blue);">
             Zenodo deposit metadata
-            <span class="help-icon" title="Zenodo requires a title, description, creators, and a license before a deposit can be published. These fields are saved in your workflow.json and reused on every Zenodo push. You can edit them anytime.">?</span>
+            <span class="help-icon" title="Zenodo requires a title, description, creators, and a license before a deposit can be published. These fields are saved in your project.json and reused on every Zenodo push. You can edit them anytime.">?</span>
         </h2>
         <div class="form-group">
             <label for="zmTitle">Title <span class="required">*</span></label>
@@ -856,7 +865,7 @@
     <div class="modal modal-small">
         <h2 style="color: var(--color-pale-blue);">
             Zenodo Status
-            <span class="help-icon" title="Shows the latest Zenodo deposit published from this workflow: its DOI, concept DOI (shared across all versions), and a link to the Zenodo record. Empty until you publish for the first time.">?</span>
+            <span class="help-icon" title="Shows the latest Zenodo deposit published from this project: its DOI, concept DOI (shared across all versions), and a link to the Zenodo record. Empty until you publish for the first time.">?</span>
         </h2>
         <div id="modalZenodoStatusBody"></div>
         <div class="modal-actions">
@@ -866,14 +875,14 @@
     </div>
 </div>
 
-<!-- New Workflow Wizard Modal -->
+<!-- New Project Wizard Modal -->
 <div class="modal-overlay" id="modalNewWorkflowWizard"
      style="display: none;">
     <div class="modal">
         <div class="wizard-title-row">
             <h2 id="newWorkflowWizardTitle"
                 style="color: var(--color-pale-blue);">
-                Create Workflow</h2>
+                Create Project</h2>
         </div>
         <div class="wizard-progress" id="newWorkflowWizardProgress">
             <span class="wizard-progress-step active"></span>

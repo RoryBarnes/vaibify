@@ -7,6 +7,14 @@
        original #c91111 / #1976d2 sat below readable contrast on
        --bg-primary. */
     --color-red: #e5484d;
+    /* --color-red is fill-grade: 4.2:1 on --bg-primary, enough for
+       dots, badges, borders, and glyphs (WCAG needs 3:1 for non-text
+       marks) but below the 4.5:1 text minimum. Error PROSE — anything
+       the user must read — uses the text-grade red (7:1). The tint
+       pair backs the boxed-error chip behind block-level messages. */
+    --color-red-text: #ff8589;
+    --bg-error-tint: rgba(229, 72, 77, 0.12);
+    --border-error-tint: rgba(229, 72, 77, 0.35);
     --color-orange: #e09401;
     --color-blue: #42a5f5;
     --color-pale-blue: #13aed5;
@@ -690,7 +698,7 @@ body.aics-level-3 .toolbar-label {
 }
 
 /* The scrollable region below the panel header holds both the Steps
-   block and the Workflow-wide block, so the whole left column scrolls
+   block and the Project block, so the whole left column scrolls
    as one. min-height:0 lets a flex child actually shrink and scroll. */
 .panel-scroll-area {
     flex: 1;
@@ -1143,6 +1151,29 @@ body.aics-level-3 .toolbar-label {
     animation: pulse 1s infinite;
 }
 
+/* Over budget: still running (so still pulsing), but red to signal the
+   active step has outrun its declared wall-clock budget and may be
+   hung. Advisory only — the run is not stopped. */
+.step-item .step-status.overBudget {
+    background: var(--color-red);
+    border: none;
+    animation: pulse 0.7s infinite;
+}
+
+/* Per-step expected-runtime input in the expanded detail. Compact so
+   it reads as a small inline field beside its label, not a settings
+   control. */
+.step-budget-input {
+    width: 5em;
+    margin-left: 4px;
+    padding: 1px 4px;
+    font-size: 12px;
+    background: var(--input-bg, rgba(0, 0, 0, 0.2));
+    color: inherit;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+    border-radius: 3px;
+}
+
 .step-item .step-status.skipped {
     background: var(--text-muted);
     border: none;
@@ -1452,13 +1483,57 @@ body.aics-level-3 .toolbar-label {
 }
 
 .detail-item.output .detail-text.file-necessary-red {
-    color: #c91111;
+    color: var(--color-red-text);
     cursor: pointer;
 }
 
 .detail-item.output .detail-text.file-necessary-orange {
     color: #e09401;
     cursor: pointer;
+}
+
+/* Input Data rows share the tracked-file chrome (not .output), so
+   they need their own status colours. A declared input that is
+   MISSING is red (the step cannot run); one that has DRIFTED since
+   the last run is orange (self-consistency lost, softer than
+   missing); an input on a not-yet-L1 step is orange; a clean input
+   on an L1 step is the highlight tint. */
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-red {
+    color: var(--color-red-text);
+    cursor: pointer;
+}
+
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-red.file-stale-state {
+    color: var(--color-orange);
+    cursor: pointer;
+}
+
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-orange {
+    color: var(--color-orange);
+    cursor: pointer;
+}
+
+.detail-item.tracked-file[data-array="saInputDataFiles"]
+    .detail-text.file-necessary-valid {
+    color: var(--highlight-color);
+    cursor: pointer;
+}
+
+/* Undeclared input contract: a Level 1 blocker, but a pending
+   declaration a single click resolves — not a breakage. Plain orange
+   text like the other "stale / pending" notes (and the banner's
+   orange dash), deliberately without the boxed-error alarm: red
+   stays reserved for genuine failures. */
+.detail-note.input-undeclared-note {
+    color: var(--color-orange);
+}
+
+.input-undeclared-glyph {
+    color: var(--color-orange);
+    font-weight: bold;
 }
 
 .detail-item.output .detail-text.file-necessary-valid {
@@ -1488,7 +1563,12 @@ body.aics-level-3 .toolbar-label {
 }
 
 .output-missing-message {
-    color: var(--color-red) !important;
+    color: var(--color-red-text) !important;
+    background: var(--bg-error-tint);
+    border: 1px solid var(--border-error-tint);
+    border-radius: 4px;
+    padding: 2px 8px;
+    display: inline-block;
 }
 
 .run-stats {
@@ -2942,6 +3022,22 @@ body.aics-level-3 .toolbar-label {
     font-size: 11px;
 }
 
+.falsification-block {
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(128, 128, 160, 0.12);
+}
+
+.falsification-block .sub-test-row {
+    cursor: default;
+}
+
+.falsification-block .detail-note {
+    color: var(--text-muted);
+    font-size: 10px;
+    margin: 2px 0;
+}
+
 .test-item-text.clickable {
     cursor: pointer;
     text-decoration: underline;
@@ -3123,7 +3219,7 @@ body.aics-level-3 .toolbar-label {
 }
 
 .test-result-fail {
-    color: var(--color-red);
+    color: var(--color-red-text);
     font-weight: 600;
     margin-top: 12px;
 }
@@ -4395,7 +4491,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .tree-picker-error {
     min-height: 16px;
     font-size: 12px;
-    color: var(--color-red);
+    color: var(--color-red-text);
     margin-bottom: 8px;
 }
 
@@ -5100,7 +5196,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .aics-attestation-card.status-failed .aics-card-title {
-    color: #ff7070;
+    color: var(--color-red-text);
 }
 
 .aics-attestation-card.empty {
@@ -5147,7 +5243,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .aics-history-table tr.state-failed td {
-    color: #ff7070;
+    color: var(--color-red-text);
 }
 
 .aics-history-fail-glyph {
@@ -5206,16 +5302,16 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
    normally scoped to the file list (red-text modifiers) or have no
    standalone glyph (the green check). */
 .aics-legend-red-missing-sample {
-    color: var(--color-red);
+    color: var(--color-red-text);
 }
 
 .aics-legend-red-stale-sample {
-    color: var(--color-red);
+    color: var(--color-red-text);
     text-decoration: underline dotted;
 }
 
 .aics-legend-red-unattested-sample {
-    color: var(--color-red);
+    color: var(--color-red-text);
     font-style: italic;
 }
 
@@ -5245,6 +5341,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .step-blocker-glyph-l3-determinism,
 .step-blocker-glyph-l3-binary-declared,
 .step-blocker-glyph-l3-binary-captured,
+.step-blocker-glyph-l3-binary-drifted,
 .step-blocker-glyph-l3-workflow-dockerfile,
 .step-blocker-glyph-l3-workflow-lock,
 .step-blocker-glyph-l3-workflow-env,
@@ -5260,16 +5357,16 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
    without losing the trained "red = needs attention" association.
    Applied to ``.detail-text`` inside ``.detail-item.output``. */
 .detail-item.output .detail-text.file-necessary-red.file-missing-state {
-    color: #c91111;
+    color: var(--color-red-text);
 }
 
 .detail-item.output .detail-text.file-necessary-red.file-stale-state {
-    color: #c91111;
+    color: var(--color-red-text);
     text-decoration: underline dotted;
 }
 
 .detail-item.output .detail-text.file-necessary-red.file-unattested-state {
-    color: #c91111;
+    color: var(--color-red-text);
     font-style: italic;
 }
 
@@ -5534,10 +5631,10 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     font-size: 12px;
 }
 
-/* --- Two top-level blocks: Steps + Workflow-wide --- */
+/* --- Two top-level blocks: Steps + Project --- */
 
 .steps-block-header,
-.workflow-wide-header {
+.project-block-header {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -5553,7 +5650,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .steps-block-header:hover,
-.workflow-wide-header:hover {
+.project-block-header:hover {
     background: var(--bg-hover);
 }
 
@@ -5562,7 +5659,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 }
 
 .steps-block-title,
-.workflow-wide-title {
+.project-block-title {
     cursor: help;
 }
 
@@ -5574,13 +5671,13 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     align-items: center;
 }
 
-/* The workflow-wide banner pushes its at-a-glance level strip to the
+/* The Project banner pushes its at-a-glance level strip to the
    right, like a step row. */
-.workflow-wide-header .step-level-strip {
+.project-block-header .step-level-strip {
     margin-left: auto;
 }
 
-.workflow-wide-body {
+.project-block-body {
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -5659,9 +5756,9 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     padding: 3px 10px;
 }
 
-/* Links inside the Workflow-wide block: browser-default dark blue is
+/* Links inside the Project block: browser-default dark blue is
    unreadable on the dark background; use the pale-blue action color. */
-.workflow-wide-block a {
+.project-block a {
     color: var(--color-pale-blue);
 }
 
@@ -5705,7 +5802,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     user-select: none;
 }
 
-/* File rows inside the Workflow-wide block open in the viewer. */
+/* File rows inside the Project block open in the viewer. */
 .wf-file-link {
     cursor: pointer;
 }

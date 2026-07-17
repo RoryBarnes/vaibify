@@ -727,10 +727,10 @@ class TestOutputFileFiltering:
         )
         dictWorkflow = {
             "listSteps": [
-                {"sName": "Step01", "saDataFiles": ["input.csv"]},
+                {"sName": "Step01", "saOutputDataFiles": ["input.csv"]},
                 {
                     "sName": "Step02",
-                    "saDataFiles": ["surrogate_model.pkl"],
+                    "saOutputDataFiles": ["surrogate_model.pkl"],
                     "saPlotFiles": ["convergence.png"],
                 },
             ],
@@ -781,7 +781,7 @@ class TestUpstreamFallback:
         from vaibify.gui.pipelineServer import _flistCollectUpstreamOutputs
         dictWorkflow = {
             "listSteps": [
-                {"sName": "Step01", "saDataFiles": ["output.csv"]},
+                {"sName": "Step01", "saOutputDataFiles": ["output.csv"]},
             ],
         }
         listResult = _flistCollectUpstreamOutputs(dictWorkflow, 0)

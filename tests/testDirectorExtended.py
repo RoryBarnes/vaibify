@@ -155,7 +155,7 @@ def test_fnRegisterStepOutputs_registers_data_files():
             fh.write(b"x" * 2048)
         dictStep = {
             "sDirectory": ".",
-            "saDataFiles": ["data.npy"],
+            "saOutputDataFiles": ["data.npy"],
             "saPlotFiles": [],
         }
         dictVars = {"sRepoRoot": sTmpDir}

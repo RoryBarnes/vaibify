@@ -33,6 +33,8 @@ __all__ = [
     "fdictMigrateTestFormat",
     "fiGetSchemaVersion",
     "fnApplyMigrations",
+    "fnEnsureStepIds",
+    "fnRewritePositionalToSymbolic",
     "fnMigrateAbsoluteContainerPaths",
     "fnMigrateAbsoluteTestPaths",
     "fnMigrateArchiveToTracking",
@@ -43,7 +45,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 5
+I_CURRENT_WORKFLOW_VERSION = 9
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -120,12 +122,56 @@ def fdictMigrateTestFormat(dictStep):
     return dictStep
 
 
+def _fsSlugFromStepName(sName):
+    """Return a kebab-case ASCII slug from a step name, or empty string."""
+    sLower = (sName or "").strip().lower()
+    return re.sub(r"[^a-z0-9]+", "-", sLower).strip("-")
+
+
+def fnEnsureStepIds(dictWorkflow):
+    """Assign a stable ``sStepId`` to any step lacking one; keep existing.
+
+    ``sStepId`` is the identity primitive behind symbolic cross-step
+    references (``{step:<id>.<stem>}``). Unlike ``sLabel`` — which is a
+    derived, per-type-sequential field recomputed on every load — an
+    id is assigned ONCE, persisted in ``workflow.json``, and NEVER
+    regenerated, so a rename, insertion, or reorder leaves every
+    reference intact. The id is a readable kebab slug of the step name,
+    disambiguated with a numeric suffix on collision, falling back to
+    ``step-<n>`` for a nameless step. Idempotent and non-destructive:
+    a step that already carries an ``sStepId`` is untouched, so this is
+    safe to call on both the load and save paths.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+    setUsed = {
+        dictStep["sStepId"] for dictStep in listSteps
+        if isinstance(dictStep, dict) and dictStep.get("sStepId")
+    }
+    for iIndex, dictStep in enumerate(listSteps):
+        if not isinstance(dictStep, dict) or dictStep.get("sStepId"):
+            continue
+        sBase = _fsSlugFromStepName(dictStep.get("sName")) or f"step-{iIndex + 1}"
+        sCandidate = sBase
+        iSuffix = 2
+        while sCandidate in setUsed:
+            sCandidate = f"{sBase}-{iSuffix}"
+            iSuffix += 1
+        dictStep["sStepId"] = sCandidate
+        setUsed.add(sCandidate)
+
+
 def fnNormalizeSceneReferences(dictStep):
-    """Replace deprecated {SceneNN.var} tokens with {StepNN.var}."""
+    """Replace deprecated {SceneNN.var} tokens with {StepNN.var}.
+
+    Runs during the v0->v1 stage, before the v7->v8 key rename, so it
+    scans the historical ``saDataFiles`` key alongside the current
+    ``saOutputDataFiles`` name; absent keys are skipped.
+    """
     for sKey in (
         "saDataCommands", "saPlotCommands", "saTestCommands",
         "saSetupCommands", "saCommands", "saDependencies",
-        "saDataFiles", "saPlotFiles", "saOutputFiles",
+        "saDataFiles", "saOutputDataFiles", "saPlotFiles",
+        "saOutputFiles",
     ):
         listValues = dictStep.get(sKey)
         if not listValues:
@@ -141,7 +187,7 @@ def fnMigrateArchiveToTracking(dictWorkflow):
 
     Before the badge rework, each output file carried an "archive"
     vs. "supporting" designation in ``dictPlotFileCategories`` /
-    ``dictDataFileCategories``. Archive files were the ones pushed
+    ``dictOutputDataFileCategories``. Archive files were the ones pushed
     to Overleaf and Zenodo in batch operations. This function seeds
     ``dictSyncStatus`` entries with ``bOverleaf=True`` and
     ``bZenodo=True`` for each previously-archive file so badges
@@ -156,7 +202,7 @@ def fnMigrateArchiveToTracking(dictWorkflow):
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     for dictStep in dictWorkflow.get("listSteps", []):
         sStepDir = dictStep.get("sDirectory", "")
-        for sArrayKey in ("saDataFiles", "saPlotFiles"):
+        for sArrayKey in ("saDataFiles", "saOutputDataFiles", "saPlotFiles"):
             for sFile in dictStep.get(sArrayKey, []):
                 if _fsGetFileCategory(dictStep, sFile) != "archive":
                     continue
@@ -203,7 +249,7 @@ def fnMigrateAbsoluteContainerPaths(dictWorkflow, sProjectRepoPath):
 
     Backfills workflows authored before vaibify enforced
     repo-relative paths in step ``sDirectory``, ``saOutputFiles``,
-    ``saDataFiles``, and ``saPlotFiles``. Falls back to inferring the
+    ``saOutputDataFiles``, and ``saPlotFiles``. Falls back to inferring the
     project repo prefix from each step's existing ``sDirectory`` when
     ``sProjectRepoPath`` is empty (the legacy shape was always
     ``/workspace/<repo>/<stepDir>``).
@@ -229,7 +275,8 @@ def fnMigrateAbsoluteContainerPaths(dictWorkflow, sProjectRepoPath):
             sLegacyDirectory, sStepRoot,
         )
         for sArrayKey in (
-            "saOutputFiles", "saDataFiles", "saPlotFiles",
+            "saOutputFiles", "saDataFiles", "saOutputDataFiles",
+            "saPlotFiles",
         ):
             listExisting = dictStep.get(sArrayKey)
             if not listExisting:
@@ -323,13 +370,21 @@ def _fsStripRoot(sPath, sRoot):
 
 
 def _fsGetFileCategory(dictStep, sFilePath):
-    """Return 'archive' or 'supporting' for a data or plot file."""
+    """Return 'archive' or 'supporting' for a data or plot file.
+
+    Reads the historical ``dictDataFileCategories`` key alongside the
+    current name because this runs during the v0->v1 stage, before
+    the v7->v8 key rename.
+    """
     dictPlot = dictStep.get("dictPlotFileCategories", {})
     if sFilePath in dictPlot:
         return dictPlot[sFilePath]
-    dictData = dictStep.get("dictDataFileCategories", {})
-    if sFilePath in dictData:
-        return dictData[sFilePath]
+    for sCategoriesKey in (
+        "dictDataFileCategories", "dictOutputDataFileCategories",
+    ):
+        dictData = dictStep.get(sCategoriesKey, {})
+        if sFilePath in dictData:
+            return dictData[sFilePath]
     return "archive"
 
 
@@ -455,10 +510,121 @@ def _fnMigrateV4ToV5(dictWorkflow, sProjectRepoPath):
     fnMigrateAbsoluteTestPaths(dictWorkflow, sProjectRepoPath)
 
 
+def _fnMigrateV5ToV6(dictWorkflow, sProjectRepoPath):
+    """Assign a stable ``sStepId`` to every step lacking one.
+
+    Introduces the identity primitive behind symbolic cross-step
+    references. One-shot for existing documents; new steps acquire an
+    id at creation and via the save-path safety net.
+    """
+    fnEnsureStepIds(dictWorkflow)
+
+
+_T_REFERENCE_BEARING_STEP_FIELDS = (
+    "saDataCommands", "saTestCommands", "saPlotCommands", "saPlotFiles",
+    "saDependencies", "saSetupCommands", "saCommands", "saOutputFiles",
+)
+
+
+def fnRewritePositionalToSymbolic(dictWorkflow):
+    """Rewrite deprecated positional ``{StepNN.stem}`` cross-step tokens
+    to the canonical symbolic ``{step:<sStepId>.stem}`` form.
+
+    Idempotent: symbolic tokens contain no ``{StepNN.`` match and are
+    untouched. A positional token whose target index is out of range,
+    or whose target step has no ``sStepId``, is left as-is — there is
+    nothing to resolve it to — so this never fabricates an id. Callers
+    must run :func:`fnEnsureStepIds` first so every in-range target
+    carries an id.
+    """
+    listSteps = dictWorkflow.get("listSteps", []) or []
+
+    def fnReplace(resultMatch):
+        iIndex = int(resultMatch.group(1)) - 1
+        sVariable = resultMatch.group(2)
+        if 0 <= iIndex < len(listSteps):
+            dictTarget = listSteps[iIndex]
+            sId = (
+                dictTarget.get("sStepId")
+                if isinstance(dictTarget, dict) else None
+            )
+            if sId:
+                return "{step:" + sId + "." + sVariable + "}"
+        return resultMatch.group(0)
+
+    for dictStep in listSteps:
+        if not isinstance(dictStep, dict):
+            continue
+        for sKey in _T_REFERENCE_BEARING_STEP_FIELDS:
+            listValues = dictStep.get(sKey)
+            if not listValues:
+                continue
+            dictStep[sKey] = [
+                re.sub(r"\{Step(\d+)\.([^}]+)\}", fnReplace, s)
+                if isinstance(s, str) else s
+                for s in listValues
+            ]
+
+
+def _fnMigrateV6ToV7(dictWorkflow, sProjectRepoPath):
+    """Rewrite positional cross-step tokens to the symbolic form.
+
+    Deprecates ``{StepNN.stem}`` in favor of ``{step:<id>.stem}``.
+    Depends on ``sStepId`` being assigned, which the v5->v6 migrator
+    guarantees by running first.
+    """
+    fnRewritePositionalToSymbolic(dictWorkflow)
+
+
+def _fnMigrateV7ToV8(dictWorkflow, sProjectRepoPath):
+    """Rename the output-data key and retire the legacy outputs bucket.
+
+    ``saDataFiles`` becomes ``saOutputDataFiles`` for symmetry with
+    the input-data declaration, and the legacy general-outputs bucket
+    ``saOutputFiles`` is merged into it (deduplicated, order
+    preserved) and removed. ``dictDataFileCategories`` becomes
+    ``dictOutputDataFileCategories``.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []):
+        if not isinstance(dictStep, dict):
+            continue
+        listMerged = list(dictStep.get("saOutputDataFiles", []) or [])
+        for sLegacyKey in ("saDataFiles", "saOutputFiles"):
+            for sPath in dictStep.pop(sLegacyKey, []) or []:
+                if sPath not in listMerged:
+                    listMerged.append(sPath)
+        dictStep["saOutputDataFiles"] = listMerged
+        if "dictDataFileCategories" in dictStep:
+            dictStep["dictOutputDataFileCategories"] = dictStep.pop(
+                "dictDataFileCategories"
+            )
+
+
+def _fnMigrateV8ToV9(dictWorkflow, sProjectRepoPath):
+    """Seed the input-data declaration fields on every step.
+
+    ``saInputDataFiles`` lists repo-relative raw-data files the step
+    consumes; ``bNoInputData`` is the explicit "no inputs needed"
+    declaration (both empty/False means the step is *undeclared*,
+    which blocks AICS Level 1); ``listRemoteData`` carries per-file
+    provenance records for remote-pulled data.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []):
+        if not isinstance(dictStep, dict):
+            continue
+        dictStep.setdefault("saInputDataFiles", [])
+        dictStep.setdefault("bNoInputData", False)
+        dictStep.setdefault("listRemoteData", [])
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
     (2, _fnMigrateV2ToV3),
     (3, _fnMigrateV3ToV4),
     (4, _fnMigrateV4ToV5),
+    (5, _fnMigrateV5ToV6),
+    (6, _fnMigrateV6ToV7),
+    (7, _fnMigrateV7ToV8),
+    (8, _fnMigrateV8ToV9),
 )

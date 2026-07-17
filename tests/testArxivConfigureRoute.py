@@ -170,6 +170,34 @@ def test_configure_remove_clears_arxiv_entry(
     assert "arxiv" not in fixtureWorkflow["dictRemotes"]
 
 
+def test_configure_remove_clears_cached_sync_status(
+    fixtureClient, fixtureWorkflow, fixtureProjectRepo,
+):
+    """bRemove also drops the cached verify result from syncStatus.json.
+
+    Without this, the requirements panel keeps rendering the last
+    divergence count ("0 of N matching") for a connection the
+    workflow no longer tracks — a ghost status.
+    """
+    from vaibify.reproducibility import scheduledReverify
+    fixtureWorkflow["dictRemotes"]["arxiv"] = {"sArxivId": "2401.12345"}
+    scheduledReverify.fnWriteSyncStatus(fixtureProjectRepo, {
+        "sService": "arxiv",
+        "sLastVerified": "2026-07-09T00:00:00Z",
+        "iTotalFiles": 84, "iMatching": 0, "listDiverged": [],
+    })
+    response = fixtureClient.post(
+        f"/api/sync/{S_CONTAINER_ID}/arxiv/configure",
+        json={"bRemove": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["sVerifyError"] == ""
+    dictCached = scheduledReverify.fdictReadCachedSyncStatus(
+        fixtureProjectRepo, "arxiv",
+    )
+    assert dictCached["sLastVerified"] is None
+
+
 def test_configure_rejects_malformed_id(fixtureClient):
     """An ID that does not match either regex is rejected with 400."""
     response = fixtureClient.post(

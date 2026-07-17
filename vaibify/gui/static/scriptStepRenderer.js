@@ -8,18 +8,21 @@ var VaibifyStepRenderer = (function () {
 
     var _DICT_CATEGORY_TO_REMOTE_KEYS = {
         saPlotFiles: ["sGithub", "sOverleaf", "sZenodo", "sArxiv"],
-        saDataFiles: ["sGithub", "sZenodo"],
+        saOutputDataFiles: ["sGithub", "sZenodo"],
+        saInputDataFiles: ["sGithub", "sZenodo"],
         saStepScripts: ["sGithub", "sZenodo"],
         saTestStandards: ["sGithub", "sZenodo"],
     };
 
     var _DICT_STALE_ROW_LABELS = {
         "test|dataScript": "Tests older than data scripts",
-        "test|dataFile": "Tests older than data files",
+        "test|dataFile": "Tests older than output data",
+        "test|inputFile": "Input data modified since last run",
         "user|dataScript": "User verification older than data scripts",
-        "user|dataFile": "User verification older than data files",
+        "user|dataFile": "User verification older than output data",
         "user|plotScript": "User verification older than plot scripts",
         "user|plotFile": "User verification older than plot files",
+        "user|inputFile": "User verification older than input data",
     };
 
     /* --- Level strip (Scope F) ---
@@ -54,8 +57,8 @@ var VaibifyStepRenderer = (function () {
     function _fsRenderLevelColumnHeaderRow() {
         // Labels the per-step status columns once at the top of the
         // Steps block. L1 is the only level that is a per-step
-        // property; L2/L3 are workflow-wide and live in the
-        // Workflow-wide block, so they are not headed here.
+        // property; L2/L3 are project-wide and live in the
+        // Project block, so they are not headed here.
         return '<div class="level-column-header-row">' +
             '<span class="run-column-header ' +
             'level-column-header-cell" ' +
@@ -82,6 +85,8 @@ var VaibifyStepRenderer = (function () {
         "fail": "last run failed",
         "queued": "queued in the current run",
         "running": "running now",
+        "overBudget": "running longer than its wall-clock budget — "
+            + "may be hung; check the container",
         "skipped": "skipped in the last run",
     };
 
@@ -102,7 +107,7 @@ var VaibifyStepRenderer = (function () {
     function _fsBuildStepLevelStrip(dictContext, iIndex) {
         // Step scope (iIndex >= 0) shows only ⚠ + L1 — the levels that
         // are genuinely per-step. The workflow scope (iIndex < 0, the
-        // Workflow-wide banner) keeps the full ⚠ + L1 + L2 + L3
+        // Project banner) keeps the full ⚠ + L1 + L2 + L3
         // at-a-glance strip.
         if (!dictContext.fsLevelCellState) return "";
         var iMaxLevel = iIndex < 0 ? 3 : 1;
@@ -117,7 +122,7 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsBuildLevelStrip(dictContext, iIndex) {
-        // Public wrapper so the Workflow-wide block module can render
+        // Public wrapper so the Project block module can render
         // the -1 scope banner strip with the shared level-cell cells.
         return _fsBuildStepLevelStrip(dictContext, iIndex);
     }
@@ -177,7 +182,7 @@ var VaibifyStepRenderer = (function () {
             (bInteractive ? " interactive" : "") +
             '" data-index="' + iIndex + '" draggable="true">' +
             '<input type="checkbox" class="step-checkbox" ' +
-            'title="Include this step when running the workflow"' +
+            'title="Include this step when running the project"' +
             (bRunEnabled ? " checked" : "") + ">" +
             _fsBuildStepStatusCell(sRunStatus) +
             '<span class="step-number">' +
@@ -221,6 +226,19 @@ var VaibifyStepRenderer = (function () {
                 ' data-step="' + iIndex + '"' +
                 (step.bPlotOnly !== false ? " checked" : "") + '>' +
                 ' Plot only (skip data analysis)</label></div>';
+            sHtml += '<div class="detail-label plot-only-row">' +
+                '<label class="plot-only-toggle" title="Optional: the' +
+                ' number of seconds this step is expected to run.' +
+                ' If it runs longer, the run light turns red as a' +
+                ' possibly-hung warning — the run is never stopped.' +
+                ' Blank or 0 means no limit (inherits the project' +
+                ' default under Settings).">' +
+                'Expected runtime (s), 0 = no limit ' +
+                '<input type="number" min="0" step="1"' +
+                ' class="step-budget-input"' +
+                ' data-step="' + iIndex + '"' +
+                ' value="' + (step.fWallClockBudgetSeconds || "") +
+                '"></label></div>';
         }
 
         if (bInteractive) {
@@ -238,6 +256,10 @@ var VaibifyStepRenderer = (function () {
                 'human judgment. It will run in the terminal ' +
                 'with X11 display forwarding.</div></div>';
         }
+
+        sHtml += fsRenderInputDataSection(
+            step, iIndex, dictVars, dictContext
+        );
 
         sHtml += fsRenderTrackedFileSection(
             "Scripts", "saStepScripts",
@@ -269,12 +291,12 @@ var VaibifyStepRenderer = (function () {
         }
 
         sHtml += fsRenderSectionLabel(
-            "Data Files", iIndex, "saDataFiles"
+            "Output Data", iIndex, "saOutputDataFiles"
         );
-        if (step.saDataFiles) {
-            step.saDataFiles.forEach(function (sFile, iFileIdx) {
+        if (step.saOutputDataFiles) {
+            step.saOutputDataFiles.forEach(function (sFile, iFileIdx) {
                 sHtml += fsRenderDetailItem(
-                    sFile, dictVars, "output", "saDataFiles",
+                    sFile, dictVars, "output", "saOutputDataFiles",
                     iIndex, iFileIdx, sResolvedDir, dictContext
                 );
             });
@@ -511,7 +533,117 @@ var VaibifyStepRenderer = (function () {
         }
         sHtml += fsRenderTestSourceMtimeLine(
             iIndex, sCategory, dictContext);
+        if (sCategory === "quantitative") {
+            sHtml += fsRenderFalsificationBlock(iIndex, dictContext);
+        }
         sHtml += '</div>';
+        return sHtml;
+    }
+
+    /* --- Falsification attestation (non-gating) ---
+       Renders the mutation-testing row inside the Quantitative
+       Tests block. Honesty rules: "not applicable" is grey, never
+       green; a recorded kill-rate states the tests' fault-detection
+       sensitivity, never the result's accuracy; a digest-stale
+       record renders stale, not fresh. */
+
+    function _fsFalsificationRow(sBadgeState, sBadgeLabel) {
+        return '<div class="sub-test-row">' +
+            '<span class="verification-label">Falsification</span>' +
+            '<span class="verification-badge state-' + sBadgeState +
+            '">' + fnEscapeHtml(sBadgeLabel) + '</span></div>';
+    }
+
+    function _fsFalsificationNote(sText) {
+        return '<div class="detail-note">' +
+            fnEscapeHtml(sText) + '</div>';
+    }
+
+    function _fsFalsificationRunButton(iIndex, sLabel) {
+        return '<div><button class="btn btn-run-falsification" ' +
+            'data-step="' + iIndex + '">' + fnEscapeHtml(sLabel) +
+            '</button></div>';
+    }
+
+    function fsRenderFalsificationBlock(iIndex, dictContext) {
+        var dictState = dictContext.fdictGetFalsificationState ?
+            dictContext.fdictGetFalsificationState(iIndex) : null;
+        var sHtml = '<div class="falsification-block">';
+        if (!dictState) {
+            sHtml += _fsFalsificationRow("untested", "not checked");
+        } else if (dictState.dictInFlight) {
+            sHtml += _fsFalsificationRow(
+                "stale", "running…");
+            sHtml += _fsFalsificationNote(
+                "Mutation testing in progress: injecting faults " +
+                "and re-running the step per mutant.");
+        } else if (!dictState.dictApplicability ||
+                   !dictState.dictApplicability.bApplicable) {
+            sHtml += _fsFalsificationRow("untested", "not applicable");
+            sHtml += _fsFalsificationNote(
+                (dictState.dictApplicability || {}).sReason ||
+                "This step cannot be mutation-tested.");
+        } else {
+            sHtml += _fsRenderFalsificationVerdict(
+                iIndex, dictState);
+        }
+        sHtml += '</div>';
+        return sHtml;
+    }
+
+    function _fsRenderFalsificationVerdict(iIndex, dictState) {
+        var dictRecord = dictState.dictRecord;
+        if (!dictRecord) {
+            return _fsFalsificationRow("untested", "not run") +
+                _fsFalsificationNote(
+                    "Would these tests notice if this step's code " +
+                    "broke? Mutation testing answers by injecting " +
+                    "deliberate faults.") +
+                _fsFalsificationRunButton(iIndex, "Check test teeth");
+        }
+        if (dictRecord.sStatus === "error") {
+            return _fsFalsificationRow("failed", "error") +
+                _fsFalsificationNote(dictRecord.sReason ||
+                    "The mutation run failed.") +
+                _fsFalsificationRunButton(iIndex, "Retry");
+        }
+        if (!dictState.bRecordCurrent) {
+            return _fsFalsificationRow("stale", "stale") +
+                _fsFalsificationNote(
+                    "The step's code or standards changed since " +
+                    "this kill-rate was recorded.") +
+                _fsFalsificationRunButton(iIndex, "Re-check test teeth");
+        }
+        return _fsRenderFalsificationKillRate(iIndex, dictRecord);
+    }
+
+    function _fsRenderFalsificationKillRate(iIndex, dictRecord) {
+        var iPercent = Math.round((dictRecord.fKillRate || 0) * 100);
+        var sHtml = _fsFalsificationRow(
+            "passed", iPercent + "% killed");
+        sHtml += _fsFalsificationNote(
+            dictRecord.iMutantsKilled + " of " +
+            dictRecord.iMutantsTotal + " injected faults were " +
+            "detected by the quantitative tests (" +
+            dictRecord.iMutantsSurvived + " survived). This " +
+            "measures the tests' fault-detection sensitivity, not " +
+            "the result's accuracy; surviving mutants may be " +
+            "equivalent (no observable effect).");
+        var listSurvivors = dictRecord.listSurvivors || [];
+        for (var i = 0; i < listSurvivors.length && i < 5; i++) {
+            sHtml += _fsFalsificationNote(
+                "survivor: " + listSurvivors[i].sModulePath + ":" +
+                listSurvivors[i].iLine + " (" +
+                listSurvivors[i].sOperator + ")");
+        }
+        if (listSurvivors.length > 5) {
+            sHtml += _fsFalsificationNote(
+                "… and " + (listSurvivors.length - 5) +
+                " more survivors (see the record in " +
+                ".vaibify/falsification/).");
+        }
+        sHtml += _fsFalsificationRunButton(
+            iIndex, "Re-check test teeth");
         return sHtml;
     }
 
@@ -722,7 +854,7 @@ var VaibifyStepRenderer = (function () {
         )[String(iIndex)];
         if (!sMtime) return "";
         return '<div class="run-stats"><span class="run-stat">' +
-            'Data files last modified: ' +
+            'Output data last modified: ' +
             fsFormatUnixTimestamp(sMtime) +
             '</span></div>';
     }
@@ -839,6 +971,54 @@ var VaibifyStepRenderer = (function () {
             dictTriple, aRemoteKeys);
     }
 
+    /* Input Data: raw files a step consumes that no step produces.
+       Entries are repo-relative, so rows resolve against the project
+       repo root, never the step directory. The section renders even
+       when empty so the + button and the explicit "No input data
+       needed" declaration are always reachable — an undeclared step
+       (no files listed, box unchecked) cannot reach AICS Level 1. */
+    function fsRenderInputDataSection(
+        step, iIndex, dictVars, dictContext
+    ) {
+        var sHtml = fsRenderSectionLabel(
+            "Input Data", iIndex, "saInputDataFiles"
+        );
+        var listInputs = step.saInputDataFiles || [];
+        listInputs.forEach(function (sFile, iFileIdx) {
+            sHtml += fsRenderTrackedFileItem(
+                sFile, dictVars, "saInputDataFiles", iIndex,
+                iFileIdx, dictContext.sProjectRepoPath || "",
+                dictContext
+            );
+        });
+        if (listInputs.length === 0) {
+            sHtml += fsRenderNoInputDataRow(step, iIndex);
+        }
+        return sHtml;
+    }
+
+    function fsRenderNoInputDataRow(step, iIndex) {
+        var bDeclaredNone = step.bNoInputData === true;
+        var sHtml = '<div class="detail-label plot-only-row">' +
+            '<label class="plot-only-toggle" title="Check to declare' +
+            ' explicitly that this step consumes no raw input data.' +
+            ' A step reaches Level 1 only when it lists input files' +
+            ' or carries this declaration.">' +
+            '<input type="checkbox" class="no-input-data-checkbox"' +
+            ' data-step="' + iIndex + '"' +
+            (bDeclaredNone ? " checked" : "") + '>' +
+            ' No input data needed</label></div>';
+        if (!bDeclaredNone) {
+            sHtml += '<div class="detail-note input-undeclared-note">' +
+                '<span class="input-undeclared-glyph" ' +
+                'title="This step cannot reach Level 1 until its ' +
+                'input contract is declared">⚠</span> ' +
+                'Input data undeclared &mdash; list the raw files this ' +
+                'step reads, or check the box above.</div>';
+        }
+        return sHtml;
+    }
+
     function fsRenderTrackedFileSection(
         sLabel, sArrayKey, listFiles, iStepIdx, dictVars,
         sWorkdir, dictContext
@@ -894,7 +1074,7 @@ var VaibifyStepRenderer = (function () {
             );
         }
         if (sType === "output" && !bInvalid &&
-            (sArrayKey === "saDataFiles" ||
+            (sArrayKey === "saOutputDataFiles" ||
                 sArrayKey === "saPlotFiles") &&
             dictContext.fbFileIsL1Offending &&
             dictContext.fbFileIsL1Offending(iStepIdx, sRaw)) {
@@ -907,7 +1087,7 @@ var VaibifyStepRenderer = (function () {
                 : dictContext.fsBuildL1FailureGlyph(sFileHint);
         }
         if ((sArrayKey === "saPlotFiles" ||
-            sArrayKey === "saDataFiles") && !bInvalid) {
+            sArrayKey === "saOutputDataFiles") && !bInvalid) {
             sHtml += _fsBuildTrackedFileBadgeRow(
                 sResolved, sArrayKey, sWorkdir);
         }
@@ -957,7 +1137,7 @@ var VaibifyStepRenderer = (function () {
                 '<span class="discovered-file">[+] ' +
                 fnEscapeHtml(sFile) + '</span>' +
                 '<button class="btn-discovered" ' +
-                'data-target="saDataFiles">Add as data</button>' +
+                'data-target="saOutputDataFiles">Add as data</button>' +
                 '<button class="btn-discovered" ' +
                 'data-target="saPlotFiles">Add as plot</button>' +
                 '</div>';
@@ -966,7 +1146,7 @@ var VaibifyStepRenderer = (function () {
             sHtml += '<div class="discovered-summary">' +
                 'Showing ' + listDiscovered.length + ' of ' + iTotal +
                 '. To see them all, raise iDiscoveryMaxDepth on this ' +
-                'step or add a glob to saDataFiles / saPlotFiles.' +
+                'step or add a glob to saOutputDataFiles / saPlotFiles.' +
                 '</div>';
         }
         return sHtml;

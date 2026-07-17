@@ -302,7 +302,7 @@ def test_fdictClassifyError_unknown():
 def test_flistCollectOutputFiles_combines_data_and_plot():
     dictWorkflow = {
         "listSteps": [{
-            "saDataFiles": ["data.npy"],
+            "saOutputDataFiles": ["data.npy"],
             "saPlotFiles": ["plot.pdf"],
         }]
     }
@@ -322,7 +322,7 @@ def test_flistCollectOutputFiles_empty_workflow():
 def _fdictArchivalStep():
     return {
         "sDirectory": "step1",
-        "saDataFiles": ["data.h5"],
+        "saOutputDataFiles": ["data.h5"],
         "saPlotFiles": [],
         "saDataCommands": ["python run.py"],
         "saTestCommands": ["pytest tests/test_run.py"],

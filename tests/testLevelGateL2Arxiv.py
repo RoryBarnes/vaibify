@@ -2,21 +2,24 @@
 
 Stage 4 extends ``flistLevel2Blockers`` with one per-step criterion
 (``figure-not-frozen``) projecting the Overleaf push manifest onto each
-step's declared plot paths, and three workflow-scope criteria
-(``arxiv-not-submitted`` / ``arxiv-mismatch`` / ``arxiv-version-stale``)
-covering arXiv-submission state. The boolean L2 gate gains the
-``fbWorkflowFullySyncedWithArxiv`` conjunct, which is suppressed
-entirely when the workflow has no Overleaf binding — data-only
-workflows reach L2 without a manuscript.
+step's declared plot paths, and two workflow-scope criteria
+(``arxiv-mismatch`` / ``arxiv-version-stale``) covering
+arXiv-submission state. The boolean L2 gate gains the
+``fbWorkflowFullySyncedWithArxiv`` conjunct, which is opt-in: it is
+suppressed entirely when the workflow records no arXiv submission —
+posting to arXiv happens outside vaibify on its own timeline, so an
+untracked manuscript must not block publication of the code and data.
 
 These tests pin the contract: a workflow with Overleaf but no arXiv ID
-fires ``arxiv-not-submitted``; matching Overleaf push and arXiv hashes
-clear ``arxiv-mismatch``; an unfrozen plot fires ``figure-not-frozen``
-on its owning step; a workflow without an Overleaf binding stays L2
-without any arXiv-related blockers; and a stale recorded version fires
-``arxiv-version-stale``.
+emits no arXiv blocker and passes the gate; matching Overleaf push and
+arXiv hashes clear ``arxiv-mismatch``; a recorded arXiv ID with no
+Overleaf push fails honestly; an unfrozen plot fires
+``figure-not-frozen`` on its owning step; a workflow without an
+Overleaf binding stays L2 without any arXiv-related blockers; and a
+stale recorded version fires ``arxiv-version-stale``.
 """
 
+import hashlib
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -53,6 +56,22 @@ def _fnWriteSyncStatusFile(sProjectRepo, dictPerService):
         json.dump(dictPerService, fileHandle)
 
 
+_BA_FIGURE_CONTENT = b"%PDF-1.4 canonical figure bytes\n"
+S_FIGURE_SHA = hashlib.sha256(_BA_FIGURE_CONTENT).hexdigest()
+
+
+def _fnWriteFigureFile(sProjectRepo, sRelPath="A/plot.pdf"):
+    """Create a real figure file; live hashing needs actual bytes.
+
+    The gate's expected side is the figure's current local content
+    (the L3 manifest plays no role at L2).
+    """
+    sAbsolute = os.path.join(sProjectRepo, sRelPath)
+    os.makedirs(os.path.dirname(sAbsolute), exist_ok=True)
+    with open(sAbsolute, "wb") as fileHandle:
+        fileHandle.write(_BA_FIGURE_CONTENT)
+
+
 def _fdictFreshGithubCache():
     """Return a fresh, fully-matching github cache entry."""
     return {
@@ -86,8 +105,9 @@ def _fdictGreenStep(sName="A"):
     """Return a step dict that satisfies every L1 criterion."""
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [sName + "/data.csv"],
+        "saOutputDataFiles": [sName + "/data.csv"],
         "saPlotFiles": [sName + "/plot.pdf"],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",
@@ -133,27 +153,60 @@ def _fdictWorkflowWithOverleaf(sCommit="commitabc", dictArxiv=None):
 
 
 # ----------------------------------------------------------------------
-# arxiv-not-submitted (workflow-scope)
+# Unrecorded arXiv submission is neutral (opt-in claim)
 # ----------------------------------------------------------------------
 
 
-def testWorkflowWithOverleafBindingButNoArxivIdEmitsBlocker(tmp_path):
-    """Overleaf binding + missing arXiv ID -> ``arxiv-not-submitted``."""
+def testOverleafBindingWithoutArxivIdEmitsNoBlockerAndPassesGate(tmp_path):
+    """An Overleaf binding alone must not drag in the arXiv criteria.
+
+    Recording an arXiv ID is an opt-in claim; a bound manuscript whose
+    e-print has not been posted (or is deliberately untracked) emits
+    no arXiv blocker and leaves the L2 gate closeable.
+    """
     sProjectRepo = str(tmp_path)
     _fnWriteAllGreenSyncCache(sProjectRepo)
     dictWorkflow = _fdictWorkflowWithOverleaf(dictArxiv={})
     listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
     listMatch = [
         d for d in listBlockers
-        if d["sCriterion"] == "arxiv-not-submitted"
+        if d["sCriterion"].startswith("arxiv-")
     ]
-    assert len(listMatch) == 1
-    dictEntry = listMatch[0]
-    assert dictEntry["iLevel"] == 2
-    assert dictEntry["sScope"] == "workflow"
-    assert dictEntry["iStepIndex"] == -1
-    assert dictEntry["sStepLabel"] == "(workflow)"
-    assert dictEntry["sRemediationHint"]
+    assert listMatch == []
+    assert fbWorkflowFullySyncedWithArxiv(
+        dictWorkflow, sProjectRepo,
+    ) is True
+    assert _fbComputeLevel2(dictWorkflow, sProjectRepo) is True
+
+
+def testArxivIdWithoutOverleafPushFailsGateHonestly(tmp_path):
+    """A recorded arXiv ID with nothing pushed to Overleaf must fail.
+
+    The claim of correspondence cannot be demonstrated without a
+    pushed-figure list, so the gate stays open and ``arxiv-mismatch``
+    fires — a recorded connection is never vacuously satisfied.
+    """
+    sProjectRepo = str(tmp_path)
+    _fnWriteAllGreenSyncCache(sProjectRepo)
+    dictWorkflow = _fdictWorkflowWithOverleaf(
+        sCommit="",  # no Overleaf push recorded
+        dictArxiv={"sArxivId": "2401.00001", "sArxivVersion": "v1"},
+    )
+    with patch(
+        "vaibify.reproducibility.arxivClient.fsResolveLatestVersion",
+        return_value="v1",
+    ):
+        listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
+        bSynced = fbWorkflowFullySyncedWithArxiv(
+            dictWorkflow, sProjectRepo,
+        )
+    listMismatch = [
+        d for d in listBlockers
+        if d["sCriterion"] == "arxiv-mismatch"
+    ]
+    assert len(listMismatch) == 1
+    assert listMismatch[0]["sScope"] == "workflow"
+    assert bSynced is False
 
 
 # ----------------------------------------------------------------------
@@ -162,7 +215,79 @@ def testWorkflowWithOverleafBindingButNoArxivIdEmitsBlocker(tmp_path):
 
 
 def testArxivTarballHashesMatchOverleafPushClearsBlocker(tmp_path):
-    """When fetched arXiv hashes cover every pushed path, no mismatch."""
+    """Tarball hashes equal to the manifest's clear ``arxiv-mismatch``."""
+    sProjectRepo = str(tmp_path)
+    _fnWriteAllGreenSyncCache(sProjectRepo)
+    _fnWriteFigureFile(sProjectRepo)
+    overleafSync.fnRecordOverleafPushManifest(
+        sProjectRepo, "commitabc", ["A/plot.pdf"],
+    )
+    dictWorkflow = _fdictWorkflowWithOverleaf(
+        sCommit="commitabc",
+        dictArxiv={"sArxivId": "2401.00001", "sArxivVersion": "v1"},
+    )
+    with patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        return_value={"A/plot.pdf": S_FIGURE_SHA},
+    ), patch(
+        "vaibify.reproducibility.arxivClient.fsResolveLatestVersion",
+        return_value="v1",
+    ):
+        listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
+        bSynced = fbWorkflowFullySyncedWithArxiv(
+            dictWorkflow, sProjectRepo,
+        )
+    listMismatch = [
+        d for d in listBlockers
+        if d["sCriterion"] == "arxiv-mismatch"
+    ]
+    assert listMismatch == []
+    assert bSynced is True
+
+
+def testArxivTarballWithDifferentContentFiresMismatch(tmp_path):
+    """A same-named figure with drifted content must NOT close the gate.
+
+    Presence is not correspondence: the e-print carries ``A/plot.pdf``
+    but its hash differs from the manifest's pin, so ``arxiv-mismatch``
+    fires and the gate stays open.
+    """
+    sProjectRepo = str(tmp_path)
+    _fnWriteAllGreenSyncCache(sProjectRepo)
+    _fnWriteFigureFile(sProjectRepo)
+    overleafSync.fnRecordOverleafPushManifest(
+        sProjectRepo, "commitabc", ["A/plot.pdf"],
+    )
+    dictWorkflow = _fdictWorkflowWithOverleaf(
+        sCommit="commitabc",
+        dictArxiv={"sArxivId": "2401.00001", "sArxivVersion": "v1"},
+    )
+    with patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        return_value={"A/plot.pdf": "e" * 64},
+    ), patch(
+        "vaibify.reproducibility.arxivClient.fsResolveLatestVersion",
+        return_value="v1",
+    ):
+        listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
+        bSynced = fbWorkflowFullySyncedWithArxiv(
+            dictWorkflow, sProjectRepo,
+        )
+    listMismatch = [
+        d for d in listBlockers
+        if d["sCriterion"] == "arxiv-mismatch"
+    ]
+    assert len(listMismatch) == 1
+    assert bSynced is False
+
+
+def testArxivGateFailsWhenPushedFigureMissingLocally(tmp_path):
+    """A pushed figure absent from the working tree cannot demonstrate sync.
+
+    Live hashing has no expected value for a file that does not exist,
+    so the gate fails conservatively — even when the tarball reports a
+    hash for that name — instead of trusting name-level presence.
+    """
     sProjectRepo = str(tmp_path)
     _fnWriteAllGreenSyncCache(sProjectRepo)
     overleafSync.fnRecordOverleafPushManifest(
@@ -174,17 +299,15 @@ def testArxivTarballHashesMatchOverleafPushClearsBlocker(tmp_path):
     )
     with patch(
         "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
-        return_value={"A/plot.pdf": "deadbeef"},
+        return_value={"A/plot.pdf": S_FIGURE_SHA},
     ), patch(
         "vaibify.reproducibility.arxivClient.fsResolveLatestVersion",
         return_value="v1",
     ):
-        listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
-    listMismatch = [
-        d for d in listBlockers
-        if d["sCriterion"] == "arxiv-mismatch"
-    ]
-    assert listMismatch == []
+        bSynced = fbWorkflowFullySyncedWithArxiv(
+            dictWorkflow, sProjectRepo,
+        )
+    assert bSynced is False
 
 
 # ----------------------------------------------------------------------
@@ -206,7 +329,7 @@ def testFigureNotFrozenFiresForStepWithUnpushedPlot(tmp_path):
         _fdictGreenStep(sName="A"),
         {
             "sName": "B", "sDirectory": "Plot/A12",
-            "saDataFiles": [], "saPlotFiles": ["Plot/A12/foo.pdf"],
+            "saOutputDataFiles": [], "saPlotFiles": ["Plot/A12/foo.pdf"],
             "dictVerification": {
                 "sUser": "passed", "sUnitTest": "passed",
                 "sIntegrity": "passed", "sQualitative": "passed",
@@ -235,11 +358,12 @@ def testFigureNotFrozenFiresForStepWithUnpushedPlot(tmp_path):
 
 
 def testDataOnlyWorkflowReachesL2WithoutArxiv(tmp_path):
-    """Workflow with no Overleaf binding suppresses arXiv/figure criteria.
+    """A data-only workflow surfaces no manuscript criteria at all.
 
-    The four arXiv-and-Overleaf criteria are all suppressed when no
-    Overleaf binding is configured, so the boolean L2 gate closes on
-    GitHub + Zenodo + AI-declaration alone.
+    ``figure-not-frozen`` is suppressed without an Overleaf binding
+    and the arXiv criteria are suppressed without a recorded arXiv
+    submission, so the boolean L2 gate closes on GitHub + Zenodo +
+    AI-declaration alone.
     """
     sProjectRepo = str(tmp_path)
     _fnWriteAllGreenSyncCache(sProjectRepo)
@@ -261,8 +385,7 @@ def testDataOnlyWorkflowReachesL2WithoutArxiv(tmp_path):
     }
     listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)
     setArxivOrFigure = {
-        "arxiv-not-submitted", "arxiv-mismatch",
-        "arxiv-version-stale", "figure-not-frozen",
+        "arxiv-mismatch", "arxiv-version-stale", "figure-not-frozen",
     }
     listMatch = [
         d for d in listBlockers
@@ -281,9 +404,15 @@ def testDataOnlyWorkflowReachesL2WithoutArxiv(tmp_path):
 
 
 def testArxivVersionStaleFiresWhenNewerVersionAvailable(tmp_path):
-    """Recorded ``v1`` against arXiv's ``v2`` -> ``arxiv-version-stale``."""
+    """Recorded ``v1`` against arXiv's ``v2`` -> ``arxiv-version-stale``.
+
+    The hash comparison is satisfied (manifest and tarball agree) so
+    the version criterion is isolated: only ``arxiv-version-stale``
+    fires.
+    """
     sProjectRepo = str(tmp_path)
     _fnWriteAllGreenSyncCache(sProjectRepo)
+    _fnWriteFigureFile(sProjectRepo)
     overleafSync.fnRecordOverleafPushManifest(
         sProjectRepo, "commitabc", ["A/plot.pdf"],
     )
@@ -293,7 +422,7 @@ def testArxivVersionStaleFiresWhenNewerVersionAvailable(tmp_path):
     )
     with patch(
         "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
-        return_value={"A/plot.pdf": "deadbeef"},
+        return_value={"A/plot.pdf": S_FIGURE_SHA},
     ), patch(
         "vaibify.reproducibility.arxivClient.fsResolveLatestVersion",
         return_value="v2",
@@ -309,3 +438,8 @@ def testArxivVersionStaleFiresWhenNewerVersionAvailable(tmp_path):
     assert dictEntry["sScope"] == "workflow"
     assert dictEntry["iStepIndex"] == -1
     assert dictEntry["sRemediationHint"]
+    listMismatch = [
+        d for d in listBlockers
+        if d["sCriterion"] == "arxiv-mismatch"
+    ]
+    assert listMismatch == []

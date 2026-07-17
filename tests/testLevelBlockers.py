@@ -28,8 +28,9 @@ def _fdictAllGreenStep(sName="A"):
     """Return a step dict that satisfies every L1 criterion."""
     return {
         "sName": sName, "sDirectory": sName,
-        "saDataFiles": [sName + "/data.csv"],
+        "saOutputDataFiles": [sName + "/data.csv"],
         "saPlotFiles": [sName + "/plot.pdf"],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",
@@ -95,7 +96,7 @@ def test_flistLevel1Blockers_axis_not_green_offending_files():
 
 def test_flistLevel1Blockers_axis_not_green_handles_empty_files():
     dictStep = _fdictAllGreenStep()
-    dictStep["saDataFiles"] = []
+    dictStep["saOutputDataFiles"] = []
     dictStep["saPlotFiles"] = []
     dictStep["dictVerification"]["sQuantitative"] = "failed"
     listBlockers = flistLevel1Blockers(
@@ -466,12 +467,13 @@ def _fdictManifestFriendlyStep():
     """Return a step whose declared outputs resolve cleanly under
     ``sDirectory``. The shared ``_fdictAllGreenStep`` doubles the
     directory prefix at resolution time; this fixture matches the
-    production convention where ``saDataFiles`` entries are step-
+    production convention where ``saOutputDataFiles`` entries are step-
     directory-relative names (e.g. ``data.csv``), not repo-relative."""
     return {
         "sName": "stepOne", "sDirectory": "stepOne",
-        "saDataFiles": ["data.csv"],
+        "saOutputDataFiles": ["data.csv"],
         "saPlotFiles": ["plot.pdf"],
+        "bNoInputData": True,
         "dictVerification": {
             "sUser": "passed",
             "sUnitTest": "passed",
@@ -917,3 +919,80 @@ def testFileMarkKeysMirrorOffendingFilesForEveryEmitter():
         )
         for sMark in dictEntry["dictOffendingFileMarks"].values():
             assert sMark in ("stale", "failed", "missing")
+
+
+# ------------------------------------------------------------------------
+# input-data-undeclared
+# ------------------------------------------------------------------------
+
+
+def test_undeclared_input_data_blocks_level1():
+    """An otherwise all-green step without an input declaration is
+    not self-consistent: nothing distinguishes 'no raw inputs' from
+    'nobody looked'."""
+    dictStep = _fdictAllGreenStep()
+    del dictStep["bNoInputData"]
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert len(listBlockers) == 1
+    assert listBlockers[0]["sCriterion"] == "input-data-undeclared"
+    assert fbAtLeastLevel1(
+        _fdictWorkflowWithSteps([dictStep]), "/repo",
+    ) is False
+
+
+def test_listed_input_files_satisfy_the_declaration():
+    dictStep = _fdictAllGreenStep()
+    del dictStep["bNoInputData"]
+    dictStep["saInputDataFiles"] = ["data/observations.csv"]
+    assert flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    ) == []
+
+
+def test_no_input_data_flag_satisfies_the_declaration():
+    dictStep = _fdictAllGreenStep()
+    assert dictStep["bNoInputData"] is True
+    assert flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    ) == []
+
+
+def test_undeclared_beats_every_other_criterion():
+    """Priority: the declaration gap outranks freshness signals."""
+    dictStep = _fdictAllGreenStep()
+    del dictStep["bNoInputData"]
+    dictStep["dictVerification"]["bUpstreamModified"] = True
+    dictStep["dictVerification"]["sUnitTest"] = "failed"
+    dictStep["dictVerification"]["sUser"] = "untested"
+    listBlockers = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    )
+    assert listBlockers[0]["sCriterion"] == "input-data-undeclared"
+
+
+def test_ai_declaration_step_exempt_from_input_declaration():
+    dictStep = _fdictAllGreenStep()
+    del dictStep["bNoInputData"]
+    dictStep["sStepKind"] = "ai-declaration"
+    assert flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictStep]), {}, "/repo",
+    ) == []
+
+
+def test_declaration_toggle_busts_the_blocker_cache():
+    """Two workflows differing only in bNoInputData must not share a
+    cached blocker list — checking the box has to clear the blocker
+    on the very next evaluation."""
+    dictUndeclared = _fdictAllGreenStep()
+    del dictUndeclared["bNoInputData"]
+    listBefore = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictUndeclared]), {}, "/repo",
+    )
+    assert len(listBefore) == 1
+    dictDeclared = _fdictAllGreenStep()
+    listAfter = flistLevel1Blockers(
+        _fdictWorkflowWithSteps([dictDeclared]), {}, "/repo",
+    )
+    assert listAfter == []

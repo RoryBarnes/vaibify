@@ -67,6 +67,9 @@ S_TEST_MARKERS_RELATIVE = ".vaibify/test_markers"
 S_VAIBIFY_GITIGNORE_BODY = (
     "# Auto-managed by vaibify. Do not edit by hand.\n"
     "state.json\n"
+    # The pulled Overleaf manuscript is a read-only convenience copy
+    # for the in-container agent, never a canonical project artifact.
+    "manuscript/\n"
 )
 
 T_STATEFUL_STEP_FIELDS = (

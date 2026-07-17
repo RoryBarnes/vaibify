@@ -6,9 +6,13 @@ This module is the single source of truth for the AICS Level 3
 scheduler both delegate here so the verify logic is described once and
 covered by one set of tests.
 
-Verification compares the SHA-256 hash of every file recorded in
-``<sProjectRepo>/MANIFEST.sha256`` against the hash of the same path
-served by the remote mirror (GitHub, Overleaf, Zenodo). The result is
+Verification hashes the workflow's declared canonical files AS THEY
+EXIST at verify time and compares them against the hash of the same
+path served by the remote mirror (GitHub, Overleaf, Zenodo, arXiv).
+``MANIFEST.sha256`` plays no role here — the manifest is the L3
+reproducibility-envelope artifact (a published fingerprint file for
+third parties), while the L2 claim these verifies evidence is "the
+files I have right now match the published copies". The result is
 persisted to ``<sProjectRepo>/.vaibify/syncStatus.json`` keyed by
 service so the dashboard can show cached state without re-running the
 network round trip on every poll.
@@ -34,6 +38,7 @@ from vaibify.reproducibility import (
     githubMirror,
     manifestWriter,
     overleafMirror,
+    overleafSync,
     zenodoClient,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
@@ -43,9 +48,11 @@ __all__ = [
     "S_SYNC_STATUS_FILENAME",
     "S_MANIFEST_FILENAME",
     "ReverifyConfigError",
+    "fdictComputeLiveExpectedHashes",
     "fdictLoadManifestExpectedHashes",
     "fdictVerifyRemoteService",
     "fdictReadCachedSyncStatus",
+    "fnDeleteSyncStatus",
     "fnWriteSyncStatus",
     "fdictRunReverifyForWorkflow",
     "fnRunReverifyOnce",
@@ -106,7 +113,9 @@ def _fdictFetchHashesForService(
     if sService == "github":
         return _fdictFetchGithubHashes(dictConfig, listRelPaths)
     if sService == "overleaf":
-        return _fdictFetchOverleafHashes(dictConfig, listRelPaths)
+        return _fdictFetchOverleafHashes(
+            dictConfig, listRelPaths, filesRepo,
+        )
     if sService == "arxiv":
         return _fdictFetchArxivHashes(
             dictConfig, listRelPaths, filesRepo,
@@ -167,14 +176,37 @@ def _fdictFetchGithubHashes(dictConfig, listRelPaths):
     )
 
 
-def _fdictFetchOverleafHashes(dictConfig, listRelPaths):
-    """Fetch Overleaf hashes; require sProjectId."""
+def _fdictFetchOverleafHashes(dictConfig, listRelPaths, filesRepo):
+    """Fetch Overleaf hashes at the pushed remote paths, keyed by local path.
+
+    The push flattens each figure into ``<target-directory>/<basename>``
+    inside the Overleaf project, so the project clone must be hashed
+    at the remote paths the push manifest recorded — a lookup at the
+    local repo-relative path can never hit. The result is re-keyed to
+    local paths so the divergence comparator lines up with the
+    manifest's expected hashes.
+    """
     sProjectId = dictConfig.get("sProjectId") or ""
     if not sProjectId:
         raise ReverifyConfigError(
             "Remote not configured: configure overleaf in vaibify.yml"
         )
-    return overleafMirror.fdictFetchRemoteHashes(sProjectId, listRelPaths)
+    dictRemoteByLocal = overleafSync.fdictOverleafRemotePathsAt(
+        filesRepo, dictConfig.get("sLastPushCommit") or "",
+    )
+    listRemotePaths = [
+        dictRemoteByLocal.get(sLocal) or sLocal
+        for sLocal in listRelPaths
+    ]
+    dictRemoteHashes = overleafMirror.fdictFetchRemoteHashes(
+        sProjectId, listRemotePaths,
+    )
+    return {
+        sLocal: dictRemoteHashes.get(
+            dictRemoteByLocal.get(sLocal) or sLocal,
+        )
+        for sLocal in listRelPaths
+    }
 
 
 def _fdictFetchZenodoHashes(dictConfig, listRelPaths):
@@ -188,6 +220,80 @@ def _fdictFetchZenodoHashes(dictConfig, listRelPaths):
     return zenodoClient.fdictFetchRemoteHashes(
         sRecordId, listRelPaths=listRelPaths, sService=sService,
     )
+
+
+def fdictComputeLiveExpectedHashes(filesRepo, dictWorkflow):
+    """Hash the workflow's declared canonical files as they exist now.
+
+    The expected side of every L2 remote comparison. Computing it
+    from the working tree at verify time means no artifact can be
+    stale between the researcher and a verification — the claim and
+    the evidence are the same bytes. Declared paths that do not exist
+    locally are excluded (their remediation surface is L1's
+    outputs-missing criterion); an entirely empty result raises
+    :class:`ReverifyConfigError` so a verify can never record a
+    vacuous "0 of 0 matching".
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listPaths = manifestWriter.flistCollectCanonicalRepoPaths(
+        dictWorkflow,
+    )
+    dictEntries = filesRepo.fdictHashFiles(listPaths)
+    dictExpected = {
+        sPath: dictEntry.get("sSha256")
+        for sPath, dictEntry in dictEntries.items()
+        if isinstance(dictEntry, dict) and dictEntry.get("sSha256")
+    }
+    if not dictExpected:
+        raise ReverifyConfigError(
+            "No declared workflow outputs exist locally to compare "
+            "against the remote — run the workflow first"
+        )
+    return dictExpected
+
+
+_T_PUSHED_FIGURE_SCOPED_SERVICES = ("overleaf", "arxiv")
+
+
+def _fdictNarrowExpectedToPushedFigures(
+    dictExpected, dictWorkflow, filesRepo, sService,
+):
+    """Restrict expected hashes to the Overleaf-pushed figure list.
+
+    A manuscript remote (the Overleaf project or an arXiv e-print)
+    carries only the pushed figures, so comparing the full manifest
+    would report every data file and script as diverged. The Overleaf
+    push manifest is the same authority the L2 gate uses
+    (``levelGates._fbArxivTarballMatchesPushManifest``). Raises
+    :class:`ReverifyConfigError` when no push is recorded — without a
+    pushed-figure list there is no honest comparison set, and a
+    vacuous "0 of 0 matching" must not render as synced.
+    """
+    dictRemotes = dictWorkflow.get("dictRemotes") or {}
+    dictOverleaf = dictRemotes.get("overleaf") or {}
+    sCommit = dictOverleaf.get("sLastPushCommit") or ""
+    listPushed = overleafSync.flistOverleafPushedFiguresAt(
+        filesRepo, sCommit,
+    )
+    if not listPushed:
+        raise ReverifyConfigError(
+            "No Overleaf-pushed figures recorded — push manuscript "
+            f"figures to Overleaf before verifying against {sService}"
+        )
+    setPushed = set(listPushed)
+    dictNarrowed = {
+        sPath: sHash for sPath, sHash in dictExpected.items()
+        if sPath in setPushed
+    }
+    if not dictNarrowed:
+        raise ReverifyConfigError(
+            f"None of the {len(listPushed)} pushed figures are "
+            "among the workflow's declared outputs on disk — check "
+            "the step's saPlotFiles declarations. A verify with no "
+            'expected hashes would record a vacuous "0 of 0 '
+            'matching".'
+        )
+    return dictNarrowed
 
 
 def _flistBuildDivergenceList(dictExpected, dictActual):
@@ -215,9 +321,17 @@ def fdictVerifyRemoteService(
     """Compare manifest hashes to the remote and return a status dict.
 
     The returned dict matches the schema persisted to syncStatus.json
-    and returned by the verify route. Raises ``FileNotFoundError`` if
-    the manifest is missing and :class:`ReverifyConfigError` if the
-    workflow lacks remote configuration for ``sService``.
+    and returned by the verify route. Raises
+    :class:`ReverifyConfigError` if the workflow lacks remote
+    configuration for ``sService`` or no comparable local files
+    exist. The expected side is computed by hashing the workflow's
+    declared canonical files AS THEY EXIST NOW — the L2 claim is
+    "the files I have right now match the published copies", so it
+    never reads ``MANIFEST.sha256``, which is the L3 envelope
+    artifact and may legitimately lag the working tree. For the
+    manuscript services (``overleaf`` and ``arxiv``) the comparison
+    set narrows to the Overleaf-pushed figures — the only files a
+    manuscript remote can carry.
 
     Phase 2 extension: captures the per-service identifier the
     verification actually ran against (``sCommittedShaVerified`` for
@@ -226,8 +340,14 @@ def fdictVerifyRemoteService(
     drifted away from the last successful verification.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    dictExpected = fdictLoadManifestExpectedHashes(filesRepo)
     dictConfig = _fdictRequireServiceConfig(dictWorkflow, sService)
+    dictExpected = fdictComputeLiveExpectedHashes(
+        filesRepo, dictWorkflow,
+    )
+    if sService in _T_PUSHED_FIGURE_SCOPED_SERVICES:
+        dictExpected = _fdictNarrowExpectedToPushedFigures(
+            dictExpected, dictWorkflow, filesRepo, sService,
+        )
     listRelPaths = sorted(dictExpected.keys())
     dictActual = _fdictFetchHashesForService(
         sService, dictConfig, listRelPaths, filesRepo,
@@ -334,6 +454,25 @@ def fnWriteSyncStatus(filesRepo, dictStatus):
     with filesRepo.fnWithLock(sRelPath):
         dictAll = _fdictReadAllStatuses(filesRepo)
         dictAll[sService] = dictStatus
+        filesRepo.fnWriteJsonAtomic(sRelPath, dictAll)
+
+
+def fnDeleteSyncStatus(filesRepo, sService):
+    """Remove one service's entry from syncStatus.json atomically.
+
+    Called when a remote connection is removed from the workflow so
+    the dashboard cannot keep rendering a ghost verify result for a
+    connection that no longer exists. Holds the same write lock as
+    :func:`fnWriteSyncStatus` so a concurrent verify for another
+    service cannot be lost. A missing file or absent entry is a no-op.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sRelPath = _fsSyncStatusRelativePath()
+    with filesRepo.fnWithLock(sRelPath):
+        dictAll = _fdictReadAllStatuses(filesRepo)
+        if sService not in dictAll:
+            return
+        del dictAll[sService]
         filesRepo.fnWriteJsonAtomic(sRelPath, dictAll)
 
 

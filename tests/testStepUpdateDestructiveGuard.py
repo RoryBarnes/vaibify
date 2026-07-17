@@ -1,7 +1,7 @@
 """Tests for the destructive-edit guard on PUT /api/steps/{id}/{index}.
 
 update-step is agent-invokable but must refuse edits that empty
-``saTestCommands`` or ``saDataFiles`` unless the request explicitly
+``saTestCommands`` or ``saOutputDataFiles`` unless the request explicitly
 sets ``bConfirmDestructive=True``. Non-destructive updates remain
 unaffected so agent-driven content edits continue to work.
 """
@@ -12,13 +12,13 @@ from fastapi import HTTPException
 from vaibify.gui.routes.stepRoutes import _fnRequireDestructiveConfirm
 
 
-def _fdictWorkflowWithStep(saTestCommands=None, saDataFiles=None):
+def _fdictWorkflowWithStep(saTestCommands=None, saOutputDataFiles=None):
     return {
         "listSteps": [{
             "sName": "S",
             "sDirectory": "s",
             "saTestCommands": saTestCommands or [],
-            "saDataFiles": saDataFiles or [],
+            "saOutputDataFiles": saOutputDataFiles or [],
         }],
     }
 
@@ -37,14 +37,14 @@ def test_empty_test_commands_blocked_without_confirm():
 
 def test_empty_data_files_blocked_without_confirm():
     dictWorkflow = _fdictWorkflowWithStep(
-        saDataFiles=["data.csv"],
+        saOutputDataFiles=["data.csv"],
     )
     with pytest.raises(HTTPException) as excInfo:
         _fnRequireDestructiveConfirm(
-            dictWorkflow, 0, {"saDataFiles": []}, False,
+            dictWorkflow, 0, {"saOutputDataFiles": []}, False,
         )
     assert excInfo.value.status_code == 400
-    assert "saDataFiles" in excInfo.value.detail
+    assert "saOutputDataFiles" in excInfo.value.detail
 
 
 def test_confirm_flag_allows_emptying():
@@ -79,3 +79,40 @@ def test_emptying_already_empty_field_passes():
     _fnRequireDestructiveConfirm(
         dictWorkflow, 0, {"saTestCommands": []}, False,
     )
+
+
+def test_empty_input_data_files_blocked_without_confirm():
+    dictWorkflow = {
+        "listSteps": [{
+            "sName": "S",
+            "sDirectory": "s",
+            "saTestCommands": [],
+            "saOutputDataFiles": [],
+            "saInputDataFiles": ["data/raw.csv"],
+        }],
+    }
+    with pytest.raises(HTTPException) as excInfo:
+        _fnRequireDestructiveConfirm(
+            dictWorkflow, 0, {"saInputDataFiles": []}, False,
+        )
+    assert excInfo.value.status_code == 400
+    assert "saInputDataFiles" in excInfo.value.detail
+
+
+def test_step_update_request_accepts_input_declaration_fields():
+    """The Pydantic whitelist must not silently drop the new fields."""
+    from vaibify.gui.pipelineServer import StepUpdateRequest
+    requestUpdate = StepUpdateRequest(
+        saInputDataFiles=["data/raw.csv"],
+        bNoInputData=True,
+        listRemoteData=[{
+            "sPath": "data/raw.csv",
+            "sSourceUrl": "https://archive.example/query",
+            "sRetrievedUtc": "",
+            "sSha256": "",
+        }],
+    )
+    dictDump = requestUpdate.model_dump()
+    assert dictDump["saInputDataFiles"] == ["data/raw.csv"]
+    assert dictDump["bNoInputData"] is True
+    assert dictDump["listRemoteData"][0]["sPath"] == "data/raw.csv"

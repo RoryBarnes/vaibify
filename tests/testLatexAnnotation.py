@@ -53,7 +53,7 @@ class TestMatchFiguresToSteps:
                     "saPlotFiles": [
                         "Plot/CornerVariableSlope.pdf"
                     ],
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                 },
             ],
         }
@@ -74,7 +74,7 @@ class TestMatchFiguresToSteps:
                 {
                     "sName": "Step One",
                     "saPlotFiles": ["other.pdf"],
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                 },
             ],
         }
@@ -214,7 +214,7 @@ class TestAnnotateTexFile:
                 {
                     "sName": "Kepler FFD",
                     "saPlotFiles": ["Plot/corner.pdf"],
-                    "saDataFiles": [],
+                    "saOutputDataFiles": [],
                 },
             ],
         }

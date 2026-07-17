@@ -4,7 +4,7 @@ const PipeleyenStepEditor = (function () {
     "use strict";
 
     var _I_STEP_COUNT_MAX = 500;
-    var _S_HUNDRED_STEP_WARN_HTML = "Your workflow has reached 100 steps. Workflows this large take noticeably longer to verify and reproduce; consider whether some steps can be combined or moved to a sibling workflow in the same project repo.";
+    var _S_HUNDRED_STEP_WARN_HTML = "Your project has reached 100 steps. Projects this large take noticeably longer to verify and reproduce; consider whether some steps can be combined or moved to a sibling project in the same repository.";
 
     let sMode = "create";  /* "create", "edit", or "insert" */
     let iEditIndex = -1;
@@ -47,8 +47,8 @@ const PipeleyenStepEditor = (function () {
             dictStep.bPlotOnly !== false;
         document.getElementById("inputSetupCommands").value =
             (dictStep.saDataCommands || []).join("\n");
-        document.getElementById("inputDataFiles").value =
-            (dictStep.saDataFiles || []).join("\n");
+        document.getElementById("inputOutputDataFiles").value =
+            (dictStep.saOutputDataFiles || []).join("\n");
         document.getElementById("inputTestCommands").value =
             (dictStep.saTestCommands || []).join("\n");
         document.getElementById("inputCommands").value =
@@ -67,7 +67,7 @@ const PipeleyenStepEditor = (function () {
         document.getElementById("inputInteractive").checked = false;
         document.getElementById("inputPlotOnly").checked = true;
         document.getElementById("inputSetupCommands").value = "";
-        document.getElementById("inputDataFiles").value = "";
+        document.getElementById("inputOutputDataFiles").value = "";
         document.getElementById("inputTestCommands").value = "";
         document.getElementById("inputCommands").value = "";
         document.getElementById("inputOutputFiles").value = "";
@@ -113,7 +113,7 @@ const PipeleyenStepEditor = (function () {
             saDataCommands: flistParseTextarea(
                 "inputSetupCommands"
             ),
-            saDataFiles: flistParseTextarea("inputDataFiles"),
+            saOutputDataFiles: flistParseTextarea("inputOutputDataFiles"),
             saTestCommands: flistParseTextarea("inputTestCommands"),
             saPlotCommands: flistParseTextarea("inputCommands"),
             saPlotFiles: flistParseTextarea("inputOutputFiles"),
@@ -162,7 +162,7 @@ const PipeleyenStepEditor = (function () {
                 if ((dictWorkflow.listSteps || []).length >= _I_STEP_COUNT_MAX) {
                     PipeleyenModals.fnShowInfoModal(
                         "Step limit reached",
-                        "Vaibify workflows are capped at 500 steps. Remove or combine steps before adding another.");
+                        "Vaibify projects are capped at 500 steps. Remove or combine steps before adding another.");
                     return;
                 }
                 const response = await fetch(
@@ -182,7 +182,7 @@ const PipeleyenStepEditor = (function () {
                     const result = await response.json();
                     if (result.bShouldWarnHundredSteps) {
                         PipeleyenModals.fnShowInfoModal(
-                            "Workflow milestone", _S_HUNDRED_STEP_WARN_HTML);
+                            "Project milestone", _S_HUNDRED_STEP_WARN_HTML);
                     }
                     dictWorkflow.listSteps = result.listSteps;
                     PipeleyenApp.fnShowToast(
@@ -196,7 +196,7 @@ const PipeleyenStepEditor = (function () {
                 if ((dictWorkflow.listSteps || []).length >= _I_STEP_COUNT_MAX) {
                     PipeleyenModals.fnShowInfoModal(
                         "Step limit reached",
-                        "Vaibify workflows are capped at 500 steps. Remove or combine steps before adding another.");
+                        "Vaibify projects are capped at 500 steps. Remove or combine steps before adding another.");
                     return;
                 }
                 const response = await fetch(
@@ -215,7 +215,7 @@ const PipeleyenStepEditor = (function () {
                     const result = await response.json();
                     if (result.bShouldWarnHundredSteps) {
                         PipeleyenModals.fnShowInfoModal(
-                            "Workflow milestone", _S_HUNDRED_STEP_WARN_HTML);
+                            "Project milestone", _S_HUNDRED_STEP_WARN_HTML);
                     }
                     dictWorkflow.listSteps.push(result.dictStep);
                     PipeleyenApp.fnShowToast(

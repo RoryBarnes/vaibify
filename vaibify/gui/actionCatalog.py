@@ -65,20 +65,32 @@ def fnAgentAction(sName):
 
 LIST_AGENT_ACTIONS = [
     # ---- Execution (WebSocket except kill + acknowledge) ----
+    # Remote-data gate (all run actions): a run covering a step whose
+    # listRemoteData files already exist on disk is answered with
+    # runRefused sReason=remoteDataOverwrite. Relay the question to
+    # the researcher; only after their yes re-issue with
+    # --confirm-remote-overwrite (bConfirmRemoteOverwrite=true).
     {"sName": "run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step in the active workflow in order."},
+     "sDescription": "Run every step in the active workflow in order. "
+                     "Refused with sReason=remoteDataOverwrite when a "
+                     "covered step would re-pull remote data over the "
+                     "canonical copy — ask the researcher, then retry "
+                     "with --confirm-remote-overwrite."},
     {"sName": "force-run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "forceRunAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step unconditionally, ignoring cache."},
+     "sDescription": "Run every step unconditionally, ignoring cache. "
+                     "Subject to the same remote-data overwrite gate "
+                     "as run-all."},
     {"sName": "run-from-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runFrom",
      "bAgentSafe": True,
      "sDescription": "Run from the given step to the end. "
                      "Args: {iStartStep: int} or {sStartStepLabel: 'A09'}. "
-                     "CLI accepts labels directly: run-from-step A09."},
+                     "CLI accepts labels directly: run-from-step A09. "
+                     "Subject to the remote-data overwrite gate."},
     {"sName": "run-selected-steps", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
@@ -86,12 +98,14 @@ LIST_AGENT_ACTIONS = [
                      "Args: {listStepIndices: [int, ...]} or "
                      "{listStepLabels: ['A09', ...]}; both may be combined. "
                      "CLI accepts labels as positionals: "
-                     "run-selected-steps A09 A10 A11."},
+                     "run-selected-steps A09 A10 A11. "
+                     "Subject to the remote-data overwrite gate."},
     {"sName": "run-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
      "sDescription": "Run a single step by label (A09 / I01) or 0-based "
-                     "index. Alias for run-selected-steps with one entry."},
+                     "index. Alias for run-selected-steps with one entry. "
+                     "Subject to the remote-data overwrite gate."},
     {"sName": "run-data-only", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runSelected",
      "bAgentSafe": True,
@@ -185,9 +199,29 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Edit properties of an existing step. "
                      "Args: a partial step object. Edits that would "
-                     "empty saTestCommands or saDataFiles on a step "
-                     "that currently has them require an explicit "
-                     "bConfirmDestructive=true flag in the body."},
+                     "empty saTestCommands, saOutputDataFiles, or "
+                     "saInputDataFiles on a step that currently has "
+                     "them require an explicit bConfirmDestructive="
+                     "true flag in the body. Removing one input file "
+                     "goes through this action (send the remaining "
+                     "saInputDataFiles list)."},
+    {"sName": "add-input-data-file", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/input-data",
+     "bAgentSafe": True,
+     "sDescription": "Declare one raw input data file on a step "
+                     "(shown in its Input Data block and watched for "
+                     "modification). Args: {sPath} repo-relative; "
+                     "step products are rejected — those stay "
+                     "{StepNN.*} tokens in commands."},
+    {"sName": "declare-no-input-data", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/declare-no-input-data",
+     "bAgentSafe": True,
+     "sDescription": "Set bNoInputData=true on every step that has "
+                     "no input files listed and no declaration yet. "
+                     "A step reaches Level 1 only when it lists "
+                     "inputs or carries this declaration."},
     {"sName": "delete-step", "sCategory": "workflow",
      "sMethod": "DELETE",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}",
@@ -264,9 +298,16 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/push",
      "bAgentSafe": True,
-     "sDescription": "Push committed changes to GitHub. The route "
-                     "verifies the token owner matches the remote "
-                     "before pushing."},
+     "sDescription": "Stage, commit, and push specific output files to "
+                     "the GitHub mirror (the Level-2 publication flow). "
+                     "REQUIRES a listFilePaths body field — pass it as a "
+                     "JSON list, e.g. "
+                     "listFilePaths='[\"Step/out.csv\",\"Plot/fig.pdf\"]'; "
+                     "optional sCommitMessage, sTargetDirectory. Verifies "
+                     "the token owner matches the remote before pushing. "
+                     "This is NOT a general 'git push' of existing "
+                     "commits — to push code/commits, push the branch "
+                     "directly."},
     {"sName": "add-file-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/add-file",
@@ -292,6 +333,14 @@ LIST_AGENT_ACTIONS = [
      "bAgentSafe": True,
      "sDescription": "Fetch the current Overleaf project state into "
                      "the local mirror. Read-side."},
+    {"sName": "pull-manuscript", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/overleaf/{sContainerId}/pull-manuscript",
+     "bAgentSafe": True,
+     "sDescription": "Pull the Overleaf manuscript sources (.tex/"
+                     ".bib/.bbl) into <repo>/.vaibify/manuscript/ "
+                     "for in-container reading (the read-manuscript "
+                     "skill). Read-side: never dirties the repo."},
     {"sName": "delete-overleaf-mirror", "sCategory": "sync",
      "sMethod": "DELETE",
      "sPath": "/api/overleaf/{sContainerId}/mirror",
@@ -343,6 +392,19 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Recompute SHA-256 hashes for every file in "
                      "MANIFEST.sha256 and report mismatches. Returns "
                      "iTotal, iMatching, listMismatches."},
+    {"sName": "resolve-commands", "sCategory": "workflow",
+     "sMethod": "GET",
+     "sPath": "/api/steps/{sContainerId}/resolve-commands",
+     "bAgentSafe": True,
+     "sDescription": "Dry-run the workflow (the graph's `make -n`): "
+                     "substitute every step command against the live "
+                     "workflow WITHOUT running anything. Returns per "
+                     "command the original text, the fully resolved "
+                     "text, and any residual cross-step tokens that "
+                     "failed to resolve, plus listWarnings from "
+                     "reference validation (including the deprecation "
+                     "nudge for the positional {StepNN.stem} form). Use "
+                     "this to verify a rewire before running a step."},
     # ---- AICS ladder readiness ----
     {"sName": "check-l2-readiness", "sCategory": "verification",
      "sMethod": "GET",
@@ -503,6 +565,29 @@ LIST_AGENT_ACTIONS = [
                      "the bAcceptBlasVariance waiver passes the L3 "
                      "determinism gate and must remain a researcher "
                      "decision."},
+    {"sName": "run-falsification", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",
+     "bAgentSafe": True,
+     "sDescription": "Mutation-test a deterministic Python step's "
+                     "code against its quantitative tests "
+                     "(cosmic-ray) and record the kill-rate as a "
+                     "non-gating falsification attestation. "
+                     "Expensive: cost is mutants times step runtime, "
+                     "bounded by a 300s per-mutant timeout. Measures "
+                     "the tests' fault-detection sensitivity, never "
+                     "the result's accuracy. 409 when the step is "
+                     "not applicable (non-Python or non-deterministic)."},
+    {"sName": "view-falsification-attestation",
+     "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/falsification",
+     "bAgentSafe": True,
+     "sDescription": "Return the step's falsification attestation: "
+                     "live applicability, the persisted kill-rate "
+                     "record, digest-keyed staleness, and any "
+                     "in-flight run status. Read-only; never runs "
+                     "mutation testing."},
     {"sName": "capture-binary-environment", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/binaries/capture",

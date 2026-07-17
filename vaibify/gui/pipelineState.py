@@ -19,6 +19,7 @@ __all__ = [
     "fdictBuildInteractivePauseState",
     "fdictBuildHeartbeatUpdate",
     "fbHeartbeatIsStale",
+    "fdictActiveStepBudgetStatus",
     "fnWriteState",
     "fnUpdateState",
     "fnRecordStepResult",
@@ -52,6 +53,14 @@ I_HEARTBEAT_INTERVAL_SECONDS = 5
 # the parallel badge/poll fan-out doesn't mass-kill healthy long runs.
 # A truly dead runner is still reconciled in under a minute.
 I_HEARTBEAT_STALE_SECONDS = 60
+# A reconcile reads and writes pipeline_state.json via one docker exec
+# each, under the per-container state lock. Those execs have no native
+# timeout, so a hung exec would hold the lock forever and deadlock ALL
+# future reconciliation for the container (the runner-death safety net
+# is exactly what would then never run). Bounding each exec releases
+# the lock and retries next cycle. A state file is tiny; 15s is
+# generous.
+_F_STATE_IO_TIMEOUT_SECONDS = 15.0
 # Sentinel exit code stamped by the poll-side reconciler when the
 # runner thread has vanished without writing a final state. Sits
 # outside the OS exit-code range (0-255) so callers can distinguish
@@ -84,12 +93,27 @@ def fdictBuildInitialState(sAction, sLogPath, iStepCount, iRunnerPid=0):
         "iRunnerPid": iRunnerPid,
         "sLastHeartbeat": datetime.now(timezone.utc).isoformat(),
         "sFailureReason": "",
+        "sActiveStepStartedIso": "",
+        "fActiveStepBudgetSeconds": 0.0,
     }
 
 
-def fdictBuildStepStarted(iStepNumber):
-    """Return a partial update dict for a step starting."""
-    return {"iActiveStep": iStepNumber}
+def fdictBuildStepStarted(iStepNumber, fWallClockBudgetSeconds=0.0):
+    """Return a partial update dict for a step starting.
+
+    ``fWallClockBudgetSeconds`` is the resolved per-step wall-clock
+    budget (0 = no budget). It is stamped alongside a fresh start
+    timestamp so the poll can compute over-budget status live without
+    re-reading the workflow. The heartbeat only proves the *runner* is
+    alive; the budget is what distinguishes a legitimately long step
+    from one that has silently stalled while the daemon heartbeat keeps
+    beating.
+    """
+    return {
+        "iActiveStep": iStepNumber,
+        "sActiveStepStartedIso": datetime.now(timezone.utc).isoformat(),
+        "fActiveStepBudgetSeconds": float(fWallClockBudgetSeconds or 0.0),
+    }
 
 
 def fdictBuildStepResult(iStepNumber, sStatus, iExitCode=0):
@@ -109,6 +133,8 @@ def fdictBuildCompletedState(iExitCode):
         "iActiveStep": -1,
         "iExitCode": iExitCode,
         "sEndTime": datetime.now(timezone.utc).isoformat(),
+        "sActiveStepStartedIso": "",
+        "fActiveStepBudgetSeconds": 0.0,
     }
 
 
@@ -119,6 +145,11 @@ def fdictBuildInteractivePauseState(iStepNumber, sStepName):
         "bInteractivePause": True,
         "iActiveStep": iStepNumber,
         "sActiveStepName": sStepName,
+        # An interactive step waits on a human, not on compute; clear
+        # any prior automatic step's budget stamp so a long human pause
+        # is never mislabelled "over budget".
+        "sActiveStepStartedIso": "",
+        "fActiveStepBudgetSeconds": 0.0,
     }
 
 
@@ -188,6 +219,53 @@ def fbHeartbeatIsStale(dictState, fNowEpoch=None):
     if fNowEpoch is None:
         fNowEpoch = datetime.now(timezone.utc).timestamp()
     return (fNowEpoch - dtBeat.timestamp()) > I_HEARTBEAT_STALE_SECONDS
+
+
+def fdictActiveStepBudgetStatus(dictState, fNowEpoch=None):
+    """Return the live over-budget status of the active step.
+
+    A step's *wall-clock budget* is a per-step (or workflow-default)
+    ceiling on how long the step may run before the dashboard flags it
+    as possibly hung. Unlike the heartbeat — which only proves the
+    runner process is alive — the budget makes a genuinely stalled step
+    distinguishable from a legitimately long one while the daemon
+    heartbeat keeps beating.
+
+    The result is advisory and NON-gating: an over-budget step is still
+    running, so ``bRunning`` is untouched and no failure is fabricated.
+    The flag only tells the researcher to look. It is computed fresh on
+    every poll from the stamped start time and never persisted as
+    terminal state, so the dashboard always reflects real elapsed time
+    (the dashboard-honesty contract).
+    """
+    fBudget = _ffCoerceStateBudget(dictState.get("fActiveStepBudgetSeconds"))
+    sStartedIso = dictState.get("sActiveStepStartedIso", "")
+    dictStatus = {
+        "bActiveStepOverBudget": False,
+        "fActiveStepBudgetSeconds": fBudget,
+        "fActiveStepElapsedSeconds": 0.0,
+    }
+    if not dictState.get("bRunning") or fBudget <= 0 or not sStartedIso:
+        return dictStatus
+    try:
+        dtStarted = datetime.fromisoformat(sStartedIso)
+    except (ValueError, TypeError):
+        return dictStatus
+    if fNowEpoch is None:
+        fNowEpoch = datetime.now(timezone.utc).timestamp()
+    fElapsed = max(0.0, fNowEpoch - dtStarted.timestamp())
+    dictStatus["fActiveStepElapsedSeconds"] = fElapsed
+    dictStatus["bActiveStepOverBudget"] = fElapsed > fBudget
+    return dictStatus
+
+
+def _ffCoerceStateBudget(value):
+    """Coerce a persisted budget field to a non-negative float."""
+    try:
+        fValue = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return fValue if fValue > 0 else 0.0
 
 
 def fdictReadState(connectionDocker, sContainerId):
@@ -328,9 +406,24 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
     _fnEnsureStateLockForContainer(dictCtx, sContainerId)
     lockState = dictCtx["dictPipelineStateLocks"][sContainerId]
     async with lockState:
-        dictState = await asyncio.to_thread(
-            fdictReadState, connectionDocker, sContainerId,
-        )
+        try:
+            dictState = await asyncio.wait_for(
+                asyncio.to_thread(
+                    fdictReadState, connectionDocker, sContainerId,
+                ),
+                timeout=_F_STATE_IO_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            # A hung state read must not hold the reconcile lock
+            # forever — that deadlocks every future reconciliation for
+            # this container, so a dead runner would stay bRunning=True
+            # indefinitely. Bail this cycle (lock released on return);
+            # the next poll retries.
+            _loggerState.warning(
+                "pipeline-state read timed out for container=%s; "
+                "skipping reconcile this cycle", sContainerId,
+            )
+            return None
         if dictState is None:
             return None
         if not dictState.get("bRunning"):
@@ -341,9 +434,23 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
         dictReconciled = _fdictReconcileStaleHeartbeat(
             dictState, fNow, dictIncident=dictIncident,
         )
-        await asyncio.to_thread(
-            fnWriteState, connectionDocker, sContainerId, dictReconciled,
-        )
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    fnWriteState, connectionDocker, sContainerId,
+                    dictReconciled,
+                ),
+                timeout=_F_STATE_IO_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            # The in-memory reconciliation is correct and returned to
+            # the caller; persistence retries next cycle rather than
+            # holding the lock on a hung write.
+            _loggerState.warning(
+                "pipeline-state write timed out for container=%s; "
+                "reconcile applied in memory, persist next cycle",
+                sContainerId,
+            )
         return dictReconciled
 
 

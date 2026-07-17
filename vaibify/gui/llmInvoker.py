@@ -310,7 +310,7 @@ def fsBuildPrompt(sDirectory, dictStep, sScriptContents, sPreviews):
         f"  {s}" for s in dictStep.get("saDataCommands", [])
     )
     sDataFiles = "\n".join(
-        f"  {s}" for s in dictStep.get("saDataFiles", [])
+        f"  {s}" for s in dictStep.get("saOutputDataFiles", [])
     )
     return _PROMPT_TEMPLATE.format(
         sDirectory=sDirectory,

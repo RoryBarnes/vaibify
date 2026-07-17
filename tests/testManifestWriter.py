@@ -30,14 +30,13 @@ def _fnWriteFile(pathRepo, sRelativePath, baContent):
 
 
 def _fdictWorkflowFromPaths(
-    saOutputFiles=None, saPlotFiles=None, saDataFiles=None,
+    saOutputDataFiles=None, saPlotFiles=None,
 ):
     """Build a single-step workflow dict that declares the given paths."""
     dictStep = {
         "sName": "OnlyStep",
-        "saOutputFiles": list(saOutputFiles or []),
         "saPlotFiles": list(saPlotFiles or []),
-        "saDataFiles": list(saDataFiles or []),
+        "saOutputDataFiles": list(saOutputDataFiles or []),
     }
     return {"listSteps": [dictStep]}
 
@@ -53,9 +52,8 @@ def test_roundtrip_three_files_verifies_clean(tmp_path):
     _fnWriteFile(tmp_path, "data/raw.dat", b"\x00\x01\x02\x03")
 
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["out/a.csv"],
+        saOutputDataFiles=["out/a.csv", "data/raw.dat"],
         saPlotFiles=["plots/figure.pdf"],
-        saDataFiles=["data/raw.dat"],
     )
 
     fnWriteManifest(str(tmp_path), dictWorkflow)
@@ -73,7 +71,7 @@ def test_roundtrip_three_files_verifies_clean(tmp_path):
 def test_byte_mutation_reports_actual_differs_from_expected(tmp_path):
     pathFile = _fnWriteFile(tmp_path, "out/a.csv", "alpha,beta\n1,2\n")
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["out/a.csv"],
+        saOutputDataFiles=["out/a.csv"],
     )
 
     fnWriteManifest(str(tmp_path), dictWorkflow)
@@ -96,7 +94,7 @@ def test_byte_mutation_reports_actual_differs_from_expected(tmp_path):
 def test_missing_file_reports_actual_none(tmp_path):
     pathFile = _fnWriteFile(tmp_path, "out/a.csv", "alpha\n")
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["out/a.csv"],
+        saOutputDataFiles=["out/a.csv"],
     )
 
     fnWriteManifest(str(tmp_path), dictWorkflow)
@@ -150,7 +148,7 @@ def test_in_root_symlink_hashes_target_under_symlink_path(tmp_path):
     pathLink.symlink_to(pathTarget)
 
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["out/linked.csv"],
+        saOutputDataFiles=["out/linked.csv"],
     )
 
     fnWriteManifest(str(tmp_path), dictWorkflow)
@@ -174,7 +172,7 @@ def test_crlf_vs_lf_produce_different_hashes(tmp_path):
     _fnWriteFile(pathLfRepo, "out/a.csv", b"a\nb\nc\n")
     _fnWriteFile(pathCrlfRepo, "out/a.csv", b"a\r\nb\r\nc\r\n")
 
-    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=["out/a.csv"])
 
     fnWriteManifest(str(pathLfRepo), dictWorkflow)
     fnWriteManifest(str(pathCrlfRepo), dictWorkflow)
@@ -197,7 +195,7 @@ def test_unicode_path_is_hashed_and_verified(tmp_path):
     sRelativePath = "data/résumé.csv"
     _fnWriteFile(tmp_path, sRelativePath, "name\nAda\n")
     dictWorkflow = _fdictWorkflowFromPaths(
-        saDataFiles=[sRelativePath],
+        saOutputDataFiles=[sRelativePath],
     )
 
     fnWriteManifest(str(tmp_path), dictWorkflow)
@@ -220,7 +218,7 @@ def test_large_file_hash_is_deterministic(tmp_path):
     baContent = os.urandom(10 * 1024 * 1024)
     _fnWriteFile(tmp_path, "data/big.bin", baContent)
     dictWorkflow = _fdictWorkflowFromPaths(
-        saDataFiles=["data/big.bin"],
+        saOutputDataFiles=["data/big.bin"],
     )
 
     fnWriteManifest(str(tmp_path), dictWorkflow)
@@ -272,15 +270,15 @@ def test_stable_ordering_byte_identical_writes(tmp_path):
         "listSteps": [
             {
                 "sName": "S1",
-                "saOutputFiles": ["z/last.csv", "a/first.csv"],
                 "saPlotFiles": [],
-                "saDataFiles": ["m/middle.csv"],
+                "saOutputDataFiles": [
+                    "z/last.csv", "a/first.csv", "m/middle.csv",
+                ],
             },
             {
                 "sName": "S2",
-                "saOutputFiles": [],
                 "saPlotFiles": ["a/first.csv"],
-                "saDataFiles": [],
+                "saOutputDataFiles": [],
             },
         ],
     }
@@ -314,7 +312,7 @@ def test_in_root_symlinked_parent_directory_hashes_target(tmp_path):
     (pathTargetDir / "a.csv").write_bytes(b"hello\n")
     pathParent = tmp_path / "out"
     pathParent.symlink_to(pathTargetDir, target_is_directory=True)
-    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=["out/a.csv"])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     dictByPath = {
         dictEntry["sPath"]: dictEntry["sExpected"]
@@ -336,7 +334,7 @@ def test_in_root_symlinked_intermediate_directory_hashes_target(tmp_path):
         pathRealDeep, target_is_directory=True,
     )
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["a/b/deep.csv"],
+        saOutputDataFiles=["a/b/deep.csv"],
     )
     fnWriteManifest(str(tmp_path), dictWorkflow)
     dictByPath = {
@@ -356,7 +354,7 @@ def test_in_root_symlinked_intermediate_directory_hashes_target(tmp_path):
 def test_path_containing_backslash_round_trips(tmp_path):
     sRelativePath = "data/weird\\name.csv"
     _fnWriteFile(tmp_path, sRelativePath, b"col\n1\n")
-    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=[sRelativePath])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listMismatches = flistVerifyManifest(str(tmp_path))
     assert listMismatches == []
@@ -372,7 +370,7 @@ def test_path_containing_newline_round_trips(tmp_path):
         _fnWriteFile(tmp_path, sRelativePath, b"col\n1\n")
     except (OSError, ValueError):
         pytest.skip("filesystem rejects newline in filename")
-    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=[sRelativePath])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listMismatches = flistVerifyManifest(str(tmp_path))
     assert listMismatches == []
@@ -389,7 +387,7 @@ def test_escaped_manifest_format_matches_gnu_sha256sum(tmp_path):
         pytest.skip("no sha256sum or shasum available")
     sRelativePath = "data/weird\\name.csv"
     _fnWriteFile(tmp_path, sRelativePath, b"data\n")
-    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=[sRelativePath])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listArgs = [sShasumExe]
     if sShasumExe.endswith("shasum"):
@@ -413,7 +411,7 @@ def test_escaped_manifest_format_matches_gnu_sha256sum(tmp_path):
 def test_flistParseManifestLines_happy_path(tmp_path):
     _fnWriteFile(tmp_path, "a.csv", b"x\n")
     _fnWriteFile(tmp_path, "b.csv", b"y\n")
-    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=["a.csv", "b.csv"])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=["a.csv", "b.csv"])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listEntries = flistParseManifestLines(str(tmp_path))
     assert len(listEntries) == 2
@@ -440,7 +438,7 @@ def test_flistParseManifestLines_skips_comments_and_blanks(tmp_path):
 def test_flistParseManifestLines_handles_escaped_paths(tmp_path):
     sRelativePath = "data/weird\\name.csv"
     _fnWriteFile(tmp_path, sRelativePath, b"d\n")
-    dictWorkflow = _fdictWorkflowFromPaths(saDataFiles=[sRelativePath])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=[sRelativePath])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listEntries = flistParseManifestLines(str(tmp_path))
     assert len(listEntries) == 1
@@ -509,7 +507,7 @@ def test_path_escape_via_dotdot_is_rejected(tmp_path):
 def test_absolute_path_in_workflow_is_rejected(tmp_path):
     """An absolute path declared in the workflow is refused at write time."""
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["/etc/passwd"],
+        saOutputDataFiles=["/etc/passwd"],
     )
     with pytest.raises(ValueError) as excInfo:
         fnWriteManifest(str(tmp_path), dictWorkflow)
@@ -521,8 +519,9 @@ def test_legal_path_inside_repo_still_accepted(tmp_path):
     _fnWriteFile(tmp_path, "out/normal.csv", b"x\n")
     _fnWriteFile(tmp_path, "deep/nested/dir/file.csv", b"y\n")
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["out/normal.csv"],
-        saDataFiles=["deep/nested/dir/file.csv"],
+        saOutputDataFiles=[
+            "out/normal.csv", "deep/nested/dir/file.csv",
+        ],
     )
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listMismatches = flistVerifyManifest(str(tmp_path))
@@ -556,7 +555,7 @@ def test_deep_component_symlink_outside_repo_skips_single_entry(tmp_path):
     _fnWriteFile(pathRepo, "out/good.csv", "good\n")
 
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["a/b/c.csv", "out/good.csv"],
+        saOutputDataFiles=["a/b/c.csv", "out/good.csv"],
     )
     fnWriteManifest(str(pathRepo), dictWorkflow)
     setManifestPaths = {
@@ -579,7 +578,7 @@ def test_loot_content_never_appears_in_manifest_for_escape(tmp_path):
     (pathRepo / "alias.csv").symlink_to(pathOutside)
     _fnWriteFile(pathRepo, "out/good.csv", "good\n")
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["alias.csv", "out/good.csv"],
+        saOutputDataFiles=["alias.csv", "out/good.csv"],
     )
     fnWriteManifest(str(pathRepo), dictWorkflow)
     sLootHash = hashlib.sha256(b"loot\n").hexdigest()
@@ -595,7 +594,7 @@ def test_symlinked_leaf_pointing_inside_repo_hashes_target(tmp_path):
     (pathRepo / "real.csv").write_bytes(b"data\n")
     pathLink = pathRepo / "alias.csv"
     pathLink.symlink_to(pathRepo / "real.csv")
-    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["alias.csv"])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=["alias.csv"])
     fnWriteManifest(str(pathRepo), dictWorkflow)
     dictByPath = {
         dictEntry["sPath"]: dictEntry["sExpected"]
@@ -722,9 +721,8 @@ def test_outputs_only_workflow_manifest_size_unchanged(tmp_path):
     _fnWriteFile(tmp_path, "plots/b.pdf", b"b\n")
     _fnWriteFile(tmp_path, "data/c.dat", b"c\n")
     dictWorkflow = _fdictWorkflowFromPaths(
-        saOutputFiles=["out/a.csv"],
+        saOutputDataFiles=["out/a.csv", "data/c.dat"],
         saPlotFiles=["plots/b.pdf"],
-        saDataFiles=["data/c.dat"],
     )
     fnWriteManifest(str(tmp_path), dictWorkflow)
     assert fiCountManifestEntries(str(tmp_path)) == 3
@@ -747,7 +745,7 @@ def test_mixed_workflow_hashes_all_categories(tmp_path):
         "sDirectory": "src",
         "saDataCommands": ["python dataBuild.py"],
         "saPlotCommands": ["python plotShow.py"],
-        "saDataFiles": ["out/result.csv"],
+        "saOutputDataFiles": ["out/result.csv"],
         "saPlotFiles": ["out/figure.pdf"],
         "dictTests": {
             "dictQuantitative": {"sStandardsPath": "ref/quant.json"},
@@ -818,13 +816,13 @@ def test_flistDeclaredButMissingFromManifest_returns_gap(tmp_path):
     fnWriteManifest(str(tmp_path), {"listSteps": [{
         "sName": "S1",
         "sDirectory": "src",
-        "saOutputFiles": ["out/a.csv"],
+        "saOutputDataFiles": ["out/a.csv"],
     }]})
     dictWorkflowExpanded = {"listSteps": [{
         "sName": "S1",
         "sDirectory": "src",
         "saDataCommands": ["python run.py"],
-        "saOutputFiles": ["out/a.csv"],
+        "saOutputDataFiles": ["out/a.csv"],
         "dictTests": {
             "dictQuantitative": {"sStandardsPath": "ref/quant.json"},
         },
@@ -844,7 +842,7 @@ def test_reproduce_script_is_pinned_when_present(tmp_path):
     """
     _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
     _fnWriteFile(tmp_path, "reproduce.sh", "#!/usr/bin/env bash\n")
-    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=["out/a.csv"])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listEntries = flistParseManifestLines(str(tmp_path))
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
@@ -854,7 +852,7 @@ def test_reproduce_script_is_pinned_when_present(tmp_path):
 def test_missing_reproduce_script_does_not_break_the_manifest(tmp_path):
     """No reproduce.sh yet (pre-generation) must not abort the write."""
     _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
-    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=["out/a.csv"])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listEntries = flistParseManifestLines(str(tmp_path))
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
@@ -864,7 +862,7 @@ def test_missing_reproduce_script_does_not_break_the_manifest(tmp_path):
 def test_flistDeclaredButMissingFromManifest_empty_when_complete(tmp_path):
     """When the manifest is complete, no paths are reported missing."""
     _fnWriteFile(tmp_path, "out/a.csv", b"x\n")
-    dictWorkflow = _fdictWorkflowFromPaths(saOutputFiles=["out/a.csv"])
+    dictWorkflow = _fdictWorkflowFromPaths(saOutputDataFiles=["out/a.csv"])
     fnWriteManifest(str(tmp_path), dictWorkflow)
     listMissing = flistDeclaredButMissingFromManifest(
         str(tmp_path), dictWorkflow,
@@ -921,7 +919,7 @@ def _fdictWorkflowWithTests():
     return {"listSteps": [{
         "sName": "S1",
         "sDirectory": "stepA",
-        "saDataFiles": ["data.csv"],
+        "saOutputDataFiles": ["data.csv"],
         "saTestCommands": ["pytest tests/test_step01.py"],
         "dictTests": {
             "dictQuantitative": {
@@ -997,7 +995,7 @@ def test_flistDeclaredButMissingFromManifest_reports_test_files(tmp_path):
     _fnWriteTestArtifacts(tmp_path)
     dictLegacy = {"listSteps": [{
         "sName": "S1",
-        "saDataFiles": ["stepA/data.csv"],
+        "saOutputDataFiles": ["stepA/data.csv"],
     }]}
     fnWriteManifest(str(tmp_path), dictLegacy)
     listMissing = flistDeclaredButMissingFromManifest(
@@ -1017,7 +1015,7 @@ def test_templated_test_file_path_is_skipped(tmp_path):
     dictWorkflow = {"listSteps": [{
         "sName": "S1",
         "sDirectory": "stepA",
-        "saDataFiles": ["data.csv"],
+        "saOutputDataFiles": ["data.csv"],
         "saTestCommands": ["pytest {scriptDir}/test_x.py"],
         "dictTests": {
             "dictIntegrity": {"sFilePath": "{scriptDir}/test_y.py"},
@@ -1044,7 +1042,7 @@ def _fdictBuildLargeWorkflowFixture(tmp_path, iEntryCount):
     dictStep = {
         "sName": "Big",
         "sDirectory": "out",
-        "saDataFiles": listPaths,
+        "saOutputDataFiles": listPaths,
     }
     return {"listSteps": [dictStep]}
 
@@ -1161,3 +1159,32 @@ def test_streaming_write_cleans_up_temp_on_failure(tmp_path, monkeypatch):
     assert not os.path.exists(sTempPath), (
         "streaming temp file must be removed after a write failure"
     )
+
+
+def test_manifest_pins_templated_figure_declarations(tmp_path):
+    """A ``{sPlotDirectory}`` figure lands in the manifest, resolved.
+
+    The previously unconditional skip of templated declarations meant
+    a workflow declaring every figure through ``{sPlotDirectory}``
+    never had ANY figure pinned — so the Overleaf/arXiv verifies had
+    no expected hashes and could only report a vacuous comparison.
+    """
+    import os
+    from vaibify.reproducibility import manifestWriter
+    sRepo = str(tmp_path)
+    os.makedirs(os.path.join(sRepo, "Plot"))
+    with open(os.path.join(sRepo, "Plot", "corner.pdf"), "wb") as f:
+        f.write(b"%PDF-1.4 fake figure")
+    dictWorkflow = {
+        "sPlotDirectory": "Plot",
+        "sFigureType": "pdf",
+        "listSteps": [{
+            "sDirectory": "KeplerFfdCorner",
+            "saPlotFiles": ["{sPlotDirectory}/corner.{sFigureType}"],
+        }],
+    }
+    manifestWriter.fnWriteManifest(sRepo, dictWorkflow)
+    listEntries = manifestWriter.flistParseManifestLines(sRepo)
+    listPaths = [d["sPath"] for d in listEntries]
+    assert "Plot/corner.pdf" in listPaths
+    assert "KeplerFfdCorner/Plot/corner.pdf" not in listPaths

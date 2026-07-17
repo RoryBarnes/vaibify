@@ -19,6 +19,17 @@ var PipeleyenFileOps = (function () {
         }
     }
 
+    /* Background copies (terminal copy-on-select) must be silent and
+       must never fall back to the textarea path: the fallback steals
+       keyboard focus, which is worse than a missed automatic copy.
+       Explicit copies (Cmd+C, right-click, copy buttons) keep the
+       toast-and-fallback path above. */
+    function fnCopyToClipboardQuietly(sText) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sText).catch(function () {});
+        }
+    }
+
     function _fnCopyToClipboardFallback(sText) {
         var elTextarea = document.createElement("textarea");
         elTextarea.value = sText;
@@ -162,8 +173,14 @@ var PipeleyenFileOps = (function () {
     function _fnCollectOutputElementPlan(
         dictPlan, setSeenPaths, dictState
     ) {
+        // Input Data rows join the same existence batch: their
+        // data-resolved is the repo-relative declaration, which the
+        // exist endpoint resolves against the project repo root. A
+        // declared-but-absent input renders the honest red.
         document.querySelectorAll(
-            '.detail-item.output'
+            '.detail-item.output, '
+            + '.detail-item.tracked-file'
+            + '[data-array="saInputDataFiles"]'
         ).forEach(function (el) {
             var dictItem = _fdictOutputItemForPlan(el, dictState);
             if (!dictItem) return;
@@ -283,7 +300,7 @@ var PipeleyenFileOps = (function () {
         var iStep = parseInt(el.dataset.step);
         var sArray = el.dataset.array;
         var sRaw = el.dataset.raw || "";
-        var bNecessaryData = sArray === "saDataFiles" &&
+        var bNecessaryData = sArray === "saOutputDataFiles" &&
             PipeleyenApp.fsGetFileCategory(
                 iStep, sRaw, sArray) === "archive";
         if (bNecessaryData) {
@@ -335,10 +352,10 @@ var PipeleyenFileOps = (function () {
     }
 
     function _flistNecessaryDataFiles(step, iStep) {
-        var listData = step.saDataFiles || [];
+        var listData = step.saOutputDataFiles || [];
         return listData.filter(function (sFile) {
             return PipeleyenApp.fsGetFileCategory(
-                iStep, sFile, "saDataFiles"
+                iStep, sFile, "saOutputDataFiles"
             ) === "archive";
         });
     }
@@ -548,6 +565,7 @@ var PipeleyenFileOps = (function () {
 
     return {
         fnCopyToClipboard: fnCopyToClipboard,
+        fnCopyToClipboardQuietly: fnCopyToClipboardQuietly,
         fnInlineEditItem: fnInlineEditItem,
         fnScheduleFileExistenceCheck: fnScheduleFileExistenceCheck,
         fnCheckOutputFileExistence: fnCheckOutputFileExistence,

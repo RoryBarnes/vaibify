@@ -167,7 +167,9 @@ def fiResolveCoreCount(iRequested):
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowRoot):
     """Extract top-level workflow keys into a variables dictionary."""
     sRepoRoot = sWorkflowRoot
-    if sRepoRoot.endswith("/.vaibify/workflows"):
+    if sRepoRoot.endswith("/.vaibify/projects"):
+        sRepoRoot = sRepoRoot[:-len("/.vaibify/projects")]
+    elif sRepoRoot.endswith("/.vaibify/workflows"):
         sRepoRoot = sRepoRoot[:-len("/.vaibify/workflows")]
     elif sRepoRoot.endswith("/.vaibify"):
         sRepoRoot = sRepoRoot[:-len("/.vaibify")]
@@ -342,7 +344,7 @@ def fnRegisterStepOutputs(dictStep, dictVariables, sStepLabel, sWorkflowRoot):
         dictStep["sDirectory"], dictVariables)
     sAbsDirectory = _fsJoinStepDirectory(dictVariables, sDirectory)
     listDeclared = (
-        dictStep.get("saDataFiles", []) + dictStep["saPlotFiles"])
+        dictStep.get("saOutputDataFiles", []) + dictStep["saPlotFiles"])
     _fnRegisterFiles(
         fdictMapOutputTokenStems(listDeclared),
         dictVariables, sStepLabel, sAbsDirectory)

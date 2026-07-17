@@ -36,6 +36,7 @@ from ..fileStatusManager import (
     _fdictBuildScriptStatus,
     _fdictComputeMarkerMtimeByStep,
     _fdictComputeMaxDataMtimeByStep,
+    _fdictComputeMaxInputMtimeByStep,
     _fdictComputeMaxMtimeByStep,
     _fdictComputeMaxPlotMtimeByStep,
     _fdictComputeMaxTestSourceMtimeByStep,
@@ -49,6 +50,7 @@ from ..fileStatusManager import (
     _fnUpdateModTimeBaseline,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
+    fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     fnCollectMarkerPathsByStep,
     fsMarkerNameFromStepDirectory,
@@ -132,7 +134,7 @@ def _flistBuildCleanCommands(dictWorkflow):
         if dictStep.get("bInteractive", False):
             continue
         sDir = dictStep.get("sDirectory", "")
-        for sKey in ("saDataFiles", "saPlotFiles"):
+        for sKey in ("saOutputDataFiles", "saPlotFiles"):
             for sFile in dictStep.get(sKey, []):
                 if sFile.startswith("{"):
                     continue
@@ -577,21 +579,43 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
         }
 
 
-async def _fbResolvePipelineRunning(dictCtx, sContainerId):
-    """Reconcile pipeline state and return the post-reconciliation bRunning.
+async def _fdictReconcilePipelineState(dictCtx, sContainerId):
+    """Reconcile pipeline state and return the post-reconciliation dict.
 
     The reconciling reader runs ahead of poll side-effects so a vanished
     runner is reflected before invalidation logic asks "is a pipeline
     still running?" — without this the watchdog would suppress
     file-change invalidation for hours after the runner crashed.
+    Returns ``{}`` when no state exists.
     """
     from ..pipelineState import fdictReadReconciledState
-    dictPipelineState = await fdictReadReconciledState(
-        dictCtx, sContainerId,
-    )
-    return bool(
-        dictPipelineState and dictPipelineState.get("bRunning"),
-    )
+    return await fdictReadReconciledState(dictCtx, sContainerId) or {}
+
+
+def _fdictRunStateForWire(dictPipelineState):
+    """Return the compact run-state the poll payload carries.
+
+    The continuously-polled ``/status`` payload surfaces the reconciled
+    run state so the dashboard reflects ANY dispatched run — including
+    an in-container agent's ``run-step`` / ``runSelected`` — without a
+    separate pipeline-state poll it only starts for runs it initiates.
+    ``iActiveStep`` is 1-based (0/-1 mean "no active step").
+
+    The over-budget fields are computed live here (never persisted as
+    terminal state) so an active step that has outrun its declared
+    wall-clock budget shows honestly on every poll while still running.
+    """
+    from ..pipelineState import fdictActiveStepBudgetStatus
+    dictBudget = fdictActiveStepBudgetStatus(dictPipelineState)
+    return {
+        "bRunning": bool(dictPipelineState.get("bRunning")),
+        "iActiveStep": dictPipelineState.get("iActiveStep", -1),
+        "bActiveStepOverBudget": dictBudget["bActiveStepOverBudget"],
+        "fActiveStepElapsedSeconds": dictBudget[
+            "fActiveStepElapsedSeconds"
+        ],
+        "fActiveStepBudgetSeconds": dictBudget["fActiveStepBudgetSeconds"],
+    }
 
 
 async def _fdictFetchOutputStatus(
@@ -604,9 +628,10 @@ async def _fdictFetchOutputStatus(
     the last transformation before the wire — enforced by
     ``testWireFormatPathsAreRepoRelative``.
     """
-    bPipelineRunning = await _fbResolvePipelineRunning(
+    dictPipelineState = await _fdictReconcilePipelineState(
         dictCtx, sContainerId,
     )
+    bPipelineRunning = bool(dictPipelineState.get("bRunning"))
     dictModTimes, dictReload, sWorkflowPath = await _ftFetchAndReload(
         dictCtx, sContainerId, dictWorkflow, dictVars,
     )
@@ -636,12 +661,14 @@ async def _fdictFetchOutputStatus(
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
         ),
+        "dictRunState": _fdictRunStateForWire(dictPipelineState),
         **dictRest,
     }
 
 
 def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
     """Return the deduplicated union of paths the poller needs mtimes for."""
+    from vaibify.reproducibility.levelGates import flistWorkflowBinaryPaths
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     listOutputPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
     listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
@@ -654,9 +681,19 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
             _flistResolveTestSourcePaths(dictStep, dictVars),
         )
     listWorkflowPaths = [sWorkflowPath] if sWorkflowPath else []
+    listInputPaths = []
+    for listStepInputs in fdictCollectInputPathsByStep(
+        dictWorkflow, dictVars,
+    ).values():
+        listInputPaths.extend(listStepInputs)
+    # Declared binaries are absolute, out-of-repo paths; their mtimes
+    # drive the L1 binary-changed warning (the L3 drift check uses the
+    # snapshot-carried hashes instead).
+    listBinaryPaths = flistWorkflowBinaryPaths(dictWorkflow)
     return list(set(
         listOutputPaths + listScriptPaths + listMarkerPaths
-        + listTestSourcePaths + listWorkflowPaths,
+        + listTestSourcePaths + listWorkflowPaths + listBinaryPaths
+        + listInputPaths,
     ))
 
 
@@ -817,6 +854,9 @@ def _fdictComputeAllPerStepMtimes(
         "dictMaxDataMtimeByStep": _fdictComputeMaxDataMtimeByStep(
             dictWorkflow, dictModTimes, dictVars,
         ),
+        "dictMaxInputMtimeByStep": _fdictComputeMaxInputMtimeByStep(
+            dictWorkflow, dictModTimes, dictVars,
+        ),
         "dictMarkerMtimeByStep": _fdictComputeMarkerMtimeByStep(
             dictMarkerPathsByStep, dictModTimes,
         ),
@@ -971,7 +1011,9 @@ def _ffilesFetchPollSnapshot(
     body is no longer carried inline on every poll; it is fetched once
     per manifest sha by the lazy cache below.
     """
-    from vaibify.reproducibility.levelGates import _flistAllStepScriptPaths
+    from vaibify.reproducibility.levelGates import (
+        _flistAllStepScriptPaths, flistWorkflowBinaryPaths,
+    )
     from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     if not sRepoRoot or dictCtx.get("files") is None:
@@ -989,6 +1031,7 @@ def _ffilesFetchPollSnapshot(
         listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
         listHashRelPaths=listNeedHash,
         dictSeedHashes=dictSeed,
+        listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
     )
     bShaCacheChanged = _fnUpdateShaCache(
         dictShaCache, filesPoll, listNeedHash, dictMtimesRel,
@@ -1149,10 +1192,15 @@ def _fdictAssemblePollResponse(
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
 ):
     """Assemble the poll wire payload from the computed pieces."""
+    from vaibify.reproducibility.levelGates import fdictBinaryStaleByStep
+    from .. import workflowManager
+    dictBinaryStaleByStep = fdictBinaryStaleByStep(
+        dictWorkflow, dictModTimes, dictMtimes["dictMaxMtimeByStep"],
+    )
     dictLevelPayload = _fdictBuildLevelStatePayload(
         dictWorkflow, dictGates["listBlockers"],
         dictGates["listLevel2Blockers"], dictGates["listLevel3Blockers"],
-        dictMtimes["dictMaxMtimeByStep"],
+        dictMtimes["dictMaxMtimeByStep"], dictBinaryStaleByStep,
     )
     return {
         **dictLevelPayload,
@@ -1164,6 +1212,9 @@ def _fdictAssemblePollResponse(
         "iAICSLevel": dictWorkflow["iAICSLevel"],
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": dictScriptStatus,
+        "sWorkflowFingerprint": (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        ),
         "listStaleOutputAdvisories": _flistBuildStaleOutputAdvisories(
             dictWorkflow, dictModTimes,
         ),
@@ -1247,7 +1298,7 @@ def _fdictProjectStepLevelHighWater(dictWorkflow):
 
 def _fdictBuildLevelStatePayload(
     dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
-    dictMaxMtimeByStep=None,
+    dictMaxMtimeByStep=None, dictBinaryStaleByStep=None,
 ):
     """Build the level-state wire keys plus the private ratchet flag.
 
@@ -1274,6 +1325,7 @@ def _fdictBuildLevelStatePayload(
     )
     dictPayload = _fdictBuildLevelStateWireKeys(
         dictWorkflow, dictStepStates, dictScopeStates, listBlockers,
+        dictBinaryStaleByStep,
     )
     dictPayload[_S_LEVEL_RATCHET_FLAG_KEY] = bChanged
     return dictPayload
@@ -1281,6 +1333,7 @@ def _fdictBuildLevelStatePayload(
 
 def _fdictBuildLevelStateWireKeys(
     dictWorkflow, dictStepStates, dictScopeStates, listBlockers,
+    dictBinaryStaleByStep=None,
 ):
     """Build the public level-state keys of the poll payload.
 
@@ -1292,6 +1345,7 @@ def _fdictBuildLevelStateWireKeys(
     )
     dictStepWarnings = fdictComputeStepLevelWarnings(
         dictWorkflow, dictStepStates, listBlockers,
+        dictBinaryStaleByStep,
     )
     return {
         "dictStepLevels": _fdictKeyStatesByStepString(dictStepStates),
@@ -1337,11 +1391,12 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "dictRemoteSyncs": {sService: dictSummary or None},
          "bAiDeclarationAttested": bool,
          "bRebuildAttestationCurrent": bool,
-         "bOverleafBound": bool}
+         "bOverleafBound": bool,
+         "bArxivConfigured": bool}
 
-    The three booleans let the Workflow-wide requirement rows render
-    AI-declaration, rebuild-attestation, and arXiv-applicability status
-    from this same payload; all are exec-free.
+    The four booleans let the Project-block requirement rows render
+    AI-declaration, rebuild-attestation, Overleaf-applicability, and
+    arXiv-tracking status from this same payload; all are exec-free.
     """
     from vaibify.reproducibility.repoFiles import (
         ffilesEnsureRepoFiles, fsRepoRootOf,
@@ -1380,6 +1435,8 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         ),
         "bOverleafBound":
             levelGates.fbWorkflowHasOverleafBinding(dictWorkflow),
+        "bArxivConfigured":
+            levelGates.fbWorkflowHasArxivConnection(dictWorkflow),
     }
 
 
@@ -2138,7 +2195,7 @@ def _fnRegisterManifestText(app, dictCtx):
         if not sRepoRoot:
             raise HTTPException(
                 status_code=409,
-                detail="No project repo configured for this workflow.",
+                detail="No repository configured for this project.",
             )
         return await asyncio.to_thread(
             _fdictReadManifestTextBounded,
