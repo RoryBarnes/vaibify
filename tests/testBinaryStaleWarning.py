@@ -83,6 +83,65 @@ def test_binary_absent_from_mtimes_is_not_stale():
     assert dictStale == {0: False}
 
 
+def _fdictWorkflowWithTwoBinaries(listSteps):
+    """Two declared binaries so the scan must survive a bad first entry."""
+    return {
+        "sProjectRepoPath": "/repo",
+        "listDeclaredBinaries": [
+            {"sBinaryPath": "/opt/bin/maxlev", "sPurpose": "estimator",
+             "sExpectedVersion": "1.0"},
+            {"sBinaryPath": "/opt/bin/vplanet", "sPurpose": "forward model",
+             "sExpectedVersion": "3.0"},
+        ],
+        "listSteps": listSteps,
+    }
+
+
+def test_unstatted_first_binary_does_not_mask_a_stale_second():
+    """Skipping one binary must not stop the scan of the rest.
+
+    The first depended binary is absent from the mtime map (the poll
+    could not stat it); the second is genuinely newer than the step's
+    outputs. The scan must SKIP the first and still flag the second —
+    a skip that aborts the whole loop hides real staleness behind any
+    one unstattable binary.
+    """
+    dictStep = _dictStep(saBinaryDependencies=["maxlev", "vplanet"])
+    dictWorkflow = _fdictWorkflowWithTwoBinaries([dictStep])
+    dictStale = fdictBinaryStaleByStep(
+        dictWorkflow,
+        {"/opt/bin/vplanet": "200"},   # maxlev missing from the map
+        {"0": "100"},
+    )
+    assert dictStale == {0: True}
+
+
+def test_unparseable_first_mtime_does_not_mask_a_stale_second():
+    """A garbage mtime is skipped in place, without aborting the scan.
+
+    The first binary's mtime is unparseable text; the second is newer
+    than the outputs. The comparison must swallow the parse failure for
+    that one entry (not crash, not stop) and still flag the second.
+    """
+    dictStep = _dictStep(saBinaryDependencies=["maxlev", "vplanet"])
+    dictWorkflow = _fdictWorkflowWithTwoBinaries([dictStep])
+    dictStale = fdictBinaryStaleByStep(
+        dictWorkflow,
+        {"/opt/bin/maxlev": "not-a-number", "/opt/bin/vplanet": "200"},
+        {"0": "100"},
+    )
+    assert dictStale == {0: True}
+
+
+def test_only_unparseable_mtimes_is_not_stale():
+    """All-garbage mtimes resolve to not-stale, never to an exception."""
+    dictWorkflow = _fdictWorkflow([_dictStep()])
+    dictStale = fdictBinaryStaleByStep(
+        dictWorkflow, {"/opt/bin/vplanet": "not-a-number"}, {"0": "100"},
+    )
+    assert dictStale == {0: False}
+
+
 def test_step_not_depending_on_binary_is_not_stale():
     """Attribution gates the signal: a step that neither invokes nor
     declares the binary is unaffected by its mtime."""

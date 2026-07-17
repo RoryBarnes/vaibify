@@ -163,3 +163,60 @@ def test_no_drift_when_binary_has_no_captured_hash(tmp_path):
         "saBinaryDependencies": ["vplanet"],
     }])
     assert _flistDriftBlockers(sRepo, dictWorkflow) == []
+
+
+# --------- L3 blocker-cache fingerprint over binary state ---------
+
+
+def test_fingerprint_is_none_only_without_declared_binaries(tmp_path):
+    """The no-binaries sentinel and the hashing path must not swap.
+
+    A workflow with no declared binaries fingerprints to the literal
+    ``"none"``; a workflow WITH a declared binary must fingerprint to a
+    real digest. If the emptiness guard were inverted, every
+    binary-declaring workflow would share the constant sentinel and a
+    rebuilt binary could never invalidate the L3 blocker cache.
+    """
+    from vaibify.reproducibility.levelGates import (
+        _fsBinaryStateFingerprint,
+    )
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    sRepo = str(tmp_path)
+    sBin, sHash = _fnWriteBinary(
+        str(tmp_path / "bin"), "vplanet", b"a binary",
+    )
+    _fnWriteEnvironmentJson(sRepo, [
+        {"sBinaryPath": sBin, "sSha256": sHash, "sVersion": "3.0"},
+    ])
+    filesRepo = ffilesEnsureRepoFiles(sRepo)
+    dictNoBinaries = {"sProjectRepoPath": sRepo, "listSteps": []}
+    assert _fsBinaryStateFingerprint(dictNoBinaries, filesRepo) == "none"
+    dictWithBinary = _fdictWorkflow(sRepo, sBin, [])
+    sFingerprint = _fsBinaryStateFingerprint(dictWithBinary, filesRepo)
+    assert sFingerprint != "none"
+    assert len(sFingerprint) == 64
+
+
+def test_fingerprint_changes_when_the_binary_is_rebuilt(tmp_path):
+    """A rebuilt binary must move the fingerprint (cache invalidation)."""
+    from vaibify.reproducibility.levelGates import (
+        _fsBinaryStateFingerprint,
+    )
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    sRepo = str(tmp_path)
+    sBin, sHash = _fnWriteBinary(
+        str(tmp_path / "bin"), "vplanet", b"OLD build",
+    )
+    _fnWriteEnvironmentJson(sRepo, [
+        {"sBinaryPath": sBin, "sSha256": sHash, "sVersion": "3.0"},
+    ])
+    dictWorkflow = _fdictWorkflow(sRepo, sBin, [])
+    sBefore = _fsBinaryStateFingerprint(
+        dictWorkflow, ffilesEnsureRepoFiles(sRepo),
+    )
+    with open(sBin, "wb") as fileHandle:
+        fileHandle.write(b"NEW build")
+    sAfter = _fsBinaryStateFingerprint(
+        dictWorkflow, ffilesEnsureRepoFiles(sRepo),
+    )
+    assert sBefore != sAfter

@@ -144,6 +144,25 @@ def test_run_all_skips_run_disabled_pull_steps():
     ) is None
 
 
+def test_only_literal_false_disables_a_step_for_the_gate():
+    """Non-boolean ``bRunEnabled`` values count as enabled.
+
+    The runner's contract is ``is not False``: only an explicit
+    ``false`` in the JSON disables a step, so a malformed value like
+    ``0`` still runs — and a step that runs must still be gated. A
+    truthiness or ordering comparison would silently exempt such a
+    step from the overwrite check while the runner executes it.
+    """
+    dictPull = _fdictPullStep()
+    dictPull["bRunEnabled"] = 0
+    dictWorkflow = _fdictWorkflow([dictPull])
+    dictRefusal = _fdictRefusalFor(
+        "runAll", {}, dictWorkflow, [_S_ABS_PULL],
+    )
+    assert dictRefusal is not None
+    assert dictRefusal["sReason"] == "remoteDataOverwrite"
+
+
 def test_run_from_skips_run_disabled_pull_steps():
     """runFrom honors bRunEnabled like the runner — a disabled pull
     step in range must not trigger the gate (it will not run)."""

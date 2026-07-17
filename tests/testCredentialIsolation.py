@@ -124,6 +124,53 @@ def test_container_credential_copy_rejects_unknown_slots():
     mockDocker.ftResultExecuteCommand.assert_not_called()
 
 
+def test_failed_snapshot_restore_reports_false_and_keeps_the_snapshot():
+    """A crashed snapshot copy must never claim the token was restored.
+
+    When copying the backup slot over the failed token raises, the
+    helper must return False (the caller words the researcher-facing
+    disposition from it) and must NOT delete the backup slot — the
+    snapshot is the only surviving copy of the previous token.
+    """
+    from vaibify.gui.routes.syncRoutes import _fbRestoreContainerSnapshot
+    mockDispatcher = MagicMock()
+    mockDispatcher.fbCopyCredentialInContainer.side_effect = RuntimeError(
+        "exec failed",
+    )
+    bRestored = _fbRestoreContainerSnapshot(
+        mockDispatcher, {"docker": MagicMock()}, "cid",
+        ("zenodo_token_sandbox", "zenodo_token_sandbox_backup"),
+    )
+    assert bRestored is False
+    mockDispatcher.fnDeleteCredentialFromContainer.assert_not_called()
+
+
+def test_overleaf_rollback_restores_the_host_keyring_token():
+    """An Overleaf rollback with a captured token restores via keyring.
+
+    The service dispatch is string equality: for ``overleaf`` with a
+    previous token the helper must store that token back in the host
+    keyring and report the restored disposition — never fall through
+    to the container-snapshot lane (Overleaf keeps no snapshot slots,
+    so the fall-through would end in a false "not saved" message).
+    """
+    from vaibify.gui.routes.syncRoutes import _fnRollBackFailedCredential
+    dictResult = {"sMessage": "Validation failed"}
+    with patch(
+        "vaibify.config.secretManager.fnStoreSecret",
+    ) as mockStore:
+        _fnRollBackFailedCredential(
+            MagicMock(), {"docker": MagicMock()}, "cid", "overleaf",
+            "", "previous-token", dictResult,
+        )
+    mockStore.assert_called_once_with(
+        "overleaf_token", "previous-token", "keyring",
+    )
+    assert "your previously saved token was restored" in (
+        dictResult["sMessage"]
+    )
+
+
 def test_hermetic_keyring_guardrail_is_active(fixtureHermeticKeyring):
     """The suite-wide fake keyring intercepts real secretManager calls.
 

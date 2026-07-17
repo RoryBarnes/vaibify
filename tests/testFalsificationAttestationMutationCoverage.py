@@ -112,6 +112,19 @@ def test_kill_rate_numerator_is_the_killed_count():
     assert dictRecord["iMutantsSurvived"] == 7
 
 
+def test_record_defaults_report_zero_duration():
+    """An unmeasured run must record exactly 0.0 seconds, never a
+    fabricated positive duration — the manuscript cites this number.
+
+    Kills: In fdictBuildFalsificationRecord, replace the
+    ``fDurationSeconds=0.0`` default with a nonzero constant.
+    """
+    dictRecord = fdictBuildFalsificationRecord(
+        S_STATUS_ATTAINED, "sha256:abc", "deterministic", 10, 3, 7,
+    )
+    assert dictRecord["fDurationSeconds"] == 0.0
+
+
 def test_digest_collapses_when_any_covered_file_is_missing(tmp_path):
     """The combined digest must fail closed to ``""`` when any covered
     file cannot be hashed; a partial digest over the surviving files
