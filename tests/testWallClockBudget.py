@@ -121,6 +121,44 @@ def test_over_budget_false_just_under_the_boundary():
     assert dictOver["bActiveStepOverBudget"] is True
 
 
+def test_elapsed_is_a_true_difference_not_a_modulo():
+    """Elapsed must be now-minus-start, robust to any epoch scale.
+
+    With realistic epochs ``now % start`` coincides with ``now - start``
+    (elapsed is always smaller than the start epoch), so only a small
+    synthetic epoch can tell subtraction from a modulo: started at
+    epoch 1000 with now at 2500, true elapsed is 1500 while a modulo
+    would report 500 and clear the over-budget flag.
+    """
+    dictState = {
+        "bRunning": True,
+        "fActiveStepBudgetSeconds": 1000,
+        "sActiveStepStartedIso": datetime.fromtimestamp(
+            1000.0, timezone.utc,
+        ).isoformat(),
+    }
+    dictStatus = fdictActiveStepBudgetStatus(dictState, fNowEpoch=2500.0)
+    assert dictStatus["fActiveStepElapsedSeconds"] == 1500.0
+    assert dictStatus["bActiveStepOverBudget"] is True
+
+
+def test_fractional_budget_resolves_exactly():
+    """A sub-second budget is legal and must survive coercion intact."""
+    assert workflowManager.ffResolveStepWallClockBudget(
+        {}, {"fWallClockBudgetSeconds": 0.5},
+    ) == 0.5
+
+
+def test_negative_budget_resolves_to_exactly_zero():
+    """Any non-positive budget means no budget: exactly 0.0, nothing else."""
+    assert workflowManager.ffResolveStepWallClockBudget(
+        {}, {"fWallClockBudgetSeconds": -0.5},
+    ) == 0.0
+    assert workflowManager.ffResolveStepWallClockBudget(
+        {"fDefaultWallClockBudgetSeconds": -0.5}, {},
+    ) == 0.0
+
+
 def test_not_flagged_when_pipeline_not_running():
     dictState = _dictRunningState(60, 600)
     dictState["bRunning"] = False

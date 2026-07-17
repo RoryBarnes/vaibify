@@ -281,6 +281,39 @@ def testArxivTarballWithDifferentContentFiresMismatch(tmp_path):
     assert bSynced is False
 
 
+def testArxivMismatchFiresRegardlessOfHashSortOrder(tmp_path):
+    """A drifted tarball hash must fire mismatch even when it sorts low.
+
+    Hash comparison is equality, not ordering: a remote hash that
+    happens to sort lexicographically *below* the expected local hash
+    (here all zeros) is exactly as mismatched as one that sorts above
+    it. A comparison weakened to ``<=`` would pass the sibling test
+    (whose drifted hash sorts above) and silently accept this one.
+    """
+    sProjectRepo = str(tmp_path)
+    _fnWriteAllGreenSyncCache(sProjectRepo)
+    _fnWriteFigureFile(sProjectRepo)
+    overleafSync.fnRecordOverleafPushManifest(
+        sProjectRepo, "commitabc", ["A/plot.pdf"],
+    )
+    dictWorkflow = _fdictWorkflowWithOverleaf(
+        sCommit="commitabc",
+        dictArxiv={"sArxivId": "2401.00001", "sArxivVersion": "v1"},
+    )
+    assert "0" * 64 < S_FIGURE_SHA
+    with patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        return_value={"A/plot.pdf": "0" * 64},
+    ), patch(
+        "vaibify.reproducibility.arxivClient.fsResolveLatestVersion",
+        return_value="v1",
+    ):
+        bSynced = fbWorkflowFullySyncedWithArxiv(
+            dictWorkflow, sProjectRepo,
+        )
+    assert bSynced is False
+
+
 def testArxivGateFailsWhenPushedFigureMissingLocally(tmp_path):
     """A pushed figure absent from the working tree cannot demonstrate sync.
 

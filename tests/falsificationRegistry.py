@@ -1205,4 +1205,40 @@ def _fdictEntry(sRel):
         old='    if dictRequest.get("bConfirmRemoteOverwrite"):\n        return None',
         new='    if True:\n        return None',
     ),
+    Falsification(
+        nodeid='tests/testFalsificationRoutesMutationCoverage.py::test_exec_failure_record_reports_exact_zero_counts',
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='            S_STATUS_ERROR, sDigest, sClassification, 0, 0, 0,\n            sCosmicRayVersion=sCosmicRayVersion,\n            fDurationSeconds=time.monotonic() - fStarted,\n            sReason="cosmic-ray exited "',
+        new='            S_STATUS_ERROR, sDigest, sClassification, 1, 0, 0,\n            sCosmicRayVersion=sCosmicRayVersion,\n            fDurationSeconds=time.monotonic() - fStarted,\n            sReason="cosmic-ray exited "',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationRoutesMutationCoverage.py::test_unparseable_summary_reason_carries_the_output_tail',
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='            sReason="could not summarize the mutation session: "\n            + _fsTailOfOutput(resultSummary),',
+        new='            sReason="could not summarize the mutation session: "\n            % _fsTailOfOutput(resultSummary),',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationRoutesMutationCoverage.py::test_graded_summary_builds_an_attained_record',
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='        dictSummary["iMutantsTotal"], dictSummary["iMutantsKilled"],\n        dictSummary["iMutantsSurvived"],',
+        new='        dictSummary["iMutantsTotal"], dictSummary["iMutantsSurvived"],\n        dictSummary["iMutantsKilled"],',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationRoutesMutationCoverage.py::test_zero_graded_mutants_is_an_error_not_an_attainment',
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='    if dictSummary["iMutantsTotal"] == 0:',
+        new='    if dictSummary["iMutantsTotal"] < 0:',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationRoutesMutationCoverage.py::test_tail_of_output_keeps_the_last_characters',
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='    return sCombined[-iMaxCharacters:]',
+        new='    return sCombined[not iMaxCharacters:]',
+    ),
+    Falsification(
+        nodeid='tests/testFalsificationAttestationMutationCoverage.py::test_record_defaults_report_zero_duration',
+        source='vaibify/reproducibility/falsificationAttestation.py',
+        old='    fDurationSeconds=0.0, sReason="",',
+        new='    fDurationSeconds=1.0, sReason="",',
+    ),
 ]

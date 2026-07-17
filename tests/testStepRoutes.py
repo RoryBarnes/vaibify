@@ -225,3 +225,24 @@ def testDeclareNoInputDataNoOpWhenAllDeclared(tClientAndWorkflow):
     assert responseHttp.status_code == 200
     assert responseHttp.json()["listDeclaredStepIndices"] == []
     assert listSaves == []
+
+
+def testFingerprintMismatchConflictsRegardlessOfSortOrder():
+    """The compare-and-swap check is equality, not ordering.
+
+    A stale base fingerprint must 409 whether it sorts above or below
+    the current fingerprint — an ordering comparison would wave
+    through every stale writer whose fingerprint happens to sort on
+    the accepted side, silently clobbering the concurrent edit. A
+    matching fingerprint and the ``None`` opt-out must both pass.
+    """
+    from fastapi import HTTPException
+    from vaibify.gui import workflowManager
+    dictWorkflow = _fdictBuildWorkflow(1)
+    sCurrent = workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+    stepRoutes._fnRequireFingerprintMatch(dictWorkflow, sCurrent)
+    stepRoutes._fnRequireFingerprintMatch(dictWorkflow, None)
+    for sStale in (sCurrent + "0", sCurrent[:-1]):
+        with pytest.raises(HTTPException) as excInfo:
+            stepRoutes._fnRequireFingerprintMatch(dictWorkflow, sStale)
+        assert excInfo.value.status_code == 409

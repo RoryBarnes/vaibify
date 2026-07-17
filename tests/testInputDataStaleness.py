@@ -119,6 +119,29 @@ def test_collect_input_paths_skip_unresolved_templates_and_no_root():
     assert dictByStep == {0: ["/workspace/repo/raw.csv"]}
 
 
+def test_manifest_paths_keep_inputs_after_a_skipped_entry():
+    """A skipped input entry must not truncate the manifest path list.
+
+    ``_flistStepOutputsRepoRelative`` feeds the fresh-clone
+    short-circuit: every declared path it drops is a path whose
+    manifest hash is never checked. An unresolved-template entry is
+    skipped in place; the inputs declared after it must survive — a
+    skip that stops the loop would silently exempt them from the
+    fresh-clone content check.
+    """
+    from vaibify.gui.fileStatusManager import _flistStepOutputsRepoRelative
+    dictStep = _fdictBuildStep(
+        "posteriors",
+        ["raw_{sTargetName}.csv", "data/observations.csv", "data/late.csv"],
+    )
+    listRelative = _flistStepOutputsRepoRelative(
+        dictStep, "/workspace/repo",
+    )
+    assert "data/observations.csv" in listRelative
+    assert "data/late.csv" in listRelative
+    assert not any("{" in sPath for sPath in listRelative)
+
+
 def test_compute_max_input_mtime_by_step():
     dictWorkflow = {
         "listSteps": [
