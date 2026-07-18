@@ -154,8 +154,43 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fnSendPipelineAction(dictAction) {
+        _fnMaybeShowRuntimeLimitNotice(dictAction);
         fnConnectPipelineWebSocket();
         VaibifyWebSocket.fnSend(dictAction);
+    }
+
+    var _SET_RUN_ACTIONS_WITH_NOTICE = {
+        "runSelected": true, "runAll": true, "runFrom": true,
+    };
+
+    function _fnMaybeShowRuntimeLimitNotice(dictAction) {
+        // One-time, non-blocking heads-up on the first run of a
+        // project in this browser: the advisory runtime limit
+        // exists, where to change it, and that no run is ever
+        // stopped by it. A consent modal would be dishonest — there
+        // is no consequence to consent to.
+        if (!_SET_RUN_ACTIONS_WITH_NOTICE[dictAction
+            && dictAction.sAction]) return;
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var fDefault =
+            dictWorkflow.fDefaultWallClockBudgetSeconds || 0;
+        if (!(fDefault > 0)) return;
+        var sKey = "vaibifyRuntimeNoticeShown:" +
+            (dictWorkflow.sProjectRepoPath ||
+                dictWorkflow.sWorkflowName || "");
+        try {
+            if (localStorage.getItem(sKey)) return;
+            localStorage.setItem(sKey, "true");
+        } catch (e) { /* localStorage may be unavailable */ }
+        var sLimit = fDefault % 3600 === 0
+            ? (fDefault / 3600) + " hours"
+            : fDefault + " seconds";
+        PipeleyenApp.fnShowToast(
+            "Heads-up: steps in this project are expected to " +
+            "finish within " + sLimit + ". A step running longer " +
+            "is flagged as possibly hung — the run is never " +
+            "stopped. Change the default under Settings, or " +
+            "right-click a step to set its own limit.", "warning");
     }
 
     function _fsStartedToast(sCommand) {

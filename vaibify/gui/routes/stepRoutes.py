@@ -2,9 +2,11 @@
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
+
 from fastapi import HTTPException
 
-from .. import workflowManager
+from .. import stepRename, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..fileStatusManager import fnMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiAICSLevel
@@ -13,7 +15,9 @@ from ..pipelineServer import (
     InputDataAddRequest,
     ReorderRequest,
     StepCreateRequest,
+    StepRenameRequest,
     StepUpdateRequest,
+    _fbRefuseWhilePipelineTaskLive,
     fdictFilterNonNone,
     fdictRequireWorkflow,
     fdictStepFromRequest,
@@ -342,6 +346,63 @@ def _fnRegisterInputDataAdd(app, dictCtx):
         }
 
 
+def _fnRegisterStepRename(app, dictCtx):
+    """Register POST /api/steps/{id}/{index}/rename route."""
+
+    @fnAgentAction("rename-step")
+    @app.post("/api/steps/{sContainerId}/{iStepIndex}/rename")
+    async def fnRenameStep(
+        sContainerId: str, iStepIndex: int,
+        request: StepRenameRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        if _fbRefuseWhilePipelineTaskLive(
+            dictCtx["pipelineTasks"], sContainerId,
+        ):
+            raise HTTPException(
+                409, "A pipeline action is running in this "
+                "container — wait for it to finish before renaming "
+                "a step.")
+        _fnRequireFingerprintMatch(
+            dictWorkflow, request.sBaseFingerprint)
+        try:
+            dictPlan = stepRename.fdictPlanStepRename(
+                dictWorkflow, iStepIndex, request.sNewName)
+        except IndexError as error:
+            raise HTTPException(404, str(error))
+        except ValueError as error:
+            raise HTTPException(400, str(error))
+        if request.bDryRun:
+            dictPlan["listScriptWarnings"] = await asyncio.to_thread(
+                stepRename.flistScanScriptsForOldName,
+                dictCtx["docker"], sContainerId, dictWorkflow,
+                dictPlan,
+            )
+            return dictPlan
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow)
+        try:
+            dictReport = await asyncio.to_thread(
+                stepRename.fdictApplyStepRename,
+                dictCtx["docker"], sContainerId, filesRepo,
+                dictWorkflow, iStepIndex, dictPlan,
+                dictWorkflow.get("sPath", ""),
+            )
+        except ValueError as error:
+            raise HTTPException(409, str(error))
+        except RuntimeError as error:
+            raise HTTPException(500, str(error))
+        dictCtx["save"](sContainerId, dictWorkflow)
+        dictReport["dictStep"] = fdictStepWithLabel(
+            dictWorkflow, iStepIndex)
+        dictReport["sWorkflowFingerprint"] = (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        )
+        return dictReport
+
+
 def _fnRegisterDeclareNoInputData(app, dictCtx):
     """Register POST /api/steps/{id}/declare-no-input-data route."""
 
@@ -374,6 +435,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterStepInsert(app, dictCtx)
     _fnRegisterInputDataAdd(app, dictCtx)
     _fnRegisterDeclareNoInputData(app, dictCtx)
+    _fnRegisterStepRename(app, dictCtx)
     _fnRegisterStepUpdate(app, dictCtx)
     _fnRegisterStepDelete(app, dictCtx)
     _fnRegisterStepReorder(app, dictCtx)

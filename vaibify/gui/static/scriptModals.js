@@ -64,7 +64,8 @@ var PipeleyenModals = (function () {
         );
     }
 
-    function fnShowInputModal(sLabel, sPlaceholder, fnCallback) {
+    function fnShowInputModal(sLabel, sPlaceholder, fnCallback,
+        sConfirmLabel) {
         var elExisting = document.getElementById("modalInput");
         if (elExisting) elExisting.remove();
         var elModal = document.createElement("div");
@@ -79,7 +80,8 @@ var PipeleyenModals = (function () {
             '<div class="modal-actions">' +
             '<button class="btn" id="btnInputCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +
-            'id="btnInputConfirm">Add</button>' +
+            'id="btnInputConfirm">' +
+            fnEscapeHtml(sConfirmLabel || "Add") + '</button>' +
             '</div></div>';
         document.body.appendChild(elModal);
         var elInput = elModal.querySelector(".input-modal-field");
@@ -110,6 +112,75 @@ var PipeleyenModals = (function () {
             if (dictChoice.fnCallback) dictChoice.fnCallback();
         });
         return elButton;
+    }
+
+    function _fsRuntimeLimitExplanation(dictOptions) {
+        var sText = "The number of seconds this step is expected " +
+            "to run. A run that exceeds it is flagged as possibly " +
+            "hung on the dashboard — the run is never stopped. " +
+            "Blank or 0 inherits the project default";
+        var fDefault = dictOptions.fProjectDefault || 0;
+        sText += fDefault > 0
+            ? " (currently " + fDefault + " s, adjustable under " +
+                "Settings)."
+            : " (currently no limit, adjustable under Settings).";
+        if (dictOptions.fLastSuccessfulWallClock) {
+            sText += " The last successful run took " +
+                dictOptions.fLastSuccessfulWallClock +
+                " s; the prefilled suggestion is twice that.";
+        }
+        return sText;
+    }
+
+    function fnShowRuntimeLimitModal(dictOptions) {
+        // dictOptions: sStepTitle, fCurrentBudget (0 = inherit),
+        // fProjectDefault, fLastSuccessfulWallClock (0/absent when
+        // unknown), fnOnSave(fSeconds).
+        var elExisting = document.getElementById("modalRuntimeLimit");
+        if (elExisting) elExisting.remove();
+        var fSuggestion = dictOptions.fLastSuccessfulWallClock
+            ? Math.ceil(dictOptions.fLastSuccessfulWallClock * 2)
+            : 0;
+        var fPrefill = dictOptions.fCurrentBudget || fSuggestion || "";
+        var elModal = document.createElement("div");
+        elModal.id = "modalRuntimeLimit";
+        elModal.className = "modal-overlay";
+        elModal.style.display = "flex";
+        elModal.innerHTML =
+            '<div class="modal">' +
+            '<h2>Runtime limit — ' +
+            fnEscapeHtml(dictOptions.sStepTitle || "") + '</h2>' +
+            '<p class="modal-explanation">' +
+            fnEscapeHtml(_fsRuntimeLimitExplanation(dictOptions)) +
+            '</p>' +
+            '<label class="plot-only-toggle">Runtime limit (s) ' +
+            '<input type="number" min="0" step="1" ' +
+            'class="step-budget-input" id="runtimeLimitInput" ' +
+            'value="' + fPrefill + '"></label>' +
+            '<div class="modal-actions">' +
+            '<button class="btn" id="btnRuntimeCancel">Cancel</button>' +
+            '<button class="btn btn-primary" ' +
+            'id="btnRuntimeSave">Save</button>' +
+            '</div></div>';
+        document.body.appendChild(elModal);
+        var elInput = document.getElementById("runtimeLimitInput");
+        elInput.focus();
+        function fnSave() {
+            var fSeconds = parseFloat(elInput.value);
+            if (isNaN(fSeconds) || fSeconds < 0) fSeconds = 0;
+            elModal.remove();
+            dictOptions.fnOnSave(fSeconds);
+        }
+        elInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") fnSave();
+            if (e.key === "Escape") elModal.remove();
+        });
+        document.getElementById("btnRuntimeCancel").addEventListener(
+            "click", function () { elModal.remove(); }
+        );
+        document.getElementById("btnRuntimeSave").addEventListener(
+            "click", fnSave
+        );
     }
 
     function fnShowChoiceModal(sTitle, sMessage, listChoices) {
@@ -606,6 +677,7 @@ var PipeleyenModals = (function () {
     return {
         fnShowConfirmModal: fnShowConfirmModal,
         fnShowInputModal: fnShowInputModal,
+        fnShowRuntimeLimitModal: fnShowRuntimeLimitModal,
         fnShowChoiceModal: fnShowChoiceModal,
         fnShowFileChoiceModal: fnShowFileChoiceModal,
         fnShowErrorModal: fnShowErrorModal,

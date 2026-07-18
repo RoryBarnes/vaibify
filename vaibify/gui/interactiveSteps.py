@@ -144,7 +144,7 @@ async def _fiRunInteractiveAndRecord(
     iExitCode = await _fiAwaitInteractiveComplete(dictInteractive)
     if iExitCode == I_ABANDONED_EXIT_CODE:
         await _fnEmitAbandonedEvent(fnStatusCallback, iStepNumber)
-    _fnRecordRunStats(dictStep, fStartTime, 0.0)
+    _fnRecordRunStats(dictStep, fStartTime, 0.0, iExitCode=iExitCode)
     await fnStatusCallback({
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep.get("dictRunStats", {}),

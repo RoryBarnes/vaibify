@@ -163,6 +163,15 @@ class InputDataAddRequest(BaseModel):
     sPath: str
 
 
+class StepRenameRequest(BaseModel):
+    sNewName: str
+    # Dry-run returns the change-set (directory move, path rewrites,
+    # script warnings) without touching anything; the modal shows it
+    # before the researcher confirms the apply.
+    bDryRun: bool = True
+    sBaseFingerprint: Optional[str] = None
+
+
 class ReorderRequest(BaseModel):
     iFromIndex: int
     iToIndex: int

@@ -2759,7 +2759,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-07-16): the gate step-selection mirrors the runner
     # exactly (bRunEnabled + runFrom start bound), diverged from a
     # range() that over-included disabled steps.
-    "pipelineServer.py": 1981,
+    # +9 (2026-07-17): StepRenameRequest — the rename action's request
+    # model beside the other step request schemas; the cascade logic
+    # itself lives in the new stepRename.py module.
+    "pipelineServer.py": 1990,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

@@ -1076,7 +1076,7 @@ async def _fiExecuteAndRecord(
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber, sRunMode=sRunMode,
     )
-    _fnRecordRunStats(dictStep, fStartTime, fCpuTime)
+    _fnRecordRunStats(dictStep, fStartTime, fCpuTime, iExitCode=iExitCode)
     await fnStatusCallback({
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],

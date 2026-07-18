@@ -7,6 +7,7 @@ dependency cycles between pipelineRunner and its extracted submodules.
 import posixpath
 import re
 import time
+from datetime import datetime, timezone
 
 
 __all__ = [
@@ -201,12 +202,23 @@ def fnAttachStepLabels(dictWorkflow):
         dictStep["sLabel"] = listLabels[iIndex]
 
 
-def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0):
-    """Store timing information in the step's run stats."""
-    dictStep["dictRunStats"] = {
+def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0, iExitCode=None):
+    """Store timing, finish stamp, and outcome in the step's run stats.
+
+    ``iExitCode`` is optional so callers without an outcome (and stats
+    recorded before outcomes were kept) stay valid; the dashboard's
+    Last-run line omits the outcome when it was never recorded.
+    """
+    dictRunStats = {
         "fWallClock": round(time.time() - fStartTime, 1),
         "fCpuTime": round(fCpuTime, 1),
+        "sFinishedUtc": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ",
+        ),
     }
+    if iExitCode is not None:
+        dictRunStats["iExitCode"] = int(iExitCode)
+    dictStep["dictRunStats"] = dictRunStats
 
 
 def _fdictBuildWorkflowVars(dictWorkflow):

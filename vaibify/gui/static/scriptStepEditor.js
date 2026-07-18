@@ -301,9 +301,106 @@ const PipeleyenStepEditor = (function () {
         fnBindModalDrag();
     });
 
+    /* --- Rename (context menu) ---
+       Two stages: a dry-run POST returns the full change-set
+       (directory move, path rewrites, script warnings) which is
+       shown in a confirm modal, and only the researcher's confirm
+       sends the apply. The directory follows the name — that is
+       part of what a vaibify project IS — so the preview is the
+       honesty step, not an opt-out. */
+
+    function fnOpenRenameModal(iIndex) {
+        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictStep = dictWorkflow
+            && dictWorkflow.listSteps[iIndex];
+        if (!dictStep) return;
+        PipeleyenModals.fnShowInputModal(
+            "Rename step '" + (dictStep.sName || "") + "' to:",
+            dictStep.sName || "",
+            function (sNewName) {
+                _fnPreviewRename(iIndex, sNewName);
+            },
+            "Preview Rename"
+        );
+    }
+
+    async function _fnPreviewRename(iIndex, sNewName) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        try {
+            var dictPlan = await VaibifyApi.fdictPost(
+                "/api/steps/" + sContainerId + "/" + iIndex +
+                "/rename",
+                {sNewName: sNewName, bDryRun: true});
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+            return;
+        }
+        PipeleyenModals.fnShowConfirmModal(
+            "Rename step",
+            _fsDescribeRenamePlan(dictPlan),
+            function () { _fnApplyRename(iIndex, sNewName); }
+        );
+    }
+
+    function _fsDescribeRenamePlan(dictPlan) {
+        var listLines = [
+            "'" + dictPlan.sOldName + "' becomes '" +
+            dictPlan.sNewName + "'.",
+        ];
+        if (dictPlan.bDirectoryRenamed) {
+            listLines.push(
+                "Directory '" + dictPlan.sOldDirectory +
+                "' moves to '" + dictPlan.sNewDirectory +
+                "' (git mv; the staged rename appears in the " +
+                "Repos panel until you commit).");
+            var iRewrites =
+                (dictPlan.listFieldRewrites || []).length +
+                (dictPlan.listBinaryRewrites || []).length;
+            if (iRewrites > 0) {
+                listLines.push(iRewrites + " declared path(s), " +
+                    "the verification marker, and the manifest " +
+                    "are rewritten to follow it.");
+            }
+        } else if (dictPlan.sDirectoryNote) {
+            listLines.push(dictPlan.sDirectoryNote + ".");
+        }
+        (dictPlan.listScriptWarnings || []).forEach(
+            function (sScript) {
+                listLines.push("⚠ Script '" + sScript +
+                    "' mentions the old directory name and must " +
+                    "be updated by hand.");
+            });
+        (dictPlan.listCommandWarnings || []).forEach(
+            function (sWarning) {
+                listLines.push("⚠ " + sWarning + ".");
+            });
+        return listLines.join("\n\n");
+    }
+
+    async function _fnApplyRename(iIndex, sNewName) {
+        var sContainerId = PipeleyenApp.fsGetContainerId();
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/steps/" + sContainerId + "/" + iIndex +
+                "/rename",
+                {sNewName: sNewName, bDryRun: false});
+        } catch (error) {
+            PipeleyenApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
+            return;
+        }
+        PipeleyenApp.fnShowToast(
+            "Step renamed to '" + sNewName + "'", "success");
+        await VaibifyWorkflowManager.fnRefreshWorkflow();
+    }
+
     return {
         fnOpenCreateModal: fnOpenCreateModal,
         fnOpenEditModal: fnOpenEditModal,
         fnOpenInsertModal: fnOpenInsertModal,
+        fnOpenRenameModal: fnOpenRenameModal,
     };
 })();

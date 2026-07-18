@@ -451,13 +451,6 @@ var PipeleyenEventBindings = (function () {
                 parseInt(elTarget.dataset.step), elTarget.checked
             );
         }
-        if (elTarget.classList.contains("step-budget-input")) {
-            var fBudget = parseFloat(elTarget.value);
-            if (isNaN(fBudget) || fBudget < 0) fBudget = 0;
-            PipeleyenApp.fnSetStepBudget(
-                parseInt(elTarget.dataset.step), fBudget
-            );
-        }
     }
 
     function fnHandleDelegatedContextMenu(event) {

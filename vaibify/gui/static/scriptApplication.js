@@ -1543,20 +1543,20 @@ const PipeleyenApp = (function () {
         }
     }
 
-    var _DICT_STEPS_AGGREGATE_TOOLTIP = {
-        "attained": "Every step is self-consistent (Level 1)",
-        "partial": "Some steps have unmet Level 1 requirements",
-        "none": "Every started step is failing Level 1",
-        "unknown": "Step status is not yet known",
+    var _DICT_STEPS_AGGREGATE_PHRASES = {
+        "attained": "Every step meets its {level} requirements",
+        "partial": "Some steps have unmet {level} requirements",
+        "none": "Every started step is failing {level}",
+        "unknown": "Step {level} status is not yet known",
         "not-started": "No step has started yet",
         "unassessed": "Step outputs exist but none have been " +
             "assessed yet",
-        "not-applicable": "No steps with Level 1 requirements",
+        "not-applicable": "No steps with {level} requirements",
     };
 
-    function _fsAggregateStepsL1State() {
-        // The total Level-1 state across every step, summarized by
-        // the shared banner rule (see
+    function _fsAggregateStepsLevelState(iLevel) {
+        // The total state of one level across every step, summarized
+        // by the shared banner rule (see
         // VaibifyUtilities.fsSummarizeLevelStates): red only when
         // every started step is failing; any progress in the mix
         // reads orange.
@@ -1564,29 +1564,26 @@ const PipeleyenApp = (function () {
             .listSteps || [];
         if (listSteps.length === 0) return "not-started";
         var listStates = listSteps.map(function (dictStep, iIndex) {
-            return fsLevelCellState(iIndex, 1);
+            return fsLevelCellState(iIndex, iLevel);
         });
         return VaibifyUtilities.fsSummarizeLevelStates(listStates);
     }
 
     function _fsRenderStepsAggregateLight() {
-        // A full L1|L2|L3 strip (with a leading warning-column
-        // spacer) so the collapsed Steps banner lines up with the
-        // Project banner strip. L1 carries the aggregate step
-        // state; L2/L3 are dashes — those levels are project-wide,
-        // not per-step.
-        var sState = _fsAggregateStepsL1State();
-        var sLevelCell = VaibifyUtilities.fsBuildLevelCell(
-            sState,
-            _DICT_STEPS_AGGREGATE_TOOLTIP[sState] || "Step status",
-            "all steps passing");
-        var sDashCell = '<span class="step-level-cell ' +
-            'level-cell-not-applicable" title="No step-level ' +
-            'requirements at this level — see the Project block">' +
-            '<span class="level-cell-dash">&#8212;</span></span>';
-        return '<span class="step-level-strip">' +
-            '<span class="step-regression-cell"></span>' +
-            sLevelCell + sDashCell + sDashCell + '</span>';
+        // A full ⚠ + L1|L2|L3 strip so the collapsed Steps banner
+        // lines up with the Project banner strip. Each cell carries
+        // the aggregate of that level across every step row.
+        var sHtml = '<span class="step-level-strip">' +
+            '<span class="step-regression-cell"></span>';
+        for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            var sState = _fsAggregateStepsLevelState(iLevel);
+            var sPhrase = (_DICT_STEPS_AGGREGATE_PHRASES[sState] ||
+                "Step status").replace(
+                "{level}", "Level " + iLevel);
+            sHtml += VaibifyUtilities.fsBuildLevelCell(
+                sState, sPhrase, "all steps passing");
+        }
+        return sHtml + '</span>';
     }
 
     function _fnRenderStepListIncremental(
@@ -4093,9 +4090,39 @@ const PipeleyenApp = (function () {
             PipeleyenStepEditor.fnOpenInsertModal(iIndex);
         } else if (sAction === "insertAfter") {
             PipeleyenStepEditor.fnOpenInsertModal(iIndex + 1);
+        } else if (sAction === "setRuntimeLimit") {
+            fnOpenRuntimeLimitModal(iIndex);
+        } else if (sAction === "rename") {
+            PipeleyenStepEditor.fnOpenRenameModal(iIndex);
         } else if (sAction === "delete") {
             fnDeleteStep(iIndex);
         }
+    }
+
+    function fnOpenRuntimeLimitModal(iStep) {
+        var dictWorkflow = _dictWorkflowState.dictWorkflow;
+        var step = dictWorkflow
+            && dictWorkflow.listSteps[iStep];
+        if (!step) return;
+        var dictStats = step.dictRunStats || {};
+        var bKnownSuccess = dictStats.iExitCode === 0
+            && dictStats.fWallClock !== undefined;
+        PipeleyenModals.fnShowRuntimeLimitModal({
+            sStepTitle: fsComputeStepLabel(iStep) + " " +
+                (step.sName || ""),
+            fCurrentBudget: step.fWallClockBudgetSeconds || 0,
+            fProjectDefault:
+                dictWorkflow.fDefaultWallClockBudgetSeconds || 0,
+            fLastSuccessfulWallClock:
+                bKnownSuccess ? dictStats.fWallClock : 0,
+            fnOnSave: function (fSeconds) {
+                fnSetStepBudget(iStep, fSeconds);
+                fnShowToast(fSeconds > 0
+                    ? "Runtime limit set to " + fSeconds + " s"
+                    : "Runtime limit cleared — the step inherits "
+                        + "the project default", "success");
+            },
+        });
     }
 
     function fnDeleteStep(iIndex) {

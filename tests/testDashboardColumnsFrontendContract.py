@@ -411,24 +411,38 @@ def test_workflow_wide_block_rebuilds_unconditionally():
 
 
 def test_every_column_header_carries_a_tooltip():
-    """The per-step column headers (run, warnings, L1) must explain
-    themselves on hover. L2/L3 are project-wide, not per-step, so they
-    are no longer headed on the step rows."""
+    """The per-step column headers (run, warnings, L1, L2, L3) must
+    explain themselves on hover. Every level has per-step
+    requirements (2026-07-17 ruling restoring the three columns), so
+    all three level headers are present."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     sHeader = _fsExtractFunctionBlock(
         sSource, "_fsRenderLevelColumnHeaderRow",
     )
     for sNeedle in (
         "Run controls", "Warnings", "Level 1 Self-Consistent",
+        "Level 2 Published", "Level 3 Reproducible",
     ):
         assert sNeedle in sHeader, (
             "column header missing its tooltip: " + sNeedle
         )
-    assert "Level 2 Published" not in sHeader, (
-        "L2 is project-wide and must not be a per-step column"
+
+
+def test_step_rows_render_all_three_level_cells():
+    """Step rows carry the full ⚠ + L1|L2|L3 strip (2026-07-17
+    ruling): per-step L2 (published copies of this step's outputs)
+    and L3 (manifest, script pinning, determinism, binaries) criteria
+    exist in levelGates, and a step with none shows the
+    not-applicable dash — the strip must not cap at L1."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sStrip = _fsExtractFunctionBlock(
+        sSource, "_fsBuildStepLevelStrip",
     )
-    assert "Level 3 Reproducible" not in sHeader, (
-        "L3 is project-wide and must not be a per-step column"
+    assert "iMaxLevel = 3" in sStrip, (
+        "the step strip must render all three level cells"
+    )
+    assert "iIndex < 0 ? 3 : 1" not in sStrip, (
+        "the step scope must not be capped to L1"
     )
 
 
@@ -783,25 +797,89 @@ def test_declaration_badge_state_reaches_the_incremental_renderer():
     )
 
 
-def test_run_light_success_renders_the_vaibify_check():
-    """A successful last run renders the vaibify check (the favicon,
-    the same mark as an attained level cell — a text glyph reads as
-    foreign), and the never-run state is the hollow circle — the
-    researcher-approved vocabulary."""
+def test_run_light_success_is_quiet_and_never_the_favicon():
+    """The vaibify check is reserved for attained level cells
+    (2026-07-17 ruling): a run-status check beside an unverified step
+    read as a false Level 1 claim. A successful last run renders a
+    quiet empty cell; the never-run state stays the hollow circle;
+    success detail lives in the expanded step's Last run line."""
     sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
     sCell = _fsExtractFunctionBlock(
         sRenderer, "_fsBuildStepStatusCell",
     )
-    assert "step-status-check" in sCell
-    assert "favicon.png" in sCell, (
-        "the success mark must be the vaibify check image, not a "
-        "text glyph"
+    assert "favicon.png" not in sCell, (
+        "run status must never wear the level-attainment check"
+    )
+    assert "step-status-check" not in sCell, (
+        "the success-check markup is retired from the run light"
+    )
+    assert '? ""' in sCell, (
+        "the pass state must render an empty (quiet) cell"
     )
     sCss = _fsReadStaticFile("styleMain.css")
+    assert ".step-status-check" not in sCss, (
+        "the retired success-check styling must not survive"
+    )
     iStart = sCss.find(".step-item .step-status {")
     assert "border: 1.5px solid var(--text-muted)" in (
         sCss[iStart:iStart + 300]
     ), "the never-run light must be the hollow grey circle"
+
+
+def test_expanded_step_carries_requirements_block_and_last_run():
+    """The expanded step detail explains the banner cells: one row
+    per rung re-slicing the SAME projection the cells render (the
+    dictStepLevels cells plus the per-level blocker entries — never
+    a second computation), and the Last run line that took over the
+    success record when the run light went alarm-only
+    (2026-07-17)."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sItem = _fsExtractFunctionBlock(sRenderer, "fsRenderStepItem")
+    assert "fsRenderStepRequirementsBlock" in sItem, (
+        "the expanded detail must render the requirements block"
+    )
+    sBlock = _fsExtractFunctionBlock(
+        sRenderer, "fsRenderStepRequirementsBlock",
+    )
+    assert "fsRenderLastRunLine" in sBlock, (
+        "the requirements block must carry the Last run line"
+    )
+    sDetail = _fsExtractFunctionBlock(
+        sRenderer, "_fsLevelRequirementDetail",
+    )
+    for sSource in (
+        "dictBlockersByStep", "dictBlockersByStepLevel2",
+        "dictBlockersByStepLevel3", "listFailingCriteria",
+    ):
+        assert sSource in sDetail, (
+            "requirement detail must re-slice the poll's blocker "
+            "data, not recompute: missing " + sSource
+        )
+    sOutcome = _fsExtractFunctionBlock(
+        sRenderer, "_fsLastRunOutcome",
+    )
+    assert "iExitCode" in sOutcome and "dictStepStatus" in sOutcome, (
+        "the outcome must come from the session status or the "
+        "persisted exit code — never be invented"
+    )
+
+
+def test_favicon_marks_render_only_through_the_shared_builder():
+    """Every favicon image in the step renderer and utilities must be
+    the shared attained-mark builder — no other surface may emit the
+    check, so 'the vaibify check means attained' stays a single-owner
+    vocabulary rule."""
+    sUtilities = _fsReadStaticFile("scriptUtilities.js")
+    sBuilder = _fsExtractFunctionBlock(
+        sUtilities, "fsBuildAttainedFavicon",
+    )
+    assert "favicon.png" in sBuilder
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    assert "favicon.png" not in sRenderer, (
+        "the step renderer must not hand-write favicon markup; the "
+        "attained mark comes from fsBuildLevelCell/"
+        "fsBuildAttainedFavicon"
+    )
 
 
 def test_publication_rows_point_at_the_repos_panel():
@@ -1076,7 +1154,7 @@ def test_both_banners_share_the_level_summarizer():
             "both banners must call the shared summarizer"
         )
     sAggregate = _fsExtractFunctionBlock(
-        sApplication, "_fsAggregateStepsL1State",
+        sApplication, "_fsAggregateStepsLevelState",
     )
     assert 'return "none"' not in sAggregate, (
         "any-red-short-circuit made one failing step paint the "

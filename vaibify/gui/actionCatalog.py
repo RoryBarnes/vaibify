@@ -193,6 +193,18 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/steps/{sContainerId}/insert/{iPosition}",
      "bAgentSafe": True,
      "sDescription": "Insert a new step at the given 0-based position."},
+    {"sName": "rename-step", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/steps/{sContainerId}/{iStepIndex}/rename",
+     "bAgentSafe": True,
+     "sDescription": "Rename a step and cascade the rename through "
+                     "its directory (git mv), verification marker, "
+                     "manifest paths, and every declared path. Args: "
+                     "{sNewName, bDryRun}. Call with bDryRun=true "
+                     "first — it returns the change-set and script "
+                     "warnings without touching anything; apply with "
+                     "bDryRun=false. Refused 409 while a pipeline "
+                     "action is running."},
     {"sName": "update-step", "sCategory": "workflow",
      "sMethod": "PUT",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}",

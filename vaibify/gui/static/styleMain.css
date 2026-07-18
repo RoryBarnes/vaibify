@@ -1123,9 +1123,10 @@ body.aics-level-3 .toolbar-label {
 }
 
 /* Run light vocabulary: hollow grey = never run this session,
-   filled grey = queued, blinking orange = running, red = failed;
-   a successful last run renders the theme-tinted check
-   (.step-status-check) instead of a dot. */
+   filled grey = queued, blinking orange = running, red = failed,
+   blinking red = over budget. A successful last run renders an
+   empty cell — the vaibify check belongs to attained level cells
+   only, never to run status. */
 .step-item .step-status {
     flex-shrink: 0;
     width: 8px;
@@ -1160,7 +1161,7 @@ body.aics-level-3 .toolbar-label {
     animation: pulse 0.7s infinite;
 }
 
-/* Per-step expected-runtime input in the expanded detail. Compact so
+/* Per-step runtime-limit input in the right-click modal. Compact so
    it reads as a small inline field beside its label, not a settings
    control. */
 .step-budget-input {
@@ -1177,13 +1178,6 @@ body.aics-level-3 .toolbar-label {
 .step-item .step-status.skipped {
     background: var(--text-muted);
     border: none;
-}
-
-.step-status-check {
-    width: 12px;
-    height: 12px;
-    vertical-align: middle;
-    cursor: help;
 }
 
 .vaib-verified-badge {
@@ -1576,6 +1570,38 @@ body.aics-level-3 .toolbar-label {
     flex-direction: column;
     gap: 1px;
     padding: 3px 0;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* --- Per-step ladder-requirements block (expanded detail) --- */
+
+.step-requirements {
+    padding: 2px 0 4px;
+}
+
+.step-requirement-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.step-requirement-counts {
+    color: var(--text-muted);
+}
+
+/* Failing-criteria line indented under its rung's row. */
+.step-requirement-detail {
+    padding-left: 24px;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.step-last-run {
+    padding: 3px 0 0;
     font-size: 10px;
     color: var(--text-muted);
 }
@@ -2567,6 +2593,16 @@ body.aics-level-3 .toolbar-label {
     cursor: move;
     -webkit-user-select: none;
     user-select: none;
+}
+
+/* Explanatory prose above a modal's input — small, secondary, and
+   width-bounded so the modal stays narrow. */
+.modal-explanation {
+    max-width: 420px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
 }
 
 .input-modal-field {
@@ -3561,8 +3597,7 @@ body.aics-level-3 {
 
 body.aics-level-3 .toolbar-logo,
 body.aics-level-3 .vaib-verified-badge,
-body.aics-level-3 .level-cell-favicon,
-body.aics-level-3 .step-status-check {
+body.aics-level-3 .level-cell-favicon {
     /* Pink tint via the same sepia recipe so the cluster shifts hue
        smoothly across promotions without a per-level icon swap. */
     filter: sepia(1) hue-rotate(295deg) saturate(2.4) brightness(0.95);
@@ -3570,8 +3605,7 @@ body.aics-level-3 .step-status-check {
 
 body.aics-level-2 .toolbar-logo,
 body.aics-level-2 .vaib-verified-badge,
-body.aics-level-2 .level-cell-favicon,
-body.aics-level-2 .step-status-check {
+body.aics-level-2 .level-cell-favicon {
     /* Green tint mirrors the purple sepia recipe used for L1. */
     filter: sepia(1) hue-rotate(80deg) saturate(2) brightness(0.85);
 }
@@ -3621,15 +3655,14 @@ body.aics-level-2 .step-status-check {
 }
 
 /* Every favicon-based mark follows the ladder theme: the toolbar
-   logo, the verified badge, the level-strip "attained" favicons
+   logo, the verified badge, and the level-strip "attained" favicons
    (step rows, Steps and Project banners, requirement rows, Help
-   samples), and the run light's success check. The raw favicon.png
-   is pale blue, matching the pre-L1 theme, so untinted marks read
-   as off-theme once the ladder recolors the rest of the UI. */
+   samples). The raw favicon.png is pale blue, matching the pre-L1
+   theme, so untinted marks read as off-theme once the ladder
+   recolors the rest of the UI. */
 body.aics-level-1 .toolbar-logo,
 body.aics-level-1 .vaib-verified-badge,
-body.aics-level-1 .level-cell-favicon,
-body.aics-level-1 .step-status-check {
+body.aics-level-1 .level-cell-favicon {
     filter: sepia(1) hue-rotate(220deg) saturate(2) brightness(0.85);
 }
 

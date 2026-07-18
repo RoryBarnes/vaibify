@@ -129,6 +129,13 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
                 f"{_fsSanitizeServerError(str(error))}")
 
 
+# New projects start with a four-hour advisory runtime limit per step
+# (the dashboard flags a longer-running step as possibly hung; the run
+# is never stopped). Existing projects keep their recorded value —
+# absent means no limit.
+F_NEW_PROJECT_RUNTIME_LIMIT_SECONDS = 14400.0
+
+
 def _fdictBlankWorkflowContent(request):
     """Return the minimum-viable workflow.json dict for a fresh create."""
     return {
@@ -136,6 +143,8 @@ def _fdictBlankWorkflowContent(request):
         "sPlotDirectory": "Plot",
         "sFigureType": "pdf",
         "iNumberOfCores": -1,
+        "fDefaultWallClockBudgetSeconds":
+            F_NEW_PROJECT_RUNTIME_LIMIT_SECONDS,
         "listSteps": [],
     }
 

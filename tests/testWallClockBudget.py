@@ -377,3 +377,96 @@ def test_run_loop_resolves_and_passes_budget(mockShould, mockRunOne):
     assert mockRunOne.call_args.kwargs[
         "fWallClockBudgetSeconds"
     ] == 30.0
+
+
+# --------------------------------------------------------------------------
+# 2026-07-17 UX rework: the per-step limit moved from an inline detail
+# input to a right-click modal; new projects carry a 4-hour advisory
+# default; the first run of a project shows a one-time, NON-blocking
+# notice (a consent modal would be dishonest — nothing is stopped).
+# --------------------------------------------------------------------------
+
+
+import os
+
+_S_STATIC_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "vaibify", "gui", "static",
+)
+
+
+def _fsReadStatic(sName):
+    with open(os.path.join(_S_STATIC_DIR, sName),
+              encoding="utf-8") as fileHandle:
+        return fileHandle.read()
+
+
+def test_new_project_skeleton_carries_four_hour_default():
+    from vaibify.gui.routes.workflowRoutes import (
+        F_NEW_PROJECT_RUNTIME_LIMIT_SECONDS,
+        _fdictBlankWorkflowContent,
+    )
+    request = MagicMock()
+    request.sWorkflowName = "anyProject"
+    dictContent = _fdictBlankWorkflowContent(request)
+    assert dictContent[
+        "fDefaultWallClockBudgetSeconds"
+    ] == F_NEW_PROJECT_RUNTIME_LIMIT_SECONDS
+    assert F_NEW_PROJECT_RUNTIME_LIMIT_SECONDS == 14400.0
+
+
+def test_inline_budget_input_is_retired_from_the_step_detail():
+    """The inline 'Expected runtime' row was configuration posing as
+    status; the right-click modal is the one entry point now."""
+    sRenderer = _fsReadStatic("scriptStepRenderer.js")
+    assert "step-budget-input" not in sRenderer
+    sBindings = _fsReadStatic("scriptEventBindings.js")
+    assert "step-budget-input" not in sBindings
+
+
+def test_context_menu_offers_the_runtime_limit_modal():
+    sIndex = _fsReadStatic("index.html")
+    assert 'data-action="setRuntimeLimit"' in sIndex
+    sApplication = _fsReadStatic("scriptApplication.js")
+    assert 'sAction === "setRuntimeLimit"' in sApplication
+    sModals = _fsReadStatic("scriptModals.js")
+    assert "fnShowRuntimeLimitModal" in sModals
+    assert "never stopped" in sModals, (
+        "the modal must say the limit is advisory"
+    )
+
+
+def test_runtime_modal_prefills_twice_the_last_successful_run():
+    """The suggestion converts 'how long should this take?' into
+    'twice what it took last time' — and only a SUCCESSFUL recorded
+    run may seed it (a failed run's duration is not an expectation)."""
+    sModals = _fsReadStatic("scriptModals.js")
+    assert "fLastSuccessfulWallClock * 2" in sModals
+    sApplication = _fsReadStatic("scriptApplication.js")
+    iAt = sApplication.find("bKnownSuccess")
+    assert iAt != -1
+    assert "iExitCode === 0" in sApplication[iAt:iAt + 200], (
+        "the suggestion must key on a successful exit code"
+    )
+
+
+def test_first_run_notice_is_one_time_and_non_blocking():
+    sRunner = _fsReadStatic("scriptPipelineRunner.js")
+    iAt = sRunner.find("function _fnMaybeShowRuntimeLimitNotice")
+    assert iAt != -1, "the first-run notice must exist"
+    sBlock = sRunner[iAt:sRunner.find("\n    function ", iAt + 1)]
+    assert "fnShowToast" in sBlock, (
+        "the notice is a toast, never a blocking modal"
+    )
+    assert "ShowConfirmModal" not in sBlock
+    assert "localStorage" in sBlock, (
+        "the notice must remember it was shown"
+    )
+    assert "fDefaultWallClockBudgetSeconds" in sBlock, (
+        "no project default -> no notice"
+    )
+    iSend = sRunner.find("function fnSendPipelineAction")
+    sSend = sRunner[iSend:sRunner.find("\n    function ", iSend + 1)]
+    assert "_fnMaybeShowRuntimeLimitNotice" in sSend, (
+        "every run dispatch path must pass the notice gate"
+    )
