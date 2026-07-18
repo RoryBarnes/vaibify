@@ -1516,6 +1516,25 @@ _DICT_PRIOR_HIGH_WATER = {
 }
 
 
+def _fdictStripStepCellRequirements(dictStepLevels):
+    """Return the payload's cells minus the listRequirements key.
+
+    The count/state slice is pinned exactly below; the breakdown's
+    content has its own unit tests (testStepLevelStates) — here we
+    only guard that the wire carries it.
+    """
+    return {
+        sIndex: {
+            sLevel: {
+                sKey: vValue for sKey, vValue in dictCell.items()
+                if sKey != "listRequirements"
+            }
+            for sLevel, dictCell in dictCells.items()
+        }
+        for sIndex, dictCells in dictStepLevels.items()
+    }
+
+
 class TestPollLevelStatePayload:
     @pytest.mark.asyncio
     async def test_response_carries_level_state_keys(self):
@@ -1526,9 +1545,23 @@ class TestPollLevelStatePayload:
             dictResult = await _fdictFetchOutputStatus(
                 dictCtx, "cid1", dictWorkflow, {},
             )
-        assert dictResult["dictStepLevels"] == {
+        assert _fdictStripStepCellRequirements(
+            dictResult["dictStepLevels"],
+        ) == {
             "0": _DICT_ALL_ATTAINED_STEP_CELLS,
         }
+        for sLevelKey in ("s1", "s2", "s3"):
+            listRequirements = dictResult["dictStepLevels"]["0"][
+                sLevelKey]["listRequirements"]
+            assert isinstance(listRequirements, list), (
+                "each step cell must ship its per-criterion "
+                "breakdown — the Step Viewer's level sections and "
+                "the requirements modal render exactly this"
+            )
+            assert all(
+                set(dictEntry) == {"sName", "bMet"}
+                for dictEntry in listRequirements
+            )
         assert dictResult["dictWorkflowScopeLevels"] == (
             _DICT_ALL_ATTAINED_SCOPE_CELLS
         )
@@ -1654,7 +1687,9 @@ class TestPollLevelStatePayload:
             dictResult = await _fdictFetchOutputStatus(
                 dictCtx, "cid1", dictWorkflow, {},
             )
-        assert dictResult["dictStepLevels"]["0"]["s1"] == {
+        assert _fdictStripStepCellRequirements(
+            dictResult["dictStepLevels"],
+        )["0"]["s1"] == {
             "sState": "partial", "iSatisfied": 3, "iTotal": 4,
             "bRegression": True,
         }

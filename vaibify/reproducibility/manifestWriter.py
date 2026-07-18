@@ -81,6 +81,7 @@ from vaibify.reproducibility.manifestPaths import (
 __all__ = [
     "flistCollectCanonicalRepoPaths",
     "fnWriteManifest",
+    "fbRewriteManifestPathPrefix",
     "flistVerifyManifest",
     "flistParseManifestLines",
     "flistDeclaredButMissingFromManifest",
@@ -196,6 +197,39 @@ def _fnRemoveTempFileQuietly(sTempPath):
         os.remove(sTempPath)
     except OSError:
         pass
+
+
+def fbRewriteManifestPathPrefix(filesRepo, sOldDirectory, sNewDirectory):
+    """Swap a directory prefix on manifest entries, hashes intact.
+
+    A step-directory rename moves bytes without changing them, so the
+    recorded hashes stay true and only the paths need rewriting;
+    re-hashing an entire archive for a rename would be pure waste.
+    Returns True when at least one entry changed (the manifest is then
+    rewritten sorted, matching ``fnWriteManifest``'s ordering). Raises
+    ``FileNotFoundError`` when the manifest is absent.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listEntries = flistParseManifestLines(filesRepo)
+    bChanged = False
+    listRewritten = []
+    for dictEntry in listEntries:
+        sPath = dictEntry["sPath"]
+        if sPath == sOldDirectory \
+                or sPath.startswith(sOldDirectory + "/"):
+            sPath = sNewDirectory + sPath[len(sOldDirectory):]
+            bChanged = True
+        listRewritten.append((dictEntry["sExpected"], sPath))
+    if not bChanged:
+        return False
+    sBody = _MANIFEST_HEADER + "".join(
+        _fsFormatManifestLine(sHash, sRelativePath)
+        for sHash, sRelativePath in sorted(
+            listRewritten, key=lambda tEntry: tEntry[1],
+        )
+    )
+    filesRepo.fnWriteTextAtomic(_MANIFEST_FILENAME, sBody)
+    return True
 
 
 def flistVerifyManifest(filesRepo):

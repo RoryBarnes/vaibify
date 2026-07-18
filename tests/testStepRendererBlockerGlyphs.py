@@ -481,9 +481,9 @@ def testRendererStampsEveryLevelCellStateClass():
     )
     assert "level-cell-favicon" not in sRenderer, (
         "the step renderer must not hand-write level-cell favicon "
-        "markup beside the shared builder (the run light's "
-        "step-status-check favicon is a different concept and is "
-        "allowed)"
+        "markup beside the shared builder (since 2026-07-17 the "
+        "renderer emits no favicon at all — the run light's success "
+        "check is retired)"
     )
 
 

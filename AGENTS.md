@@ -164,6 +164,23 @@ automatically. Error messages, logs, toasts, and agent-facing
 commands use labels (users speak labels); internal code paths keep
 0-based indices.
 
+**A step's directory basename is a function of its name.** The slug
+contract (2026-07-18): split the name on whitespace, uppercase each
+word's first letter, preserve the rest, concatenate ("GJ 1132 XUV" →
+`GJ1132XUV`; hyphens pass through). Names allow only letters, digits,
+spaces, and hyphens; slugs are unique per project case-insensitively;
+parent path components are free. The single implementation is
+`fsSlugFromStepName` / `fsValidateStepName` /
+`fbStepDirectoryConforms` in
+[vaibify/gui/pipelineUtils.py](vaibify/gui/pipelineUtils.py) (with a
+display-only JS mirror in `scriptUtilities.js` — the backend is the
+authority). Never write a second derivation, and never let a name
+change bypass the rename cascade (`stepRename.py`): the generic
+update-step path 400s renames precisely so the directory, marker,
+and manifest can never drift from the name. Legacy mismatches are a
+red ⚠ error with the `align-step-directories` action as the
+migration path.
+
 **Never hard-code science-specific examples.** Vaibify is for the
 general problem of containerized scientific workflows. Specific
 datasets, specific experimental setups, specific user projects, and

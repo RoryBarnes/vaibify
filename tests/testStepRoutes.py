@@ -84,11 +84,15 @@ def tClientAndWorkflow():
     return fbuild
 
 
-def _dictNewStepPayload():
-    """Return a valid create-step payload body."""
+def _dictNewStepPayload(sName="New"):
+    """Return a valid create-step payload body.
+
+    Distinct names matter now: the slug contract rejects two steps
+    whose names map to the same directory.
+    """
     return {
-        "sName": "New",
-        "sDirectory": "newStep",
+        "sName": sName,
+        "sDirectory": "",
         "bPlotOnly": False,
         "saPlotCommands": [],
         "saPlotFiles": [],
@@ -128,7 +132,7 @@ def testWarnHundredFlagPersistsOnCrossing(tClientAndWorkflow):
     assert dictWorkflow["bWarnedHundredSteps"] is True
     responseSecond = clientHttp.post(
         f"/api/steps/{S_CONTAINER_ID}/create",
-        json=_dictNewStepPayload(),
+        json=_dictNewStepPayload("New Two"),
     )
     assert responseSecond.status_code == 200
     assert responseSecond.json()["bShouldWarnHundredSteps"] is False
@@ -246,3 +250,80 @@ def testFingerprintMismatchConflictsRegardlessOfSortOrder():
         with pytest.raises(HTTPException) as excInfo:
             stepRoutes._fnRequireFingerprintMatch(dictWorkflow, sStale)
         assert excInfo.value.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Marker-follows-directory through the REAL route wiring (2026-07-18).
+# The shipped bug: the align/rename routes passed
+# dictWorkflow.get("sPath") — a key the workflow dict never carries —
+# so the marker namespace slug was empty and every marker move
+# silently no-op'd, orphaning verification records. The unit fixtures
+# had encoded the same wrong key (green-stub trap); this test drives
+# the actual route with the path where it really lives
+# (dictCtx["paths"]) and a REAL marker file on disk.
+# ---------------------------------------------------------------------------
+
+
+class _FakeAlignDocker:
+    """Exec results for the align cascade's directory move."""
+
+    def ftResultExecuteCommand(self, sContainerId, sCommand):
+        if "test -e" in sCommand:
+            return (1, "")   # destination absent
+        if "test -d" in sCommand:
+            return (0, "")   # source present
+        return (0, "")       # git mv succeeds
+
+
+def testAlignRouteMovesTheMarkerThroughRealWiring(tmp_path):
+    import json as moduleJson
+
+    sMarkerDir = tmp_path / ".vaibify" / "test_markers" / "study"
+    sMarkerDir.mkdir(parents=True)
+    (sMarkerDir / "legacyDir.json").write_text(moduleJson.dumps(
+        {"sLabel": "A01", "sDirectory": "legacyDir",
+         "dictOutputHashes": {"legacyDir/out.csv": "abc"}},
+    ))
+    dictWorkflow = {
+        "sWorkflowName": "Wiring Test",
+        "sProjectRepoPath": str(tmp_path),
+        "listSteps": [{
+            "sName": "Old Step", "sDirectory": "legacyDir",
+            "sLabel": "A01",
+            "saOutputDataFiles": ["legacyDir/out.csv"],
+            "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+    listSaves = []
+    dictCtx = _fdictBuildContext(dictWorkflow, listSaves)
+    dictCtx["docker"] = _FakeAlignDocker()
+    dictCtx["pipelineTasks"] = {}
+    # The workflow file path lives HERE — never on the workflow dict.
+    dictCtx["paths"] = {
+        S_CONTAINER_ID: "/workspace/repo/.vaibify/workflows/study.json",
+    }
+    app = FastAPI()
+    stepRoutes.fnRegisterAll(app, dictCtx)
+    clientHttp = TestClient(app)
+
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/align-directories",
+    )
+    assert responseHttp.status_code == 200
+    dictResult = responseHttp.json()
+    assert dictResult["listSkipped"] == []
+    assert len(dictResult["listAligned"]) == 1
+
+    # The marker followed the directory: new name, rewritten record.
+    assert not (sMarkerDir / "legacyDir.json").exists(), (
+        "the old marker must not be left behind"
+    )
+    sNewMarker = sMarkerDir / "OldStep.json"
+    assert sNewMarker.exists(), (
+        "the verification marker must follow the directory rename"
+    )
+    dictMarker = moduleJson.loads(sNewMarker.read_text())
+    assert dictMarker["sDirectory"] == "OldStep"
+    assert dictMarker["dictOutputHashes"] == {
+        "legacyDir/out.csv": "abc",
+    }

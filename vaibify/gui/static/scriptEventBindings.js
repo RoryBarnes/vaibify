@@ -340,6 +340,64 @@ var PipeleyenEventBindings = (function () {
             elMatch.dataset.service || "", elMatch);
     }
 
+    function _fnHandleStepLevelInfo(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnShowStepLevelRequirementsModal(
+            parseInt(elMatch.dataset.step),
+            parseInt(elMatch.dataset.level));
+    }
+
+    function _fnHandleStepLevelSectionToggle(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnToggleStepLevelSection(
+            parseInt(elMatch.dataset.step),
+            parseInt(elMatch.dataset.level));
+    }
+
+    function _fnHandleAlignDirectories(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnShowConfirmModal(
+            "Align directories",
+            "Move every nonconforming step directory to its "
+            + "name's camel-case form? Each move is a git mv; "
+            + "markers, the manifest, and declared paths follow. "
+            + "The staged renames appear in the Repos panel until "
+            + "you commit.",
+            function () {
+                PipeleyenApp.fnAlignStepDirectories();
+            }
+        );
+    }
+
+    function _fnHandleStepDescriptionToggle(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnToggleStepDescription(
+            parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleStepDescriptionEdit(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnBeginStepDescriptionEdit(
+            parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleStepBannerLevelCell(event, elMatch) {
+        // Only step-scope cells carry data-level; the Project
+        // banner's cells fall through to the ordinary row click.
+        var sLevel = elMatch.dataset.level;
+        var elStep = elMatch.closest(".step-item");
+        if (!sLevel || !elStep) return;
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnExpandStepLevelSection(
+            parseInt(elStep.dataset.index), parseInt(sLevel));
+    }
+
     function _fnHandleToggleBinaryForm(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -394,10 +452,22 @@ var PipeleyenEventBindings = (function () {
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,
+        // The Align button sits inside the Steps banner; it must
+        // precede the banner's own toggle entry or first-match
+        // dispatch collapses the block instead.
+        ".wf-align-directories": _fnHandleAlignDirectories,
         ".steps-block-header": _fnHandleStepsBlockToggle,
         ".project-block-header": _fnHandleProjectBlockToggle,
         ".requirement-group-header": _fnHandleRequirementGroupToggle,
         ".requirement-row-header": _fnHandleRequirementRowToggle,
+        // The ⓘ link precedes its enclosing section header so the
+        // registry's first-match dispatch opens the modal instead of
+        // toggling the section.
+        ".step-level-info": _fnHandleStepLevelInfo,
+        ".step-level-section-header": _fnHandleStepLevelSectionToggle,
+        ".step-item .step-level-cell": _fnHandleStepBannerLevelCell,
+        ".step-description-header": _fnHandleStepDescriptionToggle,
+        ".step-description-text": _fnHandleStepDescriptionEdit,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
         ".btn-ai-declaration-untrack": _fnHandleAiDeclarationUntrack,
         ".wf-declare-no-input": _fnHandleBulkDeclareNoInput,
@@ -449,13 +519,6 @@ var PipeleyenEventBindings = (function () {
         if (elTarget.classList.contains("no-input-data-checkbox")) {
             PipeleyenApp.fnToggleNoInputData(
                 parseInt(elTarget.dataset.step), elTarget.checked
-            );
-        }
-        if (elTarget.classList.contains("step-budget-input")) {
-            var fBudget = parseFloat(elTarget.value);
-            if (isNaN(fBudget) || fBudget < 0) fBudget = 0;
-            PipeleyenApp.fnSetStepBudget(
-                parseInt(elTarget.dataset.step), fBudget
             );
         }
     }

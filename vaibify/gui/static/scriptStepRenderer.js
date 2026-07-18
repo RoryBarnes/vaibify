@@ -56,15 +56,17 @@ var VaibifyStepRenderer = (function () {
 
     function _fsRenderLevelColumnHeaderRow() {
         // Labels the per-step status columns once at the top of the
-        // Steps block. L1 is the only level that is a per-step
-        // property; L2/L3 are project-wide and live in the
-        // Project block, so they are not headed here.
+        // Steps block. Every level has per-step requirements (L2:
+        // published copies of this step's outputs; L3: manifest,
+        // script pinning, determinism, binaries), so all three are
+        // headed here; the project-scope requirements that attach to
+        // no step live in the Project block.
         return '<div class="level-column-header-row">' +
             '<span class="run-column-header ' +
             'level-column-header-cell" ' +
             'title="Run controls — the checkbox includes a step in ' +
-            'the next run; the light beside it shows what happened ' +
-            'when the step last ran. Hover a light for detail.">' +
+            'the next run; the light beside it shows live run ' +
+            'activity and failures. Hover a light for detail.">' +
             'Run</span>' +
             '<span class="step-level-strip">' +
             '<span class="step-regression-cell ' +
@@ -76,12 +78,24 @@ var VaibifyStepRenderer = (function () {
             ' title="Level 1 Self-Consistent — tests pass, files ' +
             'match, and you have signed off. A dash means the step ' +
             'has no requirements at this level.">L1</span>' +
+            '<span class="step-level-cell level-column-header-cell"' +
+            ' title="Level 2 Published — this step\'s outputs match ' +
+            'the published copies (GitHub, Zenodo, and any bound ' +
+            'manuscript figures). A dash means the step has no ' +
+            'requirements at this level.">L2</span>' +
+            '<span class="step-level-cell level-column-header-cell"' +
+            ' title="Level 3 Reproducible — this step\'s scripts and ' +
+            'outputs are pinned in the manifest, its randomness is ' +
+            'declared, and any binaries it invokes are declared and ' +
+            'captured. A dash means the step has no requirements at ' +
+            'this level.">L3</span>' +
             '</span></div>';
     }
 
     var _DICT_STEP_STATUS_TITLES = {
         "": "not run in this session",
-        "pass": "last run succeeded",
+        "pass": "last run succeeded — details in the expanded "
+            + "step's Last run line",
         "fail": "last run failed",
         "queued": "queued in the current run",
         "running": "running now",
@@ -93,30 +107,41 @@ var VaibifyStepRenderer = (function () {
     function _fsBuildStepStatusCell(sRunStatus) {
         // Vocabulary: hollow grey = never run this session, filled
         // grey = queued, blinking orange = running, red = failed,
-        // the vaibify check (favicon) = last run succeeded.
+        // blinking red = over budget, quiet pale-blue dot = last
+        // run succeeded. The vaibify check stays reserved for
+        // attained level cells (2026-07-17 ruling); the dot is
+        // execution-only. It must be VISIBLE — an empty pass cell
+        // beside hollow never-run circles read as a rendering bug
+        // when a restart restored the last run's results
+        // (live report 2026-07-18).
         var sTitle = "Run status: " +
             (_DICT_STEP_STATUS_TITLES[sRunStatus] || sRunStatus);
-        var sInner = sRunStatus === "pass"
-            ? '<img src="/static/favicon.png" ' +
-                'class="step-status-check" alt="last run succeeded">'
-            : '<span class="step-status ' + sRunStatus + '"></span>';
         return '<span class="step-status-cell" title="' +
-            fnEscapeHtml(sTitle) + '">' + sInner + '</span>';
+            fnEscapeHtml(sTitle) + '">' +
+            '<span class="step-status ' + sRunStatus +
+            '"></span></span>';
     }
 
     function _fsBuildStepLevelStrip(dictContext, iIndex) {
-        // Step scope (iIndex >= 0) shows only ⚠ + L1 — the levels that
-        // are genuinely per-step. The workflow scope (iIndex < 0, the
-        // Project banner) keeps the full ⚠ + L1 + L2 + L3
-        // at-a-glance strip.
+        // Both scopes show the full ⚠ + L1 + L2 + L3 strip. Step
+        // scope (iIndex >= 0) renders the step's own requirement
+        // cells (a dash when a level has none); the workflow scope
+        // (iIndex < 0, the Project banner) renders the project-wide
+        // requirements that attach to no single step.
         if (!dictContext.fsLevelCellState) return "";
-        var iMaxLevel = iIndex < 0 ? 3 : 1;
+        var iMaxLevel = 3;
         var sHtml = '<span class="step-level-strip">' +
             _fsBuildRegressionCell(dictContext, iIndex);
         for (var iLevel = 1; iLevel <= iMaxLevel; iLevel++) {
+            // Step-scope cells carry data-level so a click can open
+            // the detail onto that rung's section (the banner as a
+            // table of contents); the Project banner has no
+            // per-step sections to open.
             sHtml += fsBuildLevelCell(
                 dictContext.fsLevelCellState(iIndex, iLevel),
-                dictContext.fsLevelCellTooltip(iIndex, iLevel));
+                dictContext.fsLevelCellTooltip(iIndex, iLevel),
+                "",
+                iIndex >= 0 ? ' data-level="' + iLevel + '"' : "");
         }
         return sHtml + '</span>';
     }
@@ -162,6 +187,236 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
+    /* --- Hierarchical level sections (Step Viewer, 2026-07-18) ---
+       The expanded detail is three expandable sections — Level 1
+       (the workbench: the step's own artifacts ARE its
+       self-consistency surface), Level 2 and Level 3 (requirement
+       rows). Every row renders the cell's ``listRequirements``
+       breakdown shipped by the levelGates projection — the SAME
+       list its counts derive from, never a second computation.
+       Project-scoped remedies name their Project-block section
+       rather than duplicating the action here; the github/zenodo
+       rows reuse the shared .wf-verify-remote handler. */
+
+    var _DICT_STEP_LEVEL_NAMES = {
+        1: "Level 1 — Self-Consistent",
+        2: "Level 2 — Published",
+        3: "Level 3 — Reproducible",
+    };
+
+    var _DICT_REQUIREMENT_LABELS = {
+        "sUnitTest": "Unit tests pass",
+        "sIntegrity": "Integrity tests pass",
+        "sQualitative": "Qualitative tests pass",
+        "sQuantitative": "Quantitative tests pass",
+        "user-attestation": "Your sign-off recorded",
+        "timing-clean": "Nothing changed since verification",
+        "input-data-declared": "Input data declared",
+        "github-mirror": "Outputs match the GitHub mirror",
+        "zenodo-deposit": "Outputs match the Zenodo deposit",
+        "figure-frozen": "Manuscript figures frozen in Overleaf",
+        "ai-declaration-attested": "AI declaration signed off",
+        "missing-from-manifest": "Outputs pinned in the manifest",
+        "script-not-pinned": "Scripts match the manifest",
+        "nondeterminism-undeclared": "Randomness seeded or declared",
+        "binary-not-declared": "Invoked binaries declared",
+        "binary-not-captured": "Binary versions captured",
+        "binary-drifted": "Binaries match their captured hashes",
+    };
+
+    var _DICT_UNMET_REQUIREMENT_HINTS = {
+        "figure-frozen": "Freeze via each plot file's Overleaf " +
+            "badge, then re-verify",
+        "ai-declaration-attested": "Sign off in the declaration " +
+            "body above",
+        "missing-from-manifest": "Refresh the manifest (Project " +
+            "block → Artifacts)",
+        "script-not-pinned": "Script changed since the manifest " +
+            "was written — re-run or refresh the manifest " +
+            "(Project block → Artifacts)",
+        "nondeterminism-undeclared": "Seed the RNG or declare the " +
+            "randomness (Project block → Determinism)",
+        "binary-not-declared": "Declare the binary (Project block " +
+            "→ Software)",
+        "binary-not-captured": "Capture its version + SHA " +
+            "(Project block → Software)",
+        "binary-drifted": "Re-run with the current binary and " +
+            "re-capture, or restore the published binary",
+    };
+
+    // Row name -> the blocker-wire criterion that carries its
+    // offending-file list.
+    var _DICT_REQUIREMENT_BLOCKER_CRITERIA = {
+        "github-mirror": "not-in-github-mirror",
+        "zenodo-deposit": "not-in-zenodo-deposit",
+        "figure-frozen": "figure-not-frozen",
+    };
+
+    var _DICT_VERIFY_SERVICE_BY_REQUIREMENT = {
+        "github-mirror": "github",
+        "zenodo-deposit": "zenodo",
+    };
+
+    function _fdictStepLevelCell(dictContext, iIndex, iLevel) {
+        var dictLevels = (dictContext.dictStepLevels || {})[
+            String(iIndex)] || {};
+        var dictCell = dictLevels["s" + iLevel];
+        return (dictCell && typeof dictCell === "object")
+            ? dictCell : null;
+    }
+
+    function _fsBuildRequirementMark(bMet) {
+        if (bMet === true) {
+            return VaibifyUtilities.fsBuildAttainedFavicon(
+                "met", "Requirement met");
+        }
+        if (bMet === false) {
+            return '<span class="envelope-warn" title="Requirement ' +
+                'not met">&#9888;</span>';
+        }
+        return '<span class="envelope-light envelope-light-unknown"' +
+            ' title="Not verifiable right now — the last remote ' +
+            'verify is stale"></span>';
+    }
+
+    function _fsRequirementLabel(sName) {
+        return _DICT_REQUIREMENT_LABELS[sName] || sName;
+    }
+
+    function _fsLevelSectionCounts(dictContext, iIndex, iLevel) {
+        // Compact "6/7" summary; the header's cell carries the
+        // not-applicable dash and the tooltip carries the prose, so
+        // an empty string is honest for those cases.
+        var sState = dictContext.fsLevelCellState(iIndex, iLevel);
+        if (sState === "not-applicable") return "";
+        var dictCell = _fdictStepLevelCell(dictContext, iIndex, iLevel);
+        if (!dictCell) return "";
+        return dictCell.iSatisfied + "/" + dictCell.iTotal;
+    }
+
+    function _fsRenderStepLevelSectionHeader(
+        iIndex, iLevel, dictContext, bExpanded
+    ) {
+        return '<div class="step-level-section-header"' +
+            ' data-step="' + iIndex + '"' +
+            ' data-level="' + iLevel + '">' +
+            '<span class="step-level-section-caret">' +
+            (bExpanded ? "&#9662;" : "&#9656;") + '</span>' +
+            fsBuildLevelCell(
+                dictContext.fsLevelCellState(iIndex, iLevel),
+                dictContext.fsLevelCellTooltip(iIndex, iLevel)) +
+            '<span class="step-level-section-title">' +
+            _DICT_STEP_LEVEL_NAMES[iLevel] + '</span>' +
+            '<span class="step-level-section-counts">' +
+            fnEscapeHtml(
+                _fsLevelSectionCounts(dictContext, iIndex, iLevel)) +
+            '</span>' +
+            '<span class="step-level-info"' +
+            ' data-step="' + iIndex + '"' +
+            ' data-level="' + iLevel + '"' +
+            ' title="Show every Level ' + iLevel +
+            ' requirement for this step">&#9432;</span>' +
+            '</div>';
+    }
+
+    function _flistRequirementOffenders(dictReq, iIndex, iLevel,
+        dictContext) {
+        var dictBlockerMap = iLevel === 2
+            ? dictContext.dictBlockersByStepLevel2
+            : dictContext.dictBlockersByStepLevel3;
+        var dictEntry = (dictBlockerMap || {})[iIndex];
+        if (!dictEntry) return [];
+        var sCriterion =
+            _DICT_REQUIREMENT_BLOCKER_CRITERIA[dictReq.sName]
+            || dictReq.sName;
+        if (dictEntry.sCriterion !== sCriterion) return [];
+        return dictEntry.listOffendingFiles || [];
+    }
+
+    function _fsRequirementHintHtml(dictReq, iIndex, iLevel,
+        dictContext) {
+        if (dictReq.bMet === true) return "";
+        var listParts = [];
+        var listOffenders = _flistRequirementOffenders(
+            dictReq, iIndex, iLevel, dictContext);
+        if (listOffenders.length > 0) {
+            listParts.push("Differs: " + listOffenders.map(
+                function (sPath) {
+                    return sPath.split("/").pop();
+                }).join(", "));
+        }
+        var sHint = _DICT_UNMET_REQUIREMENT_HINTS[dictReq.sName];
+        if (sHint) listParts.push(sHint);
+        if (listParts.length === 0) return "";
+        return '<div class="step-level-requirement-hint">' +
+            fnEscapeHtml(listParts.join(" — ")) + '</div>';
+    }
+
+    function _fsRequirementActionHtml(dictReq) {
+        // Only actions with an existing shared handler render here;
+        // everything else stays a hint so the one real control is
+        // never duplicated.
+        var sService =
+            _DICT_VERIFY_SERVICE_BY_REQUIREMENT[dictReq.sName];
+        if (!sService || dictReq.bMet === true) return "";
+        return ' <button class="btn wf-verify-remote ' +
+            'step-level-verify" data-service="' + sService +
+            '">Verify now</button>';
+    }
+
+    function _fsRenderLevelRequirementRows(iIndex, iLevel,
+        dictContext) {
+        var dictCell = _fdictStepLevelCell(dictContext, iIndex, iLevel);
+        var listRequirements =
+            (dictCell && dictCell.listRequirements) || [];
+        if (listRequirements.length === 0) {
+            return '<div class="detail-note">This step has no ' +
+                'requirements at this level.</div>';
+        }
+        var sHtml = "";
+        listRequirements.forEach(function (dictReq) {
+            sHtml += '<div class="step-level-requirement-row">' +
+                _fsBuildRequirementMark(dictReq.bMet) +
+                '<span class="step-level-requirement-label">' +
+                fnEscapeHtml(_fsRequirementLabel(dictReq.sName)) +
+                '</span>' +
+                _fsRequirementActionHtml(dictReq) +
+                '</div>' +
+                _fsRequirementHintHtml(
+                    dictReq, iIndex, iLevel, dictContext);
+        });
+        return sHtml;
+    }
+
+    function _fsRequirementMarkMeaning(bMet) {
+        if (bMet === true) return "(check = requirement met)";
+        if (bMet === false) return "(⚠ = requirement not met)";
+        return "(hollow circle = not verifiable right now — " +
+            "the last remote verify is stale)";
+    }
+
+    function fsBuildLevelRequirementsListHtml(dictCell, iLevel) {
+        // The ⓘ modal body: every requirement of one rung with its
+        // live mark — built from the same wire list the cell counts
+        // derive from — and a parenthetical spelling the mark out.
+        var listRequirements = dictCell.listRequirements || [];
+        if (listRequirements.length === 0) {
+            return '<div class="detail-note">This step has no ' +
+                'Level ' + iLevel + ' requirements.</div>';
+        }
+        return listRequirements.map(function (dictReq) {
+            return '<div class="step-level-requirement-row">' +
+                _fsBuildRequirementMark(dictReq.bMet) +
+                '<span class="step-level-requirement-label">' +
+                fnEscapeHtml(_fsRequirementLabel(dictReq.sName)) +
+                '</span>' +
+                '<span class="step-level-requirement-meaning">' +
+                fnEscapeHtml(
+                    _fsRequirementMarkMeaning(dictReq.bMet)) +
+                '</span></div>';
+        }).join("");
+    }
+
     function fsRenderStepItem(step, iIndex, dictVars, dictContext) {
         var bInteractive = step.bInteractive === true;
         // The run light is EXECUTION-ONLY (its original meaning):
@@ -204,21 +459,67 @@ var VaibifyStepRenderer = (function () {
             return sHtml + '</div>';
         }
 
+        // Hierarchical detail (2026-07-18): an optional Description
+        // block, then one expandable section per ladder rung. The
+        // Level 1 body is the workbench — the step's own artifacts
+        // ARE its self-consistency surface. No Directory display:
+        // the rename cascade pins the directory to the step name,
+        // so the row's name already says it.
         sHtml += '<div class="step-detail expanded' +
             '" data-index="' + iIndex + '">';
 
-        if (step.sStepKind === "ai-declaration") {
-            sHtml += fsRenderAiDeclarationBody(
-                step, iIndex, dictContext);
-            sHtml += '</div></div>';
-            return sHtml;
+        var sResolvedDir = dictContext.fsResolveTemplate(
+            step.sDirectory || "", dictVars);
+        sHtml += _fsRenderStepDescriptionBlock(
+            step, iIndex, dictContext);
+
+        for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            sHtml += _fsRenderStepLevelSection(
+                step, iIndex, iLevel, dictVars, dictContext,
+                sResolvedDir);
         }
 
-        var sResolvedDir = dictContext.fsResolveTemplate(
-            step.sDirectory, dictVars);
-        sHtml += '<div class="detail-label">Directory</div>';
-        sHtml += '<div class="detail-field" data-view="field">' +
-            fnEscapeHtml(sResolvedDir) + "</div>";
+        sHtml += "</div>";
+        sHtml += "</div>";
+        return sHtml;
+    }
+
+    function _fsRenderStepLevelSection(
+        step, iIndex, iLevel, dictVars, dictContext, sResolvedDir
+    ) {
+        var bExpanded = dictContext.fbIsStepLevelExpanded
+            ? dictContext.fbIsStepLevelExpanded(iIndex, iLevel)
+            : iLevel === 1;
+        var sHtml = '<div class="step-level-section">' +
+            _fsRenderStepLevelSectionHeader(
+                iIndex, iLevel, dictContext, bExpanded);
+        if (!bExpanded) {
+            return sHtml + '</div>';
+        }
+        sHtml += '<div class="step-level-section-body">';
+        if (iLevel === 1) {
+            sHtml += step.sStepKind === "ai-declaration"
+                ? '<div class="detail-note">This step has no ' +
+                    'requirements at this level.</div>'
+                : _fsRenderLevelOneBody(
+                    step, iIndex, dictVars, dictContext,
+                    sResolvedDir);
+        } else {
+            if (iLevel === 2 && step.sStepKind === "ai-declaration") {
+                sHtml += fsRenderAiDeclarationBody(
+                    step, iIndex, dictContext);
+            }
+            sHtml += _fsRenderLevelRequirementRows(
+                iIndex, iLevel, dictContext);
+        }
+        return sHtml + '</div></div>';
+    }
+
+    function _fsRenderLevelOneBody(
+        step, iIndex, dictVars, dictContext, sResolvedDir
+    ) {
+        var bInteractive = step.bInteractive === true;
+        var sHtml = "";
         if (!bInteractive) {
             sHtml += '<div class="detail-label plot-only-row">' +
                 '<label class="plot-only-toggle">' +
@@ -226,19 +527,6 @@ var VaibifyStepRenderer = (function () {
                 ' data-step="' + iIndex + '"' +
                 (step.bPlotOnly !== false ? " checked" : "") + '>' +
                 ' Plot only (skip data analysis)</label></div>';
-            sHtml += '<div class="detail-label plot-only-row">' +
-                '<label class="plot-only-toggle" title="Optional: the' +
-                ' number of seconds this step is expected to run.' +
-                ' If it runs longer, the run light turns red as a' +
-                ' possibly-hung warning — the run is never stopped.' +
-                ' Blank or 0 means no limit (inherits the project' +
-                ' default under Settings).">' +
-                'Expected runtime (s), 0 = no limit ' +
-                '<input type="number" min="0" step="1"' +
-                ' class="step-budget-input"' +
-                ' data-step="' + iIndex + '"' +
-                ' value="' + (step.fWallClockBudgetSeconds || "") +
-                '"></label></div>';
         }
 
         if (bInteractive) {
@@ -286,7 +574,6 @@ var VaibifyStepRenderer = (function () {
 
         if ((step.saDataCommands || []).length > 0) {
             sHtml += '<div class="timestamp-field">' +
-                fsRenderRunStats(step) +
                 fsRenderDataMtime(iIndex, dictContext) + '</div>';
         }
 
@@ -349,10 +636,44 @@ var VaibifyStepRenderer = (function () {
         sHtml += fsRenderVerificationBlock(step, iIndex, dictContext);
         sHtml += fsRenderDiscoveredOutputs(iIndex, dictContext);
         sHtml += fsRenderRunStepButton(step, iIndex);
-
-        sHtml += "</div>";
-        sHtml += "</div>";
+        sHtml += fsRenderLastRunLine(step, iIndex, dictContext);
         return sHtml;
+    }
+
+    function _fsRenderStepDescriptionBlock(step, iIndex, dictContext) {
+        // Optional researcher/agent-authored prose on what the step
+        // does (sDescription). The header always renders so the
+        // affordance is discoverable; the body opens seeded on
+        // existing text, and clicking the text opens the inline
+        // editor.
+        var bExpanded = dictContext.fbIsStepDescriptionExpanded
+            ? dictContext.fbIsStepDescriptionExpanded(iIndex)
+            : false;
+        var sHtml = '<div class="step-description-block">' +
+            '<div class="step-description-header"' +
+            ' data-step="' + iIndex + '"' +
+            ' title="A brief note on what this step does — ' +
+            'optional, written by you or an agent">' +
+            '<span class="step-level-section-caret">' +
+            (bExpanded ? "&#9662;" : "&#9656;") + '</span>' +
+            '<span class="step-level-section-title">' +
+            'Description</span></div>';
+        if (!bExpanded) {
+            return sHtml + '</div>';
+        }
+        var sText = (step.sDescription || "").trim();
+        sHtml += '<div class="step-description-body"' +
+            ' data-step="' + iIndex + '">' +
+            '<div class="step-description-text' +
+            (sText ? "" : " step-description-placeholder") + '"' +
+            ' data-step="' + iIndex + '"' +
+            ' title="Click to edit">' +
+            (sText
+                ? fnEscapeHtml(sText)
+                : "Add a few sentences on what this step " +
+                    "does…") +
+            '</div></div>';
+        return sHtml + '</div>';
     }
 
     function fsRenderRunStepButton(step, iIndex) {
@@ -835,17 +1156,50 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
-    function fsRenderRunStats(step) {
+    function _fsLastRunOutcome(step, iIndex, dictContext) {
+        // This session's live status wins; otherwise the persisted
+        // exit code speaks; stats recorded before outcomes were
+        // kept yield no outcome claim at all.
+        var sSession = dictContext.dictStepStatus[iIndex] || "";
+        if (sSession === "running" || sSession === "queued"
+            || sSession === "overBudget") {
+            return "in progress";
+        }
+        if (sSession === "pass") return "succeeded";
+        if (sSession === "fail") return "failed";
         var dictStats = step.dictRunStats || {};
-        var sWallClock = dictStats.fWallClock !== undefined ?
-            fsFormatDuration(dictStats.fWallClock) : "";
-        var sCpuTime = dictStats.fCpuTime !== undefined ?
-            fsFormatDuration(dictStats.fCpuTime) : "";
-        return '<div class="run-stats">' +
-            '<span class="run-stat">Wall-clock: ' +
-            (sWallClock || "\u2014") + '</span>' +
-            '<span class="run-stat">CPU time: ' +
-            (sCpuTime || "\u2014") + '</span></div>';
+        if (dictStats.iExitCode !== undefined) {
+            return dictStats.iExitCode === 0 ? "succeeded" : "failed";
+        }
+        return "";
+    }
+
+    function fsRenderLastRunLine(step, iIndex, dictContext) {
+        // The banner's run light went alarm-only (2026-07-17), so
+        // this line is where a successful run's record lives:
+        // outcome, finish stamp, and durations.
+        var dictStats = step.dictRunStats || {};
+        var sOutcome = _fsLastRunOutcome(step, iIndex, dictContext);
+        if (!sOutcome && dictStats.fWallClock === undefined) {
+            return '<div class="step-last-run">Last run: ' +
+                'never run on this machine</div>';
+        }
+        var listParts = [];
+        if (sOutcome) listParts.push(sOutcome);
+        if (dictStats.sFinishedUtc) {
+            listParts.push("finished " + fsFormatIsoTimestamp(
+                dictStats.sFinishedUtc));
+        }
+        if (dictStats.fWallClock !== undefined) {
+            listParts.push("wall-clock " +
+                fsFormatDuration(dictStats.fWallClock));
+        }
+        if (dictStats.fCpuTime !== undefined) {
+            listParts.push("CPU " +
+                fsFormatDuration(dictStats.fCpuTime));
+        }
+        return '<div class="step-last-run">Last run: ' +
+            fnEscapeHtml(listParts.join(" \u00b7 ")) + '</div>';
     }
 
     function fsRenderDataMtime(iIndex, dictContext) {
@@ -887,6 +1241,15 @@ var VaibifyStepRenderer = (function () {
         var iHours = Math.floor(iMinutes / 60);
         iMinutes = iMinutes % 60;
         return iHours + "h " + iMinutes + "m";
+    }
+
+    function fsFormatIsoTimestamp(sIso) {
+        // "2026-07-17T14:02:09Z" -> "2026-07-17 14:02 UTC";
+        // an unparseable stamp passes through verbatim.
+        var d = new Date(sIso);
+        if (isNaN(d.getTime())) return sIso;
+        return fsFormatUnixTimestamp(String(
+            Math.floor(d.getTime() / 1000)));
     }
 
     function fsFormatUnixTimestamp(sEpoch) {
@@ -1322,7 +1685,9 @@ var VaibifyStepRenderer = (function () {
         fsRenderDetailItem: fsRenderDetailItem,
         fsRenderVerificationBlock: fsRenderVerificationBlock,
         fsRenderRunStepButton: fsRenderRunStepButton,
-        fsRenderRunStats: fsRenderRunStats,
+        fsRenderLastRunLine: fsRenderLastRunLine,
+        fsBuildLevelRequirementsListHtml:
+            fsBuildLevelRequirementsListHtml,
         fsRenderOutputMtime: fsRenderOutputMtime,
         fsRenderDataMtime: fsRenderDataMtime,
         fsRenderPlotMtime: fsRenderPlotMtime,

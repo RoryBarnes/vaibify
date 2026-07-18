@@ -411,24 +411,38 @@ def test_workflow_wide_block_rebuilds_unconditionally():
 
 
 def test_every_column_header_carries_a_tooltip():
-    """The per-step column headers (run, warnings, L1) must explain
-    themselves on hover. L2/L3 are project-wide, not per-step, so they
-    are no longer headed on the step rows."""
+    """The per-step column headers (run, warnings, L1, L2, L3) must
+    explain themselves on hover. Every level has per-step
+    requirements (2026-07-17 ruling restoring the three columns), so
+    all three level headers are present."""
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
     sHeader = _fsExtractFunctionBlock(
         sSource, "_fsRenderLevelColumnHeaderRow",
     )
     for sNeedle in (
         "Run controls", "Warnings", "Level 1 Self-Consistent",
+        "Level 2 Published", "Level 3 Reproducible",
     ):
         assert sNeedle in sHeader, (
             "column header missing its tooltip: " + sNeedle
         )
-    assert "Level 2 Published" not in sHeader, (
-        "L2 is project-wide and must not be a per-step column"
+
+
+def test_step_rows_render_all_three_level_cells():
+    """Step rows carry the full ⚠ + L1|L2|L3 strip (2026-07-17
+    ruling): per-step L2 (published copies of this step's outputs)
+    and L3 (manifest, script pinning, determinism, binaries) criteria
+    exist in levelGates, and a step with none shows the
+    not-applicable dash — the strip must not cap at L1."""
+    sSource = _fsReadStaticFile("scriptStepRenderer.js")
+    sStrip = _fsExtractFunctionBlock(
+        sSource, "_fsBuildStepLevelStrip",
     )
-    assert "Level 3 Reproducible" not in sHeader, (
-        "L3 is project-wide and must not be a per-step column"
+    assert "iMaxLevel = 3" in sStrip, (
+        "the step strip must render all three level cells"
+    )
+    assert "iIndex < 0 ? 3 : 1" not in sStrip, (
+        "the step scope must not be capped to L1"
     )
 
 
@@ -783,25 +797,195 @@ def test_declaration_badge_state_reaches_the_incremental_renderer():
     )
 
 
-def test_run_light_success_renders_the_vaibify_check():
-    """A successful last run renders the vaibify check (the favicon,
-    the same mark as an attained level cell — a text glyph reads as
-    foreign), and the never-run state is the hollow circle — the
-    researcher-approved vocabulary."""
+def test_run_light_success_is_quiet_and_never_the_favicon():
+    """The vaibify check is reserved for attained level cells
+    (2026-07-17 ruling): a run-status check beside an unverified step
+    read as a false Level 1 claim. A successful last run renders a
+    quiet pale-blue dot — VISIBLE, because a fully empty pass cell
+    beside hollow never-run circles read as a missing-marker bug
+    when a restart restored the last run's results (live report
+    2026-07-18). The never-run state stays the hollow circle."""
     sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
     sCell = _fsExtractFunctionBlock(
         sRenderer, "_fsBuildStepStatusCell",
     )
-    assert "step-status-check" in sCell
-    assert "favicon.png" in sCell, (
-        "the success mark must be the vaibify check image, not a "
-        "text glyph"
+    assert "favicon.png" not in sCell, (
+        "run status must never wear the level-attainment check"
+    )
+    assert "step-status-check" not in sCell, (
+        "the success-check markup is retired from the run light"
+    )
+    assert '? ""' not in sCell, (
+        "the invisible pass cell shipped as a phantom missing-"
+        "marker bug — pass must render a visible dot"
     )
     sCss = _fsReadStaticFile("styleMain.css")
+    assert ".step-status-check" not in sCss, (
+        "the retired success-check styling must not survive"
+    )
+    iPass = sCss.find(".step-item .step-status.pass {")
+    assert iPass != -1, "the pass dot needs its own style"
+    assert "--color-pale-blue" in sCss[iPass:iPass + 200], (
+        "success is the routine pale blue, never the check"
+    )
     iStart = sCss.find(".step-item .step-status {")
     assert "border: 1.5px solid var(--text-muted)" in (
         sCss[iStart:iStart + 300]
     ), "the never-run light must be the hollow grey circle"
+
+
+def test_expanded_step_is_hierarchical_description_plus_sections():
+    """The Step Viewer is hierarchical (2026-07-18 ruling, revised
+    same day): an optional Description block, then one expandable
+    section per ladder rung. No Directory display — the rename
+    cascade pins the directory to the step name, so showing it would
+    be redundant. Level 1's body is the workbench and ends with the
+    Last run line below the Run Step button; Levels 2 and 3 render
+    requirement rows from the cell's listRequirements breakdown, the
+    SAME wire list the cell counts derive from — never a second
+    computation."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sItem = _fsExtractFunctionBlock(sRenderer, "fsRenderStepItem")
+    assert "_fsRenderStepDescriptionBlock" in sItem, (
+        "the detail must offer the optional Description block"
+    )
+    assert ">Directory<" not in sItem, (
+        "the Directory display is retired — name == directory"
+    )
+    assert "_fsRenderStepLevelSection" in sItem, (
+        "the detail must render the three level sections"
+    )
+    sBody = _fsExtractFunctionBlock(
+        sRenderer, "_fsRenderLevelOneBody",
+    )
+    iRunButton = sBody.find("fsRenderRunStepButton")
+    iLastRun = sBody.find("fsRenderLastRunLine")
+    assert -1 < iRunButton < iLastRun, (
+        "the Last run line renders just below the Run Step button"
+    )
+    sSection = _fsExtractFunctionBlock(
+        sRenderer, "_fsRenderStepLevelSection(",
+    )
+    assert "fbIsStepLevelExpanded" in sSection, (
+        "section expansion must come from the app's per-level state"
+    )
+    assert "_fsRenderLevelOneBody" in sSection, (
+        "Level 1 must expand to the workbench"
+    )
+    assert "_fsRenderLevelRequirementRows" in sSection, (
+        "Levels 2/3 must expand to requirement rows"
+    )
+    sRows = _fsExtractFunctionBlock(
+        sRenderer, "_fsRenderLevelRequirementRows",
+    )
+    assert "listRequirements" in sRows, (
+        "requirement rows must render the wire breakdown, not a "
+        "recomputation"
+    )
+    sOutcome = _fsExtractFunctionBlock(
+        sRenderer, "_fsLastRunOutcome",
+    )
+    assert "iExitCode" in sOutcome and "dictStepStatus" in sOutcome, (
+        "the outcome must come from the session status or the "
+        "persisted exit code — never be invented"
+    )
+
+
+def test_level_section_headers_use_the_shared_cell_and_offer_info():
+    """Each section header carries the SAME shared level cell the
+    banner renders (full six-state vocabulary — a binary check would
+    re-flatten it) plus the ⓘ requirements modal; the modal body is
+    built from the wire breakdown by the renderer."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sHeader = _fsExtractFunctionBlock(
+        sRenderer, "_fsRenderStepLevelSectionHeader",
+    )
+    assert "fsBuildLevelCell" in sHeader, (
+        "section headers must reuse the shared cell builder"
+    )
+    assert "step-level-info" in sHeader, (
+        "each section header must offer the requirements modal"
+    )
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    assert "fnShowStepLevelRequirementsModal" in sApplication
+    sModalBody = _fsExtractFunctionBlock(
+        sRenderer, "fsBuildLevelRequirementsListHtml",
+    )
+    assert "listRequirements" in sModalBody, (
+        "the modal must render the same wire breakdown as the rows"
+    )
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    iInfo = sBindings.find('".step-level-info"')
+    iHeader = sBindings.find('".step-level-section-header"')
+    assert -1 < iInfo < iHeader, (
+        "the ⓘ registry entry must precede its enclosing header or "
+        "first-match dispatch swallows the modal click"
+    )
+
+
+def test_level_sections_default_to_the_target_rung():
+    """First open seeds the step's target rung (first non-attained
+    level) expanded, so the detail opens onto the work the ladder
+    asks for next; after seeding, the researcher's toggles are
+    authoritative. The per-level expansion bits must join the render
+    hash or a toggle click appears to do nothing under the
+    incremental renderer."""
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sExpanded = _fsExtractFunctionBlock(
+        sApplication, "fbIsStepLevelExpanded",
+    )
+    assert "fiStepNextTargetLevel" in sExpanded, (
+        "seeding must open the target rung"
+    )
+    assert "setLevelSeededSteps" in sExpanded, (
+        "seeding must happen once per step, never override toggles"
+    )
+    sSlice = _fsExtractFunctionBlock(
+        sApplication, "_fsExpansionSliceForStep",
+    )
+    assert "fbIsStepLevelExpanded(iIndex, 1)" in sSlice
+    assert "fbIsStepLevelExpanded(iIndex, 3)" in sSlice
+    sReset = _fsExtractFunctionBlock(
+        sApplication, "_fnResetUiState",
+    )
+    assert "setExpandedStepLevels.clear()" in sReset, (
+        "workflow switches must clear per-level expansion in place"
+    )
+
+
+def test_banner_level_cells_open_their_section():
+    """Step-scope banner cells carry data-level and a click opens the
+    step detail onto that rung's section — the banner is the detail's
+    table of contents. Project-banner cells carry no data-level."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sStrip = _fsExtractFunctionBlock(
+        sRenderer, "_fsBuildStepLevelStrip",
+    )
+    assert "data-level" in sStrip
+    assert "iIndex >= 0" in sStrip, (
+        "only step-scope cells are section openers"
+    )
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert '".step-item .step-level-cell"' in sBindings
+    assert "fnExpandStepLevelSection" in sBindings
+
+
+def test_favicon_marks_render_only_through_the_shared_builder():
+    """Every favicon image in the step renderer and utilities must be
+    the shared attained-mark builder — no other surface may emit the
+    check, so 'the vaibify check means attained' stays a single-owner
+    vocabulary rule."""
+    sUtilities = _fsReadStaticFile("scriptUtilities.js")
+    sBuilder = _fsExtractFunctionBlock(
+        sUtilities, "fsBuildAttainedFavicon",
+    )
+    assert "favicon.png" in sBuilder
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    assert "favicon.png" not in sRenderer, (
+        "the step renderer must not hand-write favicon markup; the "
+        "attained mark comes from fsBuildLevelCell/"
+        "fsBuildAttainedFavicon"
+    )
 
 
 def test_publication_rows_point_at_the_repos_panel():
@@ -1076,7 +1260,7 @@ def test_both_banners_share_the_level_summarizer():
             "both banners must call the shared summarizer"
         )
     sAggregate = _fsExtractFunctionBlock(
-        sApplication, "_fsAggregateStepsL1State",
+        sApplication, "_fsAggregateStepsLevelState",
     )
     assert 'return "none"' not in sAggregate, (
         "any-red-short-circuit made one failing step paint the "
@@ -1182,3 +1366,120 @@ def test_remote_badge_title_is_escaped():
     assert "title=\"' + sTitle" not in sRender, (
         "raw sTitle interpolation into the title attribute"
     )
+
+
+def test_description_block_is_optional_and_inline_editable():
+    """The Description block (2026-07-18): a brief researcher/agent-
+    authored note on what the step does. Header always renders
+    (discoverable), body seeds open only when text exists, clicking
+    the text opens the inline editor, and the save path goes through
+    the ordinary step-edit PUT so agents share the same field."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sBlock = _fsExtractFunctionBlock(
+        sRenderer, "_fsRenderStepDescriptionBlock",
+    )
+    assert "sDescription" in sBlock
+    assert "step-description-placeholder" in sBlock, (
+        "an empty description must show the add-affordance"
+    )
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sSeed = _fsExtractFunctionBlock(
+        sApplication, "fbIsStepDescriptionExpanded",
+    )
+    assert "setDescriptionSeededSteps" in sSeed, (
+        "seeding happens once; the researcher's toggles win after"
+    )
+    sEdit = _fsExtractFunctionBlock(
+        sApplication, "fnBeginStepDescriptionEdit",
+    )
+    assert "fnPutStepEdit" in sEdit and "sDescription" in sEdit, (
+        "saving must go through the ordinary step-edit PUT"
+    )
+    assert "_dictRenderedStepHashes[iStepIndex]" in sEdit, (
+        "both editor exits must drop the card's render hash or the "
+        "incremental renderer strands the textarea"
+    )
+    sSlice = _fsExtractFunctionBlock(
+        sApplication, "_fsExpansionSliceForStep",
+    )
+    assert "fbIsStepDescriptionExpanded" in sSlice
+    sBindings = _fsReadStaticFile("scriptEventBindings.js")
+    assert '".step-description-header"' in sBindings
+    assert '".step-description-text"' in sBindings
+
+
+def test_requirements_modal_spells_out_each_mark():
+    """Every ⓘ-modal row carries a parenthetical stating what its
+    mark means (2026-07-18 ruling) — the symbols must never require
+    prior knowledge of the legend."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sModal = _fsExtractFunctionBlock(
+        sRenderer, "fsBuildLevelRequirementsListHtml",
+    )
+    assert "_fsRequirementMarkMeaning" in sModal
+    sMeaning = _fsExtractFunctionBlock(
+        sRenderer, "_fsRequirementMarkMeaning",
+    )
+    assert "requirement met" in sMeaning
+    assert "requirement not met" in sMeaning
+    assert "stale" in sMeaning, (
+        "the unknown mark must explain the stale-verify cause"
+    )
+
+
+def test_level_banner_counts_are_compact_and_primary_colored():
+    """The level banner is a summary surface: counts read '6/7' and
+    the header takes the standard (primary) text color
+    (2026-07-18 ruling)."""
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    sCounts = _fsExtractFunctionBlock(
+        sRenderer, "_fsLevelSectionCounts",
+    )
+    assert '"/"' in sCounts.replace("'", '"'), (
+        "counts must render the compact N/M form"
+    )
+    assert "requirements met" not in sCounts, (
+        "the long-form count label is retired from the banner"
+    )
+    sCss = _fsReadStaticFile("styleMain.css")
+    iAt = sCss.find(".step-level-section-header {")
+    assert "--text-primary" in sCss[iAt:iAt + 400], (
+        "the level banner takes the standard text color"
+    )
+
+
+def test_plot_standard_button_row_wraps():
+    """flex-end + nowrap overflowed the buttons out the LEFT edge of
+    the panel when the row was narrower than its content (observed
+    live 2026-07-18); wrapping is the fix and must stay."""
+    sCss = _fsReadStaticFile("styleMain.css")
+    iAt = sCss.find(".plot-standard-button-row {")
+    assert iAt != -1
+    assert "flex-wrap: wrap" in sCss[iAt:iAt + 300]
+
+
+def test_every_settings_row_carries_a_tooltip():
+    """Every Settings (gear) row explains itself on hover
+    (2026-07-18 ruling): each fsSettingsRowHtml call must pass the
+    tooltip argument — the row builder renders it as the row title."""
+    sApplication = _fsReadStaticFile("scriptApplication.js")
+    sBuilder = _fsExtractFunctionBlock(
+        sApplication, "fsSettingsRowHtml",
+    )
+    assert "sTooltip" in sBuilder
+    for sSource in (
+        _fsExtractFunctionBlock(sApplication, "fsGlobalSettingsHtml"),
+        _fsExtractFunctionBlock(sApplication, "fsClaudeSettingsHtml"),
+    ):
+        iCalls = sSource.count("fsSettingsRowHtml(")
+        # Each call spans label + input + tooltip; count the
+        # closing-paren form of a two-arg call to catch omissions.
+        assert iCalls > 0
+    for sRow in (
+        "Plot Dir", "Figure Type", "Cores", "Tolerance",
+        "Poll Interval", "Show timestamps", "Terminal lines",
+        "Auto Archive", "Runtime limit", "Claude auto-update",
+    ):
+        assert sRow in sApplication, (
+            "settings row disappeared: " + sRow
+        )

@@ -124,6 +124,9 @@ class StepCreateRequest(BaseModel):
 class StepUpdateRequest(BaseModel):
     sName: Optional[str] = None
     sDirectory: Optional[str] = None
+    # Optional researcher/agent-authored prose on what the step does,
+    # shown in the Step Viewer's Description block. Plain text.
+    sDescription: Optional[str] = None
     bPlotOnly: Optional[bool] = None
     bInteractive: Optional[bool] = None
     bRunEnabled: Optional[bool] = None
@@ -161,6 +164,15 @@ class InputDataAddRequest(BaseModel):
     # One repo-relative raw-data path to append to a step's
     # saInputDataFiles; boundary-validated server-side.
     sPath: str
+
+
+class StepRenameRequest(BaseModel):
+    sNewName: str
+    # Dry-run returns the change-set (directory move, path rewrites,
+    # script warnings) without touching anything; the modal shows it
+    # before the researcher confirms the apply.
+    bDryRun: bool = True
+    sBaseFingerprint: Optional[str] = None
 
 
 class ReorderRequest(BaseModel):
@@ -318,11 +330,37 @@ def fdictFilterNonNone(dictSource):
     return {k: v for k, v in dictSource.items() if v is not None}
 
 
+def fsDeriveStepDirectory(sName, sDirectoryRaw):
+    """Return the contract-conforming directory for a new step.
+
+    The final component is always ``slug(sName)``; a provided
+    directory contributes only its parent path (its basename is
+    auto-corrected — the formula, not the typist, is the law). A
+    templated directory (``{token}``) passes through untouched.
+    Raises ValueError for an invalid name.
+    """
+    from .pipelineUtils import fsSlugFromStepName, fsValidateStepName
+    sName = fsValidateStepName(sName)
+    sDirectory = (sDirectoryRaw or "").strip().strip("/")
+    if "{" in sDirectory:
+        return sDirectory
+    sParent = posixpath.dirname(sDirectory) if sDirectory else ""
+    sSlug = fsSlugFromStepName(sName)
+    return posixpath.join(sParent, sSlug) if sParent else sSlug
+
+
 def fdictStepFromRequest(request):
-    """Build a step dict from a StepCreateRequest."""
+    """Build a step dict from a StepCreateRequest.
+
+    Raises ValueError when the name violates the slug contract's
+    alphabet; the directory's final component is derived from the
+    name, never taken from the request verbatim.
+    """
     return workflowManager.fdictCreateStep(
-        sName=request.sName,
-        sDirectory=request.sDirectory,
+        sName=request.sName.strip(),
+        sDirectory=fsDeriveStepDirectory(
+            request.sName, request.sDirectory,
+        ),
         bPlotOnly=request.bPlotOnly,
         bInteractive=request.bInteractive,
         saDataCommands=request.saDataCommands,

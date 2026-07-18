@@ -395,14 +395,29 @@ def test_insert_step_at_position(clientHttp):
 
 def test_update_step(clientHttp):
     _fnConnectToContainer(clientHttp)
-    dictPayload = {"sName": "Renamed Step"}
+    dictPayload = {"sDescription": "Fits the flare frequency model"}
     responseHttp = clientHttp.put(
         f"/api/steps/{S_CONTAINER_ID}/0",
         json=dictPayload,
     )
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
-    assert dictResult["sName"] == "Renamed Step"
+    assert dictResult["sDescription"] == (
+        "Fits the flare frequency model"
+    )
+
+
+def test_update_step_rejects_name_changes(clientHttp):
+    """The slug contract: a rename through the generic edit path
+    would leave the directory, marker, and manifest behind, so it is
+    refused toward the rename cascade."""
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.put(
+        f"/api/steps/{S_CONTAINER_ID}/0",
+        json={"sName": "Renamed Step"},
+    )
+    assert responseHttp.status_code == 400
+    assert "ename" in responseHttp.json()["detail"]
 
 
 def test_update_step_invalid_index(clientHttp):
@@ -428,13 +443,15 @@ def test_cas_round_trip_from_connect_fingerprint(clientHttp):
     sFingerprint = dictConnect["sWorkflowFingerprint"]
     responseOne = clientHttp.put(
         f"/api/steps/{S_CONTAINER_ID}/0",
-        json={"sName": "First", "sBaseFingerprint": sFingerprint},
+        json={"sDescription": "First",
+              "sBaseFingerprint": sFingerprint},
     )
     assert responseOne.status_code == 200
     # The workflow moved; reusing the stale fingerprint now conflicts.
     responseTwo = clientHttp.put(
         f"/api/steps/{S_CONTAINER_ID}/0",
-        json={"sName": "Second", "sBaseFingerprint": sFingerprint},
+        json={"sDescription": "Second",
+              "sBaseFingerprint": sFingerprint},
     )
     assert responseTwo.status_code == 409
 
@@ -458,7 +475,8 @@ def test_update_step_matching_fingerprint_succeeds(clientHttp):
     ).json()["sWorkflowFingerprint"]
     responseHttp = clientHttp.put(
         f"/api/steps/{S_CONTAINER_ID}/0",
-        json={"sName": "Renamed", "sBaseFingerprint": sFingerprint},
+        json={"sDescription": "Renamed",
+              "sBaseFingerprint": sFingerprint},
     )
     assert responseHttp.status_code == 200
     # The response carries the NEW fingerprint for the next edit.
@@ -471,7 +489,8 @@ def test_update_step_stale_fingerprint_conflicts(clientHttp):
     _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.put(
         f"/api/steps/{S_CONTAINER_ID}/0",
-        json={"sName": "Renamed", "sBaseFingerprint": "0" * 64},
+        json={"sDescription": "Renamed",
+              "sBaseFingerprint": "0" * 64},
     )
     assert responseHttp.status_code == 409
 
@@ -480,7 +499,7 @@ def test_update_step_without_fingerprint_opts_out(clientHttp):
     _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.put(
         f"/api/steps/{S_CONTAINER_ID}/0",
-        json={"sName": "Renamed"},
+        json={"sDescription": "Renamed"},
     )
     assert responseHttp.status_code == 200
 

@@ -91,6 +91,7 @@ __all__ = [
     "flistValidateOutputFilePaths",
     "fnCleanStepScratchDirs",
     "flistValidateReferences",
+    "flistDirectoryContractWarnings",
     "flistValidateStepDirectories",
     "fnDeleteStep",
     "fnInsertStep",
@@ -1241,6 +1242,35 @@ def flistCollectReferenceStrings(dictStep):
         listStrings.extend(dictStep.get(sKey, []))
     listStrings.extend(dictStep.get("saDependencies", []))
     return listStrings
+
+
+def flistDirectoryContractWarnings(dictWorkflow):
+    """Return one warning per step violating the slug contract.
+
+    The GUI paints the same violation red from its display mirror on
+    every poll; this backend channel gives the CLI, the in-container
+    agent, and the /validate route the identical truth so a manual
+    ``project.json`` edit is never visible in only one surface.
+    """
+    from .pipelineUtils import (
+        fbStepDirectoryConforms,
+        fsSlugFromStepName,
+    )
+    listWarnings = []
+    for iIndex, dictStep in enumerate(
+        dictWorkflow.get("listSteps", []) or []
+    ):
+        if fbStepDirectoryConforms(dictStep):
+            continue
+        sLabel = dictStep.get("sLabel") or f"Step{iIndex + 1:02d}"
+        listWarnings.append(
+            f"{sLabel}: directory "
+            f"'{dictStep.get('sDirectory', '')}' does not match the "
+            f"step name — the contract derives "
+            f"'{fsSlugFromStepName(dictStep.get('sName') or '')}'. "
+            "Rename the step or run align-step-directories.",
+        )
+    return listWarnings
 
 
 def flistValidateReferences(dictWorkflow):

@@ -42,7 +42,8 @@ var VaibifyUtilities = (function () {
             ' alt="' + fnEscapeHtml(sAltText) + '">';
     }
 
-    function fsBuildLevelCell(sState, sTooltip, sAltText) {
+    function fsBuildLevelCell(sState, sTooltip, sAltText,
+        sExtraAttributes) {
         // Cell visuals: favicon = attained, muted dash = not
         // applicable, question mark = unknown (assessed once, answer
         // stale), a circle (tinted by the level-cell-<sState> class)
@@ -61,9 +62,37 @@ var VaibifyUtilities = (function () {
         // sState is a server enum today, but this is the single
         // owner of the cell markup — escape it so a future non-enum
         // state can never become an attribute breakout.
+        // sExtraAttributes is caller-authored constant markup (e.g.
+        // ' data-level="2"'), never user data.
         return '<span class="step-level-cell level-cell-' +
-            fnEscapeHtml(sState) + '" title="' +
+            fnEscapeHtml(sState) + '"' + (sExtraAttributes || "") +
+            ' title="' +
             fnEscapeHtml(sTooltip) + '">' + sInner + '</span>';
+    }
+
+    /* --- Step name <-> directory slug contract (2026-07-18) ---
+       Mirror of the backend formula in pipelineUtils.py
+       (fsSlugFromStepName / fbStepDirectoryConforms). The backend is
+       the enforcement authority; this mirror only paints the ⚠
+       column and the Align button, and must track the Python
+       implementation exactly. */
+
+    function fsSlugFromStepName(sName) {
+        return (sName || "").split(/\s+/).filter(Boolean).map(
+            function (sWord) {
+                return sWord.charAt(0).toUpperCase() + sWord.slice(1);
+            }).join("");
+    }
+
+    function fbStepDirectoryConforms(dictStep) {
+        if (!dictStep) return true;
+        var sDirectory = (dictStep.sDirectory || "")
+            .replace(/^\/+|\/+$/g, "");
+        if (!sDirectory || sDirectory.indexOf("{") !== -1) {
+            return true;
+        }
+        var sBasename = sDirectory.split("/").pop();
+        return sBasename === fsSlugFromStepName(dictStep.sName || "");
     }
 
     function fbIsFigureFile(sPath) {
@@ -282,6 +311,8 @@ var VaibifyUtilities = (function () {
         fsBuildAttainedFavicon: fsBuildAttainedFavicon,
         fsBuildLevelCell: fsBuildLevelCell,
         fsSummarizeLevelStates: fsSummarizeLevelStates,
+        fsSlugFromStepName: fsSlugFromStepName,
+        fbStepDirectoryConforms: fbStepDirectoryConforms,
         fbIsFigureFile: fbIsFigureFile,
         fbIsBinaryFile: fbIsBinaryFile,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,

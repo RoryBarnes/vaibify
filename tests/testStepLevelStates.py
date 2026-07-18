@@ -19,12 +19,26 @@ of the step rows (that is the scalar ``fiAICSLevel`` gate).
 """
 
 from vaibify.reproducibility.levelGates import (
-    fdictComputeStepLevelStates,
+    fdictComputeStepLevelStates as _fdictComputeStepLevelStatesWire,
     fdictComputeStepLevelWarnings,
     fdictComputeWorkflowScopeLevelStates,
     fiLowestNonAttainedLevel,
     fiStepAICSLevel,
 )
+
+
+def fdictComputeStepLevelStates(*tArgs, **dictKwargs):
+    """The wire projection with ``listRequirements`` stripped.
+
+    The tests in this module pin the count/state slice of each cell;
+    the per-criterion breakdown (2026-07-18) is asserted by its own
+    section at the bottom, against the unstripped wire shape.
+    """
+    dictStates = _fdictComputeStepLevelStatesWire(*tArgs, **dictKwargs)
+    for dictCells in dictStates.values():
+        for dictCell in dictCells.values():
+            dictCell.pop("listRequirements", None)
+    return dictStates
 
 
 def _fdictActiveCleanStep(sName="stepOne"):
@@ -861,3 +875,86 @@ def testUndeclaredInputBlocksLevel1Cell():
         _fdictWorkflowWithSteps([dictStep]), [], [], [],
     )
     assert dictStates[0]["s1"]["sState"] == "attained"
+
+
+# ------------------------------------------------------------------------
+# Per-criterion requirement breakdown (2026-07-18): each cell ships
+# listRequirements, the single source its counts derive from — the
+# Step Viewer's level sections and the ⓘ modal render exactly this.
+# ------------------------------------------------------------------------
+
+
+def _flistRequirements(dictCell):
+    return [
+        (dictEntry["sName"], dictEntry["bMet"])
+        for dictEntry in dictCell["listRequirements"]
+    ]
+
+
+def testRequirementListNamesEveryLevel1Criterion():
+    dictStep = _fdictActiveCleanStep()
+    dictStep["dictVerification"] = {
+        "sUser": "untested", "sUnitTest": "passed",
+        "sQuantitative": "failed",
+    }
+    dictStates = _fdictComputeStepLevelStatesWire(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    listRequirements = _flistRequirements(dictStates[0]["s1"])
+    assert ("sUnitTest", True) in listRequirements
+    assert ("sQuantitative", False) in listRequirements
+    assert ("user-attestation", False) in listRequirements
+    assert ("timing-clean", True) in listRequirements
+    assert ("input-data-declared", True) in listRequirements
+
+
+def testRequirementCountsAlwaysDeriveFromTheList():
+    """The cell counts and the breakdown must be the SAME truth: for
+    every level of every step, iSatisfied/iTotal equal the met/total
+    of listRequirements — the divergence this catches is a second
+    computation sneaking in."""
+    dictStep = _fdictActiveCleanStep()
+    dictStep["dictVerification"] = {"sUser": "passed",
+                                    "sUnitTest": "failed"}
+    dictStates = _fdictComputeStepLevelStatesWire(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    for sLevel in ("s1", "s2", "s3"):
+        dictCell = dictStates[0][sLevel]
+        listRequirements = dictCell["listRequirements"]
+        assert dictCell["iTotal"] == len(listRequirements)
+        assert dictCell["iSatisfied"] == sum(
+            1 for d in listRequirements if d["bMet"] is True
+        )
+
+
+def testStaleVerifyCacheShipsUnknownNotFalse():
+    """A stale cache is 'unknowable', never 'failing': the github
+    entry must carry bMet None (JSON null), and the cell must not
+    count it as satisfied."""
+    listLevel2 = [_fdictWorkflowBlocker(2, "github-verify-stale")]
+    dictStates = _fdictComputeStepLevelStatesWire(
+        _fdictWorkflowWithCleanSteps(1), [], listLevel2, [],
+    )
+    listRequirements = _flistRequirements(dictStates[0]["s2"])
+    assert ("github-mirror", None) in listRequirements
+    assert ("zenodo-deposit", True) in listRequirements
+
+
+def testLevel3BreakdownListsOnlyApplicableCriteria():
+    dictStates = _fdictComputeStepLevelStatesWire(
+        _fdictWorkflowWithCleanSteps(1), [], [], [],
+    )
+    listRequirements = _flistRequirements(dictStates[0]["s3"])
+    assert listRequirements == [("missing-from-manifest", True)]
+
+
+def testNotApplicableCellShipsAnEmptyBreakdown():
+    dictStep = {
+        "sName": "interactive", "sDirectory": "",
+        "dictVerification": {"sUser": "passed"},
+    }
+    dictStates = _fdictComputeStepLevelStatesWire(
+        _fdictWorkflowWithSteps([dictStep]), [], [], [],
+    )
+    assert dictStates[0]["s3"]["listRequirements"] == []

@@ -2,9 +2,12 @@
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
+import posixpath
+
 from fastapi import HTTPException
 
-from .. import workflowManager
+from .. import stepRename, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..fileStatusManager import fnMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiAICSLevel
@@ -13,7 +16,9 @@ from ..pipelineServer import (
     InputDataAddRequest,
     ReorderRequest,
     StepCreateRequest,
+    StepRenameRequest,
     StepUpdateRequest,
+    _fbRefuseWhilePipelineTaskLive,
     fdictFilterNonNone,
     fdictRequireWorkflow,
     fdictStepFromRequest,
@@ -21,6 +26,9 @@ from ..pipelineServer import (
 from ..pipelineUtils import (
     fdictStepWithLabel,
     flistStepsWithLabels,
+    fbStepDirectoryConforms,
+    fnRequireUniqueStepSlug,
+    fsSlugFromStepName,
 )
 
 
@@ -61,6 +69,8 @@ def _fnRegisterStepsList(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         return {
             "listWarnings": workflowManager.flistValidateReferences(
+                dictWorkflow
+            ) + workflowManager.flistDirectoryContractWarnings(
                 dictWorkflow
             )
         }
@@ -111,6 +121,21 @@ def _fnRegisterStepGet(app, dictCtx):
             raise HTTPException(404, str(error))
 
 
+def _fdictStepFromRequestChecked(dictWorkflow, request):
+    """Build the new step, mapping contract violations to HTTP 400.
+
+    The slug contract (2026-07-18): the name's alphabet is validated,
+    the directory's final component is derived from the name, and the
+    resulting slug must be unique in the project (case-insensitive).
+    """
+    try:
+        dictStep = fdictStepFromRequest(request)
+        fnRequireUniqueStepSlug(dictWorkflow, -1, dictStep["sName"])
+        return dictStep
+    except ValueError as error:
+        raise HTTPException(400, str(error))
+
+
 def _fnRegisterStepCreate(app, dictCtx):
     """Register POST /api/steps/{id}/create route."""
 
@@ -123,7 +148,7 @@ def _fnRegisterStepCreate(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnRaiseIfAtStepCap(dictWorkflow)
-        dictStep = fdictStepFromRequest(request)
+        dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         dictWorkflow["listSteps"].append(dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
         iIndex = len(dictWorkflow["listSteps"]) - 1
@@ -152,7 +177,7 @@ def _fnRegisterStepInsert(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnRaiseIfAtStepCap(dictWorkflow)
-        dictStep = fdictStepFromRequest(request)
+        dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         workflowManager.fnInsertStep(
             dictWorkflow, iPosition, dictStep)
         dictCtx["save"](sContainerId, dictWorkflow)
@@ -183,6 +208,9 @@ def _fnRegisterStepUpdate(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         _fnRequireFingerprintMatch(dictWorkflow, request.sBaseFingerprint)
         dictUpdates = _fdictExtractStepUpdates(request)
+        _fnRejectContractBreakingUpdates(
+            dictWorkflow, iStepIndex, dictUpdates,
+        )
         _fnRequireDestructiveConfirm(
             dictWorkflow, iStepIndex, dictUpdates,
             request.bConfirmDestructive,
@@ -215,6 +243,41 @@ def _fdictExtractStepUpdates(request):
     dictRaw.pop("bConfirmDestructive", None)
     dictRaw.pop("sBaseFingerprint", None)
     return fdictFilterNonNone(dictRaw)
+
+
+def _fnRejectContractBreakingUpdates(
+    dictWorkflow, iStepIndex, dictUpdates,
+):
+    """Refuse edits that would break the name<->directory contract.
+
+    A name change through the generic edit path would leave the
+    directory, marker, and manifest behind — that is exactly what the
+    rename cascade exists to keep together, so renames are 400'd
+    toward it. A directory edit may move the parent path but its
+    final component must stay the name's slug (templated directories
+    are exempt, mirroring ``fbStepDirectoryConforms``).
+    """
+    listSteps = dictWorkflow.get("listSteps", [])
+    if not 0 <= iStepIndex < len(listSteps):
+        return
+    dictStep = listSteps[iStepIndex]
+    sCurrentName = dictStep.get("sName") or ""
+    if "sName" in dictUpdates \
+            and dictUpdates["sName"] != sCurrentName:
+        raise HTTPException(
+            400, "Renaming a step goes through the rename action "
+            "(right-click → Rename, or the rename-step agent "
+            "action) so its directory, verification marker, and "
+            "manifest follow the name.")
+    if "sDirectory" in dictUpdates:
+        sDirectory = (dictUpdates["sDirectory"] or "").strip("/")
+        sSlug = fsSlugFromStepName(sCurrentName)
+        if sDirectory and "{" not in sDirectory \
+                and posixpath.basename(sDirectory) != sSlug:
+            raise HTTPException(
+                400, f"The directory's final component must be "
+                f"'{sSlug}' (derived from the step name); only the "
+                "parent path is free.")
 
 
 def _fnRequireFingerprintMatch(dictWorkflow, sBaseFingerprint):
@@ -342,6 +405,127 @@ def _fnRegisterInputDataAdd(app, dictCtx):
         }
 
 
+def _fnRegisterStepRename(app, dictCtx):
+    """Register POST /api/steps/{id}/{index}/rename route."""
+
+    @fnAgentAction("rename-step")
+    @app.post("/api/steps/{sContainerId}/{iStepIndex}/rename")
+    async def fnRenameStep(
+        sContainerId: str, iStepIndex: int,
+        request: StepRenameRequest,
+    ):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        if _fbRefuseWhilePipelineTaskLive(
+            dictCtx["pipelineTasks"], sContainerId,
+        ):
+            raise HTTPException(
+                409, "A pipeline action is running in this "
+                "container — wait for it to finish before renaming "
+                "a step.")
+        _fnRequireFingerprintMatch(
+            dictWorkflow, request.sBaseFingerprint)
+        try:
+            dictPlan = stepRename.fdictPlanStepRename(
+                dictWorkflow, iStepIndex, request.sNewName)
+        except IndexError as error:
+            raise HTTPException(404, str(error))
+        except ValueError as error:
+            raise HTTPException(400, str(error))
+        if request.bDryRun:
+            dictPlan["listScriptWarnings"] = await asyncio.to_thread(
+                stepRename.flistScanScriptsForOldName,
+                dictCtx["docker"], sContainerId, dictWorkflow,
+                dictPlan,
+            )
+            return dictPlan
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow)
+        try:
+            dictReport = await asyncio.to_thread(
+                stepRename.fdictApplyStepRename,
+                dictCtx["docker"], sContainerId, filesRepo,
+                dictWorkflow, iStepIndex, dictPlan,
+                dictCtx["paths"].get(sContainerId, ""),
+            )
+        except ValueError as error:
+            raise HTTPException(409, str(error))
+        except RuntimeError as error:
+            raise HTTPException(500, str(error))
+        dictCtx["save"](sContainerId, dictWorkflow)
+        dictReport["dictStep"] = fdictStepWithLabel(
+            dictWorkflow, iStepIndex)
+        dictReport["sWorkflowFingerprint"] = (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        )
+        return dictReport
+
+
+def _fnRegisterAlignDirectories(app, dictCtx):
+    """Register POST /api/steps/{id}/align-directories route."""
+
+    @fnAgentAction("align-step-directories")
+    @app.post("/api/steps/{sContainerId}/align-directories")
+    async def fnAlignStepDirectories(sContainerId: str):
+        """Migrate every nonconforming step to the slug contract.
+
+        Each step runs the full rename cascade (git mv, marker,
+        manifest, path rewrites) with its name unchanged. Steps whose
+        names violate the contract's alphabet are reported skipped —
+        they need a rename first — rather than failing the batch.
+        """
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId)
+        if _fbRefuseWhilePipelineTaskLive(
+            dictCtx["pipelineTasks"], sContainerId,
+        ):
+            raise HTTPException(
+                409, "A pipeline action is running in this "
+                "container — wait for it to finish before aligning "
+                "directories.")
+        filesRepo = ffilesForWorkflow(
+            dictCtx, sContainerId, dictWorkflow)
+        listAligned, listSkipped = [], []
+        for iIndex, dictStep in enumerate(
+            dictWorkflow.get("listSteps", [])
+        ):
+            if fbStepDirectoryConforms(dictStep):
+                continue
+            sLabel = dictStep.get("sLabel") or f"step {iIndex}"
+            try:
+                dictPlan = stepRename.fdictPlanDirectoryAlignment(
+                    dictWorkflow, iIndex)
+                if not dictPlan["bDirectoryRenamed"]:
+                    continue
+                await asyncio.to_thread(
+                    stepRename.fdictApplyStepRename,
+                    dictCtx["docker"], sContainerId, filesRepo,
+                    dictWorkflow, iIndex, dictPlan,
+                    dictCtx["paths"].get(sContainerId, ""),
+                )
+                listAligned.append({
+                    "sLabel": sLabel,
+                    "sOldDirectory": dictPlan["sOldDirectory"],
+                    "sNewDirectory": dictPlan["sNewDirectory"],
+                })
+            except (ValueError, RuntimeError) as error:
+                listSkipped.append({
+                    "sLabel": sLabel, "sReason": str(error),
+                })
+        if listAligned:
+            dictCtx["save"](sContainerId, dictWorkflow)
+        return {
+            "listAligned": listAligned,
+            "listSkipped": listSkipped,
+            "listSteps": flistStepsWithLabels(dictWorkflow),
+            "sWorkflowFingerprint":
+                workflowManager.fsComputeWorkflowFingerprint(
+                    dictWorkflow),
+        }
+
+
 def _fnRegisterDeclareNoInputData(app, dictCtx):
     """Register POST /api/steps/{id}/declare-no-input-data route."""
 
@@ -374,6 +558,8 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterStepInsert(app, dictCtx)
     _fnRegisterInputDataAdd(app, dictCtx)
     _fnRegisterDeclareNoInputData(app, dictCtx)
+    _fnRegisterStepRename(app, dictCtx)
+    _fnRegisterAlignDirectories(app, dictCtx)
     _fnRegisterStepUpdate(app, dictCtx)
     _fnRegisterStepDelete(app, dictCtx)
     _fnRegisterStepReorder(app, dictCtx)

@@ -40,8 +40,10 @@ var VaibifyLegendPanel = (function () {
             sLabel: "Run light (beside each step's checkbox) — " +
                 "execution only: hollow grey = not run this " +
                 "session, filled grey = queued, blinking orange = " +
-                "running, theme-colored check = last run " +
-                "succeeded, red = last run failed",
+                "running, red = last run failed, blinking red = " +
+                "may be hung, quiet pale-blue dot = last run " +
+                "succeeded; verification lives in the L1|L2|L3 " +
+                "cells",
         },
         {
             sIcon: "⚠", sClass: "step-regression-cell " +

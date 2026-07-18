@@ -2876,22 +2876,46 @@ def _fbAnyWorkflowCriterion(listBlockers, sCriterion):
 
 
 def _fdictOneStepLevelCells(iStepIndex, dictStep, dictContext):
-    """Return the three INDEPENDENT level cells for one step."""
+    """Return the three INDEPENDENT level cells for one step.
+
+    Each cell also carries ``listRequirements`` — the per-criterion
+    breakdown (``{"sName", "bMet"}``, with ``bMet`` None when a stale
+    verify cache makes the answer unknowable). The counts are DERIVED
+    from that list, so the cell state and the requirement rows the
+    Step Viewer renders can never disagree.
+    """
     sInactivityState = _fsStepInactivityState(
         iStepIndex, dictStep, dictContext,
     )
     dictHighWater = _fdictGetStepLevelHighWater(dictStep)
-    dictCountsByLevel = _fdictCountStepLevelRequirements(
+    dictListsByLevel = _fdictStepLevelRequirementLists(
         iStepIndex, dictStep, dictContext,
     )
     dictResult = {}
     for sLevel in ("1", "2", "3"):
-        iSatisfied, iTotal, bUnknown = dictCountsByLevel[sLevel]
-        dictResult["s" + sLevel] = _fdictBuildLevelCell(
+        listRequirements = dictListsByLevel[sLevel]
+        iSatisfied, iTotal, bUnknown = _ftCountsFromRequirementList(
+            listRequirements,
+        )
+        dictCell = _fdictBuildLevelCell(
             iSatisfied, iTotal, sInactivityState, bUnknown,
             sLevel in dictHighWater,
         )
+        dictCell["listRequirements"] = [
+            {"sName": sName, "bMet": bMet}
+            for sName, bMet in listRequirements
+        ]
+        dictResult["s" + sLevel] = dictCell
     return dictResult
+
+
+def _ftCountsFromRequirementList(listRequirements):
+    """Return ``(iSatisfied, iTotal, bUnknown)`` over a breakdown list."""
+    iSatisfied = sum(
+        1 for _sName, bMet in listRequirements if bMet is True
+    )
+    bUnknown = any(bMet is None for _sName, bMet in listRequirements)
+    return (iSatisfied, len(listRequirements), bUnknown)
 
 
 def _fsStepInactivityState(iStepIndex, dictStep, dictContext):
@@ -2919,26 +2943,31 @@ def _fdictGetStepLevelHighWater(dictStep):
     return {}
 
 
-def _fdictCountStepLevelRequirements(iStepIndex, dictStep, dictContext):
-    """Return ``{sLevel: (iSatisfied, iTotal, bUnknown)}`` for one step."""
-    iSatisfiedOne, iTotalOne = _ftStepLevel1Counts(
-        dictStep,
-        dictContext["dictLevel1CriteriaByStep"].get(iStepIndex, set()),
-    )
-    iSatisfiedTwo, iTotalTwo, bUnknownTwo = _ftStepLevel2Counts(
-        dictStep,
-        dictContext["dictLevel2CriteriaByStep"].get(iStepIndex, set()),
-        dictContext,
-    )
-    iSatisfiedThree, iTotalThree = _ftStepLevel3Counts(
-        dictStep,
-        dictContext["dictLevel3FailingByStep"].get(iStepIndex, set()),
-        dictContext,
-    )
+def _fdictStepLevelRequirementLists(iStepIndex, dictStep, dictContext):
+    """Return ``{sLevel: [(sName, bMet)]}`` — one step's full breakdown.
+
+    ``bMet`` is True/False, or None when a stale verify cache makes
+    the criterion unknowable. This list is the single source both the
+    cell counts and the Step Viewer's requirement rows derive from.
+    """
     return {
-        "1": (iSatisfiedOne, iTotalOne, False),
-        "2": (iSatisfiedTwo, iTotalTwo, bUnknownTwo),
-        "3": (iSatisfiedThree, iTotalThree, False),
+        "1": _flistStepLevel1Requirements(
+            dictStep,
+            dictContext["dictLevel1CriteriaByStep"].get(
+                iStepIndex, set()),
+        ),
+        "2": _flistStepLevel2Requirements(
+            dictStep,
+            dictContext["dictLevel2CriteriaByStep"].get(
+                iStepIndex, set()),
+            dictContext,
+        ),
+        "3": _flistStepLevel3Requirements(
+            dictStep,
+            dictContext["dictLevel3FailingByStep"].get(
+                iStepIndex, set()),
+            dictContext,
+        ),
     }
 
 
@@ -2984,31 +3013,51 @@ def _ftCountGreenAxes(dictStep):
     return (iGreen, iPresent)
 
 
-def _ftStepLevel1Counts(dictStep, setCriteria):
-    """Return ``(iSatisfied, iTotal)`` over the step's L1 requirements.
+def _flistStepLevel1Requirements(dictStep, setCriteria):
+    """Return ``[(sName, bMet)]`` over the step's L1 requirements.
 
     Requirements: one per PRESENT test axis, plus user attestation,
     plus timing cleanliness, plus an explicit input-data declaration
     (files listed in ``saInputDataFiles`` or the ``bNoInputData``
-    flag) — so ``iTotal`` is axis count + 3. The declaration
-    requirement is counted directly from the step, not from
-    ``setCriteria``, so the dominant-blocker masking (which now
-    ranks ``input-data-undeclared`` above the timing criteria)
-    cannot hide it. An ai-declaration step has NO L1 requirements
-    (``(0, 0)`` renders not-applicable): the declaration is a
-    publication artifact, so its sign-off is a Level 2 requirement.
+    flag). The declaration requirement is read directly from the
+    step, not from ``setCriteria``, so the dominant-blocker masking
+    (which ranks ``input-data-undeclared`` above the timing
+    criteria) cannot hide it. An ai-declaration step has NO L1
+    requirements (an empty list renders not-applicable): the
+    declaration is a publication artifact, so its sign-off is a
+    Level 2 requirement.
     """
     if fbStepIsAiDeclaration(dictStep):
-        return (0, 0)
-    iGreen, iPresent = _ftCountGreenAxes(dictStep)
-    iSatisfied = iGreen
-    if fbStepUserApproved(dictStep):
-        iSatisfied += 1
-    if _fbStepTimingRequirementMet(dictStep, setCriteria):
-        iSatisfied += 1
-    if not _fbStepInputDataUndeclared(dictStep):
-        iSatisfied += 1
-    return (iSatisfied, iPresent + 3)
+        return []
+    dictV = {}
+    if isinstance(dictStep, dict):
+        dictV = dictStep.get("dictVerification") or {}
+    if not isinstance(dictV, dict):
+        dictV = {}
+    listRequirements = [
+        (sAxisKey, dictV[sAxisKey] in _T_GREEN_VERIF_VALUES)
+        for sAxisKey in _T_TEST_VERIF_KEYS if sAxisKey in dictV
+    ]
+    listRequirements.append(
+        ("user-attestation", fbStepUserApproved(dictStep)))
+    listRequirements.append(
+        ("timing-clean",
+         _fbStepTimingRequirementMet(dictStep, setCriteria)))
+    listRequirements.append(
+        ("input-data-declared",
+         not _fbStepInputDataUndeclared(dictStep)))
+    return listRequirements
+
+
+def _ftStepLevel1Counts(dictStep, setCriteria):
+    """Return ``(iSatisfied, iTotal)`` over the step's L1 requirements."""
+    listRequirements = _flistStepLevel1Requirements(
+        dictStep, setCriteria,
+    )
+    iSatisfied, iTotal, _bUnknown = _ftCountsFromRequirementList(
+        listRequirements,
+    )
+    return (iSatisfied, iTotal)
 
 
 def _fbStepTimingRequirementMet(dictStep, setCriteria):
@@ -3040,46 +3089,44 @@ def _fbAttestationStaleOnStep(dictStep):
     )
 
 
-def _ftStepLevel2Counts(dictStep, setCriteria, dictContext):
-    """Return ``(iSatisfied, iTotal, bUnknown)`` for one step's L2 cell.
+def _flistStepLevel2Requirements(dictStep, setCriteria, dictContext):
+    """Return ``[(sName, bMet)]`` for one step's L2 requirements.
 
     Applicable criteria: github mirror match, zenodo deposit match,
     and figure frozen when the workflow has an Overleaf binding and
     the step declares plot files. A stale verify cache makes the
-    matching criterion unknowable: it still counts in ``iTotal`` but
-    never in ``iSatisfied``, and the cell state is ``unknown``. A
-    missing project repo zeroes satisfaction — there is no sync truth
-    to satisfy.
+    matching criterion unknowable — ``bMet`` is None, which counts
+    in the total but never as satisfied. A missing project repo
+    zeroes satisfaction — there is no sync truth to satisfy.
     """
     if not dictContext["bHasRepo"]:
-        return (0, 2, False)
-    bGithubStale = dictContext["bGithubCacheStale"]
-    bZenodoStale = dictContext["bZenodoCacheStale"]
-    iSatisfied = _fiCountSyncCriteriaSatisfied(
-        setCriteria, bGithubStale, bZenodoStale,
-    )
-    iTotal = 2
+        return [("github-mirror", False), ("zenodo-deposit", False)]
+    listRequirements = [
+        ("github-mirror",
+         None if dictContext["bGithubCacheStale"]
+         else "not-in-github-mirror" not in setCriteria),
+        ("zenodo-deposit",
+         None if dictContext["bZenodoCacheStale"]
+         else "not-in-zenodo-deposit" not in setCriteria),
+    ]
     if _fbFigureFreezeApplicable(dictStep, dictContext):
-        iTotal += 1
-        if "figure-not-frozen" not in setCriteria:
-            iSatisfied += 1
+        listRequirements.append(
+            ("figure-frozen",
+             "figure-not-frozen" not in setCriteria))
     if fbStepIsAiDeclaration(dictStep):
         # The declaration's researcher sign-off is a Level 2
         # requirement (its L1 cell reads not-applicable).
-        iTotal += 1
-        if "ai-declaration-unattested" not in setCriteria:
-            iSatisfied += 1
-    return (iSatisfied, iTotal, bGithubStale or bZenodoStale)
+        listRequirements.append(
+            ("ai-declaration-attested",
+             "ai-declaration-unattested" not in setCriteria))
+    return listRequirements
 
 
-def _fiCountSyncCriteriaSatisfied(setCriteria, bGithubStale, bZenodoStale):
-    """Count the github/zenodo criteria that are known to be satisfied."""
-    iSatisfied = 0
-    if not bGithubStale and "not-in-github-mirror" not in setCriteria:
-        iSatisfied += 1
-    if not bZenodoStale and "not-in-zenodo-deposit" not in setCriteria:
-        iSatisfied += 1
-    return iSatisfied
+def _ftStepLevel2Counts(dictStep, setCriteria, dictContext):
+    """Return ``(iSatisfied, iTotal, bUnknown)`` for one step's L2 cell."""
+    return _ftCountsFromRequirementList(
+        _flistStepLevel2Requirements(dictStep, setCriteria, dictContext),
+    )
 
 
 def _fbFigureFreezeApplicable(dictStep, dictContext):
@@ -3094,26 +3141,44 @@ def _fbFigureFreezeApplicable(dictStep, dictContext):
     return False
 
 
-def _ftStepLevel3Counts(dictStep, setFailing, dictContext):
-    """Return ``(iSatisfied, iTotal)`` over the APPLICABLE L3 criteria.
+def _flistStepLevel3Requirements(dictStep, setFailing, dictContext):
+    """Return ``[(sName, bMet)]`` over the APPLICABLE L3 criteria.
 
-    ``iTotal`` counts only the criteria whose domain is non-empty on
-    this step (unioned with the blocker-reported failures,
-    defensively), so a step failing every applicable criterion reads
-    zero satisfied — never a flattering near-complete count — and a
-    step with nothing to reproduce reads ``(0, 0)``, which the cell
-    builder renders as ``not-applicable`` rather than a vacuous
-    attainment. A missing project repo zeroes satisfaction over the
-    full criteria tuple.
+    Only criteria whose domain is non-empty on this step appear
+    (unioned with the blocker-reported failures, defensively), so a
+    step failing every applicable criterion reads zero satisfied —
+    never a flattering near-complete count — and a step with nothing
+    to reproduce yields an empty list, which the cell builder renders
+    as ``not-applicable`` rather than a vacuous attainment. A missing
+    project repo zeroes satisfaction over the full criteria tuple.
+    Entries follow the canonical tuple order so the Step Viewer's
+    rows are stable across polls.
     """
     if not dictContext["bHasRepo"]:
-        return (0, len(_T_STEP_LEVEL3_CRITERIA))
+        return [
+            (sCriterion, False)
+            for sCriterion in _T_STEP_LEVEL3_CRITERIA
+        ]
     setApplicable = _fsetStepApplicableLevel3Criteria(
         dictStep, dictContext["listDeclaredBinaries"],
     )
     setApplicable |= set(setFailing) & set(_T_STEP_LEVEL3_CRITERIA)
-    iTotal = len(setApplicable)
-    return (iTotal - len(setApplicable & set(setFailing)), iTotal)
+    return [
+        (sCriterion, sCriterion not in setFailing)
+        for sCriterion in _T_STEP_LEVEL3_CRITERIA
+        if sCriterion in setApplicable
+    ]
+
+
+def _ftStepLevel3Counts(dictStep, setFailing, dictContext):
+    """Return ``(iSatisfied, iTotal)`` over the APPLICABLE L3 criteria."""
+    listRequirements = _flistStepLevel3Requirements(
+        dictStep, setFailing, dictContext,
+    )
+    iSatisfied, iTotal, _bUnknown = _ftCountsFromRequirementList(
+        listRequirements,
+    )
+    return (iSatisfied, iTotal)
 
 
 def _fsetStepApplicableLevel3Criteria(dictStep, listDeclaredBinaries):

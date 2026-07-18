@@ -1114,20 +1114,20 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_declaration_step_l2_counts_are_exact',
         source='vaibify/reproducibility/levelGates.py',
-        old='        if "ai-declaration-unattested" not in setCriteria:\n            iSatisfied += 1',
-        new='        if "ai-declaration-unattested" not in setCriteria:\n            iSatisfied += 2',
+        old='            ("ai-declaration-attested",\n             "ai-declaration-unattested" not in setCriteria))',
+        new='            ("ai-declaration-attested",\n             "ai-declaration-unattested" in setCriteria))',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_step_l3_counts_zero_without_repo',
         source='vaibify/reproducibility/levelGates.py',
-        old='        return (0, len(_T_STEP_LEVEL3_CRITERIA))',
-        new='        return (1, len(_T_STEP_LEVEL3_CRITERIA))',
+        old='            (sCriterion, False)\n            for sCriterion in _T_STEP_LEVEL3_CRITERIA\n        ]',
+        new='            (sCriterion, True)\n            for sCriterion in _T_STEP_LEVEL3_CRITERIA\n        ]',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_step_l3_satisfied_arithmetic_is_subtraction',
         source='vaibify/reproducibility/levelGates.py',
-        old='    return (iTotal - len(setApplicable & set(setFailing)), iTotal)',
-        new='    return (iTotal >> len(setApplicable & set(setFailing)), iTotal)',
+        old='        (sCriterion, sCriterion not in setFailing)',
+        new='        (sCriterion, sCriterion in setFailing)',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_randomness_criterion_requires_literal_true',
@@ -1240,5 +1240,65 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/falsificationAttestation.py',
         old='    fDurationSeconds=0.0, sReason="",',
         new='    fDurationSeconds=1.0, sReason="",',
+    ),
+    # --- Step name <-> directory slug contract (2026-07-18) ---
+    Falsification(
+        nodeid='tests/testStepSlugContract.py::test_slug_enforces_camelcase_on_lowercase_words',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        sWord[0].upper() + sWord[1:] for sWord in listWords if sWord',
+        new='        sWord[0] + sWord[1:] for sWord in listWords if sWord',
+    ),
+    Falsification(
+        # basename IN slug instead of == : "systems/GJ1132" passes
+        # against "GJ1132XUV" — the guardrail goes blind to exactly
+        # the truncated legacy directories it exists to catch.
+        nodeid='tests/testStepSlugContract.py::test_conformance_governs_only_the_final_component',
+        source='vaibify/gui/pipelineUtils.py',
+        old='    return posixpath.basename(sDirectory) == fsSlugFromStepName(',
+        new='    return posixpath.basename(sDirectory) in fsSlugFromStepName(',
+    ),
+    Falsification(
+        # Dropping .lower() lets 'NEW STEP' coexist with 'New Step' —
+        # one directory on a macOS clone.
+        nodeid='tests/testStepSlugContract.py::test_unique_slug_rejects_a_case_variant',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        ).lower() == sSlugLower:',
+        new='        ) == sSlugLower:',
+    ),
+    Falsification(
+        # Inverting the guard lets a rename slip through the generic
+        # edit path, desynchronizing name from directory/marker/manifest.
+        nodeid='tests/testPipelineServerRoutes.py::test_update_step_rejects_name_changes',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='    if "sName" in dictUpdates \\\n            and dictUpdates["sName"] != sCurrentName:',
+        new='    if "sName" in dictUpdates \\\n            and dictUpdates["sName"] == sCurrentName:',
+    ),
+    Falsification(
+        # Honoring a typed basename over the derived slug reopens
+        # name/directory divergence at creation.
+        nodeid='tests/testStepSlugContract.py::test_derive_ignores_a_nonconforming_provided_basename',
+        source='vaibify/gui/pipelineServer.py',
+        old='    return posixpath.join(sParent, sSlug) if sParent else sSlug',
+        new='    return posixpath.join(sParent, sSlug) if sParent else (sDirectoryRaw or sSlug)',
+    ),
+    Falsification(
+        # THE SHIPPED BUG (live 2026-07-18): the align route read the
+        # workflow path from a key the workflow dict never carries, so
+        # the marker namespace slug was empty and every verification
+        # marker was silently orphaned. Killed only by the real-wiring
+        # route test — the unit fixtures had encoded the same wrong key.
+        nodeid='tests/testStepRoutes.py::testAlignRouteMovesTheMarkerThroughRealWiring',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='                    dictCtx["paths"].get(sContainerId, ""),',
+        new='                    dictWorkflow.get("sPath", ""),',
+    ),
+    Falsification(
+        # A short-circuited warnings builder makes a manual
+        # project.json edit visible in the GUI only — the CLI and the
+        # in-container agent would never see the violation.
+        nodeid='tests/testStepSlugContract.py::test_backend_reports_directory_contract_warnings',
+        source='vaibify/gui/workflowManager.py',
+        old='        if fbStepDirectoryConforms(dictStep):\n            continue',
+        new='        if fbStepDirectoryConforms(dictStep) or True:\n            continue',
     ),
 ]

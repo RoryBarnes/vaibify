@@ -77,6 +77,16 @@ const PipeleyenApp = (function () {
         setExpandedIntegrity: new Set(),
         setExpandedRequirementGroups: new Set(),
         setExpandedRequirementRows: new Set(),
+        // Per-step level sections in the Step Viewer: keys are
+        // "iStep:iLevel". A step is seeded once (its target rung
+        // opens) and remembered in setLevelSeededSteps so the
+        // researcher's own toggles are never overridden.
+        setExpandedStepLevels: new Set(),
+        setLevelSeededSteps: new Set(),
+        // Description block: seeded open when the step already has
+        // text, then the researcher's toggles win.
+        setExpandedStepDescriptions: new Set(),
+        setDescriptionSeededSteps: new Set(),
         bStepsCollapsed: false,
         bProjectBlockCollapsed: false,
         bBinaryAddFormOpen: false,
@@ -321,6 +331,10 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedIntegrity.clear();
         _dictUiState.setExpandedRequirementGroups.clear();
         _dictUiState.setExpandedRequirementRows.clear();
+        _dictUiState.setExpandedStepLevels.clear();
+        _dictUiState.setLevelSeededSteps.clear();
+        _dictUiState.setExpandedStepDescriptions.clear();
+        _dictUiState.setDescriptionSeededSteps.clear();
         _dictUiState.bBinaryAddFormOpen = false;
     }
 
@@ -778,6 +792,10 @@ const PipeleyenApp = (function () {
         _dictUiState.iSelectedStepIndex = -1;
         _dictUiState.setExpandedSteps.clear();
         _dictUiState.setExpandedDeps.clear();
+        _dictUiState.setExpandedStepLevels.clear();
+        _dictUiState.setLevelSeededSteps.clear();
+        _dictUiState.setExpandedStepDescriptions.clear();
+        _dictUiState.setDescriptionSeededSteps.clear();
         PipeleyenTestManager.fnResetState();
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictStepStatus = {};
@@ -868,8 +886,14 @@ const PipeleyenApp = (function () {
 
     /* --- Global Settings --- */
 
-    function fsSettingsRowHtml(sLabel, sInputHtml) {
-        return '<div class="gs-row">' +
+    function fsSettingsRowHtml(sLabel, sInputHtml, sTooltip) {
+        // Every settings row carries a hover tooltip on the whole
+        // row (2026-07-18 ruling) so a researcher never has to
+        // guess what an option controls.
+        return '<div class="gs-row"' +
+            (sTooltip
+                ? ' title="' + fnEscapeHtml(sTooltip) + '"'
+                : '') + '>' +
             '<span class="gs-label">' + sLabel + '</span>' +
             sInputHtml + '</div>';
     }
@@ -879,28 +903,44 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflow.fTolerance || 1e-6);
         return fsSettingsRowHtml("Plot Dir",
             '<input class="gs-input" id="gsPlotDirectory" value="' +
-            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sPlotDirectory || "Plot") + '">') +
+            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sPlotDirectory || "Plot") + '">',
+            "Subdirectory of each step where its figures are " +
+            "written; commands reference it with the " +
+            "{sPlotDirectory} token") +
             fsSettingsRowHtml("Figure Type",
             '<input class="gs-input" id="gsFigureType" value="' +
-            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sFigureType || "pdf") + '">') +
+            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sFigureType || "pdf") + '">',
+            "File format for generated figures (for example pdf " +
+            "or png); commands reference it with the " +
+            "{sFigureType} token") +
             fsSettingsRowHtml("Cores",
             '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
-            (_dictWorkflowState.dictWorkflow.iNumberOfCores || -1) + '">') +
+            (_dictWorkflowState.dictWorkflow.iNumberOfCores || -1) + '">',
+            "CPU cores available to parallel work inside the " +
+            "container; -1 means all cores minus one") +
             fsSettingsRowHtml("Tolerance",
             '<input class="gs-input" id="gsTolerance" type="range"' +
             ' min="-16" max="0" step="1" value="' + iToleranceExp +
             '" title="10^' + iToleranceExp +
-            ' = ' + (_dictWorkflowState.dictWorkflow.fTolerance || 1e-6) + '">') +
+            ' = ' + (_dictWorkflowState.dictWorkflow.fTolerance || 1e-6) + '">',
+            "How closely a quantitative test result must match its " +
+            "standard to pass; the slider sets a power of ten — " +
+            "hover the slider for the current value") +
             fsSettingsRowHtml("Poll Interval",
             '<input class="gs-input" id="gsPollInterval" type="range"' +
             ' min="1" max="60" value="' +
             (VaibifyPolling.fiGetPollIntervalMs() / 1000) +
             '" title="' +
             (VaibifyPolling.fiGetPollIntervalMs() / 1000) +
-            ' seconds">') +
+            ' seconds">',
+            "How often the dashboard refreshes file and status " +
+            "information from the container, in seconds — hover " +
+            "the slider for the current value") +
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
-            (_dictUiState.bShowTimestamps ? " checked" : "") + '>') +
+            (_dictUiState.bShowTimestamps ? " checked" : "") + '>',
+            "Show file-modification timestamps in each step's " +
+            "expanded detail") +
             fsSettingsRowHtml("Terminal lines",
             '<input id="gsTerminalScrollback" class="gs-input-local"' +
             ' type="number" min="100"' +
@@ -913,12 +953,17 @@ const PipeleyenApp = (function () {
             ' browser memory"><input type="checkbox"' +
             ' id="gsTerminalScrollbackUnlimited"' +
             (PipeleyenTerminal.fbScrollbackIsUnlimited()
-                ? " checked" : "") + '> &#8734;</label>') +
+                ? " checked" : "") + '> &#8734;</label>',
+            "How many lines of output each terminal tab keeps; " +
+            "the &#8734; checkbox retains effectively unlimited " +
+            "scrollback") +
             fsSettingsRowHtml("Auto Archive",
             '<input type="checkbox" id="gsAutoArchive"' +
             (_dictWorkflowState.dictWorkflow.bAutoArchive
                 ? " checked" : "") +
-            ' title="Push verified files to Overleaf/Zenodo automatically">') +
+            ' title="Push verified files to Overleaf/Zenodo automatically">',
+            "Push verified files to Overleaf and Zenodo " +
+            "automatically after each successful verification") +
             fsSettingsRowHtml("Runtime limit (s)",
             '<input class="gs-input" id="gsDefaultWallClockBudget"' +
             ' type="number" min="0" step="1" value="' +
@@ -927,7 +972,11 @@ const PipeleyenApp = (function () {
             ' title="Default expected runtime in seconds applied to' +
             ' every step without its own value. A step that runs longer' +
             ' turns its run light red as a possibly-hung warning; the' +
-            ' run is never stopped. 0 = no limit.">') +
+            ' run is never stopped. 0 = no limit.">',
+            "Advisory runtime limit in seconds inherited by every " +
+            "step without its own (right-click a step to set one); " +
+            "a longer-running step is flagged as possibly hung — " +
+            "the run is never stopped. 0 = no limit") +
             fsClaudeSettingsHtml();
     }
 
@@ -944,7 +993,10 @@ const PipeleyenApp = (function () {
         return '<div class="gs-section-heading">Container</div>' +
             fsSettingsRowHtml("Claude auto-update",
                 '<input type="checkbox" id="gsClaudeAutoUpdate"'
-                + sChecked + '>') +
+                + sChecked + '>',
+                "Allow Claude Code inside the container to update " +
+                "itself; a change takes effect after a container " +
+                "restart") +
             sNotice;
     }
 
@@ -1280,6 +1332,9 @@ const PipeleyenApp = (function () {
             fsBlockerHintForFile: fsBlockerHintForFile,
             fsLevelCellState: fsLevelCellState,
             fsLevelCellTooltip: fsLevelCellTooltip,
+            fdictLevelCellForScope: fdictLevelCellForScope,
+            fbIsStepLevelExpanded: fbIsStepLevelExpanded,
+            fbIsStepDescriptionExpanded: fbIsStepDescriptionExpanded,
             fdictRegressionWarning: fdictRegressionWarning,
         };
     }
@@ -1379,6 +1434,10 @@ const PipeleyenApp = (function () {
             + (dictContext.fsetGetExpandedCategory("qualitative").has(iIndex) ? "1" : "0")
             + (dictContext.fsetGetExpandedCategory("quantitative").has(iIndex) ? "1" : "0")
             + (dictContext.fsetGetExpandedCategory("integrity").has(iIndex) ? "1" : "0")
+            + (dictContext.fbIsStepLevelExpanded(iIndex, 1) ? "1" : "0")
+            + (dictContext.fbIsStepLevelExpanded(iIndex, 2) ? "1" : "0")
+            + (dictContext.fbIsStepLevelExpanded(iIndex, 3) ? "1" : "0")
+            + (dictContext.fbIsStepDescriptionExpanded(iIndex) ? "1" : "0")
         );
     }
 
@@ -1539,24 +1598,73 @@ const PipeleyenApp = (function () {
         // state even while collapsed.
         var elStatus = elBlock.querySelector(".steps-block-status");
         if (elStatus) {
-            elStatus.innerHTML = _fsRenderStepsAggregateLight();
+            elStatus.innerHTML = _fsRenderAlignDirectoriesButton() +
+                _fsRenderStepsAggregateLight();
         }
     }
 
-    var _DICT_STEPS_AGGREGATE_TOOLTIP = {
-        "attained": "Every step is self-consistent (Level 1)",
-        "partial": "Some steps have unmet Level 1 requirements",
-        "none": "Every started step is failing Level 1",
-        "unknown": "Step status is not yet known",
+    function _fiCountNonconformingSteps() {
+        var listSteps = (_dictWorkflowState.dictWorkflow || {})
+            .listSteps || [];
+        return listSteps.filter(function (dictStep) {
+            return !VaibifyUtilities.fbStepDirectoryConforms(dictStep);
+        }).length;
+    }
+
+    function _fsRenderAlignDirectoriesButton() {
+        // The legacy-migration entry point: visible only while the
+        // project has steps violating the name->directory contract.
+        var iCount = _fiCountNonconformingSteps();
+        if (iCount === 0) return "";
+        return '<button class="btn wf-align-directories" ' +
+            'title="' + iCount + ' step(s) have a directory that ' +
+            'does not match their name. Align moves each directory ' +
+            'to the name’s camel-case form (git mv; markers, ' +
+            'manifest, and declared paths follow).">' +
+            'Align directories (' + iCount + ')</button>';
+    }
+
+    async function fnAlignStepDirectories() {
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/steps/" + encodeURIComponent(sContainerId) +
+                "/align-directories", {});
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+            return;
+        }
+        var listSkipped = dictResult.listSkipped || [];
+        var sMessage = (dictResult.listAligned || []).length +
+            " directory(ies) aligned";
+        if (listSkipped.length > 0) {
+            sMessage += "; " + listSkipped.length + " skipped: " +
+                listSkipped.map(function (dictSkip) {
+                    return dictSkip.sLabel + " (" +
+                        dictSkip.sReason + ")";
+                }).join("; ");
+        }
+        fnShowToast(sMessage,
+            listSkipped.length > 0 ? "warning" : "success");
+        await VaibifyWorkflowManager.fnRefreshWorkflow();
+    }
+
+    var _DICT_STEPS_AGGREGATE_PHRASES = {
+        "attained": "Every step meets its {level} requirements",
+        "partial": "Some steps have unmet {level} requirements",
+        "none": "Every started step is failing {level}",
+        "unknown": "Step {level} status is not yet known",
         "not-started": "No step has started yet",
         "unassessed": "Step outputs exist but none have been " +
             "assessed yet",
-        "not-applicable": "No steps with Level 1 requirements",
+        "not-applicable": "No steps with {level} requirements",
     };
 
-    function _fsAggregateStepsL1State() {
-        // The total Level-1 state across every step, summarized by
-        // the shared banner rule (see
+    function _fsAggregateStepsLevelState(iLevel) {
+        // The total state of one level across every step, summarized
+        // by the shared banner rule (see
         // VaibifyUtilities.fsSummarizeLevelStates): red only when
         // every started step is failing; any progress in the mix
         // reads orange.
@@ -1564,29 +1672,26 @@ const PipeleyenApp = (function () {
             .listSteps || [];
         if (listSteps.length === 0) return "not-started";
         var listStates = listSteps.map(function (dictStep, iIndex) {
-            return fsLevelCellState(iIndex, 1);
+            return fsLevelCellState(iIndex, iLevel);
         });
         return VaibifyUtilities.fsSummarizeLevelStates(listStates);
     }
 
     function _fsRenderStepsAggregateLight() {
-        // A full L1|L2|L3 strip (with a leading warning-column
-        // spacer) so the collapsed Steps banner lines up with the
-        // Project banner strip. L1 carries the aggregate step
-        // state; L2/L3 are dashes — those levels are project-wide,
-        // not per-step.
-        var sState = _fsAggregateStepsL1State();
-        var sLevelCell = VaibifyUtilities.fsBuildLevelCell(
-            sState,
-            _DICT_STEPS_AGGREGATE_TOOLTIP[sState] || "Step status",
-            "all steps passing");
-        var sDashCell = '<span class="step-level-cell ' +
-            'level-cell-not-applicable" title="No step-level ' +
-            'requirements at this level — see the Project block">' +
-            '<span class="level-cell-dash">&#8212;</span></span>';
-        return '<span class="step-level-strip">' +
-            '<span class="step-regression-cell"></span>' +
-            sLevelCell + sDashCell + sDashCell + '</span>';
+        // A full ⚠ + L1|L2|L3 strip so the collapsed Steps banner
+        // lines up with the Project banner strip. Each cell carries
+        // the aggregate of that level across every step row.
+        var sHtml = '<span class="step-level-strip">' +
+            '<span class="step-regression-cell"></span>';
+        for (var iLevel = 1; iLevel <= 3; iLevel++) {
+            var sState = _fsAggregateStepsLevelState(iLevel);
+            var sPhrase = (_DICT_STEPS_AGGREGATE_PHRASES[sState] ||
+                "Step status").replace(
+                "{level}", "Level " + iLevel);
+            sHtml += VaibifyUtilities.fsBuildLevelCell(
+                sState, sPhrase, "all steps passing");
+        }
+        return sHtml + '</span>';
     }
 
     function _fnRenderStepListIncremental(
@@ -1875,6 +1980,14 @@ const PipeleyenApp = (function () {
             listReasons.push("Unseeded randomness detected — add a " +
                 "seed so the run is reproducible");
         }
+        if (!VaibifyUtilities.fbStepDirectoryConforms(dictStep)) {
+            listReasons.push("Step name and directory disagree — " +
+                "the directory should be '" +
+                VaibifyUtilities.fsSlugFromStepName(
+                    dictStep.sName || "") +
+                "'. Right-click → Rename, or use Align " +
+                "directories on the Steps banner");
+        }
         return listReasons;
     }
 
@@ -1885,6 +1998,14 @@ const PipeleyenApp = (function () {
         var dictBackend = (_dictWorkflowState.dictStepLevelWarnings ||
             {})[String(iStepIndex)] || null;
         if (dictBackend && dictBackend.sWarningSeverity === "red") {
+            return true;
+        }
+        var dictStep = ((_dictWorkflowState.dictWorkflow || {})
+            .listSteps || [])[iStepIndex];
+        if (dictStep &&
+                !VaibifyUtilities.fbStepDirectoryConforms(dictStep)) {
+            // A broken name<->directory contract is an ERROR
+            // (2026-07-18 ruling), not pending work.
             return true;
         }
         var dictBlocker =
@@ -2361,6 +2482,123 @@ const PipeleyenApp = (function () {
             }
         }
         return 4;
+    }
+
+    function _fsStepLevelKey(iStepIndex, iLevel) {
+        return iStepIndex + ":" + iLevel;
+    }
+
+    function fbIsStepLevelExpanded(iStepIndex, iLevel) {
+        // First read for a step seeds its TARGET rung open (the
+        // first non-attained level — fiStepNextTargetLevel), so the
+        // detail opens onto the work the ladder asks for next; after
+        // that the researcher's own toggles are authoritative.
+        if (!_dictUiState.setLevelSeededSteps.has(iStepIndex)) {
+            _dictUiState.setLevelSeededSteps.add(iStepIndex);
+            var iTarget = fiStepNextTargetLevel(iStepIndex);
+            if (iTarget >= 1 && iTarget <= 3) {
+                _dictUiState.setExpandedStepLevels.add(
+                    _fsStepLevelKey(iStepIndex, iTarget));
+            }
+        }
+        return _dictUiState.setExpandedStepLevels.has(
+            _fsStepLevelKey(iStepIndex, iLevel));
+    }
+
+    function fnToggleStepLevelSection(iStepIndex, iLevel) {
+        fbIsStepLevelExpanded(iStepIndex, iLevel);
+        var sKey = _fsStepLevelKey(iStepIndex, iLevel);
+        if (_dictUiState.setExpandedStepLevels.has(sKey)) {
+            _dictUiState.setExpandedStepLevels.delete(sKey);
+        } else {
+            _dictUiState.setExpandedStepLevels.add(sKey);
+        }
+        fnRenderStepList();
+    }
+
+    function fnExpandStepLevelSection(iStepIndex, iLevel) {
+        // The banner's level cells double as a table of contents:
+        // clicking one opens the step detail onto that section.
+        fbIsStepLevelExpanded(iStepIndex, iLevel);
+        _dictUiState.setExpandedSteps.add(iStepIndex);
+        _dictUiState.setExpandedStepLevels.add(
+            _fsStepLevelKey(iStepIndex, iLevel));
+        fnRenderStepList();
+    }
+
+    function fbIsStepDescriptionExpanded(iStepIndex) {
+        if (!_dictUiState.setDescriptionSeededSteps.has(iStepIndex)) {
+            _dictUiState.setDescriptionSeededSteps.add(iStepIndex);
+            var step = (_dictWorkflowState.dictWorkflow || {})
+                .listSteps && _dictWorkflowState.dictWorkflow
+                .listSteps[iStepIndex];
+            if (step && (step.sDescription || "").trim()) {
+                _dictUiState.setExpandedStepDescriptions.add(
+                    iStepIndex);
+            }
+        }
+        return _dictUiState.setExpandedStepDescriptions.has(
+            iStepIndex);
+    }
+
+    function fnToggleStepDescription(iStepIndex) {
+        fbIsStepDescriptionExpanded(iStepIndex);
+        if (_dictUiState.setExpandedStepDescriptions.has(iStepIndex)) {
+            _dictUiState.setExpandedStepDescriptions.delete(
+                iStepIndex);
+        } else {
+            _dictUiState.setExpandedStepDescriptions.add(iStepIndex);
+        }
+        fnRenderStepList();
+    }
+
+    function fnBeginStepDescriptionEdit(iStepIndex) {
+        // Swaps the description text for an inline textarea. This is
+        // a DOM-only edit surface (no render-state change), so both
+        // exits force the card's repaint by dropping its hash.
+        var elBody = document.querySelector(
+            '.step-description-body[data-step="' + iStepIndex + '"]');
+        if (!elBody || elBody.querySelector("textarea")) return;
+        var step = _dictWorkflowState.dictWorkflow
+            .listSteps[iStepIndex];
+        if (!step) return;
+        elBody.innerHTML =
+            '<textarea class="step-description-input" rows="4" ' +
+            'placeholder="A few sentences on what this step ' +
+            'does…"></textarea>' +
+            '<div class="step-description-actions">' +
+            '<button class="btn" id="btnDescriptionCancel">' +
+            'Cancel</button> ' +
+            '<button class="btn btn-primary" ' +
+            'id="btnDescriptionSave">Save</button></div>';
+        var elInput = elBody.querySelector("textarea");
+        elInput.value = step.sDescription || "";
+        elInput.focus();
+        function fnRepaintCard() {
+            delete _dictRenderedStepHashes[iStepIndex];
+            fnRenderStepList();
+        }
+        document.getElementById("btnDescriptionCancel")
+            .addEventListener("click", fnRepaintCard);
+        document.getElementById("btnDescriptionSave")
+            .addEventListener("click", async function () {
+                var sText = elInput.value.trim();
+                step.sDescription = sText;
+                await fnPutStepEdit(
+                    iStepIndex, {sDescription: sText});
+                fnRepaintCard();
+            });
+    }
+
+    function fnShowStepLevelRequirementsModal(iStepIndex, iLevel) {
+        var dictCell = fdictLevelCellForScope(iStepIndex, iLevel);
+        if (!dictCell) return;
+        var sTitle = "Level " + iLevel + " requirements — " +
+            fsComputeStepLabel(iStepIndex);
+        PipeleyenModals.fnShowInfoModal(
+            sTitle,
+            VaibifyStepRenderer.fsBuildLevelRequirementsListHtml(
+                dictCell, iLevel));
     }
 
     function fdictRegressionWarning(iStepIndex) {
@@ -4093,9 +4331,39 @@ const PipeleyenApp = (function () {
             PipeleyenStepEditor.fnOpenInsertModal(iIndex);
         } else if (sAction === "insertAfter") {
             PipeleyenStepEditor.fnOpenInsertModal(iIndex + 1);
+        } else if (sAction === "setRuntimeLimit") {
+            fnOpenRuntimeLimitModal(iIndex);
+        } else if (sAction === "rename") {
+            PipeleyenStepEditor.fnOpenRenameModal(iIndex);
         } else if (sAction === "delete") {
             fnDeleteStep(iIndex);
         }
+    }
+
+    function fnOpenRuntimeLimitModal(iStep) {
+        var dictWorkflow = _dictWorkflowState.dictWorkflow;
+        var step = dictWorkflow
+            && dictWorkflow.listSteps[iStep];
+        if (!step) return;
+        var dictStats = step.dictRunStats || {};
+        var bKnownSuccess = dictStats.iExitCode === 0
+            && dictStats.fWallClock !== undefined;
+        PipeleyenModals.fnShowRuntimeLimitModal({
+            sStepTitle: fsComputeStepLabel(iStep) + " " +
+                (step.sName || ""),
+            fCurrentBudget: step.fWallClockBudgetSeconds || 0,
+            fProjectDefault:
+                dictWorkflow.fDefaultWallClockBudgetSeconds || 0,
+            fLastSuccessfulWallClock:
+                bKnownSuccess ? dictStats.fWallClock : 0,
+            fnOnSave: function (fSeconds) {
+                fnSetStepBudget(iStep, fSeconds);
+                fnShowToast(fSeconds > 0
+                    ? "Runtime limit set to " + fSeconds + " s"
+                    : "Runtime limit cleared — the step inherits "
+                        + "the project default", "success");
+            },
+        });
     }
 
     function fnDeleteStep(iIndex) {
@@ -4273,6 +4541,13 @@ const PipeleyenApp = (function () {
         fnToggleNoInputData: fnToggleNoInputData,
         fnBulkDeclareNoInputData: fnBulkDeclareNoInputData,
         fnSetStepBudget: fnSetStepBudget,
+        fnToggleStepLevelSection: fnToggleStepLevelSection,
+        fnExpandStepLevelSection: fnExpandStepLevelSection,
+        fnToggleStepDescription: fnToggleStepDescription,
+        fnBeginStepDescriptionEdit: fnBeginStepDescriptionEdit,
+        fnAlignStepDirectories: fnAlignStepDirectories,
+        fnShowStepLevelRequirementsModal:
+            fnShowStepLevelRequirementsModal,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
         fnReorderStep: fnReorderStep,

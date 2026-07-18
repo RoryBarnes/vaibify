@@ -195,11 +195,16 @@ pattern wholesale.
 - Each step row has two clusters. LEFT: the execution cluster —
   the run checkbox (intent: include this step in the next run) and
   the run light (`_fsBuildStepStatusCell`, FACT and execution-only:
-  queued / running / last-run outcome; it must never fold in
+  queued / running / failed / over-budget; it must never fold in
   verification signals — that was the pre-2026-07 design and it
-  made the light read as a shadow L1). RIGHT: the verification
-  strip (`_fsBuildStepLevelStrip`) — the ⚠ warning column then
-  L1|L2|L3 (no text in the level cells). One column-header row
+  made the light read as a shadow L1. A successful run renders a
+  QUIET PALE-BLUE DOT — visible but never the vaibify check, which
+  is reserved for attained level cells (2026-07-17 ruling; a fully
+  empty pass cell shipped as a phantom missing-marker bug when a
+  restart restored last-run results, 2026-07-18); success detail
+  lives in the expanded step's Last run line). RIGHT: the
+  verification strip (`_fsBuildStepLevelStrip`) — the ⚠ warning
+  column then L1|L2|L3 (no text in the level cells). One column-header row
   labels both clusters ("Run" on the left; ⚠/L1/L2/L3 on the
   right), every header with an explanatory title. Step rows carry
   no hover edit affordance — hand-editing steps is deliberately
@@ -216,6 +221,25 @@ pattern wholesale.
   no criterion has a domain on the step — nothing to reproduce must
   NEVER render as a vacuous attained). First-attainment dates persist
   in `dictLevelHighWater` in state.json and are never erased.
+- The expanded step detail is HIERARCHICAL (2026-07-18): an
+  optional expandable Description block (`sDescription`, inline
+  editor saving through the ordinary step-edit PUT; NO Directory
+  display — the rename cascade pins directory to step name), then
+  one expandable section per ladder rung
+  (`_fsRenderStepLevelSection`). Level 1's body is the workbench
+  (input data, scripts, commands, outputs, tests, sign-off — the
+  step's own artifacts ARE its self-consistency surface) and ends
+  with the Run Step button + the Last run line; Levels 2
+  and 3 render one row per applicable criterion from the cell's
+  `listRequirements` wire breakdown — the SAME list the cell counts
+  derive from; never recompute requirement state client-side. Each
+  section header reuses the shared level cell plus an ⓘ
+  requirements modal; banner cells carry `data-level` and open
+  their section. First open seeds the step's target rung
+  (`fiStepNextTargetLevel`) expanded via `setLevelSeededSteps`;
+  after that the researcher's toggles (`setExpandedStepLevels`,
+  keys `"iStep:iLevel"`, mutate in place) are authoritative and are
+  part of the render hash.
 - The ⚠ column is the SINGLE consolidated warnings surface for a
   step (2026-07-02 redesign — see "L1 blocker surfacing"). The
   backend still gates the LEVEL warning in `dictStepLevelWarnings`
