@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev530 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev537 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=58cc19b2"></script>
+      <script src="_static/documentation_options.js?v=9345897f"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,7 +57,8 @@
 <li class="toctree-l2"><a class="reference internal" href="#repos-panel">Repos panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-main-tab">The Main tab</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-steps-block">The Steps block</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#wall-clock-budget">Wall-clock budget</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-names-and-directories">Step names and directories</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#runtime-limit-wall-clock-budget">Runtime limit (wall-clock budget)</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#adding-a-step">Adding a step</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#interactive-steps">Interactive steps</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#the-expanded-step-view">The expanded step view</a></li>
@@ -237,14 +238,18 @@ project settings, a refresh arrow to re-poll remote status, and
 <section id="the-steps-block">
 <h3>The Steps block<a class="headerlink" href="#the-steps-block" title="Link to this heading"></a></h3>
 <p>A one-time header row labels the step columns: <strong>Run</strong>, the warning
-column (⚠), and <strong>L1</strong>. Each step row then shows, left to right:</p>
+column (⚠), and <strong>L1 | L2 | L3</strong>. Each step row then shows, left to
+right:</p>
 <ul class="simple">
 <li><p><strong>Run checkbox</strong> — include this step in the next run.</p></li>
 <li><p><strong>Run light</strong> — execution only: hollow grey means the step has not
 run this session, filled grey means queued, blinking orange means
-running now, blinking red means running <em>past its wall-clock budget</em>
-(see below), solid red means the last run failed, and the
-theme-tinted vaibify check means the last run succeeded.</p></li>
+running now, blinking red means running <em>past its runtime limit</em>
+(see below), solid red means the last run failed, and a quiet
+<strong>pale-blue dot</strong> means the last run succeeded. The vaibify check
+is reserved for attained level cells; the success record (outcome,
+finish time, durations) lives in the expanded step’s <strong>Last run</strong>
+line.</p></li>
 <li><p><strong>Step label and name</strong> — labels are per-type sequential: <code class="docutils literal notranslate"><span class="pre">A03</span></code> is
 the third <em>automated</em> step, <code class="docutils literal notranslate"><span class="pre">I01</span></code> the first <em>interactive</em> step.</p></li>
 <li><p><strong>Warning column (⚠)</strong> — every warning the step carries,
@@ -254,32 +259,67 @@ reasons and remedies. The colour encodes <em>severity</em>, not level:
 <strong>orange</strong> means pending work or staleness (a script or output
 changed since verification, an earlier step changed, or a level
 regressed).</p></li>
-<li><p><strong>L1 cell</strong> — the step’s Level 1 state (vocabulary below).</p></li>
+<li><p><strong>L1 | L2 | L3 cells</strong> — the step’s own state at each ladder rung
+(vocabulary below). Every rung has per-step requirements — Level 2
+covers the published copies of this step’s outputs, Level 3 its
+manifest pinning, determinism, and binaries — and a rung with none
+shows the muted dash. Clicking a cell opens the step’s detail onto
+that level’s section.</p></li>
 </ul>
 <p>Steps run from the toolbar’s <strong>Run</strong> menu: <strong>Run Selected Steps</strong>,
 <strong>Run All Steps</strong>, <strong>Force Run All (Clean)</strong>, <strong>Stop All Running
 Tasks</strong>, plus the verification sweeps <strong>Verify Outputs</strong>, <strong>Run All
 Unit Tests</strong>, and <strong>Verify Dependencies</strong>. Steps can be reordered by
-dragging, and an individual step’s context menu offers <strong>Run From
-Here</strong>.</p>
-<section id="wall-clock-budget">
-<h4>Wall-clock budget<a class="headerlink" href="#wall-clock-budget" title="Link to this heading"></a></h4>
+dragging, and an individual step’s right-click menu offers <strong>Run
+Step</strong>, <strong>Edit Step</strong>, <strong>Rename…</strong> (which previews and then cascades
+the rename through the step’s directory, verification marker,
+manifest paths, and declared paths), <strong>Set Runtime Limit…</strong>, <strong>Run
+From Here</strong>, insertion, and deletion.</p>
+<section id="step-names-and-directories">
+<h4>Step names and directories<a class="headerlink" href="#step-names-and-directories" title="Link to this heading"></a></h4>
+<p>A step’s directory is not a free choice: its final component is
+derived from the step name by an obvious formula — remove the
+spaces, uppercase each word’s first letter, keep the rest as typed.
+“Step Name” becomes <code class="docutils literal notranslate"><span class="pre">StepName</span></code>; “GJ 1132 XUV” becomes <code class="docutils literal notranslate"><span class="pre">GJ1132XUV</span></code>;
+hyphens pass through (“TOI-540 XUV” → <code class="docutils literal notranslate"><span class="pre">TOI-540XUV</span></code>). Names may
+contain only letters, digits, spaces, and hyphens, and two steps may
+not map to the same directory (compared case-insensitively, because
+macOS clones sit on case-insensitive filesystems). Parent folders
+are free — <code class="docutils literal notranslate"><span class="pre">systems/GJ1132XUV</span></code> is fine; only the last component is
+governed.</p>
+<p>Creating a step derives the directory automatically; renaming one
+moves it (with the full cascade); the generic edit path refuses name
+changes so the two can never drift. A step from an older project
+whose directory does not match shows a <strong>red</strong> warning in its ⚠
+column, and an <strong>Align directories</strong> button appears on the Steps
+banner: one click migrates every nonconforming step — each move is a
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">mv</span></code>, with markers, manifest entries, and declared paths
+following — and reports any step it had to skip (a name containing
+now-forbidden characters must be renamed first).</p>
+</section>
+<section id="runtime-limit-wall-clock-budget">
+<h4>Runtime limit (wall-clock budget)<a class="headerlink" href="#runtime-limit-wall-clock-budget" title="Link to this heading"></a></h4>
 <p>A running step reports a heartbeat that only proves the <em>runner</em> is
 alive — a step stuck in an infinite loop keeps that heartbeat beating
 and, on its own, looks identical to a legitimately long forward-model
-run. A step’s optional <strong>wall-clock budget</strong> closes that gap: it is a
-ceiling, in seconds, on how long the step may run before the dashboard
-flags it. Once the active step passes its budget the run light turns
-<strong>blinking red</strong> and its tooltip reads “running longer than its
-wall-clock budget — may be hung”. This is advisory and never stops the
-run — an over-budget step keeps executing, because exceeding a declared
+run. A step’s <strong>runtime limit</strong> closes that gap: it is a ceiling, in
+seconds, on how long the step may run before the dashboard flags it.
+Once the active step passes its limit the run light turns <strong>blinking
+red</strong> and its tooltip reads “running longer than its wall-clock
+budget — may be hung”. This is advisory and never stops the run — an
+over-limit step keeps executing, because exceeding a declared
 expectation is not proof of a hang; the flag only tells you where to
 look.</p>
-<p>The feature is opt-in. Set a per-step budget in the step editor, or a
-project-wide default under <strong>Settings</strong>; a step with no budget (its
-own or the default) is never flagged, so long runs you expect are never
-mislabelled. Choose a budget generously — a small multiple of the
-step’s normal runtime — so ordinary variation does not trip it.</p>
+<p>New projects default to a four-hour limit for every step; existing
+projects keep whatever they had (no limit unless one was set). The
+first run of a project shows a one-time notice naming the default and
+where to change it. Adjust the project-wide default under
+<strong>Settings</strong>, or right-click a step and choose <strong>Set Runtime
+Limit…</strong> — the dialog prefills a suggestion of twice the step’s last
+<em>successful</em> runtime, converting “how long should this take?” into
+“should it take twice as long as last time?”. Zero or blank means the
+step inherits the project default; a project default of zero disables
+the feature entirely, so long runs you expect are never mislabelled.</p>
 </section>
 <section id="adding-a-step">
 <h4>Adding a step<a class="headerlink" href="#adding-a-step" title="Link to this heading"></a></h4>
@@ -299,12 +339,40 @@ control to an agent for a specific stage.</p>
 </section>
 <section id="the-expanded-step-view">
 <h4>The expanded step view<a class="headerlink" href="#the-expanded-step-view" title="Link to this heading"></a></h4>
-<p>Clicking a step row expands its detail: the working directory, its
-input data, scripts, data analysis commands, output data, plot
-commands, and plot files. File rows carry the per-file marks and
-remote badges described under
+<p>Clicking a step row expands its detail, which is organised by the
+reproducibility ladder. At the top sits an optional, expandable
+<strong>Description</strong> block — a few sentences on what the step does,
+written by you or an agent (click the text to edit; agents set the
+same field through the ordinary step-edit action). There is no
+separate directory display: renaming a step renames its directory,
+so the step’s name <em>is</em> its directory. Below come three expandable
+sections mirroring the banner cells — <strong>Level 1 — Self-Consistent</strong>,
+<strong>Level 2 — Published</strong>, <strong>Level 3 — Reproducible</strong> — each headed by
+the same level cell the banner shows, a compact “6/7” count, and an
+ⓘ that opens a modal listing every requirement of that rung with its
+live mark and a parenthetical spelling out what the mark means.
+On first open the step’s <em>target rung</em> — the first level not yet
+attained — is expanded and the others are collapsed, so the detail
+opens onto the work the ladder asks for next; your own toggles are
+remembered after that.</p>
+<p><strong>Level 1 is the workbench</strong>: the step’s input data, scripts, data
+analysis commands, output data, plot commands, plot files, test
+standards, and the Verification section — the step’s own artifacts
+are exactly its self-consistency surface. It ends with the <strong>Run
+Step</strong> button and, just below it, the <strong>Last run</strong> line (outcome,
+finish time, wall-clock and CPU durations). File rows carry the
+per-file marks and remote badges described under
 <a class="reference internal" href="#status-lights-and-colours"><span class="xref myst">Status lights and colours</span></a>, and
 clicking a file opens it in a Viewing Window.</p>
+<p><strong>Levels 2 and 3 are requirement sections</strong>, one row per applicable
+criterion with a met mark, the offending files when unmet, and either
+an in-place action (<strong>Verify now</strong> for the GitHub and Zenodo rows —
+the same verify the Project block offers) or a pointer to the
+Project-block section where the project-scoped remedy lives (manifest
+refresh, environment capture, determinism rules). The rows render the
+same requirement breakdown the banner cell counts — the two can never
+disagree. A rung with no requirements for this step says so and its
+header shows the muted dash.</p>
 <p>The <strong>Input Data</strong> block, between Directory and Scripts, declares
 the raw files the step consumes that no step produces — for example,
 observational data committed in the repository. Paths are
@@ -349,9 +417,10 @@ one row per verification axis, each with its state and a timestamp:</p>
 <p>Above these rows, plain-English drift notices name exactly which files
 went stale and why — for example “Tests older than data scripts” or
 “User verification older than plot files” — so you always know what to
-re-run or re-inspect. Wall-clock and CPU time for the last run, and
-the modification times of the step’s data and plot files, are also
-shown.</p>
+re-run or re-inspect. The last run’s outcome and durations live in
+the <strong>Last run</strong> line below the Run Step button; the modification
+times of the step’s data and plot files are shown beside their
+sections.</p>
 <p>The expanded quantitative-tests block additionally carries a
 <strong>Falsification</strong> row with a <strong>Check test teeth</strong> button. It
 mutation-tests the step’s own Python code against its quantitative

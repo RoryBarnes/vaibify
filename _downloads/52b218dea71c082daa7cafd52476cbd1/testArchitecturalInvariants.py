@@ -2723,7 +2723,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shares. Cohesive with the schema this module owns.
     # +8 (2026-07-16): control-character rejection in the input-path
     # boundary check (closes a heredoc-split vector for the new fields).
-    "workflowManager.py": 2262,
+    # +30 (2026-07-18): flistDirectoryContractWarnings — the slug
+    # contract's backend warnings channel beside the other workflow
+    # validators, so a manual project.json edit is never GUI-only.
+    "workflowManager.py": 2292,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -2759,7 +2762,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-07-16): the gate step-selection mirrors the runner
     # exactly (bRunEnabled + runFrom start bound), diverged from a
     # range() that over-included disabled steps.
-    "pipelineServer.py": 1981,
+    # +9 (2026-07-17): StepRenameRequest — the rename action's request
+    # model beside the other step request schemas; the cascade logic
+    # itself lives in the new stepRename.py module.
+    # +3 (2026-07-18): sDescription on StepUpdateRequest — the Step
+    # Viewer's optional Description block field.
+    # +26 (2026-07-18): fsDeriveStepDirectory — the slug contract's
+    # enforcement at step creation (directory basename derived from
+    # the name), beside fdictStepFromRequest which it serves.
+    "pipelineServer.py": 2019,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -2779,7 +2790,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # successful pull step, one exec sha256-hashes the declared
     # remote files, updates listRemoteData records, and emits
     # remoteDataRecorded. Cohesive with the step execution it stamps.
-    "pipelineRunner.py": 1495,
+    # +4 (2026-07-18): the orchestrator re-export shim carries the
+    # slug-contract helpers (fsSlugFromStepName etc.) from
+    # pipelineUtils, as testOrchestratorReExportsAreComplete demands.
+    "pipelineRunner.py": 1499,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,
