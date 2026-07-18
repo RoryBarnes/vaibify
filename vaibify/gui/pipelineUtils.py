@@ -20,7 +20,99 @@ __all__ = [
     "fdictStepWithLabel",
     "fnAttachStepLabels",
     "fnClearOutputModifiedFlags",
+    "fsSlugFromStepName",
+    "fsValidateStepName",
+    "fnRequireUniqueStepSlug",
+    "fbStepDirectoryConforms",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Step-name <-> directory contract (2026-07-18 ruling).
+#
+# A step's directory basename IS a pure function of its name:
+# split the name on whitespace, uppercase each word's first letter,
+# preserve the rest of the word as typed, concatenate. Hyphens pass
+# through verbatim (astronomical designators like TOI-540 depend on
+# them). "Step Name" -> "StepName"; "GJ 1132 XUV" -> "GJ1132XUV";
+# "TESS Flare Candidates" -> "TESSFlareCandidates". Parent path
+# components are free; only the final component is governed.
+# ---------------------------------------------------------------------------
+
+_S_STEP_NAME_ALLOWED_PATTERN = r"^[A-Za-z0-9 \-]+$"
+
+
+def fsValidateStepName(sNameRaw):
+    """Return the trimmed step name or raise ValueError with the reason.
+
+    Names become directory names under the slug contract, so the
+    alphabet is letters, digits, spaces, and hyphens — nothing else.
+    """
+    sName = (sNameRaw or "").strip()
+    if not sName:
+        raise ValueError("The step name must not be empty")
+    if len(sName) > 100:
+        raise ValueError("Step names are limited to 100 characters")
+    if not re.match(_S_STEP_NAME_ALLOWED_PATTERN, sName):
+        raise ValueError(
+            "Step names may contain only letters, digits, spaces, "
+            "and hyphens — the name becomes the step's directory "
+            "name",
+        )
+    if not re.search(r"[A-Za-z0-9]", sName):
+        raise ValueError(
+            "Step names need at least one letter or digit",
+        )
+    return sName
+
+
+def fsSlugFromStepName(sName):
+    """Return the directory basename the contract derives from a name."""
+    listWords = (sName or "").split()
+    return "".join(
+        sWord[0].upper() + sWord[1:] for sWord in listWords if sWord
+    )
+
+
+def fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sName):
+    """Raise ValueError when another step's name maps to the same slug.
+
+    Compared case-insensitively: macOS clones of the project repo sit
+    on case-insensitive filesystems, where ``ABTest`` and ``AbTest``
+    are the same directory. ``iStepIndex`` is the step being named
+    (-1 for a step not yet in the list).
+    """
+    sSlugLower = fsSlugFromStepName(sName).lower()
+    for iOther, dictOther in enumerate(
+        dictWorkflow.get("listSteps") or []
+    ):
+        if iOther == iStepIndex or not isinstance(dictOther, dict):
+            continue
+        sOtherName = dictOther.get("sName") or ""
+        if sOtherName and fsSlugFromStepName(
+            sOtherName,
+        ).lower() == sSlugLower:
+            raise ValueError(
+                f"'{sName}' maps to the same directory name as step "
+                f"'{sOtherName}' — step directories must be unique",
+            )
+
+
+def fbStepDirectoryConforms(dictStep):
+    """Return True iff the step honors the name->directory contract.
+
+    Steps without a directory (ai-declaration) and templated
+    directories (a ``{token}`` cannot be compared statically) are
+    exempt, mirroring the boundary validation's exemptions.
+    """
+    if not isinstance(dictStep, dict):
+        return True
+    sDirectory = (dictStep.get("sDirectory") or "").strip("/")
+    if not sDirectory or "{" in sDirectory:
+        return True
+    return posixpath.basename(sDirectory) == fsSlugFromStepName(
+        dictStep.get("sName") or "",
+    )
 
 
 def _fsPlainTokenStem(sOutputFile):

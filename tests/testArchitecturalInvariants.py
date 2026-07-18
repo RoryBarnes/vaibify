@@ -2764,7 +2764,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # itself lives in the new stepRename.py module.
     # +3 (2026-07-18): sDescription on StepUpdateRequest — the Step
     # Viewer's optional Description block field.
-    "pipelineServer.py": 1993,
+    # +26 (2026-07-18): fsDeriveStepDirectory — the slug contract's
+    # enforcement at step creation (directory basename derived from
+    # the name), beside fdictStepFromRequest which it serves.
+    "pipelineServer.py": 2019,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -2784,7 +2787,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # successful pull step, one exec sha256-hashes the declared
     # remote files, updates listRemoteData records, and emits
     # remoteDataRecorded. Cohesive with the step execution it stamps.
-    "pipelineRunner.py": 1495,
+    # +4 (2026-07-18): the orchestrator re-export shim carries the
+    # slug-contract helpers (fsSlugFromStepName etc.) from
+    # pipelineUtils, as testOrchestratorReExportsAreComplete demands.
+    "pipelineRunner.py": 1499,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,

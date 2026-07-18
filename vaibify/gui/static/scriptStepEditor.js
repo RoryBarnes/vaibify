@@ -37,8 +37,14 @@ const PipeleyenStepEditor = (function () {
         const dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         const dictStep = dictWorkflow.listSteps[iIndex];
 
-        document.getElementById("inputStepName").value =
-            dictStep.sName || "";
+        // Renames go through the cascade (right-click → Rename) so
+        // the directory, marker, and manifest follow the name; the
+        // generic edit path must not offer a divergent rename.
+        var elName = document.getElementById("inputStepName");
+        elName.value = dictStep.sName || "";
+        elName.readOnly = true;
+        elName.title = "Rename via right-click → Rename, so the " +
+            "directory and records follow the name";
         document.getElementById("inputStepDirectory").value =
             dictStep.sDirectory || "";
         document.getElementById("inputInteractive").checked =
@@ -62,7 +68,10 @@ const PipeleyenStepEditor = (function () {
     }
 
     function fnClearForm() {
-        document.getElementById("inputStepName").value = "";
+        var elName = document.getElementById("inputStepName");
+        elName.value = "";
+        elName.readOnly = false;
+        elName.title = "";
         document.getElementById("inputStepDirectory").value = "";
         document.getElementById("inputInteractive").checked = false;
         document.getElementById("inputPlotOnly").checked = true;

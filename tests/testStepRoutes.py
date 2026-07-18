@@ -84,11 +84,15 @@ def tClientAndWorkflow():
     return fbuild
 
 
-def _dictNewStepPayload():
-    """Return a valid create-step payload body."""
+def _dictNewStepPayload(sName="New"):
+    """Return a valid create-step payload body.
+
+    Distinct names matter now: the slug contract rejects two steps
+    whose names map to the same directory.
+    """
     return {
-        "sName": "New",
-        "sDirectory": "newStep",
+        "sName": sName,
+        "sDirectory": "",
         "bPlotOnly": False,
         "saPlotCommands": [],
         "saPlotFiles": [],
@@ -128,7 +132,7 @@ def testWarnHundredFlagPersistsOnCrossing(tClientAndWorkflow):
     assert dictWorkflow["bWarnedHundredSteps"] is True
     responseSecond = clientHttp.post(
         f"/api/steps/{S_CONTAINER_ID}/create",
-        json=_dictNewStepPayload(),
+        json=_dictNewStepPayload("New Two"),
     )
     assert responseSecond.status_code == 200
     assert responseSecond.json()["bShouldWarnHundredSteps"] is False

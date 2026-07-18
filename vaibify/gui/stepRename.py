@@ -26,16 +26,21 @@ label-based and survive any rename untouched.
 """
 
 import posixpath
-import re
 
 from .fileStatusManager import (
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
-from .pipelineUtils import fsShellQuote
+from .pipelineUtils import (
+    fnRequireUniqueStepSlug,
+    fsShellQuote,
+    fsSlugFromStepName,
+    fsValidateStepName,
+)
 
 __all__ = [
     "fdictPlanStepRename",
+    "fdictPlanDirectoryAlignment",
     "fdictApplyStepRename",
     "flistScanScriptsForOldName",
 ]
@@ -54,25 +59,6 @@ _T_STEP_COMMAND_ARRAY_KEYS = (
 S_MANIFEST_FILENAME = "MANIFEST.sha256"
 
 
-def _fsValidateNewStepName(sNewNameRaw):
-    """Return the trimmed new name or raise ValueError with the reason.
-
-    Step names become directory names under the rename contract, so
-    every name must be a safe single path segment.
-    """
-    sNewName = (sNewNameRaw or "").strip()
-    if not sNewName:
-        raise ValueError("The new step name must not be empty")
-    if len(sNewName) > 100:
-        raise ValueError("Step names are limited to 100 characters")
-    if re.search(r"[/\\\x00-\x1f]", sNewName):
-        raise ValueError(
-            "Step names become directory names — no slashes or "
-            "control characters",
-        )
-    if sNewName.startswith("."):
-        raise ValueError("Step names must not start with a dot")
-    return sNewName
 
 
 def _fsRewriteDirectoryPrefix(sPath, sOldDirectory, sNewDirectory):
@@ -167,40 +153,66 @@ def _flistPlanCommandWarnings(dictWorkflow, sOldDirectory):
 def fdictPlanStepRename(dictWorkflow, iStepIndex, sNewNameRaw):
     """Return the full rename change-set without mutating anything.
 
-    Raises ``IndexError`` for a bad step index and ``ValueError`` for
-    an invalid or unchanged name.
+    Under the slug contract (2026-07-18) the directory's final
+    component IS a function of the name, so a rename always realigns
+    it — including a legacy directory that never matched. Raises
+    ``IndexError`` for a bad step index and ``ValueError`` for an
+    invalid, unchanged, or colliding name.
     """
     listSteps = dictWorkflow.get("listSteps") or []
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         raise IndexError(f"No step at index {iStepIndex}")
-    dictStep = listSteps[iStepIndex]
-    sNewName = _fsValidateNewStepName(sNewNameRaw)
-    sOldName = dictStep.get("sName", "")
+    sNewName = fsValidateStepName(sNewNameRaw)
+    sOldName = listSteps[iStepIndex].get("sName", "")
     if sNewName == sOldName:
         raise ValueError("The new name matches the current name")
-    sOldDirectory = (dictStep.get("sDirectory") or "").strip("/")
-    bDirectoryFollowsName = bool(sOldDirectory) and (
-        posixpath.basename(sOldDirectory) == sOldName
+    return _fdictPlanDirectoryChange(dictWorkflow, iStepIndex, sNewName)
+
+
+def fdictPlanDirectoryAlignment(dictWorkflow, iStepIndex):
+    """Plan a directory-only realignment; the name stays.
+
+    The legacy-migration path: the directory moves to
+    ``<parent>/<slug(name)>``. A name that violates the contract's
+    alphabet cannot be aligned — it raises, and the caller reports
+    "rename the step first".
+    """
+    listSteps = dictWorkflow.get("listSteps") or []
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        raise IndexError(f"No step at index {iStepIndex}")
+    sName = fsValidateStepName(
+        listSteps[iStepIndex].get("sName") or "",
     )
-    if bDirectoryFollowsName:
+    return _fdictPlanDirectoryChange(dictWorkflow, iStepIndex, sName)
+
+
+def _fdictPlanDirectoryChange(dictWorkflow, iStepIndex, sNewName):
+    """Build the change-set moving a step to ``sNewName``'s slug."""
+    dictStep = dictWorkflow["listSteps"][iStepIndex]
+    sOldName = dictStep.get("sName", "")
+    sOldDirectory = (dictStep.get("sDirectory") or "").strip("/")
+    bTemplated = "{" in sOldDirectory
+    if sOldDirectory and not bTemplated:
         sParent = posixpath.dirname(sOldDirectory)
-        sNewDirectory = posixpath.join(sParent, sNewName) \
-            if sParent else sNewName
+        sSlug = fsSlugFromStepName(sNewName)
+        sNewDirectory = posixpath.join(sParent, sSlug) \
+            if sParent else sSlug
     else:
         sNewDirectory = sOldDirectory
-    bDirectoryRenamed = bDirectoryFollowsName \
+    bDirectoryRenamed = bool(sOldDirectory) and not bTemplated \
         and sNewDirectory != sOldDirectory
+    if bDirectoryRenamed:
+        fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sNewName)
     return {
         "sOldName": sOldName,
         "sNewName": sNewName,
         "sOldDirectory": sOldDirectory,
         "sNewDirectory": sNewDirectory,
         "bDirectoryRenamed": bDirectoryRenamed,
-        "sDirectoryNote": "" if bDirectoryFollowsName
-        or not sOldDirectory else (
-            f"Directory '{sOldDirectory}' does not match the old "
-            "step name, so it is left unchanged"
-        ),
+        "sDirectoryNote": (
+            f"Directory '{sOldDirectory}' contains a template token "
+            "and cannot be realigned automatically"
+        ) if bTemplated and sOldDirectory else "",
         "listFieldRewrites": _flistPlanFieldRewrites(
             dictStep, sOldDirectory, sNewDirectory,
         ) if bDirectoryRenamed else [],

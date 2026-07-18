@@ -356,6 +356,22 @@ var PipeleyenEventBindings = (function () {
             parseInt(elMatch.dataset.level));
     }
 
+    function _fnHandleAlignDirectories(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnShowConfirmModal(
+            "Align directories",
+            "Move every nonconforming step directory to its "
+            + "name's camel-case form? Each move is a git mv; "
+            + "markers, the manifest, and declared paths follow. "
+            + "The staged renames appear in the Repos panel until "
+            + "you commit.",
+            function () {
+                PipeleyenApp.fnAlignStepDirectories();
+            }
+        );
+    }
+
     function _fnHandleStepDescriptionToggle(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -436,6 +452,10 @@ var PipeleyenEventBindings = (function () {
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,
+        // The Align button sits inside the Steps banner; it must
+        // precede the banner's own toggle entry or first-match
+        // dispatch collapses the block instead.
+        ".wf-align-directories": _fnHandleAlignDirectories,
         ".steps-block-header": _fnHandleStepsBlockToggle,
         ".project-block-header": _fnHandleProjectBlockToggle,
         ".requirement-group-header": _fnHandleRequirementGroupToggle,

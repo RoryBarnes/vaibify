@@ -56,6 +56,10 @@ def testExtractsDunderAll():
         "fdictStepWithLabel",
         "fnAttachStepLabels",
         "fnClearOutputModifiedFlags",
+        "fsSlugFromStepName",
+        "fsValidateStepName",
+        "fnRequireUniqueStepSlug",
+        "fbStepDirectoryConforms",
     ]
     assert dictEntry["listSymbols"] == listExpected
 

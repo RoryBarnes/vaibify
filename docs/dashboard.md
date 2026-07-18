@@ -153,6 +153,29 @@ the rename through the step's directory, verification marker,
 manifest paths, and declared paths), **Set Runtime Limit…**, **Run
 From Here**, insertion, and deletion.
 
+#### Step names and directories
+
+A step's directory is not a free choice: its final component is
+derived from the step name by an obvious formula — remove the
+spaces, uppercase each word's first letter, keep the rest as typed.
+"Step Name" becomes `StepName`; "GJ 1132 XUV" becomes `GJ1132XUV`;
+hyphens pass through ("TOI-540 XUV" → `TOI-540XUV`). Names may
+contain only letters, digits, spaces, and hyphens, and two steps may
+not map to the same directory (compared case-insensitively, because
+macOS clones sit on case-insensitive filesystems). Parent folders
+are free — `systems/GJ1132XUV` is fine; only the last component is
+governed.
+
+Creating a step derives the directory automatically; renaming one
+moves it (with the full cascade); the generic edit path refuses name
+changes so the two can never drift. A step from an older project
+whose directory does not match shows a **red** warning in its ⚠
+column, and an **Align directories** button appears on the Steps
+banner: one click migrates every nonconforming step — each move is a
+`git mv`, with markers, manifest entries, and declared paths
+following — and reports any step it had to skip (a name containing
+now-forbidden characters must be renamed first).
+
 #### Runtime limit (wall-clock budget)
 
 A running step reports a heartbeat that only proves the *runner* is

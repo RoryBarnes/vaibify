@@ -1598,8 +1598,57 @@ const PipeleyenApp = (function () {
         // state even while collapsed.
         var elStatus = elBlock.querySelector(".steps-block-status");
         if (elStatus) {
-            elStatus.innerHTML = _fsRenderStepsAggregateLight();
+            elStatus.innerHTML = _fsRenderAlignDirectoriesButton() +
+                _fsRenderStepsAggregateLight();
         }
+    }
+
+    function _fiCountNonconformingSteps() {
+        var listSteps = (_dictWorkflowState.dictWorkflow || {})
+            .listSteps || [];
+        return listSteps.filter(function (dictStep) {
+            return !VaibifyUtilities.fbStepDirectoryConforms(dictStep);
+        }).length;
+    }
+
+    function _fsRenderAlignDirectoriesButton() {
+        // The legacy-migration entry point: visible only while the
+        // project has steps violating the name->directory contract.
+        var iCount = _fiCountNonconformingSteps();
+        if (iCount === 0) return "";
+        return '<button class="btn wf-align-directories" ' +
+            'title="' + iCount + ' step(s) have a directory that ' +
+            'does not match their name. Align moves each directory ' +
+            'to the name’s camel-case form (git mv; markers, ' +
+            'manifest, and declared paths follow).">' +
+            'Align directories (' + iCount + ')</button>';
+    }
+
+    async function fnAlignStepDirectories() {
+        var sContainerId = _dictSessionState.sContainerId;
+        if (!sContainerId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/steps/" + encodeURIComponent(sContainerId) +
+                "/align-directories", {});
+        } catch (error) {
+            fnShowToast(
+                fsSanitizeErrorForUser(error.message), "error");
+            return;
+        }
+        var listSkipped = dictResult.listSkipped || [];
+        var sMessage = (dictResult.listAligned || []).length +
+            " directory(ies) aligned";
+        if (listSkipped.length > 0) {
+            sMessage += "; " + listSkipped.length + " skipped: " +
+                listSkipped.map(function (dictSkip) {
+                    return dictSkip.sLabel + " (" +
+                        dictSkip.sReason + ")";
+                }).join("; ");
+        }
+        fnShowToast(sMessage,
+            listSkipped.length > 0 ? "warning" : "success");
+        await VaibifyWorkflowManager.fnRefreshWorkflow();
     }
 
     var _DICT_STEPS_AGGREGATE_PHRASES = {
@@ -1931,6 +1980,14 @@ const PipeleyenApp = (function () {
             listReasons.push("Unseeded randomness detected — add a " +
                 "seed so the run is reproducible");
         }
+        if (!VaibifyUtilities.fbStepDirectoryConforms(dictStep)) {
+            listReasons.push("Step name and directory disagree — " +
+                "the directory should be '" +
+                VaibifyUtilities.fsSlugFromStepName(
+                    dictStep.sName || "") +
+                "'. Right-click → Rename, or use Align " +
+                "directories on the Steps banner");
+        }
         return listReasons;
     }
 
@@ -1941,6 +1998,14 @@ const PipeleyenApp = (function () {
         var dictBackend = (_dictWorkflowState.dictStepLevelWarnings ||
             {})[String(iStepIndex)] || null;
         if (dictBackend && dictBackend.sWarningSeverity === "red") {
+            return true;
+        }
+        var dictStep = ((_dictWorkflowState.dictWorkflow || {})
+            .listSteps || [])[iStepIndex];
+        if (dictStep &&
+                !VaibifyUtilities.fbStepDirectoryConforms(dictStep)) {
+            // A broken name<->directory contract is an ERROR
+            // (2026-07-18 ruling), not pending work.
             return true;
         }
         var dictBlocker =
@@ -4480,6 +4545,7 @@ const PipeleyenApp = (function () {
         fnExpandStepLevelSection: fnExpandStepLevelSection,
         fnToggleStepDescription: fnToggleStepDescription,
         fnBeginStepDescriptionEdit: fnBeginStepDescriptionEdit,
+        fnAlignStepDirectories: fnAlignStepDirectories,
         fnShowStepLevelRequirementsModal:
             fnShowStepLevelRequirementsModal,
         fnShowContextMenu: fnShowContextMenu,

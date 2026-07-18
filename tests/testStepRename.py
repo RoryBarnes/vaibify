@@ -78,13 +78,71 @@ def test_plan_moves_a_convention_directory_and_keeps_the_parent():
     assert dictPlan["sNewDirectory"] == "analysis/NewStep"
 
 
-def test_plan_leaves_a_custom_directory_alone_and_says_so():
+def test_plan_realigns_a_nonconforming_directory():
+    """Slug contract (2026-07-18): the directory's final component IS
+    a function of the name, so a rename brings even a legacy custom
+    directory into conformance — the old leave-it-alone behavior is
+    retired."""
     dictWorkflow = _fdictWorkflow({"sDirectory": "customDirectory"})
     dictPlan = stepRename.fdictPlanStepRename(dictWorkflow, 0, "NewStep")
+    assert dictPlan["bDirectoryRenamed"] is True
+    assert dictPlan["sNewDirectory"] == "NewStep"
+
+
+def test_plan_derives_the_slug_from_a_multi_word_name():
+    """"Step Name" -> "StepName": spaces vanish, each word's first
+    letter is uppercased, interior case is preserved (GJ stays GJ)."""
+    dictPlan = stepRename.fdictPlanStepRename(
+        _fdictWorkflow(), 0, "GJ 1132 xuv Flux",
+    )
+    assert dictPlan["sNewDirectory"] == "GJ1132XuvFlux"
+    dictPlan = stepRename.fdictPlanStepRename(
+        _fdictWorkflow(), 0, "TOI-540 XUV",
+    )
+    assert dictPlan["sNewDirectory"] == "TOI-540XUV"
+
+
+def test_plan_leaves_a_templated_directory_alone_and_says_so():
+    dictWorkflow = _fdictWorkflow(
+        {"sDirectory": "{sPlotDirectory}/OldStep"},
+    )
+    dictPlan = stepRename.fdictPlanStepRename(dictWorkflow, 0, "NewStep")
     assert dictPlan["bDirectoryRenamed"] is False
-    assert dictPlan["sNewDirectory"] == "customDirectory"
-    assert "left unchanged" in dictPlan["sDirectoryNote"]
-    assert dictPlan["listFieldRewrites"] == []
+    assert "template token" in dictPlan["sDirectoryNote"]
+
+
+def test_plan_rejects_a_slug_collision_case_insensitively():
+    """macOS clones sit on case-insensitive filesystems: 'New step'
+    and 'NEW STEP' are the same directory there."""
+    dictWorkflow = _fdictWorkflow()
+    dictWorkflow["listSteps"].append({
+        "sName": "NEW STEP", "sDirectory": "NEWSTEP",
+        "sLabel": "A02",
+    })
+    with pytest.raises(ValueError):
+        stepRename.fdictPlanStepRename(dictWorkflow, 0, "New step")
+
+
+def test_alignment_plan_moves_directory_and_keeps_the_name():
+    dictWorkflow = _fdictWorkflow(
+        {"sName": "Old Step", "sDirectory": "systems/legacyDir",
+         "saStepScripts": ["systems/legacyDir/run.py"],
+         "saOutputDataFiles": ["systems/legacyDir/out.csv"]},
+    )
+    dictPlan = stepRename.fdictPlanDirectoryAlignment(dictWorkflow, 0)
+    assert dictPlan["sNewName"] == "Old Step"
+    assert dictPlan["sNewDirectory"] == "systems/OldStep"
+    assert dictPlan["bDirectoryRenamed"] is True
+
+
+def test_alignment_refuses_a_name_outside_the_alphabet():
+    """A name the contract's alphabet forbids (apostrophe) cannot be
+    aligned — the researcher must rename the step first."""
+    dictWorkflow = _fdictWorkflow(
+        {"sName": "Barnard's Star", "sDirectory": "BarnardsStar"},
+    )
+    with pytest.raises(ValueError):
+        stepRename.fdictPlanDirectoryAlignment(dictWorkflow, 0)
 
 
 def test_plan_rewrites_only_paths_under_the_old_directory():
