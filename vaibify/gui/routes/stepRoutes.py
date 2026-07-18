@@ -70,6 +70,8 @@ def _fnRegisterStepsList(app, dictCtx):
         return {
             "listWarnings": workflowManager.flistValidateReferences(
                 dictWorkflow
+            ) + workflowManager.flistDirectoryContractWarnings(
+                dictWorkflow
             )
         }
 

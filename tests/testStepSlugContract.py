@@ -213,3 +213,40 @@ def test_edit_modal_name_field_is_read_only_in_edit_mode():
     assert "readOnly = false" in sClear, (
         "create mode must re-enable the name field"
     )
+
+
+# --------------------------------------------------------------------------
+# Dedicated falsification killers — each test below is registered in
+# tests/falsificationRegistry.py against a specific mutation of the
+# guardrail and must fail when that mutation is applied.
+# --------------------------------------------------------------------------
+
+
+def test_slug_enforces_camelcase_on_lowercase_words():
+    """FALSIFICATION TARGET: dropping the .upper() leaves lowercase
+    words verbatim, so 'step name' would slug to 'stepname' and every
+    directory derived from a prose name silently diverges from the
+    documented formula."""
+    assert fsSlugFromStepName("step name") == "StepName"
+
+
+def test_backend_reports_directory_contract_warnings():
+    """FALSIFICATION TARGET: the /validate channel is the CLI's and
+    the in-container agent's only view of a manual project.json edit
+    that broke the contract — a short-circuited warnings builder
+    makes the violation GUI-only."""
+    from vaibify.gui.workflowManager import (
+        flistDirectoryContractWarnings,
+    )
+    dictWorkflow = {"listSteps": [
+        {"sName": "GJ 1132 XUV", "sDirectory": "systems/GJ1132",
+         "sLabel": "A01"},
+        {"sName": "Conforming", "sDirectory": "Conforming"},
+    ]}
+    listWarnings = flistDirectoryContractWarnings(dictWorkflow)
+    assert len(listWarnings) == 1
+    assert "A01" in listWarnings[0]
+    assert "GJ1132XUV" in listWarnings[0]
+    assert flistDirectoryContractWarnings(
+        {"listSteps": [{"sName": "Ok", "sDirectory": "Ok"}]},
+    ) == []

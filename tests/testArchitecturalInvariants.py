@@ -2723,7 +2723,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shares. Cohesive with the schema this module owns.
     # +8 (2026-07-16): control-character rejection in the input-path
     # boundary check (closes a heredoc-split vector for the new fields).
-    "workflowManager.py": 2262,
+    # +30 (2026-07-18): flistDirectoryContractWarnings — the slug
+    # contract's backend warnings channel beside the other workflow
+    # validators, so a manual project.json edit is never GUI-only.
+    "workflowManager.py": 2292,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
