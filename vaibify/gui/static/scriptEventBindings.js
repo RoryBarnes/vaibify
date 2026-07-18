@@ -340,6 +340,34 @@ var PipeleyenEventBindings = (function () {
             elMatch.dataset.service || "", elMatch);
     }
 
+    function _fnHandleStepLevelInfo(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnShowStepLevelRequirementsModal(
+            parseInt(elMatch.dataset.step),
+            parseInt(elMatch.dataset.level));
+    }
+
+    function _fnHandleStepLevelSectionToggle(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnToggleStepLevelSection(
+            parseInt(elMatch.dataset.step),
+            parseInt(elMatch.dataset.level));
+    }
+
+    function _fnHandleStepBannerLevelCell(event, elMatch) {
+        // Only step-scope cells carry data-level; the Project
+        // banner's cells fall through to the ordinary row click.
+        var sLevel = elMatch.dataset.level;
+        var elStep = elMatch.closest(".step-item");
+        if (!sLevel || !elStep) return;
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnExpandStepLevelSection(
+            parseInt(elStep.dataset.index), parseInt(sLevel));
+    }
+
     function _fnHandleToggleBinaryForm(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -398,6 +426,12 @@ var PipeleyenEventBindings = (function () {
         ".project-block-header": _fnHandleProjectBlockToggle,
         ".requirement-group-header": _fnHandleRequirementGroupToggle,
         ".requirement-row-header": _fnHandleRequirementRowToggle,
+        // The ⓘ link precedes its enclosing section header so the
+        // registry's first-match dispatch opens the modal instead of
+        // toggling the section.
+        ".step-level-info": _fnHandleStepLevelInfo,
+        ".step-level-section-header": _fnHandleStepLevelSectionToggle,
+        ".step-item .step-level-cell": _fnHandleStepBannerLevelCell,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
         ".btn-ai-declaration-untrack": _fnHandleAiDeclarationUntrack,
         ".wf-declare-no-input": _fnHandleBulkDeclareNoInput,

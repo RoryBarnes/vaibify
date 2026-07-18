@@ -77,6 +77,12 @@ const PipeleyenApp = (function () {
         setExpandedIntegrity: new Set(),
         setExpandedRequirementGroups: new Set(),
         setExpandedRequirementRows: new Set(),
+        // Per-step level sections in the Step Viewer: keys are
+        // "iStep:iLevel". A step is seeded once (its target rung
+        // opens) and remembered in setLevelSeededSteps so the
+        // researcher's own toggles are never overridden.
+        setExpandedStepLevels: new Set(),
+        setLevelSeededSteps: new Set(),
         bStepsCollapsed: false,
         bProjectBlockCollapsed: false,
         bBinaryAddFormOpen: false,
@@ -321,6 +327,8 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedIntegrity.clear();
         _dictUiState.setExpandedRequirementGroups.clear();
         _dictUiState.setExpandedRequirementRows.clear();
+        _dictUiState.setExpandedStepLevels.clear();
+        _dictUiState.setLevelSeededSteps.clear();
         _dictUiState.bBinaryAddFormOpen = false;
     }
 
@@ -778,6 +786,8 @@ const PipeleyenApp = (function () {
         _dictUiState.iSelectedStepIndex = -1;
         _dictUiState.setExpandedSteps.clear();
         _dictUiState.setExpandedDeps.clear();
+        _dictUiState.setExpandedStepLevels.clear();
+        _dictUiState.setLevelSeededSteps.clear();
         PipeleyenTestManager.fnResetState();
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictStepStatus = {};
@@ -1280,6 +1290,8 @@ const PipeleyenApp = (function () {
             fsBlockerHintForFile: fsBlockerHintForFile,
             fsLevelCellState: fsLevelCellState,
             fsLevelCellTooltip: fsLevelCellTooltip,
+            fdictLevelCellForScope: fdictLevelCellForScope,
+            fbIsStepLevelExpanded: fbIsStepLevelExpanded,
             fdictRegressionWarning: fdictRegressionWarning,
         };
     }
@@ -1379,6 +1391,9 @@ const PipeleyenApp = (function () {
             + (dictContext.fsetGetExpandedCategory("qualitative").has(iIndex) ? "1" : "0")
             + (dictContext.fsetGetExpandedCategory("quantitative").has(iIndex) ? "1" : "0")
             + (dictContext.fsetGetExpandedCategory("integrity").has(iIndex) ? "1" : "0")
+            + (dictContext.fbIsStepLevelExpanded(iIndex, 1) ? "1" : "0")
+            + (dictContext.fbIsStepLevelExpanded(iIndex, 2) ? "1" : "0")
+            + (dictContext.fbIsStepLevelExpanded(iIndex, 3) ? "1" : "0")
         );
     }
 
@@ -2358,6 +2373,59 @@ const PipeleyenApp = (function () {
             }
         }
         return 4;
+    }
+
+    function _fsStepLevelKey(iStepIndex, iLevel) {
+        return iStepIndex + ":" + iLevel;
+    }
+
+    function fbIsStepLevelExpanded(iStepIndex, iLevel) {
+        // First read for a step seeds its TARGET rung open (the
+        // first non-attained level — fiStepNextTargetLevel), so the
+        // detail opens onto the work the ladder asks for next; after
+        // that the researcher's own toggles are authoritative.
+        if (!_dictUiState.setLevelSeededSteps.has(iStepIndex)) {
+            _dictUiState.setLevelSeededSteps.add(iStepIndex);
+            var iTarget = fiStepNextTargetLevel(iStepIndex);
+            if (iTarget >= 1 && iTarget <= 3) {
+                _dictUiState.setExpandedStepLevels.add(
+                    _fsStepLevelKey(iStepIndex, iTarget));
+            }
+        }
+        return _dictUiState.setExpandedStepLevels.has(
+            _fsStepLevelKey(iStepIndex, iLevel));
+    }
+
+    function fnToggleStepLevelSection(iStepIndex, iLevel) {
+        fbIsStepLevelExpanded(iStepIndex, iLevel);
+        var sKey = _fsStepLevelKey(iStepIndex, iLevel);
+        if (_dictUiState.setExpandedStepLevels.has(sKey)) {
+            _dictUiState.setExpandedStepLevels.delete(sKey);
+        } else {
+            _dictUiState.setExpandedStepLevels.add(sKey);
+        }
+        fnRenderStepList();
+    }
+
+    function fnExpandStepLevelSection(iStepIndex, iLevel) {
+        // The banner's level cells double as a table of contents:
+        // clicking one opens the step detail onto that section.
+        fbIsStepLevelExpanded(iStepIndex, iLevel);
+        _dictUiState.setExpandedSteps.add(iStepIndex);
+        _dictUiState.setExpandedStepLevels.add(
+            _fsStepLevelKey(iStepIndex, iLevel));
+        fnRenderStepList();
+    }
+
+    function fnShowStepLevelRequirementsModal(iStepIndex, iLevel) {
+        var dictCell = fdictLevelCellForScope(iStepIndex, iLevel);
+        if (!dictCell) return;
+        var sTitle = "Level " + iLevel + " requirements — " +
+            fsComputeStepLabel(iStepIndex);
+        PipeleyenModals.fnShowInfoModal(
+            sTitle,
+            VaibifyStepRenderer.fsBuildLevelRequirementsListHtml(
+                dictCell, iLevel));
     }
 
     function fdictRegressionWarning(iStepIndex) {
@@ -4300,6 +4368,10 @@ const PipeleyenApp = (function () {
         fnToggleNoInputData: fnToggleNoInputData,
         fnBulkDeclareNoInputData: fnBulkDeclareNoInputData,
         fnSetStepBudget: fnSetStepBudget,
+        fnToggleStepLevelSection: fnToggleStepLevelSection,
+        fnExpandStepLevelSection: fnExpandStepLevelSection,
+        fnShowStepLevelRequirementsModal:
+            fnShowStepLevelRequirementsModal,
         fnShowContextMenu: fnShowContextMenu,
         fnHideContextMenu: fnHideContextMenu,
         fnReorderStep: fnReorderStep,

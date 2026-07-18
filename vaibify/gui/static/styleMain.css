@@ -1574,36 +1574,94 @@ body.aics-level-3 .toolbar-label {
     color: var(--text-muted);
 }
 
-/* --- Per-step ladder-requirements block (expanded detail) --- */
+/* --- Hierarchical Step Viewer (2026-07-18) ---
+   Always-open execution facts, then one expandable section per
+   ladder rung. Section headers reuse the shared level-cell markup;
+   requirement rows reuse the envelope mark vocabulary. */
 
-.step-requirements {
-    padding: 2px 0 4px;
-}
-
-.step-requirement-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 1px 0;
-    font-size: 11px;
-    color: var(--text-secondary);
-}
-
-.step-requirement-counts {
-    color: var(--text-muted);
-}
-
-/* Failing-criteria line indented under its rung's row. */
-.step-requirement-detail {
-    padding-left: 24px;
-    font-size: 10px;
-    color: var(--text-muted);
+.step-facts {
+    padding-bottom: 4px;
 }
 
 .step-last-run {
     padding: 3px 0 0;
     font-size: 10px;
     color: var(--text-muted);
+}
+
+.step-level-section {
+    margin: 4px 0;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 4px;
+}
+
+.step-level-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.step-level-section-caret {
+    width: 10px;
+    color: var(--text-muted);
+}
+
+.step-level-section-title {
+    font-weight: 600;
+}
+
+.step-level-section-counts {
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+/* The ⓘ affordance: quiet until hovered, clearly clickable. */
+.step-level-info {
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+.step-level-info:hover {
+    color: var(--highlight-color);
+}
+
+.step-level-section-body {
+    padding: 2px 8px 6px;
+    border-top: 1px solid
+        var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.step-level-requirement-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.step-level-requirement-hint {
+    padding-left: 22px;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.step-level-verify {
+    margin-left: auto;
+    font-size: 10px;
+    padding: 1px 6px;
+}
+
+/* The banner's step-scope level cells double as section openers. */
+.step-item .step-level-cell[data-level] {
+    cursor: pointer;
 }
 
 .run-stat {

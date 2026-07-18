@@ -42,7 +42,8 @@ var VaibifyUtilities = (function () {
             ' alt="' + fnEscapeHtml(sAltText) + '">';
     }
 
-    function fsBuildLevelCell(sState, sTooltip, sAltText) {
+    function fsBuildLevelCell(sState, sTooltip, sAltText,
+        sExtraAttributes) {
         // Cell visuals: favicon = attained, muted dash = not
         // applicable, question mark = unknown (assessed once, answer
         // stale), a circle (tinted by the level-cell-<sState> class)
@@ -61,8 +62,11 @@ var VaibifyUtilities = (function () {
         // sState is a server enum today, but this is the single
         // owner of the cell markup — escape it so a future non-enum
         // state can never become an attribute breakout.
+        // sExtraAttributes is caller-authored constant markup (e.g.
+        // ' data-level="2"'), never user data.
         return '<span class="step-level-cell level-cell-' +
-            fnEscapeHtml(sState) + '" title="' +
+            fnEscapeHtml(sState) + '"' + (sExtraAttributes || "") +
+            ' title="' +
             fnEscapeHtml(sTooltip) + '">' + sInner + '</span>';
     }
 

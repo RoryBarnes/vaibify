@@ -1114,20 +1114,20 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_declaration_step_l2_counts_are_exact',
         source='vaibify/reproducibility/levelGates.py',
-        old='        if "ai-declaration-unattested" not in setCriteria:\n            iSatisfied += 1',
-        new='        if "ai-declaration-unattested" not in setCriteria:\n            iSatisfied += 2',
+        old='            ("ai-declaration-attested",\n             "ai-declaration-unattested" not in setCriteria))',
+        new='            ("ai-declaration-attested",\n             "ai-declaration-unattested" in setCriteria))',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_step_l3_counts_zero_without_repo',
         source='vaibify/reproducibility/levelGates.py',
-        old='        return (0, len(_T_STEP_LEVEL3_CRITERIA))',
-        new='        return (1, len(_T_STEP_LEVEL3_CRITERIA))',
+        old='            (sCriterion, False)\n            for sCriterion in _T_STEP_LEVEL3_CRITERIA\n        ]',
+        new='            (sCriterion, True)\n            for sCriterion in _T_STEP_LEVEL3_CRITERIA\n        ]',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_step_l3_satisfied_arithmetic_is_subtraction',
         source='vaibify/reproducibility/levelGates.py',
-        old='    return (iTotal - len(setApplicable & set(setFailing)), iTotal)',
-        new='    return (iTotal >> len(setApplicable & set(setFailing)), iTotal)',
+        old='        (sCriterion, sCriterion not in setFailing)',
+        new='        (sCriterion, sCriterion in setFailing)',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_randomness_criterion_requires_literal_true',

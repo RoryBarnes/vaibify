@@ -220,6 +220,22 @@ pattern wholesale.
   no criterion has a domain on the step — nothing to reproduce must
   NEVER render as a vacuous attained). First-attainment dates persist
   in `dictLevelHighWater` in state.json and are never erased.
+- The expanded step detail is HIERARCHICAL (2026-07-18): an
+  always-open facts strip (Directory + the Last run line), then one
+  expandable section per ladder rung
+  (`_fsRenderStepLevelSection`). Level 1's body is the workbench
+  (input data, scripts, commands, outputs, tests, sign-off — the
+  step's own artifacts ARE its self-consistency surface); Levels 2
+  and 3 render one row per applicable criterion from the cell's
+  `listRequirements` wire breakdown — the SAME list the cell counts
+  derive from; never recompute requirement state client-side. Each
+  section header reuses the shared level cell plus an ⓘ
+  requirements modal; banner cells carry `data-level` and open
+  their section. First open seeds the step's target rung
+  (`fiStepNextTargetLevel`) expanded via `setLevelSeededSteps`;
+  after that the researcher's toggles (`setExpandedStepLevels`,
+  keys `"iStep:iLevel"`, mutate in place) are authoritative and are
+  part of the render hash.
 - The ⚠ column is the SINGLE consolidated warnings surface for a
   step (2026-07-02 redesign — see "L1 blocker surfacing"). The
   backend still gates the LEVEL warning in `dictStepLevelWarnings`

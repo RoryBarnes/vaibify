@@ -115,14 +115,18 @@ project settings, a refresh arrow to re-poll remote status, and
 ### The Steps block
 
 A one-time header row labels the step columns: **Run**, the warning
-column (⚠), and **L1**. Each step row then shows, left to right:
+column (⚠), and **L1 | L2 | L3**. Each step row then shows, left to
+right:
 
 - **Run checkbox** — include this step in the next run.
-- **Run light** — execution only: hollow grey means the step has not
-  run this session, filled grey means queued, blinking orange means
-  running now, blinking red means running *past its wall-clock budget*
-  (see below), solid red means the last run failed, and the
-  theme-tinted vaibify check means the last run succeeded.
+- **Run light** — live activity and failures only: hollow grey means
+  the step has not run this session, filled grey means queued,
+  blinking orange means running now, blinking red means running
+  *past its runtime limit* (see below), and solid red means the last
+  run failed. A successful run leaves the light **quietly empty** —
+  the vaibify check is reserved for attained level cells, and the
+  success record (outcome, finish time, durations) lives in the
+  expanded step's **Last run** line.
 - **Step label and name** — labels are per-type sequential: `A03` is
   the third *automated* step, `I01` the first *interactive* step.
 - **Warning column (⚠)** — every warning the step carries,
@@ -132,34 +136,47 @@ column (⚠), and **L1**. Each step row then shows, left to right:
   **orange** means pending work or staleness (a script or output
   changed since verification, an earlier step changed, or a level
   regressed).
-- **L1 cell** — the step's Level 1 state (vocabulary below).
+- **L1 | L2 | L3 cells** — the step's own state at each ladder rung
+  (vocabulary below). Every rung has per-step requirements — Level 2
+  covers the published copies of this step's outputs, Level 3 its
+  manifest pinning, determinism, and binaries — and a rung with none
+  shows the muted dash. Clicking a cell opens the step's detail onto
+  that level's section.
 
 Steps run from the toolbar's **Run** menu: **Run Selected Steps**,
 **Run All Steps**, **Force Run All (Clean)**, **Stop All Running
 Tasks**, plus the verification sweeps **Verify Outputs**, **Run All
 Unit Tests**, and **Verify Dependencies**. Steps can be reordered by
-dragging, and an individual step's context menu offers **Run From
-Here**.
+dragging, and an individual step's right-click menu offers **Run
+Step**, **Edit Step**, **Rename…** (which previews and then cascades
+the rename through the step's directory, verification marker,
+manifest paths, and declared paths), **Set Runtime Limit…**, **Run
+From Here**, insertion, and deletion.
 
-#### Wall-clock budget
+#### Runtime limit (wall-clock budget)
 
 A running step reports a heartbeat that only proves the *runner* is
 alive — a step stuck in an infinite loop keeps that heartbeat beating
 and, on its own, looks identical to a legitimately long forward-model
-run. A step's optional **wall-clock budget** closes that gap: it is a
-ceiling, in seconds, on how long the step may run before the dashboard
-flags it. Once the active step passes its budget the run light turns
-**blinking red** and its tooltip reads "running longer than its
-wall-clock budget — may be hung". This is advisory and never stops the
-run — an over-budget step keeps executing, because exceeding a declared
+run. A step's **runtime limit** closes that gap: it is a ceiling, in
+seconds, on how long the step may run before the dashboard flags it.
+Once the active step passes its limit the run light turns **blinking
+red** and its tooltip reads "running longer than its wall-clock
+budget — may be hung". This is advisory and never stops the run — an
+over-limit step keeps executing, because exceeding a declared
 expectation is not proof of a hang; the flag only tells you where to
 look.
 
-The feature is opt-in. Set a per-step budget in the step editor, or a
-project-wide default under **Settings**; a step with no budget (its
-own or the default) is never flagged, so long runs you expect are never
-mislabelled. Choose a budget generously — a small multiple of the
-step's normal runtime — so ordinary variation does not trip it.
+New projects default to a four-hour limit for every step; existing
+projects keep whatever they had (no limit unless one was set). The
+first run of a project shows a one-time notice naming the default and
+where to change it. Adjust the project-wide default under
+**Settings**, or right-click a step and choose **Set Runtime
+Limit…** — the dialog prefills a suggestion of twice the step's last
+*successful* runtime, converting "how long should this take?" into
+"should it take twice as long as last time?". Zero or blank means the
+step inherits the project default; a project default of zero disables
+the feature entirely, so long runs you expect are never mislabelled.
 
 #### Adding a step
 
@@ -179,12 +196,37 @@ control to an agent for a specific stage.
 
 #### The expanded step view
 
-Clicking a step row expands its detail: the working directory, its
-input data, scripts, data analysis commands, output data, plot
-commands, and plot files. File rows carry the per-file marks and
-remote badges described under
+Clicking a step row expands its detail, which is organised by the
+reproducibility ladder. At the top, always visible, sit the execution
+facts: the working directory and the **Last run** line (outcome,
+finish time, wall-clock and CPU durations). Below them come three
+expandable sections mirroring the banner cells — **Level 1 —
+Self-Consistent**, **Level 2 — Published**, **Level 3 —
+Reproducible** — each headed by the same level cell the banner shows,
+a "N of M requirements met" count, and an ⓘ that opens a modal
+listing every requirement of that rung with its live met/unmet mark.
+On first open the step's *target rung* — the first level not yet
+attained — is expanded and the others are collapsed, so the detail
+opens onto the work the ladder asks for next; your own toggles are
+remembered after that.
+
+**Level 1 is the workbench**: the step's input data, scripts, data
+analysis commands, output data, plot commands, plot files, test
+standards, and the Verification section — the step's own artifacts
+are exactly its self-consistency surface. File rows carry the
+per-file marks and remote badges described under
 [Status lights and colours](#status-lights-and-colours), and
 clicking a file opens it in a Viewing Window.
+
+**Levels 2 and 3 are requirement sections**, one row per applicable
+criterion with a met mark, the offending files when unmet, and either
+an in-place action (**Verify now** for the GitHub and Zenodo rows —
+the same verify the Project block offers) or a pointer to the
+Project-block section where the project-scoped remedy lives (manifest
+refresh, environment capture, determinism rules). The rows render the
+same requirement breakdown the banner cell counts — the two can never
+disagree. A rung with no requirements for this step says so and its
+header shows the muted dash.
 
 The **Input Data** block, between Directory and Scripts, declares
 the raw files the step consumes that no step produces — for example,
@@ -221,9 +263,10 @@ one row per verification axis, each with its state and a timestamp:
 Above these rows, plain-English drift notices name exactly which files
 went stale and why — for example "Tests older than data scripts" or
 "User verification older than plot files" — so you always know what to
-re-run or re-inspect. Wall-clock and CPU time for the last run, and
-the modification times of the step's data and plot files, are also
-shown.
+re-run or re-inspect. The last run's outcome and durations live in
+the **Last run** line at the top of the detail; the modification
+times of the step's data and plot files are shown beside their
+sections.
 
 The expanded quantitative-tests block additionally carries a
 **Falsification** row with a **Check test teeth** button. It
