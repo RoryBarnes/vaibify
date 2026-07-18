@@ -1282,6 +1282,17 @@ def _fdictEntry(sRel):
         new='    return posixpath.join(sParent, sSlug) if sParent else (sDirectoryRaw or sSlug)',
     ),
     Falsification(
+        # THE SHIPPED BUG (live 2026-07-18): the align route read the
+        # workflow path from a key the workflow dict never carries, so
+        # the marker namespace slug was empty and every verification
+        # marker was silently orphaned. Killed only by the real-wiring
+        # route test — the unit fixtures had encoded the same wrong key.
+        nodeid='tests/testStepRoutes.py::testAlignRouteMovesTheMarkerThroughRealWiring',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='                    dictCtx["paths"].get(sContainerId, ""),',
+        new='                    dictWorkflow.get("sPath", ""),',
+    ),
+    Falsification(
         # A short-circuited warnings builder makes a manual
         # project.json edit visible in the GUI only — the CLI and the
         # in-container agent would never see the violation.

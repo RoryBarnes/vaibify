@@ -1124,8 +1124,8 @@ body.aics-level-3 .toolbar-label {
 
 /* Run light vocabulary: hollow grey = never run this session,
    filled grey = queued, blinking orange = running, red = failed,
-   blinking red = over budget. A successful last run renders an
-   empty cell — the vaibify check belongs to attained level cells
+   blinking red = over budget, quiet pale-blue dot = last run
+   succeeded. The vaibify check belongs to attained level cells
    only, never to run status. */
 .step-item .step-status {
     flex-shrink: 0;
@@ -1177,6 +1177,13 @@ body.aics-level-3 .toolbar-label {
 
 .step-item .step-status.skipped {
     background: var(--text-muted);
+    border: none;
+}
+
+/* Success is quiet but never invisible: the routine pale blue, a
+   solid dot, no check mark. */
+.step-item .step-status.pass {
+    background: var(--color-pale-blue);
     border: none;
 }
 

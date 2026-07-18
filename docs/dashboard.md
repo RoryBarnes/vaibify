@@ -119,14 +119,14 @@ column (⚠), and **L1 | L2 | L3**. Each step row then shows, left to
 right:
 
 - **Run checkbox** — include this step in the next run.
-- **Run light** — live activity and failures only: hollow grey means
-  the step has not run this session, filled grey means queued,
-  blinking orange means running now, blinking red means running
-  *past its runtime limit* (see below), and solid red means the last
-  run failed. A successful run leaves the light **quietly empty** —
-  the vaibify check is reserved for attained level cells, and the
-  success record (outcome, finish time, durations) lives in the
-  expanded step's **Last run** line.
+- **Run light** — execution only: hollow grey means the step has not
+  run this session, filled grey means queued, blinking orange means
+  running now, blinking red means running *past its runtime limit*
+  (see below), solid red means the last run failed, and a quiet
+  **pale-blue dot** means the last run succeeded. The vaibify check
+  is reserved for attained level cells; the success record (outcome,
+  finish time, durations) lives in the expanded step's **Last run**
+  line.
 - **Step label and name** — labels are per-type sequential: `A03` is
   the third *automated* step, `I01` the first *interactive* step.
 - **Warning column (⚠)** — every warning the step carries,

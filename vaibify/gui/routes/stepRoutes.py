@@ -447,7 +447,7 @@ def _fnRegisterStepRename(app, dictCtx):
                 stepRename.fdictApplyStepRename,
                 dictCtx["docker"], sContainerId, filesRepo,
                 dictWorkflow, iStepIndex, dictPlan,
-                dictWorkflow.get("sPath", ""),
+                dictCtx["paths"].get(sContainerId, ""),
             )
         except ValueError as error:
             raise HTTPException(409, str(error))
@@ -503,7 +503,7 @@ def _fnRegisterAlignDirectories(app, dictCtx):
                     stepRename.fdictApplyStepRename,
                     dictCtx["docker"], sContainerId, filesRepo,
                     dictWorkflow, iIndex, dictPlan,
-                    dictWorkflow.get("sPath", ""),
+                    dictCtx["paths"].get(sContainerId, ""),
                 )
                 listAligned.append({
                     "sLabel": sLabel,

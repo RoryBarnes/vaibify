@@ -107,19 +107,19 @@ var VaibifyStepRenderer = (function () {
     function _fsBuildStepStatusCell(sRunStatus) {
         // Vocabulary: hollow grey = never run this session, filled
         // grey = queued, blinking orange = running, red = failed,
-        // blinking red = over budget. A successful run renders a
-        // quiet empty cell: the vaibify check is reserved for
-        // attained level cells, and a success check beside an
-        // unverified step read as a false Level 1 claim (2026-07-17
-        // ruling). Success detail lives in the expanded step's
-        // Last run line.
+        // blinking red = over budget, quiet pale-blue dot = last
+        // run succeeded. The vaibify check stays reserved for
+        // attained level cells (2026-07-17 ruling); the dot is
+        // execution-only. It must be VISIBLE — an empty pass cell
+        // beside hollow never-run circles read as a rendering bug
+        // when a restart restored the last run's results
+        // (live report 2026-07-18).
         var sTitle = "Run status: " +
             (_DICT_STEP_STATUS_TITLES[sRunStatus] || sRunStatus);
-        var sInner = sRunStatus === "pass"
-            ? ""
-            : '<span class="step-status ' + sRunStatus + '"></span>';
         return '<span class="step-status-cell" title="' +
-            fnEscapeHtml(sTitle) + '">' + sInner + '</span>';
+            fnEscapeHtml(sTitle) + '">' +
+            '<span class="step-status ' + sRunStatus +
+            '"></span></span>';
     }
 
     function _fsBuildStepLevelStrip(dictContext, iIndex) {

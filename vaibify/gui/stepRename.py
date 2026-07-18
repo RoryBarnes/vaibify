@@ -411,6 +411,17 @@ def fdictApplyStepRename(
                 "The workflow has no project repo — cannot move the "
                 "step directory",
             )
+        if not fsWorkflowSlugFromPath(sWorkflowPath):
+            # Loud, not silent: without the marker namespace the
+            # verification marker cannot follow the directory, and a
+            # quiet no-op orphans the step's test record (shipped
+            # live 2026-07-18 — the route passed a key the workflow
+            # dict never carried).
+            raise ValueError(
+                "Internal error: the workflow file path is missing, "
+                "so the verification marker cannot follow the "
+                "directory — refusing a rename that would orphan it",
+            )
         dictReport["bDirectoryMoved"] = _fnMoveStepDirectory(
             connectionDocker, sContainerId, sRepo, dictPlan,
         )

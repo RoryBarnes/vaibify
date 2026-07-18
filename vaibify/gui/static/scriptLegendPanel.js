@@ -38,12 +38,12 @@ var VaibifyLegendPanel = (function () {
         {
             sIcon: "●", sClass: "aics-legend-orange-light-sample",
             sLabel: "Run light (beside each step's checkbox) — " +
-                "live activity and failures only: hollow grey = " +
-                "not run this session, filled grey = queued, " +
-                "blinking orange = running, red = last run " +
-                "failed, blinking red = may be hung. A quiet " +
-                "empty cell means the last run succeeded; " +
-                "verification lives in the L1|L2|L3 cells",
+                "execution only: hollow grey = not run this " +
+                "session, filled grey = queued, blinking orange = " +
+                "running, red = last run failed, blinking red = " +
+                "may be hung, quiet pale-blue dot = last run " +
+                "succeeded; verification lives in the L1|L2|L3 " +
+                "cells",
         },
         {
             sIcon: "⚠", sClass: "step-regression-cell " +

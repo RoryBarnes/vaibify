@@ -801,8 +801,10 @@ def test_run_light_success_is_quiet_and_never_the_favicon():
     """The vaibify check is reserved for attained level cells
     (2026-07-17 ruling): a run-status check beside an unverified step
     read as a false Level 1 claim. A successful last run renders a
-    quiet empty cell; the never-run state stays the hollow circle;
-    success detail lives in the expanded step's Last run line."""
+    quiet pale-blue dot — VISIBLE, because a fully empty pass cell
+    beside hollow never-run circles read as a missing-marker bug
+    when a restart restored the last run's results (live report
+    2026-07-18). The never-run state stays the hollow circle."""
     sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
     sCell = _fsExtractFunctionBlock(
         sRenderer, "_fsBuildStepStatusCell",
@@ -813,12 +815,18 @@ def test_run_light_success_is_quiet_and_never_the_favicon():
     assert "step-status-check" not in sCell, (
         "the success-check markup is retired from the run light"
     )
-    assert '? ""' in sCell, (
-        "the pass state must render an empty (quiet) cell"
+    assert '? ""' not in sCell, (
+        "the invisible pass cell shipped as a phantom missing-"
+        "marker bug — pass must render a visible dot"
     )
     sCss = _fsReadStaticFile("styleMain.css")
     assert ".step-status-check" not in sCss, (
         "the retired success-check styling must not survive"
+    )
+    iPass = sCss.find(".step-item .step-status.pass {")
+    assert iPass != -1, "the pass dot needs its own style"
+    assert "--color-pale-blue" in sCss[iPass:iPass + 200], (
+        "success is the routine pale blue, never the check"
     )
     iStart = sCss.find(".step-item .step-status {")
     assert "border: 1.5px solid var(--text-muted)" in (

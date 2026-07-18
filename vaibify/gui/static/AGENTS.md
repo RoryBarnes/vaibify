@@ -198,10 +198,11 @@ pattern wholesale.
   queued / running / failed / over-budget; it must never fold in
   verification signals — that was the pre-2026-07 design and it
   made the light read as a shadow L1. A successful run renders a
-  QUIET EMPTY cell: the vaibify check is reserved for attained
-  level cells, because a success check beside an unverified step
-  read as a false Level 1 claim — 2026-07-17 ruling; success
-  detail lives in the expanded step's Last run line). RIGHT: the
+  QUIET PALE-BLUE DOT — visible but never the vaibify check, which
+  is reserved for attained level cells (2026-07-17 ruling; a fully
+  empty pass cell shipped as a phantom missing-marker bug when a
+  restart restored last-run results, 2026-07-18); success detail
+  lives in the expanded step's Last run line). RIGHT: the
   verification strip (`_fsBuildStepLevelStrip`) — the ⚠ warning
   column then L1|L2|L3 (no text in the level cells). One column-header row
   labels both clusters ("Run" on the left; ⚠/L1/L2/L3 on the

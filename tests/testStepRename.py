@@ -32,7 +32,6 @@ def _fdictWorkflow(dictStepOverrides=None, **dictWorkflowOverrides):
     dictStep.update(dictStepOverrides or {})
     dictWorkflow = {
         "sProjectRepoPath": "/workspace/projectRepo",
-        "sPath": "/workspace/projectRepo/.vaibify/projects/study.json",
         "listSteps": [dictStep],
     }
     dictWorkflow.update(dictWorkflowOverrides)
@@ -238,12 +237,19 @@ class _FakeRepoFiles:
         return self.dictFiles.pop(sRelPath, None) is not None
 
 
+# The workflow file path is NOT a workflow-dict key — the hub keeps it
+# in dictCtx["paths"]. The 2026-07-18 marker-orphaning bug shipped
+# because this fixture put it on the dict, encoding the route's wrong
+# assumption (green-stub trap); keep it separate forever.
+S_WORKFLOW_PATH = "/workspace/projectRepo/.vaibify/projects/study.json"
+
+
 def _fdictApply(dictWorkflow, dictDockerResults, filesRepo=None):
     dictPlan = stepRename.fdictPlanStepRename(dictWorkflow, 0, "NewStep")
     connectionDocker = _FakeDocker(dictDockerResults)
     dictReport = stepRename.fdictApplyStepRename(
         connectionDocker, "cid", filesRepo or _FakeRepoFiles(),
-        dictWorkflow, 0, dictPlan, dictWorkflow.get("sPath", ""),
+        dictWorkflow, 0, dictPlan, S_WORKFLOW_PATH,
     )
     return dictReport, connectionDocker
 
@@ -275,7 +281,7 @@ def test_apply_refuses_a_destination_collision_before_mutating():
     with pytest.raises(ValueError):
         stepRename.fdictApplyStepRename(
             connectionDocker, "cid", _FakeRepoFiles(),
-            dictWorkflow, 0, dictPlan, dictWorkflow["sPath"],
+            dictWorkflow, 0, dictPlan, S_WORKFLOW_PATH,
         )
     assert dictWorkflow["listSteps"][0]["sName"] == "OldStep"
     assert dictWorkflow["listSteps"][0]["sDirectory"] == "OldStep"
