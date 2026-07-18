@@ -453,22 +453,24 @@ def test_first_render_after_invalidate_takes_full_path():
 
 
 def test_input_data_section_renders_before_scripts():
-    """The Input Data block must sit between Directory and Scripts.
+    """The Input Data block must lead the Level 1 workbench.
 
-    Checked structurally: inside fsRenderStepItem the call to
-    fsRenderInputDataSection must appear after the Directory field
-    and before the Scripts tracked-file section.
+    Checked structurally: inside the Level 1 body the call to
+    fsRenderInputDataSection must appear before the Scripts
+    tracked-file section — inputs are what the step consumes, so
+    they read first. (The Directory field it once followed was
+    retired 2026-07-18: the rename cascade pins the directory to
+    the step name.)
     """
     sSource = _fsReadStaticFile("scriptStepRenderer.js")
-    iBody = sSource.find("function fsRenderStepItem")
+    iBody = sSource.find("function _fsRenderLevelOneBody")
     assert iBody != -1
-    iDirectory = sSource.find(">Directory</div>", iBody)
     iInputCall = sSource.find("fsRenderInputDataSection(", iBody)
     iScripts = sSource.find('"Scripts", "saStepScripts"', iBody)
-    assert iDirectory != -1 and iInputCall != -1 and iScripts != -1
-    assert iDirectory < iInputCall < iScripts, (
-        "fsRenderInputDataSection must be invoked between the "
-        "Directory field and the Scripts section."
+    assert iInputCall != -1 and iScripts != -1
+    assert iInputCall < iScripts, (
+        "fsRenderInputDataSection must be invoked before the "
+        "Scripts section in the Level 1 body."
     )
 
 

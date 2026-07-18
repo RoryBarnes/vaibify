@@ -83,6 +83,10 @@ const PipeleyenApp = (function () {
         // researcher's own toggles are never overridden.
         setExpandedStepLevels: new Set(),
         setLevelSeededSteps: new Set(),
+        // Description block: seeded open when the step already has
+        // text, then the researcher's toggles win.
+        setExpandedStepDescriptions: new Set(),
+        setDescriptionSeededSteps: new Set(),
         bStepsCollapsed: false,
         bProjectBlockCollapsed: false,
         bBinaryAddFormOpen: false,
@@ -329,6 +333,8 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedRequirementRows.clear();
         _dictUiState.setExpandedStepLevels.clear();
         _dictUiState.setLevelSeededSteps.clear();
+        _dictUiState.setExpandedStepDescriptions.clear();
+        _dictUiState.setDescriptionSeededSteps.clear();
         _dictUiState.bBinaryAddFormOpen = false;
     }
 
@@ -788,6 +794,8 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedDeps.clear();
         _dictUiState.setExpandedStepLevels.clear();
         _dictUiState.setLevelSeededSteps.clear();
+        _dictUiState.setExpandedStepDescriptions.clear();
+        _dictUiState.setDescriptionSeededSteps.clear();
         PipeleyenTestManager.fnResetState();
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictStepStatus = {};
@@ -878,8 +886,14 @@ const PipeleyenApp = (function () {
 
     /* --- Global Settings --- */
 
-    function fsSettingsRowHtml(sLabel, sInputHtml) {
-        return '<div class="gs-row">' +
+    function fsSettingsRowHtml(sLabel, sInputHtml, sTooltip) {
+        // Every settings row carries a hover tooltip on the whole
+        // row (2026-07-18 ruling) so a researcher never has to
+        // guess what an option controls.
+        return '<div class="gs-row"' +
+            (sTooltip
+                ? ' title="' + fnEscapeHtml(sTooltip) + '"'
+                : '') + '>' +
             '<span class="gs-label">' + sLabel + '</span>' +
             sInputHtml + '</div>';
     }
@@ -889,28 +903,44 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.dictWorkflow.fTolerance || 1e-6);
         return fsSettingsRowHtml("Plot Dir",
             '<input class="gs-input" id="gsPlotDirectory" value="' +
-            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sPlotDirectory || "Plot") + '">') +
+            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sPlotDirectory || "Plot") + '">',
+            "Subdirectory of each step where its figures are " +
+            "written; commands reference it with the " +
+            "{sPlotDirectory} token") +
             fsSettingsRowHtml("Figure Type",
             '<input class="gs-input" id="gsFigureType" value="' +
-            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sFigureType || "pdf") + '">') +
+            fnEscapeHtml(_dictWorkflowState.dictWorkflow.sFigureType || "pdf") + '">',
+            "File format for generated figures (for example pdf " +
+            "or png); commands reference it with the " +
+            "{sFigureType} token") +
             fsSettingsRowHtml("Cores",
             '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
-            (_dictWorkflowState.dictWorkflow.iNumberOfCores || -1) + '">') +
+            (_dictWorkflowState.dictWorkflow.iNumberOfCores || -1) + '">',
+            "CPU cores available to parallel work inside the " +
+            "container; -1 means all cores minus one") +
             fsSettingsRowHtml("Tolerance",
             '<input class="gs-input" id="gsTolerance" type="range"' +
             ' min="-16" max="0" step="1" value="' + iToleranceExp +
             '" title="10^' + iToleranceExp +
-            ' = ' + (_dictWorkflowState.dictWorkflow.fTolerance || 1e-6) + '">') +
+            ' = ' + (_dictWorkflowState.dictWorkflow.fTolerance || 1e-6) + '">',
+            "How closely a quantitative test result must match its " +
+            "standard to pass; the slider sets a power of ten — " +
+            "hover the slider for the current value") +
             fsSettingsRowHtml("Poll Interval",
             '<input class="gs-input" id="gsPollInterval" type="range"' +
             ' min="1" max="60" value="' +
             (VaibifyPolling.fiGetPollIntervalMs() / 1000) +
             '" title="' +
             (VaibifyPolling.fiGetPollIntervalMs() / 1000) +
-            ' seconds">') +
+            ' seconds">',
+            "How often the dashboard refreshes file and status " +
+            "information from the container, in seconds — hover " +
+            "the slider for the current value") +
             fsSettingsRowHtml("Show timestamps",
             '<input type="checkbox" id="gsShowTimestamps"' +
-            (_dictUiState.bShowTimestamps ? " checked" : "") + '>') +
+            (_dictUiState.bShowTimestamps ? " checked" : "") + '>',
+            "Show file-modification timestamps in each step's " +
+            "expanded detail") +
             fsSettingsRowHtml("Terminal lines",
             '<input id="gsTerminalScrollback" class="gs-input-local"' +
             ' type="number" min="100"' +
@@ -923,12 +953,17 @@ const PipeleyenApp = (function () {
             ' browser memory"><input type="checkbox"' +
             ' id="gsTerminalScrollbackUnlimited"' +
             (PipeleyenTerminal.fbScrollbackIsUnlimited()
-                ? " checked" : "") + '> &#8734;</label>') +
+                ? " checked" : "") + '> &#8734;</label>',
+            "How many lines of output each terminal tab keeps; " +
+            "the &#8734; checkbox retains effectively unlimited " +
+            "scrollback") +
             fsSettingsRowHtml("Auto Archive",
             '<input type="checkbox" id="gsAutoArchive"' +
             (_dictWorkflowState.dictWorkflow.bAutoArchive
                 ? " checked" : "") +
-            ' title="Push verified files to Overleaf/Zenodo automatically">') +
+            ' title="Push verified files to Overleaf/Zenodo automatically">',
+            "Push verified files to Overleaf and Zenodo " +
+            "automatically after each successful verification") +
             fsSettingsRowHtml("Runtime limit (s)",
             '<input class="gs-input" id="gsDefaultWallClockBudget"' +
             ' type="number" min="0" step="1" value="' +
@@ -937,7 +972,11 @@ const PipeleyenApp = (function () {
             ' title="Default expected runtime in seconds applied to' +
             ' every step without its own value. A step that runs longer' +
             ' turns its run light red as a possibly-hung warning; the' +
-            ' run is never stopped. 0 = no limit.">') +
+            ' run is never stopped. 0 = no limit.">',
+            "Advisory runtime limit in seconds inherited by every " +
+            "step without its own (right-click a step to set one); " +
+            "a longer-running step is flagged as possibly hung — " +
+            "the run is never stopped. 0 = no limit") +
             fsClaudeSettingsHtml();
     }
 
@@ -954,7 +993,10 @@ const PipeleyenApp = (function () {
         return '<div class="gs-section-heading">Container</div>' +
             fsSettingsRowHtml("Claude auto-update",
                 '<input type="checkbox" id="gsClaudeAutoUpdate"'
-                + sChecked + '>') +
+                + sChecked + '>',
+                "Allow Claude Code inside the container to update " +
+                "itself; a change takes effect after a container " +
+                "restart") +
             sNotice;
     }
 
@@ -1292,6 +1334,7 @@ const PipeleyenApp = (function () {
             fsLevelCellTooltip: fsLevelCellTooltip,
             fdictLevelCellForScope: fdictLevelCellForScope,
             fbIsStepLevelExpanded: fbIsStepLevelExpanded,
+            fbIsStepDescriptionExpanded: fbIsStepDescriptionExpanded,
             fdictRegressionWarning: fdictRegressionWarning,
         };
     }
@@ -1394,6 +1437,7 @@ const PipeleyenApp = (function () {
             + (dictContext.fbIsStepLevelExpanded(iIndex, 1) ? "1" : "0")
             + (dictContext.fbIsStepLevelExpanded(iIndex, 2) ? "1" : "0")
             + (dictContext.fbIsStepLevelExpanded(iIndex, 3) ? "1" : "0")
+            + (dictContext.fbIsStepDescriptionExpanded(iIndex) ? "1" : "0")
         );
     }
 
@@ -2415,6 +2459,70 @@ const PipeleyenApp = (function () {
         _dictUiState.setExpandedStepLevels.add(
             _fsStepLevelKey(iStepIndex, iLevel));
         fnRenderStepList();
+    }
+
+    function fbIsStepDescriptionExpanded(iStepIndex) {
+        if (!_dictUiState.setDescriptionSeededSteps.has(iStepIndex)) {
+            _dictUiState.setDescriptionSeededSteps.add(iStepIndex);
+            var step = (_dictWorkflowState.dictWorkflow || {})
+                .listSteps && _dictWorkflowState.dictWorkflow
+                .listSteps[iStepIndex];
+            if (step && (step.sDescription || "").trim()) {
+                _dictUiState.setExpandedStepDescriptions.add(
+                    iStepIndex);
+            }
+        }
+        return _dictUiState.setExpandedStepDescriptions.has(
+            iStepIndex);
+    }
+
+    function fnToggleStepDescription(iStepIndex) {
+        fbIsStepDescriptionExpanded(iStepIndex);
+        if (_dictUiState.setExpandedStepDescriptions.has(iStepIndex)) {
+            _dictUiState.setExpandedStepDescriptions.delete(
+                iStepIndex);
+        } else {
+            _dictUiState.setExpandedStepDescriptions.add(iStepIndex);
+        }
+        fnRenderStepList();
+    }
+
+    function fnBeginStepDescriptionEdit(iStepIndex) {
+        // Swaps the description text for an inline textarea. This is
+        // a DOM-only edit surface (no render-state change), so both
+        // exits force the card's repaint by dropping its hash.
+        var elBody = document.querySelector(
+            '.step-description-body[data-step="' + iStepIndex + '"]');
+        if (!elBody || elBody.querySelector("textarea")) return;
+        var step = _dictWorkflowState.dictWorkflow
+            .listSteps[iStepIndex];
+        if (!step) return;
+        elBody.innerHTML =
+            '<textarea class="step-description-input" rows="4" ' +
+            'placeholder="A few sentences on what this step ' +
+            'does…"></textarea>' +
+            '<div class="step-description-actions">' +
+            '<button class="btn" id="btnDescriptionCancel">' +
+            'Cancel</button> ' +
+            '<button class="btn btn-primary" ' +
+            'id="btnDescriptionSave">Save</button></div>';
+        var elInput = elBody.querySelector("textarea");
+        elInput.value = step.sDescription || "";
+        elInput.focus();
+        function fnRepaintCard() {
+            delete _dictRenderedStepHashes[iStepIndex];
+            fnRenderStepList();
+        }
+        document.getElementById("btnDescriptionCancel")
+            .addEventListener("click", fnRepaintCard);
+        document.getElementById("btnDescriptionSave")
+            .addEventListener("click", async function () {
+                var sText = elInput.value.trim();
+                step.sDescription = sText;
+                await fnPutStepEdit(
+                    iStepIndex, {sDescription: sText});
+                fnRepaintCard();
+            });
     }
 
     function fnShowStepLevelRequirementsModal(iStepIndex, iLevel) {
@@ -4370,6 +4478,8 @@ const PipeleyenApp = (function () {
         fnSetStepBudget: fnSetStepBudget,
         fnToggleStepLevelSection: fnToggleStepLevelSection,
         fnExpandStepLevelSection: fnExpandStepLevelSection,
+        fnToggleStepDescription: fnToggleStepDescription,
+        fnBeginStepDescriptionEdit: fnBeginStepDescriptionEdit,
         fnShowStepLevelRequirementsModal:
             fnShowStepLevelRequirementsModal,
         fnShowContextMenu: fnShowContextMenu,

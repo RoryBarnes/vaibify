@@ -284,14 +284,14 @@ var VaibifyStepRenderer = (function () {
     }
 
     function _fsLevelSectionCounts(dictContext, iIndex, iLevel) {
+        // Compact "6/7" summary; the header's cell carries the
+        // not-applicable dash and the tooltip carries the prose, so
+        // an empty string is honest for those cases.
         var sState = dictContext.fsLevelCellState(iIndex, iLevel);
-        if (sState === "not-applicable") {
-            return "no requirements at this level";
-        }
+        if (sState === "not-applicable") return "";
         var dictCell = _fdictStepLevelCell(dictContext, iIndex, iLevel);
-        if (!dictCell) return "not yet assessed";
-        return dictCell.iSatisfied + " of " + dictCell.iTotal +
-            " requirements met";
+        if (!dictCell) return "";
+        return dictCell.iSatisfied + "/" + dictCell.iTotal;
     }
 
     function _fsRenderStepLevelSectionHeader(
@@ -388,10 +388,17 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
+    function _fsRequirementMarkMeaning(bMet) {
+        if (bMet === true) return "(check = requirement met)";
+        if (bMet === false) return "(⚠ = requirement not met)";
+        return "(hollow circle = not verifiable right now — " +
+            "the last remote verify is stale)";
+    }
+
     function fsBuildLevelRequirementsListHtml(dictCell, iLevel) {
         // The ⓘ modal body: every requirement of one rung with its
         // live mark — built from the same wire list the cell counts
-        // derive from.
+        // derive from — and a parenthetical spelling the mark out.
         var listRequirements = dictCell.listRequirements || [];
         if (listRequirements.length === 0) {
             return '<div class="detail-note">This step has no ' +
@@ -402,6 +409,10 @@ var VaibifyStepRenderer = (function () {
                 _fsBuildRequirementMark(dictReq.bMet) +
                 '<span class="step-level-requirement-label">' +
                 fnEscapeHtml(_fsRequirementLabel(dictReq.sName)) +
+                '</span>' +
+                '<span class="step-level-requirement-meaning">' +
+                fnEscapeHtml(
+                    _fsRequirementMarkMeaning(dictReq.bMet)) +
                 '</span></div>';
         }).join("");
     }
@@ -448,23 +459,19 @@ var VaibifyStepRenderer = (function () {
             return sHtml + '</div>';
         }
 
-        // Hierarchical detail (2026-07-18): always-open execution
-        // facts, then one expandable section per ladder rung. The
+        // Hierarchical detail (2026-07-18): an optional Description
+        // block, then one expandable section per ladder rung. The
         // Level 1 body is the workbench — the step's own artifacts
-        // ARE its self-consistency surface.
+        // ARE its self-consistency surface. No Directory display:
+        // the rename cascade pins the directory to the step name,
+        // so the row's name already says it.
         sHtml += '<div class="step-detail expanded' +
             '" data-index="' + iIndex + '">';
 
         var sResolvedDir = dictContext.fsResolveTemplate(
             step.sDirectory || "", dictVars);
-        sHtml += '<div class="step-facts">';
-        if (step.sStepKind !== "ai-declaration") {
-            sHtml += '<div class="detail-label">Directory</div>' +
-                '<div class="detail-field" data-view="field">' +
-                fnEscapeHtml(sResolvedDir) + "</div>";
-        }
-        sHtml += fsRenderLastRunLine(step, iIndex, dictContext) +
-            '</div>';
+        sHtml += _fsRenderStepDescriptionBlock(
+            step, iIndex, dictContext);
 
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             sHtml += _fsRenderStepLevelSection(
@@ -629,7 +636,44 @@ var VaibifyStepRenderer = (function () {
         sHtml += fsRenderVerificationBlock(step, iIndex, dictContext);
         sHtml += fsRenderDiscoveredOutputs(iIndex, dictContext);
         sHtml += fsRenderRunStepButton(step, iIndex);
+        sHtml += fsRenderLastRunLine(step, iIndex, dictContext);
         return sHtml;
+    }
+
+    function _fsRenderStepDescriptionBlock(step, iIndex, dictContext) {
+        // Optional researcher/agent-authored prose on what the step
+        // does (sDescription). The header always renders so the
+        // affordance is discoverable; the body opens seeded on
+        // existing text, and clicking the text opens the inline
+        // editor.
+        var bExpanded = dictContext.fbIsStepDescriptionExpanded
+            ? dictContext.fbIsStepDescriptionExpanded(iIndex)
+            : false;
+        var sHtml = '<div class="step-description-block">' +
+            '<div class="step-description-header"' +
+            ' data-step="' + iIndex + '"' +
+            ' title="A brief note on what this step does — ' +
+            'optional, written by you or an agent">' +
+            '<span class="step-level-section-caret">' +
+            (bExpanded ? "&#9662;" : "&#9656;") + '</span>' +
+            '<span class="step-level-section-title">' +
+            'Description</span></div>';
+        if (!bExpanded) {
+            return sHtml + '</div>';
+        }
+        var sText = (step.sDescription || "").trim();
+        sHtml += '<div class="step-description-body"' +
+            ' data-step="' + iIndex + '">' +
+            '<div class="step-description-text' +
+            (sText ? "" : " step-description-placeholder") + '"' +
+            ' data-step="' + iIndex + '"' +
+            ' title="Click to edit">' +
+            (sText
+                ? fnEscapeHtml(sText)
+                : "Add a few sentences on what this step " +
+                    "does…") +
+            '</div></div>';
+        return sHtml + '</div>';
     }
 
     function fsRenderRunStepButton(step, iIndex) {

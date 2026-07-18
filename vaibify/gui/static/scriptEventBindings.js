@@ -356,6 +356,20 @@ var PipeleyenEventBindings = (function () {
             parseInt(elMatch.dataset.level));
     }
 
+    function _fnHandleStepDescriptionToggle(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnToggleStepDescription(
+            parseInt(elMatch.dataset.step));
+    }
+
+    function _fnHandleStepDescriptionEdit(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        PipeleyenApp.fnBeginStepDescriptionEdit(
+            parseInt(elMatch.dataset.step));
+    }
+
     function _fnHandleStepBannerLevelCell(event, elMatch) {
         // Only step-scope cells carry data-level; the Project
         // banner's cells fall through to the ordinary row click.
@@ -432,6 +446,8 @@ var PipeleyenEventBindings = (function () {
         ".step-level-info": _fnHandleStepLevelInfo,
         ".step-level-section-header": _fnHandleStepLevelSectionToggle,
         ".step-item .step-level-cell": _fnHandleStepBannerLevelCell,
+        ".step-description-header": _fnHandleStepDescriptionToggle,
+        ".step-description-text": _fnHandleStepDescriptionEdit,
         ".btn-ai-declaration-commit": _fnHandleAiDeclarationCommit,
         ".btn-ai-declaration-untrack": _fnHandleAiDeclarationUntrack,
         ".wf-declare-no-input": _fnHandleBulkDeclareNoInput,

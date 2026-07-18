@@ -197,14 +197,17 @@ control to an agent for a specific stage.
 #### The expanded step view
 
 Clicking a step row expands its detail, which is organised by the
-reproducibility ladder. At the top, always visible, sit the execution
-facts: the working directory and the **Last run** line (outcome,
-finish time, wall-clock and CPU durations). Below them come three
-expandable sections mirroring the banner cells — **Level 1 —
-Self-Consistent**, **Level 2 — Published**, **Level 3 —
-Reproducible** — each headed by the same level cell the banner shows,
-a "N of M requirements met" count, and an ⓘ that opens a modal
-listing every requirement of that rung with its live met/unmet mark.
+reproducibility ladder. At the top sits an optional, expandable
+**Description** block — a few sentences on what the step does,
+written by you or an agent (click the text to edit; agents set the
+same field through the ordinary step-edit action). There is no
+separate directory display: renaming a step renames its directory,
+so the step's name *is* its directory. Below come three expandable
+sections mirroring the banner cells — **Level 1 — Self-Consistent**,
+**Level 2 — Published**, **Level 3 — Reproducible** — each headed by
+the same level cell the banner shows, a compact "6/7" count, and an
+ⓘ that opens a modal listing every requirement of that rung with its
+live mark and a parenthetical spelling out what the mark means.
 On first open the step's *target rung* — the first level not yet
 attained — is expanded and the others are collapsed, so the detail
 opens onto the work the ladder asks for next; your own toggles are
@@ -213,7 +216,9 @@ remembered after that.
 **Level 1 is the workbench**: the step's input data, scripts, data
 analysis commands, output data, plot commands, plot files, test
 standards, and the Verification section — the step's own artifacts
-are exactly its self-consistency surface. File rows carry the
+are exactly its self-consistency surface. It ends with the **Run
+Step** button and, just below it, the **Last run** line (outcome,
+finish time, wall-clock and CPU durations). File rows carry the
 per-file marks and remote badges described under
 [Status lights and colours](#status-lights-and-colours), and
 clicking a file opens it in a Viewing Window.
@@ -264,7 +269,7 @@ Above these rows, plain-English drift notices name exactly which files
 went stale and why — for example "Tests older than data scripts" or
 "User verification older than plot files" — so you always know what to
 re-run or re-inspect. The last run's outcome and durations live in
-the **Last run** line at the top of the detail; the modification
+the **Last run** line below the Run Step button; the modification
 times of the step's data and plot files are shown beside their
 sections.
 

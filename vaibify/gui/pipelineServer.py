@@ -124,6 +124,9 @@ class StepCreateRequest(BaseModel):
 class StepUpdateRequest(BaseModel):
     sName: Optional[str] = None
     sDirectory: Optional[str] = None
+    # Optional researcher/agent-authored prose on what the step does,
+    # shown in the Step Viewer's Description block. Plain text.
+    sDescription: Optional[str] = None
     bPlotOnly: Optional[bool] = None
     bInteractive: Optional[bool] = None
     bRunEnabled: Optional[bool] = None

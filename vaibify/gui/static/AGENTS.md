@@ -221,11 +221,14 @@ pattern wholesale.
   NEVER render as a vacuous attained). First-attainment dates persist
   in `dictLevelHighWater` in state.json and are never erased.
 - The expanded step detail is HIERARCHICAL (2026-07-18): an
-  always-open facts strip (Directory + the Last run line), then one
-  expandable section per ladder rung
+  optional expandable Description block (`sDescription`, inline
+  editor saving through the ordinary step-edit PUT; NO Directory
+  display — the rename cascade pins directory to step name), then
+  one expandable section per ladder rung
   (`_fsRenderStepLevelSection`). Level 1's body is the workbench
   (input data, scripts, commands, outputs, tests, sign-off — the
-  step's own artifacts ARE its self-consistency surface); Levels 2
+  step's own artifacts ARE its self-consistency surface) and ends
+  with the Run Step button + the Last run line; Levels 2
   and 3 render one row per applicable criterion from the cell's
   `listRequirements` wire breakdown — the SAME list the cell counts
   derive from; never recompute requirement state client-side. Each

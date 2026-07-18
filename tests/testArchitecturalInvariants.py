@@ -2762,7 +2762,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-07-17): StepRenameRequest — the rename action's request
     # model beside the other step request schemas; the cascade logic
     # itself lives in the new stepRename.py module.
-    "pipelineServer.py": 1990,
+    # +3 (2026-07-18): sDescription on StepUpdateRequest — the Step
+    # Viewer's optional Description block field.
+    "pipelineServer.py": 1993,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

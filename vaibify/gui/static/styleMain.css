@@ -1595,13 +1595,15 @@ body.aics-level-3 .toolbar-label {
     border-radius: 4px;
 }
 
+/* The level banner is a summary surface — standard (primary) text
+   color, per the 2026-07-18 ruling. */
 .step-level-section-header {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
     font-size: 11px;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     cursor: pointer;
     -webkit-user-select: none;
     user-select: none;
@@ -1617,7 +1619,6 @@ body.aics-level-3 .toolbar-label {
 }
 
 .step-level-section-counts {
-    color: var(--text-muted);
     margin-left: auto;
 }
 
@@ -1651,6 +1652,68 @@ body.aics-level-3 .toolbar-label {
     padding-left: 22px;
     font-size: 10px;
     color: var(--text-muted);
+}
+
+/* The ⓘ modal's parenthetical spelling each mark out. */
+.step-level-requirement-meaning {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* --- Optional step Description block --- */
+
+.step-description-block {
+    margin: 4px 0;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 4px;
+}
+
+.step-description-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 11px;
+    color: var(--text-primary);
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.step-description-body {
+    padding: 2px 8px 6px;
+    border-top: 1px solid
+        var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.step-description-text {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    cursor: text;
+    white-space: pre-wrap;
+}
+
+.step-description-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.step-description-input {
+    width: 100%;
+    font-size: 11px;
+    line-height: 1.5;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 6px;
+    resize: vertical;
+}
+
+.step-description-actions {
+    padding-top: 4px;
+    text-align: right;
 }
 
 .step-level-verify {
@@ -1772,8 +1835,12 @@ body.aics-level-3 .toolbar-label {
     color: #e84040;
 }
 
+/* flex-wrap is load-bearing: with flex-end justification, a nowrap
+   row wider than the section body overflows out the LEFT edge and
+   paints across the panel; wrapping stacks the buttons instead. */
 .plot-standard-button-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     padding: 4px 0;
     justify-content: flex-end;
