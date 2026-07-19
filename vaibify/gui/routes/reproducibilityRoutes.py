@@ -29,6 +29,7 @@ import time
 from fastapi import HTTPException
 
 from ..actionCatalog import fnAgentAction
+from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import ffilesForWorkflow
 from ...reproducibility.repoFiles import (
@@ -166,7 +167,7 @@ def _fnRegisterVerify(app, dictCtx):
                 "verification; open the AICS tab to see gaps.",
             )
         return _fdictKickOffVerification(
-            sContainerId, filesRepo, dictWorkflow,
+            sContainerId, filesRepo, dictWorkflow, dictCtx["docker"],
         )
 
 
@@ -183,7 +184,9 @@ def _fnRefuseIfTaskInFlight(sContainerId):
         )
 
 
-def _fdictKickOffVerification(sContainerId, filesRepo, dictWorkflow):
+def _fdictKickOffVerification(
+    sContainerId, filesRepo, dictWorkflow, connectionDocker,
+):
     """Snapshot manifest, schedule the worker, and return the handle."""
     sManifestDigest = fsCurrentManifestDigest(filesRepo)
     dictStatus = {
@@ -193,6 +196,7 @@ def _fdictKickOffVerification(sContainerId, filesRepo, dictWorkflow):
     }
     coroutineWorker = _fnRunVerificationWorker(
         sContainerId, filesRepo, sManifestDigest, dictWorkflow,
+        connectionDocker,
     )
     taskWorker = asyncio.create_task(coroutineWorker)
     _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus)
@@ -225,6 +229,7 @@ def _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus):
 
 async def _fnRunVerificationWorker(
     sContainerId, filesRepo, sManifestDigest, dictWorkflow,
+    connectionDocker,
 ):
     """Run the rebuild in a worker thread and persist the attestation.
 
@@ -254,12 +259,35 @@ async def _fnRunVerificationWorker(
             "sRunLogPath": "",
         }
     fDuration = time.monotonic() - fStarted
+    dictAiProvenance = await _fdictCaptureProvenanceOrNone(
+        dictWorkflow, filesRepo, sContainerId, connectionDocker,
+    )
     _fnPersistAttestation(
         filesRepo, sManifestDigest, dictResult, fDuration,
+        dictAiProvenance,
     )
     dictStatus["sPhase"] = (
         "passed" if dictResult.get("bPassed") else "failed"
     )
+
+
+async def _fdictCaptureProvenanceOrNone(
+    dictWorkflow, filesRepo, sContainerId, connectionDocker,
+):
+    """Capture the Replay-axis stamp; ``None`` records capture failure.
+
+    A stamp that cannot be captured must never block the attestation
+    write — ``dictAiProvenance: None`` in the record honestly says "no
+    capture was possible", which the dashboard surfaces as a gap.
+    """
+    try:
+        return await asyncio.to_thread(
+            fdictCaptureAiProvenanceStamp,
+            dictWorkflow, filesRepo, sContainerId, connectionDocker,
+        )
+    except Exception as exc:  # noqa: BLE001 — recorded as None, not raised
+        logger.error("AI-provenance capture failed: %s", exc)
+        return None
 
 
 def _fdictRunReproductionSync(filesRepo, dictWorkflow):
@@ -344,6 +372,7 @@ def _fsResolveImageDigest(filesRepo):
 
 def _fnPersistAttestation(
     filesRepo, sManifestDigest, dictResult, fDuration,
+    dictAiProvenance=None,
 ):
     """Write the attestation file and update the in-flight status dict."""
     sStatus = S_STATUS_PASSED if dictResult["bPassed"] else S_STATUS_FAILED
@@ -356,6 +385,7 @@ def _fnPersistAttestation(
         iOutputHashesTotal=dictResult["iOutputHashesTotal"],
         listDivergedHashes=dictResult["listDivergedHashes"],
         sRunLogPath=dictResult.get("sRunLogPath", ""),
+        dictAiProvenance=dictAiProvenance,
     )
     try:
         fnWriteAttestation(filesRepo, dictAttestation)

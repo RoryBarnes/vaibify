@@ -1622,9 +1622,13 @@ class TestPollLevelStatePayload:
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
             "bOverleafBound", "bArxivConfigured",
+            "dictAiProvenance", "bAiModelsDeclared",
+            "bProjectContextFileExists",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None
+        assert dictDetail["dictAiProvenance"] is None
+        assert dictDetail["bAiModelsDeclared"] is False
         assert set(dictDetail["dictRemoteSyncs"].keys()) == {
             "github", "zenodo", "overleaf", "arxiv",
         }

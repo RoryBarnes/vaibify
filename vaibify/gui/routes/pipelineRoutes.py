@@ -650,6 +650,9 @@ async def _fdictFetchOutputStatus(
         _ffilesFetchPollSnapshot, dictCtx, sContainerId, dictWorkflow,
         dictModTimes,
     )
+    await _fnMaintainAiProvenanceStamp(
+        dictCtx, sContainerId, dictWorkflow, filesPoll,
+    )
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
@@ -837,6 +840,77 @@ def _flistRunPollSideEffects(
     if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)
     return listInvalidated
+
+
+async def _fnMaintainAiProvenanceStamp(
+    dictCtx, sContainerId, dictWorkflow, filesPoll,
+):
+    """Keep ``.vaibify/ai_provenance.json`` machine-written and current.
+
+    The staleness check is exec-free (it reads this poll's snapshot);
+    the rewrite — which costs container execs — runs only when the
+    stamp is missing or drifted from the declaration, so a hand-edited
+    stamp does not survive the next poll. Failures are logged, never
+    raised: a broken stamp must not take down polling.
+    """
+    from vaibify.reproducibility.levelGates import (
+        fbWorkflowAiDeclarationAttested,
+    )
+    from vaibify.reproducibility.aiProvenanceStamp import (
+        fbStampMatchesDeclaration,
+    )
+    if not dictWorkflow.get("sProjectRepoPath"):
+        return
+    if not fbWorkflowAiDeclarationAttested(dictWorkflow):
+        return
+    dictStamp = _fdictReadStampFromSnapshot(filesPoll)
+    if fbStampMatchesDeclaration(dictStamp, dictWorkflow):
+        return
+    try:
+        await asyncio.to_thread(
+            _fnRewriteAiProvenanceStamp, dictCtx, sContainerId,
+            dictWorkflow,
+        )
+    except Exception as exc:  # noqa: BLE001 — poll must survive
+        logger.warning(
+            "AI-provenance stamp rewrite failed for %s: %s",
+            sContainerId, exc,
+        )
+
+
+def _fdictReadStampFromSnapshot(filesPoll):
+    """Parse the stamp from the poll snapshot; ``None`` when unreadable."""
+    import json as jsonModule
+    from vaibify.reproducibility.aiProvenanceStamp import (
+        fsStampRelativePath,
+    )
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    filesRepo = ffilesEnsureRepoFiles(filesPoll)
+    sRelPath = fsStampRelativePath()
+    if not filesRepo.fbIsFile(sRelPath):
+        return None
+    try:
+        dictStamp = jsonModule.loads(filesRepo.fsReadText(sRelPath))
+    except (OSError, ValueError):
+        return None
+    return dictStamp if isinstance(dictStamp, dict) else None
+
+
+def _fnRewriteAiProvenanceStamp(dictCtx, sContainerId, dictWorkflow):
+    """Capture live provenance facts and rewrite the stamp file."""
+    from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
+    from ..routeContext import ffilesForWorkflow
+    from vaibify.reproducibility.aiProvenanceStamp import (
+        fnWriteAiProvenanceStamp,
+    )
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    dictStamp = fdictCaptureAiProvenanceStamp(
+        dictWorkflow, filesRepo, sContainerId, dictCtx["docker"],
+    )
+    fnWriteAiProvenanceStamp(filesRepo, dictStamp)
+    logger.info(
+        "AI-provenance stamp rewritten for container=%s", sContainerId,
+    )
 
 
 def _fdictComputeAllPerStepMtimes(
@@ -1392,16 +1466,21 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "bAiDeclarationAttested": bool,
          "bRebuildAttestationCurrent": bool,
          "bOverleafBound": bool,
-         "bArxivConfigured": bool}
+         "bArxivConfigured": bool,
+         "dictAiProvenance": declared block or None,
+         "bAiModelsDeclared": bool,
+         "bProjectContextFileExists": bool}
 
-    The four booleans let the Project-block requirement rows render
-    AI-declaration, rebuild-attestation, Overleaf-applicability, and
-    arXiv-tracking status from this same payload; all are exec-free.
+    The booleans let the Project-block requirement rows render
+    AI-declaration, rebuild-attestation, Overleaf-applicability,
+    arXiv-tracking, and Replay-axis status from this same payload;
+    all are exec-free (the context-file existence check reads the
+    already-fetched snapshot).
     """
     from vaibify.reproducibility.repoFiles import (
         ffilesEnsureRepoFiles, fsRepoRootOf,
     )
-    from vaibify.reproducibility import levelGates
+    from vaibify.reproducibility import levelGates, replayGate
     from vaibify.reproducibility.l3Attestation import (
         fbL3AttestationCurrent,
     )
@@ -1437,6 +1516,14 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
             levelGates.fbWorkflowHasOverleafBinding(dictWorkflow),
         "bArxivConfigured":
             levelGates.fbWorkflowHasArxivConnection(dictWorkflow),
+        "dictAiProvenance":
+            (dictWorkflow or {}).get("dictAiProvenance") or None,
+        "bAiModelsDeclared":
+            replayGate.fbWorkflowDeclaresAiModels(dictWorkflow),
+        "bProjectContextFileExists": (
+            filesRepo.fbIsFile(".vaibify/AGENTS.md") if bHasRepo
+            else False
+        ),
     }
 
 

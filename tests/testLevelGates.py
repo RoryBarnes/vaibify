@@ -96,6 +96,14 @@ def _fdictBuildLevel2ReadyWorkflow():
                 "sDoi": "10.1000/example",
             },
         },
+        "dictAiProvenance": {
+            "listDeclaredModels": [{
+                "sVendor": "ExampleVendor",
+                "sModelId": "example-model-1",
+                "sUseStartDate": "2026-01-01",
+                "sUseEndDate": "2026-02-01",
+            }],
+        },
     }
 
 
@@ -352,9 +360,13 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bZenodoFullySynced",
         "bArxivFullySynced",
         "bAiDeclarationAttested",
+        "bAiModelsDeclared",
+        "bProjectContextFileExists",
         "bAtLeastLevel2",
     }
     assert dictGaps["bAiDeclarationAttested"] is True
+    assert dictGaps["bAiModelsDeclared"] is True
+    assert dictGaps["bProjectContextFileExists"] is False
     assert dictGaps["bGithubFullySynced"] is False
     assert dictGaps["bArxivFullySynced"] is True
 

@@ -59,18 +59,29 @@ __all__ = [
 ]
 
 
-I_SCHEMA_VERSION = 1
+I_SCHEMA_VERSION = 2
 S_ATTESTATION_FILENAME = "l3_attestation.json"
 S_ATTESTATION_HISTORY_DIR = "l3_attestations"
 S_STATUS_PASSED = "passed"
 S_STATUS_FAILED = "failed"
 _S_MANIFEST_FILENAME = "MANIFEST.sha256"
 
+
+def _fdictMigrateAttestationV1ToV2(dictPayload):
+    """Bring a v1 record to v2: AI provenance was not captured then."""
+    dictMigrated = dict(dictPayload)
+    dictMigrated["iSchemaVersion"] = 2
+    dictMigrated["dictAiProvenance"] = None
+    return dictMigrated
+
+
 # Forward-migration chain for older attestation records. Each entry is
 # (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
-# v=iFromVersion record into v=iFromVersion+1 form. Empty at v1; future
-# L4 / L5 work appends one tuple each. See module docstring.
-_LIST_ATTESTATION_MIGRATORS = []
+# v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L5 work
+# appends one tuple each. See module docstring.
+_LIST_ATTESTATION_MIGRATORS = [
+    (1, _fdictMigrateAttestationV1ToV2),
+]
 
 
 def fsCurrentManifestDigest(filesRepo):
@@ -159,14 +170,17 @@ def fbL3AttestationCurrent(filesRepo):
 def fdictBuildAttestation(
     sStatus, sManifestDigest, sImageDigest,
     fDurationSeconds, iOutputHashesMatched, iOutputHashesTotal,
-    listDivergedHashes=None, sRunLogPath="",
+    listDivergedHashes=None, sRunLogPath="", dictAiProvenance=None,
 ):
     """Return a fully-populated attestation dict (no file IO).
 
     The shape is fixed by the schema documented in the AICS plan;
     extracting it as a pure builder keeps the writer thin and lets
     tests assert payload contents without round-tripping through
-    disk.
+    disk. ``dictAiProvenance`` is the machine-captured Replay-axis
+    stamp (:mod:`vaibify.reproducibility.aiProvenanceStamp`), rebuilt
+    fresh at attestation time; ``None`` records that no capture was
+    possible, never that provenance was clean.
     """
     return {
         "iSchemaVersion": I_SCHEMA_VERSION,
@@ -179,6 +193,7 @@ def fdictBuildAttestation(
         "iOutputHashesTotal": int(iOutputHashesTotal),
         "listDivergedHashes": list(listDivergedHashes or []),
         "sRunLogPath": sRunLogPath,
+        "dictAiProvenance": dictAiProvenance,
     }
 
 

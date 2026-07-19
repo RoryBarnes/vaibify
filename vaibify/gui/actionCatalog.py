@@ -589,6 +589,26 @@ LIST_AGENT_ACTIONS = [
                      "the bAcceptBlasVariance waiver passes the L3 "
                      "determinism gate and must remain a researcher "
                      "decision."},
+    {"sName": "declare-ai-model", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/ai-models/declare",
+     "bAgentSafe": True,
+     "sDescription": "Declare (or update) one AI model used on this "
+                     "project for the Replay-axis provenance record. "
+                     "Args: {sVendor, sModelId, sUseStartDate, "
+                     "sUseEndDate (YYYY-MM-DD)}; open-weights models "
+                     "additionally {bOpenWeights: true, "
+                     "sWeightsSource, sWeightsRevisionHash}. Declare "
+                     "only facts the researcher confirmed — never "
+                     "invent date ranges or weights hashes."},
+    {"sName": "remove-ai-model", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/ai-models/remove",
+     "bAgentSafe": False,
+     "sDescription": "Remove one declared AI model by {sVendor, "
+                     "sModelId}. User-only because deleting a "
+                     "declaration erases provenance and can drop the "
+                     "project below Level 2."},
     {"sName": "run-falsification", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",

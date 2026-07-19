@@ -30,6 +30,10 @@ from pathlib import Path
 import click
 
 from vaibify.reproducibility import manifestWriter
+from vaibify.reproducibility.aiProvenanceStamp import (
+    fdictBuildAiProvenanceStamp,
+)
+from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 from vaibify.reproducibility.l3Attestation import (
     S_STATUS_FAILED,
     S_STATUS_PASSED,
@@ -170,6 +174,7 @@ def _fdictAggregateAllWorkflows(sProjectRepo):
         return None
     listAllSteps = []
     dictDeterminismMerged = {}
+    dictAiProvenanceMerged = {}
     for pathFile in sorted(pathWorkflows.glob("*.json")):
         dictWorkflow = _fdictLoadWorkflowFile(pathFile)
         if dictWorkflow is None:
@@ -178,11 +183,16 @@ def _fdictAggregateAllWorkflows(sProjectRepo):
         dictExtra = dictWorkflow.get("dictDeterminism") or {}
         if dictExtra and not dictDeterminismMerged:
             dictDeterminismMerged = dict(dictExtra)
+        dictProvenance = dictWorkflow.get("dictAiProvenance") or {}
+        if dictProvenance and not dictAiProvenanceMerged:
+            dictAiProvenanceMerged = dict(dictProvenance)
     if not listAllSteps and not dictDeterminismMerged:
         return None
     dictResult = {"listSteps": listAllSteps}
     if dictDeterminismMerged:
         dictResult["dictDeterminism"] = dictDeterminismMerged
+    if dictAiProvenanceMerged:
+        dictResult["dictAiProvenance"] = dictAiProvenanceMerged
     return dictResult
 
 
@@ -503,6 +513,24 @@ def _fdictBuildRerunAttestation(sProjectRepo, bRerunPassed, fDuration):
             "rerun pipeline exited non-zero"
         ],
         sRunLogPath="",
+        dictAiProvenance=_fdictBuildCliProvenanceStamp(sProjectRepo),
+    )
+
+
+def _fdictBuildCliProvenanceStamp(sProjectRepo):
+    """Build the Replay-axis stamp with the facts the CLI can capture.
+
+    The CLI has no hub or container context, so the workspace-prompt
+    hash is empty and the isolation probe is ``None`` — honestly
+    recorded as "not captured", never guessed.
+    """
+    dictWorkflow = _fdictAggregateAllWorkflows(sProjectRepo) or {}
+    return fdictBuildAiProvenanceStamp(
+        dictWorkflow,
+        ffilesEnsureRepoFiles(sProjectRepo),
+        sWorkspacePromptSha256="",
+        bNetworkIsolatedAtCapture=None,
+        sHubInvokerModelId="",
     )
 
 

@@ -2650,7 +2650,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +11 (2026-07-16): input-data files join the poll — their paths in
     # the stat batch and dictMaxInputMtimeByStep on the wire. Cohesive
     # with the mtime groupings already assembled here.
-    "routes/pipelineRoutes.py": 2257,
+    # +87 (2026-07-18): the Replay-axis lane — three exec-free envelope
+    # keys (dictAiProvenance / bAiModelsDeclared /
+    # bProjectContextFileExists) and the ai_provenance.json stamp
+    # maintenance (_fnMaintainAiProvenanceStamp: snapshot-based
+    # staleness check, rewrite only on drift) so the stamp stays
+    # machine-written. Cohesive with the poll side-effects it extends.
+    "routes/pipelineRoutes.py": 2344,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2770,7 +2776,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +26 (2026-07-18): fsDeriveStepDirectory — the slug contract's
     # enforcement at step creation (directory basename derived from
     # the name), beside fdictStepFromRequest which it serves.
-    "pipelineServer.py": 2019,
+    # +1 (2026-07-18): replayRoutes registration line in
+    # _fnRegisterAllRoutes (Replay-axis AI-model declarations).
+    "pipelineServer.py": 2020,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

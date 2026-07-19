@@ -127,6 +127,14 @@ def _fdictBuildLevel3Workflow():
         "dictDeterminism": {"bAcceptBlasVariance": True},
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
+        "dictAiProvenance": {
+            "listDeclaredModels": [{
+                "sVendor": "ExampleVendor",
+                "sModelId": "example-model-1",
+                "sUseStartDate": "2026-01-01",
+                "sUseEndDate": "2026-02-01",
+            }],
+        },
     }
 
 
