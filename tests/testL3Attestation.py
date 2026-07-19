@@ -121,3 +121,53 @@ def test_invalidate_removes_top_but_keeps_history(tmp_path):
 
 def test_current_manifest_digest_handles_missing_manifest(tmp_path):
     assert fsCurrentManifestDigest(str(tmp_path)) == ""
+
+
+# ------------------------------------------------------------------
+# Schema v2 (AI provenance) + migration chain
+# ------------------------------------------------------------------
+
+
+def test_fresh_attestation_carries_ai_provenance_key():
+    dictStamp = {"listDeclaredModels": [], "sCapturedAtUtc": "t"}
+    dictAtt = fdictBuildAttestation(
+        S_STATUS_PASSED, "sha256:abc", "", 1.0, 1, 1, [], "",
+        dictAiProvenance=dictStamp,
+    )
+    assert dictAtt["iSchemaVersion"] == 2
+    assert dictAtt["dictAiProvenance"] == dictStamp
+
+
+def test_v1_attestation_migrates_to_v2_with_null_provenance(tmp_path):
+    pathVaibify = tmp_path / ".vaibify"
+    pathVaibify.mkdir()
+    dictV1 = {
+        "iSchemaVersion": 1,
+        "sStatus": S_STATUS_PASSED,
+        "sManifestDigestAtAttestation": "sha256:abc",
+        "sImageDigest": "",
+        "sAttestedAtUtc": "2026-01-01T00:00:00Z",
+        "fDurationSeconds": 1.0,
+        "iOutputHashesMatched": 1,
+        "iOutputHashesTotal": 1,
+        "listDivergedHashes": [],
+        "sRunLogPath": "",
+    }
+    (pathVaibify / S_ATTESTATION_FILENAME).write_text(
+        json.dumps(dictV1),
+    )
+    dictRead = fdictReadAttestation(str(tmp_path))
+    assert dictRead["iSchemaVersion"] == 2
+    assert dictRead["dictAiProvenance"] is None
+    assert dictRead["sStatus"] == S_STATUS_PASSED
+
+
+def test_unknown_future_schema_version_passes_through(tmp_path):
+    pathVaibify = tmp_path / ".vaibify"
+    pathVaibify.mkdir()
+    dictFuture = {"iSchemaVersion": 99, "sStatus": "passed"}
+    (pathVaibify / S_ATTESTATION_FILENAME).write_text(
+        json.dumps(dictFuture),
+    )
+    dictRead = fdictReadAttestation(str(tmp_path))
+    assert dictRead["iSchemaVersion"] == 99

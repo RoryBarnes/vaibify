@@ -2682,6 +2682,16 @@ const PipeleyenApp = (function () {
             _dictUiState.setExpandedRequirementRows, sReqKey);
     }
 
+    function fnExpandRequirementRow(sGroupKey, sReqKey) {
+        // Idempotent open (never toggle) for AICS-tab deep links:
+        // .add() into the shared Sets in place — reassigning them
+        // would detach the render context (the shared-Set trap).
+        _dictUiState.setExpandedRequirementGroups.add(sGroupKey);
+        _dictUiState.setExpandedRequirementRows.add(sReqKey);
+        _dictUiState.bProjectBlockCollapsed = false;
+        fnRenderStepList();
+    }
+
     var _DICT_PROJECT_ACTIONS = {
         "capture-binary": {
             sPath: "/binaries/capture",
@@ -2815,6 +2825,23 @@ const PipeleyenApp = (function () {
                     "declaration, so you will need to declare again.",
             },
             sToast: "Reproducibility rules deleted.",
+        },
+        "remove-ai-model": {
+            sPath: "/ai-models/remove",
+            fdictBody: function (sArg) {
+                try {
+                    return JSON.parse(sArg);
+                } catch (error) {
+                    return {};
+                }
+            },
+            dictConfirm: {
+                sTitle: "Remove model declaration",
+                sMessage: "Remove this AI model from the provenance " +
+                    "declaration? An undeclared model drops the " +
+                    "project below Level 2 until re-declared.",
+            },
+            sToast: "Model declaration removed.",
         },
     };
 
@@ -4536,6 +4563,7 @@ const PipeleyenApp = (function () {
         fnToggleBinaryAddForm: fnToggleBinaryAddForm,
         fnToggleRequirementGroup: fnToggleRequirementGroup,
         fnToggleRequirementRow: fnToggleRequirementRow,
+        fnExpandRequirementRow: fnExpandRequirementRow,
         fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnToggleNoInputData: fnToggleNoInputData,

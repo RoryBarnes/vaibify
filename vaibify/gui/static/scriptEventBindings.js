@@ -333,6 +333,12 @@ var PipeleyenEventBindings = (function () {
         VaibifyArxivConfig.fnOpen();
     }
 
+    function _fnHandleOpenAiModelConfig(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyAiModelConfig.fnOpen();
+    }
+
     function _fnHandleVerifyRemote(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -449,6 +455,7 @@ var PipeleyenEventBindings = (function () {
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
         ".wf-action-btn": _fnHandleProjectAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
+        ".wf-open-ai-model-config": _fnHandleOpenAiModelConfig,
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,
@@ -716,6 +723,15 @@ var PipeleyenEventBindings = (function () {
             },
             btnArxivPathMapAdd: function () {
                 VaibifyArxivConfig.fnAddPathMapRow();
+            },
+            btnAiModelConfigCancel: function () {
+                VaibifyAiModelConfig.fnClose();
+            },
+            btnAiModelConfigSave: function () {
+                VaibifyAiModelConfig.fnSave();
+            },
+            checkAiModelOpenWeights: function () {
+                VaibifyAiModelConfig.fnToggleWeightsFields();
             },
             btnGitIdentityCancel: function () {
                 VaibifySyncManager.fnCloseGitIdentityModal();
