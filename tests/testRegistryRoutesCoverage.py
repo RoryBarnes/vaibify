@@ -694,3 +694,84 @@ class TestRegisterNewProject:
             with pytest.raises(HTTPException) as excInfo:
                 _fnRegisterNewProject("/some/dir")
             assert excInfo.value.status_code == 409
+
+
+# ---------------------------------------------------------------
+# flistQueryHostDirectory — the host-file-listing lane
+# (kills the six cosmic-ray mutants on the bIncludeFiles hunk)
+# ---------------------------------------------------------------
+
+
+class TestHostFileListing:
+    """Mutation-killing tests for the import picker's file listing."""
+
+    def _fnSeedMixedDirectory(self, tmp_path):
+        (tmp_path / "subdirectory").mkdir()
+        (tmp_path / "contextNotes.md").write_text("hello\n")
+        os.symlink(
+            str(tmp_path / "contextNotes.md"),
+            str(tmp_path / "linkToFile.md"),
+        )
+
+    def test_default_listing_excludes_files(self, tmp_path):
+        """Kills bIncludeFiles=False -> True (route AND function
+        defaults) and the and->or in the elif under a False flag: the
+        directory browser must never grow file rows without opt-in."""
+        from vaibify.gui.registryRoutes import flistQueryHostDirectory
+        self._fnSeedMixedDirectory(tmp_path)
+        listEntries = flistQueryHostDirectory(str(tmp_path))
+        assert [d["sName"] for d in listEntries] == ["subdirectory"]
+
+    def test_file_listing_includes_regular_files_only(self, tmp_path):
+        """Kills follow_symlinks=False -> True and and->or under a
+        True flag: a symlinked file must NOT be listed (the import
+        jail resolves realpath later, but the picker itself must not
+        offer symlinks), while the regular file and directory are."""
+        from vaibify.gui.registryRoutes import flistQueryHostDirectory
+        self._fnSeedMixedDirectory(tmp_path)
+        listEntries = flistQueryHostDirectory(
+            str(tmp_path), bIncludeFiles=True,
+        )
+        assert [d["sName"] for d in listEntries] == [
+            "contextNotes.md", "subdirectory",
+        ]
+
+    def test_file_entry_shape_is_honest(self, tmp_path):
+        """Kills bIsDirectory False -> True (picker would navigate
+        into a file) and bHasConfig False -> True (file would render
+        as a vaibify project)."""
+        from vaibify.gui.registryRoutes import flistQueryHostDirectory
+        self._fnSeedMixedDirectory(tmp_path)
+        dictFile = [
+            dictEntry for dictEntry in flistQueryHostDirectory(
+                str(tmp_path), bIncludeFiles=True,
+            ) if dictEntry["sName"] == "contextNotes.md"
+        ][0]
+        assert dictFile["bIsDirectory"] is False
+        assert dictFile["bHasConfig"] is False
+        assert dictFile["sPath"] == str(tmp_path / "contextNotes.md")
+
+    def test_route_default_omits_files_over_http(
+        self, tmp_path, monkeypatch,
+    ):
+        """Kills the route-signature default mutant at the HTTP
+        boundary: a request without bIncludeFiles lists directories
+        only, and bIncludeFiles=true opts in."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from vaibify.gui.registryRoutes import _fnRegisterHostDirectories
+        monkeypatch.setenv("HOME", str(tmp_path))
+        self._fnSeedMixedDirectory(tmp_path)
+        app = FastAPI()
+        _fnRegisterHostDirectories(app, {})
+        clientTest = TestClient(app)
+        listDefault = clientTest.get(
+            "/api/host-directories",
+        ).json()["listEntries"]
+        assert [d["sName"] for d in listDefault] == ["subdirectory"]
+        listWithFiles = clientTest.get(
+            "/api/host-directories?bIncludeFiles=true",
+        ).json()["listEntries"]
+        assert [d["sName"] for d in listWithFiles] == [
+            "contextNotes.md", "subdirectory",
+        ]
