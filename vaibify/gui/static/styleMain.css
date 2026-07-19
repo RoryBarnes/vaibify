@@ -4563,6 +4563,16 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     line-height: 1.5;
     margin: 0 0 0 26px;
 }
+.settings-number-input,
+.wizard-resource-limit-row input[type="number"] {
+    width: 130px;
+}
+.wizard-resource-limit-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
 .settings-option-help code {
     background: var(--bg-input);
     padding: 1px 4px;

@@ -2662,7 +2662,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +19 (2026-07-18): repo-root context-file detection
     # (_fbRootContextCandidateDetected + the two poll booleans) for
     # the project-context adopt affordance (concurrent lane).
-    "routes/pipelineRoutes.py": 2372,
+    # +52 (2026-07-18): the Prompt Record envelope summary
+    # (_fdictEnvelopePromptRecord + sReplayAxisState) riding the poll
+    # snapshot (concurrent Replay lane).
+    "routes/pipelineRoutes.py": 2424,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2817,12 +2820,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
-    "registryRoutes.py": 1007,
+    # +72 (2026-07-18): per-container resource limits — the
+    # CPU/memory fields on CreateProjectRequest and
+    # ContainerSettingsRequest, the settings GET/POST threading, the
+    # _fnRequireValidResourceLimits API-boundary guard, and the
+    # _fnUpdateYamlScalarField extraction the bool/number field
+    # writers now share. Cohesive with the settings surface it
+    # extends.
+    "registryRoutes.py": 1079,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
     # cohesive responsibility: the agent-action registry.
-    "actionCatalog.py": 807,
+    # +33 (2026-07-18): the three Prompt Record actions and the
+    # approve-first-capture exclusion (concurrent Replay lane).
+    "actionCatalog.py": 840,
 }
 
 

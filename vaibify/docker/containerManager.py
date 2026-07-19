@@ -85,7 +85,8 @@ def flistBuildRunArgs(config, bDetached=False):
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddEntrypointUser(saRunArgs)
     _fnAddCapabilityDrops(saRunArgs)
-    _fnAddCpuAllocation(saRunArgs)
+    _fnAddCpuAllocation(config, saRunArgs)
+    _fnAddMemoryAllocation(config, saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
     _fnAddCredentialsVolume(config, saRunArgs)
     _fnAddPortForwarding(config, saRunArgs)
@@ -141,10 +142,28 @@ def _fnAddEntrypointUser(saRunArgs):
     saRunArgs.extend(["--user", "0"])
 
 
-def _fnAddCpuAllocation(saRunArgs):
-    """Add CPU limit to run args (total cores minus one)."""
-    iCpuCount = max(1, (os.cpu_count() or 2) - 1)
+def _fnAddCpuAllocation(config, saRunArgs):
+    """Add CPU limit to run args (config cap or total cores minus one).
+
+    ``iCpuLimit`` of zero means "no explicit limit", which keeps the
+    historical default of all host cores minus one. A configured cap
+    is clamped to the host's core count so a config written on a
+    larger machine cannot ask Docker for cores that do not exist.
+    """
+    iHostCores = os.cpu_count() or 2
+    iConfiguredLimit = getattr(config, "iCpuLimit", 0)
+    if iConfiguredLimit > 0:
+        iCpuCount = min(iConfiguredLimit, iHostCores)
+    else:
+        iCpuCount = max(1, iHostCores - 1)
     saRunArgs.extend(["--cpus", str(iCpuCount)])
+
+
+def _fnAddMemoryAllocation(config, saRunArgs):
+    """Add the optional memory cap (0 = unlimited, the default)."""
+    fMemoryGigabytes = getattr(config, "fMemoryLimitGigabytes", 0.0)
+    if fMemoryGigabytes > 0:
+        saRunArgs.extend(["--memory", f"{fMemoryGigabytes:g}g"])
 
 
 def _fnAddVolumeMount(config, saRunArgs):

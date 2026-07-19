@@ -269,6 +269,8 @@ class TestContainerSettings:
         mockConfig = MagicMock()
         mockConfig.bNeverSleep = True
         mockConfig.features.bClaude = False
+        mockConfig.iCpuLimit = 1
+        mockConfig.fMemoryLimitGigabytes = 1.5
         with patch(
             "vaibify.config.projectConfig.fconfigLoadFromFile",
             return_value=mockConfig,
@@ -281,6 +283,8 @@ class TestContainerSettings:
         assert dictBody["bNeverSleep"] is True
         assert dictBody["bClaudeInstalled"] is False
         assert "bClaudeAutoUpdate" not in dictBody
+        assert dictBody["iCpuLimit"] == 1
+        assert dictBody["fMemoryLimitGigabytes"] == 1.5
 
     def test_post_settings(
         self, fixtureSettingsClient, tmp_path,
@@ -303,6 +307,51 @@ class TestContainerSettings:
         assert response.json()["bSuccess"] is True
         mockUpdate.assert_called_once()
 
+    def test_post_settings_resource_limits(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        """Limits land in vaibify.yml and require a restart."""
+        sProjectDir = _fnWriteMinimalConfig(
+            tmp_path, "settings-proj3",
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/settings-proj3/settings",
+            json={"iCpuLimit": 1, "fMemoryLimitGigabytes": 1.0},
+        )
+        assert response.status_code == 200
+        assert response.json()["bRestartRequired"] is True
+        with open(
+            os.path.join(sProjectDir, "vaibify.yml"),
+        ) as fileHandle:
+            sContent = fileHandle.read()
+        assert "cpuLimit: 1\n" in sContent
+        assert "memoryLimitGigabytes: 1\n" in sContent
+
+    def test_post_settings_rejects_bad_limits(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteMinimalConfig(
+            tmp_path, "settings-proj4",
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        responseCpu = fixtureSettingsClient.post(
+            "/api/containers/settings-proj4/settings",
+            json={"iCpuLimit": -2},
+        )
+        assert responseCpu.status_code == 400
+        responseMemory = fixtureSettingsClient.post(
+            "/api/containers/settings-proj4/settings",
+            json={"fMemoryLimitGigabytes": 0.1},
+        )
+        assert responseMemory.status_code == 400
+
     def test_get_settings_not_found(self, fixtureSettingsClient):
         response = fixtureSettingsClient.get(
             "/api/containers/ghost/settings",
@@ -315,6 +364,28 @@ class TestContainerSettings:
             json={"bNeverSleep": False},
         )
         assert response.status_code == 404
+
+
+class TestCreateProjectResourceLimits:
+    def test_limits_attach_to_yaml_only_when_set(self):
+        from vaibify.gui.registryRoutes import (
+            CreateProjectRequest, _fdictBuildYamlFromRequest,
+        )
+        requestDefault = CreateProjectRequest(
+            sDirectory="/home/u/p", sProjectName="p",
+            sTemplateName="sandbox",
+        )
+        dictDefault = _fdictBuildYamlFromRequest(requestDefault)
+        assert "cpuLimit" not in dictDefault
+        assert "memoryLimitGigabytes" not in dictDefault
+        requestLimited = CreateProjectRequest(
+            sDirectory="/home/u/p", sProjectName="p",
+            sTemplateName="sandbox",
+            iCpuLimit=1, fMemoryLimitGigabytes=1.0,
+        )
+        dictLimited = _fdictBuildYamlFromRequest(requestLimited)
+        assert dictLimited["cpuLimit"] == 1
+        assert dictLimited["memoryLimitGigabytes"] == 1.0
 
 
 def _fnWriteClaudeConfig(tmp_path, sProjectName, bAutoUpdate):

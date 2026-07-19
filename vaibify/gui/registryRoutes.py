@@ -47,11 +47,15 @@ class CreateProjectRequest(BaseModel):
     sContainerUser: str = "researcher"
     sBaseImage: str = "ubuntu:24.04"
     sWorkspaceRoot: str = "/workspace"
+    iCpuLimit: int = 0
+    fMemoryLimitGigabytes: float = 0.0
 
 
 class ContainerSettingsRequest(BaseModel):
     bNeverSleep: Optional[bool] = None
     bClaudeAutoUpdate: Optional[bool] = None
+    iCpuLimit: Optional[int] = None
+    fMemoryLimitGigabytes: Optional[float] = None
 
 
 class CreateHostDirectoryRequest(BaseModel):
@@ -465,6 +469,9 @@ def _fnRegisterContainerSettings(app, dictCtx):
         dictResult = {
             "bNeverSleep": configProject.bNeverSleep,
             "bClaudeInstalled": configProject.features.bClaude,
+            "iCpuLimit": configProject.iCpuLimit,
+            "fMemoryLimitGigabytes":
+                configProject.fMemoryLimitGigabytes,
         }
         if configProject.features.bClaude:
             dictResult["bClaudeAutoUpdate"] = (
@@ -477,6 +484,9 @@ def _fnRegisterContainerSettings(app, dictCtx):
         sName: str, request: ContainerSettingsRequest
     ):
         dictProject = _fdictRequireProject(sName)
+        _fnRequireValidResourceLimits(
+            request.iCpuLimit, request.fMemoryLimitGigabytes,
+        )
         bRestartRequired = False
         if request.bNeverSleep is not None:
             _fnUpdateYamlBoolField(
@@ -488,6 +498,18 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 dictProject["sConfigPath"],
                 request.bClaudeAutoUpdate,
             )
+        if request.iCpuLimit is not None:
+            _fnUpdateYamlNumberField(
+                dictProject["sConfigPath"], "cpuLimit",
+                request.iCpuLimit,
+            )
+            bRestartRequired = True
+        if request.fMemoryLimitGigabytes is not None:
+            _fnUpdateYamlNumberField(
+                dictProject["sConfigPath"], "memoryLimitGigabytes",
+                request.fMemoryLimitGigabytes,
+            )
+            bRestartRequired = True
         return {
             "bSuccess": True,
             "bRestartRequired": bRestartRequired,
@@ -527,23 +549,59 @@ def _fnUpdateFeaturesBoolField(sConfigPath, sKey, bValue):
 
 def _fnUpdateYamlBoolField(sConfigPath, sKey, bValue):
     """Update or append a top-level boolean key in a YAML file."""
+    _fnUpdateYamlScalarField(
+        sConfigPath, sKey, "true" if bValue else "false",
+    )
+
+
+def _fnUpdateYamlNumberField(sConfigPath, sKey, numberValue):
+    """Update or append a top-level numeric key in a YAML file."""
+    _fnUpdateYamlScalarField(sConfigPath, sKey, f"{numberValue:g}")
+
+
+def _fnUpdateYamlScalarField(sConfigPath, sKey, sRenderedValue):
+    """Rewrite one top-level ``key: value`` line, preserving the rest.
+
+    Line-based on purpose: a YAML round-trip would drop the comments
+    and ordering of a hand-edited vaibify.yml.
+    """
     with open(sConfigPath, "r") as fileHandle:
         listLines = fileHandle.readlines()
-    sValue = "true" if bValue else "false"
     bFound = False
     for iIndex, sLine in enumerate(listLines):
         if sLine.startswith(f"{sKey}:") or sLine.startswith(
             f"{sKey} :"
         ):
-            listLines[iIndex] = f"{sKey}: {sValue}\n"
+            listLines[iIndex] = f"{sKey}: {sRenderedValue}\n"
             bFound = True
             break
     if not bFound:
         if listLines and not listLines[-1].endswith("\n"):
             listLines[-1] += "\n"
-        listLines.append(f"{sKey}: {sValue}\n")
+        listLines.append(f"{sKey}: {sRenderedValue}\n")
     with open(sConfigPath, "w") as fileHandle:
         fileHandle.writelines(listLines)
+
+
+def _fnRequireValidResourceLimits(iCpuLimit, fMemoryLimitGigabytes):
+    """400 when a requested CPU or memory cap is out of range.
+
+    Mirrors projectConfig._fbValidateResourceLimits so a bad value is
+    rejected at the API boundary instead of being written to
+    vaibify.yml and failing every subsequent config load.
+    """
+    if iCpuLimit is not None and iCpuLimit < 0:
+        raise HTTPException(
+            400, "iCpuLimit must be 0 (no limit) or a positive "
+            "integer",
+        )
+    if fMemoryLimitGigabytes is None:
+        return
+    if fMemoryLimitGigabytes != 0 and fMemoryLimitGigabytes < 0.25:
+        raise HTTPException(
+            400, "fMemoryLimitGigabytes must be 0 (no limit) or at "
+            "least 0.25",
+        )
 
 
 def _fdictRequireProject(sName):
@@ -852,6 +910,9 @@ def _fnRegisterCreateProject(app, dictCtx):
     @app.post("/api/projects/create")
     async def fnCreateProject(request: CreateProjectRequest):
         _fnValidateCreateDirectory(request.sDirectory)
+        _fnRequireValidResourceLimits(
+            request.iCpuLimit, request.fMemoryLimitGigabytes,
+        )
         _fnRejectDuplicateProjectName(request.sProjectName)
         _fnScaffoldProject(request)
         _fnWriteProjectConfig(request)
@@ -942,7 +1003,18 @@ def _fdictBuildYamlFromRequest(request):
         "networkIsolation": request.bNetworkIsolation,
     }
     _fnAttachOptionalPackages(dictYaml, request)
+    _fnAttachResourceLimits(dictYaml, request)
     return dictYaml
+
+
+def _fnAttachResourceLimits(dictYaml, request):
+    """Attach the CPU and memory caps when the wizard set them."""
+    if request.iCpuLimit > 0:
+        dictYaml["cpuLimit"] = request.iCpuLimit
+    if request.fMemoryLimitGigabytes > 0:
+        dictYaml["memoryLimitGigabytes"] = (
+            request.fMemoryLimitGigabytes
+        )
 
 
 def _fnAttachOptionalPackages(dictYaml, request):

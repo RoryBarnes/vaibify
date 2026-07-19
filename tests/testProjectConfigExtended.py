@@ -96,6 +96,35 @@ def test_fbValidateConfig_bad_features():
     assert fbValidateConfig(dictConfig) is False
 
 
+def test_fbValidateConfig_resource_limits():
+    dictConfig = fdictLoadDefaults()
+    dictConfig["projectName"] = "test"
+    dictConfig["cpuLimit"] = 1
+    dictConfig["memoryLimitGigabytes"] = 1.0
+    assert fbValidateConfig(dictConfig) is True
+    dictConfig["cpuLimit"] = -1
+    assert fbValidateConfig(dictConfig) is False
+    dictConfig["cpuLimit"] = 1
+    dictConfig["memoryLimitGigabytes"] = 0.1
+    assert fbValidateConfig(dictConfig) is False
+    dictConfig["memoryLimitGigabytes"] = 0
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_fnSaveToFile_roundtrip_resource_limits():
+    config = ProjectConfig(
+        sProjectName="limited",
+        iCpuLimit=1,
+        fMemoryLimitGigabytes=1.5,
+    )
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        fnSaveToFile(config, sPath)
+        configLoaded = fconfigLoadFromFile(sPath)
+    assert configLoaded.iCpuLimit == 1
+    assert configLoaded.fMemoryLimitGigabytes == 1.5
+
+
 def test_fnSaveToFile_roundtrip():
     config = ProjectConfig(sProjectName="roundtrip")
     with tempfile.TemporaryDirectory() as sTmpDir:
