@@ -139,6 +139,11 @@ exercised. Concretely:
   `python -m pytest tests/testArchitecturalInvariants.py -v`
 - After JS changes: exercise the feature in the running GUI. Type
   checking does not validate UI correctness.
+- After editing any `.claude/skills/*/SKILL.md`:
+  `python -m pytest tests/testSkillIntegrity.py -v` (referential
+  integrity), then run the trigger and outcome evaluation harnesses
+  in `tools/` before merging skill changes — see
+  [docs/skillTesting.md](docs/skillTesting.md).
 - Docker-dependent tests (`tests/testContainerBuildIntegration.py`)
   are excluded from routine runs and are the only tests that require
   a live container. They are parametrized via the
@@ -511,3 +516,7 @@ correct approach.
     — recipe for adding a new FastAPI route module.
   - [.claude/skills/add-data-loader/](.claude/skills/add-data-loader/)
     — recipe for adding a new data file-format loader.
+- [docs/skillTesting.md](docs/skillTesting.md) — how skills are
+  tested: referential integrity (`tests/testSkillIntegrity.py`, CI),
+  trigger evaluation (`tools/evaluateSkillTriggers.py`), and A/B
+  outcome evaluation (`tools/evaluateSkillOutcomes.py`).
