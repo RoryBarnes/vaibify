@@ -183,6 +183,20 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Prepare a plot/standard diff payload for one "
                      "figure. Read-only; returns data."},
     # ---- Workflow editing ----
+    {"sName": "create-project", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflows/{sContainerId}/request-creation",
+     "bAgentSafe": True,
+     "sDescription": "Ask the researcher to create a new Project. "
+                     "Creating a project.json is a researcher-only "
+                     "structural decision, so this never creates one "
+                     "directly: it opens the New Project dialog in "
+                     "the researcher's browser (within ~5 s), "
+                     "prefilled from the optional args "
+                     "{sWorkflowName, sRepoDirectory}. The "
+                     "researcher reviews and confirms there; once "
+                     "the project exists, populate it with "
+                     "create-step."},
     {"sName": "create-step", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/create",
@@ -589,6 +603,78 @@ LIST_AGENT_ACTIONS = [
                      "the bAcceptBlasVariance waiver passes the L3 "
                      "determinism gate and must remain a researcher "
                      "decision."},
+    {"sName": "declare-ai-model", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/ai-models/declare",
+     "bAgentSafe": True,
+     "sDescription": "Declare (or update) one AI model used on this "
+                     "project for the Replay-axis provenance record. "
+                     "Args: {sVendor, sModelId, sUseStartDate, "
+                     "sUseEndDate (YYYY-MM-DD)}; open-weights models "
+                     "additionally {bOpenWeights: true, "
+                     "sWeightsSource, sWeightsRevisionHash}. Declare "
+                     "only facts the researcher confirmed — never "
+                     "invent date ranges or weights hashes."},
+    {"sName": "remove-ai-model", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/ai-models/remove",
+     "bAgentSafe": False,
+     "sDescription": "Remove one declared AI model by {sVendor, "
+                     "sModelId}. User-only because deleting a "
+                     "declaration erases provenance and can drop the "
+                     "project below Level 2."},
+    {"sName": "read-project-context", "sCategory": "workflow",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/project-context",
+     "bAgentSafe": True,
+     "sDescription": "Read the project context file "
+                     "(.vaibify/AGENTS.md) — the researcher's "
+                     "standing instructions to the agent. Returns "
+                     "{bExists, sContent}."},
+    {"sName": "update-project-context", "sCategory": "workflow",
+     "sMethod": "PUT",
+     "sPath": "/api/workflow/{sContainerId}/project-context",
+     "bAgentSafe": True,
+     "sDescription": "Write the project context file "
+                     "(.vaibify/AGENTS.md). Args: {sContent}. Use "
+                     "when the researcher asks you to draft or "
+                     "update the project's standing instructions; "
+                     "the file is versioned with the repository, so "
+                     "commit it through the normal canonical flow."},
+    {"sName": "generate-project-context-template",
+     "sCategory": "workflow", "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/project-context/template",
+     "bAgentSafe": True,
+     "sDescription": "Write the starter project-context template to "
+                     ".vaibify/AGENTS.md. Refuses (409) when a "
+                     "context file already exists."},
+    {"sName": "configure-prompt-record", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/configure",
+     "bAgentSafe": False,
+     "sDescription": "Enable or disable the opt-in Prompt Record "
+                     "(sanitized agent transcripts captured into the "
+                     "repository). Args: {bEnabled: bool}. User-only: "
+                     "whether the development dialogue is recorded is "
+                     "the researcher's decision."},
+    {"sName": "capture-prompt-record", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/capture",
+     "bAgentSafe": True,
+     "sDescription": "Run one Prompt Record capture pass: new or "
+                     "grown agent transcripts are sanitized "
+                     "(explicit [REDACTED: …] markers) and landed at "
+                     ".vaibify/promptRecord/. Append-only and "
+                     "sanitized, so agent-safe; refuses (409) when "
+                     "the record is not enabled."},
+    {"sName": "view-prompt-record-status", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/status",
+     "bAgentSafe": True,
+     "sDescription": "Read the Prompt Record state: capture records, "
+                     "coverage intervals (gaps are unmonitored time), "
+                     "hash-chain integrity, and any tampered session "
+                     "files. Read-only."},
     {"sName": "run-falsification", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",
@@ -691,6 +777,20 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # Project-context import reads the HOST filesystem; an
+    # agent-invokable host read would let a compromised in-container
+    # agent exfiltrate home-directory files into a public repository.
+    # Researcher-only, via the dashboard's import picker.
+    ("POST", "/api/workflow/{sContainerId}/project-context/import"),
+    # The Prompt Record review gate exists so a human confirms what
+    # the sanitizer produced before it is treated as publishable; the
+    # agent must never approve publication of its own transcript.
+    ("POST",
+     "/api/workflow/{sContainerId}/prompt-record/"
+     "approve-first-capture"),
+    # The supervised party must never switch its own supervision on
+    # or off; Supervised mode is toggled by the researcher only.
+    ("POST", "/api/workflow/{sContainerId}/supervision/configure"),
     # Control-plane endpoints used by the UI to bootstrap a session;
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),

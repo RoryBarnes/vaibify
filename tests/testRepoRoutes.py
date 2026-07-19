@@ -27,6 +27,7 @@ class FakeDocker:
         self.dictPushStaged = {"exit": 0, "out": "abc1234"}
         self.dictPushFiles = {"exit": 0, "out": "def5678"}
         self.listGitInitCalls = []
+        self.listGitInitCommands = []
 
     def fnAddRepo(self, sName, sUrl="https://x/y.git",
                   sBranch="main", bDirty=False):
@@ -55,6 +56,11 @@ class FakeDocker:
         if "find /workspace -mindepth 1 -maxdepth 1" in sCommand:
             listAll = list(self.dictRepos) + list(self.setNonGitDirs)
             return (0, "\n".join(sorted(listAll)) + "\n")
+        if (sCommand.startswith("test -e")
+                and ".gitignore" in sCommand):
+            sPath = sCommand.split(
+                "test -e ", 1)[1].strip().strip("'")
+            return (0, "") if sPath in self.dictFiles else (1, "")
         if (sCommand.startswith("test -e")
                 and "/workspace/" in sCommand
                 and "/.git" in sCommand):
@@ -103,6 +109,7 @@ class FakeDocker:
         sName = sCommand.split("/workspace/")[1].split(" ")[0]
         sName = sName.rstrip("'").rstrip()
         self.listGitInitCalls.append(sName)
+        self.listGitInitCommands.append(sCommand)
         self.setNonGitDirs.discard(sName)
         if sName not in self.dictRepos:
             self.fnAddRepo(sName)
@@ -366,6 +373,39 @@ def testInitProjectRepoRejectsCreateOnExistingDir(
     )
     assert response.status_code == 409
     assert "scratch" not in fixtureDocker.listGitInitCalls
+
+
+def testInitProjectRepoWritesStarterGitignore(
+    fixtureDocker, fixtureClient
+):
+    fixtureDocker.fnAddNonGitDir("scratch")
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "scratch", "bCreateIfMissing": False},
+    )
+    assert response.status_code == 200
+    sGitignore = fixtureDocker.dictFiles[
+        "/workspace/scratch/.gitignore"]
+    assert "__pycache__/" in sGitignore
+    assert "add .gitignore" in fixtureDocker.listGitInitCommands[0]
+
+
+def testInitProjectRepoPreservesExistingGitignore(
+    fixtureDocker, fixtureClient
+):
+    """A researcher's pre-existing .gitignore is never overwritten."""
+    fixtureDocker.fnAddNonGitDir("scratch")
+    fixtureDocker.dictFiles["/workspace/scratch/.gitignore"] = (
+        "custom-rule\n")
+    response = fixtureClient.post(
+        "/api/repos/cid1/init",
+        json={"sDirectory": "scratch", "bCreateIfMissing": False},
+    )
+    assert response.status_code == 200
+    assert fixtureDocker.dictFiles[
+        "/workspace/scratch/.gitignore"] == "custom-rule\n"
+    assert "add .gitignore" not in (
+        fixtureDocker.listGitInitCommands[0])
 
 
 # ------- POST /track -------

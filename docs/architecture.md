@@ -861,6 +861,59 @@ performed outside the dashboard stay visible as progress. The
 "unassessed" state asserts only existence, never quality — it sits
 below "none" on the ladder and never stamps a high-water mark.
 
+## The Replay axis (AI provenance)
+
+The AICS ladder measures the state of the artifact; the Replay axis
+measures the provenance of the process — which AI models did the
+work, under what standing instructions, and whether the development
+dialogue is preserved. States, each requiring the ones below it:
+**untracked → declared** (every model used is declared; vendor +
+model ID + date range; open-weights models add weights source and
+revision hash; undeclared is the criterion's only failing state and
+gates L2) **→ recorded** (the opt-in Prompt Record is enabled and
+its first capture reviewed) **→ supervised** (the attribution
+watchdog is on: every detected repo change during a watched interval
+must attribute to a recorded action channel — pipeline dispatch,
+editor save, context write, open terminal session — within a
+60-second window; unattributed changes and manifest drift across hub
+downtime become permanent, hash-chained flags that
+`gui/attributionLog.py` never removes. Granularity is the window and
+the channel, not the file path, and terminal *content* is not yet
+captured — both limits are stated in the UI). The verdicts live in
+`reproducibility/replayGate.py`; the machine-captured stamp
+(`.vaibify/ai_provenance.json` — declared models, SHA-256 of both
+standing prompt files, live network-isolation probe, an explicit
+trust-base statement) is built by `aiProvenanceStamp.py` +
+`gui/aiProvenanceCapture.py`, kept current by a poll side-effect,
+and folded into the L3 attestation record (schema v2).
+
+**Epistemic contract.** The whole layer is *declared +
+tamper-evident*, never proven complete — the same trust model as the
+other L2 declarations. Tamper evidence: capture records are
+hash-chained and pin their session files' content hashes; the poll
+rewrites a hand-edited stamp. Completeness is not provable (no
+mechanism can show that no prompt happened off the record), so
+coverage intervals make the monitored windows explicit and the UI
+renders gaps as gaps. The attestation's trust-base statement names
+what is assumed rather than recorded: the host kernel, the Docker
+daemon, and the hub, with no host-root bypass.
+
+**Prompt Record threat model.** Captured transcripts land inside a
+public (or to-be-public) repository, so the landing zone is the
+threat: sanitization happens at capture, never at publish.
+`gui/transcriptSanitizer.py` layers exact-value redaction of every
+vaibify session secret, detect-secrets' pattern catalog (its two
+entropy plugins are excluded — via `scan_line` they carry no usable
+threshold and flag ordinary words; verified empirically), a
+vendor-token-prefix rule, and a guarded Shannon-entropy supplement
+(32+ characters, letters and digits, ≥ 4.5 bits/char) that leaves
+code identifiers and git hashes intact. Redactions are explicit
+`[REDACTED: category]` markers with per-category counts; a human
+review gate (catalog-excluded — the agent must never approve its own
+transcript) sits before the first capture counts; and the scanner
+cannot catch prose the researcher considers private, which is what
+the review gate is for.
+
 ## JavaScript frontend
 
 The frontend lives under `vaibify/gui/static/` and uses the IIFE

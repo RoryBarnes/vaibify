@@ -402,6 +402,12 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
                 f"Write failed: "
                 f"{_fsSanitizeServerError(str(error))}",
             )
+        from ..routeContext import fnRecordAttributionEvent
+        fnRecordAttributionEvent(
+            dictCtx, sContainerId,
+            dictCtx["workflows"].get(sContainerId) or {},
+            "write-file", sNormalized,
+        )
         return {"bSuccess": True, "sPath": sNormalized}
 
 

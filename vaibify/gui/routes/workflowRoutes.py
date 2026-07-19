@@ -10,9 +10,11 @@ from fastapi import HTTPException
 from typing import Optional
 
 from .. import workflowManager
+from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     CreateWorkflowRequest,
+    RequestProjectCreationRequest,
     fdictHandleConnect,
     _fsSanitizeServerError,
 )
@@ -215,6 +217,39 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
         )
 
 
+def _fnRegisterWorkflowCreationRequest(app, dictCtx):
+    """Register POST /api/workflows/{id}/request-creation route.
+
+    Project creation is a researcher-only decision, so the in-container
+    agent never creates a project.json directly. This route records the
+    agent's request; the browser's discovery poll picks it up within
+    one tick and opens the New Project wizard, prefilled with the
+    suggested name, for the researcher to review and confirm.
+    """
+
+    @fnAgentAction("create-project")
+    @app.post("/api/workflows/{sContainerId}/request-creation")
+    async def fnRequestProjectCreation(
+        sContainerId: str, request: RequestProjectCreationRequest
+    ):
+        dictCtx["require"]()
+        dictCtx["dictProjectCreationRequests"][sContainerId] = {
+            "sSuggestedName":
+                (request.sWorkflowName or "").strip()[:200],
+            "sSuggestedDirectory":
+                (request.sRepoDirectory or "").strip()[:200],
+        }
+        return {
+            "bCreated": False,
+            "sMessage": (
+                "Project creation is a researcher-only action. The "
+                "New Project dialog has been opened in the "
+                "researcher's browser; ask them to review and "
+                "confirm it there."
+            ),
+        }
+
+
 def _fnRegisterConnect(app, dictCtx):
     """Register POST /api/connect route."""
 
@@ -232,4 +267,5 @@ def fnRegisterAll(app, dictCtx):
     """Register all workflow management routes."""
     _fnRegisterWorkflowSearch(app, dictCtx)
     _fnRegisterWorkflowCreate(app, dictCtx)
+    _fnRegisterWorkflowCreationRequest(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)

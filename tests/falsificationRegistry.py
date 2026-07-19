@@ -685,8 +685,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_fdictLevel2Gaps_subset_failure_keeps_level2_false',
         source='vaibify/reproducibility/levelGates.py',
-        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl,',
-        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl,',
+        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl and bModels,',
+        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl and bModels,',
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_blocker_cache_evicts_oldest_entry_first',

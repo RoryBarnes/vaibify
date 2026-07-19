@@ -20,6 +20,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import replayGate
 from . import scheduledReverify
 from .aiDeclarationStep import fbStepIsAiDeclaration
 from .dependencyPinning import (
@@ -1141,6 +1142,8 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
         return False
     if not fbWorkflowAiDeclarationAttested(dictWorkflow):
         return False
+    if not replayGate.fbWorkflowDeclaresAiModels(dictWorkflow):
+        return False
     if not fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
     ):
@@ -1659,6 +1662,10 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bZenodoFullySynced": bool,
             "bArxivFullySynced": bool,
             "bAiDeclarationAttested": bool,
+            "bAiModelsDeclared": bool,
+            "bPromptRecordCurrent": bool,
+            "bSupervisionClean": bool,
+            "bProjectContextFileExists": bool,
             "bAtLeastLevel2": bool,
         }
 
@@ -1669,6 +1676,11 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     ``bAiDeclarationAttested`` requires the step to exist AND carry
     the researcher's sign-off — the declaration is a publication
     artifact, so both halves are L2 requirements.
+    ``bAiModelsDeclared`` gates L2 the same way (undeclared is its
+    only failing state); ``bProjectContextFileExists`` and
+    ``bPromptRecordCurrent`` are informational only — they feed the
+    optional AICS rows and never join the conjunction (the Prompt
+    Record follows the arXiv rule: unconfigured is trivially True).
     """
     bL1 = fbAtLeastLevel1(dictWorkflow, filesRepo)
     bGithub = fbWorkflowFullySyncedWithGithub(
@@ -1681,14 +1693,25 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         dictWorkflow, filesRepo,
     )
     bDecl = fbWorkflowAiDeclarationAttested(dictWorkflow)
+    bModels = replayGate.fbWorkflowDeclaresAiModels(dictWorkflow)
     return {
         "bAtLeastLevel1": bL1,
         "bGithubFullySynced": bGithub,
         "bZenodoFullySynced": bZenodo,
         "bArxivFullySynced": bArxiv,
         "bAiDeclarationAttested": bDecl,
+        "bAiModelsDeclared": bModels,
+        "bPromptRecordCurrent": replayGate.fbPromptRecordCurrent(
+            dictWorkflow,
+        ),
+        "bSupervisionClean": replayGate.fbSupervisionClean(
+            dictWorkflow,
+        ),
+        "bProjectContextFileExists": ffilesEnsureRepoFiles(
+            filesRepo,
+        ).fbIsFile(".vaibify/AGENTS.md"),
         "bAtLeastLevel2":
-            bL1 and bGithub and bZenodo and bArxiv and bDecl,
+            bL1 and bGithub and bZenodo and bArxiv and bDecl and bModels,
     }
 
 

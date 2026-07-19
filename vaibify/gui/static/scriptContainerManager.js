@@ -418,6 +418,7 @@ var PipeleyenContainerManager = (function () {
             'as this container is running, preventing sleep. ' +
             'Has no effect on Linux.</p>' +
             '</div>' +
+            _fsRenderResourceLimitSettings(dictSettings) +
             '<div class="modal-actions">' +
             '<button class="btn" id="btnSettingsCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +
@@ -430,11 +431,52 @@ var PipeleyenContainerManager = (function () {
             "click", async function () {
                 var bNeverSleep = document.getElementById(
                     "settingNeverSleep").checked;
+                var iCpuLimit = _fiParsePositiveNumber(
+                    "settingCpuLimit", true);
+                var fMemoryLimitGigabytes = _fiParsePositiveNumber(
+                    "settingMemoryLimit", false);
                 elModal.remove();
                 await fnSaveContainerSettings(sName, {
                     bNeverSleep: bNeverSleep,
+                    iCpuLimit: iCpuLimit,
+                    fMemoryLimitGigabytes: fMemoryLimitGigabytes,
                 });
             });
+    }
+
+    function _fsRenderResourceLimitSettings(dictSettings) {
+        var sCpuValue = dictSettings.iCpuLimit > 0
+            ? String(dictSettings.iCpuLimit) : "";
+        var sMemoryValue = dictSettings.fMemoryLimitGigabytes > 0
+            ? String(dictSettings.fMemoryLimitGigabytes) : "";
+        return '<div class="settings-option">' +
+            '<div class="settings-option-row">' +
+            '<input type="number" id="settingCpuLimit" min="1" ' +
+            'step="1" placeholder="all cores − 1" value="' +
+            sCpuValue + '" class="settings-number-input">' +
+            '<span class="settings-option-label">' +
+            'CPU core limit</span></div>' +
+            '<div class="settings-option-row">' +
+            '<input type="number" id="settingMemoryLimit" ' +
+            'min="0.25" step="0.25" placeholder="unlimited" ' +
+            'value="' + sMemoryValue +
+            '" class="settings-number-input">' +
+            '<span class="settings-option-label">' +
+            'Memory limit (GB)</span></div>' +
+            '<p class="settings-option-help">' +
+            'Blank means no limit. Applied via docker run the ' +
+            'next time the container starts.</p>' +
+            '</div>';
+    }
+
+    function _fiParsePositiveNumber(sId, bInteger) {
+        /* Blank, zero, or unparsable all mean "no limit" (0). */
+        var elInput = document.getElementById(sId);
+        if (!elInput) return 0;
+        var fParsed = bInteger
+            ? parseInt(elInput.value, 10)
+            : parseFloat(elInput.value);
+        return (isNaN(fParsed) || fParsed <= 0) ? 0 : fParsed;
     }
 
     async function fnSaveContainerSettings(sName, dictSettings) {

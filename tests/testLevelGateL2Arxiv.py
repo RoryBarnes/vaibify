@@ -149,6 +149,14 @@ def _fdictWorkflowWithOverleaf(sCommit="commitabc", dictArxiv=None):
             _fdictAiDeclarationStep(),
         ],
         "dictRemotes": dictRemotes,
+        "dictAiProvenance": {
+            "listDeclaredModels": [{
+                "sVendor": "ExampleVendor",
+                "sModelId": "example-model-1",
+                "sUseStartDate": "2026-01-01",
+                "sUseEndDate": "2026-02-01",
+            }],
+        },
     }
 
 
@@ -414,6 +422,14 @@ def testDataOnlyWorkflowReachesL2WithoutArxiv(tmp_path):
                 "sRecordId": "1", "sService": "sandbox",
                 "sDoi": "10.1000/example",
             },
+        },
+        "dictAiProvenance": {
+            "listDeclaredModels": [{
+                "sVendor": "ExampleVendor",
+                "sModelId": "example-model-1",
+                "sUseStartDate": "2026-01-01",
+                "sUseEndDate": "2026-02-01",
+            }],
         },
     }
     listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)

@@ -66,6 +66,9 @@ dev = [
 mutation = [
     "cosmic-ray",
 ]
+replay = [
+    "detect-secrets>=1.4",
+]
 
 [project.scripts]
 vaibify = "vaibify.cli.main:main"

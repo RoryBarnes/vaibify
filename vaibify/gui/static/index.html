@@ -808,6 +808,110 @@
     </div>
 </div>
 
+<!-- AI Model Declaration Modal -->
+<div class="modal-overlay" id="modalAiModelConfig" style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="modalAiModelConfigTitle">
+    <div class="modal modal-small">
+        <h2 id="modalAiModelConfigTitle"
+            style="color: var(--color-pale-blue);">
+            Declare AI model</h2>
+        <p class="muted-text">
+            Every AI model used on this project is declared for the
+            provenance record. A closed-weights model passes by
+            declaration; an open-weights model additionally declares
+            where its weights live and their revision hash.
+        </p>
+        <div class="form-group">
+            <label>Vendor</label>
+            <input type="text" id="inputAiModelVendor"
+                   placeholder="e.g. Anthropic">
+        </div>
+        <div class="form-group">
+            <label>Model ID</label>
+            <input type="text" id="inputAiModelId"
+                   placeholder="exact model identifier">
+        </div>
+        <div class="form-group">
+            <label>Used from</label>
+            <input type="date" id="inputAiModelStartDate">
+        </div>
+        <div class="form-group">
+            <label>Used until</label>
+            <input type="date" id="inputAiModelEndDate">
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="checkAiModelOpenWeights">
+                Open weights
+            </label>
+        </div>
+        <div class="form-group" id="groupAiModelWeightsSource" hidden>
+            <label>Weights source</label>
+            <input type="text" id="inputAiModelWeightsSource"
+                   placeholder="where the weights are published">
+        </div>
+        <div class="form-group" id="groupAiModelWeightsHash" hidden>
+            <label>Weights revision hash</label>
+            <input type="text" id="inputAiModelWeightsHash"
+                   placeholder="revision / commit hash of the weights">
+        </div>
+        <p id="aiModelConfigError" class="form-error" hidden></p>
+        <div class="modal-actions">
+            <button class="btn" id="btnAiModelConfigCancel">Cancel</button>
+            <button class="btn btn-primary" id="btnAiModelConfigSave">
+                Declare</button>
+        </div>
+    </div>
+</div>
+
+<!-- Project Context Import Picker -->
+<div class="modal-overlay" id="modalContextImport" style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="modalContextImportTitle">
+    <div class="modal modal-small">
+        <h2 id="modalContextImportTitle"
+            style="color: var(--color-pale-blue);">
+            Import project context</h2>
+        <p class="muted-text">
+            Pick a markdown file from your home directory (for
+            example an existing agent-context file). It is copied
+            into the repository as
+            <code>.vaibify/AGENTS.md</code>.
+        </p>
+        <div id="contextImportPath" class="muted-text"></div>
+        <div id="contextImportEntries" class="context-import-list"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnContextImportCancel">
+                Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Prompt Record Modal (Replay axis) -->
+<div class="modal-overlay" id="modalPromptRecord" style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="modalPromptRecordTitle">
+    <div class="modal modal-medium">
+        <h2 id="modalPromptRecordTitle"
+            style="color: var(--color-pale-blue);">
+            Prompt Record</h2>
+        <p class="muted-text">
+            The Development Transcript's recorded layer: the
+            in-container agent's session transcripts, captured into
+            the repository as redacted transcripts with explicit
+            [REDACTED: …] markers. Tamper-evident, never claimed
+            complete — time outside the recorded intervals is
+            unmonitored.
+        </p>
+        <div id="promptRecordBody"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnPromptRecordClose">
+                Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Zenodo Metadata Modal -->
 <div class="modal-overlay" id="modalZenodoMetadata" style="display: none;">
     <div class="modal modal-medium">
@@ -928,6 +1032,9 @@
 <script src="/static/scriptZenodoDepositCard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptArxivConfig.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptAiModelConfig.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptProjectContext.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptPromptRecordConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptNewWorkflowWizard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWorkflowManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>

@@ -2650,7 +2650,28 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +11 (2026-07-16): input-data files join the poll — their paths in
     # the stat batch and dictMaxInputMtimeByStep on the wire. Cohesive
     # with the mtime groupings already assembled here.
-    "routes/pipelineRoutes.py": 2257,
+    # +87 (2026-07-18): the Replay-axis lane — three exec-free envelope
+    # keys (dictAiProvenance / bAiModelsDeclared /
+    # bProjectContextFileExists) and the ai_provenance.json stamp
+    # maintenance (_fnMaintainAiProvenanceStamp: snapshot-based
+    # staleness check, rewrite only on drift) so the stamp stays
+    # machine-written. Cohesive with the poll side-effects it extends.
+    # +9 (2026-07-18): the create-project one-shot handoff — the
+    # agent's request popped from dictProjectCreationRequests into the
+    # discovery poll response so the browser opens the wizard once.
+    # +19 (2026-07-18): repo-root context-file detection
+    # (_fbRootContextCandidateDetected + the two poll booleans) for
+    # the project-context adopt affordance (concurrent lane).
+    # +52 (2026-07-18): the Prompt Record envelope summary
+    # (_fdictEnvelopePromptRecord + sReplayAxisState) riding the poll
+    # snapshot (concurrent Replay lane).
+    # +195 (2026-07-19): the Supervised-mode watchdog lane —
+    # exec-free judgment from this poll's stat batch and snapshot
+    # (_flistUnattributedRecentPaths, _fbSnapshotHasRecentEvent,
+    # digest ratchet), the rare flag write, and the supervision
+    # envelope summary. Cohesive with the poll side-effects it
+    # extends; the pure chain/flag logic lives in attributionLog.
+    "routes/pipelineRoutes.py": 2619,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2770,7 +2791,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +26 (2026-07-18): fsDeriveStepDirectory — the slug contract's
     # enforcement at step creation (directory basename derived from
     # the name), beside fdictStepFromRequest which it serves.
-    "pipelineServer.py": 2019,
+    # +1 (2026-07-18): replayRoutes registration line in
+    # _fnRegisterAllRoutes (Replay-axis AI-model declarations).
+    # +6 (2026-07-18): RequestProjectCreationRequest beside the other
+    # request models, plus the dictProjectCreationRequests context
+    # seed — the researcher-only create-project handoff state.
+    # +87 (2026-07-19): Supervised-mode attribution at the two seams
+    # this module owns — the dispatch recorder (thread-hopped ONLY
+    # when supervised so unsupervised dispatch timing is untouched)
+    # and the reconnect interval check (manifest-digest compare →
+    # unsupervised-gap flag) inside the connect flow.
+    "pipelineServer.py": 2113,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -2797,7 +2828,26 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,
-    "registryRoutes.py": 987,
+    # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
+    # (+ _fdictBuildHostFileEntry) so import pickers can list host
+    # files, not just directories (concurrent project-context lane).
+    # +72 (2026-07-18): per-container resource limits — the
+    # CPU/memory fields on CreateProjectRequest and
+    # ContainerSettingsRequest, the settings GET/POST threading, the
+    # _fnRequireValidResourceLimits API-boundary guard, and the
+    # _fnUpdateYamlScalarField extraction the bool/number field
+    # writers now share. Cohesive with the settings surface it
+    # extends.
+    "registryRoutes.py": 1079,
+    # Grandfathered at 807 (2026-07-18): the catalog grows by design —
+    # one block per new agent action (create-project in this lane;
+    # project-context actions in the concurrent lane). It remains one
+    # cohesive responsibility: the agent-action registry.
+    # +33 (2026-07-18): the three Prompt Record actions and the
+    # approve-first-capture exclusion (concurrent Replay lane).
+    # +3 (2026-07-19): the supervision/configure exclusion — the
+    # supervised party must not toggle its own supervision.
+    "actionCatalog.py": 843,
 }
 
 

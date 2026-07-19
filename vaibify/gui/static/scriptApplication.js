@@ -318,6 +318,7 @@ const PipeleyenApp = (function () {
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
+        VaibifyPolling.fnStopPromptRecordPolling();
         PipeleyenReposPanel.fnTeardown();
         VaibifyAicsTab.fnSetContainerId(null);
     }
@@ -584,10 +585,23 @@ const PipeleyenApp = (function () {
         if (_dictSessionState.dictDashboardMode === DICT_MODE_NO_WORKFLOW) {
             _fnRenderToolkitBanner(listAvailable.length);
         }
+        if (dictResponse.dictProjectCreationRequest) {
+            _fnHandleAgentProjectCreationRequest(
+                dictResponse.dictProjectCreationRequest);
+        }
         if (!dictResponse.bWorkflowsChanged) return;
         var listNew = dictResponse.listNewWorkflowPaths || [];
         if (listNew.length === 0) return;
         _fnToastNewWorkflowsAppeared(listNew, listAvailable);
+    }
+
+    function _fnHandleAgentProjectCreationRequest(dictRequest) {
+        fnShowToast(
+            "Your agent asked to start a new Project. Creating one "
+            + "is your call — review and confirm in the dialog.",
+            "info");
+        VaibifyNewWorkflowWizard.fnLaunch(
+            _dictSessionState.sContainerId, dictRequest);
     }
 
     function _fnToastNewWorkflowsAppeared(listNewPaths, listAvailable) {
@@ -773,6 +787,7 @@ const PipeleyenApp = (function () {
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
+        VaibifyPolling.fnStopPromptRecordPolling();
         PipeleyenReposPanel.fnTeardown();
         if (_dictWorkflowState.iFileCheckTimer) {
             clearTimeout(_dictWorkflowState.iFileCheckTimer);
@@ -2682,6 +2697,16 @@ const PipeleyenApp = (function () {
             _dictUiState.setExpandedRequirementRows, sReqKey);
     }
 
+    function fnExpandRequirementRow(sGroupKey, sReqKey) {
+        // Idempotent open (never toggle) for AICS-tab deep links:
+        // .add() into the shared Sets in place — reassigning them
+        // would detach the render context (the shared-Set trap).
+        _dictUiState.setExpandedRequirementGroups.add(sGroupKey);
+        _dictUiState.setExpandedRequirementRows.add(sReqKey);
+        _dictUiState.bProjectBlockCollapsed = false;
+        fnRenderStepList();
+    }
+
     var _DICT_PROJECT_ACTIONS = {
         "capture-binary": {
             sPath: "/binaries/capture",
@@ -2815,6 +2840,23 @@ const PipeleyenApp = (function () {
                     "declaration, so you will need to declare again.",
             },
             sToast: "Reproducibility rules deleted.",
+        },
+        "remove-ai-model": {
+            sPath: "/ai-models/remove",
+            fdictBody: function (sArg) {
+                try {
+                    return JSON.parse(sArg);
+                } catch (error) {
+                    return {};
+                }
+            },
+            dictConfirm: {
+                sTitle: "Remove model declaration",
+                sMessage: "Remove this AI model from the provenance " +
+                    "declaration? An undeclared model drops the " +
+                    "project below Level 2 until re-declared.",
+            },
+            sToast: "Model declaration removed.",
         },
     };
 
@@ -3664,6 +3706,39 @@ const PipeleyenApp = (function () {
         });
     }
 
+    function fnAnimateProjectBirth() {
+        /* One-shot celebration for the sandbox-to-Project milestone:
+           two strokes race from the left column's top-left corner
+           along its edges and meet at the bottom-right, then the
+           overlay fades and removes itself. pathLength="1" normalizes
+           both paths so a single dash-offset keyframe draws them
+           regardless of the panel's pixel size. */
+        var elPanel = document.querySelector("#panelLeft");
+        if (!elPanel) return;
+        var S_SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+        var elOutline = document.createElementNS(
+            S_SVG_NAMESPACE, "svg");
+        elOutline.setAttribute(
+            "class", "vaibify-project-birth-outline");
+        elOutline.setAttribute("viewBox", "0 0 100 100");
+        elOutline.setAttribute("preserveAspectRatio", "none");
+        ["M 0 0 H 100 V 100", "M 0 0 V 100 H 100"].forEach(
+            function (sPathData) {
+                var elPath = document.createElementNS(
+                    S_SVG_NAMESPACE, "path");
+                elPath.setAttribute("d", sPathData);
+                elPath.setAttribute("pathLength", "1");
+                elOutline.appendChild(elPath);
+            }
+        );
+        elPanel.appendChild(elOutline);
+        setTimeout(function () {
+            if (elOutline.parentNode) {
+                elOutline.parentNode.removeChild(elOutline);
+            }
+        }, 2400);
+    }
+
     function fnDeleteDetailItem(iStep, sArray, iIdx) {
         var sValue = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray][iIdx];
         var dictVars = fdictBuildClientVariables();
@@ -3986,6 +4061,13 @@ const PipeleyenApp = (function () {
     function fnStartFileChangePolling() {
         if (!_dictSessionState.sContainerId) return;
         VaibifyPolling.fnStartFilePolling(_dictSessionState.sContainerId);
+        VaibifyPolling.fnSetPromptRecordPredicate(function () {
+            var dictRecord = (_dictWorkflowState
+                .dictWorkflowEnvelopeDetail || {}).dictPromptRecord;
+            return Boolean(dictRecord && dictRecord.bEnabled === true);
+        });
+        VaibifyPolling.fnStartPromptRecordPolling(
+            _dictSessionState.sContainerId);
     }
 
     function fnProcessFileStatusResponse(dictStatus) {
@@ -4466,6 +4548,7 @@ const PipeleyenApp = (function () {
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,
+        fnAnimateProjectBirth: fnAnimateProjectBirth,
         fnRefreshWorkflowData: fnRefreshWorkflowData,
         fiGetWorkflowEpoch: function () {
             return _dictWorkflowState.iWorkflowEpoch;
@@ -4536,6 +4619,7 @@ const PipeleyenApp = (function () {
         fnToggleBinaryAddForm: fnToggleBinaryAddForm,
         fnToggleRequirementGroup: fnToggleRequirementGroup,
         fnToggleRequirementRow: fnToggleRequirementRow,
+        fnExpandRequirementRow: fnExpandRequirementRow,
         fnRunProjectAction: fnRunProjectAction,
         fnTogglePlotOnly: fnTogglePlotOnly,
         fnToggleNoInputData: fnToggleNoInputData,

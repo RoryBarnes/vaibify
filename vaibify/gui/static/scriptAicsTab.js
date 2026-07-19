@@ -78,6 +78,19 @@ var VaibifyAicsTab = (function () {
                  "warning column names whatever blocks a step.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
+            {sStateKey: "bProjectContextFileExists",
+             sLabel: "Project context file (optional)",
+             bOptional: true,
+             sWhat: "A project context file (.vaibify/AGENTS.md) " +
+                 "records the standing instructions the in-container " +
+                 "agent works under; versioned in the repository, it " +
+                 "becomes part of the provenance record. Optional — " +
+                 "it never blocks a level.",
+             sHow: "See the AI section of the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "aiModelPrompts"},
         ],
         2: [
             {sStateKey: "bGithubFullySynced",
@@ -119,9 +132,55 @@ var VaibifyAicsTab = (function () {
                  "published record.",
              sHow: "Add the AI Declaration step, review the " +
                  "declaration file, sign off, and commit it (the " +
-                 "Attestation section of the Project block).",
+                 "AI section of the Project block).",
              sFixTabPanel: "steps",
-             sFixLabel: "Open the Main tab"},
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "aiDeclaration"},
+            {sStateKey: "bAiModelsDeclared",
+             sLabel: "AI model declared",
+             sWhat: "Every AI model used on the project is declared " +
+                 "with vendor, model ID, and dates of use — " +
+                 "closed-weights models pass by declaration; " +
+                 "open-weights models also declare their weights " +
+                 "source and revision hash. Undeclared is the only " +
+                 "failing state.",
+             sHow: "Declare each model in the AI section of the " +
+                 "Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "aiModelPrompts"},
+            {sStateKey: "bSupervisionClean",
+             sLabel: "Supervised mode (optional)",
+             bOptional: true,
+             sWhat: "When the opt-in watchdog is on, every " +
+                 "repository change attributes to a recorded action " +
+                 "channel; changes with no recorded cause are " +
+                 "flagged permanently. Off meets this automatically " +
+                 "— supervision never blocks a level.",
+             sHow: "Enable it from the Prompt Record dialog in the " +
+                 "AI section of the Project block (requires the " +
+                 "record enabled and reviewed).",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "aiModelPrompts"},
+            {sStateKey: "bPromptRecordCurrent",
+             sLabel: "Prompt Record (optional)",
+             bOptional: true,
+             sWhat: "When the opt-in Prompt Record is enabled, the " +
+                 "agent's session transcripts are captured into the " +
+                 "repository as redacted transcripts and the first " +
+                 "capture is reviewed. A project without the record " +
+                 "meets this automatically — recording is the " +
+                 "researcher's decision and never blocks a level.",
+             sHow: "Enable and review it from the AI section of the " +
+                 "Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "aiModelPrompts"},
         ],
         3: [
             {sStateKey: "bManifestComplete",
@@ -361,8 +420,14 @@ var VaibifyAicsTab = (function () {
     function _fsRenderLevelSection(iLevelSection) {
         var listRows = _DICT_REQUIREMENT_CATALOG[iLevelSection];
         var bOpen = _setExpandedLevels.has(iLevelSection);
-        var iMet = listRows.filter(_fbRequirementMet).length;
-        var sState = iMet === listRows.length ? "attained"
+        // Optional rows (bOptional) never gate their level, so they
+        // are excluded from the met count — a missing optional file
+        // must not read as a Level blocker.
+        var listGating = listRows.filter(function (dictReq) {
+            return dictReq.bOptional !== true;
+        });
+        var iMet = listGating.filter(_fbRequirementMet).length;
+        var sState = iMet === listGating.length ? "attained"
             : (iMet === 0 ? "none" : "partial");
         var sHtml = '<div class="aics-card aics-level-section' +
             (bOpen ? '' : ' collapsed') + '" data-level="' +
@@ -372,7 +437,7 @@ var VaibifyAicsTab = (function () {
             '<span class="aics-card-title">' +
             _DICT_LEVEL_SECTION_TITLES[iLevelSection] + '</span>' +
             '<span class="aics-card-summary">' + iMet + ' of ' +
-            listRows.length + ' met</span>' +
+            listGating.length + ' met</span>' +
             _fsBuildLevelLight(sState,
                 _DICT_LEVEL_SECTION_TITLES[iLevelSection]) +
             '</div>';
@@ -391,13 +456,26 @@ var VaibifyAicsTab = (function () {
 
     function _fsRenderRequirementEntry(dictReq) {
         var bMet = _fbRequirementMet(dictReq);
-        var sLight = _fsBuildLevelLight(
-            bMet ? "attained" : "none",
-            dictReq.sLabel + ": " + (bMet ? "met" : "not met"));
+        // An unmet optional row shows the neutral dash, never a red
+        // light — it is recommended, not a blocker.
+        var sLight = (!bMet && dictReq.bOptional === true)
+            ? _fsBuildLevelLight("not-applicable",
+                dictReq.sLabel + ": optional, not tracked")
+            : _fsBuildLevelLight(
+                bMet ? "attained" : "none",
+                dictReq.sLabel + ": " + (bMet ? "met" : "not met"));
         var sLink = "";
         if (!bMet && dictReq.sFixTabPanel) {
             sLink = ' <a class="aics-gap-fix" data-target-tab="' +
-                dictReq.sFixTabPanel + '" href="#">' +
+                dictReq.sFixTabPanel + '"' +
+                (dictReq.sFixRequirementGroup
+                    ? ' data-req-group="' +
+                      fnEscapeHtml(dictReq.sFixRequirementGroup) +
+                      '" data-req-row="' +
+                      fnEscapeHtml(dictReq.sFixRequirementRow || "") +
+                      '"'
+                    : '') +
+                ' href="#">' +
                 fnEscapeHtml(dictReq.sFixLabel) + '</a>';
         }
         return '<div class="aics-req-entry state-' +
@@ -570,16 +648,33 @@ var VaibifyAicsTab = (function () {
             function (elLink) {
                 elLink.addEventListener("click", function (event) {
                     event.preventDefault();
-                    _fnNavigateToFixSurface(elLink.dataset.targetTab);
+                    _fnNavigateToFixSurface(
+                        elLink.dataset.targetTab,
+                        elLink.dataset.reqGroup || "",
+                        elLink.dataset.reqRow || "");
                 });
             });
     }
 
-    function _fnNavigateToFixSurface(sTargetTab) {
+    function _fnNavigateToFixSurface(sTargetTab, sReqGroup, sReqRow) {
         var elTab = document.querySelector(
             '.left-tab[data-panel="' + sTargetTab + '"]'
         );
         if (elTab) elTab.click();
+        if (!sReqGroup) return;
+        // Row-level deep link: open the Project-block group + row,
+        // then scroll the row header into view once the re-render
+        // has painted it.
+        PipeleyenApp.fnExpandRequirementRow(sReqGroup, sReqRow);
+        window.requestAnimationFrame(function () {
+            var elRow = document.querySelector(
+                '.requirement-row-header[data-req="' + sReqRow + '"]'
+            );
+            if (elRow) {
+                elRow.scrollIntoView(
+                    {behavior: "smooth", block: "center"});
+            }
+        });
     }
 
     function _fnBindGenerateTemplateButton() {

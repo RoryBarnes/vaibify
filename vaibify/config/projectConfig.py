@@ -85,6 +85,8 @@ class ProjectConfig:
     bNetworkIsolation: bool = False
     bNeverSleep: bool = False
     iDashboardPort: int = 0
+    iCpuLimit: int = 0
+    fMemoryLimitGigabytes: float = 0.0
 
 
 # Mapping from camelCase YAML keys to Hungarian dataclass fields
@@ -109,6 +111,8 @@ _YAML_TO_HUNGARIAN = {
     "networkIsolation": "bNetworkIsolation",
     "neverSleep": "bNeverSleep",
     "dashboardPort": "iDashboardPort",
+    "cpuLimit": "iCpuLimit",
+    "memoryLimitGigabytes": "fMemoryLimitGigabytes",
 }
 
 _HUNGARIAN_TO_YAML = {v: k for k, v in _YAML_TO_HUNGARIAN.items()}
@@ -216,6 +220,7 @@ def fbValidateConfig(dictConfig):
         _fbValidateListFields,
         _fbValidateFeatures,
         _fbValidateDashboardPort,
+        _fbValidateResourceLimits,
     ]
     return all(fnCheck(dictConfig) for fnCheck in listChecks)
 
@@ -340,6 +345,28 @@ def _fbValidateDashboardPort(dictConfig):
     return 1024 <= iPort <= 65535
 
 
+def _fbValidateResourceLimits(dictConfig):
+    """Check that cpuLimit and memoryLimitGigabytes, if present, are sane.
+
+    Zero means "no explicit limit" and is the default for both. A
+    non-zero cpuLimit must be a positive integer. A non-zero memory
+    limit must be at least 0.25 GB, so a typo in vaibify.yml cannot
+    produce a container that Docker refuses to start or that dies on
+    its first Python import.
+    """
+    iCpuLimit = dictConfig.get("cpuLimit", 0)
+    if not isinstance(iCpuLimit, int) or isinstance(iCpuLimit, bool):
+        return False
+    if iCpuLimit < 0:
+        return False
+    fMemory = dictConfig.get("memoryLimitGigabytes", 0.0)
+    if isinstance(fMemory, bool) or not isinstance(
+        fMemory, (int, float)
+    ):
+        return False
+    return fMemory == 0 or fMemory >= 0.25
+
+
 def _fbValidateFeatures(dictConfig):
     """Check that features values are booleans."""
     dictFeatures = dictConfig.get("features")
@@ -437,6 +464,8 @@ def _fdictScalarFieldsToYaml(config):
         "networkIsolation": config.bNetworkIsolation,
         "neverSleep": config.bNeverSleep,
         "dashboardPort": config.iDashboardPort,
+        "cpuLimit": config.iCpuLimit,
+        "memoryLimitGigabytes": config.fMemoryLimitGigabytes,
     }
 
 

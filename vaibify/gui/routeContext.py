@@ -17,6 +17,7 @@ __all__ = [
     "RouteContext",
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
+    "fnRecordAttributionEvent",
     "fsRefreshVerifyCacheAfterPush",
 ]
 
@@ -43,6 +44,26 @@ def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):
     return ffilesEnsureRepoFiles(
         (dictWorkflow or {}).get("sProjectRepoPath") or "",
     )
+
+
+def fnRecordAttributionEvent(
+    dictCtx, sContainerId, dictWorkflow, sChannel, sDetail,
+):
+    """Append a Supervised-mode attribution event from a route.
+
+    Cheap no-op when supervision is off; failures are logged and
+    swallowed — attribution must never break the action it records.
+    """
+    from . import attributionLog
+    if not attributionLog.fbSupervisionEnabled(dictWorkflow):
+        return
+    try:
+        attributionLog.fnAppendAttributionEvent(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            dictWorkflow, sChannel, "hub", sDetail,
+        )
+    except Exception as exc:  # noqa: BLE001 — never break the route
+        logger.warning("Attribution event append failed: %s", exc)
 
 
 def fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo):

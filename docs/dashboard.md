@@ -314,7 +314,7 @@ buttons to generate and run them — see [Verification](#verification).
 
 ### The Project block
 
-The Project block lists project-scope requirements, grouped into six
+The Project block lists project-scope requirements, grouped into seven
 collapsible sections:
 
 | Section | What it covers |
@@ -324,7 +324,22 @@ collapsible sections:
 | **Artifacts** | The reproducibility envelope files: `MANIFEST.sha256`, `requirements.lock`, the environment snapshot, the `Dockerfile`, and `reproduce.sh`. |
 | **Determinism** | Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance). |
 | **Published copies** | The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state. |
-| **Attestation** | The AI Declaration (Level 2) and the rebuild attestation (Level 3). |
+| **AI** | The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, and the AI Declaration (the researcher's signed statement — Level 2). |
+| **Attestation** | The rebuild attestation (Level 3). |
+
+The AI section is where the process provenance lives. Every AI model
+used on the project is declared with its vendor, exact model ID, and
+dates of use; a closed-weights model passes by declaration, while an
+open-weights model additionally declares its weights source and
+revision hash. Undeclared is the only failing state. The backend
+captures a machine-written stamp (`.vaibify/ai_provenance.json`) —
+the declared models, the SHA-256 of both standing prompt files, the
+container's live network-isolation state, and an explicit trust-base
+statement — and folds it into the Level 3 attestation record, so the
+archived attestation carries the claim "these models, under these
+instructions" alongside the rebuild hashes. The stamp is rewritten on
+the next status poll whenever it drifts from the declaration; hand
+edits do not survive.
 
 Every section banner and every requirement row inside it carries a
 status light and an **L1 | L2 | L3** level strip: the levels the
@@ -348,6 +363,54 @@ an action exists — a button that performs it in place:
 - **Configure arXiv…** to record the arXiv submission that must match
   the frozen Overleaf figures (optional — an untracked submission
   reads "not tracked" and never blocks Level 2).
+- **Declare model…** and per-model **Remove** in the AI section's
+  AI Model / Prompts row (removal is user-only — deleting a
+  declaration erases provenance and can drop the project below
+  Level 2).
+- **Start from template**, **Import from this computer…**, and
+  **Adopt repo-root context file** when no project context file
+  exists yet. The context file (`.vaibify/AGENTS.md`) is the
+  standing instructions the in-container agent reads; the entrypoint
+  symlinks it to both root names (`CLAUDE.md` and `AGENTS.md`) so
+  any agent tooling finds it. Once it exists, click its file row to
+  view and edit it in place (saves go through a dedicated,
+  path-fixed route; the generic editor still refuses `.vaibify/`
+  writes). Import is researcher-only — the in-container agent can
+  read and update the file via its own actions but can never pull
+  files from your computer. Edits take effect for the agent's next
+  session, not a running one.
+- **Prompt Record…** opens the opt-in transcript recorder (the
+  Replay axis's *Recorded* state, shown on the row's
+  Untracked → Declared → Recorded → Supervised ladder). When
+  enabled, the in-container agent's session transcripts are captured
+  into `.vaibify/promptRecord/` every ~30 seconds as **redacted
+  transcripts**: each capture is scanned (exact vaibify session
+  secrets, the detect-secrets pattern catalog, vendor token
+  prefixes, and a conservative high-entropy check) and every hit
+  becomes a visible `[REDACTED: category]` marker with a per-category
+  count. You review a sample of the first capture before the record
+  counts (the agent cannot approve its own transcript). Captures are
+  hash-chained — editing or removing one breaks the chain loudly —
+  and coverage intervals are listed so time the hub was down reads
+  as an explicit gap, never implied continuity. The record is
+  tamper-evident, not proven complete; enabling it requires
+  `pip install vaibify[replay]` on the host. Off reads "Not tracked
+  — optional" and never blocks a level.
+
+  The same dialog holds **Supervised mode** (the rung above
+  Recorded; requires the record enabled and reviewed). When on,
+  every repository change must attribute to a recorded action
+  channel — a pipeline dispatch, an editor save, a context write, or
+  an open terminal session — within a 60-second window; changes with
+  no recorded cause become **permanent, hash-chained flags**
+  (`unattributed-modification`), and a repo that changed while the
+  hub was not watching flags an `unsupervised-gap` on reconnect.
+  Flags render as a red chip on the AI row and are never cleared by
+  the tool; editing the flag file breaks its chain loudly.
+  Attribution granularity is honest but coarse: the window and the
+  channel, not the file path — and a terminal session attributes as
+  an open channel without its keystrokes being captured (content
+  capture is a planned extension, stated in the dialog).
 - **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 
@@ -438,11 +501,20 @@ work happens (the Main tab's blocks or the Repos panel). The tab owns
 the requirement *text*; the buttons that do the work live in the Main
 tab's Project block. The requirements are:
 
-- **Level 1**: Repository; Every step self-consistent.
+- **Level 1**: Repository; Every step self-consistent; Project
+  context file (optional — a versioned `.vaibify/AGENTS.md` recording
+  the agent's standing instructions; shown with a neutral dash and
+  excluded from the met count when absent, since it never blocks a
+  level).
 - **Level 2**: GitHub mirror; Zenodo deposit; arXiv manuscript
   (opt-in — checked only when an arXiv submission is recorded, since
   posting happens outside vaibify on its own timeline); AI
-  Declaration attested.
+  Declaration attested; AI model declared (every model used, with
+  vendor, ID, and dates — closed-weights models pass by declaration).
+
+The AI rows' deep links land on the specific requirement row in the
+Project block's AI section — the link switches tabs, expands the
+group and row, and scrolls it into view.
 - **Level 3**: Manifest complete; Dependency lock; Environment
   snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
   Software declared; Rebuild attestation.

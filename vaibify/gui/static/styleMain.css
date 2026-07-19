@@ -3786,6 +3786,38 @@ body.aics-level-2 .level-cell-favicon {
     animation: panelBorderGlow 0.6s ease-out;
 }
 
+/* --- Project-birth outline trace (left column) --- */
+
+@keyframes projectBirthTrace {
+    to { stroke-dashoffset: 0; }
+}
+
+@keyframes projectBirthFade {
+    to { opacity: 0; }
+}
+
+.vaibify-project-birth-outline {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 60;
+    animation: projectBirthFade 0.6s ease-in 1.6s forwards;
+}
+
+.vaibify-project-birth-outline path {
+    fill: none;
+    stroke: rgba(179, 157, 219, 0.9);
+    stroke-width: 3;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 6px rgba(179, 157, 219, 0.6));
+    animation: projectBirthTrace 1.2s ease-out forwards;
+}
+
 /* Every favicon-based mark follows the ladder theme: the toolbar
    logo, the verified badge, and the level-strip "attained" favicons
    (step rows, Steps and Project banners, requirement rows, Help
@@ -4363,6 +4395,15 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     color: var(--text-muted, var(--text-secondary));
     opacity: 0.8;
 }
+.wizard-agent-banner {
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border-left: 3px solid rgba(179, 157, 219, 0.9);
+    border-radius: var(--border-radius);
+}
 .wizard-advanced {
     margin-top: 12px;
     padding: 8px 10px;
@@ -4521,6 +4562,16 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     color: var(--text-secondary);
     line-height: 1.5;
     margin: 0 0 0 26px;
+}
+.settings-number-input,
+.wizard-resource-limit-row input[type="number"] {
+    width: 130px;
+}
+.wizard-resource-limit-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
 }
 .settings-option-help code {
     background: var(--bg-input);
@@ -6235,4 +6286,71 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     border-top: 1px solid var(--border-color);
     padding-top: 6px;
     margin-top: 6px;
+}
+
+/* --- Project context import picker (Replay axis) --- */
+
+.context-import-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border, #444);
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+.context-import-entry {
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.context-import-entry:hover {
+    background: rgba(128, 128, 128, 0.18);
+}
+
+.declared-model-row .declared-model-dates {
+    opacity: 0.7;
+    font-size: 0.9em;
+}
+
+/* --- Replay-axis ladder + Prompt Record (AI section) --- */
+
+.replay-axis-ladder {
+    margin: 4px 0 8px;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.replay-axis-cell.active {
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+.replay-axis-arrow {
+    margin: 0 4px;
+    opacity: 0.6;
+}
+
+.prompt-record-sample {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid var(--color-border, #444);
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 0.8em;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.modal-inline-actions {
+    margin: 8px 0;
+}
+
+.supervision-flag-chip {
+    color: #cb2431;
+    font-weight: bold;
+    border-left: 3px solid #cb2431;
+    padding-left: 6px;
 }

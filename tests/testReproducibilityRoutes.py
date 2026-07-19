@@ -650,7 +650,7 @@ def test_verification_worker_persists_passed_attestation(fixtureProjectRepo):
     ):
         asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
             S_CONTAINER_ID, fixtureProjectRepo,
-            "sha256:m", {"listSteps": []},
+            "sha256:m", {"listSteps": []}, None,
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
     assert dictStatus["sPhase"] == "passed"
@@ -670,7 +670,7 @@ def test_verification_worker_marks_failed_on_exception(fixtureProjectRepo):
     ):
         asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
             S_CONTAINER_ID, fixtureProjectRepo,
-            "sha256:m", {"listSteps": []},
+            "sha256:m", {"listSteps": []}, None,
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
     assert dictStatus["sPhase"] == "failed"
@@ -697,7 +697,7 @@ def test_verification_worker_marks_failed_on_diverged(fixtureProjectRepo):
     ):
         asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
             S_CONTAINER_ID, fixtureProjectRepo,
-            "sha256:m", {"listSteps": []},
+            "sha256:m", {"listSteps": []}, None,
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
     assert dictStatus["sPhase"] == "failed"

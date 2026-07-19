@@ -3,8 +3,11 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import os
+
 from vaibify.docker.containerManager import (
     _fnAddCpuAllocation,
+    _fnAddMemoryAllocation,
     _fdictParseContainerState,
     flistBuildRunArgs,
 )
@@ -12,11 +15,137 @@ from vaibify.docker.containerManager import (
 
 def test_fnAddCpuAllocation_adds():
     saRunArgs = []
-    _fnAddCpuAllocation(saRunArgs)
+    _fnAddCpuAllocation(_fConfigMinimal(), saRunArgs)
     assert "--cpus" in saRunArgs
     iCpuIndex = saRunArgs.index("--cpus")
     iCpuCount = int(saRunArgs[iCpuIndex + 1])
     assert iCpuCount >= 1
+
+
+@patch(
+    "vaibify.docker.containerManager.os.cpu_count",
+    return_value=4,
+)
+def test_fnAddCpuAllocation_default_is_host_cores_minus_one(
+    mockCpuCount,
+):
+    """The unlimited default must be exactly cores minus one — not
+    cores, not half, not a shifted bit pattern."""
+    saRunArgs = []
+    _fnAddCpuAllocation(_fConfigMinimal(), saRunArgs)
+    assert saRunArgs == ["--cpus", "3"]
+
+
+@patch(
+    "vaibify.docker.containerManager.os.cpu_count",
+    return_value=2,
+)
+def test_fnAddCpuAllocation_two_core_host_defaults_to_one(
+    mockCpuCount,
+):
+    saRunArgs = []
+    _fnAddCpuAllocation(_fConfigMinimal(), saRunArgs)
+    assert saRunArgs == ["--cpus", "1"]
+
+
+@patch(
+    "vaibify.docker.containerManager.os.cpu_count",
+    return_value=1,
+)
+def test_fnAddCpuAllocation_single_core_host_never_asks_for_zero(
+    mockCpuCount,
+):
+    saRunArgs = []
+    _fnAddCpuAllocation(_fConfigMinimal(), saRunArgs)
+    assert saRunArgs == ["--cpus", "1"]
+
+
+@patch(
+    "vaibify.docker.containerManager.os.cpu_count",
+    return_value=None,
+)
+def test_fnAddCpuAllocation_unknown_host_assumes_two_cores(
+    mockCpuCount,
+):
+    saRunArgs = []
+    _fnAddCpuAllocation(_fConfigMinimal(), saRunArgs)
+    assert saRunArgs == ["--cpus", "1"]
+
+
+@patch(
+    "vaibify.docker.containerManager.os.cpu_count",
+    return_value=None,
+)
+def test_fnAddCpuAllocation_unknown_host_still_clamps_config_limit(
+    mockCpuCount,
+):
+    """With an unknown core count the assumed host is 2 cores, and a
+    configured limit must clamp against that assumption too."""
+    config = _fConfigMinimal()
+    config.iCpuLimit = 3
+    saRunArgs = []
+    _fnAddCpuAllocation(config, saRunArgs)
+    assert saRunArgs == ["--cpus", "2"]
+
+
+@patch(
+    "vaibify.docker.containerManager.os.cpu_count",
+    return_value=4,
+)
+def test_fnAddCpuAllocation_negative_config_falls_back_to_default(
+    mockCpuCount,
+):
+    """A negative iCpuLimit (possible via a hand-edited config object)
+    must select the default path, never reach docker as --cpus -3."""
+    config = _fConfigMinimal()
+    config.iCpuLimit = -3
+    saRunArgs = []
+    _fnAddCpuAllocation(config, saRunArgs)
+    assert saRunArgs == ["--cpus", "3"]
+
+
+def test_fnAddMemoryAllocation_negative_config_adds_no_flag():
+    config = _fConfigMinimal()
+    config.fMemoryLimitGigabytes = -2.0
+    saRunArgs = []
+    _fnAddMemoryAllocation(config, saRunArgs)
+    assert saRunArgs == []
+
+
+def test_fnAddCpuAllocation_honours_config_limit():
+    config = _fConfigMinimal()
+    config.iCpuLimit = 1
+    saRunArgs = []
+    _fnAddCpuAllocation(config, saRunArgs)
+    iCpuIndex = saRunArgs.index("--cpus")
+    assert saRunArgs[iCpuIndex + 1] == "1"
+
+
+def test_fnAddCpuAllocation_clamps_limit_to_host_cores():
+    config = _fConfigMinimal()
+    config.iCpuLimit = 100000
+    saRunArgs = []
+    _fnAddCpuAllocation(config, saRunArgs)
+    iCpuIndex = saRunArgs.index("--cpus")
+    assert int(saRunArgs[iCpuIndex + 1]) <= (os.cpu_count() or 2)
+
+
+def test_fnAddMemoryAllocation_omitted_by_default():
+    saRunArgs = []
+    _fnAddMemoryAllocation(_fConfigMinimal(), saRunArgs)
+    assert saRunArgs == []
+
+
+def test_fnAddMemoryAllocation_formats_whole_and_fractional():
+    config = _fConfigMinimal()
+    config.fMemoryLimitGigabytes = 1.0
+    saRunArgs = []
+    _fnAddMemoryAllocation(config, saRunArgs)
+    assert saRunArgs == ["--memory", "1g"]
+    config.fMemoryLimitGigabytes = 1.5
+    saRunArgs = []
+    _fnAddMemoryAllocation(config, saRunArgs)
+    assert saRunArgs == ["--memory", "1.5g"]
 
 
 def test_fdictParseContainerState_running():

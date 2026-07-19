@@ -345,9 +345,11 @@ def fsGenerateViaApi(sPrompt, sApiKey):
             "The 'anthropic' package is not installed. "
             "Install with: pip install anthropic"
         )
+    from vaibify.config.modelIdentity import fsResolveApiModelId
+
     client = anthropic.Anthropic(api_key=sApiKey)
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=fsResolveApiModelId(),
         max_tokens=4096,
         messages=[{"role": "user", "content": sPrompt}],
     )

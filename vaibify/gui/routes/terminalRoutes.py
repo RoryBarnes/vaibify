@@ -79,9 +79,32 @@ async def _fnStartAndRunTerminal(websocket, dictCtx, sContainerId):
     dictInteractive = (
         _pipelineServer.fdictInteractiveContextForContainer(sContainerId)
     )
-    await fnRunTerminalSession(
-        session, websocket, dictCtx["terminals"],
-        dictInteractive=dictInteractive,
+    _fnRecordTerminalAttribution(dictCtx, sContainerId, "session-opened")
+    try:
+        await fnRunTerminalSession(
+            session, websocket, dictCtx["terminals"],
+            dictInteractive=dictInteractive,
+        )
+    finally:
+        _fnRecordTerminalAttribution(
+            dictCtx, sContainerId, "session-closed",
+        )
+
+
+def _fnRecordTerminalAttribution(dictCtx, sContainerId, sDetail):
+    """Record a terminal open/close as a Supervised-mode event.
+
+    The terminal is a recorded CHANNEL, not (yet) recorded content —
+    a change made while a terminal session is open attributes to the
+    session, but its keystrokes are not captured. The Supervised
+    docs state this granularity.
+    """
+    from ..routeContext import fnRecordAttributionEvent
+    dictWorkflow = (
+        dictCtx.get("workflows") or {}
+    ).get(sContainerId) or {}
+    fnRecordAttributionEvent(
+        dictCtx, sContainerId, dictWorkflow, "terminal", sDetail,
     )
 
 

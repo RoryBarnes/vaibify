@@ -602,6 +602,8 @@ var VaibifyWorkflowManager = (function () {
         dictData.bUseGithubAuth = true;
         dictData.bNeverSleep = _fbIsMacOs();
         dictData.bNetworkIsolation = false;
+        dictData.iCpuLimit = 0;
+        dictData.fMemoryLimitGigabytes = 0;
         return _fdictExtendWithPackageDefaults(dictData);
     }
 
@@ -944,7 +946,31 @@ var VaibifyWorkflowManager = (function () {
             ? _fsRenderNeverSleepRow() : "";
         return '<div class="form-group">' +
             '<label>Runtime options</label>' +
-            sNeverSleep + _fsRenderNetworkIsolationRow() + '</div>';
+            sNeverSleep + _fsRenderNetworkIsolationRow() + '</div>' +
+            _fsRenderResourceLimitsSection();
+    }
+
+    function _fsRenderResourceLimitsSection() {
+        var sCpuValue = _dictWizardData.iCpuLimit > 0
+            ? String(_dictWizardData.iCpuLimit) : "";
+        var sMemoryValue = _dictWizardData.fMemoryLimitGigabytes > 0
+            ? String(_dictWizardData.fMemoryLimitGigabytes) : "";
+        return '<div class="form-group">' +
+            '<label>Resource limits (blank = no limit)</label>' +
+            '<div class="wizard-resource-limit-row">' +
+            '<input type="number" id="wizardCpuLimit" min="1" ' +
+            'step="1" placeholder="all cores − 1" value="' +
+            sCpuValue + '">' +
+            '<span>CPU cores</span></div>' +
+            '<div class="wizard-resource-limit-row">' +
+            '<input type="number" id="wizardMemoryLimit" ' +
+            'min="0.25" step="0.25" placeholder="unlimited" ' +
+            'value="' + sMemoryValue + '">' +
+            '<span>Memory (GB)</span></div>' +
+            '<div class="wizard-helper-text">Applied via docker ' +
+            'run each time the container starts. A minimal demo ' +
+            'container runs comfortably at 1 CPU and 1 GB.' +
+            '</div></div>';
     }
 
     function _fsRenderNeverSleepRow() {
@@ -1110,7 +1136,19 @@ var VaibifyWorkflowManager = (function () {
                 _dictWizardData.bNeverSleep ? "Yes" : "No") : "";
         return sNeverSleep + _fsSummaryRow(
             "Network isolation",
-            _dictWizardData.bNetworkIsolation ? "Yes" : "No");
+            _dictWizardData.bNetworkIsolation ? "Yes" : "No") +
+            _fsSummaryResourceLimitLines();
+    }
+
+    function _fsSummaryResourceLimitLines() {
+        var sCpuValue = _dictWizardData.iCpuLimit > 0
+            ? _dictWizardData.iCpuLimit + " cores"
+            : "All cores minus one";
+        var sMemoryValue = _dictWizardData.fMemoryLimitGigabytes > 0
+            ? _dictWizardData.fMemoryLimitGigabytes + " GB"
+            : "Unlimited";
+        return _fsSummaryRow("CPU limit", sCpuValue) +
+            _fsSummaryRow("Memory limit", sMemoryValue);
     }
 
     function _fnSaveCurrentStepData() {
@@ -1149,11 +1187,26 @@ var VaibifyWorkflowManager = (function () {
         _fnReadCheckboxInto("wizardNeverSleep", "bNeverSleep");
         _fnReadCheckboxInto("wizardNetworkIsolation",
             "bNetworkIsolation");
+        _fnReadPositiveNumberInto(
+            "wizardCpuLimit", "iCpuLimit", true);
+        _fnReadPositiveNumberInto(
+            "wizardMemoryLimit", "fMemoryLimitGigabytes", false);
     }
 
     function _fnReadCheckboxInto(sId, sField) {
         var elCheck = document.getElementById(sId);
         if (elCheck) _dictWizardData[sField] = elCheck.checked;
+    }
+
+    function _fnReadPositiveNumberInto(sId, sField, bInteger) {
+        /* Blank, zero, or unparsable all mean "no limit" (0). */
+        var elInput = document.getElementById(sId);
+        if (!elInput) return;
+        var fParsed = bInteger
+            ? parseInt(elInput.value, 10)
+            : parseFloat(elInput.value);
+        _dictWizardData[sField] =
+            (isNaN(fParsed) || fParsed <= 0) ? 0 : fParsed;
     }
 
     function _flistCheckedFeatures(listChecks) {

@@ -9,13 +9,18 @@
 # Scope: vaibify Python source ONLY. cosmic-ray mutates *.py exclusively,
 # so the vanilla-JS frontend (vaibify/gui/static/*.js), the top-level
 # docker/ shell tooling, and every other non-Python asset are excluded by
-# construction. The two package subtrees named here are the ~25 hardened
-# modules under vaibify/gui/ and vaibify/reproducibility/ that the
-# falsification suite defends.
+# construction. The subtrees named here are the hardened modules the
+# falsification suite defends: vaibify/gui/ and vaibify/reproducibility/
+# (the original scope), plus vaibify/config/ and vaibify/docker/ (added
+# 2026-07-19 after a local mutation run on the resource-limit diff found
+# 32 of its 47 survivors in these two subtrees -- the gate had never
+# graded the config validation or the docker-run arg assembly).
 [cosmic-ray]
 module-path = [
     "vaibify/gui",
     "vaibify/reproducibility",
+    "vaibify/config",
+    "vaibify/docker",
 ]
 
 # Redundant with the *.py-only rule above, but kept explicit so the intent

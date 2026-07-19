@@ -142,6 +142,64 @@ class TestWorkflowSearchRoute:
             assert response.status_code == 200
 
 
+class TestWorkflowCreationRequestRoute:
+    """POST /api/workflows/{id}/request-creation — the agent's
+    create-project action records a request for the researcher; it
+    must never create a project itself."""
+
+    def _ftBuildClientAndCtx(self):
+        app = FastAPI()
+        dictCtx = {
+            "docker": MagicMock(),
+            "require": MagicMock(),
+            "dictProjectCreationRequests": {},
+        }
+        fnRegisterAll(app, dictCtx)
+        return TestClient(app), dictCtx
+
+    def test_request_is_recorded_not_created(self):
+        client, dictCtx = self._ftBuildClientAndCtx()
+        response = client.post(
+            "/api/workflows/cid1/request-creation",
+            json={"sWorkflowName": "  Waste Heat  ",
+                  "sRepoDirectory": "waste_heat"},
+        )
+        assert response.status_code == 200
+        dictBody = response.json()
+        assert dictBody["bCreated"] is False
+        assert "researcher-only" in dictBody["sMessage"]
+        assert dictCtx["dictProjectCreationRequests"]["cid1"] == {
+            "sSuggestedName": "Waste Heat",
+            "sSuggestedDirectory": "waste_heat",
+        }
+        dictCtx["docker"].fnWriteFile.assert_not_called()
+
+    def test_request_truncates_suggestions_to_two_hundred(self):
+        """Suggestion strings are capped at exactly 200 characters so
+        an agent cannot bloat the in-memory request store."""
+        client, dictCtx = self._ftBuildClientAndCtx()
+        response = client.post(
+            "/api/workflows/cid1/request-creation",
+            json={"sWorkflowName": "n" * 250,
+                  "sRepoDirectory": "d" * 250},
+        )
+        assert response.status_code == 200
+        dictStored = dictCtx["dictProjectCreationRequests"]["cid1"]
+        assert len(dictStored["sSuggestedName"]) == 200
+        assert len(dictStored["sSuggestedDirectory"]) == 200
+
+    def test_request_accepts_empty_suggestions(self):
+        client, dictCtx = self._ftBuildClientAndCtx()
+        response = client.post(
+            "/api/workflows/cid1/request-creation", json={},
+        )
+        assert response.status_code == 200
+        assert dictCtx["dictProjectCreationRequests"]["cid1"] == {
+            "sSuggestedName": "",
+            "sSuggestedDirectory": "",
+        }
+
+
 # The former /api/repos/{id} repo-list route has moved to
 # repoRoutes.py as /api/repos/{id}/status.  Tests for the new
 # endpoint live in testRepoRoutes.py.
