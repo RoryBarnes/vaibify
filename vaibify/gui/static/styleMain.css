@@ -6236,3 +6236,30 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     padding-top: 6px;
     margin-top: 6px;
 }
+
+/* --- Project context import picker (Replay axis) --- */
+
+.context-import-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border, #444);
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+.context-import-entry {
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.context-import-entry:hover {
+    background: rgba(128, 128, 128, 0.18);
+}
+
+.declared-model-row .declared-model-dates {
+    opacity: 0.7;
+    font-size: 0.9em;
+}

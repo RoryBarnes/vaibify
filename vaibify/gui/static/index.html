@@ -865,6 +865,29 @@
     </div>
 </div>
 
+<!-- Project Context Import Picker -->
+<div class="modal-overlay" id="modalContextImport" style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="modalContextImportTitle">
+    <div class="modal modal-small">
+        <h2 id="modalContextImportTitle"
+            style="color: var(--color-pale-blue);">
+            Import project context</h2>
+        <p class="muted-text">
+            Pick a markdown file from your home directory (for
+            example an existing agent-context file). It is copied
+            into the repository as
+            <code>.vaibify/AGENTS.md</code>.
+        </p>
+        <div id="contextImportPath" class="muted-text"></div>
+        <div id="contextImportEntries" class="context-import-list"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnContextImportCancel">
+                Cancel</button>
+        </div>
+    </div>
+</div>
+
 <!-- Zenodo Metadata Modal -->
 <div class="modal-overlay" id="modalZenodoMetadata" style="display: none;">
     <div class="modal modal-medium">
@@ -986,6 +1009,7 @@
 <script src="/static/scriptSyncManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptArxivConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAiModelConfig.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptProjectContext.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptNewWorkflowWizard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWorkflowManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>

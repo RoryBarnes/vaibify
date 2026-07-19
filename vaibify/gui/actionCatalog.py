@@ -609,6 +609,31 @@ LIST_AGENT_ACTIONS = [
                      "sModelId}. User-only because deleting a "
                      "declaration erases provenance and can drop the "
                      "project below Level 2."},
+    {"sName": "read-project-context", "sCategory": "workflow",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/project-context",
+     "bAgentSafe": True,
+     "sDescription": "Read the project context file "
+                     "(.vaibify/AGENTS.md) — the researcher's "
+                     "standing instructions to the agent. Returns "
+                     "{bExists, sContent}."},
+    {"sName": "update-project-context", "sCategory": "workflow",
+     "sMethod": "PUT",
+     "sPath": "/api/workflow/{sContainerId}/project-context",
+     "bAgentSafe": True,
+     "sDescription": "Write the project context file "
+                     "(.vaibify/AGENTS.md). Args: {sContent}. Use "
+                     "when the researcher asks you to draft or "
+                     "update the project's standing instructions; "
+                     "the file is versioned with the repository, so "
+                     "commit it through the normal canonical flow."},
+    {"sName": "generate-project-context-template",
+     "sCategory": "workflow", "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/project-context/template",
+     "bAgentSafe": True,
+     "sDescription": "Write the starter project-context template to "
+                     ".vaibify/AGENTS.md. Refuses (409) when a "
+                     "context file already exists."},
     {"sName": "run-falsification", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",
@@ -711,6 +736,11 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # Project-context import reads the HOST filesystem; an
+    # agent-invokable host read would let a compromised in-container
+    # agent exfiltrate home-directory files into a public repository.
+    # Researcher-only, via the dashboard's import picker.
+    ("POST", "/api/workflow/{sContainerId}/project-context/import"),
     # Control-plane endpoints used by the UI to bootstrap a session;
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),

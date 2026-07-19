@@ -339,6 +339,24 @@ var PipeleyenEventBindings = (function () {
         VaibifyAiModelConfig.fnOpen();
     }
 
+    function _fnHandleContextTemplate(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyProjectContext.fnGenerateTemplate();
+    }
+
+    function _fnHandleContextImportOpen(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyProjectContext.fnOpenImportPicker();
+    }
+
+    function _fnHandleContextAdopt(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyProjectContext.fnAdoptRepoRoot();
+    }
+
     function _fnHandleVerifyRemote(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -456,6 +474,9 @@ var PipeleyenEventBindings = (function () {
         ".wf-action-btn": _fnHandleProjectAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
         ".wf-open-ai-model-config": _fnHandleOpenAiModelConfig,
+        ".btn-context-template": _fnHandleContextTemplate,
+        ".btn-context-import-open": _fnHandleContextImportOpen,
+        ".btn-context-adopt": _fnHandleContextAdopt,
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,
@@ -732,6 +753,9 @@ var PipeleyenEventBindings = (function () {
             },
             checkAiModelOpenWeights: function () {
                 VaibifyAiModelConfig.fnToggleWeightsFields();
+            },
+            btnContextImportCancel: function () {
+                VaibifyProjectContext.fnCloseImportPicker();
             },
             btnGitIdentityCancel: function () {
                 VaibifySyncManager.fnCloseGitIdentityModal();

@@ -1469,7 +1469,8 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "bArxivConfigured": bool,
          "dictAiProvenance": declared block or None,
          "bAiModelsDeclared": bool,
-         "bProjectContextFileExists": bool}
+         "bProjectContextFileExists": bool,
+         "bRepoRootAgentsFileDetected": bool}
 
     The booleans let the Project-block requirement rows render
     AI-declaration, rebuild-attestation, Overleaf-applicability,
@@ -1524,7 +1525,26 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
             filesRepo.fbIsFile(".vaibify/AGENTS.md") if bHasRepo
             else False
         ),
+        "bRepoRootAgentsFileDetected": (
+            _fbRootContextCandidateDetected(filesRepo) if bHasRepo
+            else False
+        ),
     }
+
+
+def _fbRootContextCandidateDetected(filesRepo):
+    """True when a repo-root context file could be adopted.
+
+    The adopt affordance only makes sense while the canonical
+    ``.vaibify/AGENTS.md`` does not exist and a root ``CLAUDE.md`` or
+    ``AGENTS.md`` does — after adoption the root name is a symlink to
+    the canonical file, so this reads False again.
+    """
+    if filesRepo.fbIsFile(".vaibify/AGENTS.md"):
+        return False
+    return filesRepo.fbIsFile("CLAUDE.md") or filesRepo.fbIsFile(
+        "AGENTS.md",
+    )
 
 
 def _flistEnvelopeBinaries(dictWorkflow, filesRepo, bHasRepo):

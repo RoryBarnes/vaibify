@@ -693,10 +693,8 @@ var VaibifyWorkflowRequirements = (function () {
         var sContextRow = dictDetail.bProjectContextFileExists === true
             ? _fsRenderFileRowWithBadges(
                 ".vaibify/AGENTS.md", ["sGithub", "sZenodo"])
-            : '<div class="requirement-row-status">No project ' +
-              'context file (.vaibify/AGENTS.md) yet — the ' +
-              'standing instructions the in-container agent reads.' +
-              '</div>';
+            : VaibifyProjectContext.fsRenderMissingContextRow(
+                dictDetail);
         return '<div class="requirement-row-detail">' + sModels +
             sDeclareButton + sContextRow +
             '<div class="requirement-row-howto">The workspace ' +

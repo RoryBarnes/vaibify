@@ -850,7 +850,7 @@ A vaibified repo contains:
 - Scripts prefixed with `data` (analysis) or `plot` (visualization)
 - A `Plot/` directory for output figures
 - `.vaibify/projects/*.json` defining the pipeline
-- `.vaibify/CLAUDE.md` with project-specific context (symlinked to repo root)
+- `.vaibify/AGENTS.md` with project context (symlinked to repo root)
 
 ## Verification
 
@@ -942,19 +942,31 @@ CLAUDEMD
 }
 
 # ---------------------------------------------------------------------------
-# fnLinkRepoClaudeMd: Symlink .vaibify/CLAUDE.md to repo root for each repo
+# fnLinkRepoClaudeMd: Canonicalize project context on .vaibify/AGENTS.md
+# and symlink both repo-root names (CLAUDE.md + AGENTS.md) to it.
 # ---------------------------------------------------------------------------
 fnLinkRepoClaudeMd() {
     for sVaibDir in "${WORKSPACE}"/*/.vaibify; do
         [ -d "${sVaibDir}" ] || continue
         local sRepoDir
         sRepoDir=$(dirname "${sVaibDir}")
-        local sSource="${sVaibDir}/CLAUDE.md"
-        local sTarget="${sRepoDir}/CLAUDE.md"
-        if [ -f "${sSource}" ] && [ ! -f "${sTarget}" ]; then
-            ln -s ".vaibify/CLAUDE.md" "${sTarget}"
-            echo "[vaib]   Linked CLAUDE.md in $(basename "${sRepoDir}")"
+        local sSource="${sVaibDir}/AGENTS.md"
+        # Legacy migration: a real .vaibify/CLAUDE.md becomes the
+        # canonical AGENTS.md (never clobbering an existing one).
+        if [ -f "${sVaibDir}/CLAUDE.md" ] && [ ! -L "${sVaibDir}/CLAUDE.md" ] \
+            && [ ! -e "${sSource}" ]; then
+            mv "${sVaibDir}/CLAUDE.md" "${sSource}"
+            echo "[vaib]   Migrated .vaibify/CLAUDE.md to AGENTS.md"
         fi
+        [ -f "${sSource}" ] || continue
+        local sName
+        for sName in CLAUDE.md AGENTS.md; do
+            local sTarget="${sRepoDir}/${sName}"
+            if [ ! -e "${sTarget}" ] && [ ! -L "${sTarget}" ]; then
+                ln -s ".vaibify/AGENTS.md" "${sTarget}"
+                echo "[vaib]   Linked ${sName} in $(basename "${sRepoDir}")"
+            fi
+        done
     done
 }
 

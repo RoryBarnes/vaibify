@@ -785,6 +785,8 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
     ".vaibify/overleafPushManifest.json",
     ".vaibify/ai_provenance.json",
     ".vaibify/AGENTS.md",
+    "CLAUDE.md",
+    "AGENTS.md",
 )
 
 # Paths whose body is intentionally excluded from the poll snapshot.
@@ -794,6 +796,8 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
 TUPLE_SNAPSHOT_SKIP_TEXT_PATHS = (
     "MANIFEST.sha256",
     ".vaibify/AGENTS.md",
+    "CLAUDE.md",
+    "AGENTS.md",
 )
 
 

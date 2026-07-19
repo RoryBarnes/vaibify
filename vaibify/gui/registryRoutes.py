@@ -677,10 +677,13 @@ def _fnRegisterHostDirectories(app, dictCtx):
     @app.get("/api/host-directories")
     async def fnGetHostDirectories(
         sPath: Optional[str] = None,
+        bIncludeFiles: bool = False,
     ):
         sAbsPath = sPath or os.path.expanduser("~")
         _fnValidateHostPath(sAbsPath)
-        listEntries = flistQueryHostDirectory(sAbsPath)
+        listEntries = flistQueryHostDirectory(
+            sAbsPath, bIncludeFiles=bIncludeFiles,
+        )
         return {
             "sCurrentPath": sAbsPath,
             "bHasConfig": fbDirectoryHasConfig(sAbsPath),
@@ -740,17 +743,22 @@ def _fnValidateHostPath(sPath):
         raise HTTPException(404, "Directory not found")
 
 
-def flistQueryHostDirectory(sAbsPath):
-    """List subdirectories on the host filesystem.
+def flistQueryHostDirectory(sAbsPath, bIncludeFiles=False):
+    """List subdirectories (and optionally files) on the host.
 
     Returns the same entry shape as the container directory
     listing (``sName``, ``sPath``, ``bIsDirectory``) plus
-    ``bHasConfig`` indicating a vaibify project.
+    ``bHasConfig`` indicating a vaibify project. File entries are
+    included only when ``bIncludeFiles`` is set (import pickers);
+    symlinked files are skipped the same way symlinked directories
+    are.
 
     Parameters
     ----------
     sAbsPath : str
         Absolute path to list.
+    bIncludeFiles : bool
+        Include regular files alongside directories.
 
     Returns
     -------
@@ -762,6 +770,8 @@ def flistQueryHostDirectory(sAbsPath):
         for entry in os.scandir(sAbsPath):
             if entry.is_dir(follow_symlinks=False):
                 listEntries.append(_fdictBuildHostEntry(entry))
+            elif bIncludeFiles and entry.is_file(follow_symlinks=False):
+                listEntries.append(_fdictBuildHostFileEntry(entry))
     except PermissionError:
         raise HTTPException(403, "Permission denied")
     return _flistSortDirectoryEntries(listEntries)
@@ -774,6 +784,16 @@ def _fdictBuildHostEntry(entry):
         "sPath": entry.path,
         "bIsDirectory": True,
         "bHasConfig": fbDirectoryHasConfig(entry.path),
+    }
+
+
+def _fdictBuildHostFileEntry(entry):
+    """Build a file entry dict for pickers that import host files."""
+    return {
+        "sName": entry.name,
+        "sPath": entry.path,
+        "bIsDirectory": False,
+        "bHasConfig": False,
     }
 
 

@@ -303,3 +303,49 @@ def test_build_stages_the_curated_doc_set():
     iPrepare = sBuild.index("def fnPrepareBuildContext")
     iNext = sBuild.index("\ndef ", iPrepare + 1)
     assert "fnStageCuratedDocs" in sBuild[iPrepare:iNext]
+
+
+def _fsExtractLinkFunction():
+    """Return the fnLinkRepoClaudeMd bash function body from entrypoint.sh."""
+    sEntrypoint = _fsReadDockerFile("entrypoint.sh")
+    iStart = sEntrypoint.index("fnLinkRepoClaudeMd() {")
+    iEnd = sEntrypoint.index("\n}", iStart) + 2
+    return sEntrypoint[iStart:iEnd]
+
+
+def testLinkRepoClaudeMdCanonicalizesAgentsMd(tmp_path):
+    """The link function migrates legacy context and links BOTH root names.
+
+    Exercises the real bash function against a temp workspace: a
+    legacy ``.vaibify/CLAUDE.md`` becomes the canonical
+    ``.vaibify/AGENTS.md``, both repo-root names become symlinks to
+    it, and an existing root file is never clobbered.
+    """
+    import subprocess
+    pathRepo = tmp_path / "exampleRepo"
+    (pathRepo / ".vaibify").mkdir(parents=True)
+    (pathRepo / ".vaibify" / "CLAUDE.md").write_text("legacy context\n")
+    pathOther = tmp_path / "otherRepo"
+    (pathOther / ".vaibify").mkdir(parents=True)
+    (pathOther / ".vaibify" / "AGENTS.md").write_text("context\n")
+    (pathOther / "CLAUDE.md").write_text("pre-existing root file\n")
+    sScript = (
+        f'WORKSPACE="{tmp_path}"\n'
+        + _fsExtractLinkFunction()
+        + "\nfnLinkRepoClaudeMd\n"
+    )
+    subprocess.run(
+        ["bash", "-euc", sScript], check=True, capture_output=True,
+    )
+    assert (pathRepo / ".vaibify" / "AGENTS.md").read_text() == (
+        "legacy context\n"
+    )
+    assert not (pathRepo / ".vaibify" / "CLAUDE.md").exists()
+    for sName in ("CLAUDE.md", "AGENTS.md"):
+        assert (pathRepo / sName).is_symlink()
+        assert (pathRepo / sName).read_text() == "legacy context\n"
+    assert not (pathOther / "CLAUDE.md").is_symlink()
+    assert (pathOther / "CLAUDE.md").read_text() == (
+        "pre-existing root file\n"
+    )
+    assert (pathOther / "AGENTS.md").is_symlink()

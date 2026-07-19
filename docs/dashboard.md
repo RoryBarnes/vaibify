@@ -367,6 +367,18 @@ an action exists — a button that performs it in place:
   AI Model / Prompts row (removal is user-only — deleting a
   declaration erases provenance and can drop the project below
   Level 2).
+- **Start from template**, **Import from this computer…**, and
+  **Adopt repo-root context file** when no project context file
+  exists yet. The context file (`.vaibify/AGENTS.md`) is the
+  standing instructions the in-container agent reads; the entrypoint
+  symlinks it to both root names (`CLAUDE.md` and `AGENTS.md`) so
+  any agent tooling finds it. Once it exists, click its file row to
+  view and edit it in place (saves go through a dedicated,
+  path-fixed route; the generic editor still refuses `.vaibify/`
+  writes). Import is researcher-only — the in-container agent can
+  read and update the file via its own actions but can never pull
+  files from your computer. Edits take effect for the agent's next
+  session, not a running one.
 - **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 

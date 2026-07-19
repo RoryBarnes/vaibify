@@ -1175,6 +1175,11 @@ const PipeleyenFigureViewer = (function () {
             var dictParams = new URLSearchParams(sQuery);
             sWorkdir = dictParams.get("sWorkdir") || "";
         }
+        // The project context file saves through its dedicated route
+        // (the generic file route denylists .vaibify/ writes).
+        if (decodeURIComponent(sFilePath) === ".vaibify/AGENTS.md") {
+            return "/api/workflow/" + sContainerId + "/project-context";
+        }
         var sSaveUrl = "/api/file/" + sContainerId + "/" + sFilePath;
         if (sWorkdir) {
             sSaveUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);

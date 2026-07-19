@@ -1312,6 +1312,7 @@ class TestWorkflowDiscoveryRoute:
             "docker": MagicMock(),
             "require": MagicMock(),
             "lastDiscoveredWorkflows": {},
+            "dictProjectCreationRequests": {},
         }
 
     def _fnRegister(self, app, dictCtx):
@@ -1408,6 +1409,36 @@ class TestWorkflowDiscoveryRoute:
         dictBody = response.json()
         assert dictBody["bWorkflowsChanged"] is False
         assert dictBody["listNewWorkflowPaths"] == []
+
+    def test_creation_request_is_served_exactly_once(self):
+        """An agent's create-project request is handed to the browser
+        on the next poll and cleared so the wizard opens only once."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        dictCtx = self._fdictBuildCtx()
+        dictCtx["dictProjectCreationRequests"]["cid1"] = {
+            "sSuggestedName": "Waste Heat",
+            "sSuggestedDirectory": "waste_heat",
+        }
+        with patch(
+            "vaibify.gui.workflowReloadDetector.workflowManager"
+            ".flistFindWorkflowsInContainer",
+            return_value=[],
+        ):
+            self._fnRegister(app, dictCtx)
+            client = TestClient(app)
+            dictFirst = client.get(
+                "/api/pipeline/cid1/workflow-discovery").json()
+            dictSecond = client.get(
+                "/api/pipeline/cid1/workflow-discovery").json()
+        assert dictFirst["dictProjectCreationRequest"] == {
+            "sSuggestedName": "Waste Heat",
+            "sSuggestedDirectory": "waste_heat",
+        }
+        assert dictSecond["dictProjectCreationRequest"] is None
+        assert dictCtx["dictProjectCreationRequests"] == {}
 
 
 _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
@@ -1624,6 +1655,7 @@ class TestPollLevelStatePayload:
             "bOverleafBound", "bArxivConfigured",
             "dictAiProvenance", "bAiModelsDeclared",
             "bProjectContextFileExists",
+            "bRepoRootAgentsFileDetected",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None

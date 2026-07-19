@@ -2656,7 +2656,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # maintenance (_fnMaintainAiProvenanceStamp: snapshot-based
     # staleness check, rewrite only on drift) so the stamp stays
     # machine-written. Cohesive with the poll side-effects it extends.
-    "routes/pipelineRoutes.py": 2344,
+    # +9 (2026-07-18): the create-project one-shot handoff — the
+    # agent's request popped from dictProjectCreationRequests into the
+    # discovery poll response so the browser opens the wizard once.
+    # +19 (2026-07-18): repo-root context-file detection
+    # (_fbRootContextCandidateDetected + the two poll booleans) for
+    # the project-context adopt affordance (concurrent lane).
+    "routes/pipelineRoutes.py": 2372,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2778,7 +2784,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the name), beside fdictStepFromRequest which it serves.
     # +1 (2026-07-18): replayRoutes registration line in
     # _fnRegisterAllRoutes (Replay-axis AI-model declarations).
-    "pipelineServer.py": 2020,
+    # +6 (2026-07-18): RequestProjectCreationRequest beside the other
+    # request models, plus the dictProjectCreationRequests context
+    # seed — the researcher-only create-project handoff state.
+    "pipelineServer.py": 2026,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -2805,7 +2814,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,
-    "registryRoutes.py": 987,
+    # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
+    # (+ _fdictBuildHostFileEntry) so import pickers can list host
+    # files, not just directories (concurrent project-context lane).
+    "registryRoutes.py": 1007,
+    # Grandfathered at 807 (2026-07-18): the catalog grows by design —
+    # one block per new agent action (create-project in this lane;
+    # project-context actions in the concurrent lane). It remains one
+    # cohesive responsibility: the agent-action registry.
+    "actionCatalog.py": 807,
 }
 
 
