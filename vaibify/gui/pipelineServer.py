@@ -795,6 +795,30 @@ async def fnPipelineMessageLoop(
         _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
 
 
+def _fnRecordDispatchAttribution(
+    connectionDocker, sContainerId, dictWorkflow, sAction,
+):
+    """Record a pipeline dispatch as a Supervised-mode event.
+
+    Cheap no-op when supervision is off; failures are swallowed —
+    attribution must never block a run.
+    """
+    from . import attributionLog
+    if not attributionLog.fbSupervisionEnabled(dictWorkflow):
+        return
+    try:
+        from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+        attributionLog.fnAppendAttributionEvent(
+            ContainerRepoFiles(
+                connectionDocker, sContainerId,
+                (dictWorkflow or {}).get("sProjectRepoPath") or "",
+            ),
+            dictWorkflow, "pipeline", "hub", sAction,
+        )
+    except Exception as exc:  # noqa: BLE001 — never block a run
+        logger.warning("Dispatch attribution failed: %s", exc)
+
+
 async def _fnSafeDispatch(
     sAction, dictRequest, connectionDocker,
     sContainerId, dictWorkflow, dictWorkflowPathCache,
@@ -806,6 +830,14 @@ async def _fnSafeDispatch(
     ring buffer (consumed by ``pipelineState._fdictReconcileStaleHeartbeat``)
     can pair the exception with the dying container's state file.
     """
+    from . import attributionLog
+    if attributionLog.fbSupervisionEnabled(dictWorkflow):
+        # Thread-hop only when supervised: the unsupervised dispatch
+        # path must keep its exact timing (and zero extra cost).
+        await asyncio.to_thread(
+            _fnRecordDispatchAttribution,
+            connectionDocker, sContainerId, dictWorkflow, sAction,
+        )
     try:
         await fnDispatchAction(
             sAction, dictRequest, connectionDocker,
@@ -1377,6 +1409,57 @@ def _fsValidateConnectWorkflowPath(sWorkflowPath):
     return sNormalized
 
 
+def _fnCheckSupervisedIntervalAtConnect(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Close or breach the supervised interval on reconnect.
+
+    Compares the live manifest digest to the one recorded when the
+    hub last watched this repo: equal → the downtime changed nothing
+    and the interval closes cleanly; different → the repo changed
+    while nobody was watching, which is a permanent
+    ``unsupervised-gap`` flag. Either way the recorded digest
+    ratchets to the live value. Failures are logged, never raised —
+    connect must not break on a supervision hiccup.
+    """
+    from . import attributionLog
+    if not attributionLog.fbSupervisionEnabled(dictWorkflow):
+        return
+    try:
+        from .routeContext import ffilesForWorkflow
+        from vaibify.reproducibility.l3Attestation import (
+            fsCurrentManifestDigest,
+        )
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        sLiveDigest = fsCurrentManifestDigest(filesRepo)
+        dictProvenance = dictWorkflow.setdefault("dictAiProvenance", {})
+        dictSupervision = dict(
+            dictProvenance.get("dictSupervision") or {},
+        )
+        sRecorded = dictSupervision.get("sLastManifestDigest") or ""
+        if sRecorded and sRecorded != sLiveDigest:
+            attributionLog.fnAppendFlag(
+                filesRepo, "unsupervised-gap",
+                "manifest digest changed while the hub was not "
+                "watching (" + sRecorded + " -> " + sLiveDigest + ")",
+            )
+            dictSupervision["iUnattributedFlagCount"] = len(
+                attributionLog.flistLoadFlags(filesRepo),
+            )
+            logger.warning(
+                "SUPERVISION unsupervised gap detected in %s",
+                sContainerId,
+            )
+        dictSupervision["sLastManifestDigest"] = sLiveDigest
+        dictProvenance["dictSupervision"] = dictSupervision
+        dictCtx["save"](sContainerId, dictWorkflow)
+    except Exception as exc:  # noqa: BLE001 — connect must survive
+        logger.warning(
+            "Supervised interval check failed for %s: %s",
+            sContainerId, exc,
+        )
+
+
 async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
     """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
@@ -1414,6 +1497,10 @@ async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
             dictWorkflow,
         ):
             dictCtx["save"](sContainerId, dictWorkflow)
+        await asyncio.to_thread(
+            _fnCheckSupervisedIntervalAtConnect,
+            dictCtx, sContainerId, dictWorkflow,
+        )
         _fnLaunchDependencyScan(
             dictCtx, sContainerId, dictWorkflow,
         )

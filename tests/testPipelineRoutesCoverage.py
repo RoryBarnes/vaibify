@@ -1657,6 +1657,7 @@ class TestPollLevelStatePayload:
             "bProjectContextFileExists",
             "bRepoRootAgentsFileDetected",
             "sReplayAxisState", "dictPromptRecord",
+            "dictSupervision",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None

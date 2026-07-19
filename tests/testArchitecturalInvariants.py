@@ -2665,7 +2665,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +52 (2026-07-18): the Prompt Record envelope summary
     # (_fdictEnvelopePromptRecord + sReplayAxisState) riding the poll
     # snapshot (concurrent Replay lane).
-    "routes/pipelineRoutes.py": 2424,
+    # +195 (2026-07-19): the Supervised-mode watchdog lane —
+    # exec-free judgment from this poll's stat batch and snapshot
+    # (_flistUnattributedRecentPaths, _fbSnapshotHasRecentEvent,
+    # digest ratchet), the rare flag write, and the supervision
+    # envelope summary. Cohesive with the poll side-effects it
+    # extends; the pure chain/flag logic lives in attributionLog.
+    "routes/pipelineRoutes.py": 2619,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2790,7 +2796,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +6 (2026-07-18): RequestProjectCreationRequest beside the other
     # request models, plus the dictProjectCreationRequests context
     # seed — the researcher-only create-project handoff state.
-    "pipelineServer.py": 2026,
+    # +87 (2026-07-19): Supervised-mode attribution at the two seams
+    # this module owns — the dispatch recorder (thread-hopped ONLY
+    # when supervised so unsupervised dispatch timing is untouched)
+    # and the reconnect interval check (manifest-digest compare →
+    # unsupervised-gap flag) inside the connect flow.
+    "pipelineServer.py": 2113,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -2834,7 +2845,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # cohesive responsibility: the agent-action registry.
     # +33 (2026-07-18): the three Prompt Record actions and the
     # approve-first-capture exclusion (concurrent Replay lane).
-    "actionCatalog.py": 840,
+    # +3 (2026-07-19): the supervision/configure exclusion — the
+    # supervised party must not toggle its own supervision.
+    "actionCatalog.py": 843,
 }
 
 

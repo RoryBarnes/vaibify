@@ -217,6 +217,11 @@ def _fnRegisterUpdateProjectContext(app, dictCtx):
         _fnRequireContentWithinCap(sContent)
         sAbsPath = _fsContextAbsolutePath(dictWorkflow)
         _fnWriteContextFile(dictCtx, sContainerId, sAbsPath, sContent)
+        from ..routeContext import fnRecordAttributionEvent
+        fnRecordAttributionEvent(
+            dictCtx, sContainerId, dictWorkflow,
+            "project-context", "update-project-context",
+        )
         return {"bOk": True}
 
 
@@ -465,6 +470,9 @@ def _fnRegisterPromptRecordStatus(app, dictCtx):
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         dictIndex = promptRecordManager.fdictLoadIndex(filesRepo)
         dictRecord = _fdictPromptRecordOf(dictWorkflow)
+        from .. import attributionLog
+        listFlags = attributionLog.flistLoadFlags(filesRepo)
+        dictProvenance = _fdictProvenanceOf(dictWorkflow)
         return {
             "dictPromptRecord": dictRecord,
             "listCaptures": dictIndex["listCaptures"],
@@ -477,6 +485,13 @@ def _fnRegisterPromptRecordStatus(app, dictCtx):
                     filesRepo, dictIndex,
                 ),
             "sReviewSample": _fsReviewSample(filesRepo, dictIndex),
+            "dictSupervision": dict(
+                dictProvenance.get("dictSupervision") or {},
+            ),
+            "listSupervisionFlags": listFlags,
+            "bFlagChainIntact": attributionLog.fbVerifyFlagChain(
+                listFlags,
+            ),
         }
 
 
@@ -499,6 +514,45 @@ def _fsReviewSample(filesRepo, dictIndex):
     return "\n".join(sText.split("\n")[:40])
 
 
+def _fnRegisterSupervisionConfigure(app, dictCtx):
+    """Register POST .../supervision/configure.
+
+    Excluded from the agent catalog: the supervised party must never
+    switch its own supervision on or off. Requires the Prompt Record
+    to be enabled and reviewed first — Supervised is the rung above
+    Recorded, not a parallel toggle.
+    """
+
+    @app.post("/api/workflow/{sContainerId}/supervision/configure")
+    async def fnConfigureSupervision(sContainerId: str, request: dict):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        bEnabled = request.get("bEnabled") is True
+        dictRecord = _fdictPromptRecordOf(dictWorkflow)
+        if bEnabled and not (
+            dictRecord.get("bEnabled") is True
+            and dictRecord.get("bFirstCaptureReviewed") is True
+        ):
+            raise HTTPException(
+                409, "Supervised mode requires the Prompt Record to "
+                "be enabled and its first capture reviewed.",
+            )
+        dictProvenance = _fdictProvenanceOf(dictWorkflow)
+        dictSupervision = dict(
+            dictProvenance.get("dictSupervision") or {},
+        )
+        dictSupervision["bEnabled"] = bEnabled
+        if bEnabled and not dictSupervision.get("sEnabledAtUtc"):
+            dictSupervision["sEnabledAtUtc"] = datetime.now(
+                timezone.utc,
+            ).isoformat()
+        dictProvenance["dictSupervision"] = dictSupervision
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"dictSupervision": dictSupervision}
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all Replay-axis routes."""
     _fnRegisterDeclareAiModel(app, dictCtx)
@@ -511,3 +565,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterPromptRecordCapture(app, dictCtx)
     _fnRegisterPromptRecordApprove(app, dictCtx)
     _fnRegisterPromptRecordStatus(app, dictCtx)
+    _fnRegisterSupervisionConfigure(app, dictCtx)

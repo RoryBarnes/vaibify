@@ -396,6 +396,21 @@ an action exists — a button that performs it in place:
   tamper-evident, not proven complete; enabling it requires
   `pip install vaibify[replay]` on the host. Off reads "Not tracked
   — optional" and never blocks a level.
+
+  The same dialog holds **Supervised mode** (the rung above
+  Recorded; requires the record enabled and reviewed). When on,
+  every repository change must attribute to a recorded action
+  channel — a pipeline dispatch, an editor save, a context write, or
+  an open terminal session — within a 60-second window; changes with
+  no recorded cause become **permanent, hash-chained flags**
+  (`unattributed-modification`), and a repo that changed while the
+  hub was not watching flags an `unsupervised-gap` on reconnect.
+  Flags render as a red chip on the AI row and are never cleared by
+  the tool; editing the flag file breaks its chain loudly.
+  Attribution granularity is honest but coarse: the window and the
+  channel, not the file path — and a terminal session attributes as
+  an open channel without its keystrokes being captured (content
+  capture is a planned extension, stated in the dialog).
 - **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 

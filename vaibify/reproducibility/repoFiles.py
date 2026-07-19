@@ -786,6 +786,8 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
     ".vaibify/ai_provenance.json",
     ".vaibify/AGENTS.md",
     ".vaibify/promptRecord/index.json",
+    ".vaibify/promptRecord/attribution/events.jsonl",
+    ".vaibify/promptRecord/attribution/flags.jsonl",
     "CLAUDE.md",
     "AGENTS.md",
 )

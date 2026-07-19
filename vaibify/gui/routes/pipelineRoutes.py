@@ -661,6 +661,10 @@ async def _fdictFetchOutputStatus(
     await _fnMaintainAiProvenanceStamp(
         dictCtx, sContainerId, dictWorkflow, filesPoll,
     )
+    await _fnRunSupervisionWatchdog(
+        dictCtx, sContainerId, dictWorkflow, dictModTimes, filesPoll,
+        bPipelineRunning,
+    )
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
@@ -902,6 +906,164 @@ def _fdictReadStampFromSnapshot(filesPoll):
     except (OSError, ValueError):
         return None
     return dictStamp if isinstance(dictStamp, dict) else None
+
+
+async def _fnRunSupervisionWatchdog(
+    dictCtx, sContainerId, dictWorkflow, dictModTimes, filesPoll,
+    bPipelineRunning,
+):
+    """Flag repo changes with no recorded cause (Supervised mode).
+
+    Exec-free check path: recent mtimes come from this poll's stat
+    batch and the attribution events from the snapshot; the flag
+    WRITE (rare) is the only container IO. A live pipeline run is
+    itself a recorded channel, so its ticks are skipped. Flags are
+    permanent — nothing here ever clears one.
+    """
+    from vaibify.gui import attributionLog
+    if not attributionLog.fbSupervisionEnabled(dictWorkflow):
+        return
+    if bPipelineRunning:
+        return
+    bDigestRatcheted = _fbRatchetSupervisedDigest(
+        dictWorkflow, filesPoll,
+    )
+    listUnattributed = _flistUnattributedRecentPaths(
+        dictWorkflow, dictModTimes, filesPoll,
+    )
+    if not listUnattributed:
+        if bDigestRatcheted:
+            dictCtx["save"](sContainerId, dictWorkflow)
+        return
+    try:
+        await asyncio.to_thread(
+            _fnAppendUnattributedFlag, dictCtx, sContainerId,
+            dictWorkflow, listUnattributed,
+        )
+        dictCtx["save"](sContainerId, dictWorkflow)
+    except Exception as exc:  # noqa: BLE001 — poll must survive
+        logger.warning(
+            "Supervision flag append failed for %s: %s",
+            sContainerId, exc,
+        )
+
+
+def _fbRatchetSupervisedDigest(dictWorkflow, filesPoll):
+    """Keep the watched manifest digest current while the hub watches.
+
+    Legitimate manifest changes under supervision advance the digest
+    so a later reconnect compares against the last WATCHED state —
+    only changes made while nobody watched can breach the interval.
+    """
+    from vaibify.reproducibility.l3Attestation import (
+        fsCurrentManifestDigest,
+    )
+    sLiveDigest = fsCurrentManifestDigest(filesPoll)
+    dictProvenance = dictWorkflow.setdefault("dictAiProvenance", {})
+    dictSupervision = dictProvenance.setdefault("dictSupervision", {})
+    if dictSupervision.get("sLastManifestDigest") == sLiveDigest:
+        return False
+    dictSupervision["sLastManifestDigest"] = sLiveDigest
+    return True
+
+
+def _flistUnattributedRecentPaths(dictWorkflow, dictModTimes, filesPoll):
+    """Return recently-changed watched paths with no recorded cause.
+
+    The watermark (``fLastJudgedMtime`` in the supervision block)
+    guarantees each change is judged exactly once: attributed changes
+    advance it silently, unattributed ones advance it AND flag.
+    Vaibify-internal files (``.vaibify/``) are the backend's own
+    writes and are excluded from the watch set.
+    """
+    import time as timeModule
+    from vaibify.gui import attributionLog
+    dictSupervision = (
+        (dictWorkflow.get("dictAiProvenance") or {})
+        .get("dictSupervision") or {}
+    )
+    fWatermark = float(dictSupervision.get("fLastJudgedMtime") or 0.0)
+    fCutoff = timeModule.time() - 90.0
+    listRecent = []
+    fMaxSeen = fWatermark
+    for sAbsPath, fMtime in dictModTimes.items():
+        try:
+            fMtimeValue = float(fMtime)
+        except (TypeError, ValueError):
+            continue
+        if "/.vaibify/" in sAbsPath:
+            continue
+        if fMtimeValue <= fWatermark or fMtimeValue < fCutoff:
+            continue
+        listRecent.append(sAbsPath)
+        fMaxSeen = max(fMaxSeen, fMtimeValue)
+    if not listRecent:
+        return []
+    dictSupervision["fLastJudgedMtime"] = fMaxSeen
+    dictProvenance = dictWorkflow.setdefault("dictAiProvenance", {})
+    dictProvenance["dictSupervision"] = dictSupervision
+    if _fbSnapshotHasRecentEvent(filesPoll):
+        return []
+    return sorted(listRecent)
+
+
+def _fbSnapshotHasRecentEvent(filesPoll):
+    """Check the snapshot-carried events log for an in-window event."""
+    import json as jsonModule
+    from datetime import datetime, timezone
+    from vaibify.gui.attributionLog import (
+        F_ATTRIBUTION_WINDOW_SECONDS,
+        S_ATTRIBUTION_EVENTS_PATH,
+    )
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    filesRepo = ffilesEnsureRepoFiles(filesPoll)
+    if not filesRepo.fbIsFile(S_ATTRIBUTION_EVENTS_PATH):
+        return False
+    try:
+        sText = filesRepo.fsReadText(S_ATTRIBUTION_EVENTS_PATH)
+    except (OSError, FileNotFoundError):
+        return False
+    dtNow = datetime.now(timezone.utc)
+    for sLine in sText.splitlines():
+        try:
+            dictEvent = jsonModule.loads(sLine)
+            dtEvent = datetime.fromisoformat(
+                dictEvent.get("sTimestampUtc") or "",
+            )
+        except ValueError:
+            continue
+        fAge = (dtNow - dtEvent).total_seconds()
+        if fAge <= F_ATTRIBUTION_WINDOW_SECONDS:
+            return True
+    return False
+
+
+def _fnAppendUnattributedFlag(
+    dictCtx, sContainerId, dictWorkflow, listUnattributed,
+):
+    """Append the permanent unattributed-modification flag record."""
+    from vaibify.gui import attributionLog
+    from ..routeContext import ffilesForWorkflow
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    listRelative = [
+        sPath[len(sRepoRoot):].lstrip("/") if sRepoRoot
+        and sPath.startswith(sRepoRoot) else sPath
+        for sPath in listUnattributed[:20]
+    ]
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    attributionLog.fnAppendFlag(
+        filesRepo, "unattributed-modification", ", ".join(listRelative),
+    )
+    dictSupervision = dictWorkflow.setdefault(
+        "dictAiProvenance", {},
+    ).setdefault("dictSupervision", {})
+    dictSupervision["iUnattributedFlagCount"] = len(
+        attributionLog.flistLoadFlags(filesRepo),
+    )
+    logger.warning(
+        "SUPERVISION unattributed modification in %s: %s",
+        sContainerId, ", ".join(listRelative),
+    )
 
 
 def _fnRewriteAiProvenanceStamp(dictCtx, sContainerId, dictWorkflow):
@@ -1481,7 +1643,9 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "bRepoRootAgentsFileDetected": bool,
          "sReplayAxisState": "untracked|declared|recorded|supervised",
          "dictPromptRecord": {"bEnabled", "bFirstCaptureReviewed",
-             "iSessionCount", "iRedactionTotal", "bGapPresent"}}
+             "iSessionCount", "iRedactionTotal", "bGapPresent"},
+         "dictSupervision": {"bEnabled", "iFlagCount",
+             "bFlagChainIntact", "listFlags"}}
 
     The booleans let the Project-block requirement rows render
     AI-declaration, rebuild-attestation, Overleaf-applicability,
@@ -1544,7 +1708,38 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
         "dictPromptRecord": _fdictEnvelopePromptRecord(
             dictWorkflow, filesRepo if bHasRepo else None,
         ),
+        "dictSupervision": _fdictEnvelopeSupervision(
+            dictWorkflow, filesRepo if bHasRepo else None,
+        ),
     }
+
+
+def _fdictEnvelopeSupervision(dictWorkflow, filesRepo):
+    """Summarize Supervised mode from the snapshot's flags file.
+
+    Exec-free. ``bFlagChainIntact`` false means a permanent flag was
+    edited or removed — rendered as loudly as the flags themselves.
+    """
+    from vaibify.gui import attributionLog
+    dictConfig = (
+        ((dictWorkflow or {}).get("dictAiProvenance") or {})
+        .get("dictSupervision") or {}
+    )
+    dictSummary = {
+        "bEnabled": dictConfig.get("bEnabled") is True,
+        "iFlagCount": 0,
+        "bFlagChainIntact": True,
+        "listFlags": [],
+    }
+    if filesRepo is None:
+        return dictSummary
+    listFlags = attributionLog.flistLoadFlags(filesRepo)
+    dictSummary["iFlagCount"] = len(listFlags)
+    dictSummary["bFlagChainIntact"] = (
+        attributionLog.fbVerifyFlagChain(listFlags)
+    )
+    dictSummary["listFlags"] = listFlags[-5:]
+    return dictSummary
 
 
 def _fdictEnvelopePromptRecord(dictWorkflow, filesRepo):

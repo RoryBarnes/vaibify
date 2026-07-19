@@ -90,6 +90,45 @@ def fdictBuildAiProvenanceStamp(
         "bNetworkIsolatedAtCapture": bNetworkIsolatedAtCapture,
         "sTrustBaseStatement": S_TRUST_BASE_STATEMENT,
         "sCapturedAtUtc": datetime.now(timezone.utc).isoformat(),
+        **_fdictSupervisionEvidence(filesRepo),
+    }
+
+
+def _fdictSupervisionEvidence(filesRepo):
+    """Fold the Recorded/Supervised evidence into the stamp.
+
+    The Prompt Record's coverage intervals are the supervised
+    windows (both ride the same polling cadence), so the attestation
+    claims attribution only over them; the permanent flags travel
+    with the record so an archived attestation carries its own
+    breach history. Absent files yield empty lists — honestly "no
+    evidence", never an error.
+    """
+    import json as jsonModule
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listIntervals = []
+    sIndexPath = ".vaibify/promptRecord/index.json"
+    if filesRepo.fbIsFile(sIndexPath):
+        try:
+            dictIndex = jsonModule.loads(filesRepo.fsReadText(sIndexPath))
+            listIntervals = list(
+                dictIndex.get("listCoverageIntervals") or [],
+            )
+        except (OSError, ValueError):
+            pass
+    listFlags = []
+    sFlagsPath = ".vaibify/promptRecord/attribution/flags.jsonl"
+    if filesRepo.fbIsFile(sFlagsPath):
+        try:
+            for sLine in filesRepo.fsReadText(sFlagsPath).splitlines():
+                dictFlag = jsonModule.loads(sLine)
+                if isinstance(dictFlag, dict):
+                    listFlags.append(dictFlag)
+        except (OSError, ValueError):
+            pass
+    return {
+        "listSupervisionIntervals": listIntervals,
+        "listUnattributedFlags": listFlags,
     }
 
 

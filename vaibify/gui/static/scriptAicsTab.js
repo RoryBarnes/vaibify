@@ -151,6 +151,21 @@ var VaibifyAicsTab = (function () {
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
              sFixRequirementRow: "aiModelPrompts"},
+            {sStateKey: "bSupervisionClean",
+             sLabel: "Supervised mode (optional)",
+             bOptional: true,
+             sWhat: "When the opt-in watchdog is on, every " +
+                 "repository change attributes to a recorded action " +
+                 "channel; changes with no recorded cause are " +
+                 "flagged permanently. Off meets this automatically " +
+                 "— supervision never blocks a level.",
+             sHow: "Enable it from the Prompt Record dialog in the " +
+                 "AI section of the Project block (requires the " +
+                 "record enabled and reviewed).",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "aiModelPrompts"},
             {sStateKey: "bPromptRecordCurrent",
              sLabel: "Prompt Record (optional)",
              bOptional: true,

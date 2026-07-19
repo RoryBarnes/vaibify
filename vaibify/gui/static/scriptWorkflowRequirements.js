@@ -752,7 +752,28 @@ var VaibifyWorkflowRequirements = (function () {
               'monitored.</div>'
             : "";
         return '<div class="requirement-row-status">' +
-            fnEscapeHtml(sState) + '</div>' + sGap + sOpenButton;
+            fnEscapeHtml(sState) + '</div>' + sGap +
+            _fsRenderSupervisionChip(dictDetail) + sOpenButton;
+    }
+
+    function _fsRenderSupervisionChip(dictDetail) {
+        // A permanent red chip: unattributed changes or a broken
+        // flag chain render until dealt with outside the tool —
+        // never silently cleared.
+        var dictSupervision = dictDetail.dictSupervision || {};
+        if (dictSupervision.bFlagChainIntact === false) {
+            return '<div class="requirement-row-status ' +
+                'supervision-flag-chip">Supervision flag chain ' +
+                'BROKEN — a permanent flag was edited or removed.' +
+                '</div>';
+        }
+        if ((dictSupervision.iFlagCount || 0) > 0) {
+            return '<div class="requirement-row-status ' +
+                'supervision-flag-chip">' +
+                dictSupervision.iFlagCount + ' permanent ' +
+                'supervision flag(s) — see Prompt Record.</div>';
+        }
+        return "";
     }
 
     function _flistAiRows(dictDetail, dictContext) {

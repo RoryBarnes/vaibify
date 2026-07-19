@@ -788,6 +788,9 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("POST",
      "/api/workflow/{sContainerId}/prompt-record/"
      "approve-first-capture"),
+    # The supervised party must never switch its own supervision on
+    # or off; Supervised mode is toggled by the researcher only.
+    ("POST", "/api/workflow/{sContainerId}/supervision/configure"),
     # Control-plane endpoints used by the UI to bootstrap a session;
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),

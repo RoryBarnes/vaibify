@@ -6347,3 +6347,10 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
 .modal-inline-actions {
     margin: 8px 0;
 }
+
+.supervision-flag-chip {
+    color: #cb2431;
+    font-weight: bold;
+    border-left: 3px solid #cb2431;
+    padding-left: 6px;
+}

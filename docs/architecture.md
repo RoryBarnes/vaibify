@@ -871,8 +871,15 @@ dialogue is preserved. States, each requiring the ones below it:
 model ID + date range; open-weights models add weights source and
 revision hash; undeclared is the criterion's only failing state and
 gates L2) **→ recorded** (the opt-in Prompt Record is enabled and
-its first capture reviewed) **→ supervised** (reserved for the
-attribution watchdog). The verdicts live in
+its first capture reviewed) **→ supervised** (the attribution
+watchdog is on: every detected repo change during a watched interval
+must attribute to a recorded action channel — pipeline dispatch,
+editor save, context write, open terminal session — within a
+60-second window; unattributed changes and manifest drift across hub
+downtime become permanent, hash-chained flags that
+`gui/attributionLog.py` never removes. Granularity is the window and
+the channel, not the file path, and terminal *content* is not yet
+captured — both limits are stated in the UI). The verdicts live in
 `reproducibility/replayGate.py`; the machine-captured stamp
 (`.vaibify/ai_provenance.json` — declared models, SHA-256 of both
 standing prompt files, live network-isolation probe, an explicit

@@ -65,10 +65,60 @@ var VaibifyPromptRecordConfig = (function () {
             _fsRenderCaptures(dictStatus) +
             _fsRenderCoverage(dictStatus) +
             _fsRenderReviewGate(dictStatus) +
+            _fsRenderSupervision(dictStatus) +
             '<div class="modal-inline-actions">' +
             '<button type="button" class="btn" ' +
             'data-record-action="disable">Disable recording</button>' +
             '</div>';
+    }
+
+    function _fsRenderSupervision(dictStatus) {
+        // The rung above Recorded: the watchdog flags any repo
+        // change with no recorded cause, permanently. Flags demote
+        // nothing silently — they render until the researcher deals
+        // with their meaning outside the tool.
+        var dictSupervision = dictStatus.dictSupervision || {};
+        var listFlags = dictStatus.listSupervisionFlags || [];
+        var sFlags = listFlags.map(function (dictFlag) {
+            return '<li>' + fnEscapeHtml(
+                (dictFlag.sTimestampUtc || "") + " — " +
+                (dictFlag.sFlagKind || "") + ": " +
+                (dictFlag.sDetail || "")) + '</li>';
+        }).join("");
+        var sChainWarning = dictStatus.bFlagChainIntact === false
+            ? '<div class="form-error">The flag hash chain is ' +
+              'BROKEN — a permanent flag was edited or removed.</div>'
+            : "";
+        if (dictSupervision.bEnabled !== true) {
+            var dictRecord = dictStatus.dictPromptRecord || {};
+            var bEligible = dictRecord.bEnabled === true &&
+                dictRecord.bFirstCaptureReviewed === true;
+            return '<hr><p class="muted-text"><strong>Supervised ' +
+                'mode</strong> (off): the watchdog attributes every ' +
+                'repository change to a recorded action channel and ' +
+                'permanently flags changes with no recorded cause. ' +
+                'Terminal sessions are recorded as a channel ' +
+                '(open/close), not keystroke content.</p>' +
+                (bEligible
+                    ? '<div class="modal-inline-actions">' +
+                      '<button type="button" class="btn btn-primary" ' +
+                      'data-record-action="enable-supervision">' +
+                      'Enable Supervised mode</button></div>'
+                    : '<p class="muted-text">Requires the Prompt ' +
+                      'Record enabled and reviewed first.</p>') +
+                sChainWarning +
+                (sFlags ? '<ul>' + sFlags + '</ul>' : "");
+        }
+        return '<hr><p><strong>Supervised mode</strong>: on. ' +
+            listFlags.length + ' permanent flag(s).</p>' +
+            sChainWarning +
+            (sFlags ? '<ul>' + sFlags + '</ul>'
+                : '<p class="muted-text">No unattributed changes ' +
+                  'or unsupervised gaps detected.</p>') +
+            '<div class="modal-inline-actions">' +
+            '<button type="button" class="btn" ' +
+            'data-record-action="disable-supervision">' +
+            'Disable Supervised mode</button></div>';
     }
 
     function _fsRenderDisabledState() {
@@ -193,6 +243,14 @@ var VaibifyPromptRecordConfig = (function () {
             } else if (sAction === "approve") {
                 await VaibifyApi.fdictPost(
                     sBase + "/approve-first-capture", {},
+                );
+            } else if (sAction === "enable-supervision" ||
+                    sAction === "disable-supervision") {
+                await VaibifyApi.fdictPost(
+                    "/api/workflow/" +
+                        encodeURIComponent(sContainerId) +
+                        "/supervision/configure",
+                    {bEnabled: sAction === "enable-supervision"},
                 );
             }
             _fnRefresh();

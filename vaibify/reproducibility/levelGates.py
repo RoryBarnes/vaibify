@@ -1664,6 +1664,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bAiDeclarationAttested": bool,
             "bAiModelsDeclared": bool,
             "bPromptRecordCurrent": bool,
+            "bSupervisionClean": bool,
             "bProjectContextFileExists": bool,
             "bAtLeastLevel2": bool,
         }
@@ -1701,6 +1702,9 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         "bAiDeclarationAttested": bDecl,
         "bAiModelsDeclared": bModels,
         "bPromptRecordCurrent": replayGate.fbPromptRecordCurrent(
+            dictWorkflow,
+        ),
+        "bSupervisionClean": replayGate.fbSupervisionClean(
             dictWorkflow,
         ),
         "bProjectContextFileExists": ffilesEnsureRepoFiles(
