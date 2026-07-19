@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev537 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev549 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9345897f"></script>
+      <script src="_static/documentation_options.js?v=3a399939"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -439,7 +439,7 @@ buttons to generate and run them — see <a class="reference internal" href="#ve
 </section>
 <section id="the-project-block">
 <h3>The Project block<a class="headerlink" href="#the-project-block" title="Link to this heading"></a></h3>
-<p>The Project block lists project-scope requirements, grouped into six
+<p>The Project block lists project-scope requirements, grouped into seven
 collapsible sections:</p>
 <table class="docutils align-default">
 <thead>
@@ -463,11 +463,27 @@ collapsible sections:</p>
 <tr class="row-even"><td><p><strong>Published copies</strong></p></td>
 <td><p>The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Attestation</strong></p></td>
-<td><p>The AI Declaration (Level 2) and the rebuild attestation (Level 3).</p></td>
+<tr class="row-odd"><td><p><strong>AI</strong></p></td>
+<td><p>The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, and the AI Declaration (the researcher’s signed statement — Level 2).</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Attestation</strong></p></td>
+<td><p>The rebuild attestation (Level 3).</p></td>
 </tr>
 </tbody>
 </table>
+<p>The AI section is where the process provenance lives. Every AI model
+used on the project is declared with its vendor, exact model ID, and
+dates of use; a closed-weights model passes by declaration, while an
+open-weights model additionally declares its weights source and
+revision hash. Undeclared is the only failing state. The backend
+captures a machine-written stamp (<code class="docutils literal notranslate"><span class="pre">.vaibify/ai_provenance.json</span></code>) —
+the declared models, the SHA-256 of both standing prompt files, the
+container’s live network-isolation state, and an explicit trust-base
+statement — and folds it into the Level 3 attestation record, so the
+archived attestation carries the claim “these models, under these
+instructions” alongside the rebuild hashes. The stamp is rewritten on
+the next status poll whenever it drifts from the declaration; hand
+edits do not survive.</p>
 <p>Every section banner and every requirement row inside it carries a
 status light and an <strong>L1 | L2 | L3</strong> level strip: the levels the
 requirement gates show its state, and the others show a dash. A
@@ -475,7 +491,7 @@ researcher hunting for Level 2 blockers scans one column.</p>
 <p>Expanding a requirement row reveals its file rows (with remote
 badges), a plain-English status line, one “how to” line, and — where
 an action exists — a button that performs it in place:</p>
-<ul class="simple">
+<ul>
 <li><p><strong>Capture version + SHA</strong> and <strong>Remove package…</strong> on each declared
 binary, plus <strong>Add package…</strong> at the bottom of the Software section.</p></li>
 <li><p><strong>Regenerate now</strong> on the manifest, dependency lock, and environment
@@ -489,6 +505,54 @@ separate rules file).</p></li>
 <li><p><strong>Configure arXiv…</strong> to record the arXiv submission that must match
 the frozen Overleaf figures (optional — an untracked submission
 reads “not tracked” and never blocks Level 2).</p></li>
+<li><p><strong>Declare model…</strong> and per-model <strong>Remove</strong> in the AI section’s
+AI Model / Prompts row (removal is user-only — deleting a
+declaration erases provenance and can drop the project below
+Level 2).</p></li>
+<li><p><strong>Start from template</strong>, <strong>Import from this computer…</strong>, and
+<strong>Adopt repo-root context file</strong> when no project context file
+exists yet. The context file (<code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code>) is the
+standing instructions the in-container agent reads; the entrypoint
+symlinks it to both root names (<code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> and <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>) so
+any agent tooling finds it. Once it exists, click its file row to
+view and edit it in place (saves go through a dedicated,
+path-fixed route; the generic editor still refuses <code class="docutils literal notranslate"><span class="pre">.vaibify/</span></code>
+writes). Import is researcher-only — the in-container agent can
+read and update the file via its own actions but can never pull
+files from your computer. Edits take effect for the agent’s next
+session, not a running one.</p></li>
+<li><p><strong>Prompt Record…</strong> opens the opt-in transcript recorder (the
+Replay axis’s <em>Recorded</em> state, shown on the row’s
+Untracked → Declared → Recorded → Supervised ladder). When
+enabled, the in-container agent’s session transcripts are captured
+into <code class="docutils literal notranslate"><span class="pre">.vaibify/promptRecord/</span></code> every ~30 seconds as <strong>redacted
+transcripts</strong>: each capture is scanned (exact vaibify session
+secrets, the detect-secrets pattern catalog, vendor token
+prefixes, and a conservative high-entropy check) and every hit
+becomes a visible <code class="docutils literal notranslate"><span class="pre">[REDACTED:</span> <span class="pre">category]</span></code> marker with a per-category
+count. You review a sample of the first capture before the record
+counts (the agent cannot approve its own transcript). Captures are
+hash-chained — editing or removing one breaks the chain loudly —
+and coverage intervals are listed so time the hub was down reads
+as an explicit gap, never implied continuity. The record is
+tamper-evident, not proven complete; enabling it requires
+<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">vaibify[replay]</span></code> on the host. Off reads “Not tracked
+— optional” and never blocks a level.</p>
+<p>The same dialog holds <strong>Supervised mode</strong> (the rung above
+Recorded; requires the record enabled and reviewed). When on,
+every repository change must attribute to a recorded action
+channel — a pipeline dispatch, an editor save, a context write, or
+an open terminal session — within a 60-second window; changes with
+no recorded cause become <strong>permanent, hash-chained flags</strong>
+(<code class="docutils literal notranslate"><span class="pre">unattributed-modification</span></code>), and a repo that changed while the
+hub was not watching flags an <code class="docutils literal notranslate"><span class="pre">unsupervised-gap</span></code> on reconnect.
+Flags render as a red chip on the AI row and are never cleared by
+the tool; editing the flag file breaks its chain loudly.
+Attribution granularity is honest but coarse: the window and the
+channel, not the file path — and a terminal session attributes as
+an open channel without its keystrokes being captured (content
+capture is a planned extension, stated in the dialog).</p>
+</li>
 <li><p><strong>Add AI declaration step</strong> if the project has none, and <strong>Verify
 Level 3 reproducibility</strong> to launch the full rebuild-and-compare.</p></li>
 </ul>
@@ -614,11 +678,21 @@ work happens (the Main tab’s blocks or the Repos panel). The tab owns
 the requirement <em>text</em>; the buttons that do the work live in the Main
 tab’s Project block. The requirements are:</p>
 <ul class="simple">
-<li><p><strong>Level 1</strong>: Repository; Every step self-consistent.</p></li>
+<li><p><strong>Level 1</strong>: Repository; Every step self-consistent; Project
+context file (optional — a versioned <code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code> recording
+the agent’s standing instructions; shown with a neutral dash and
+excluded from the met count when absent, since it never blocks a
+level).</p></li>
 <li><p><strong>Level 2</strong>: GitHub mirror; Zenodo deposit; arXiv manuscript
 (opt-in — checked only when an arXiv submission is recorded, since
 posting happens outside vaibify on its own timeline); AI
-Declaration attested.</p></li>
+Declaration attested; AI model declared (every model used, with
+vendor, ID, and dates — closed-weights models pass by declaration).</p></li>
+</ul>
+<p>The AI rows’ deep links land on the specific requirement row in the
+Project block’s AI section — the link switches tabs, expands the
+group and row, and scrolls it into view.</p>
+<ul class="simple">
 <li><p><strong>Level 3</strong>: Manifest complete; Dependency lock; Environment
 snapshot; Dockerfile pinned; Reproduce script; Determinism declared;
 Software declared; Rebuild attestation.</p></li>

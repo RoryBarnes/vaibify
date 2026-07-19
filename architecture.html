@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev537 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev549 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9345897f"></script>
+      <script src="_static/documentation_options.js?v=3a399939"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -87,6 +87,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#re-export-pattern">Re-export pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification-state-machine">Verification state machine</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#two-aics-level-truth-systems">Two AICS-level truth systems</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-replay-axis-ai-provenance">The Replay axis (AI provenance)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#javascript-frontend">JavaScript frontend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#foundation-modules-loaded-first">Foundation modules (loaded first)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#rendering-feature-and-pre-existing-modules">Rendering, feature, and pre-existing modules</a></li>
@@ -979,6 +980,57 @@ declared outputs were found in the container, so hours of compute
 performed outside the dashboard stay visible as progress. The
 “unassessed” state asserts only existence, never quality — it sits
 below “none” on the ladder and never stamps a high-water mark.</p>
+</section>
+<section id="the-replay-axis-ai-provenance">
+<h2>The Replay axis (AI provenance)<a class="headerlink" href="#the-replay-axis-ai-provenance" title="Link to this heading"></a></h2>
+<p>The AICS ladder measures the state of the artifact; the Replay axis
+measures the provenance of the process — which AI models did the
+work, under what standing instructions, and whether the development
+dialogue is preserved. States, each requiring the ones below it:
+<strong>untracked → declared</strong> (every model used is declared; vendor +
+model ID + date range; open-weights models add weights source and
+revision hash; undeclared is the criterion’s only failing state and
+gates L2) <strong>→ recorded</strong> (the opt-in Prompt Record is enabled and
+its first capture reviewed) <strong>→ supervised</strong> (the attribution
+watchdog is on: every detected repo change during a watched interval
+must attribute to a recorded action channel — pipeline dispatch,
+editor save, context write, open terminal session — within a
+60-second window; unattributed changes and manifest drift across hub
+downtime become permanent, hash-chained flags that
+<code class="docutils literal notranslate"><span class="pre">gui/attributionLog.py</span></code> never removes. Granularity is the window and
+the channel, not the file path, and terminal <em>content</em> is not yet
+captured — both limits are stated in the UI). The verdicts live in
+<code class="docutils literal notranslate"><span class="pre">reproducibility/replayGate.py</span></code>; the machine-captured stamp
+(<code class="docutils literal notranslate"><span class="pre">.vaibify/ai_provenance.json</span></code> — declared models, SHA-256 of both
+standing prompt files, live network-isolation probe, an explicit
+trust-base statement) is built by <code class="docutils literal notranslate"><span class="pre">aiProvenanceStamp.py</span></code> +
+<code class="docutils literal notranslate"><span class="pre">gui/aiProvenanceCapture.py</span></code>, kept current by a poll side-effect,
+and folded into the L3 attestation record (schema v2).</p>
+<p><strong>Epistemic contract.</strong> The whole layer is <em>declared +
+tamper-evident</em>, never proven complete — the same trust model as the
+other L2 declarations. Tamper evidence: capture records are
+hash-chained and pin their session files’ content hashes; the poll
+rewrites a hand-edited stamp. Completeness is not provable (no
+mechanism can show that no prompt happened off the record), so
+coverage intervals make the monitored windows explicit and the UI
+renders gaps as gaps. The attestation’s trust-base statement names
+what is assumed rather than recorded: the host kernel, the Docker
+daemon, and the hub, with no host-root bypass.</p>
+<p><strong>Prompt Record threat model.</strong> Captured transcripts land inside a
+public (or to-be-public) repository, so the landing zone is the
+threat: sanitization happens at capture, never at publish.
+<code class="docutils literal notranslate"><span class="pre">gui/transcriptSanitizer.py</span></code> layers exact-value redaction of every
+vaibify session secret, detect-secrets’ pattern catalog (its two
+entropy plugins are excluded — via <code class="docutils literal notranslate"><span class="pre">scan_line</span></code> they carry no usable
+threshold and flag ordinary words; verified empirically), a
+vendor-token-prefix rule, and a guarded Shannon-entropy supplement
+(32+ characters, letters and digits, ≥ 4.5 bits/char) that leaves
+code identifiers and git hashes intact. Redactions are explicit
+<code class="docutils literal notranslate"><span class="pre">[REDACTED:</span> <span class="pre">category]</span></code> markers with per-category counts; a human
+review gate (catalog-excluded — the agent must never approve its own
+transcript) sits before the first capture counts; and the scanner
+cannot catch prose the researcher considers private, which is what
+the review gate is for.</p>
 </section>
 <section id="javascript-frontend">
 <h2>JavaScript frontend<a class="headerlink" href="#javascript-frontend" title="Link to this heading"></a></h2>
