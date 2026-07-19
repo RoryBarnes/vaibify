@@ -142,6 +142,50 @@ class TestWorkflowSearchRoute:
             assert response.status_code == 200
 
 
+class TestWorkflowCreationRequestRoute:
+    """POST /api/workflows/{id}/request-creation — the agent's
+    create-project action records a request for the researcher; it
+    must never create a project itself."""
+
+    def _ftBuildClientAndCtx(self):
+        app = FastAPI()
+        dictCtx = {
+            "docker": MagicMock(),
+            "require": MagicMock(),
+            "dictProjectCreationRequests": {},
+        }
+        fnRegisterAll(app, dictCtx)
+        return TestClient(app), dictCtx
+
+    def test_request_is_recorded_not_created(self):
+        client, dictCtx = self._ftBuildClientAndCtx()
+        response = client.post(
+            "/api/workflows/cid1/request-creation",
+            json={"sWorkflowName": "  Waste Heat  ",
+                  "sRepoDirectory": "waste_heat"},
+        )
+        assert response.status_code == 200
+        dictBody = response.json()
+        assert dictBody["bCreated"] is False
+        assert "researcher-only" in dictBody["sMessage"]
+        assert dictCtx["dictProjectCreationRequests"]["cid1"] == {
+            "sSuggestedName": "Waste Heat",
+            "sSuggestedDirectory": "waste_heat",
+        }
+        dictCtx["docker"].fnWriteFile.assert_not_called()
+
+    def test_request_accepts_empty_suggestions(self):
+        client, dictCtx = self._ftBuildClientAndCtx()
+        response = client.post(
+            "/api/workflows/cid1/request-creation", json={},
+        )
+        assert response.status_code == 200
+        assert dictCtx["dictProjectCreationRequests"]["cid1"] == {
+            "sSuggestedName": "",
+            "sSuggestedDirectory": "",
+        }
+
+
 # The former /api/repos/{id} repo-list route has moved to
 # repoRoutes.py as /api/repos/{id}/status.  Tests for the new
 # endpoint live in testRepoRoutes.py.

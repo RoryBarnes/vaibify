@@ -183,6 +183,20 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Prepare a plot/standard diff payload for one "
                      "figure. Read-only; returns data."},
     # ---- Workflow editing ----
+    {"sName": "create-project", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflows/{sContainerId}/request-creation",
+     "bAgentSafe": True,
+     "sDescription": "Ask the researcher to create a new Project. "
+                     "Creating a project.json is a researcher-only "
+                     "structural decision, so this never creates one "
+                     "directly: it opens the New Project dialog in "
+                     "the researcher's browser (within ~5 s), "
+                     "prefilled from the optional args "
+                     "{sWorkflowName, sRepoDirectory}. The "
+                     "researcher reviews and confirms there; once "
+                     "the project exists, populate it with "
+                     "create-step."},
     {"sName": "create-step", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/create",

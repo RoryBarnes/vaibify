@@ -16,17 +16,25 @@ var VaibifyNewWorkflowWizard = (function () {
     var _dictWizardState = _fdictBuildEmptyState();
     var _dictRepoStatus = null;
     var _bSubmitting = false;
+    var _dictAgentRequest = null;
 
     /* ---------- Public API ---------- */
 
-    function fnLaunch(sContainerId) {
+    function fnLaunch(sContainerId, dictAgentRequest) {
         if (!sContainerId) return;
+        if (_fbModalIsVisible()) return;
         _sContainerId = sContainerId;
         _iWizardStep = 0;
         _dictWizardState = _fdictBuildEmptyState();
         _dictRepoStatus = null;
         _bSubmitting = false;
+        _dictAgentRequest = dictAgentRequest || null;
+        if (_dictAgentRequest && _dictAgentRequest.sSuggestedName) {
+            _dictWizardState.sDisplayName =
+                _dictAgentRequest.sSuggestedName;
+        }
         _fnShowModal();
+        _fnRenderAgentRequestBanner();
         _fnRenderStep();
     }
 
@@ -56,9 +64,15 @@ var VaibifyNewWorkflowWizard = (function () {
         _dictWizardState = _fdictBuildEmptyState();
         _dictRepoStatus = null;
         _bSubmitting = false;
+        _dictAgentRequest = null;
     }
 
     /* ---------- Modal lifecycle ---------- */
+
+    function _fbModalIsVisible() {
+        return document.getElementById("modalNewWorkflowWizard")
+            .style.display === "flex";
+    }
 
     function _fnShowModal() {
         document.getElementById("modalNewWorkflowWizard")
@@ -68,6 +82,34 @@ var VaibifyNewWorkflowWizard = (function () {
     function _fnHideModal() {
         document.getElementById("modalNewWorkflowWizard")
             .style.display = "none";
+        var elBanner = document.getElementById(
+            "newWorkflowWizardAgentBanner");
+        if (elBanner) elBanner.remove();
+    }
+
+    function _fnRenderAgentRequestBanner() {
+        /* The banner lives OUTSIDE the step-content element so the
+           per-step innerHTML rewrites (including the async location
+           step) cannot erase it. */
+        var elExisting = document.getElementById(
+            "newWorkflowWizardAgentBanner");
+        if (elExisting) elExisting.remove();
+        if (!_dictAgentRequest) return;
+        var elContent = document.getElementById(
+            "newWorkflowWizardContent");
+        if (!elContent || !elContent.parentNode) return;
+        var elBanner = document.createElement("div");
+        elBanner.id = "newWorkflowWizardAgentBanner";
+        elBanner.className = "wizard-agent-banner";
+        var sText = "Requested by your in-container agent. " +
+            "Project creation is researcher-only — review " +
+            "each step and confirm.";
+        if (_dictAgentRequest.sSuggestedDirectory) {
+            sText += " Suggested location: /workspace/" +
+                _dictAgentRequest.sSuggestedDirectory + ".";
+        }
+        elBanner.textContent = sText;
+        elContent.parentNode.insertBefore(elBanner, elContent);
     }
 
     function _fnHandleCancel() {
@@ -429,8 +471,8 @@ var VaibifyNewWorkflowWizard = (function () {
             listSteps.push("Create the directory");
         }
         if (bWillInit) {
-            listSteps.push("Initialize it as a git repo with " +
-                "an empty initial commit");
+            listSteps.push("Initialize it as a git repo with a " +
+                "starter .gitignore and an initial commit");
         }
         listSteps.push(
             "Write .vaibify/projects/" + sSlug + ".json");
@@ -452,8 +494,9 @@ var VaibifyNewWorkflowWizard = (function () {
             }
             var dictResult = await _fnRunCreateWorkflow();
             _fnHideModal();
-            VaibifyWorkflowManager.fnSelectWorkflow(
+            await VaibifyWorkflowManager.fnSelectWorkflow(
                 _sContainerId, dictResult.sPath, dictResult.sName);
+            PipeleyenApp.fnAnimateProjectBirth();
             PipeleyenApp.fnShowToast("Project created", "success");
             _fnResetWorkflowState();
         } catch (error) {

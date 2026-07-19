@@ -572,10 +572,18 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
             fdictDetectNewlyAvailableWorkflows,
             dictCtx, sContainerId,
         )
+        # One-shot handoff: an agent's create-project request waits
+        # here until the single browser session's next poll, which
+        # opens the New Project wizard. Popping keeps the wizard from
+        # reopening on every subsequent tick.
+        dictCreationRequest = dictCtx[
+            "dictProjectCreationRequests"
+        ].pop(sContainerId, None)
         return {
             "listAvailableWorkflows": dictResult["listWorkflows"],
             "bWorkflowsChanged": dictResult["bChangedSinceLastPoll"],
             "listNewWorkflowPaths": dictResult["listNewWorkflowPaths"],
+            "dictProjectCreationRequest": dictCreationRequest,
         }
 
 

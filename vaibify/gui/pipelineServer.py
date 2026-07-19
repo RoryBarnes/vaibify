@@ -285,6 +285,11 @@ class CreateWorkflowRequest(BaseModel):
     sRepoDirectory: str
 
 
+class RequestProjectCreationRequest(BaseModel):
+    sWorkflowName: Optional[str] = ""
+    sRepoDirectory: Optional[str] = ""
+
+
 class SaveAndRunTestRequest(BaseModel):
     sContent: str
     sFilePath: str
@@ -1875,6 +1880,7 @@ def fdictBuildContext(connectionDocker):
         "sourceCodeDeps": {},
         "lastSelfWriteFingerprints": {},
         "lastDiscoveredWorkflows": {},
+        "dictProjectCreationRequests": {},
         "dictPipelineStateLocks": {},
         "dictSyncEpochs": {},
         "dictWorkflowEpochs": {},

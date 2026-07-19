@@ -289,13 +289,54 @@ def _fnEnsureInitTargetDirectory(
         )
 
 
-def _fnRunGitInitWithEmptyCommit(
+S_INITIAL_GITIGNORE_CONTENT = (
+    "# Python\n"
+    "__pycache__/\n"
+    "*.pyc\n"
+    "\n"
+    "# Editor and OS artifacts\n"
+    ".DS_Store\n"
+)
+
+
+def _fbWriteInitialGitignoreIfAbsent(
     connectionDocker, sContainerId, sFullPath,
 ):
-    """Run git init + an empty initial commit at sFullPath."""
+    """Write the starter .gitignore; return True when one was written.
+
+    A pre-existing .gitignore (a non-repo directory that already has
+    files) is never overwritten — the researcher's content wins.
+    """
+    sGitignorePath = sFullPath + "/.gitignore"
+    iExitCode, _ = connectionDocker.ftResultExecuteCommand(
+        sContainerId, f"test -e {fsShellQuote(sGitignorePath)}",
+    )
+    if iExitCode == 0:
+        return False
+    connectionDocker.fnWriteFile(
+        sContainerId, sGitignorePath,
+        S_INITIAL_GITIGNORE_CONTENT.encode("utf-8"),
+    )
+    return True
+
+
+def _fnRunGitInitWithInitialCommit(
+    connectionDocker, sContainerId, sFullPath, bCommitGitignore,
+):
+    """Run git init + the initial commit at sFullPath.
+
+    The initial commit exists so downstream diff/marker logic has a
+    parent; it carries the starter .gitignore when this init created
+    one, and is otherwise empty.
+    """
     sQuotedPath = fsShellQuote(sFullPath)
+    sStageCommand = (
+        f"git -C {sQuotedPath} add .gitignore && "
+        if bCommitGitignore else ""
+    )
     sCommand = (
         f"git -C {sQuotedPath} -c init.defaultBranch=main init && "
+        f"{sStageCommand}"
         f"git -C {sQuotedPath} "
         f"-c user.email=vaibify@local -c user.name=vaibify "
         f"commit --allow-empty -m 'Initialize vaibify project repo'"
@@ -336,8 +377,11 @@ def _fnDoInitProjectRepo(
         raise HTTPException(
             409, f"Directory '{sFullPath}' is already a git repository"
         )
-    _fnRunGitInitWithEmptyCommit(
+    bWroteGitignore = _fbWriteInitialGitignoreIfAbsent(
         connectionDocker, sContainerId, sFullPath,
+    )
+    _fnRunGitInitWithInitialCommit(
+        connectionDocker, sContainerId, sFullPath, bWroteGitignore,
     )
     return {"sDirectory": sDirectory, "sFullPath": sFullPath}
 

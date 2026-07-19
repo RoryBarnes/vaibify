@@ -584,10 +584,23 @@ const PipeleyenApp = (function () {
         if (_dictSessionState.dictDashboardMode === DICT_MODE_NO_WORKFLOW) {
             _fnRenderToolkitBanner(listAvailable.length);
         }
+        if (dictResponse.dictProjectCreationRequest) {
+            _fnHandleAgentProjectCreationRequest(
+                dictResponse.dictProjectCreationRequest);
+        }
         if (!dictResponse.bWorkflowsChanged) return;
         var listNew = dictResponse.listNewWorkflowPaths || [];
         if (listNew.length === 0) return;
         _fnToastNewWorkflowsAppeared(listNew, listAvailable);
+    }
+
+    function _fnHandleAgentProjectCreationRequest(dictRequest) {
+        fnShowToast(
+            "Your agent asked to start a new Project. Creating one "
+            + "is your call — review and confirm in the dialog.",
+            "info");
+        VaibifyNewWorkflowWizard.fnLaunch(
+            _dictSessionState.sContainerId, dictRequest);
     }
 
     function _fnToastNewWorkflowsAppeared(listNewPaths, listAvailable) {
@@ -3691,6 +3704,39 @@ const PipeleyenApp = (function () {
         });
     }
 
+    function fnAnimateProjectBirth() {
+        /* One-shot celebration for the sandbox-to-Project milestone:
+           two strokes race from the left column's top-left corner
+           along its edges and meet at the bottom-right, then the
+           overlay fades and removes itself. pathLength="1" normalizes
+           both paths so a single dash-offset keyframe draws them
+           regardless of the panel's pixel size. */
+        var elPanel = document.querySelector("#panelLeft");
+        if (!elPanel) return;
+        var S_SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+        var elOutline = document.createElementNS(
+            S_SVG_NAMESPACE, "svg");
+        elOutline.setAttribute(
+            "class", "vaibify-project-birth-outline");
+        elOutline.setAttribute("viewBox", "0 0 100 100");
+        elOutline.setAttribute("preserveAspectRatio", "none");
+        ["M 0 0 H 100 V 100", "M 0 0 V 100 H 100"].forEach(
+            function (sPathData) {
+                var elPath = document.createElementNS(
+                    S_SVG_NAMESPACE, "path");
+                elPath.setAttribute("d", sPathData);
+                elPath.setAttribute("pathLength", "1");
+                elOutline.appendChild(elPath);
+            }
+        );
+        elPanel.appendChild(elOutline);
+        setTimeout(function () {
+            if (elOutline.parentNode) {
+                elOutline.parentNode.removeChild(elOutline);
+            }
+        }, 2400);
+    }
+
     function fnDeleteDetailItem(iStep, sArray, iIdx) {
         var sValue = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray][iIdx];
         var dictVars = fdictBuildClientVariables();
@@ -4493,6 +4539,7 @@ const PipeleyenApp = (function () {
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,
+        fnAnimateProjectBirth: fnAnimateProjectBirth,
         fnRefreshWorkflowData: fnRefreshWorkflowData,
         fiGetWorkflowEpoch: function () {
             return _dictWorkflowState.iWorkflowEpoch;
