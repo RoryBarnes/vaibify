@@ -352,6 +352,40 @@ class TestContainerSettings:
         )
         assert responseMemory.status_code == 400
 
+    def test_post_settings_cpu_only_requires_restart(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        """Each limit independently forces a restart — a regression
+        here silently strands the old cap on a running container."""
+        sProjectDir = _fnWriteMinimalConfig(
+            tmp_path, "settings-proj5",
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/settings-proj5/settings",
+            json={"iCpuLimit": 2},
+        )
+        assert response.json()["bRestartRequired"] is True
+
+    def test_post_settings_memory_only_requires_restart(
+        self, fixtureSettingsClient, tmp_path,
+    ):
+        sProjectDir = _fnWriteMinimalConfig(
+            tmp_path, "settings-proj6",
+        )
+        fixtureSettingsClient.post(
+            "/api/registry",
+            json={"sDirectory": sProjectDir},
+        )
+        response = fixtureSettingsClient.post(
+            "/api/containers/settings-proj6/settings",
+            json={"fMemoryLimitGigabytes": 0.5},
+        )
+        assert response.json()["bRestartRequired"] is True
+
     def test_get_settings_not_found(self, fixtureSettingsClient):
         response = fixtureSettingsClient.get(
             "/api/containers/ghost/settings",
@@ -366,7 +400,57 @@ class TestContainerSettings:
         assert response.status_code == 404
 
 
+class TestRequireValidResourceLimits:
+    """Boundary grid for the API-side guard, mirrored on the
+    projectConfig validator so the two cannot drift apart."""
+
+    def test_zero_and_none_pass(self):
+        from vaibify.gui.registryRoutes import (
+            _fnRequireValidResourceLimits,
+        )
+        _fnRequireValidResourceLimits(0, 0.0)
+        _fnRequireValidResourceLimits(None, None)
+        _fnRequireValidResourceLimits(None, 0.25)
+
+    def test_negative_cpu_is_rejected_at_minus_one(self):
+        from fastapi import HTTPException
+        from vaibify.gui.registryRoutes import (
+            _fnRequireValidResourceLimits,
+        )
+        with pytest.raises(HTTPException):
+            _fnRequireValidResourceLimits(-1, None)
+
+    def test_negative_memory_is_rejected(self):
+        from fastapi import HTTPException
+        from vaibify.gui.registryRoutes import (
+            _fnRequireValidResourceLimits,
+        )
+        with pytest.raises(HTTPException):
+            _fnRequireValidResourceLimits(None, -1.0)
+
+    def test_memory_below_floor_is_rejected(self):
+        from fastapi import HTTPException
+        from vaibify.gui.registryRoutes import (
+            _fnRequireValidResourceLimits,
+        )
+        with pytest.raises(HTTPException):
+            _fnRequireValidResourceLimits(None, 0.1)
+
+
 class TestCreateProjectResourceLimits:
+    def test_negative_limits_never_attach_to_yaml(self):
+        from vaibify.gui.registryRoutes import (
+            CreateProjectRequest, _fdictBuildYamlFromRequest,
+        )
+        requestNegative = CreateProjectRequest(
+            sDirectory="/home/u/p", sProjectName="p",
+            sTemplateName="sandbox",
+            iCpuLimit=-1, fMemoryLimitGigabytes=-1.0,
+        )
+        dictYaml = _fdictBuildYamlFromRequest(requestNegative)
+        assert "cpuLimit" not in dictYaml
+        assert "memoryLimitGigabytes" not in dictYaml
+
     def test_limits_attach_to_yaml_only_when_set(self):
         from vaibify.gui.registryRoutes import (
             CreateProjectRequest, _fdictBuildYamlFromRequest,

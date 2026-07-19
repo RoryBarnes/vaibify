@@ -111,6 +111,50 @@ def test_fbValidateConfig_resource_limits():
     assert fbValidateConfig(dictConfig) is True
 
 
+def test_fbValidateConfig_resource_limit_types():
+    """Non-numeric and bool-typed limits must be rejected, not
+    coerced: bool is an int subclass, so the isinstance guards are
+    load-bearing on both fields."""
+    dictConfig = fdictLoadDefaults()
+    dictConfig["projectName"] = "test"
+    dictConfig["cpuLimit"] = "2"
+    assert fbValidateConfig(dictConfig) is False
+    dictConfig["cpuLimit"] = True
+    assert fbValidateConfig(dictConfig) is False
+    dictConfig["cpuLimit"] = 0
+    dictConfig["memoryLimitGigabytes"] = True
+    assert fbValidateConfig(dictConfig) is False
+    dictConfig["memoryLimitGigabytes"] = "1"
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_fbValidateConfig_resource_limit_boundaries():
+    """0.25 GB is the smallest allowed memory cap; negatives are
+    invalid on both sides of the == 0 escape."""
+    dictConfig = fdictLoadDefaults()
+    dictConfig["projectName"] = "test"
+    dictConfig["memoryLimitGigabytes"] = 0.25
+    assert fbValidateConfig(dictConfig) is True
+    dictConfig["memoryLimitGigabytes"] = -1.0
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_fbValidateConfig_absent_resource_keys_are_valid():
+    """A vaibify.yml predating the feature has neither key; the
+    validator's fallback defaults must read as unlimited."""
+    dictConfig = fdictLoadDefaults()
+    dictConfig["projectName"] = "test"
+    del dictConfig["cpuLimit"]
+    del dictConfig["memoryLimitGigabytes"]
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_project_config_defaults_are_unlimited():
+    configDefault = ProjectConfig()
+    assert configDefault.iCpuLimit == 0
+    assert configDefault.fMemoryLimitGigabytes == 0.0
+
+
 def test_fnSaveToFile_roundtrip_resource_limits():
     config = ProjectConfig(
         sProjectName="limited",

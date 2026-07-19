@@ -174,6 +174,20 @@ class TestWorkflowCreationRequestRoute:
         }
         dictCtx["docker"].fnWriteFile.assert_not_called()
 
+    def test_request_truncates_suggestions_to_two_hundred(self):
+        """Suggestion strings are capped at exactly 200 characters so
+        an agent cannot bloat the in-memory request store."""
+        client, dictCtx = self._ftBuildClientAndCtx()
+        response = client.post(
+            "/api/workflows/cid1/request-creation",
+            json={"sWorkflowName": "n" * 250,
+                  "sRepoDirectory": "d" * 250},
+        )
+        assert response.status_code == 200
+        dictStored = dictCtx["dictProjectCreationRequests"]["cid1"]
+        assert len(dictStored["sSuggestedName"]) == 200
+        assert len(dictStored["sSuggestedDirectory"]) == 200
+
     def test_request_accepts_empty_suggestions(self):
         client, dictCtx = self._ftBuildClientAndCtx()
         response = client.post(
