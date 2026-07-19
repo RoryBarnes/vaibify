@@ -318,6 +318,7 @@ const PipeleyenApp = (function () {
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
+        VaibifyPolling.fnStopPromptRecordPolling();
         PipeleyenReposPanel.fnTeardown();
         VaibifyAicsTab.fnSetContainerId(null);
     }
@@ -786,6 +787,7 @@ const PipeleyenApp = (function () {
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
+        VaibifyPolling.fnStopPromptRecordPolling();
         PipeleyenReposPanel.fnTeardown();
         if (_dictWorkflowState.iFileCheckTimer) {
             clearTimeout(_dictWorkflowState.iFileCheckTimer);
@@ -4059,6 +4061,13 @@ const PipeleyenApp = (function () {
     function fnStartFileChangePolling() {
         if (!_dictSessionState.sContainerId) return;
         VaibifyPolling.fnStartFilePolling(_dictSessionState.sContainerId);
+        VaibifyPolling.fnSetPromptRecordPredicate(function () {
+            var dictRecord = (_dictWorkflowState
+                .dictWorkflowEnvelopeDetail || {}).dictPromptRecord;
+            return Boolean(dictRecord && dictRecord.bEnabled === true);
+        });
+        VaibifyPolling.fnStartPromptRecordPolling(
+            _dictSessionState.sContainerId);
     }
 
     function fnProcessFileStatusResponse(dictStatus) {

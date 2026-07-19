@@ -365,17 +365,19 @@ def _flistGatherSessionSecrets(dictCtx, sContainerId):
 
 def _fnRegisterPromptRecordConfigure(app, dictCtx):
     """Register POST .../prompt-record/configure."""
-    from ..transcriptSanitizer import fbSanitizerAvailable
 
     @fnAgentAction("configure-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/configure")
     async def fnConfigurePromptRecord(sContainerId: str, request: dict):
+        # Late-bound so an install of vaibify[replay] (or a test
+        # patch) takes effect without restarting the hub.
+        from .. import transcriptSanitizer
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         bEnabled = request.get("bEnabled") is True
-        if bEnabled and not fbSanitizerAvailable():
+        if bEnabled and not transcriptSanitizer.fbSanitizerAvailable():
             raise HTTPException(
                 409, "Transcript capture needs the detect-secrets "
                 "scanner: install vaibify[replay] on the host, then "

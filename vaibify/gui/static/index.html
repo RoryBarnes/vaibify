@@ -888,6 +888,30 @@
     </div>
 </div>
 
+<!-- Prompt Record Modal (Replay axis) -->
+<div class="modal-overlay" id="modalPromptRecord" style="display: none;"
+     role="dialog" aria-modal="true"
+     aria-labelledby="modalPromptRecordTitle">
+    <div class="modal modal-medium">
+        <h2 id="modalPromptRecordTitle"
+            style="color: var(--color-pale-blue);">
+            Prompt Record</h2>
+        <p class="muted-text">
+            The Development Transcript's recorded layer: the
+            in-container agent's session transcripts, captured into
+            the repository as redacted transcripts with explicit
+            [REDACTED: …] markers. Tamper-evident, never claimed
+            complete — time outside the recorded intervals is
+            unmonitored.
+        </p>
+        <div id="promptRecordBody"></div>
+        <div class="modal-actions">
+            <button class="btn" id="btnPromptRecordClose">
+                Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Zenodo Metadata Modal -->
 <div class="modal-overlay" id="modalZenodoMetadata" style="display: none;">
     <div class="modal modal-medium">
@@ -1010,6 +1034,7 @@
 <script src="/static/scriptArxivConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAiModelConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptProjectContext.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptPromptRecordConfig.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptNewWorkflowWizard.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptWorkflowManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptModals.js?v=__CACHE_VERSION__"></script>

@@ -2,32 +2,63 @@
 
 Captured agent transcripts land inside the project repository, and
 the repository is public or will be — so secrets must be scrubbed
-BEFORE the record ever touches it, not at publish time. Two layers:
+BEFORE the record ever touches it, not at publish time. Three layers:
 
 1. **Exact-value redaction** of every vaibify session secret the hub
    knows (per-container agent token, hub session token, everything in
    the container's session env file). These are replaced wherever
-   they appear, at any length.
-2. **detect-secrets** (the battle-tested scanner, an optional
-   dependency installed as ``vaibify[replay]``) line-scans for
-   credential patterns and high-entropy strings. Matches shorter than
-   8 characters are ignored — replacing tiny substrings globally
-   would mangle unrelated text, and a sub-8-character credential is
-   noise for this scanner.
+   they appear.
+2. **detect-secrets pattern detectors** (the battle-tested rules,
+   installed as ``vaibify[replay]``): AWS keys, GitHub/GitLab/Slack/
+   Stripe tokens, private-key blocks, JWTs, and the rest of the
+   upstream-maintained catalog. The two *entropy* plugins are
+   deliberately excluded: via ``scan.scan_line`` they apply no
+   usable threshold and flag ordinary English words (verified
+   empirically — 'the', 'dog', and 'photometry' all matched), which
+   would shred a transcript.
+3. **A conservative entropy supplement** replacing them: a token of
+   32+ characters containing both letters and digits whose Shannon
+   entropy exceeds 4.5 bits/character is redacted. The guards keep
+   code identifiers, git hashes, and prose intact while catching the
+   long random strings real credentials are made of.
 
 Every redaction is an explicit ``[REDACTED: <category>]`` marker and
 is counted per category; the UI must present the result as a
-*redacted transcript*, never as raw tokens.
+*redacted transcript*, never as raw tokens. Matches shorter than 8
+characters are ignored — replacing tiny substrings globally would
+mangle unrelated text.
 """
 
 __all__ = [
     "S_SESSION_SECRET_CATEGORY",
+    "S_ENTROPY_CATEGORY",
     "fbSanitizerAvailable",
     "ftResultSanitizeText",
 ]
 
+import math
+import re
+
 S_SESSION_SECRET_CATEGORY = "vaibify-session-secret"
+S_ENTROPY_CATEGORY = "high-entropy-string"
 _I_MINIMUM_PATTERN_SECRET_LENGTH = 8
+_I_MINIMUM_ENTROPY_TOKEN_LENGTH = 32
+_F_ENTROPY_LIMIT_BITS = 4.5
+
+_SET_EXCLUDED_PLUGIN_TYPES = frozenset({
+    "Base64 High Entropy String",
+    "Hex High Entropy String",
+})
+
+_REGEX_ENTROPY_CANDIDATE = re.compile(r"[A-Za-z0-9+/=_\-]{32,}")
+
+# Vendor token prefixes whose suffix is random: the prefix alone
+# identifies the credential class even when the suffix's sampled
+# entropy dips below the general limit.
+_REGEX_PREFIXED_TOKEN = re.compile(
+    r"\b(?:ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|"
+    r"sk-(?:proj-|ant-)?|xox[baprs]-)[A-Za-z0-9_\-]{10,}"
+)
 
 
 def fbSanitizerAvailable():
@@ -60,10 +91,58 @@ def _ftRedactExactSecrets(sText, listExactSecrets, dictCounts):
     return sText
 
 
+def _fFractionalShannonEntropy(sToken):
+    """Return the Shannon entropy of a token in bits per character."""
+    dictFrequency = {}
+    for sCharacter in sToken:
+        dictFrequency[sCharacter] = dictFrequency.get(sCharacter, 0) + 1
+    fEntropy = 0.0
+    for iCount in dictFrequency.values():
+        fProbability = iCount / len(sToken)
+        fEntropy -= fProbability * math.log2(fProbability)
+    return fEntropy
+
+
+def _fbTokenLooksSecret(sToken):
+    """Apply the guards that keep identifiers and hashes intact."""
+    if len(sToken) < _I_MINIMUM_ENTROPY_TOKEN_LENGTH:
+        return False
+    if not re.search(r"[0-9]", sToken):
+        return False
+    if not re.search(r"[A-Za-z]", sToken):
+        return False
+    if "[REDACTED" in sToken:
+        return False
+    return _fFractionalShannonEntropy(sToken) >= _F_ENTROPY_LIMIT_BITS
+
+
+def _fsRedactSupplementalPatterns(sLine, dictCounts):
+    """Redact prefixed vendor tokens and high-entropy strings."""
+    def _fsReplacePrefixed(match):
+        dictCounts["vendor-token"] = (
+            dictCounts.get("vendor-token", 0) + 1
+        )
+        return _fsMarker("vendor-token")
+
+    sLine = _REGEX_PREFIXED_TOKEN.sub(_fsReplacePrefixed, sLine)
+
+    def _fsReplaceEntropy(match):
+        if not _fbTokenLooksSecret(match.group(0)):
+            return match.group(0)
+        dictCounts[S_ENTROPY_CATEGORY] = (
+            dictCounts.get(S_ENTROPY_CATEGORY, 0) + 1
+        )
+        return _fsMarker(S_ENTROPY_CATEGORY)
+
+    return _REGEX_ENTROPY_CANDIDATE.sub(_fsReplaceEntropy, sLine)
+
+
 def _fsRedactLinePatterns(sLine, dictCounts):
-    """Scan one line with detect-secrets and redact each match."""
+    """Scan one line with detect-secrets' pattern detectors."""
     from detect_secrets.core import scan
     for secretFound in scan.scan_line(sLine):
+        if secretFound.type in _SET_EXCLUDED_PLUGIN_TYPES:
+            continue
         sValue = secretFound.secret_value or ""
         if len(sValue) < _I_MINIMUM_PATTERN_SECRET_LENGTH:
             continue
@@ -74,7 +153,7 @@ def _fsRedactLinePatterns(sLine, dictCounts):
         dictCounts[secretFound.type] = (
             dictCounts.get(secretFound.type, 0) + iOccurrences
         )
-    return sLine
+    return _fsRedactSupplementalPatterns(sLine, dictCounts)
 
 
 def ftResultSanitizeText(sText, listExactSecrets=None):

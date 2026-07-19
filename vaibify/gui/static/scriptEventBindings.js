@@ -357,6 +357,12 @@ var PipeleyenEventBindings = (function () {
         VaibifyProjectContext.fnAdoptRepoRoot();
     }
 
+    function _fnHandleOpenPromptRecord(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyPromptRecordConfig.fnOpen();
+    }
+
     function _fnHandleVerifyRemote(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -477,6 +483,7 @@ var PipeleyenEventBindings = (function () {
         ".btn-context-template": _fnHandleContextTemplate,
         ".btn-context-import-open": _fnHandleContextImportOpen,
         ".btn-context-adopt": _fnHandleContextAdopt,
+        ".wf-open-prompt-record": _fnHandleOpenPromptRecord,
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,
         ".wf-file-link": _fnHandleProjectFileLink,
@@ -756,6 +763,9 @@ var PipeleyenEventBindings = (function () {
             },
             btnContextImportCancel: function () {
                 VaibifyProjectContext.fnCloseImportPicker();
+            },
+            btnPromptRecordClose: function () {
+                VaibifyPromptRecordConfig.fnClose();
             },
             btnGitIdentityCancel: function () {
                 VaibifySyncManager.fnCloseGitIdentityModal();

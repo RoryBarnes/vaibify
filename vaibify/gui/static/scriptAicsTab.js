@@ -151,6 +151,21 @@ var VaibifyAicsTab = (function () {
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
              sFixRequirementRow: "aiModelPrompts"},
+            {sStateKey: "bPromptRecordCurrent",
+             sLabel: "Prompt Record (optional)",
+             bOptional: true,
+             sWhat: "When the opt-in Prompt Record is enabled, the " +
+                 "agent's session transcripts are captured into the " +
+                 "repository as redacted transcripts and the first " +
+                 "capture is reviewed. A project without the record " +
+                 "meets this automatically — recording is the " +
+                 "researcher's decision and never blocks a level.",
+             sHow: "Enable and review it from the AI section of the " +
+                 "Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "aiModelPrompts"},
         ],
         3: [
             {sStateKey: "bManifestComplete",

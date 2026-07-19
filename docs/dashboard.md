@@ -379,6 +379,23 @@ an action exists — a button that performs it in place:
   read and update the file via its own actions but can never pull
   files from your computer. Edits take effect for the agent's next
   session, not a running one.
+- **Prompt Record…** opens the opt-in transcript recorder (the
+  Replay axis's *Recorded* state, shown on the row's
+  Untracked → Declared → Recorded → Supervised ladder). When
+  enabled, the in-container agent's session transcripts are captured
+  into `.vaibify/promptRecord/` every ~30 seconds as **redacted
+  transcripts**: each capture is scanned (exact vaibify session
+  secrets, the detect-secrets pattern catalog, vendor token
+  prefixes, and a conservative high-entropy check) and every hit
+  becomes a visible `[REDACTED: category]` marker with a per-category
+  count. You review a sample of the first capture before the record
+  counts (the agent cannot approve its own transcript). Captures are
+  hash-chained — editing or removing one breaks the chain loudly —
+  and coverage intervals are listed so time the hub was down reads
+  as an explicit gap, never implied continuity. The record is
+  tamper-evident, not proven complete; enabling it requires
+  `pip install vaibify[replay]` on the host. Off reads "Not tracked
+  — optional" and never blocks a level.
 - **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 

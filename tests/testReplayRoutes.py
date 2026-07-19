@@ -152,3 +152,80 @@ def test_remove_unknown_model_is_404(fixtureHarness):
         "sVendor": "NoSuchVendor", "sModelId": "none",
     })
     assert dictResponse.status_code == 404
+
+
+# ------------------------------------------------------------------
+# Prompt Record routes (configure / capture / approve)
+# ------------------------------------------------------------------
+
+
+def _fsPromptRecordPath(sSuffix):
+    return (
+        "/api/workflow/" + S_CONTAINER_ID + "/prompt-record" + sSuffix
+    )
+
+
+def test_configure_enable_refused_without_sanitizer(
+    fixtureHarness, monkeypatch,
+):
+    clientTest = fixtureHarness[0]
+    monkeypatch.setattr(
+        "vaibify.gui.transcriptSanitizer.fbSanitizerAvailable",
+        lambda: False,
+    )
+    dictResponse = clientTest.post(
+        _fsPromptRecordPath("/configure"), json={"bEnabled": True},
+    )
+    assert dictResponse.status_code == 409
+    assert "vaibify[replay]" in dictResponse.json()["detail"]
+
+
+def test_configure_enable_sets_config(fixtureHarness, monkeypatch):
+    clientTest, dictWorkflow, dictSaved = fixtureHarness
+    monkeypatch.setattr(
+        "vaibify.gui.transcriptSanitizer.fbSanitizerAvailable",
+        lambda: True,
+    )
+    dictResponse = clientTest.post(
+        _fsPromptRecordPath("/configure"), json={"bEnabled": True},
+    )
+    assert dictResponse.status_code == 200
+    dictRecord = dictWorkflow["dictAiProvenance"]["dictPromptRecord"]
+    assert dictRecord["bEnabled"] is True
+    assert dictRecord["bFirstCaptureReviewed"] is False
+    assert dictRecord["sEnabledAtUtc"]
+    assert S_CONTAINER_ID in dictSaved
+
+
+def test_capture_refused_when_disabled(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    dictResponse = clientTest.post(_fsPromptRecordPath("/capture"))
+    assert dictResponse.status_code == 409
+
+
+def test_approve_flips_review_flag(fixtureHarness, monkeypatch):
+    clientTest, dictWorkflow, _ = fixtureHarness
+    monkeypatch.setattr(
+        "vaibify.gui.transcriptSanitizer.fbSanitizerAvailable",
+        lambda: True,
+    )
+    clientTest.post(
+        _fsPromptRecordPath("/configure"), json={"bEnabled": True},
+    )
+    dictResponse = clientTest.post(
+        _fsPromptRecordPath("/approve-first-capture"),
+    )
+    assert dictResponse.status_code == 200
+    assert dictWorkflow["dictAiProvenance"]["dictPromptRecord"][
+        "bFirstCaptureReviewed"] is True
+
+
+def test_approve_route_is_excluded_from_agent_catalog():
+    from vaibify.gui.actionCatalog import (
+        SET_INTENTIONALLY_EXCLUDED_PATHS,
+    )
+    assert (
+        "POST",
+        "/api/workflow/{sContainerId}/prompt-record/"
+        "approve-first-capture",
+    ) in SET_INTENTIONALLY_EXCLUDED_PATHS
