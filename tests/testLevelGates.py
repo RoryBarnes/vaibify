@@ -361,6 +361,7 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bArxivFullySynced",
         "bAiDeclarationAttested",
         "bAiModelsDeclared",
+        "bPromptRecordCurrent",
         "bProjectContextFileExists",
         "bAtLeastLevel2",
     }

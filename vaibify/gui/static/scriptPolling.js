@@ -207,6 +207,57 @@ var VaibifyPolling = (function () {
         }
     }
 
+    /* --- Prompt Record capture poller (Replay axis) ---
+       Dedicated 30 s poller so transcript capture never taxes the
+       hot file-status path. It fires only while the app's predicate
+       says the (opt-in) Prompt Record is enabled; the POST is a
+       capture pass on the backend — append-only and sanitized. */
+
+    var _iPromptRecordPollTimer = null;
+    var _bPromptRecordInFlight = false;
+    var _fbPromptRecordEnabled = null;
+    var _I_PROMPT_RECORD_INTERVAL_MS = 30000;
+
+    function fnSetPromptRecordPredicate(fnPredicate) {
+        _fbPromptRecordEnabled = fnPredicate;
+    }
+
+    function fnStartPromptRecordPolling(sContainerId) {
+        fnStopPromptRecordPolling();
+        _iPromptRecordPollTimer = setInterval(function () {
+            _fnPollPromptRecord(sContainerId);
+        }, _I_PROMPT_RECORD_INTERVAL_MS);
+    }
+
+    function fnStopPromptRecordPolling() {
+        if (_iPromptRecordPollTimer) {
+            clearInterval(_iPromptRecordPollTimer);
+            _iPromptRecordPollTimer = null;
+        }
+    }
+
+    async function _fnPollPromptRecord(sContainerId) {
+        if (_bPromptRecordInFlight) return;
+        if (!_fbPromptRecordEnabled || !_fbPromptRecordEnabled()) {
+            return;
+        }
+        _bPromptRecordInFlight = true;
+        try {
+            try {
+                await VaibifyApi.fdictPost(
+                    "/api/workflow/" + sContainerId +
+                        "/prompt-record/capture",
+                    {},
+                );
+                _fnReportPollSuccess("prompt-record");
+            } catch (error) {
+                _fnReportPollFailure("prompt-record", error);
+            }
+        } finally {
+            _bPromptRecordInFlight = false;
+        }
+    }
+
     function fnSetWorkflowDiscoveryHandler(fnHandler) {
         _fnOnWorkflowDiscovery = fnHandler;
     }
@@ -341,6 +392,9 @@ var VaibifyPolling = (function () {
         fnSetWorkflowDiscoveryHandler: fnSetWorkflowDiscoveryHandler,
         fnStartDiscoveryPolling: fnStartDiscoveryPolling,
         fnStopDiscoveryPolling: fnStopDiscoveryPolling,
+        fnSetPromptRecordPredicate: fnSetPromptRecordPredicate,
+        fnStartPromptRecordPolling: fnStartPromptRecordPolling,
+        fnStopPromptRecordPolling: fnStopPromptRecordPolling,
         fnSetContainerHubHandler: fnSetContainerHubHandler,
         fnStartContainerHubPolling: fnStartContainerHubPolling,
         fnStopContainerHubPolling: fnStopContainerHubPolling,

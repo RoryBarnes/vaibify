@@ -785,6 +785,7 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
     ".vaibify/overleafPushManifest.json",
     ".vaibify/ai_provenance.json",
     ".vaibify/AGENTS.md",
+    ".vaibify/promptRecord/index.json",
     "CLAUDE.md",
     "AGENTS.md",
 )

@@ -1663,6 +1663,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bArxivFullySynced": bool,
             "bAiDeclarationAttested": bool,
             "bAiModelsDeclared": bool,
+            "bPromptRecordCurrent": bool,
             "bProjectContextFileExists": bool,
             "bAtLeastLevel2": bool,
         }
@@ -1675,9 +1676,10 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     the researcher's sign-off — the declaration is a publication
     artifact, so both halves are L2 requirements.
     ``bAiModelsDeclared`` gates L2 the same way (undeclared is its
-    only failing state); ``bProjectContextFileExists`` is
-    informational only — it feeds the Level 1 AICS row and never
-    joins the conjunction.
+    only failing state); ``bProjectContextFileExists`` and
+    ``bPromptRecordCurrent`` are informational only — they feed the
+    optional AICS rows and never join the conjunction (the Prompt
+    Record follows the arXiv rule: unconfigured is trivially True).
     """
     bL1 = fbAtLeastLevel1(dictWorkflow, filesRepo)
     bGithub = fbWorkflowFullySyncedWithGithub(
@@ -1698,6 +1700,9 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         "bArxivFullySynced": bArxiv,
         "bAiDeclarationAttested": bDecl,
         "bAiModelsDeclared": bModels,
+        "bPromptRecordCurrent": replayGate.fbPromptRecordCurrent(
+            dictWorkflow,
+        ),
         "bProjectContextFileExists": ffilesEnsureRepoFiles(
             filesRepo,
         ).fbIsFile(".vaibify/AGENTS.md"),

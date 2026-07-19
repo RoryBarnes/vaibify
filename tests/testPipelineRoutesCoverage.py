@@ -1656,11 +1656,14 @@ class TestPollLevelStatePayload:
             "dictAiProvenance", "bAiModelsDeclared",
             "bProjectContextFileExists",
             "bRepoRootAgentsFileDetected",
+            "sReplayAxisState", "dictPromptRecord",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None
         assert dictDetail["dictAiProvenance"] is None
         assert dictDetail["bAiModelsDeclared"] is False
+        assert dictDetail["sReplayAxisState"] == "untracked"
+        assert dictDetail["dictPromptRecord"]["bEnabled"] is False
         assert set(dictDetail["dictRemoteSyncs"].keys()) == {
             "github", "zenodo", "overleaf", "arxiv",
         }

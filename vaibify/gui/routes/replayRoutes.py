@@ -23,7 +23,7 @@ public repository.
 __all__ = ["fnRegisterAll"]
 
 import posixpath
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
@@ -333,6 +333,170 @@ def _fnRegisterContextImport(app, dictCtx):
         return {"bOk": True}
 
 
+def _fdictPromptRecordOf(dictWorkflow):
+    """Return the workflow's mutable Prompt Record config block."""
+    dictProvenance = _fdictProvenanceOf(dictWorkflow)
+    dictRecord = dict(dictProvenance.get("dictPromptRecord") or {})
+    dictProvenance["dictPromptRecord"] = dictRecord
+    return dictRecord
+
+
+def _flistGatherSessionSecrets(dictCtx, sContainerId):
+    """Collect every vaibify session secret for exact-value redaction.
+
+    The hub session token plus every value in the container's session
+    env file (which carries the per-container agent token). A missing
+    env file yields just the hub token — capture must not fail open
+    by skipping redaction entirely.
+    """
+    listSecrets = [str(dictCtx.get("sSessionToken") or "")]
+    from ..actionCatalog import S_SESSION_ENV_PATH
+    try:
+        baEnv = dictCtx["docker"].fbaFetchFile(
+            sContainerId, S_SESSION_ENV_PATH,
+        )
+    except Exception:  # noqa: BLE001 — env absent when disconnected
+        return [sSecret for sSecret in listSecrets if sSecret]
+    for sLine in baEnv.decode("utf-8", errors="replace").splitlines():
+        if "=" in sLine:
+            listSecrets.append(sLine.split("=", 1)[1].strip())
+    return [sSecret for sSecret in listSecrets if sSecret]
+
+
+def _fnRegisterPromptRecordConfigure(app, dictCtx):
+    """Register POST .../prompt-record/configure."""
+    from ..transcriptSanitizer import fbSanitizerAvailable
+
+    @fnAgentAction("configure-prompt-record")
+    @app.post("/api/workflow/{sContainerId}/prompt-record/configure")
+    async def fnConfigurePromptRecord(sContainerId: str, request: dict):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        bEnabled = request.get("bEnabled") is True
+        if bEnabled and not fbSanitizerAvailable():
+            raise HTTPException(
+                409, "Transcript capture needs the detect-secrets "
+                "scanner: install vaibify[replay] on the host, then "
+                "enable again.",
+            )
+        dictRecord = _fdictPromptRecordOf(dictWorkflow)
+        dictRecord["bEnabled"] = bEnabled
+        if bEnabled and not dictRecord.get("sEnabledAtUtc"):
+            dictRecord["sEnabledAtUtc"] = datetime.now(
+                timezone.utc,
+            ).isoformat()
+        dictRecord.setdefault("bFirstCaptureReviewed", False)
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"dictPromptRecord": dictRecord}
+
+
+def _fnRegisterPromptRecordCapture(app, dictCtx):
+    """Register POST .../prompt-record/capture (one capture pass)."""
+    import asyncio
+    from .. import promptRecordManager
+    from ..routeContext import ffilesForWorkflow
+
+    @fnAgentAction("capture-prompt-record")
+    @app.post("/api/workflow/{sContainerId}/prompt-record/capture")
+    async def fnCapturePromptRecord(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictRecord = _fdictPromptRecordOf(dictWorkflow)
+        if dictRecord.get("bEnabled") is not True:
+            raise HTTPException(409, "The Prompt Record is not enabled.")
+        _fsContextAbsolutePath(dictWorkflow)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        dictSummary = await asyncio.to_thread(
+            promptRecordManager.fdictRunCapturePass,
+            dictCtx["docker"], sContainerId, filesRepo,
+            _flistGatherSessionSecrets(dictCtx, sContainerId),
+        )
+        dictSummary["bPendingReview"] = (
+            dictRecord.get("bFirstCaptureReviewed") is not True
+        )
+        return dictSummary
+
+
+def _fnRegisterPromptRecordApprove(app, dictCtx):
+    """Register POST .../prompt-record/approve-first-capture.
+
+    Excluded from the agent catalog: the review gate exists so a
+    human confirms what the sanitizer produced before it is treated
+    as publishable — the agent must never approve publication of its
+    own transcript.
+    """
+
+    @app.post(
+        "/api/workflow/{sContainerId}/prompt-record/"
+        "approve-first-capture"
+    )
+    async def fnApproveFirstCapture(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictRecord = _fdictPromptRecordOf(dictWorkflow)
+        if dictRecord.get("bEnabled") is not True:
+            raise HTTPException(409, "The Prompt Record is not enabled.")
+        dictRecord["bFirstCaptureReviewed"] = True
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"dictPromptRecord": dictRecord}
+
+
+def _fnRegisterPromptRecordStatus(app, dictCtx):
+    """Register GET .../prompt-record/status."""
+    from .. import promptRecordManager
+    from ..routeContext import ffilesForWorkflow
+
+    @fnAgentAction("view-prompt-record-status")
+    @app.get("/api/workflow/{sContainerId}/prompt-record/status")
+    async def fnPromptRecordStatus(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fsContextAbsolutePath(dictWorkflow)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        dictIndex = promptRecordManager.fdictLoadIndex(filesRepo)
+        dictRecord = _fdictPromptRecordOf(dictWorkflow)
+        return {
+            "dictPromptRecord": dictRecord,
+            "listCaptures": dictIndex["listCaptures"],
+            "listCoverageIntervals": dictIndex["listCoverageIntervals"],
+            "bChainIntact": promptRecordManager.fbVerifyCaptureChain(
+                dictIndex,
+            ),
+            "listTamperedSessions":
+                promptRecordManager.flistVerifyCapturedFiles(
+                    filesRepo, dictIndex,
+                ),
+            "sReviewSample": _fsReviewSample(filesRepo, dictIndex),
+        }
+
+
+def _fsReviewSample(filesRepo, dictIndex):
+    """Return the head of the most recent sanitized session, or ''."""
+    from ..promptRecordManager import (
+        S_PROMPT_RECORD_SESSIONS_DIRECTORY,
+    )
+    listCaptures = dictIndex.get("listCaptures") or []
+    if not listCaptures:
+        return ""
+    sRelPath = posixpath.join(
+        S_PROMPT_RECORD_SESSIONS_DIRECTORY,
+        listCaptures[-1]["sSessionFileName"],
+    )
+    try:
+        sText = filesRepo.fsReadText(sRelPath)
+    except (OSError, FileNotFoundError):
+        return ""
+    return "\n".join(sText.split("\n")[:40])
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all Replay-axis routes."""
     _fnRegisterDeclareAiModel(app, dictCtx)
@@ -341,3 +505,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterUpdateProjectContext(app, dictCtx)
     _fnRegisterContextTemplate(app, dictCtx)
     _fnRegisterContextImport(app, dictCtx)
+    _fnRegisterPromptRecordConfigure(app, dictCtx)
+    _fnRegisterPromptRecordCapture(app, dictCtx)
+    _fnRegisterPromptRecordApprove(app, dictCtx)
+    _fnRegisterPromptRecordStatus(app, dictCtx)

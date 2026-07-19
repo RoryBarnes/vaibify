@@ -648,6 +648,33 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Write the starter project-context template to "
                      ".vaibify/AGENTS.md. Refuses (409) when a "
                      "context file already exists."},
+    {"sName": "configure-prompt-record", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/configure",
+     "bAgentSafe": False,
+     "sDescription": "Enable or disable the opt-in Prompt Record "
+                     "(sanitized agent transcripts captured into the "
+                     "repository). Args: {bEnabled: bool}. User-only: "
+                     "whether the development dialogue is recorded is "
+                     "the researcher's decision."},
+    {"sName": "capture-prompt-record", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/capture",
+     "bAgentSafe": True,
+     "sDescription": "Run one Prompt Record capture pass: new or "
+                     "grown agent transcripts are sanitized "
+                     "(explicit [REDACTED: …] markers) and landed at "
+                     ".vaibify/promptRecord/. Append-only and "
+                     "sanitized, so agent-safe; refuses (409) when "
+                     "the record is not enabled."},
+    {"sName": "view-prompt-record-status", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/status",
+     "bAgentSafe": True,
+     "sDescription": "Read the Prompt Record state: capture records, "
+                     "coverage intervals (gaps are unmonitored time), "
+                     "hash-chain integrity, and any tampered session "
+                     "files. Read-only."},
     {"sName": "run-falsification", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",
@@ -755,6 +782,12 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agent exfiltrate home-directory files into a public repository.
     # Researcher-only, via the dashboard's import picker.
     ("POST", "/api/workflow/{sContainerId}/project-context/import"),
+    # The Prompt Record review gate exists so a human confirms what
+    # the sanitizer produced before it is treated as publishable; the
+    # agent must never approve publication of its own transcript.
+    ("POST",
+     "/api/workflow/{sContainerId}/prompt-record/"
+     "approve-first-capture"),
     # Control-plane endpoints used by the UI to bootstrap a session;
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),

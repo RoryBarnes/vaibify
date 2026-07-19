@@ -1478,7 +1478,10 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "dictAiProvenance": declared block or None,
          "bAiModelsDeclared": bool,
          "bProjectContextFileExists": bool,
-         "bRepoRootAgentsFileDetected": bool}
+         "bRepoRootAgentsFileDetected": bool,
+         "sReplayAxisState": "untracked|declared|recorded|supervised",
+         "dictPromptRecord": {"bEnabled", "bFirstCaptureReviewed",
+             "iSessionCount", "iRedactionTotal", "bGapPresent"}}
 
     The booleans let the Project-block requirement rows render
     AI-declaration, rebuild-attestation, Overleaf-applicability,
@@ -1537,7 +1540,56 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
             _fbRootContextCandidateDetected(filesRepo) if bHasRepo
             else False
         ),
+        "sReplayAxisState": replayGate.fsReplayAxisState(dictWorkflow),
+        "dictPromptRecord": _fdictEnvelopePromptRecord(
+            dictWorkflow, filesRepo if bHasRepo else None,
+        ),
     }
+
+
+def _fdictEnvelopePromptRecord(dictWorkflow, filesRepo):
+    """Summarize the Prompt Record from the snapshot's index.json.
+
+    Exec-free: the index rides the poll snapshot's fixed content set.
+    ``bGapPresent`` means the coverage intervals do not form one
+    continuous span — unmonitored time exists and the UI must show it.
+    """
+    import json as jsonModule
+    dictConfig = (
+        ((dictWorkflow or {}).get("dictAiProvenance") or {})
+        .get("dictPromptRecord") or {}
+    )
+    dictSummary = {
+        "bEnabled": dictConfig.get("bEnabled") is True,
+        "bFirstCaptureReviewed":
+            dictConfig.get("bFirstCaptureReviewed") is True,
+        "iSessionCount": 0,
+        "iRedactionTotal": 0,
+        "bGapPresent": False,
+    }
+    if filesRepo is None or not filesRepo.fbIsFile(
+        ".vaibify/promptRecord/index.json",
+    ):
+        return dictSummary
+    try:
+        dictIndex = jsonModule.loads(
+            filesRepo.fsReadText(".vaibify/promptRecord/index.json"),
+        )
+    except (OSError, ValueError):
+        return dictSummary
+    listCaptures = dictIndex.get("listCaptures") or []
+    dictSummary["iSessionCount"] = len({
+        dictRecord.get("sSessionFileName")
+        for dictRecord in listCaptures
+    })
+    dictSummary["iRedactionTotal"] = sum(
+        int(dictRecord.get("iRedactionCount") or 0)
+        for dictRecord in listCaptures
+    )
+    dictSummary["bGapPresent"] = len(
+        dictIndex.get("listCoverageIntervals") or [],
+    ) > 1
+    return dictSummary
 
 
 def _fbRootContextCandidateDetected(filesRepo):
