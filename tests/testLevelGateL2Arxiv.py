@@ -156,6 +156,7 @@ def _fdictWorkflowWithOverleaf(sCommit="commitabc", dictArxiv=None):
                 "sUseStartDate": "2026-01-01",
                 "sUseEndDate": "2026-02-01",
             }],
+            "dictPersonalLayer": {"sStatus": "none"},
         },
     }
 
@@ -430,6 +431,7 @@ def testDataOnlyWorkflowReachesL2WithoutArxiv(tmp_path):
                 "sUseStartDate": "2026-01-01",
                 "sUseEndDate": "2026-02-01",
             }],
+            "dictPersonalLayer": {"sStatus": "none"},
         },
     }
     listBlockers = flistLevel2Blockers(dictWorkflow, sProjectRepo)

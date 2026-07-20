@@ -1176,6 +1176,44 @@ def testAgentActionCatalogShape():
     )
 
 
+def testHostHashRouteIsNeverAgentInvokable():
+    """The personal-layer hash route must never look agent-safe.
+
+    The route reads an arbitrary host file and returns its SHA-256 +
+    byte count; agent-invokable, that is a hash oracle over host
+    files (a compromised in-container agent could confirm guesses
+    about credentials or dotfiles byte-for-byte). The route must stay
+    in ``SET_INTENTIONALLY_EXCLUDED_PATHS``, must never gain a
+    ``LIST_AGENT_ACTIONS`` entry, and its live handler must carry no
+    ``@fnAgentAction`` marker.
+    """
+    from vaibify.gui import actionCatalog
+    sHashPath = "/api/workflow/{sContainerId}/personal-layer/hash"
+    assert ("POST", sHashPath) in (
+        actionCatalog.SET_INTENTIONALLY_EXCLUDED_PATHS
+    )
+    listCatalogHits = [
+        dictEntry["sName"]
+        for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
+        if dictEntry.get("sPath") == sHashPath
+    ]
+    assert listCatalogHits == [], (
+        "The host-file hash route must never appear in "
+        f"LIST_AGENT_ACTIONS (found: {listCatalogHits})"
+    )
+    app = _fappBuildApplication()
+    for sMethod, sPath, fnEndpoint in (
+        _flistCollectAppStateMutatingRoutes(app)
+    ):
+        if sPath == sHashPath:
+            assert getattr(
+                fnEndpoint, "_sAgentActionName", None,
+            ) is None, (
+                "The host-file hash handler must not carry an "
+                "@fnAgentAction marker"
+            )
+
+
 _SET_APPROVED_LIST_MODIFIED_WRITERS = frozenset({
     # Only these two functions may assign directly to
     # dictVerification['listModifiedFiles']. The first is the
@@ -2671,7 +2709,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # digest ratchet), the rare flag write, and the supervision
     # envelope summary. Cohesive with the poll side-effects it
     # extends; the pure chain/flag logic lives in attributionLog.
-    "routes/pipelineRoutes.py": 2619,
+    # +3 (2026-07-19): the bPersonalLayerDeclared envelope boolean —
+    # exec-free, read from the workflow dict like bAiModelsDeclared.
+    "routes/pipelineRoutes.py": 2622,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -2847,7 +2887,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # approve-first-capture exclusion (concurrent Replay lane).
     # +3 (2026-07-19): the supervision/configure exclusion — the
     # supervised party must not toggle its own supervision.
-    "actionCatalog.py": 843,
+    # +22 (2026-07-19): the declare-personal-layer action (user-only
+    # L2 consent moment) and the personal-layer/hash exclusion — the
+    # host-file hash oracle must never be agent-invokable.
+    "actionCatalog.py": 865,
 }
 
 

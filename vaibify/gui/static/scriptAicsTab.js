@@ -151,6 +151,21 @@ var VaibifyAicsTab = (function () {
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
              sFixRequirementRow: "aiModelPrompts"},
+            {sStateKey: "bPersonalLayerDeclared",
+             sLabel: "Personal instruction layer answered",
+             sWhat: "The researcher's private host-side agent " +
+                 "configuration (global instruction file, personal " +
+                 "skills, memory, hooks) is accounted for with one " +
+                 "of three answers: none exists, exists but " +
+                 "withheld, or included in the repository. Any " +
+                 "answer meets the criterion — disclosure is never " +
+                 "required; unanswered is the only failing state.",
+             sHow: "Answer in the Personal instruction layer row " +
+                 "of the AI section of the Project block.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab",
+             sFixRequirementGroup: "ai",
+             sFixRequirementRow: "personalLayer"},
             {sStateKey: "bSupervisionClean",
              sLabel: "Supervised mode (optional)",
              bOptional: true,

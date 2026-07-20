@@ -699,11 +699,16 @@ body.aics-level-3 .toolbar-label {
 
 /* The scrollable region below the panel header holds both the Steps
    block and the Project block, so the whole left column scrolls
-   as one. min-height:0 lets a flex child actually shrink and scroll. */
+   as one. min-height:0 lets a flex child actually shrink and scroll.
+   The bottom margin reserves a permanent strip between the scroll
+   area and the window edge — anchored to the viewport, not scrolled
+   with the content — matching the #terminalStripToolbar strip below
+   the terminal (26px + 1px border) so the two columns end level. */
 .panel-scroll-area {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    margin-bottom: 27px;
 }
 
 #listSteps {

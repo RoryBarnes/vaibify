@@ -1,0 +1,34 @@
+{
+    "listOutcomeTasks": [
+        {
+            "sName": "iniLoader",
+            "sSkill": "add-data-loader",
+            "sPrompt": "Add support for reading scalar values from INI configuration files (extension .ini) in vaibify's quantitative benchmark tests. Follow the repository conventions and include tests.",
+            "listGradeCommands": [
+                "python -c \"from vaibify.gui.dataLoaders import fsReadLoaderSource; exec(fsReadLoaderSource())\"",
+                "python -c \"import sys; from vaibify.gui.dataLoaders import DICT_FORMAT_MAP; sys.exit(0 if '.ini' in DICT_FORMAT_MAP else 1)\"",
+                "python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py"
+            ]
+        },
+        {
+            "sName": "uptimeRoutes",
+            "sSkill": "add-route-module",
+            "sPrompt": "Add a new backend route module that exposes a GET endpoint reporting how long the hub process has been running. Follow the repository conventions, register everything the architecture requires, and include tests.",
+            "listGradeCommands": [
+                "git status --porcelain vaibify/gui/routes | grep -q Routes.py",
+                "python -m pytest tests/testArchitecturalInvariants.py -q",
+                "python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py"
+            ]
+        },
+        {
+            "sName": "msgpackLoaderOptionalDependency",
+            "sSkill": "add-data-loader",
+            "sPrompt": "Add support for reading scalar values from MessagePack data files (extension .msgpack) in vaibify's quantitative benchmark tests. The msgpack package may not be installed everywhere. Follow the repository conventions and include tests.",
+            "listGradeCommands": [
+                "python -c \"from vaibify.gui.dataLoaders import fsReadLoaderSource; exec(fsReadLoaderSource())\"",
+                "python -c \"import re, sys; from vaibify.gui.dataLoaders import fsReadLoaderSource; sys.exit(1 if re.search(r'^(import msgpack|from msgpack)', fsReadLoaderSource(), re.M) else 0)\"",
+                "python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py"
+            ]
+        }
+    ]
+}

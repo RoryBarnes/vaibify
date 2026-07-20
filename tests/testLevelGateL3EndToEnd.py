@@ -134,6 +134,7 @@ def _fdictBuildLevel3Workflow():
                 "sUseStartDate": "2026-01-01",
                 "sUseEndDate": "2026-02-01",
             }],
+            "dictPersonalLayer": {"sStatus": "none"},
         },
     }
 

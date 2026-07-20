@@ -103,6 +103,7 @@ def _fdictBuildLevel2ReadyWorkflow():
                 "sUseStartDate": "2026-01-01",
                 "sUseEndDate": "2026-02-01",
             }],
+            "dictPersonalLayer": {"sStatus": "none"},
         },
     }
 
@@ -361,6 +362,7 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
         "bArxivFullySynced",
         "bAiDeclarationAttested",
         "bAiModelsDeclared",
+        "bPersonalLayerDeclared",
         "bPromptRecordCurrent",
         "bSupervisionClean",
         "bProjectContextFileExists",
@@ -368,6 +370,7 @@ def test_fdictLevel2Gaps_returns_per_criterion_dict(tmp_path):
     }
     assert dictGaps["bAiDeclarationAttested"] is True
     assert dictGaps["bAiModelsDeclared"] is True
+    assert dictGaps["bPersonalLayerDeclared"] is True
     assert dictGaps["bProjectContextFileExists"] is False
     assert dictGaps["bGithubFullySynced"] is False
     assert dictGaps["bArxivFullySynced"] is True

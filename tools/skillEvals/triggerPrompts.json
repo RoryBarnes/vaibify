@@ -1,0 +1,52 @@
+{
+    "listTriggerPrompts": [
+        {
+            "sPrompt": "Expose a new HTTP endpoint that reports how long each container has been running.",
+            "sExpectedSkill": "add-route-module"
+        },
+        {
+            "sPrompt": "Add a WebSocket endpoint that streams the hub's memory usage to the dashboard.",
+            "sExpectedSkill": "add-route-module"
+        },
+        {
+            "sPrompt": "I want a REST API route group for managing user bookmarks of workflow steps.",
+            "sExpectedSkill": "add-route-module"
+        },
+        {
+            "sPrompt": "Support reading scalar values from INI configuration files in the quantitative benchmark tests.",
+            "sExpectedSkill": "add-data-loader"
+        },
+        {
+            "sPrompt": "The generated benchmark tests need to read a value out of MessagePack files; add support for the .msgpack extension.",
+            "sExpectedSkill": "add-data-loader"
+        },
+        {
+            "sPrompt": "Add a loader so generated tests can check scalars stored in TOML data files.",
+            "sExpectedSkill": "add-data-loader"
+        },
+        {
+            "sPrompt": "Add a button to the dashboard that collapses all workflow steps at once.",
+            "sExpectedSkill": "none"
+        },
+        {
+            "sPrompt": "Fix the typo in the QuickStart documentation.",
+            "sExpectedSkill": "none"
+        },
+        {
+            "sPrompt": "Why does the container badge stay grey after I connect?",
+            "sExpectedSkill": "none"
+        },
+        {
+            "sPrompt": "Refactor the step-name slug helper to handle hyphenated names.",
+            "sExpectedSkill": "none"
+        },
+        {
+            "sPrompt": "Write a unit test for the existing CSV loader's error handling.",
+            "sExpectedSkill": "none"
+        },
+        {
+            "sPrompt": "Change the JSON response shape of an existing pipeline status endpoint.",
+            "sExpectedSkill": "none"
+        }
+    ]
+}

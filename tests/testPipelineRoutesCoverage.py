@@ -1654,6 +1654,7 @@ class TestPollLevelStatePayload:
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
             "bOverleafBound", "bArxivConfigured",
             "dictAiProvenance", "bAiModelsDeclared",
+            "bPersonalLayerDeclared",
             "bProjectContextFileExists",
             "bRepoRootAgentsFileDetected",
             "sReplayAxisState", "dictPromptRecord",
@@ -1663,6 +1664,7 @@ class TestPollLevelStatePayload:
         assert dictDetail["dictDeterminism"] is None
         assert dictDetail["dictAiProvenance"] is None
         assert dictDetail["bAiModelsDeclared"] is False
+        assert dictDetail["bPersonalLayerDeclared"] is False
         assert dictDetail["sReplayAxisState"] == "untracked"
         assert dictDetail["dictPromptRecord"]["bEnabled"] is False
         assert set(dictDetail["dictRemoteSyncs"].keys()) == {

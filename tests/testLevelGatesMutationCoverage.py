@@ -25,6 +25,7 @@ from vaibify.reproducibility.levelGates import (
     _DICT_BLOCKER_CACHE,
     _I_BLOCKER_CACHE_MAX_ENTRIES,
     _fnBlockerCacheStore,
+    fbAtLeastLevel2,
     fbWorkflowFullySyncedWithGithub,
     fdictLevel2Gaps,
     fnClearLevelBlockerCache,
@@ -92,6 +93,7 @@ def _fdictBuildLevel2ReadyWorkflow():
                 "sUseStartDate": "2026-01-01",
                 "sUseEndDate": "2026-02-01",
             }],
+            "dictPersonalLayer": {"sStatus": "none"},
         },
     }
 
@@ -277,6 +279,55 @@ def test_fdictLevel2Gaps_subset_failure_keeps_level2_false(tmp_path):
     assert dictGaps["bAiDeclarationAttested"] is True
     assert dictGaps["bArxivFullySynced"] is True
     assert dictGaps["bAtLeastLevel2"] is False
+
+
+# ------------------------------------------------------------------------
+# _fbComputeLevel2: the personal-layer conjunct is load-bearing
+# ------------------------------------------------------------------------
+
+
+def _fnWriteAllGreenSyncStatus(sProjectRepo):
+    """Write fresh-and-matching cache files for both services."""
+    _fnWriteSyncStatusFile(sProjectRepo, {
+        "github": {
+            "sService": "github",
+            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
+            "iTotalFiles": 3, "iMatching": 3, "listDiverged": [],
+            "sCommittedShaVerified": "abc123",
+        },
+        "zenodo": {
+            "sService": "zenodo",
+            "sLastVerified": _fsBuildIsoTimestamp(fHoursAgo=1.0),
+            "iTotalFiles": 2, "iMatching": 2, "listDiverged": [],
+            "sZenodoDoi": "10.1000/example",
+            "sEndpointVerified": "sandbox",
+        },
+    })
+
+
+def test_l2_gate_requires_personal_layer_answer(tmp_path):
+    """An unanswered personal layer must block Level 2 on its own.
+
+    Every sibling criterion is green (all-green sync caches, declared
+    model, attested declaration step), so the personal-layer conjunct
+    is the decisive one. The paired positive control — answering with
+    'declared-private' and nothing else — proves the fixture failed
+    for the personal-layer reason alone and that the answer, not any
+    disclosure, is what the gate requires.
+
+    Kills: Remove the `if not
+    replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow): return
+    False` conjunct from `_fbComputeLevel2` in levelGates.py
+    """
+    sProjectRepo = str(tmp_path)
+    _fnWriteAllGreenSyncStatus(sProjectRepo)
+    dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
+    del dictWorkflow["dictAiProvenance"]["dictPersonalLayer"]
+    assert fbAtLeastLevel2(dictWorkflow, sProjectRepo) is False
+    dictWorkflow["dictAiProvenance"]["dictPersonalLayer"] = {
+        "sStatus": "declared-private",
+    }
+    assert fbAtLeastLevel2(dictWorkflow, sProjectRepo) is True
 
 
 # ------------------------------------------------------------------------
