@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev549 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev555 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3a399939"></script>
+      <script src="_static/documentation_options.js?v=811460d5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -104,6 +104,7 @@
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
@@ -1006,6 +1007,31 @@ standing prompt files, live network-isolation probe, an explicit
 trust-base statement) is built by <code class="docutils literal notranslate"><span class="pre">aiProvenanceStamp.py</span></code> +
 <code class="docutils literal notranslate"><span class="pre">gui/aiProvenanceCapture.py</span></code>, kept current by a poll side-effect,
 and folded into the L3 attestation record (schema v2).</p>
+<p><strong>The instruction stack and the personal layer.</strong> The instructions
+governing an AI agent stack in four layers: (1) the harness system
+prompt (proprietary — declared via the model ID, unarchivable), (2)
+the vaibify-generated container context, (3) the project’s own
+context file (captured by the project-context feature above), and
+(4) the researcher’s <em>personal layer</em> — private host-side agent
+configuration (global instruction file, personal skills, memory,
+hooks). Layer 4 is accounted for by a declaration in
+<code class="docutils literal notranslate"><span class="pre">dictAiProvenance.dictPersonalLayer</span></code>: one of three statuses —
+<code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">declared-private</span></code>, <code class="docutils literal notranslate"><span class="pre">included</span></code> — where <em>answering the
+question</em> is the L2 criterion (<code class="docutils literal notranslate"><span class="pre">fbWorkflowDeclaresPersonalLayer</span></code>,
+gating exactly like the model declaration) and disclosure is never
+required. <code class="docutils literal notranslate"><span class="pre">declared-private</span></code> may carry optional <strong>hash
+commitments</strong> (<code class="docutils literal notranslate"><span class="pre">{sLabel,</span> <span class="pre">sSha256,</span> <span class="pre">iByteCount,</span> <span class="pre">sDeclaredIso}</span></code>):
+the backend hashes a host file and persists only those four fields —
+the host path is never stored, logged, or echoed (a missing-file
+error names the basename at most). A commitment reveals nothing
+about content, but prevents retroactive sanitization: a later
+release of the files can be checked against the recorded digests.
+The hash route is browser-only twice over — excluded from the
+agent-action catalog <em>and</em> rejected at the route for requests
+presenting the per-container agent token — because an
+agent-invokable variant would be a hash oracle over host files.
+The declaration route is user-only in the catalog, like the other
+L2 consent moments.</p>
 <p><strong>Epistemic contract.</strong> The whole layer is <em>declared +
 tamper-evident</em>, never proven complete — the same trust model as the
 other L2 declarations. Tamper evidence: capture records are

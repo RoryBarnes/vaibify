@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev549 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev555 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3a399939"></script>
+      <script src="_static/documentation_options.js?v=811460d5"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -103,6 +103,7 @@
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
@@ -464,7 +465,7 @@ collapsible sections:</p>
 <td><p>The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>AI</strong></p></td>
-<td><p>The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, and the AI Declaration (the researcher’s signed statement — Level 2).</p></td>
+<td><p>The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, the personal instruction layer (the researcher’s private host-side agent configuration, accounted for — Level 2), and the AI Declaration (the researcher’s signed statement — Level 2).</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Attestation</strong></p></td>
 <td><p>The rebuild attestation (Level 3).</p></td>
@@ -509,6 +510,26 @@ reads “not tracked” and never blocks Level 2).</p></li>
 AI Model / Prompts row (removal is user-only — deleting a
 declaration erases provenance and can drop the project below
 Level 2).</p></li>
+<li><p>The <strong>Personal instruction layer</strong> row accounts for the fourth
+layer of the instruction stack that governed the AI’s work: your
+private host-side agent configuration (global instruction file,
+personal skills, memory, hooks) — the layers above it being the
+harness system prompt (declared via the model ID), the
+vaibify-generated container context, and the project context file.
+You answer with one of three statuses: <strong>none</strong> (no personal layer
+exists), <strong>exists — content withheld</strong>, or <strong>included in the
+project repository</strong>. Answering the question is the Level 2
+requirement; disclosure is never required, and “withheld” with
+nothing else is a fully valid answer. With “withheld” you may
+optionally add <strong>hash commitments</strong>: pick a file on your computer
+and a short label, and vaibify stores only the label, the file’s
+SHA-256, its byte count, and the date — never the path and never
+any content. A commitment reveals nothing about the file, but if
+you later choose to release it, the hash proves the released
+version is the one that governed the work (it cannot be quietly
+sanitized after the fact). The hashing runs only from your browser
+session — the in-container agent is refused, so it can never use
+the endpoint to probe files on your computer.</p></li>
 <li><p><strong>Start from template</strong>, <strong>Import from this computer…</strong>, and
 <strong>Adopt repo-root context file</strong> when no project context file
 exists yet. The context file (<code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code>) is the
@@ -687,7 +708,9 @@ level).</p></li>
 (opt-in — checked only when an arXiv submission is recorded, since
 posting happens outside vaibify on its own timeline); AI
 Declaration attested; AI model declared (every model used, with
-vendor, ID, and dates — closed-weights models pass by declaration).</p></li>
+vendor, ID, and dates — closed-weights models pass by declaration);
+Personal instruction layer answered (none / exists-but-withheld /
+included — any answer meets it; disclosure is never required).</p></li>
 </ul>
 <p>The AI rows’ deep links land on the specific requirement row in the
 Project block’s AI section — the link switches tabs, expands the

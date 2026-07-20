@@ -32,5 +32,6 @@ pipeline can benefit from containerized reproducibility.
    vibeCoding
    developers
    testing
+   skillTesting
    GitHub <https://github.com/RoryBarnes/Vaibify>
    PyPI <https://pypi.org/project/vaibify/>

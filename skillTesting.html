@@ -1,0 +1,325 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skill Testing &mdash; Vaibify 0.0.1.dev555 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=811460d5"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Testing" href="testing.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
+<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Skill Testing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#layer-1-referential-integrity-ci">Layer 1: referential integrity (CI)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#layer-2-trigger-evaluation">Layer 2: trigger evaluation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#layer-3-outcome-evaluation">Layer 3: outcome evaluation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#adding-a-new-skill">Adding a new skill</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-each-layer-does-and-does-not-prove">What each layer does and does not prove</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Skill Testing</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/skillTesting.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="skill-testing">
+<h1>Skill Testing<a class="headerlink" href="#skill-testing" title="Link to this heading"></a></h1>
+<p>Vaibify ships agent skills — procedural recipes under <code class="docutils literal notranslate"><span class="pre">.claude/skills/</span></code>
+that teach an AI agent how to perform recurring extension tasks (adding
+a route module, adding a data loader). A skill is documentation that an
+agent <em>executes</em>, so it fails the way documentation fails: silently,
+by drifting out of sync with the code it describes. And because a skill
+is consumed by a model rather than compiled, nothing crashes when it
+rots — the agent just follows stale instructions with full confidence.</p>
+<p>There is no built-in framework for testing skills. Anthropic’s
+<a class="reference external" href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices">skill-authoring guidance</a>
+recommends evaluation-driven development — establish a baseline without
+the skill, write evaluations, iterate against real executions — and
+distinguishes two separate questions:</p>
+<ol class="arabic simple">
+<li><p><strong>Triggering</strong> — does the agent invoke the skill when it should, and
+stay quiet when it shouldn’t? Only the frontmatter <code class="docutils literal notranslate"><span class="pre">description</span></code> is
+visible at decision time, so this is a property of the description.</p></li>
+<li><p><strong>Execution</strong> — does following the skill produce a correct result?</p></li>
+</ol>
+<p>Vaibify implements that guidance as three layers, cheapest first. Each
+layer answers a question the previous one cannot.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Layer</p></th>
+<th class="head"><p>Question</p></th>
+<th class="head"><p>Where</p></th>
+<th class="head"><p>Cost</p></th>
+<th class="head"><p>When it runs</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Referential integrity</p></td>
+<td><p>Do the skill’s references still exist?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/testSkillIntegrity.py</span></code></p></td>
+<td><p>Free</p></td>
+<td><p>Every <code class="docutils literal notranslate"><span class="pre">pytest</span></code> run and CI</p></td>
+</tr>
+<tr class="row-odd"><td><p>Trigger evaluation</p></td>
+<td><p>Does the description trigger correctly?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tools/evaluateSkillTriggers.py</span></code></p></td>
+<td><p>One short model call per prompt</p></td>
+<td><p>After editing a description</p></td>
+</tr>
+<tr class="row-even"><td><p>Outcome evaluation</p></td>
+<td><p>Does the skill produce correct results?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tools/evaluateSkillOutcomes.py</span></code></p></td>
+<td><p>Full agent run + full suite per task per arm</p></td>
+<td><p>Before merging skill changes</p></td>
+</tr>
+</tbody>
+</table>
+<section id="layer-1-referential-integrity-ci">
+<h2>Layer 1: referential integrity (CI)<a class="headerlink" href="#layer-1-referential-integrity-ci" title="Link to this heading"></a></h2>
+<p>The dominant failure mode for a recipe skill is staleness: a refactor
+renames <code class="docutils literal notranslate"><span class="pre">fsReadLoaderSource</span></code> or moves a module, and the skill keeps
+pointing at the old name. <code class="docutils literal notranslate"><span class="pre">tests/testSkillIntegrity.py</span></code> makes that
+drift a test failure:</p>
+<ul class="simple">
+<li><p><strong>Frontmatter</strong> — the <code class="docutils literal notranslate"><span class="pre">name</span></code> matches the skill’s directory, and the
+<code class="docutils literal notranslate"><span class="pre">description</span></code> states an explicit trigger condition (“Use when …”),
+because the description is the only text the model sees when deciding
+whether to load the skill.</p></li>
+<li><p><strong>Paths</strong> — every file path a skill references still exists. This
+delegates to <code class="docutils literal notranslate"><span class="pre">tools/checkAgentDocsPaths.py</span></code>, the same checker the
+<code class="docutils literal notranslate"><span class="pre">agent-docs-path-check</span></code> CI workflow runs on <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, so path
+logic lives in exactly one place. Illustrative filenames that
+intentionally do not exist belong in that tool’s
+<code class="docutils literal notranslate"><span class="pre">SET_GENERIC_FILENAME_EXAMPLES</span></code> allow-list.</p></li>
+<li><p><strong>Symbols</strong> — every Hungarian-notation identifier named in prose
+(<code class="docutils literal notranslate"><span class="pre">fnRegisterAll</span></code>, <code class="docutils literal notranslate"><span class="pre">WORKSPACE_ROOT</span></code>) still occurs in the source tree.
+Fenced code blocks are excluded, because scaffolds legitimately use
+made-up names; placeholders like <code class="docutils literal notranslate"><span class="pre">_fLoad&lt;FormatName&gt;</span></code> are ignored.</p></li>
+<li><p><strong>Test names</strong> — every test a skill tells the agent to run
+(<code class="docutils literal notranslate"><span class="pre">testAgentActionRegistered</span></code>) is still defined under <code class="docutils literal notranslate"><span class="pre">tests/</span></code>.</p></li>
+</ul>
+<p>The extraction rules themselves have a negative control
+(<code class="docutils literal notranslate"><span class="pre">testSymbolExtractorIgnoresScaffoldsAndPlaceholders</span></code>): if the
+extractor ever starts flagging scaffold code, that test fails before
+every skill does.</p>
+<p>These tests are part of the normal suite — no extra invocation is
+needed beyond <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pytest</span> <span class="pre">tests/</span> <span class="pre">-q</span></code>.</p>
+</section>
+<section id="layer-2-trigger-evaluation">
+<h2>Layer 2: trigger evaluation<a class="headerlink" href="#layer-2-trigger-evaluation" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/evaluateSkillTriggers.py
+</pre></div>
+</div>
+<p>The harness reads every skill’s description, then for each prompt in
+<code class="docutils literal notranslate"><span class="pre">tools/skillEvals/triggerPrompts.json</span></code> asks a fresh model instance
+which skill (or <code class="docutils literal notranslate"><span class="pre">none</span></code>) it would invoke, and compares against the
+expected answer. The prompt set contains both should-trigger requests
+and near-misses that must <em>not</em> trigger (frontend work, documentation
+fixes, questions) — false triggers are as damaging as missed ones,
+because a wrongly-loaded recipe steers the agent into the wrong
+procedure.</p>
+<p>This is deliberately an approximation: it classifies from the
+descriptions alone rather than driving the full interactive harness.
+That is the same isolation Anthropic’s description-optimization
+procedure uses, and it is what makes the layer cheap enough to run
+after every description edit. Run it whenever a <code class="docutils literal notranslate"><span class="pre">description:</span></code> line
+changes or a new skill is added; it exits 1 on any mismatch.</p>
+</section>
+<section id="layer-3-outcome-evaluation">
+<h2>Layer 3: outcome evaluation<a class="headerlink" href="#layer-3-outcome-evaluation" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/evaluateSkillOutcomes.py<span class="w">                       </span><span class="c1"># all tasks, both arms</span>
+python<span class="w"> </span>tools/evaluateSkillOutcomes.py<span class="w"> </span>--task<span class="w"> </span>iniLoader<span class="w"> </span>--arm<span class="w"> </span>with
+python<span class="w"> </span>tools/evaluateSkillOutcomes.py<span class="w"> </span>--use-working-skills<span class="w">  </span><span class="c1"># uncommitted skill edits</span>
+</pre></div>
+</div>
+<p>For each task in <code class="docutils literal notranslate"><span class="pre">tools/skillEvals/outcomeTasks.json</span></code>, the harness
+creates a throwaway git worktree from <code class="docutils literal notranslate"><span class="pre">HEAD</span></code>, runs <code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">-p</span></code> on the
+task prompt inside it, and grades the result by running the task’s
+grade commands in the worktree — the repository’s own test suite is
+the oracle, which is the hard part of skill evaluation and the part
+vaibify gets for free from its architectural invariants. Each task
+runs in two arms:</p>
+<ul class="simple">
+<li><p><strong>with</strong> — the skill is present. All grade commands must pass; a
+failure means the skill did not steer the agent to a correct result,
+and the harness exits 1.</p></li>
+<li><p><strong>without</strong> — the skill’s directory is deleted from the worktree
+first, establishing the baseline the authoring guidance calls for.
+A without-arm that passes anyway is not a failure, but it is
+evidence the skill may not be earning its keep.</p></li>
+</ul>
+<p>The task set follows the falsification philosophy of the rest of the
+suite (see <a class="reference internal" href="testing.html"><span class="std std-doc">Testing</span></a>): alongside straightforward tasks, it
+includes adversarial ones designed to tempt the agent into a skill’s
+documented failure modes — for example, a loader whose format needs an
+optional dependency, where the grade commands check that the import
+landed <em>inside</em> the function body rather than at the top of the
+embedded loader source. A skill that only passes friendly tasks has
+not been tested.</p>
+<p>Practical notes:</p>
+<ul class="simple">
+<li><p>Worktrees materialize <code class="docutils literal notranslate"><span class="pre">HEAD</span></code>. To evaluate uncommitted skill edits,
+pass <code class="docutils literal notranslate"><span class="pre">--use-working-skills</span></code>, which copies the working tree’s
+<code class="docutils literal notranslate"><span class="pre">.claude/skills/</span></code> into the worktree after creation.</p></li>
+<li><p>The default <code class="docutils literal notranslate"><span class="pre">--permission-mode</span> <span class="pre">acceptEdits</span></code> lets the agent write
+files but not run shell commands, so all grading happens externally
+and deterministically. Pass a different mode explicitly if a task
+genuinely requires the agent to execute commands, and understand
+what that mode permits before doing so.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> exercises the harness mechanics (worktree lifecycle, arm
+preparation, grading) without any model calls.</p></li>
+<li><p>This layer runs a full agent session plus the full test suite per
+task per arm. It is a periodic audit — run it before merging changes
+to a skill, not in CI.</p></li>
+</ul>
+</section>
+<section id="adding-a-new-skill">
+<h2>Adding a new skill<a class="headerlink" href="#adding-a-new-skill" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>Write <code class="docutils literal notranslate"><span class="pre">.claude/skills/&lt;skill-name&gt;/SKILL.md</span></code> with frontmatter
+<code class="docutils literal notranslate"><span class="pre">name:</span></code> matching the directory and a <code class="docutils literal notranslate"><span class="pre">description:</span></code> that states
+what the skill does <em>and</em> its trigger condition (“Use when …”).</p></li>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pytest</span> <span class="pre">tests/testSkillIntegrity.py</span> <span class="pre">-v</span></code> — the
+integrity tests discover the new skill automatically and will fail
+on any stale reference from day one.</p></li>
+<li><p>Add trigger prompts to <code class="docutils literal notranslate"><span class="pre">tools/skillEvals/triggerPrompts.json</span></code>:
+several requests that should trigger the skill, and several
+near-misses that should not. Run the layer-2 harness.</p></li>
+<li><p>Add at least one outcome task to
+<code class="docutils literal notranslate"><span class="pre">tools/skillEvals/outcomeTasks.json</span></code>, including an adversarial one
+aimed at the skill’s most likely failure mode, with grade commands
+that make the repository’s tests the oracle. Run the layer-3
+harness before merging.</p></li>
+</ol>
+</section>
+<section id="what-each-layer-does-and-does-not-prove">
+<h2>What each layer does and does not prove<a class="headerlink" href="#what-each-layer-does-and-does-not-prove" title="Link to this heading"></a></h2>
+<p>Layer 1 proves the skill’s references are live, not that its procedure
+is correct. Layer 2 proves the description is discriminative in
+isolation, not that the full harness will load it. Layer 3 is the only
+layer that observes real behavior, and even it proves correctness only
+for the tasks in the eval set. A skill that passes all three layers is
+consistent with the codebase and useful on the evaluated tasks —
+treat any claim beyond that as asserted, not verified.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference external" href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices">Skill authoring best practices — evaluation and iteration</a>
+(Anthropic): evaluation-driven development, trigger vs. execution
+testing, baseline-first workflow.</p></li>
+<li><p><a class="reference external" href="https://github.com/anthropics/skills">anthropics/skills</a>: the
+<code class="docutils literal notranslate"><span class="pre">skill-creator</span></code> skill, Anthropic’s own evaluation tooling — A/B
+with/without comparison, grader agents, description optimization
+over trigger/non-trigger query sets.</p></li>
+<li><p><a class="reference external" href="https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills">Equipping agents for the real world with Agent Skills</a>
+(Anthropic engineering): the design rationale for skills.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="testing.html" class="btn btn-neutral float-left" title="Testing" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
