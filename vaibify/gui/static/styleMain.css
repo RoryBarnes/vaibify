@@ -702,13 +702,13 @@ body.aics-level-3 .toolbar-label {
    as one. min-height:0 lets a flex child actually shrink and scroll.
    The bottom margin reserves a permanent strip between the scroll
    area and the window edge — anchored to the viewport, not scrolled
-   with the content — mirroring the panel-header height (20px icons +
-   4px button padding + 8px header padding, each side, + border). */
+   with the content — matching the #terminalStripToolbar strip below
+   the terminal (26px + 1px border) so the two columns end level. */
 .panel-scroll-area {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    margin-bottom: 48px;
+    margin-bottom: 27px;
 }
 
 #listSteps {
