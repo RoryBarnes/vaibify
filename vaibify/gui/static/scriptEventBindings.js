@@ -345,6 +345,19 @@ var PipeleyenEventBindings = (function () {
         VaibifyProjectContext.fnGenerateTemplate();
     }
 
+    function _fnHandlePersonalLayerSet(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyPersonalLayer.fnDeclareStatus(
+            elMatch.dataset.personalStatus || "");
+    }
+
+    function _fnHandlePersonalLayerAdd(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyPersonalLayer.fnAddCommitment(elMatch);
+    }
+
     function _fnHandleContextImportOpen(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -483,6 +496,8 @@ var PipeleyenEventBindings = (function () {
         ".btn-context-template": _fnHandleContextTemplate,
         ".btn-context-import-open": _fnHandleContextImportOpen,
         ".btn-context-adopt": _fnHandleContextAdopt,
+        ".wf-personal-layer-set": _fnHandlePersonalLayerSet,
+        ".wf-personal-layer-add": _fnHandlePersonalLayerAdd,
         ".wf-open-prompt-record": _fnHandleOpenPromptRecord,
         ".wf-verify-remote": _fnHandleVerifyRemote,
         ".wf-toggle-binary-form": _fnHandleToggleBinaryForm,

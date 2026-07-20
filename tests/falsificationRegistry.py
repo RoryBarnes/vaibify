@@ -685,8 +685,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_fdictLevel2Gaps_subset_failure_keeps_level2_false',
         source='vaibify/reproducibility/levelGates.py',
-        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl and bModels,',
-        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl and bModels,',
+        old='            bL1 and bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal,',
+        new='            bL1 or bGithub and bZenodo and bArxiv and bDecl\n            and bModels and bPersonal,',
     ),
     Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_blocker_cache_evicts_oldest_entry_first',
@@ -1300,5 +1300,41 @@ def _fdictEntry(sRel):
         source='vaibify/gui/workflowManager.py',
         old='        if fbStepDirectoryConforms(dictStep):\n            continue',
         new='        if fbStepDirectoryConforms(dictStep) or True:\n            continue',
+    ),
+    # --- Personal instruction layer (Replay axis, 2026-07-19) ---
+    Falsification(
+        # Dropping the agent-lane rejection hands a compromised
+        # in-container agent a hash oracle over host files.
+        nodeid='tests/testReplayRoutes.py::test_hash_route_rejects_agent_token_lane',
+        source='vaibify/gui/routes/replayRoutes.py',
+        old='        _fnRejectAgentTokenLane(requestHttp)\n        dictCtx["require"]()',
+        new='        dictCtx["require"]()',
+    ),
+    Falsification(
+        # Removing the personal-layer conjunct lets a project reach
+        # Level 2 with the instruction stack's fourth layer
+        # unaccounted for.
+        nodeid='tests/testLevelGatesMutationCoverage.py::test_l2_gate_requires_personal_layer_answer',
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return False',
+        new='    if False:\n        return False',
+    ),
+    Falsification(
+        # A constant digest would turn the commitment into theater:
+        # it could never prove a later release matches the governing
+        # files.
+        nodeid='tests/testReplayRoutes.py::test_hash_route_digest_tracks_file_content',
+        source='vaibify/gui/personalLayerManager.py',
+        old='        "sSha256": hasher.hexdigest(),',
+        new='        "sSha256": "0" * 64,',
+    ),
+    Falsification(
+        # Dropping the personal-layer conjunct would let the axis
+        # report "Declared" while the instruction stack's fourth
+        # layer is unaccounted for.
+        nodeid='tests/testReplayGate.py::test_axis_declared_requires_personal_layer_answer',
+        source='vaibify/reproducibility/replayGate.py',
+        old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
+        new='    if False:\n        return "untracked"',
     ),
 ]

@@ -15,7 +15,8 @@
    ``dictWorkflowEnvelopeDetail`` (the four render sections plus the
    project-wide booleans bAiDeclarationAttested /
    bRebuildAttestationCurrent / bOverleafBound / bArxivConfigured /
-   bAiModelsDeclared / bProjectContextFileExists and the declared
+   bAiModelsDeclared / bPersonalLayerDeclared /
+   bProjectContextFileExists and the declared
    dictAiProvenance block for the Replay-axis AI section).
    A null remote-sync cache renders the hollow "never verified"
    light — never green (the dashboard-ground-truth honesty rule).
@@ -788,6 +789,14 @@ var VaibifyWorkflowRequirements = (function () {
                  dictDetail.bAiModelsDeclared === true),
              fsDetail: function () {
                  return _fsRenderAiModelPromptsDetail(dictDetail);
+             }},
+            {sKey: "personalLayer", iLevel: 2,
+             sTitle: "Personal instruction layer",
+             sState: _fsLightStateFromBoolean(
+                 dictDetail.bPersonalLayerDeclared === true),
+             fsDetail: function () {
+                 return VaibifyPersonalLayer
+                     .fsRenderPersonalLayerDetail(dictDetail);
              }},
             {sKey: "aiDeclaration", iLevel: 2,
              sTitle: "AI Declaration",

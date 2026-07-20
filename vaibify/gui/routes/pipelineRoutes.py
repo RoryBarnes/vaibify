@@ -1639,6 +1639,7 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
          "bArxivConfigured": bool,
          "dictAiProvenance": declared block or None,
          "bAiModelsDeclared": bool,
+         "bPersonalLayerDeclared": bool,
          "bProjectContextFileExists": bool,
          "bRepoRootAgentsFileDetected": bool,
          "sReplayAxisState": "untracked|declared|recorded|supervised",
@@ -1696,6 +1697,8 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
             (dictWorkflow or {}).get("dictAiProvenance") or None,
         "bAiModelsDeclared":
             replayGate.fbWorkflowDeclaresAiModels(dictWorkflow),
+        "bPersonalLayerDeclared":
+            replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow),
         "bProjectContextFileExists": (
             filesRepo.fbIsFile(".vaibify/AGENTS.md") if bHasRepo
             else False

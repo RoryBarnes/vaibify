@@ -623,6 +623,21 @@ LIST_AGENT_ACTIONS = [
                      "sModelId}. User-only because deleting a "
                      "declaration erases provenance and can drop the "
                      "project below Level 2."},
+    {"sName": "declare-personal-layer", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/personal-layer/declare",
+     "bAgentSafe": False,
+     "sDescription": "Record the researcher's answer about their "
+                     "personal instruction layer (private host-side "
+                     "agent configuration). Args: {sStatus: 'none' | "
+                     "'declared-private' | 'included'}; "
+                     "'declared-private' may add "
+                     "{dictHashCommitment}; 'included' may add "
+                     "{listIncludedPaths} (repo-relative). User-only "
+                     "because only the researcher can truthfully "
+                     "answer for their private host configuration — "
+                     "an L2 consent moment like the other "
+                     "declarations."},
     {"sName": "read-project-context", "sCategory": "workflow",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/project-context",
@@ -782,6 +797,13 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agent exfiltrate home-directory files into a public repository.
     # Researcher-only, via the dashboard's import picker.
     ("POST", "/api/workflow/{sContainerId}/project-context/import"),
+    # The personal-layer hash endpoint reads an arbitrary HOST file
+    # and returns its SHA-256 + byte count. Agent-invokable, that is
+    # a hash oracle over host files (confirm guesses about
+    # credentials, dotfiles, private notes byte-for-byte).
+    # Researcher-only: excluded here AND the route itself rejects the
+    # agent token lane with 403.
+    ("POST", "/api/workflow/{sContainerId}/personal-layer/hash"),
     # The Prompt Record review gate exists so a human confirms what
     # the sanitizer produced before it is treated as publishable; the
     # agent must never approve publication of its own transcript.

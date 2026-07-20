@@ -18,6 +18,17 @@ a carve-out. The host-import route is intentionally excluded from the
 agent-action catalog: an agent-invokable host read would let a
 compromised in-container agent exfiltrate home-directory files into a
 public repository.
+
+The personal-layer routes account for the researcher's private
+host-side agent configuration (instruction stack layer 4). The
+declaration records one of three statuses — ``none``,
+``declared-private``, ``included`` — and, for ``declared-private``,
+optional hash commitments: {sLabel, sSha256, iByteCount,
+sDeclaredIso} computed from a host file whose path is NEVER
+persisted, logged, or echoed. The hash route is browser-only: it is
+excluded from the agent catalog AND rejects the agent token lane
+outright, because an agent-reachable variant would be a hash oracle
+over host files.
 """
 
 __all__ = ["fnRegisterAll"]
@@ -25,9 +36,14 @@ __all__ = ["fnRegisterAll"]
 import posixpath
 from datetime import datetime, timezone
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import S_SESSION_HEADER_NAME, fnAgentAction
+from ..personalLayerManager import (
+    fdictComputeHashCommitment,
+    fdictValidateHashCommitment,
+    flistValidateIncludedPaths,
+)
 from ..pipelineServer import fdictRequireWorkflow
 from ..projectContextManager import (
     I_MAX_CONTEXT_CONTENT_BYTES,
@@ -38,6 +54,8 @@ from ..projectContextManager import (
 from ...reproducibility.replayGate import (
     S_AI_PROVENANCE_KEY,
     S_DECLARED_MODELS_KEY,
+    S_PERSONAL_LAYER_KEY,
+    SET_PERSONAL_LAYER_STATUSES,
     flistDescribeModelDeclarationGaps,
 )
 
@@ -553,10 +571,145 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
         return {"dictSupervision": dictSupervision}
 
 
+def _fsValidatePersonalLayerStatus(request):
+    """Return the declared status string or raise HTTP 400."""
+    if not isinstance(request, dict):
+        raise HTTPException(
+            400, "Personal-layer declaration must be an object.",
+        )
+    sStatus = str(request.get("sStatus") or "")
+    if sStatus not in SET_PERSONAL_LAYER_STATUSES:
+        raise HTTPException(
+            400, "sStatus must be one of: "
+            + ", ".join(sorted(SET_PERSONAL_LAYER_STATUSES)) + ".",
+        )
+    return sStatus
+
+
+def _fnRegisterDeclarePersonalLayer(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/personal-layer/declare.
+
+    Answering the question — with ANY of the three statuses — is what
+    the Level 2 criterion requires; disclosure is never required, and
+    ``declared-private`` with zero hash commitments is a fully valid
+    answer. User-only in the catalog: like the other L2 consent
+    moments, the statement about the researcher's private
+    configuration must come from the researcher.
+    """
+
+    @fnAgentAction("declare-personal-layer")
+    @app.post("/api/workflow/{sContainerId}/personal-layer/declare")
+    async def fnDeclarePersonalLayer(sContainerId: str, request: dict):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sStatus = _fsValidatePersonalLayerStatus(request)
+        dictProvenance = _fdictProvenanceOf(dictWorkflow)
+        dictLayer = dict(
+            dictProvenance.get(S_PERSONAL_LAYER_KEY) or {},
+        )
+        dictLayer["sStatus"] = sStatus
+        dictLayer["sDeclaredIso"] = datetime.now(
+            timezone.utc,
+        ).isoformat()
+        if "dictHashCommitment" in request:
+            if sStatus != "declared-private":
+                raise HTTPException(
+                    400, "Hash commitments only accompany the "
+                    "'declared-private' status.",
+                )
+            listCommitments = list(
+                dictLayer.get("listHashCommitments") or [],
+            )
+            try:
+                listCommitments.append(
+                    fdictValidateHashCommitment(
+                        request["dictHashCommitment"],
+                    ),
+                )
+            except ValueError as error:
+                raise HTTPException(400, str(error))
+            dictLayer["listHashCommitments"] = listCommitments
+        if "listIncludedPaths" in request:
+            if sStatus != "included":
+                raise HTTPException(
+                    400, "listIncludedPaths only accompanies the "
+                    "'included' status.",
+                )
+            try:
+                dictLayer["listIncludedPaths"] = (
+                    flistValidateIncludedPaths(
+                        request["listIncludedPaths"],
+                    )
+                )
+            except ValueError as error:
+                raise HTTPException(400, str(error))
+        dictProvenance[S_PERSONAL_LAYER_KEY] = dictLayer
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return {"dictPersonalLayer": dictLayer}
+
+
+def _fnRejectAgentTokenLane(requestHttp):
+    """Raise HTTP 403 when the request rides the in-container agent lane.
+
+    The agent authenticates REST calls with the per-container
+    ``X-Vaibify-Session`` header; a browser session never sends that
+    header (it presents the hub token separately). Its presence
+    therefore marks the agent lane — the same discriminator the
+    ``/api/session-token`` guard uses — and a host-reading route must
+    fail it closed.
+    """
+    if requestHttp.headers.get(S_SESSION_HEADER_NAME.lower(), ""):
+        raise HTTPException(
+            403, "The in-container agent must not read or hash "
+            "host files.",
+        )
+
+
+def _fnRegisterHashPersonalLayerFile(app, dictCtx):
+    """Register POST .../personal-layer/hash (researcher-only).
+
+    Reads a HOST file at the researcher's request and returns its
+    SHA-256 commitment; nothing is persisted. Excluded from the
+    agent-action catalog AND guarded against the agent token lane at
+    the route itself: an agent-reachable variant would hand a
+    compromised in-container agent a hash oracle over host files.
+    """
+    import asyncio
+
+    @app.post("/api/workflow/{sContainerId}/personal-layer/hash")
+    async def fnHashPersonalLayerFile(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
+        _fnRejectAgentTokenLane(requestHttp)
+        dictCtx["require"]()
+        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
+        sLabel = str(request.get("sLabel") or "").strip()
+        if not sLabel:
+            raise HTTPException(
+                400, "A hash commitment needs a non-empty sLabel.",
+            )
+        try:
+            dictCommitment = await asyncio.to_thread(
+                fdictComputeHashCommitment,
+                str(request.get("sHostPath") or ""), sLabel,
+            )
+        except ValueError as error:
+            raise HTTPException(400, str(error))
+        except OSError:
+            # OSError text can embed the full path; a fixed message
+            # keeps the path out of the response.
+            raise HTTPException(400, "Could not read the file.")
+        return {"dictHashCommitment": dictCommitment}
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all Replay-axis routes."""
     _fnRegisterDeclareAiModel(app, dictCtx)
     _fnRegisterRemoveAiModel(app, dictCtx)
+    _fnRegisterDeclarePersonalLayer(app, dictCtx)
+    _fnRegisterHashPersonalLayerFile(app, dictCtx)
     _fnRegisterReadProjectContext(app, dictCtx)
     _fnRegisterUpdateProjectContext(app, dictCtx)
     _fnRegisterContextTemplate(app, dictCtx)

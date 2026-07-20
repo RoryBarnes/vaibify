@@ -887,6 +887,32 @@ trust-base statement) is built by `aiProvenanceStamp.py` +
 `gui/aiProvenanceCapture.py`, kept current by a poll side-effect,
 and folded into the L3 attestation record (schema v2).
 
+**The instruction stack and the personal layer.** The instructions
+governing an AI agent stack in four layers: (1) the harness system
+prompt (proprietary — declared via the model ID, unarchivable), (2)
+the vaibify-generated container context, (3) the project's own
+context file (captured by the project-context feature above), and
+(4) the researcher's *personal layer* — private host-side agent
+configuration (global instruction file, personal skills, memory,
+hooks). Layer 4 is accounted for by a declaration in
+`dictAiProvenance.dictPersonalLayer`: one of three statuses —
+`none`, `declared-private`, `included` — where *answering the
+question* is the L2 criterion (`fbWorkflowDeclaresPersonalLayer`,
+gating exactly like the model declaration) and disclosure is never
+required. `declared-private` may carry optional **hash
+commitments** (`{sLabel, sSha256, iByteCount, sDeclaredIso}`):
+the backend hashes a host file and persists only those four fields —
+the host path is never stored, logged, or echoed (a missing-file
+error names the basename at most). A commitment reveals nothing
+about content, but prevents retroactive sanitization: a later
+release of the files can be checked against the recorded digests.
+The hash route is browser-only twice over — excluded from the
+agent-action catalog *and* rejected at the route for requests
+presenting the per-container agent token — because an
+agent-invokable variant would be a hash oracle over host files.
+The declaration route is user-only in the catalog, like the other
+L2 consent moments.
+
 **Epistemic contract.** The whole layer is *declared +
 tamper-evident*, never proven complete — the same trust model as the
 other L2 declarations. Tamper evidence: capture records are

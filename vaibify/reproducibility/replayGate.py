@@ -18,11 +18,14 @@ unconfigured opt-in is trivially passing, never a gap.
 __all__ = [
     "S_AI_PROVENANCE_KEY",
     "S_DECLARED_MODELS_KEY",
+    "S_PERSONAL_LAYER_KEY",
     "S_PROMPT_RECORD_KEY",
     "S_SUPERVISION_KEY",
+    "SET_PERSONAL_LAYER_STATUSES",
     "flistDescribeModelDeclarationGaps",
     "fbModelDeclarationValid",
     "fbWorkflowDeclaresAiModels",
+    "fbWorkflowDeclaresPersonalLayer",
     "fbPromptRecordCurrent",
     "fbSupervisionClean",
     "fsReplayAxisState",
@@ -31,8 +34,13 @@ __all__ = [
 
 S_AI_PROVENANCE_KEY = "dictAiProvenance"
 S_DECLARED_MODELS_KEY = "listDeclaredModels"
+S_PERSONAL_LAYER_KEY = "dictPersonalLayer"
 S_PROMPT_RECORD_KEY = "dictPromptRecord"
 S_SUPERVISION_KEY = "dictSupervision"
+
+SET_PERSONAL_LAYER_STATUSES = frozenset({
+    "none", "declared-private", "included",
+})
 
 _LIST_REQUIRED_MODEL_FIELDS = [
     "sVendor",
@@ -87,6 +95,23 @@ def fbWorkflowDeclaresAiModels(dictWorkflow):
     return all(fbModelDeclarationValid(dictModel) for dictModel in listModels)
 
 
+def fbWorkflowDeclaresPersonalLayer(dictWorkflow):
+    """Return True iff the personal-layer question has been answered.
+
+    The personal layer is the researcher's private host-side agent
+    configuration (global instruction file, personal skills, memory,
+    hooks). Any of the three statuses — ``none``, ``declared-private``,
+    ``included`` — satisfies the criterion: the gate requires the
+    question answered, never the content revealed. ``declared-private``
+    with zero hash commitments is a fully valid answer; unanswered is
+    the only failing state.
+    """
+    dictLayer = _fdictAiProvenance(dictWorkflow).get(S_PERSONAL_LAYER_KEY)
+    if not isinstance(dictLayer, dict):
+        return False
+    return dictLayer.get("sStatus") in SET_PERSONAL_LAYER_STATUSES
+
+
 def fbPromptRecordCurrent(dictWorkflow):
     """Return True unless an enabled Prompt Record is missing its review.
 
@@ -119,9 +144,15 @@ def fsReplayAxisState(dictWorkflow):
 
     Each state requires all lower states: recording without a model
     declaration is still ``untracked`` because the transcript of an
-    undeclared agent is not honest provenance.
+    undeclared agent is not honest provenance. ``declared`` requires
+    the whole declaration, models AND the personal prompt layer
+    (ruling 2026-07-19): a declared model with an unaccounted
+    instruction stack is not a complete answer to "what governed the
+    AI's contributions."
     """
     if not fbWorkflowDeclaresAiModels(dictWorkflow):
+        return "untracked"
+    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):
         return "untracked"
     dictProvenance = _fdictAiProvenance(dictWorkflow)
     dictRecord = dictProvenance.get(S_PROMPT_RECORD_KEY) or {}

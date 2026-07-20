@@ -1144,6 +1144,8 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
         return False
     if not replayGate.fbWorkflowDeclaresAiModels(dictWorkflow):
         return False
+    if not replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow):
+        return False
     if not fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
     ):
@@ -1663,6 +1665,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bArxivFullySynced": bool,
             "bAiDeclarationAttested": bool,
             "bAiModelsDeclared": bool,
+            "bPersonalLayerDeclared": bool,
             "bPromptRecordCurrent": bool,
             "bSupervisionClean": bool,
             "bProjectContextFileExists": bool,
@@ -1677,7 +1680,9 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     the researcher's sign-off — the declaration is a publication
     artifact, so both halves are L2 requirements.
     ``bAiModelsDeclared`` gates L2 the same way (undeclared is its
-    only failing state); ``bProjectContextFileExists`` and
+    only failing state), as does ``bPersonalLayerDeclared`` (the
+    personal-layer question answered with any of its three statuses —
+    disclosure is never required); ``bProjectContextFileExists`` and
     ``bPromptRecordCurrent`` are informational only — they feed the
     optional AICS rows and never join the conjunction (the Prompt
     Record follows the arXiv rule: unconfigured is trivially True).
@@ -1694,6 +1699,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     )
     bDecl = fbWorkflowAiDeclarationAttested(dictWorkflow)
     bModels = replayGate.fbWorkflowDeclaresAiModels(dictWorkflow)
+    bPersonal = replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow)
     return {
         "bAtLeastLevel1": bL1,
         "bGithubFullySynced": bGithub,
@@ -1701,6 +1707,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         "bArxivFullySynced": bArxiv,
         "bAiDeclarationAttested": bDecl,
         "bAiModelsDeclared": bModels,
+        "bPersonalLayerDeclared": bPersonal,
         "bPromptRecordCurrent": replayGate.fbPromptRecordCurrent(
             dictWorkflow,
         ),
@@ -1711,7 +1718,8 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             filesRepo,
         ).fbIsFile(".vaibify/AGENTS.md"),
         "bAtLeastLevel2":
-            bL1 and bGithub and bZenodo and bArxiv and bDecl and bModels,
+            bL1 and bGithub and bZenodo and bArxiv and bDecl
+            and bModels and bPersonal,
     }
 
 
