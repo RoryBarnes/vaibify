@@ -699,11 +699,15 @@ body.aics-level-3 .toolbar-label {
 
 /* The scrollable region below the panel header holds both the Steps
    block and the Project block, so the whole left column scrolls
-   as one. min-height:0 lets a flex child actually shrink and scroll. */
+   as one. min-height:0 lets a flex child actually shrink and scroll.
+   The bottom padding mirrors the panel-header height (20px icons +
+   4px button padding + 8px header padding, each side, + border) so
+   the lowest Project-block rows scroll clear of the window edge. */
 .panel-scroll-area {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    padding-bottom: 48px;
 }
 
 #listSteps {
