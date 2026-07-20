@@ -1,19 +1,35 @@
 name: mutation
 
-# WARN-only cosmic-ray mutation gate.
+# WARN-only cosmic-ray mutation gate, run ON DEMAND.
 #
-# Scope: the Python lines a pull request CHANGES under vaibify/ (narrowed by
-# cr-filter-git against the PR base). This job NEVER fails the build on
-# surviving mutants -- equivalent mutants make a hard fail untenable -- it
-# surfaces survivors as a warning and a job-summary table for human triage.
-# The full falsification suite and architectural invariants are graded for
-# real by tests-linux / tests-macos; this gate only adds mutation signal on
-# the diff.
+# This job is manual (workflow_dispatch) rather than per-PR: on the large
+# feature-branch merges this project ships, mutation-testing the whole diff
+# exceeded the 60-minute ceiling and was cancelled before it could post any
+# signal -- an advisory gate that dies on the PRs that matter most is pure
+# friction. Trigger it deliberately from the Actions tab (or the `gh`
+# CLI) when you want mutation signal on a branch; the full falsification
+# suite and architectural invariants are still graded for real, per-PR, by
+# tests-linux / tests-macos.
+#
+# Scope: the Python lines the branch CHANGES vs. `base_ref` (narrowed by
+# cr-filter-git). This job NEVER fails the build on surviving mutants --
+# equivalent mutants make a hard fail untenable -- it surfaces survivors as
+# a warning and a job-summary table for human triage. Two controls keep a
+# run bounded: the suite runs with -n auto (cosmic-ray.toml), and
+# `max_mutants` caps how many changed-line mutants are graded (0 = uncapped,
+# and any capped mutants are reported, never dropped silently).
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Git ref to diff against for changed-line scoping"
+        default: main
+        required: false
+      max_mutants:
+        description: "Max changed-line mutants to grade (0 = uncapped)"
+        default: "300"
+        required: false
 
 permissions:
   contents: read
@@ -43,9 +59,9 @@ jobs:
           # invokes (pytest-asyncio, httpx); mutation extras supply cosmic-ray.
           python -m pip install -e ".[dev,mutation]"
 
-      - name: Fetch PR base for the diff filter
+      - name: Fetch the base ref for the diff filter
         env:
-          BASE_REF: ${{ github.base_ref || 'main' }}
+          BASE_REF: ${{ inputs.base_ref || github.base_ref || 'main' }}
         run: |
           git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           # Align the committed git-filter branch with this run's actual base.
@@ -63,6 +79,61 @@ jobs:
 
       - name: Restrict to changed lines
         run: cr-filter-git --config cosmic-ray.toml mutation-session.sqlite
+
+      - name: Cap the mutant budget (logged, never silent)
+        env:
+          MAX_MUTANTS: ${{ inputs.max_mutants || '300' }}
+        run: |
+          # cr-filter-git has marked every off-diff mutant SKIPPED, so the
+          # pending items are exactly the changed-line mutants. If there are
+          # more than the budget, mark the excess SKIPPED too -- taking an
+          # evenly-strided sample of the sorted mutants so the kept ones
+          # spread across every changed file instead of clustering in the
+          # alphabetically-first one. The count skipped is recorded for the
+          # report step; a cap is surfaced, never hidden.
+          python - "${MAX_MUTANTS}" <<'PY'
+          import sys
+          from cosmic_ray.work_db import use_db, WorkDB
+          from cosmic_ray.work_item import WorkResult, WorkerOutcome
+
+          iCap = int(sys.argv[1] or 0)
+          with open("mutants-capped.txt", "w") as handle:
+              handle.write("0")
+          if iCap <= 0:
+              print("Mutant budget uncapped; grading every changed-line mutant.")
+              sys.exit(0)
+
+          with use_db("mutation-session.sqlite", WorkDB.Mode.open) as db:
+              listPending = list(db.pending_work_items)
+              iPending = len(listPending)
+              if iPending <= iCap:
+                  print(f"{iPending} mutant(s) in scope, within the "
+                        f"{iCap} budget.")
+                  sys.exit(0)
+              listPending.sort(key=lambda workItem: (
+                  workItem.mutations[0].module_path,
+                  workItem.mutations[0].start_pos,
+                  workItem.mutations[0].operator_name,
+              ))
+              setKeep = {
+                  round(iIndex * (iPending - 1) / (iCap - 1)) if iCap > 1 else 0
+                  for iIndex in range(iCap)
+              }
+              iSkipped = 0
+              for iIndex, workItem in enumerate(listPending):
+                  if iIndex in setKeep:
+                      continue
+                  db.set_result(workItem.job_id, WorkResult(
+                      worker_outcome=WorkerOutcome.SKIPPED,
+                      output="over the max_mutants budget",
+                  ))
+                  iSkipped += 1
+          with open("mutants-capped.txt", "w") as handle:
+              handle.write(str(iSkipped))
+          print(f"{iPending} mutant(s) in scope; kept {len(setKeep)}, "
+                f"skipped {iSkipped} to fit the {iCap} budget. Run "
+                "cosmic-ray locally for full coverage on this diff.")
+          PY
 
       - name: Execute mutants (warn-only, live progress)
         run: |
@@ -147,12 +218,18 @@ jobs:
                           mutation.definition_name or "",
                       ))
 
+          iCapped = 0
+          try:
+              with open("mutants-capped.txt") as handle:
+                  iCapped = int(handle.read().strip() or 0)
+          except OSError:
+              pass
+
           listLines = []
           if iGraded == 0:
               listLines.append(
-                  "Nothing to test: this pull request changed no Python "
-                  "under `vaibify/gui` or `vaibify/reproducibility`, so no "
-                  "mutations were run."
+                  "Nothing to test: this branch changed no mutable Python "
+                  "in the mutated scope, so no mutations were run."
               )
           elif not listSurvivors:
               listLines.append(
@@ -178,6 +255,15 @@ jobs:
                       f"::warning file={sModule},line={iLine}::"
                       f"Surviving mutant ({sOperator}) in {sFunction or sModule}"
                   )
+
+          if iCapped:
+              listLines.append("")
+              listLines.append(
+                  f"Note: {iCapped} additional changed-line mutant(s) "
+                  "exceeded the `max_mutants` budget and were not graded. "
+                  "Re-run with `max_mutants: 0`, or run cosmic-ray locally, "
+                  "for full coverage of this diff."
+              )
 
           sSummary = "## Cosmic-ray mutation gate (warn-only)\n\n" + \
               "\n".join(listLines) + "\n"

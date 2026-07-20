@@ -35,9 +35,11 @@ excluded-modules = [
 timeout = 300.0
 
 # One test-command is reused for every mutant. -x aborts on the first
-# failing test so a killed mutant returns fast; the docker-gated tests are
-# excluded because the mutation job runs without a Docker daemon.
-test-command = "python -m pytest -x --no-header -q -p no:cacheprovider -m 'not docker and not docker_live' tests/"
+# failing test so a killed mutant returns fast; -n auto spreads each suite
+# run across every core (the local distributor grades mutants sequentially,
+# so there is no worker-vs-worker oversubscription); the docker-gated tests
+# are excluded because the mutation job runs without a Docker daemon.
+test-command = "python -m pytest -x -n auto --no-header -q -p no:cacheprovider -m 'not docker and not docker_live' tests/"
 
 [cosmic-ray.distributor]
 name = "local"

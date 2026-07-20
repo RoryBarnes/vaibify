@@ -65,6 +65,10 @@ dev = [
 ]
 mutation = [
     "cosmic-ray",
+    # The mutation test-command runs the suite with -n auto. The local
+    # distributor grades one mutant at a time (sequential), so each
+    # suite run gets every core with no worker-vs-worker oversubscription.
+    "pytest-xdist",
 ]
 replay = [
     "detect-secrets>=1.4",
