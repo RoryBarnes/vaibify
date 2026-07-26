@@ -67,6 +67,29 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
     "proxima",
 ]
 
+# PENDING (2026-07-26): this scan covers *.py/*.html/*.js/*.css under
+# vaibify/ only. Markdown is not scanned and repo-root docs/ is
+# outside the scanned tree, so these known occurrences of the terms
+# above are NOT enforced today:
+#
+#   docs/architecture.md:304,323,324,327   worked path examples
+#   docs/dashboard.md:161,166              slug-rule examples
+#   vaibify/docs/scriptAuthoring.md:37,41  ships inside the package
+#   docs/vision.md:153                     cites a real paper appendix
+#
+# The first three are illustrative and should be replaced with the
+# forthcoming general example project (AI waste heat -> moist
+# greenhouse), which exists to give vaibify a science-agnostic worked
+# example of its own. The vision.md line is a citation of real
+# provenance, not a leak, and needs an explicit carve-out rather than
+# genericising -- rewriting it would make the document less true.
+#
+# When that example lands: swap the illustrative names, add "*.md" to
+# _TUPLE_SCIENCE_SCAN_GLOBS, extend the scan root to repo-root docs/,
+# and add the vision.md citation to an explicit allow-list. Only then
+# does the AGENTS.md rule ("must not appear in vaibify source,
+# templates, tests-of-record, or docs") hold everywhere it claims to.
+
 # Directories excluded from source scans (virtualenvs, build artifacts, caches).
 SET_EXCLUDED_SCAN_DIRECTORY_FRAGMENTS = (
     "/tests/",
