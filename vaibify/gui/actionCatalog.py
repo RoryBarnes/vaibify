@@ -25,10 +25,12 @@ Design notes:
 __all__ = [
     "LIST_AGENT_ACTIONS",
     "SET_INTENTIONALLY_EXCLUDED_PATHS",
+    "SET_STATE_MUTATING_METHODS",
     "S_CATALOG_JSON_PATH",
     "S_CATALOG_SCHEMA_VERSION",
     "S_SESSION_ENV_PATH",
     "S_SESSION_HEADER_NAME",
+    "fbAgentLanePermitsRoute",
     "fdictBuildCatalogJson",
     "fdictLookupAction",
     "fnAgentAction",
@@ -51,7 +53,10 @@ def fnAgentAction(sName):
         async def fnHandler(...): ...
 
     The decorator is metadata only — it does not alter the handler's
-    behavior. The invariant test
+    behavior. Server-side enforcement of ``bAgentSafe`` lives in
+    :func:`fbAgentLanePermitsRoute`, consulted by
+    ``serverMiddleware.SessionTokenMiddleware`` on every agent-lane
+    request. The invariant test
     ``tests/testArchitecturalInvariants.py::testAgentActionRegistered``
     walks the FastAPI route registry and verifies that every
     state-mutating route either has this marker or is explicitly
@@ -726,7 +731,12 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/pull",
      "bAgentSafe": True,
-     "sDescription": "Copy a file from the container to the host."},
+     "sDescription": "Copy a file from the container to the host. "
+                     "Agent-lane pulls may only land under "
+                     "~/.vaibify/exports/<container>/ — the host write "
+                     "is otherwise arbitrary agent-authored content in "
+                     "the researcher's home directory. Tell the "
+                     "researcher where the file landed."},
     {"sName": "upload-file", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/upload",
@@ -847,6 +857,45 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # Read-side Overleaf diff preparation.
     ("POST", "/api/overleaf/{sContainerId}/diff"),
 })
+
+
+SET_STATE_MUTATING_METHODS = frozenset(
+    {"POST", "PUT", "PATCH", "DELETE"}
+)
+
+
+def fbAgentLanePermitsRoute(sMethod, sRouteTemplate):
+    """Return True when the in-container agent may invoke this route.
+
+    The ``vaibify-do`` CLI already consults ``bAgentSafe`` before it
+    dispatches, but that check is client-side and a compromised agent
+    bypasses it by calling the backend directly. This predicate is the
+    server-side twin: the session middleware asks it on every agent-lane
+    request, so a user-only action is refused at the boundary rather
+    than merely discouraged at the client.
+
+    It fails **closed**. A state-mutating route with no catalog entry is
+    refused, so a newly added route stays invisible to the agent until
+    somebody deliberately registers it as agent-safe. Read-only methods
+    are admitted because the catalog only enumerates the actions the UI
+    exposes, not every GET the agent legitimately reads.
+
+    Several catalog entries share one path (a diagnostic read alias
+    beside the action it aliases), so the decision is "any entry for
+    this route is agent-safe", never the first entry found.
+    """
+    if (sMethod, sRouteTemplate) in SET_INTENTIONALLY_EXCLUDED_PATHS:
+        return False
+    listEntries = [
+        dictEntry for dictEntry in LIST_AGENT_ACTIONS
+        if dictEntry["sMethod"] == sMethod
+        and dictEntry["sPath"] == sRouteTemplate
+    ]
+    if listEntries:
+        return any(
+            dictEntry["bAgentSafe"] for dictEntry in listEntries
+        )
+    return sMethod not in SET_STATE_MUTATING_METHODS
 
 
 def fdictLookupAction(sName):

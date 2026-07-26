@@ -55,8 +55,23 @@ def fnCopyTemplate(sTemplateName, sDestination):
 
 
 def _fpathResolveTemplate(sTemplateName):
-    """Resolve and validate the path to a named template."""
-    pathTemplate = _PATH_TEMPLATES / sTemplateName
+    """Resolve a named template, refusing any name that escapes the root.
+
+    The name arrives from the project-create request body, which the
+    caller jails only on ``sDirectory``. Joining it onto the templates
+    root unchecked let ``../../..``-style names select an arbitrary
+    host directory, which was then copied into a new project and
+    mounted into a container. Resolving both sides and requiring strict
+    containment closes that; symlinked roots resolve identically on
+    both sides so a legitimate install still works.
+    """
+    pathRoot = _PATH_TEMPLATES.resolve()
+    pathTemplate = (pathRoot / sTemplateName).resolve()
+    if pathRoot not in pathTemplate.parents:
+        raise FileNotFoundError(
+            f"Template '{sTemplateName}' is not a name inside "
+            f"'{_PATH_TEMPLATES}'."
+        )
     if not pathTemplate.is_dir():
         raise FileNotFoundError(
             f"Template '{sTemplateName}' not found in "

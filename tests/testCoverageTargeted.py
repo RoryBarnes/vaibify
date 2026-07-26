@@ -325,6 +325,9 @@ def _fAppWithMiddleware():
     app = FastAPI()
     sToken = "test-token-abc123"
     app.state.sSessionToken = sToken
+    # 0 is the explicit "skip the Host check" opt-out; an app that never
+    # declares a value fails the check closed, so the fixture must say so.
+    app.state.iExpectedPort = 0
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
 

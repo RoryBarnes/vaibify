@@ -2468,15 +2468,22 @@ def testReleaseRejectsNonOwner():
 
 
 def testWebSocketGatesUseSharedAuthorizationGuard():
-    """Both WebSocket routes consult the one shared authorization guard.
+    """Every container-session gate consults the one shared guard.
 
     The three-step gate (loopback origin + shared token + owning lease)
     lives only in ``webSocketAuthorization``. Each WebSocket route module
     must import it rather than inline its own check, and no
     access-decision module may reference a process-global
     ``setAllowedContainers`` membership set.
+
+    ``workflowRoutes`` is in the list because the connect handler is the
+    third gate ``architecture.md`` names: it had no ownership check at
+    all until 2026-07-25, so a second tab could bypass the claim route's
+    409 while the documentation claimed otherwise.
     """
-    for sFileName in ("pipelineRoutes.py", "terminalRoutes.py"):
+    for sFileName in (
+        "pipelineRoutes.py", "terminalRoutes.py", "workflowRoutes.py",
+    ):
         pathModule = ROUTES_DIR / sFileName
         assert _fbModuleImportsAuthorizationGuard(pathModule), (
             f"{sFileName} must import the shared guard from "
@@ -2493,6 +2500,40 @@ def testWebSocketGatesUseSharedAuthorizationGuard():
     sGuardSource = fsReadSource(GUI_DIR / "webSocketAuthorization.py")
     assert "def fbAuthorizeContainerSession" in sGuardSource, (
         "webSocketAuthorization must expose fbAuthorizeContainerSession"
+    )
+
+
+def testProductionEntryPointsBindHostCheck():
+    """Every CLI launcher passes a real port to the app factories.
+
+    ``iExpectedPort`` of 0 disables the DNS-rebinding Host check; that is
+    the in-process test harness's deliberate opt-out, and it must never
+    reach production by omission. A launcher that constructs an
+    application without naming a port would silently serve every Host
+    header, so the argument is required at the call sites that bind a
+    socket.
+    """
+    listOffenders = []
+    for pathModule in sorted((REPO_ROOT / "vaibify" / "cli").glob("*.py")):
+        _, treeAst = ftParseFile(pathModule)
+        for node in ast.walk(treeAst):
+            if not isinstance(node, ast.Call):
+                continue
+            sCallee = getattr(node.func, "id", "") or getattr(
+                node.func, "attr", "")
+            if sCallee not in (
+                "fappCreateApplication", "fappCreateHubApplication",
+            ):
+                continue
+            listKeywords = [kw.arg for kw in node.keywords]
+            if "iExpectedPort" not in listKeywords:
+                listOffenders.append(
+                    f"{pathModule.name}:{node.lineno}: {sCallee} without "
+                    f"iExpectedPort"
+                )
+    assert listOffenders == [], (
+        "Production entry points must bind the Host check explicitly:\n  "
+        + "\n  ".join(listOffenders)
     )
 
 
@@ -2841,7 +2882,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # when supervised so unsupervised dispatch timing is untouched)
     # and the reconnect interval check (manifest-digest compare →
     # unsupervised-gap flag) inside the connect flow.
-    "pipelineServer.py": 2113,
+    # +61 (2026-07-25): three path-safety guards hoisted to sit beside
+    # fnValidatePathWithinRoot — the control-character rejection behind
+    # the heredoc-injection fix, the write denylist (moved out of
+    # fileRoutes so testRoutes can share it without a route-to-route
+    # import), and the parsed loopback-origin predicate replacing a
+    # prefix compare. All three are the module's existing
+    # request-validation responsibility.
+    "pipelineServer.py": 2174,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -2890,7 +2938,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-07-19): the declare-personal-layer action (user-only
     # L2 consent moment) and the personal-layer/hash exclusion — the
     # host-file hash oracle must never be agent-invokable.
-    "actionCatalog.py": 865,
+    # +49 (2026-07-25): fbAgentLanePermitsRoute — the server-side
+    # enforcement point for bAgentSafe, which until now existed only as
+    # client-side advice in vaibify-do. It belongs beside the data it
+    # decides on; the catalog stays one cohesive responsibility.
+    "actionCatalog.py": 914,
 }
 
 

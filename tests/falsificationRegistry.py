@@ -1337,4 +1337,111 @@ def _fdictEntry(sRel):
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
     ),
+    # ---- Phase 4 security remediation (2026-07-25) ----
+    Falsification(
+        # Without the catalog check the agent lane returns to an
+        # unconditional pass-through, and every user-only action --
+        # kill-pipeline, delete-step, supervision/configure -- is
+        # reachable by a compromised in-container agent with curl.
+        nodeid='tests/testAgentLaneEnforcement.py::testAgentLaneRefusesEveryUserOnlyRoute',
+        source='vaibify/gui/serverMiddleware.py',
+        old='            if not _fbAgentLanePermitsRequest(request):',
+        new='            if False:',
+    ),
+    Falsification(
+        # Fail-open on an unregistered route would make the enforcement
+        # point decay: every route added later becomes agent-reachable
+        # by omission rather than by decision.
+        nodeid='tests/testAgentLaneEnforcement.py::testAgentLaneFailsClosedForUnregisteredMutatingRoute',
+        source='vaibify/gui/actionCatalog.py',
+        old='    return sMethod not in SET_STATE_MUTATING_METHODS',
+        new='    return True',
+    ),
+    Falsification(
+        # Connect with no ownership check lets a second browser tab
+        # bypass the claim route's 409 and take the workflow, the
+        # project-repo path, and the container's agent session.
+        nodeid='tests/testAgentLaneEnforcement.py::testConnectRefusesASessionWithoutTheOwningLease',
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old='    raise HTTPException(409, "In use in another browser session")',
+        new='    return',
+    ),
+    Falsification(
+        # docker cp runs on the HOST, so an unconfined agent-lane pull
+        # writes agent-authored bytes into a shell profile or an
+        # authorized-keys file -- code execution out of the sandbox.
+        nodeid='tests/testAgentLaneEnforcement.py::testAgentPullMustLandInTheExportDirectory',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='        if fbRequestRidesAgentLane(requestHttp):',
+        new='        if False:',
+    ),
+    Falsification(
+        # Writing .git/hooks/pre-commit is code execution on the next
+        # commit; writing .vaibify/ defeats the metadata-integrity
+        # contract the AICS truth system rests on.
+        nodeid='tests/testAgentLaneEnforcement.py::testSaveAndRunTestRefusesDenylistedPaths',
+        source='vaibify/gui/routes/testRoutes.py',
+        old='    fnRejectWriteDenylistedPath(sNormalized, sRoot)',
+        new='    pass',
+    ),
+    Falsification(
+        # An unvalidated fallback turns the HEAD probe's `test -f` into
+        # an existence oracle over arbitrary container paths.
+        nodeid='tests/testAgentLaneEnforcement.py::testFigureProbeValidatesTheWorkdirFallback',
+        source='vaibify/gui/routes/figureRoutes.py',
+        old='            fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
+        new='            sFallback)',
+    ),
+    Falsification(
+        # Without the control-character rejection a path carrying a
+        # newline plus the heredoc terminator escapes into
+        # /bin/bash -c in the batched existence check.
+        nodeid='tests/testInjectionGuards.py::testPathValidationRejectsControlCharacters',
+        source='vaibify/gui/pipelineServer.py',
+        old='    _fnRejectControlCharactersInPath(sResolvedPath)\n',
+        new='',
+    ),
+    Falsification(
+        # A prefix compare accepts http://localhost.evil.example, the
+        # same prefix-attack class fnValidatePathWithinRoot defends
+        # against.
+        nodeid='tests/testInjectionGuards.py::testLoopbackOriginRejectsASuffixDomain',
+        source='vaibify/gui/pipelineServer.py',
+        old='    return (tParsed.hostname or "") in _SET_LOOPBACK_ORIGIN_HOSTS',
+        new='    return sOrigin.startswith("http://localhost")',
+    ),
+    Falsification(
+        # Without containment, a traversing template name copies an
+        # arbitrary host directory into a project that is then mounted
+        # into a container.
+        nodeid='tests/testInjectionGuards.py::testTemplateNameCannotEscapeTheTemplateRoot',
+        source='vaibify/config/templateManager.py',
+        old='    if pathRoot not in pathTemplate.parents:',
+        new='    if False:',
+    ),
+    Falsification(
+        # saTestCommands is persisted and re-executed, so an unquoted
+        # path is a stored, repeatedly-executed injection.
+        nodeid='tests/testInjectionGuards.py::testPersistedTestCommandQuotesItsPath',
+        source='vaibify/gui/testStatusManager.py',
+        old='    sRunCmd = f"python -m pytest {fsShellQuote(sFilePath)} -v"',
+        new='    sRunCmd = f"python -m pytest {sFilePath} -v"',
+    ),
+    Falsification(
+        # sProjectRepoPath comes from the workflow, so an unquoted
+        # `mv {a} {b}` is command injection through a repo path.
+        nodeid='tests/testInjectionGuards.py::testContainerCacheRenameQuotesBothPaths',
+        source='vaibify/gui/mtimeCache.py',
+        old='            f"mv {fsShellQuote(sPathTemp)} {fsShellQuote(sPath)}",',
+        new='            f"mv {sPathTemp} {sPath}",',
+    ),
+    Falsification(
+        # Treating an undeclared expected port as "check disabled"
+        # silently drops the DNS-rebinding defence for every request an
+        # incorrectly wired app serves.
+        nodeid='tests/testInjectionGuards.py::testUndeclaredExpectedPortFailsTheHostCheckClosed',
+        source='vaibify/gui/serverMiddleware.py',
+        old='    if iExpectedPort is None:\n        return False',
+        new='    if iExpectedPort is None:\n        return True',
+    ),
 ]
