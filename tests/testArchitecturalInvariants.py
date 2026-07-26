@@ -2878,7 +2878,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # _fnUpdateYamlScalarField extraction the bool/number field
     # writers now share. Cohesive with the settings surface it
     # extends.
-    "registryRoutes.py": 1079,
+    # +27 (2026-07-25): _fnRequireLimitWithinRange — the API-boundary
+    # guard now rejects non-finite and oversized caps, which %g would
+    # otherwise render into vaibify.yml as text PyYAML reads back as a
+    # string, bricking every later load. Cohesive with the guard it
+    # replaces.
+    "registryRoutes.py": 1106,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

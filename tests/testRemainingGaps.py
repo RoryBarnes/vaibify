@@ -30,7 +30,10 @@ def test_setup_save_route():
     from starlette.testclient import TestClient
     with patch("vaibify.gui.setupServer.fnWriteConfigToDirectory"):
         app = fappCreateSetupApplication()
-        clientHttp = TestClient(app)
+        clientHttp = TestClient(
+            app,
+            headers={"x-session-token": app.state.sSessionToken},
+        )
         import os
         sTestDir = os.path.join(
             os.path.expanduser("~"), "test_vaibify_save")
@@ -50,7 +53,10 @@ def test_setup_build_route():
         return_value={"bSuccess": True},
     ):
         app = fappCreateSetupApplication()
-        clientHttp = TestClient(app)
+        clientHttp = TestClient(
+            app,
+            headers={"x-session-token": app.state.sSessionToken},
+        )
         import os
         sTestDir = os.path.join(
             os.path.expanduser("~"), "test_vaibify_build")

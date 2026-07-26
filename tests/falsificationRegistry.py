@@ -1337,4 +1337,57 @@ def _fdictEntry(sRel):
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
     ),
+    # --- Config values that survive being written but not being read
+    #     back (resource limits, wizard save; 2026-07-25) ---
+    Falsification(
+        # The range check also rejects NaN (it fails every
+        # comparison), so what the finiteness check defends is the
+        # diagnostic: without it the refusal quotes a bound the value
+        # was never in.
+        nodeid='tests/testResourceLimitRoundTrip.py::test_non_finite_memory_limit_never_reaches_the_yaml',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if isinstance(numberValue, float) and not math.isfinite(\n        numberValue\n    ):',
+        new='    if False:',
+    ),
+    Falsification(
+        # Without the ceiling, %g renders a fat-fingered cap as
+        # 1e+06 and the project stops loading.
+        nodeid='tests/testResourceLimitRoundTrip.py::test_oversized_cpu_limit_never_reaches_the_yaml',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if not numberMinimum <= numberValue <= numberMaximum:',
+        new='    if not numberMinimum <= numberValue:',
+    ),
+    Falsification(
+        # ProjectConfig has no coercion, so an unvalidated wizard save
+        # persists a string where a number belongs.
+        nodeid='tests/testResourceLimitRoundTrip.py::test_setup_save_refuses_a_config_it_cannot_validate',
+        source='vaibify/gui/setupServer.py',
+        old='    if not fbValidateConfig(dictConfig):\n        raise HTTPException(\n            400, "Configuration failed validation; not written")',
+        new='    if False:\n        raise HTTPException(\n            400, "Configuration failed validation; not written")',
+    ),
+    Falsification(
+        # A bare prefix test admits every sibling directory whose name
+        # extends the home path.
+        nodeid='tests/testResourceLimitRoundTrip.py::test_setup_save_rejects_a_sibling_of_the_home_directory',
+        source='vaibify/gui/setupServer.py',
+        old='    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):',
+        new='    if not sResolved.startswith(sHome):',
+    ),
+    Falsification(
+        # The wizard writes host YAML and spawns a build, so an
+        # unauthenticated lane hands that to any page the browser
+        # happens to have open.
+        nodeid='tests/testSetupServerExtended.py::test_setup_routes_reject_a_request_without_the_session_token',
+        source='vaibify/gui/setupServer.py',
+        old='    serverMiddleware.fnRegisterMiddleware(app)',
+        new='    pass',
+    ),
+    Falsification(
+        # abspath leaves symlinks unresolved, so a link under home
+        # still escapes it.
+        nodeid='tests/testResourceLimitRoundTrip.py::test_setup_save_rejects_a_symlink_that_leaves_home',
+        source='vaibify/gui/setupServer.py',
+        old='    sResolved = os.path.realpath(sDirectory)',
+        new='    sResolved = os.path.abspath(sDirectory)',
+    ),
 ]

@@ -50,7 +50,7 @@ def test_flistAvailableTemplates_returns_list():
 
 def test_fnWriteConfigToDirectory_creates_file(tmp_path):
     sDir = str(tmp_path / "project")
-    fnWriteConfigToDirectory(sDir, {"sKey": "value"})
+    fnWriteConfigToDirectory(sDir, {"projectName": "creates"})
     sConfigPath = os.path.join(sDir, "vaibify.yml")
     assert os.path.isfile(sConfigPath)
 
@@ -177,14 +177,47 @@ def test_BuildRequest_model():
 
 @pytest.fixture
 def clientSetup():
-    """Create a test client for the setup application."""
+    """Create an authenticated test client for the setup application."""
     from fastapi.testclient import TestClient
     with patch(
         "vaibify.gui.setupServer.os.path.isdir",
         return_value=False,
     ):
         app = fappCreateSetupApplication()
-    return TestClient(app)
+    return TestClient(
+        app, headers={"x-session-token": app.state.sSessionToken},
+    )
+
+
+@pytest.mark.falsification
+def test_setup_routes_reject_a_request_without_the_session_token():
+    """The wizard writes host YAML, so it must not answer any caller.
+
+    Without the token gate any page the researcher's browser happens
+    to load can drive a wizard bound to loopback: it writes a config
+    into a directory of its choosing and then spawns a build there.
+
+    Kills: dropping the fnRegisterMiddleware call from
+    fappCreateSetupApplication answers the untokened save with the
+    route's own status instead of 401.
+    """
+    from fastapi.testclient import TestClient
+    with patch(
+        "vaibify.gui.setupServer.os.path.isdir",
+        return_value=False,
+    ):
+        app = fappCreateSetupApplication()
+    clientAnonymous = TestClient(app)
+    responseSave = clientAnonymous.post(
+        "/api/setup/save",
+        json={
+            "sProjectDirectory": "/not/under/home",
+            "dictConfig": {"projectName": "anon"},
+        },
+    )
+    assert responseSave.status_code == 401
+    responseToken = clientAnonymous.get("/api/session-token")
+    assert responseToken.json()["sToken"] == app.state.sSessionToken
 
 
 def test_templates_route(clientSetup):

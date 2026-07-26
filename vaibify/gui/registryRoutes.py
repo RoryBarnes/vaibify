@@ -12,6 +12,7 @@ __all__ = [
 
 import asyncio
 import logging
+import math
 import os
 import re
 
@@ -22,6 +23,10 @@ from typing import List, Optional
 logger = logging.getLogger("vaibify")
 
 _RE_FOLDER_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\- ]*$")
+
+_I_MAXIMUM_CPU_LIMIT = 1024
+_F_MINIMUM_MEMORY_LIMIT_GIGABYTES = 0.25
+_F_MAXIMUM_MEMORY_LIMIT_GIGABYTES = 1024.0
 
 
 class AddProjectRequest(BaseModel):
@@ -590,17 +595,39 @@ def _fnRequireValidResourceLimits(iCpuLimit, fMemoryLimitGigabytes):
     rejected at the API boundary instead of being written to
     vaibify.yml and failing every subsequent config load.
     """
-    if iCpuLimit is not None and iCpuLimit < 0:
-        raise HTTPException(
-            400, "iCpuLimit must be 0 (no limit) or a positive "
-            "integer",
-        )
-    if fMemoryLimitGigabytes is None:
+    _fnRequireLimitWithinRange(
+        "iCpuLimit", iCpuLimit, 1, _I_MAXIMUM_CPU_LIMIT,
+    )
+    _fnRequireLimitWithinRange(
+        "fMemoryLimitGigabytes", fMemoryLimitGigabytes,
+        _F_MINIMUM_MEMORY_LIMIT_GIGABYTES,
+        _F_MAXIMUM_MEMORY_LIMIT_GIGABYTES,
+    )
+
+
+def _fnRequireLimitWithinRange(
+    sFieldName, numberValue, numberMinimum, numberMaximum,
+):
+    """400 unless the limit is 0 (no limit) or finite and in range.
+
+    ``_fnUpdateYamlNumberField`` renders with ``%g``, and PyYAML reads
+    ``nan``, ``inf``, and any ``1e+06``-style rendering back as a
+    *string* -- which fails every later load of that vaibify.yml,
+    naming no field, until a human hand-edits it.
+    """
+    if numberValue is None or numberValue == 0:
         return
-    if fMemoryLimitGigabytes != 0 and fMemoryLimitGigabytes < 0.25:
+    if isinstance(numberValue, float) and not math.isfinite(
+        numberValue
+    ):
         raise HTTPException(
-            400, "fMemoryLimitGigabytes must be 0 (no limit) or at "
-            "least 0.25",
+            400, f"{sFieldName} must be a finite number",
+        )
+    if not numberMinimum <= numberValue <= numberMaximum:
+        raise HTTPException(
+            400,
+            f"{sFieldName} must be 0 (no limit) or between "
+            f"{numberMinimum} and {numberMaximum}",
         )
 
 

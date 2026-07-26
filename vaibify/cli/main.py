@@ -94,7 +94,6 @@ from .commandGenerateStandards import generate_standards
 from .commandInit import init
 from .commandLs import ls
 from .commandRegister import register
-from .commandPublish import publish
 from .commandReproduce import reproduce
 from .commandRevoke import revoke
 from .commandRun import run
@@ -211,7 +210,6 @@ main.add_command(start)
 main.add_command(status)
 main.add_command(destroy)
 main.add_command(config)
-main.add_command(publish)
 main.add_command(reproduce)
 main.add_command(run)
 main.add_command(workflow)

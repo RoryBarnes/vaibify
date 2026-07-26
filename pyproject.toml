@@ -92,12 +92,9 @@ include = ["vaibify*"]
 [tool.black]
 line-length = 79
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-markers = [
-    "docker: tests that require a running Docker daemon",
-    "falsification: a kill-confirmed test born from mutation testing — proven to FAIL when the guard it defends is broken, not merely to pass. Its docstring records the killed mutation on a 'Kills:' line.",
-]
+# pytest is configured in pytest.ini, which takes precedence over this
+# file. A second [tool.pytest.ini_options] table here would be dead
+# config that silently drifts from the one pytest actually reads.
 
 [tool.coverage.run]
 source = ["vaibify"]
