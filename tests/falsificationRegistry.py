@@ -1372,4 +1372,29 @@ def _fdictEntry(sRel):
         old='            os.remove(os.path.join(sRoot, sName))',
         new='            pass',
     ),
+    Falsification(
+        # githubAuth._PATTERN_SEGMENT allows dots in owner and repo
+        # names; this alphabet did not, so every dotted repository
+        # raised out of the push route as a bare HTTP 500.
+        nodeid='tests/testGithubTokenResolution.py::test_dotted_repository_slot_passes_real_secret_name_validation',
+        source='vaibify/config/secretManager.py',
+        old='r"^[a-zA-Z0-9_:./-]{1," + str(_I_MAXIMUM_SECRET_NAME_LENGTH) + r"}$"',
+        new='r"^[a-zA-Z0-9_:/-]{1," + str(_I_MAXIMUM_SECRET_NAME_LENGTH) + r"}$"',
+    ),
+    Falsification(
+        # The old 64-character cap was shorter than a real
+        # "github_token:<owner>/<repo>" slot, which runs to 153.
+        nodeid='tests/testGithubTokenResolution.py::test_widest_real_keyring_slot_fits_the_length_cap',
+        source='vaibify/config/secretManager.py',
+        old='_I_MAXIMUM_SECRET_NAME_LENGTH = 160',
+        new='_I_MAXIMUM_SECRET_NAME_LENGTH = 64',
+    ),
+    Falsification(
+        # Widening the alphabet to admit "." must not admit "." as a
+        # path SEGMENT: sName reaches /run/secrets/{sName}.
+        nodeid='tests/testGithubTokenResolution.py::test_widened_alphabet_still_refuses_path_traversal',
+        source='vaibify/config/secretManager.py',
+        old='if "" in listParts or "." in listParts or ".." in listParts:',
+        new='if "" in listParts or ".." in listParts:',
+    ),
 ]

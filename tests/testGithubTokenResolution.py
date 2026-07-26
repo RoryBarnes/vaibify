@@ -249,3 +249,55 @@ def test_read_github_remote_url_returns_empty_on_a_failed_probe():
     assert syncDispatcher._fsReadGithubRemoteUrl(
         _fmockDocker(1, "fatal: not a git repository"), "cid",
     ) == ""
+
+
+# ---------------------------------------------------------------------
+# The secret-name alphabet must agree with the keyring-slot alphabet.
+# ``githubAuth._PATTERN_SEGMENT`` has always allowed dots in owner and
+# repository names; ``secretManager._RE_SECRET_NAME`` did not, and
+# capped names at 64 characters. A dotted repository therefore raised
+# ValueError out of the push route as a bare HTTP 500, and a long
+# owner/repo pair was rejected outright.
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_dotted_repository_slot_passes_real_secret_name_validation():
+    """A dotted repo must validate; it used to 500 the push route.
+
+    Kills: in secretManager, drop "." from the _RE_SECRET_NAME
+    character class (restoring ^[a-zA-Z0-9_:/-]).
+    """
+    sSlot = githubAuth.fsKeyringSlotFor("exampleOwner", "example.repo")
+    assert sSlot == "github_token:exampleOwner/example.repo"
+    secretManager._fnValidateSecretName(sSlot)
+
+
+@pytest.mark.falsification
+def test_widest_real_keyring_slot_fits_the_length_cap():
+    """A 39-char owner and 100-char repo must fit the cap.
+
+    Kills: in secretManager, set _I_MAXIMUM_SECRET_NAME_LENGTH to 64.
+    """
+    sSlot = githubAuth.fsKeyringSlotFor("o" * 39, "r" * 100)
+    assert len(sSlot) == 153
+    secretManager._fnValidateSecretName(sSlot)
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sName", [
+    "github_token:owner/../etc/passwd",
+    "github_token:owner/./passwd",
+    "github_token:owner//passwd",
+])
+def test_widened_alphabet_still_refuses_path_traversal(sName):
+    """Admitting "." must not admit "." or ".." as a path SEGMENT.
+
+    sName reaches /run/secrets/{sName} in _fsRetrieveViaDockerSecret,
+    so a segment that escapes the directory must still be refused.
+
+    Kills: in secretManager._fnValidateSecretName, drop the
+    '"." in listParts or' conjunct from the path-segment guard.
+    """
+    with pytest.raises(ValueError, match="Invalid secret name"):
+        secretManager._fnValidateSecretName(sName)
