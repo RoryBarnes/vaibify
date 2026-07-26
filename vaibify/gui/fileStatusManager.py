@@ -2105,3 +2105,92 @@ async def fnMaybeAutoArchive(
         connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     )
     return bAnyPushed
+
+
+def _fdictPlotHashesForStep(dictStep, filesRepo, sRepoRoot):
+    """Return ``{sRepoRelPath: sSha256}`` for a step's declared plots.
+
+    Paths whose hash the poll did not sample are omitted rather than
+    recorded as ``None``: a missing hash must never later compare equal
+    to another missing hash and silently vouch for a file nobody read.
+    """
+    listPlotPaths = _flistStepPlotsRepoRelative(dictStep, sRepoRoot)
+    if not listPlotPaths:
+        return {}
+    dictHashes = filesRepo.fdictHashFiles(listPlotPaths)
+    return {
+        sPath: dictEntry.get("sSha256")
+        for sPath, dictEntry in dictHashes.items()
+        if dictEntry.get("sSha256")
+    }
+
+
+def _flistStepPlotsRepoRelative(dictStep, sRepoRoot):
+    """Return repo-relative paths for this step's declared plot files.
+
+    Resolves exactly as :func:`_flistStepOutputsRepoRelative` does, so
+    the keys line up with the hashes the poll snapshot sampled.
+    """
+    from .pathContract import fsAbsToRepoRelative
+    sStepDirectory = dictStep.get("sDirectory", "")
+    listRelative = []
+    for sFile in dictStep.get("saPlotFiles", []) or []:
+        if not sFile:
+            continue
+        sAbs = _fsResolveStepFilePath(
+            sFile, sStepDirectory, {"sRepoRoot": sRepoRoot},
+        )
+        sRelative = fsAbsToRepoRelative(sAbs, sRepoRoot)
+        if sRelative:
+            listRelative.append(sRelative)
+    return listRelative
+
+
+def fbReconcileUserVerificationByContentHash(
+    dictWorkflow, filesRepo, sRepoRoot,
+):
+    """Restore attestations that only *look* stale, and record hashes.
+
+    A git checkout stamps every file with the checkout time, so on a
+    fresh clone every plot is "newer than" ``sLastUserUpdate`` and the
+    mtime comparison marks every researcher attestation stale — even
+    though the bytes are identical and committed. That silently
+    discards the researcher's "yes, I looked at this" on every machine
+    hop, which is exactly what the multi-machine workflow must not do.
+
+    Two passes, both keyed on content rather than clock:
+
+    * a step still reading ``passed`` records the hashes of its plots,
+      so a later machine has something to compare against. Recording
+      happens only while the step reads ``passed`` — never while it
+      reads ``stale`` — so a plot that genuinely changed after the
+      attestation can never have its new hash adopted as verified.
+    * a step reading ``stale`` whose recorded hashes all still match
+      is restored to ``passed``: the mtime moved, the content did not.
+
+    Returns True when any step changed, so the caller can persist.
+    The caller owns the write-back; this never saves.
+    """
+    bChanged = False
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        dictVerification = dictStep.get("dictVerification") or {}
+        sUser = dictVerification.get("sUser")
+        if sUser not in ("passed", "stale"):
+            continue
+        dictCurrent = _fdictPlotHashesForStep(
+            dictStep, filesRepo, sRepoRoot,
+        )
+        if not dictCurrent:
+            continue
+        dictRecorded = dictVerification.get("dictUserVerifiedHashes") or {}
+        if sUser == "passed":
+            if dictRecorded != dictCurrent:
+                dictVerification["dictUserVerifiedHashes"] = dictCurrent
+                dictStep["dictVerification"] = dictVerification
+                bChanged = True
+            continue
+        if dictRecorded and dictRecorded == dictCurrent:
+            dictVerification["sUser"] = "passed"
+            dictStep["dictVerification"] = dictVerification
+            bChanged = True
+    return bChanged

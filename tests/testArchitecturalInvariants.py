@@ -3166,7 +3166,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # classifier. The clean-outputs builder read ``bInteractive`` raw,
     # so a string or null flag made it skip — or wipe — a different set
     # of steps than the ladder shows.
-    "routes/pipelineRoutes.py": 2722,
+    # +32 (2026-07-26): _fbReconcileUserVerificationByHash, which runs
+    # the pass above after the poll snapshot (the side-effect block
+    # has no hashes to consult). Cohesive with the poll assembly.
+    "routes/pipelineRoutes.py": 2754,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -3213,7 +3216,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +8 (2026-07-16): inputs join _flistStepOutputsRepoRelative so
     # the fresh-clone manifest short-circuit requires manifest-clean
     # inputs too (landed with manifestWriter input coverage).
-    "fileStatusManager.py": 2107,
+    # +89 (2026-07-26): the cross-machine content-hash pass for
+    # researcher attestations (fbReconcileUserVerificationByContentHash
+    # and its two path helpers). A git checkout resets every mtime, so
+    # the mtime comparison alone discarded every attestation on a
+    # machine hop; content decides now. Cohesive with the verification
+    # state machine this module already owns.
+    "fileStatusManager.py": 2196,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

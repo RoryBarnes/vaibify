@@ -677,6 +677,10 @@ async def _fdictFetchOutputStatus(
         _ffilesFetchPollSnapshot, dictCtx, sContainerId, dictWorkflow,
         dictModTimes,
     )
+    if _fbReconcileUserVerificationByHash(
+        dictCtx, sContainerId, dictWorkflow, filesPoll, sRepoRoot,
+    ):
+        dictCtx["save"](sContainerId, dictWorkflow)
     await _fnMaintainAiProvenanceStamp(
         dictCtx, sContainerId, dictWorkflow, filesPoll,
     )
@@ -871,6 +875,34 @@ def _flistRunPollSideEffects(
     if bAnyReconciled:
         dictCtx["save"](sContainerId, dictWorkflow)
     return listInvalidated
+
+
+def _fbReconcileUserVerificationByHash(
+    dictCtx, sContainerId, dictWorkflow, filesPoll, sRepoRoot,
+):
+    """Run the content-hash pass over researcher attestations.
+
+    Runs AFTER the poll snapshot rather than inside the side-effect
+    block, because the mtime pass there has no hashes to consult. The
+    ordering is deliberate: mtime marks a step stale first, and this
+    pass restores it only when the bytes prove nothing changed.
+    """
+    if not sRepoRoot or filesPoll is None:
+        return False
+    from ..fileStatusManager import (
+        fbReconcileUserVerificationByContentHash,
+    )
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    try:
+        return fbReconcileUserVerificationByContentHash(
+            dictWorkflow, ffilesEnsureRepoFiles(filesPoll), sRepoRoot,
+        )
+    except (OSError, ValueError) as exc:  # noqa: BLE001 — poll survives
+        logger.warning(
+            "User-verification hash pass failed for %s: %s",
+            sContainerId, exc,
+        )
+        return False
 
 
 async def _fnMaintainAiProvenanceStamp(

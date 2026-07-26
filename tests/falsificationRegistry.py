@@ -262,8 +262,11 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testFileStatusManagerStaleness.py::test_fbReconcileUserVerificationTimestamps_retains_stale',
         source='vaibify/gui/fileStatusManager.py',
-        old="""in ("passed", "stale"):""",
-        new="""in ("passed",):""",
+        # Anchored on the dictVerify accessor so it stays unique: the
+        # cross-machine hash pass added a second `in ("passed",
+        # "stale")` test elsewhere in this module.
+        old="""dictVerify.get("sUser") in ("passed", "stale"):""",
+        new="""dictVerify.get("sUser") in ("passed",):""",
     ),
     Falsification(
         nodeid='tests/testFileStatusManagerStaleness.py::test_fdictParseStatLines_handles_path_with_space',
@@ -1894,5 +1897,35 @@ def _fdictEntry(sRel):
         source='vaibify/gui/webSocketAuthorization.py',
         old="""    fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=False,""",
         new="""    fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=True,""",
+    ),
+    Falsification(
+        # A git checkout stamps every file with the checkout time, so
+        # without the restore every attestation dies on a machine hop.
+        nodeid='tests/testCrossMachineUserVerification.py::test_fresh_clone_does_not_discard_the_researchers_attestation',
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '        if dictRecorded and dictRecorded == dictCurrent:\n'
+            '            dictVerification["sUser"] = "passed"'
+        ),
+        new=(
+            '        if False:\n'
+            '            dictVerification["sUser"] = "passed"'
+        ),
+    ),
+    Falsification(
+        # Restoring on the mere presence of a recorded hash would
+        # launder a real change into a verified state.
+        nodeid='tests/testCrossMachineUserVerification.py::test_a_genuinely_changed_plot_stays_stale',
+        source='vaibify/gui/fileStatusManager.py',
+        old='        if dictRecorded and dictRecorded == dictCurrent:',
+        new='        if dictRecorded:',
+    ),
+    Falsification(
+        # Recording while stale would let a changed plot adopt its own
+        # new hash and verify itself on the following poll.
+        nodeid='tests/testCrossMachineUserVerification.py::test_a_stale_step_never_adopts_the_current_hash_as_verified',
+        source='vaibify/gui/fileStatusManager.py',
+        old='        if sUser == "passed":',
+        new='        if sUser in ("passed", "stale"):',
     ),
 ]
