@@ -747,7 +747,7 @@ def _fsRequireProjectRepoForGit(dictWorkflow):
 
     The GitHub push and add-file routes need to ``cd`` into the project
     repo before running ``git add``. The old workspace-as-repo model
-    used the workflow.json's parent directory, which now lands inside
+    used the project.json's parent directory, which now lands inside
     ``.vaibify/workflows/`` rather than at the repo root — every git
     add then fails with "no such directory" because step paths are
     repo-relative, not workflow-relative.
@@ -2116,7 +2116,7 @@ def _fnRaiseVerifyError(errorAny, sService):
       missing for the service, dictPathMap references a path absent
       from the e-print, or a basename match is ambiguous and no
       dictPathMap entry disambiguates it).
-    * 422 — manifest is corrupt or remote config in workflow.json is
+    * 422 — manifest is corrupt or remote config in project.json is
       shape-invalid (e.g. a non-conforming GitHub owner string).
     * 502 — remote service failure (network, auth, rate limit, etc.).
 

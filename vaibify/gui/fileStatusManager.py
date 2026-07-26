@@ -1770,7 +1770,7 @@ def _fdictGetModTimes(connectionDocker, sContainerId, listPaths):
     per-child stat, but POSIX does not bump a directory's mtime when
     an existing child is rewritten in place — only add/remove/rename
     do. Out-of-band in-place edits (an in-container agent rewriting
-    ``workflow.json`` or a step script through the ``Edit`` tool,
+    ``project.json`` or a step script through the ``Edit`` tool,
     ``vim :w``, ``sed -i`` on some platforms) therefore left the cache
     returning the pre-edit mtime, and the reload detector / "step
     source modified" invalidation silently no-op'd. Stat-the-children

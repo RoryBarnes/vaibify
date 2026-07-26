@@ -1,6 +1,6 @@
 """Canonical git-tracked set for a vaibify workspace.
 
-A vaibify workspace is a git repo; session state (workflow.json, test
+A vaibify workspace is a git repo; session state (project.json, test
 markers, archive plots, supporting plots, scripts) round-trips through
 git so that ``git clone`` restores the dashboard. This module defines
 what round-trips and what stays local.

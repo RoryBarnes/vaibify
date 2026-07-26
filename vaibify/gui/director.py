@@ -8,9 +8,9 @@ plot commands (visualization), and expected output files. Output files from
 earlier steps are available as {StepNN.stem} variables in later steps.
 
 Usage:
-    python director.py --config workflow.json
-    python director.py --config workflow.json --verify-only
-    python director.py --config workflow.json --start-step 3
+    python director.py --config project.json
+    python director.py --config project.json --verify-only
+    python director.py --config project.json --start-step 3
 """
 
 __all__ = [
@@ -263,7 +263,7 @@ def _fsJoinStepDirectory(dictVariables, sDirectory):
 
     Step directories are repo-relative; join against ``sRepoRoot``
     (computed once in ``fdictBuildGlobalVariables``) rather than the
-    workflow.json's dirname. ``sWorkflowRoot`` points at
+    project.json's dirname. ``sWorkflowRoot`` points at
     ``<repo>/.vaibify/workflows``, so joining against it lands one
     level too deep once directories are repo-relative.
     """

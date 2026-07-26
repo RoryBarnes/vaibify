@@ -1,6 +1,6 @@
 """Wire-format path contract for container paths.
 
-Vaibify stores container paths in workflow.json and exchanges them
+Vaibify stores container paths in project.json and exchanges them
 with the frontend in a single canonical form: **repo-relative**, i.e.
 relative to ``dictWorkflow['sProjectRepoPath']``. Internal backend
 operations (``stat``, file reads, container exec) still use absolute

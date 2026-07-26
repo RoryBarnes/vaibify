@@ -289,7 +289,7 @@ def flistStepsWithLabels(dictWorkflow):
     Does not mutate ``dictWorkflow``. The returned list contains
     fresh step dicts so the caller can hand them to a JSON
     serializer without risk of persisting ``sLabel`` into
-    ``workflow.json``.
+    ``project.json``.
     """
     listSteps = dictWorkflow.get("listSteps", [])
     listLabels = flistComputeAllStepLabels(listSteps)
@@ -319,7 +319,7 @@ def fnAttachStepLabels(dictWorkflow):
     """Mutate listSteps in place, writing a fresh sLabel on each step.
 
     Called from the workflow load/save paths so ``sLabel`` persists in
-    ``workflow.json`` and in-memory state stays coherent. Recomputation
+    ``project.json`` and in-memory state stays coherent. Recomputation
     is always fresh — insertions, deletions, or reorderings produce
     the correct per-type-sequential label on the next save.
     """

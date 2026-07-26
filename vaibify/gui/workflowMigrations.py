@@ -1,4 +1,4 @@
-"""Schema versioning and migrations for workflow.json.
+"""Schema versioning and migrations for project.json.
 
 Each persisted workflow file carries an integer version under the
 ``iWorkflowSchemaVersion`` top-level key. ``fnApplyMigrations`` runs
@@ -90,7 +90,7 @@ def fnApplyMigrations(dictWorkflow, sProjectRepoPath=""):
 def fnMigrateRunEnabledKey(dictWorkflow):
     """Rewrite legacy ``bEnabled`` step field to ``bRunEnabled``.
 
-    Older workflow.json files used ``bEnabled`` as the run-scope
+    Older project.json files used ``bEnabled`` as the run-scope
     flag. The field was renamed to keep run scope and verification
     scope unambiguous. Idempotent on already-migrated steps.
     """
@@ -136,7 +136,7 @@ def fnEnsureStepIds(dictWorkflow):
     ``sStepId`` is the identity primitive behind symbolic cross-step
     references (``{step:<id>.<stem>}``). Unlike ``sLabel`` — which is a
     derived, per-type-sequential field recomputed on every load — an
-    id is assigned ONCE, persisted in ``workflow.json``, and NEVER
+    id is assigned ONCE, persisted in ``project.json``, and NEVER
     regenerated, so a rename, insertion, or reorder leaves every
     reference intact. The id is a readable kebab slug of the step name,
     disambiguated with a numeric suffix on collision, falling back to
@@ -223,7 +223,7 @@ def fnMigrateArchiveToTracking(dictWorkflow):
 def fbMigrateModifiedFilesToRepoRelative(dictWorkflow):
     """Normalize legacy abs paths in dictVerification.listModifiedFiles.
 
-    Older workflow.json files stored absolute container paths in
+    Older project.json files stored absolute container paths in
     ``dictVerification['listModifiedFiles']``. The wire-format contract
     is now repo-relative. This migration rewrites each step's list in
     place and returns True if any change was made. Idempotent: a

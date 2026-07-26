@@ -1,9 +1,9 @@
-"""Detect out-of-band edits to workflow.json and reload the host cache.
+"""Detect out-of-band edits to project.json and reload the host cache.
 
-The host caches a parsed copy of every active ``workflow.json`` in
+The host caches a parsed copy of every active ``project.json`` in
 ``dictCtx["workflows"][sContainerId]`` at connect time, then mutates +
 writes via ``dictCtx["save"]`` for every UI-driven edit. Anything that
-modifies ``workflow.json`` outside that channel — the in-container
+modifies ``project.json`` outside that channel — the in-container
 agent, ``vim``, ``git pull`` — leaves the cache stale, which violates
 the dashboard's ground-truth contract.
 
@@ -79,7 +79,7 @@ def fdictMaybeReloadWorkflow(
     dictCtx, sContainerId, sWorkflowPath, dictModTimes,
     sPolledFingerprint="",
 ):
-    """Re-read workflow.json from disk if its content moved out-of-band.
+    """Re-read project.json from disk if its content moved out-of-band.
 
     Returns ``{"bReplaced": bool, "dictWorkflow": dict | None,
     "sError": str | None}``. The caller forwards these into the
@@ -106,14 +106,14 @@ def fdictMaybeReloadWorkflow(
     if not dictPolled.get(sWorkflowPath, ""):
         if dictPolled:
             return _fdictReloadFailure(
-                "workflow.json missing from container"
+                "project.json missing from container"
             )
         if _fbWorkflowExistsInContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath,
         ):
             return _fdictNoChange()
         return _fdictReloadFailure(
-            "workflow.json missing from container"
+            "project.json missing from container"
         )
     if not sPolledFingerprint:
         return _fdictNoChange()
@@ -187,7 +187,7 @@ def _fnApplyProjectRepoPath(
 
 
 def fdictDetectNewlyAvailableWorkflows(dictCtx, sContainerId):
-    """Discover workflow.json files in the container, flag changes since last poll.
+    """Discover project.json files in the container, flag changes since last poll.
 
     Returns ``{"listWorkflows": [...], "bChangedSinceLastPoll": bool,
     "listNewWorkflowPaths": [str, ...]}``. The first poll seeds the

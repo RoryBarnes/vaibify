@@ -385,7 +385,7 @@ var VaibifyWorkflowRequirements = (function () {
         // Declared: show the rules with edit + delete. Undeclared: the
         // inline declare form. The declaration is the researcher's
         // statement of how exactly a rerun must match their results;
-        // it is stored in workflow.json (there is no separate file).
+        // it is stored in project.json (there is no separate file).
         var bDeclared = Boolean(dictDeterminism &&
             Object.keys(dictDeterminism).length > 0);
         if (bDeclared) {

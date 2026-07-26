@@ -180,7 +180,7 @@ def fdictBuildAiDeclarationStep(
     in ``sStepKind`` and ``sDeclarationFile``. The step is interactive
     (``bInteractive`` True) so it earns an I-label and follows the
     sUser-only pass rule, and ``sDirectory`` must be non-empty so the
-    attestation survives the workflow.json / state.json split.
+    attestation survives the project.json / state.json split.
     """
     dictStep = {
         "sName": (sName or "").strip() or S_DEFAULT_DECLARATION_STEP_NAME,

@@ -141,7 +141,7 @@ F_NEW_PROJECT_RUNTIME_LIMIT_SECONDS = 14400.0
 
 
 def _fdictBlankWorkflowContent(request):
-    """Return the minimum-viable workflow.json dict for a fresh create."""
+    """Return the minimum-viable project.json dict for a fresh create."""
     return {
         "sWorkflowName": request.sWorkflowName,
         "sPlotDirectory": "Plot",

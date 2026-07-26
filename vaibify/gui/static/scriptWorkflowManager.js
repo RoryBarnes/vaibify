@@ -80,7 +80,7 @@ var VaibifyWorkflowManager = (function () {
 
     /* Workflows over this byte threshold get a loading banner on
      * selection so the researcher knows the silence is real work,
-     * not a frozen UI. Empirically a 1 MB workflow.json takes tens of
+     * not a frozen UI. Empirically a 1 MB project.json takes tens of
      * seconds to round-trip + render, while sub-100 KB workflows
      * arrive fast enough that a banner would just flash distractingly. */
     var _I_LARGE_WORKFLOW_BYTES = 100 * 1024;

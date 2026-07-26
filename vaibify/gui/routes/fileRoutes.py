@@ -67,7 +67,7 @@ def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
 
     Inputs may already be absolute container paths (used by callers
     that pre-resolved via ``workflowDir``) or repo-relative paths from
-    workflow.json. Both are normalized and validated against the most
+    project.json. Both are normalized and validated against the most
     permissive of (project repo, workspace root) so traversal is
     impossible. Raises ``HTTPException`` 403 on escape.
     """

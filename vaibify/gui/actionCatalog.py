@@ -283,7 +283,7 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/git/{sContainerId}/commit-canonical",
      "bAgentSafe": True,
      "sDescription": "Stage and commit the vaibify canonical "
-                     "state (workflow.json, markers). "
+                     "state (project.json, markers). "
                      "Args: {sCommitMessage} optional."},
     {"sName": "untrack-ai-declaration", "sCategory": "sync",
      "sMethod": "POST",
@@ -562,7 +562,7 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/workflow/{sContainerId}/determinism",
      "bAgentSafe": False,
      "sDescription": "Clear the workflow's declared determinism rules "
-                     "(stored in workflow.json). The declare endpoint "
+                     "(stored in project.json). The declare endpoint "
                      "only merges keys, so this is the one way to "
                      "retract a mistaken declaration; the researcher "
                      "then re-declares what still applies."},
@@ -859,7 +859,7 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # Dependency / script scans — triggered by the UI's poll loop,
     # not by a researcher clicking a button. These handlers are
     # read-only: they walk the step's saScripts and saDataCommands to
-    # report what the source code touches, never mutate workflow.json,
+    # report what the source code touches, never mutate project.json,
     # never write to the container filesystem, never reach the network.
     # Invariant: a scan must produce the same dictWorkflow on disk
     # before and after the call. Exclusion is safe so long as that

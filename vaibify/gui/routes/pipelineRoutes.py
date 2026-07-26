@@ -579,7 +579,7 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
     """Register GET /api/pipeline/{id}/workflow-discovery endpoint.
 
     Discovery is mode-agnostic — toolkit (no workflow loaded) and
-    workflow modes both poll it so a workflow.json appearing inside
+    workflow modes both poll it so a project.json appearing inside
     the container surfaces in the dashboard within one tick. The
     endpoint deliberately does not call ``fdictRequireWorkflow``.
     """

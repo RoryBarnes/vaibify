@@ -1,4 +1,4 @@
-"""Load, validate, and CRUD operations on workflow.json."""
+"""Load, validate, and CRUD operations on project.json."""
 
 import hashlib
 import json
@@ -160,7 +160,7 @@ def _flistDiscoverCandidatePaths(
 def flistFindWorkflowsInContainer(
     connectionDocker, sContainerId, sSearchRoot=None
 ):
-    """Search for workflow.json files inside git-tracked project repos.
+    """Search for project.json files inside git-tracked project repos.
 
     Candidates outside a git work tree are dropped — every valid
     vaibify workflow must live inside the project repo it belongs to.
@@ -277,7 +277,7 @@ def _fsResolveWorkflowPathOrDefault(
 def fdictLoadWorkflowFromContainer(
     connectionDocker, sContainerId, sWorkflowPath=None
 ):
-    """Fetch, migrate, validate, and parse workflow.json.
+    """Fetch, migrate, validate, and parse project.json.
 
     Also reads the sibling ``state.json`` (or bootstraps from
     committed test-markers when absent) and merges machine-local
@@ -305,7 +305,7 @@ def fdictLoadWorkflowFromContainer(
     sFailure = fsDescribeValidationFailure(dictWorkflow)
     if sFailure:
         raise ValueError(
-            f"Invalid workflow.json at {sWorkflowPath}: {sFailure}"
+            f"Invalid project.json at {sWorkflowPath}: {sFailure}"
         )
     _fnLoadAndMergeState(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
@@ -763,7 +763,7 @@ def fsResolveVariables(sTemplate, dictVariables):
 
 
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
-    """Build the global variable dict from workflow.json top-level keys."""
+    """Build the global variable dict from project.json top-level keys."""
     sWorkflowDirectory = posixpath.dirname(sWorkflowPath)
     sRepoRoot = sWorkflowDirectory
     if "/.vaibify" in sRepoRoot:
@@ -1101,7 +1101,7 @@ def _fdictStripComputedFields(dictWorkflow):
 
     ``dictStateLoadNotice`` is a one-shot toast payload attached
     during the connect-time recovery path; it must not leak into
-    the persisted workflow.json or state.json. ``saStepScripts`` and
+    the persisted project.json or state.json. ``saStepScripts`` and
     ``saTestStandards`` are derived per-step badge-rendering caches
     and are also non-persistent. Only the spine and the steps that
     actually carry a transient key are copied — the historical
@@ -1138,7 +1138,7 @@ def fnSaveWorkflowToContainer(
 ):
     """Serialize the merged workflow dict and persist it.
 
-    Splits the in-memory dict between ``workflow.json`` (declarative
+    Splits the in-memory dict between ``project.json`` (declarative
     fields) and ``.vaibify/state.json`` (per-machine runtime state)
     before writing. Callers continue to mutate one merged dict; the
     split is invisible upstream.
@@ -1173,7 +1173,7 @@ def fnSaveWorkflowToContainer(
 def _ftSplitAndSerializeWorkflow(dictWorkflow):
     """Return ``(sDeclarativeJson, dictState)`` for the merged dict.
 
-    The single serialization authority for workflow.json bytes: both
+    The single serialization authority for project.json bytes: both
     the save path and :func:`fsComputeWorkflowFingerprint` go through
     it, so the fingerprint recorded after a save is byte-identical to
     what a later ``sha256sum`` of the file inside the container

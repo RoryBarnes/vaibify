@@ -1,6 +1,6 @@
 """Load, save, split, and merge ``.vaibify/state.json`` — per-machine runtime state.
 
-Vaibify's workflow.json is the declarative source of truth: step
+Vaibify's project.json is the declarative source of truth: step
 structure, paths, commands, sync metadata. Run-time results
 (``dictVerification``, ``dictRunStats``, the
 ``bArchiveTrackingMigrated`` flag) are inherently per-machine and
@@ -349,7 +349,7 @@ def fnMergeStateIntoWorkflow(dictWorkflow, dictState):
 
     No-op when ``dictState`` is None. Steps without a matching
     ``dictStepState`` entry keep whatever stateful fields the loaded
-    workflow.json happened to carry — the migration v2→v3 owns the
+    project.json happened to carry — the migration v2→v3 owns the
     one-shot extraction; this routine is the steady-state merger.
     """
     if dictState is None:
@@ -369,7 +369,7 @@ def fnMergeStateIntoWorkflow(dictWorkflow, dictState):
 def ftSplitMergedDict(dictWorkflow):
     """Return ``(declarativeDict, stateDict)`` from a merged workflow.
 
-    The declarative dict is what gets written to ``workflow.json``
+    The declarative dict is what gets written to ``project.json``
     (no per-step ``dictVerification`` / ``dictRunStats``, no
     ``bArchiveTrackingMigrated``, no transient ``sLabel``). The state
     dict is what gets written to ``state.json``.

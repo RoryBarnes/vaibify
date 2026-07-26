@@ -18,7 +18,7 @@ reachable from the host.
 
 Every endpoint resolves the authoritative git target per request by
 reading ``dictWorkflow['sProjectRepoPath']`` — the project-repo
-subdirectory auto-detected from the active workflow's ``workflow.json``
+subdirectory auto-detected from the active workflow's ``project.json``
 location. If no project repo is attached (workflow not inside a git
 work tree), each endpoint surfaces a clear error rather than silently
 reporting "not a git repository" against the wrong root.
@@ -72,7 +72,7 @@ SET_TRACKED_CHANGE_STATES = {"dirty", "uncommitted", "conflict"}
 # into ``git commit -- <paths>`` so any pre-staged user files in the
 # index are left untouched. Never replace this with ``git add -A``.
 TUPLE_CURATED_COMMIT_KINDS = (
-    "workflow.json (per workflow, repo-relative)",
+    "project.json (per workflow, repo-relative)",
     ".vaibify/test_markers/*/*.json",
     ".vaibify/zenodo-refs.json",
     "MANIFEST.sha256 (when present at repo root)",
@@ -122,7 +122,7 @@ def _fsRequireProjectRepo(dictWorkflow):
     """Return the active workflow's project repo path or raise 404.
 
     The empty-string sentinel means the workflow loaded successfully
-    but is not inside a git work tree (legacy ``workflow.json`` at
+    but is not inside a git work tree (legacy ``project.json`` at
     ``/workspace``). Callers must surface the missing-repo state to
     the client rather than falling back to the workspace root.
     """
@@ -404,7 +404,7 @@ async def _fnApplyCanonicalGitAddCommit(
 ):
     """Run git add + commit, raising HTTPException on either failure.
 
-    The commit is restricted to the curated path list (workflow.json,
+    The commit is restricted to the curated path list (project.json,
     .vaibify/test_markers/*, MANIFEST.sha256, requirements.lock, and
     other explicit canonical entries) so any pre-staged user files are
     not swept into the canonical commit. See TUPLE_CURATED_COMMIT_KINDS
@@ -522,7 +522,7 @@ def _fnRequireDeclarationPath(dictWorkflow, sPath):
     widen past what the workflow itself declares. A leading ``:`` is
     rejected outright: git treats ``:``-prefixed pathspecs as magic
     (``:(glob)**`` matches every tracked file), and the membership
-    check alone cannot catch it because a hostile workflow.json can
+    check alone cannot catch it because a hostile project.json can
     declare the magic string as its own sDeclarationFile.
     """
     listDeclared = []

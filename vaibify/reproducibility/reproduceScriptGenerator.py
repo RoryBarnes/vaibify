@@ -200,7 +200,7 @@ def _fsSanitizeCommentText(sValue):
     """Collapse a value to a single safe line for a shell comment.
 
     The step name is workflow-controlled (it originates from
-    ``workflow.json``, which the in-container agent can write).
+    ``project.json``, which the in-container agent can write).
     Rendered raw into the reproduction body, a newline would end the
     ``# Step:`` comment and turn the remainder of the name into live
     script. Replacing every control character (newlines, tabs, escape

@@ -1093,7 +1093,7 @@ def fbWorkflowHasProjectRepo(filesRepo):
 
     L1's "under git control" criterion is the existence of the repo
     discovery itself — the load-time auto-detector only populates
-    ``sProjectRepoPath`` when the workflow.json lives inside a git
+    ``sProjectRepoPath`` when the project.json lives inside a git
     work tree. Tracked-and-matched semantics belong to L2. Accepts a
     path string or a ``repoFiles`` adapter (whose root is consulted).
     """
