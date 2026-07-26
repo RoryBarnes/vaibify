@@ -5,6 +5,11 @@ __all__ = ["fnRegisterAll"]
 from fastapi import WebSocket
 
 from .. import pipelineServer as _pipelineServer
+from ..attributionLog import (
+    S_TERMINAL_CHANNEL,
+    S_TERMINAL_CLOSED_DETAIL,
+    S_TERMINAL_OPENED_DETAIL,
+)
 from ..pipelineServer import (
     fnRejectTerminalStart,
     fnRunTerminalSession,
@@ -79,7 +84,9 @@ async def _fnStartAndRunTerminal(websocket, dictCtx, sContainerId):
     dictInteractive = (
         _pipelineServer.fdictInteractiveContextForContainer(sContainerId)
     )
-    _fnRecordTerminalAttribution(dictCtx, sContainerId, "session-opened")
+    _fnRecordTerminalAttribution(
+        dictCtx, sContainerId, S_TERMINAL_OPENED_DETAIL,
+    )
     try:
         await fnRunTerminalSession(
             session, websocket, dictCtx["terminals"],
@@ -87,7 +94,7 @@ async def _fnStartAndRunTerminal(websocket, dictCtx, sContainerId):
         )
     finally:
         _fnRecordTerminalAttribution(
-            dictCtx, sContainerId, "session-closed",
+            dictCtx, sContainerId, S_TERMINAL_CLOSED_DETAIL,
         )
 
 
@@ -98,13 +105,20 @@ def _fnRecordTerminalAttribution(dictCtx, sContainerId, sDetail):
     a change made while a terminal session is open attributes to the
     session, but its keystrokes are not captured. The Supervised
     docs state this granularity.
+
+    The channel and the two detail strings come from
+    :mod:`vaibify.gui.attributionLog`, which pairs them into the open
+    interval that makes a long session attributive. A literal here
+    that drifted from the judge's spelling would silently reduce the
+    interval back to two unpaired instants.
     """
     from ..routeContext import fnRecordAttributionEvent
     dictWorkflow = (
         dictCtx.get("workflows") or {}
     ).get(sContainerId) or {}
     fnRecordAttributionEvent(
-        dictCtx, sContainerId, dictWorkflow, "terminal", sDetail,
+        dictCtx, sContainerId, dictWorkflow, S_TERMINAL_CHANNEL,
+        sDetail,
     )
 
 

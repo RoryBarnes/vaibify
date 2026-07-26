@@ -134,6 +134,63 @@ def test_supervision_enabled_with_flags_is_not_clean():
     assert fbSupervisionClean(dictWorkflow) is False
 
 
+def _fdictSupervisedWorkflow(iPersistedCount=0):
+    return {"dictAiProvenance": {"dictSupervision": {
+        "bEnabled": True, "iUnattributedFlagCount": iPersistedCount,
+    }}}
+
+
+def _fdictCleanEvidence(**dictOverrides):
+    dictEvidence = {
+        "iFlagCount": 0,
+        "bFlagChainIntact": True,
+        "bEventChainIntact": True,
+        "bPersistedFlagCountMatches": True,
+    }
+    dictEvidence.update(dictOverrides)
+    return dictEvidence
+
+
+def test_supervision_clean_requires_evidence_to_be_supplied():
+    """Absence of evidence is not evidence of a clean interval."""
+    assert fbSupervisionClean(_fdictSupervisedWorkflow()) is False
+    assert fbSupervisionClean(
+        _fdictSupervisedWorkflow(), _fdictCleanEvidence(),
+    ) is True
+
+
+@pytest.mark.falsification
+def test_supervision_is_not_gradeable_on_the_persisted_count():
+    """A zeroed ``project.json`` count must not turn the row green.
+
+    ``iUnattributedFlagCount`` lives in a file the supervised
+    in-container agent edits routinely. Grading on it let the AICS row
+    read clean while the flags file was full of permanent findings —
+    supervision gradeable on self-report.
+
+    Kills: Replace the whole evidence-grading tail of
+    ``fbSupervisionClean`` (``replayGate.py``) with the pre-fix
+    ``return int(dictSupervision.get("iUnattributedFlagCount") or 0)
+    == 0``.
+    """
+    dictWorkflow = _fdictSupervisedWorkflow(iPersistedCount=0)
+    dictEvidence = _fdictCleanEvidence(
+        iFlagCount=3, bPersistedFlagCountMatches=False,
+    )
+    assert fbSupervisionClean(dictWorkflow, dictEvidence) is False
+
+
+def test_supervision_clean_fails_on_a_broken_chain_or_count():
+    """Tamper of any recognized shape fails the gate."""
+    dictWorkflow = _fdictSupervisedWorkflow()
+    for sKey in (
+        "bFlagChainIntact", "bEventChainIntact",
+        "bPersistedFlagCountMatches",
+    ):
+        dictEvidence = _fdictCleanEvidence(**{sKey: False})
+        assert fbSupervisionClean(dictWorkflow, dictEvidence) is False, sKey
+
+
 def test_personal_layer_unanswered_fails_the_criterion():
     assert fbWorkflowDeclaresPersonalLayer({}) is False
     assert fbWorkflowDeclaresPersonalLayer(None) is False

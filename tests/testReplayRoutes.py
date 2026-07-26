@@ -544,3 +544,96 @@ def test_hash_route_digest_tracks_file_content(
         assert dictResponse.status_code == 200
         assert dictResponse.json()["dictHashCommitment"][
             "sSha256"] == hashlib.sha256(baContent).hexdigest()
+
+
+# -- Host-reading import route: researcher-only, enforced ---------
+
+
+def _fsContextImportPath():
+    return (
+        "/api/workflow/" + S_CONTAINER_ID + "/project-context/import"
+    )
+
+
+@pytest.mark.falsification
+def test_context_import_rejects_agent_token_lane(
+    fixtureHarness, tmp_path, monkeypatch,
+):
+    """The agent lane must never reach the host-file import route.
+
+    The route reads an arbitrary HOST file and writes it to
+    ``.vaibify/AGENTS.md``, which the agent-safe read-project-context
+    action reads back and the agent-safe push-to-github action
+    publishes. Catalog exclusion is metadata, not a gate, so the route
+    itself must fail the agent lane closed.
+
+    Kills: Remove the ``_fnRejectAgentTokenLane(requestHttp)`` call
+    from ``fnImportProjectContext`` in ``replayRoutes.py``.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    pathFile = tmp_path / "hostNotes.md"
+    pathFile.write_text("private host content")
+    clientTest = fixtureHarness[0]
+    dictResponse = clientTest.post(
+        _fsContextImportPath(),
+        json={"sHostPath": str(pathFile)},
+        headers={"X-Vaibify-Session": "per-container-agent-token"},
+    )
+    assert dictResponse.status_code == 403
+    assert dictResponse.json().get("bOk") is not True
+
+
+def test_context_import_is_excluded_from_agent_catalog():
+    from vaibify.gui.actionCatalog import (
+        LIST_AGENT_ACTIONS,
+        SET_INTENTIONALLY_EXCLUDED_PATHS,
+    )
+    sPath = "/api/workflow/{sContainerId}/project-context/import"
+    assert ("POST", sPath) in SET_INTENTIONALLY_EXCLUDED_PATHS
+    assert not any(
+        dictAction.get("sPath") == sPath
+        for dictAction in LIST_AGENT_ACTIONS
+    )
+
+
+# -- Disabling the Prompt Record cannot strand supervision --------
+
+
+def test_prompt_record_cannot_be_disabled_while_supervised(
+    fixtureHarness,
+):
+    """Supervised rests on Recorded, so the record cannot go first.
+
+    Disabling the record used to remove the permanent supervision
+    flag chip from the dashboard and drop the Supervised rung, with
+    no supervision check anywhere on the path.
+    """
+    clientTest, dictWorkflow, _ = fixtureHarness
+    dictWorkflow["dictAiProvenance"] = {
+        "dictPromptRecord": {
+            "bEnabled": True, "bFirstCaptureReviewed": True,
+        },
+        "dictSupervision": {"bEnabled": True},
+    }
+    dictResponse = clientTest.post(
+        _fsPromptRecordPath("/configure"), json={"bEnabled": False},
+    )
+    assert dictResponse.status_code == 409
+    assert dictWorkflow["dictAiProvenance"]["dictPromptRecord"][
+        "bEnabled"] is True
+
+
+def test_prompt_record_disables_when_supervision_is_off(fixtureHarness):
+    """The refusal is scoped to supervision, not a blanket lock."""
+    clientTest, dictWorkflow, _ = fixtureHarness
+    dictWorkflow["dictAiProvenance"] = {
+        "dictPromptRecord": {
+            "bEnabled": True, "bFirstCaptureReviewed": True,
+        },
+        "dictSupervision": {"bEnabled": False},
+    }
+    dictResponse = clientTest.post(
+        _fsPromptRecordPath("/configure"), json={"bEnabled": False},
+    )
+    assert dictResponse.status_code == 200
+    assert dictResponse.json()["dictPromptRecord"]["bEnabled"] is False
