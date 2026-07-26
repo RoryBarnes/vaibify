@@ -240,25 +240,25 @@ class TestFileStatusEtagSignals:
         )
 
     def test_max_mtime_by_step_change_advances_tag(self):
-        """Kills: Drop the ('maxByStep', ...) entry from listSignals in _fsBuildFileStatusEtag."""
+        """Kills: Add "dictMaxMtimeByStep" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, dictMaxMtimeByStep={"0": 2})
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_aics_level_change_advances_tag(self):
-        """Kills: Drop the ('aicsLevel', ...) entry from listSignals in _fsBuildFileStatusEtag."""
+        """Kills: Add "iAICSLevel" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, iAICSLevel=2)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_l2_blocker_count_change_advances_tag(self):
-        """Kills: Drop the ('l2', ...) entry from listSignals in _fsBuildFileStatusEtag."""
+        """Kills: Add "iL2BlockerCount" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, iL2BlockerCount=1)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_l3_blocker_count_change_advances_tag(self):
-        """Kills: Drop the ('l3', ...) entry from listSignals in _fsBuildFileStatusEtag."""
+        """Kills: Add "iL3BlockerCount" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
         dictBase = self._fdictBase()
         dictChanged = dict(dictBase, iL3BlockerCount=1)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)

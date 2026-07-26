@@ -2711,7 +2711,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # extends; the pure chain/flag logic lives in attributionLog.
     # +3 (2026-07-19): the bPersonalLayerDeclared envelope boolean —
     # exec-free, read from the workflow dict like bAiModelsDeclared.
-    "routes/pipelineRoutes.py": 2622,
+    # +99 (2026-07-25): dashboard-honesty repairs to the poll's two
+    # existing side-effect lanes, not a new concern. The ETag stamp is
+    # derived from the whole payload instead of a hand-maintained
+    # signal list (dictRunState and the Replay envelope had both
+    # fallen outside it); the supervision watchdog moves its judgment
+    # inside the try that already guarded its write, judges each
+    # change against its own mtime, latches a broken event chain into
+    # a permanent flag, and reports container-vs-host clock skew.
+    # _flistRecentWatchedChanges and _flistRepoRelativePaths are
+    # extractions from functions this lane grew, not additions.
+    "routes/pipelineRoutes.py": 2721,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the

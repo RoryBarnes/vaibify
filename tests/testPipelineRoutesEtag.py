@@ -126,6 +126,84 @@ def test_file_status_sync_epoch_change_changes_etag():
     assert sEtagOne != sEtagTwo
 
 
+def test_file_status_response_is_never_stored_by_a_cache(clientEtag):
+    """The poll response must carry ``Cache-Control: no-store``.
+
+    The poll URL is byte-stable across ticks and the response is a
+    200 with an ETag, so a private HTTP cache may store the body,
+    revalidate it, and hand the STALE body to ``response.json()`` —
+    the JavaScript never sees the 304 and cannot tell.
+    """
+    responseFirst = _fnConnectAndPollOnce(clientEtag)
+    assert responseFirst.headers.get("cache-control") == "no-store"
+    responseSecond = clientEtag.get(
+        f"/api/pipeline/{_module.S_CONTAINER_ID}/file-status",
+        headers={"If-None-Match": responseFirst.headers["etag"]},
+    )
+    assert responseSecond.status_code == 304
+    assert responseSecond.headers.get("cache-control") == "no-store"
+
+
+@pytest.mark.falsification
+def test_file_status_run_state_change_changes_etag():
+    """A change in run state must advance the freshness stamp.
+
+    ``dictRunState`` rides the poll payload and drives the marker for
+    agent-initiated runs, yet it fell outside the hand-maintained
+    signal list for a month: two payloads differing only in run state
+    hashed identically, so a revalidating cache could clear a live
+    run's lights from a stale body.
+
+    Kills: Add ``"dictRunState"`` to ``_SET_ETAG_VOLATILE_KEYS`` in
+    ``pipelineRoutes.py``.
+    """
+    from vaibify.gui.routes import pipelineRoutes
+    dictBase = {
+        "dictModTimes": {"a/b": "1"},
+        "dictRunState": {"bRunning": False, "iActiveStep": -1},
+    }
+    dictRunning = dict(dictBase, dictRunState={
+        "bRunning": True, "iActiveStep": 2,
+    })
+    assert pipelineRoutes._fsBuildFileStatusEtag(
+        dictBase, iSyncEpoch=1,
+    ) != pipelineRoutes._fsBuildFileStatusEtag(dictRunning, iSyncEpoch=1)
+
+
+def test_file_status_unlisted_payload_field_changes_etag():
+    """A payload key nobody enumerated is still covered by the stamp.
+
+    The durable guarantee of whole-payload derivation: a field added
+    by an author who has no reason to know a signal list exists
+    cannot silently fall outside the freshness stamp.
+    """
+    from vaibify.gui.routes import pipelineRoutes
+    dictBase = {"dictModTimes": {"a/b": "1"}}
+    dictExtended = dict(dictBase, dictFutureFeatureState={"bFlag": True})
+    assert pipelineRoutes._fsBuildFileStatusEtag(
+        dictBase, iSyncEpoch=1,
+    ) != pipelineRoutes._fsBuildFileStatusEtag(
+        dictExtended, iSyncEpoch=1,
+    )
+
+
+def test_file_status_replay_envelope_change_changes_etag():
+    """The Replay envelope is inside the stamp, not beside it."""
+    from vaibify.gui.routes import pipelineRoutes
+    dictBase = {
+        "dictModTimes": {"a/b": "1"},
+        "dictWorkflowEnvelopeDetail": {"sReplayAxisState": "declared"},
+    }
+    dictSupervised = dict(dictBase, dictWorkflowEnvelopeDetail={
+        "sReplayAxisState": "supervised",
+    })
+    assert pipelineRoutes._fsBuildFileStatusEtag(
+        dictBase, iSyncEpoch=1,
+    ) != pipelineRoutes._fsBuildFileStatusEtag(
+        dictSupervised, iSyncEpoch=1,
+    )
+
+
 def test_file_status_blocker_count_change_changes_etag():
     """A change in blocker counts forces a fresh payload."""
     from vaibify.gui.routes import pipelineRoutes

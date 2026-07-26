@@ -461,34 +461,42 @@ async def _fbApplyRandomnessLintAsync(
     )
 
 
+S_FILE_STATUS_CACHE_CONTROL = "no-store"
+
+# Response keys that change on their own without any observable state
+# having changed. Nothing qualifies today — the seed is empty on
+# purpose. A key belongs here only when it is genuinely request-scoped
+# noise; anything a researcher can SEE must stay inside the stamp, or
+# a stale body will be served for it.
+_SET_ETAG_VOLATILE_KEYS = frozenset()
+
+
 def _fsBuildFileStatusEtag(dictResponse, iSyncEpoch):
     """Return a stable ETag stamp for a file-status response payload.
 
-    The mtime vector is the single load-bearing change signal — every
-    invalidation downstream rides on a per-step mtime. The hash is
-    over the sorted ``(stepIndex, mtime)`` pairs, the per-step max
-    mtime, plus ``iSyncEpoch`` so a manual sync bump invalidates the
-    badge cache even when no file moved. Including the L1/L2/L3
-    blocker counts captures verification-state transitions a pure
-    mtime hash would miss.
+    Derived from the WHOLE serialized payload (minus
+    ``_SET_ETAG_VOLATILE_KEYS``) plus ``iSyncEpoch``, so a manual sync
+    bump invalidates the badge cache even when no file moved. Hashing
+    an enumerated signal list is what let ``dictRunState`` and the
+    Replay envelope fall outside the stamp for a month each: both were
+    added to the response by authors who had no reason to know a
+    hand-maintained list existed, and two payloads differing only in
+    run state hashed identically. Whole-payload derivation makes the
+    default safe — a new field is covered the moment it is added, and
+    excluding one is a deliberate, reviewable act.
+
+    The cost is one extra JSON serialization per poll, which is the
+    honest price of a freshness stamp that cannot silently go blind.
     """
-    listSignals = [
-        ("syncEpoch", int(iSyncEpoch)),
-        ("modTimes", sorted(
-            (dictResponse.get("dictModTimes") or {}).items(),
-        )),
-        ("maxByStep", sorted(
-            (dictResponse.get("dictMaxMtimeByStep") or {}).items(),
-        )),
-        ("aicsLevel", dictResponse.get("iAICSLevel", 0)),
-        ("l1", dictResponse.get("iL1BlockerCount", 0)),
-        ("l2", dictResponse.get("iL2BlockerCount", 0)),
-        ("l3", dictResponse.get("iL3BlockerCount", 0)),
-        ("workflowEpoch", dictResponse.get("iWorkflowEpoch", -1)),
-        ("workflowAttached",
-         bool(dictResponse.get("dictWorkflow"))),
-    ]
-    sBody = json.dumps(listSignals, sort_keys=True, default=str)
+    dictStable = {
+        sKey: dictValue
+        for sKey, dictValue in dictResponse.items()
+        if sKey not in _SET_ETAG_VOLATILE_KEYS
+    }
+    sBody = json.dumps(
+        {"syncEpoch": int(iSyncEpoch), "dictPayload": dictStable},
+        sort_keys=True, default=str,
+    )
     sDigest = hashlib.sha256(sBody.encode("utf-8")).hexdigest()
     return '"' + sDigest + '"'
 
@@ -498,9 +506,16 @@ def _fnRegisterFileStatus(app, dictCtx):
 
     Supports ``If-None-Match``: clients pass the prior ETag and a
     matching server-side stamp short-circuits to a 304 with an empty
-    body. The stamp covers the mtime vector + blocker counts +
-    iSyncEpoch so every observable transition still produces a fresh
-    payload.
+    body. The stamp covers the whole payload + iSyncEpoch so every
+    observable transition still produces a fresh body.
+
+    ``Cache-Control: no-store`` rides every response, 200 and 304
+    alike. The poll URL is byte-stable across ticks, so without it a
+    private HTTP cache may store the body, revalidate on the next
+    tick, and hand the STALE body back to ``response.json()`` — the
+    JavaScript never sees the 304 and cannot tell. Belt and braces:
+    the stamp is the correctness fix, no-store keeps a cache from
+    participating at all.
     """
 
     @app.get("/api/pipeline/{sContainerId}/file-status")
@@ -523,8 +538,11 @@ def _fnRegisterFileStatus(app, dictCtx):
         )
         sIfNoneMatch = request.headers.get("if-none-match", "")
         if sIfNoneMatch and sIfNoneMatch == sEtag:
-            return Response(status_code=304, headers={"ETag": sEtag})
+            return Response(status_code=304, headers={
+                "ETag": sEtag, "Cache-Control": S_FILE_STATUS_CACHE_CONTROL,
+            })
         response.headers["ETag"] = sEtag
+        response.headers["Cache-Control"] = S_FILE_STATUS_CACHE_CONTROL
         return dictResponse
 
 
@@ -876,7 +894,7 @@ async def _fnMaintainAiProvenanceStamp(
     if not fbWorkflowAiDeclarationAttested(dictWorkflow):
         return
     dictStamp = _fdictReadStampFromSnapshot(filesPoll)
-    if fbStampMatchesDeclaration(dictStamp, dictWorkflow):
+    if fbStampMatchesDeclaration(dictStamp, dictWorkflow, filesPoll):
         return
     try:
         await asyncio.to_thread(
@@ -919,31 +937,38 @@ async def _fnRunSupervisionWatchdog(
     WRITE (rare) is the only container IO. A live pipeline run is
     itself a recorded channel, so its ticks are skipped. Flags are
     permanent — nothing here ever clears one.
+
+    The whole judgment sits inside the try, not just the write. A
+    malformed record in the container-writable events log used to
+    raise out of the JUDGMENT and 500 the poll for that container —
+    supervision is a side effect of a read path and must never be able
+    to take the read path down.
     """
     from vaibify.gui import attributionLog
     if not attributionLog.fbSupervisionEnabled(dictWorkflow):
         return
     if bPipelineRunning:
         return
-    bDigestRatcheted = _fbRatchetSupervisedDigest(
-        dictWorkflow, filesPoll,
-    )
-    listUnattributed = _flistUnattributedRecentPaths(
-        dictWorkflow, dictModTimes, filesPoll,
-    )
-    if not listUnattributed:
-        if bDigestRatcheted:
-            dictCtx["save"](sContainerId, dictWorkflow)
-        return
     try:
+        bDigestRatcheted = _fbRatchetSupervisedDigest(
+            dictWorkflow, filesPoll,
+        )
+        listUnattributed = _flistUnattributedRecentPaths(
+            dictWorkflow, dictModTimes, filesPoll,
+        )
+        bChainBroken = _fbEventChainNewlyBroken(dictWorkflow, filesPoll)
+        if not listUnattributed and not bChainBroken:
+            if bDigestRatcheted:
+                dictCtx["save"](sContainerId, dictWorkflow)
+            return
         await asyncio.to_thread(
-            _fnAppendUnattributedFlag, dictCtx, sContainerId,
-            dictWorkflow, listUnattributed,
+            _fnAppendSupervisionFlags, dictCtx, sContainerId,
+            dictWorkflow, listUnattributed, bChainBroken,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
     except Exception as exc:  # noqa: BLE001 — poll must survive
         logger.warning(
-            "Supervision flag append failed for %s: %s",
+            "Supervision watchdog failed for %s: %s",
             sContainerId, exc,
         )
 
@@ -970,22 +995,65 @@ def _fbRatchetSupervisedDigest(dictWorkflow, filesPoll):
 def _flistUnattributedRecentPaths(dictWorkflow, dictModTimes, filesPoll):
     """Return recently-changed watched paths with no recorded cause.
 
-    The watermark (``fLastJudgedMtime`` in the supervision block)
-    guarantees each change is judged exactly once: attributed changes
-    advance it silently, unattributed ones advance it AND flag.
-    Vaibify-internal files (``.vaibify/``) are the backend's own
-    writes and are excluded from the watch set.
+    "Watched" is the declared-path set this poll already stats, not
+    every file in the repository — an undeclared file the poll never
+    looks at cannot be judged here. The watermark
+    (``fLastJudgedMtime`` in the supervision block) guarantees each
+    change is judged exactly once: attributed changes advance it
+    silently, unattributed ones advance it AND flag. Vaibify-internal
+    files (``.vaibify/``) are the backend's own writes and are
+    excluded from the watch set.
+
+    Each change is judged against ITS OWN mtime rather than against
+    the moment of the poll. A tick delayed past the attribution window
+    — a background tab whose timers Chrome throttles to about one a
+    minute, a slow exec, the tick after a run clears — used to flag
+    ordinary work whose explaining event was exactly as old as the
+    change it explained.
     """
-    import time as timeModule
     from vaibify.gui import attributionLog
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
     dictSupervision = (
         (dictWorkflow.get("dictAiProvenance") or {})
         .get("dictSupervision") or {}
     )
+    listRecent = _flistRecentWatchedChanges(dictModTimes, dictSupervision)
+    if not listRecent:
+        return []
+    dictProvenance = dictWorkflow.setdefault("dictAiProvenance", {})
+    dictProvenance["dictSupervision"] = dictSupervision
+    listEvents = attributionLog.flistLoadAttributionEvents(
+        ffilesEnsureRepoFiles(filesPoll),
+    )
+    return sorted(
+        sAbsPath
+        for fMtimeValue, sAbsPath in listRecent
+        if not attributionLog.fbEventsAccountForChange(
+            listEvents, fMtimeValue,
+        )
+    )
+
+
+def _flistRecentWatchedChanges(dictModTimes, dictSupervision):
+    """Return ``(mtime, path)`` for unjudged watched changes; advance state.
+
+    Advances the judged-once watermark and records whether the
+    container's filesystem clock runs ahead of the host clock the
+    events are stamped with. Skew degrades attribution in both
+    directions, so it is surfaced to the dashboard rather than left to
+    quietly widen or narrow the window.
+    """
+    import time as timeModule
+    from vaibify.gui.attributionLog import (
+        F_ATTRIBUTION_MTIME_CUTOFF_SECONDS,
+        F_ATTRIBUTION_WINDOW_SECONDS,
+    )
     fWatermark = float(dictSupervision.get("fLastJudgedMtime") or 0.0)
-    fCutoff = timeModule.time() - 90.0
+    fNow = timeModule.time()
+    fCutoff = fNow - F_ATTRIBUTION_MTIME_CUTOFF_SECONDS
     listRecent = []
     fMaxSeen = fWatermark
+    fMaxObserved = 0.0
     for sAbsPath, fMtime in dictModTimes.items():
         try:
             fMtimeValue = float(fMtime)
@@ -993,77 +1061,99 @@ def _flistUnattributedRecentPaths(dictWorkflow, dictModTimes, filesPoll):
             continue
         if "/.vaibify/" in sAbsPath:
             continue
+        fMaxObserved = max(fMaxObserved, fMtimeValue)
         if fMtimeValue <= fWatermark or fMtimeValue < fCutoff:
             continue
-        listRecent.append(sAbsPath)
+        listRecent.append((fMtimeValue, sAbsPath))
         fMaxSeen = max(fMaxSeen, fMtimeValue)
-    if not listRecent:
-        return []
-    dictSupervision["fLastJudgedMtime"] = fMaxSeen
-    dictProvenance = dictWorkflow.setdefault("dictAiProvenance", {})
-    dictProvenance["dictSupervision"] = dictSupervision
-    if _fbSnapshotHasRecentEvent(filesPoll):
-        return []
-    return sorted(listRecent)
-
-
-def _fbSnapshotHasRecentEvent(filesPoll):
-    """Check the snapshot-carried events log for an in-window event."""
-    import json as jsonModule
-    from datetime import datetime, timezone
-    from vaibify.gui.attributionLog import (
-        F_ATTRIBUTION_WINDOW_SECONDS,
-        S_ATTRIBUTION_EVENTS_PATH,
+    dictSupervision["bClockSkewSuspected"] = (
+        fMaxObserved > fNow + F_ATTRIBUTION_WINDOW_SECONDS
     )
+    if listRecent:
+        dictSupervision["fLastJudgedMtime"] = fMaxSeen
+    return listRecent
+
+
+def _fbSnapshotHasRecentEvent(filesPoll, fChangeEpoch=None):
+    """Judge one change against the snapshot-carried events log.
+
+    A thin adapter over the single derivation of the attribution rule
+    in :mod:`vaibify.gui.attributionLog`; the rule itself is never
+    restated here.
+    """
+    from vaibify.gui import attributionLog
     from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
-    filesRepo = ffilesEnsureRepoFiles(filesPoll)
-    if not filesRepo.fbIsFile(S_ATTRIBUTION_EVENTS_PATH):
-        return False
-    try:
-        sText = filesRepo.fsReadText(S_ATTRIBUTION_EVENTS_PATH)
-    except (OSError, FileNotFoundError):
-        return False
-    dtNow = datetime.now(timezone.utc)
-    for sLine in sText.splitlines():
-        try:
-            dictEvent = jsonModule.loads(sLine)
-            dtEvent = datetime.fromisoformat(
-                dictEvent.get("sTimestampUtc") or "",
-            )
-        except ValueError:
-            continue
-        fAge = (dtNow - dtEvent).total_seconds()
-        if fAge <= F_ATTRIBUTION_WINDOW_SECONDS:
-            return True
-    return False
+    return attributionLog.fbAnyEventWithinWindow(
+        ffilesEnsureRepoFiles(filesPoll), fChangeEpoch=fChangeEpoch,
+    )
 
 
-def _fnAppendUnattributedFlag(
-    dictCtx, sContainerId, dictWorkflow, listUnattributed,
+def _fbEventChainNewlyBroken(dictWorkflow, filesPoll):
+    """Return True on the tick the attribution event chain first breaks.
+
+    Latched in the supervision block so a breach flags once rather
+    than on every five-second tick. Clearing the latch by hand only
+    produces a SECOND flag — the latch can make the record louder,
+    never quieter.
+    """
+    from vaibify.gui import attributionLog
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    bIntact = attributionLog.fbVerifyEventChain(
+        attributionLog.flistLoadAttributionEvents(
+            ffilesEnsureRepoFiles(filesPoll),
+        ),
+    )
+    dictSupervision = dictWorkflow.setdefault(
+        "dictAiProvenance", {},
+    ).setdefault("dictSupervision", {})
+    bWasBroken = dictSupervision.get("bEventChainBroken") is True
+    dictSupervision["bEventChainBroken"] = not bIntact
+    return not bIntact and not bWasBroken
+
+
+def _fnAppendSupervisionFlags(
+    dictCtx, sContainerId, dictWorkflow, listUnattributed, bChainBroken,
 ):
-    """Append the permanent unattributed-modification flag record."""
+    """Append the permanent flags this tick discovered."""
     from vaibify.gui import attributionLog
     from ..routeContext import ffilesForWorkflow
-    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
-    listRelative = [
-        sPath[len(sRepoRoot):].lstrip("/") if sRepoRoot
-        and sPath.startswith(sRepoRoot) else sPath
-        for sPath in listUnattributed[:20]
-    ]
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-    attributionLog.fnAppendFlag(
-        filesRepo, "unattributed-modification", ", ".join(listRelative),
-    )
+    if bChainBroken:
+        attributionLog.fnAppendFlag(
+            filesRepo, "attribution-log-tampered",
+            "the recorded-event chain no longer verifies",
+        )
+        logger.warning(
+            "SUPERVISION attribution event chain broken in %s",
+            sContainerId,
+        )
+    if listUnattributed:
+        sDetail = ", ".join(
+            _flistRepoRelativePaths(dictWorkflow, listUnattributed),
+        )
+        attributionLog.fnAppendFlag(
+            filesRepo, "unattributed-modification", sDetail,
+        )
+        logger.warning(
+            "SUPERVISION unattributed modification in %s: %s",
+            sContainerId, sDetail,
+        )
     dictSupervision = dictWorkflow.setdefault(
         "dictAiProvenance", {},
     ).setdefault("dictSupervision", {})
     dictSupervision["iUnattributedFlagCount"] = len(
         attributionLog.flistLoadFlags(filesRepo),
     )
-    logger.warning(
-        "SUPERVISION unattributed modification in %s: %s",
-        sContainerId, ", ".join(listRelative),
-    )
+
+
+def _flistRepoRelativePaths(dictWorkflow, listAbsolutePaths):
+    """Return the first 20 flagged paths, relative to the project repo."""
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    return [
+        sPath[len(sRepoRoot):].lstrip("/") if sRepoRoot
+        and sPath.startswith(sRepoRoot) else sPath
+        for sPath in listAbsolutePaths[:20]
+    ]
 
 
 def _fnRewriteAiProvenanceStamp(dictCtx, sContainerId, dictWorkflow):
@@ -1718,10 +1808,15 @@ def _fdictBuildWorkflowEnvelopeDetail(dictWorkflow, filesPoll):
 
 
 def _fdictEnvelopeSupervision(dictWorkflow, filesRepo):
-    """Summarize Supervised mode from the snapshot's flags file.
+    """Summarize Supervised mode from the snapshot's evidence files.
 
-    Exec-free. ``bFlagChainIntact`` false means a permanent flag was
-    edited or removed — rendered as loudly as the flags themselves.
+    Exec-free, and recomputed from the append-only files every tick —
+    never read back from the persisted count, which the in-container
+    agent can edit. ``bFlagChainIntact`` false means a permanent flag
+    was edited or removed; ``bEventChainIntact`` false means the
+    recorded-cause log was; ``bPersistedFlagCountMatches`` false means
+    the two disagree, which a prefix-valid hash chain cannot see on
+    its own. All four render as loudly as the flags themselves.
     """
     from vaibify.gui import attributionLog
     dictConfig = (
@@ -1732,16 +1827,20 @@ def _fdictEnvelopeSupervision(dictWorkflow, filesRepo):
         "bEnabled": dictConfig.get("bEnabled") is True,
         "iFlagCount": 0,
         "bFlagChainIntact": True,
+        "bEventChainIntact": True,
+        "bPersistedFlagCountMatches": True,
+        "bClockSkewSuspected": dictConfig.get(
+            "bClockSkewSuspected",
+        ) is True,
         "listFlags": [],
     }
     if filesRepo is None:
         return dictSummary
-    listFlags = attributionLog.flistLoadFlags(filesRepo)
-    dictSummary["iFlagCount"] = len(listFlags)
-    dictSummary["bFlagChainIntact"] = (
-        attributionLog.fbVerifyFlagChain(listFlags)
+    dictEvidence = attributionLog.fdictSummarizeSupervisionEvidence(
+        filesRepo, dictWorkflow,
     )
-    dictSummary["listFlags"] = listFlags[-5:]
+    dictSummary.update(dictEvidence)
+    dictSummary["listFlags"] = dictEvidence["listFlags"][-5:]
     return dictSummary
 
 

@@ -327,11 +327,22 @@ def _fnRegisterContextImport(app, dictCtx):
     Excluded from the agent-action catalog: it reads the HOST
     filesystem, and an agent-invokable host read would let a
     compromised in-container agent pull arbitrary home-directory
-    files into a public repository.
+    files into a public repository — the imported file lands at
+    ``.vaibify/AGENTS.md``, which is readable through the agent-safe
+    read-project-context action and pushable through the agent-safe
+    push-to-github one.
+
+    Catalog exclusion is metadata, not a gate, so the route rejects
+    the agent token lane itself, exactly as the personal-layer hash
+    route does. A docstring promising unreachability with no
+    enforcement point is how this stayed open.
     """
 
     @app.post("/api/workflow/{sContainerId}/project-context/import")
-    async def fnImportProjectContext(sContainerId: str, request: dict):
+    async def fnImportProjectContext(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
+        _fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -386,6 +397,28 @@ def _flistGatherSessionSecrets(dictCtx, sContainerId):
     return [sSecret for sSecret in listSecrets if sSecret]
 
 
+def _fnRequireSupervisionOffBeforeDisabling(dictWorkflow, bEnabled):
+    """Refuse to switch the Prompt Record off while supervision is on.
+
+    Supervised is the rung above Recorded, so disabling the record
+    while the watchdog is enabled would leave the Replay axis claiming
+    a state its evidence no longer supports. The researcher must stand
+    supervision down first — deliberately, in the place that says so.
+    """
+    if bEnabled:
+        return
+    dictSupervision = (
+        (dictWorkflow.get(S_AI_PROVENANCE_KEY) or {})
+        .get("dictSupervision") or {}
+    )
+    if dictSupervision.get("bEnabled") is True:
+        raise HTTPException(
+            409, "Supervised mode is on and rests on the Prompt "
+            "Record. Turn supervision off first, then disable the "
+            "record.",
+        )
+
+
 def _fnRegisterPromptRecordConfigure(app, dictCtx):
     """Register POST .../prompt-record/configure."""
 
@@ -400,6 +433,7 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         bEnabled = request.get("bEnabled") is True
+        _fnRequireSupervisionOffBeforeDisabling(dictWorkflow, bEnabled)
         if bEnabled and not transcriptSanitizer.fbSanitizerAvailable():
             raise HTTPException(
                 409, "Transcript capture needs the detect-secrets "

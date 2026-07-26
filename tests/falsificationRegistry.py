@@ -449,30 +449,33 @@ LIST_FALSIFICATIONS = [
         new='if not iRejectCode:',
     ),
     Falsification(
+        # The ETag stamp is derived from the whole response payload
+        # (2026-07-25), so each signal is excluded by naming its key
+        # in _SET_ETAG_VOLATILE_KEYS rather than by deleting a hand-
+        # maintained list entry. Same break, expressed against the
+        # mechanism that replaced the list.
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_max_mtime_by_step_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""        ("maxByStep", sorted(
-            (dictResponse.get("dictMaxMtimeByStep") or {}).items(),
-        )),""",
-        new="""        ("maxByStep", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"dictMaxMtimeByStep"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_aics_level_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""("aicsLevel", dictResponse.get("iAICSLevel", 0)),""",
-        new="""("aicsLevel", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iAICSLevel"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_l2_blocker_count_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""("l2", dictResponse.get("iL2BlockerCount", 0)),""",
-        new="""("l2", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iL2BlockerCount"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_l3_blocker_count_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""("l3", dictResponse.get("iL3BlockerCount", 0)),""",
-        new="""("l3", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iL3BlockerCount"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestSplitCachedAndChanged::test_stale_mtime_forces_rehash',
@@ -1307,8 +1310,15 @@ def _fdictEntry(sRel):
         # in-container agent a hash oracle over host files.
         nodeid='tests/testReplayRoutes.py::test_hash_route_rejects_agent_token_lane',
         source='vaibify/gui/routes/replayRoutes.py',
-        old='        _fnRejectAgentTokenLane(requestHttp)\n        dictCtx["require"]()',
-        new='        dictCtx["require"]()',
+        old=(
+            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"]()\n'
+            '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
+        ),
     ),
     Falsification(
         # Removing the personal-layer conjunct lets a project reach
@@ -1336,5 +1346,114 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/replayGate.py',
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
+    ),
+    # --- Dashboard honesty (Opus 5 review, phase 3, 2026-07-25) ---
+    Falsification(
+        # Reading a timezone-less stamp as the host's LOCAL time
+        # relocates a recorded cause by the host's UTC offset, so a
+        # legitimate event falls outside the window and ordinary work
+        # is flagged permanently.
+        nodeid='tests/testAttributionLog.py::test_naive_event_timestamp_is_read_as_utc_not_local',
+        source='vaibify/gui/attributionLog.py',
+        old=(
+            '    if dtParsed.tzinfo is None:\n'
+            '        return dtParsed.replace(tzinfo=timezone.utc)\n'
+            '    return dtParsed.astimezone(timezone.utc)'
+        ),
+        new='    return dtParsed',
+    ),
+    Falsification(
+        # Without a lower bound on event age, one forward-dated line
+        # appended from the container's shell sits inside the window
+        # of every later change and blinds the watchdog forever.
+        nodeid='tests/testAttributionLog.py::test_future_dated_event_never_attributes_a_change',
+        source='vaibify/gui/attributionLog.py',
+        old='        if fEpoch > fNowEpoch:\n            continue',
+        new='        if False:\n            continue',
+    ),
+    Falsification(
+        # Judging a terminal as two instants instead of an interval
+        # false-flags every ordinary edit made minutes into a session.
+        nodeid='tests/testAttributionLog.py::test_open_terminal_session_attributes_a_later_change',
+        source='vaibify/gui/attributionLog.py',
+        old=(
+            '    return iOpenCount > 0 and fSpanStart <= fAnchorEpoch '
+            '<= fNowEpoch'
+        ),
+        new='    return False',
+    ),
+    Falsification(
+        # Anchoring only on "now" reinstates the 60-vs-90 second gap:
+        # a change judged by a late tick is flagged even though its
+        # explaining event is exactly as old as the change.
+        nodeid='tests/testSupervisionWatchdog.py::test_delayed_tick_does_not_flag_an_explained_change',
+        source='vaibify/gui/attributionLog.py',
+        old=(
+            '    if fChangeEpoch is None:\n'
+            '        return [fNowEpoch]\n'
+            '    try:\n'
+            '        return [fNowEpoch, float(fChangeEpoch)]\n'
+            '    except (TypeError, ValueError):\n'
+            '        return [fNowEpoch]'
+        ),
+        new='    return [fNowEpoch]',
+    ),
+    Falsification(
+        # dictRunState drives the run marker for agent-initiated runs
+        # and fell outside the freshness stamp for a month; excluding
+        # it again lets a revalidating cache serve a stale body that
+        # clears a live run's lights.
+        nodeid='tests/testPipelineRoutesEtag.py::test_file_status_run_state_change_changes_etag',
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='_SET_ETAG_VOLATILE_KEYS = frozenset()',
+        new='_SET_ETAG_VOLATILE_KEYS = frozenset({"dictRunState"})',
+    ),
+    Falsification(
+        # Grading supervision on the persisted count makes the AICS
+        # row gradeable on self-report: the supervised agent edits
+        # project.json and the row turns green.
+        nodeid='tests/testReplayGate.py::test_supervision_is_not_gradeable_on_the_persisted_count',
+        source='vaibify/reproducibility/replayGate.py',
+        old=(
+            '    if not isinstance(dictEvidence, dict):\n'
+            '        return False\n'
+            '    if dictEvidence.get("iFlagCount") != 0:\n'
+            '        return False\n'
+            '    return (\n'
+            '        dictEvidence.get("bFlagChainIntact") is True\n'
+            '        and dictEvidence.get("bEventChainIntact") is True\n'
+            '        and dictEvidence.get("bPersistedFlagCountMatches") '
+            'is True\n'
+            '    )'
+        ),
+        new=(
+            '    return int(dictSupervision.get('
+            '"iUnattributedFlagCount") or 0) == 0'
+        ),
+    ),
+    Falsification(
+        # Comparing only the declared model list leaves five of the
+        # six captured stamp fields hand-editable forever, and every
+        # one is folded into the L3 attestation.
+        nodeid='tests/testAiProvenanceStamp.py::test_edited_stamp_fields_are_detected_as_stale',
+        source='vaibify/reproducibility/aiProvenanceStamp.py',
+        old='    if not _fbStampShapeIntact(dictStamp):\n        return False',
+        new='    if False:\n        return False',
+    ),
+    Falsification(
+        # The import route reads an arbitrary HOST file into a
+        # repo-tracked, agent-readable, agent-pushable location; its
+        # docstring promised unreachability that nothing enforced.
+        nodeid='tests/testReplayRoutes.py::test_context_import_rejects_agent_token_lane',
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"]()\n'
+            '        dictWorkflow = fdictRequireWorkflow('
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        dictWorkflow = fdictRequireWorkflow('
+        ),
     ),
 ]
