@@ -295,3 +295,213 @@ def test_state_endpoint_includes_epoch_when_not_running():
         )
     dictState = responseHttp.json()
     assert dictState == {"bRunning": False, "iSyncEpoch": 0}
+
+
+# ---------------------------------------------------------------------
+# Producers added 2026-07-26 (plan items 3.5a and 3.5c). Before these,
+# the two actions whose whole purpose is reconciling the dashboard with
+# the remote were the two that left it un-repainted.
+# ---------------------------------------------------------------------
+
+
+S_VERIFIED_ISO = "2026-07-26T00:00:00Z"
+
+
+def _fdictBuildVerifyStatus(listDiverged=None, iTotalFiles=1):
+    return {
+        "sService": "github",
+        "sLastVerified": S_VERIFIED_ISO,
+        "iTotalFiles": iTotalFiles,
+        "iMatching": iTotalFiles - len(listDiverged or []),
+        "listDiverged": listDiverged or [],
+        "sCommittedShaVerified": S_HEAD_SHA,
+    }
+
+
+def _fiReadEpochFromStatePoll(clientHttp):
+    """Read the epoch the way the browser does — off the state poll."""
+    with patch(
+        "vaibify.gui.pipelineState.fdictReadReconciledState",
+        _fdictFakeReconciledNone,
+    ):
+        responseHttp = clientHttp.get(
+            f"/api/pipeline/{S_CONTAINER_ID}/state",
+        )
+    return responseHttp.json()["iSyncEpoch"]
+
+
+@pytest.mark.falsification
+def test_verify_remote_bumps_sync_epoch():
+    """A completed remote verify must invalidate the dashboard.
+
+    Drives the real route through TestClient and reads the epoch back
+    off the same ``/state`` poll the browser watches, so the assertion
+    covers the whole producer-to-consumer path rather than an
+    in-process counter.
+
+    Kills: dropping the ``fnBumpSyncEpoch`` call from the verify route
+    (``vaibify/gui/routes/syncRoutes.py``) leaves the poll reporting
+    the pre-verify epoch, so no badge refresh is ever triggered.
+    """
+    dictCtx = _fdictBuildEpochContext()
+    clientHttp = _fclientBuildEpochClient(dictCtx)
+    assert _fiReadEpochFromStatePoll(clientHttp) == 0
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.ffilesForWorkflow",
+        return_value=object(),
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fdictRunRemoteVerifyBlocking",
+        return_value=_fdictBuildVerifyStatus(),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/github/verify",
+        )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["sLastVerified"] == S_VERIFIED_ISO
+    assert _fiReadEpochFromStatePoll(clientHttp) == 1
+
+
+def test_failed_verify_does_not_bump_sync_epoch():
+    """A verify that never reached the remote changed no cached state."""
+    dictCtx = _fdictBuildEpochContext()
+    clientHttp = _fclientBuildEpochClient(dictCtx)
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.ffilesForWorkflow",
+        return_value=object(),
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fdictRunRemoteVerifyBlocking",
+        side_effect=RuntimeError("connection reset"),
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/sync/{S_CONTAINER_ID}/github/verify",
+        )
+    assert responseHttp.status_code == 502
+    assert _fiEpochOf(dictCtx) == 0
+
+
+async def _fsRefreshVerifyStub(
+    dictCtx, sContainerId, dictWorkflow, sService,
+):
+    return ""
+
+
+def _flistBuildReconcilePatches(dictStatus):
+    """Patch every container/network edge the reconcile route crosses."""
+    return [
+        patch.object(
+            containerGit, "ftResultGitFetchInContainer",
+            return_value=(0, "fetched"),
+        ),
+        patch.object(
+            containerGit, "fdictRemoteHeadsInContainer",
+            return_value={"bSuccess": True, "iAhead": 0, "iBehind": 0},
+        ),
+        patch.object(
+            containerGit, "fdictGitStatusInContainer",
+            return_value=_fdictRepoStatus(),
+        ),
+        patch.object(
+            containerGit, "fsRemoteUrlInContainer",
+            return_value="https://github.com/owner/repo.git",
+        ),
+        patch(
+            "vaibify.gui.routes.gitRoutes.fsRefreshVerifyCacheAfterPush",
+            _fsRefreshVerifyStub,
+        ),
+        patch(
+            "vaibify.gui.routes.gitRoutes.ffilesForWorkflow",
+            return_value=object(),
+        ),
+        patch(
+            "vaibify.reproducibility.scheduledReverify."
+            "fdictReadCachedSyncStatus",
+            return_value=dictStatus,
+        ),
+    ]
+
+
+def _fresponsePostReconcile(clientHttp, dictStatus):
+    """POST the reconcile route with the container edges stubbed."""
+    import contextlib
+    with contextlib.ExitStack() as stackPatches:
+        for contextPatch in _flistBuildReconcilePatches(dictStatus):
+            stackPatches.enter_context(contextPatch)
+        return clientHttp.post(
+            f"/api/git/{S_CONTAINER_ID}/reconcile-remote-state",
+        )
+
+
+@pytest.mark.falsification
+def test_reconcile_remote_state_bumps_sync_epoch():
+    """The out-of-band-push repair action must repaint the dashboard.
+
+    An agent or a researcher who runs ``git push`` in the container
+    terminal produces no HTTP traffic at all, so this route is the
+    only thing that can tell an open tab that the remote moved.
+
+    Kills: dropping the ``fnBumpSyncEpoch`` call from the reconcile
+    route (``vaibify/gui/routes/gitRoutes.py``) leaves the epoch
+    unchanged, so the dashboard keeps rendering the pre-push state.
+    """
+    dictCtx = _fdictBuildEpochContext()
+    clientHttp = _fclientBuildEpochClient(dictCtx)
+    responseHttp = _fresponsePostReconcile(
+        clientHttp, _fdictBuildVerifyStatus(iTotalFiles=0),
+    )
+    assert responseHttp.status_code == 200
+    assert responseHttp.json()["bSuccess"] is True
+    assert _fiReadEpochFromStatePoll(clientHttp) == 1
+
+
+@pytest.mark.falsification
+def test_reconcile_marks_only_paths_the_verify_actually_covered():
+    """Sync status may only record what the verify proved.
+
+    ``iTotalFiles`` counts the declared canonical paths that existed
+    locally. When it falls short of the declared count the verify
+    never looked at some of them, and a file nobody looked at must
+    not be recorded as synced to GitHub.
+
+    Kills: relaxing the coverage equality in
+    ``_flistProvenGithubSyncedPaths`` (gitRoutes) to an inequality
+    lets a partial verify mark unexamined files as GitHub-synced.
+    """
+    dictCtx = _fdictBuildEpochContext()
+    dictWorkflow = dictCtx["workflows"][S_CONTAINER_ID]
+    dictWorkflow["listSteps"] = [{
+        "sName": "Alpha", "sDirectory": "Alpha",
+        "saOutputDataFiles": ["out.csv"],
+        "saPlotFiles": ["figure.pdf"],
+    }]
+    clientHttp = _fclientBuildEpochClient(dictCtx)
+    responseHttp = _fresponsePostReconcile(
+        clientHttp, _fdictBuildVerifyStatus(iTotalFiles=1),
+    )
+    assert responseHttp.status_code == 200
+    assert dictWorkflow.get("dictSyncStatus", {}) == {}
+
+
+def test_reconcile_records_the_files_the_verify_matched():
+    """Full coverage marks the matching paths and skips the diverged one."""
+    dictCtx = _fdictBuildEpochContext()
+    dictWorkflow = dictCtx["workflows"][S_CONTAINER_ID]
+    dictWorkflow["listSteps"] = [{
+        "sName": "Alpha", "sDirectory": "Alpha",
+        "saOutputDataFiles": ["out.csv"],
+        "saPlotFiles": ["figure.pdf"],
+    }]
+    clientHttp = _fclientBuildEpochClient(dictCtx)
+    responseHttp = _fresponsePostReconcile(
+        clientHttp,
+        _fdictBuildVerifyStatus(
+            listDiverged=[{"sPath": "Alpha/figure.pdf"}], iTotalFiles=2,
+        ),
+    )
+    assert responseHttp.status_code == 200
+    dictSyncStatus = dictWorkflow["dictSyncStatus"]
+    assert dictSyncStatus["Alpha/out.csv"]["bGithub"] is True
+    assert "Alpha/figure.pdf" not in dictSyncStatus

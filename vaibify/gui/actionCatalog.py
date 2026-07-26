@@ -329,6 +329,20 @@ LIST_AGENT_ACTIONS = [
                      "bypass the 30s fetch cache. Agent-safe: only "
                      "remote-tracking refs change; the working tree "
                      "is untouched."},
+    {"sName": "reconcile-remote-state", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/git/{sContainerId}/reconcile-remote-state",
+     "bAgentSafe": True,
+     "sDescription": "Run this after ANY push that did not go "
+                     "through vaibify — a plain 'git push' in the "
+                     "terminal, or a push from a script. Fetches "
+                     "origin, re-runs the GitHub content verify the "
+                     "Published (L2) cells read, records what the "
+                     "verify proved, and repaints the dashboard. "
+                     "Without it the researcher's screen keeps "
+                     "showing the pre-push state. No args. "
+                     "Agent-safe: read-side plus bookkeeping — the "
+                     "working tree is untouched."},
     {"sName": "pull-project-repo", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/git/{sContainerId}/pull-project-repo",
@@ -350,7 +364,10 @@ LIST_AGENT_ACTIONS = [
                      "the token owner matches the remote before pushing. "
                      "This is NOT a general 'git push' of existing "
                      "commits — to push code/commits, push the branch "
-                     "directly."},
+                     "directly, then ALWAYS follow with "
+                     "reconcile-remote-state: a push vaibify did not "
+                     "make leaves the dashboard showing the pre-push "
+                     "state until something reconciles it."},
     {"sName": "add-file-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/add-file",
