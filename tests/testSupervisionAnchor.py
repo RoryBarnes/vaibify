@@ -187,3 +187,32 @@ def test_anchor_never_lowers_itself(tmp_path, fixtureIsolatedHome):
 def test_absent_anchor_is_unknown_not_a_contradiction():
     """A missing anchor must never be read as evidence of tampering."""
     assert supervisionAnchor.fbAnchorContradictedBy({}, [], "") is False
+
+
+@pytest.mark.falsification
+def test_supervision_disabled_writes_no_host_anchor(
+    tmp_path, fixtureIsolatedHome,
+):
+    """An unsupervised project must leave no trace on the host.
+
+    The evidence summary runs on every status poll for every project.
+    Anchoring unconditionally accumulated one file per repository
+    forever, and made a legitimately deleted-and-recreated repo read
+    as tampered for the life of the stale anchor. It also wrote into
+    the developer's real home directory during test runs.
+
+    Kills: in attributionLog._fbHostAnchorConsistent, remove the
+    early return guarded by fbSupervisionEnabled.
+    """
+    pathRepo = tmp_path / "repo"
+    filesRepo = ffilesEnsureRepoFiles(str(pathRepo))
+    fnAppendFlag(filesRepo, "unattributed-modification", "fileA")
+    dictUnsupervised = {
+        "sProjectRepoPath": str(pathRepo),
+        "dictAiProvenance": {"dictSupervision": {"bEnabled": False}},
+    }
+
+    fdictSummarizeSupervisionEvidence(filesRepo, dictUnsupervised)
+
+    pathAnchors = fixtureIsolatedHome / ".vaibify" / "supervision"
+    assert not pathAnchors.exists() or not list(pathAnchors.iterdir())

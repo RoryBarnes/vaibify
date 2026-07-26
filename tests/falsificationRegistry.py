@@ -1779,4 +1779,15 @@ def _fdictEntry(sRel):
         new="""    if False:
         return""",
     ),
+    Falsification(
+        # Anchoring every polled project accumulates one host file per
+        # repository forever, makes a recreated repo read as tampered,
+        # and writes into the developer's home during test runs.
+        nodeid='tests/testSupervisionAnchor.py::test_supervision_disabled_writes_no_host_anchor',
+        source='vaibify/gui/attributionLog.py',
+        old="""    if not fbSupervisionEnabled(dictWorkflow or {}):
+        return True""",
+        new="""    if False:
+        return True""",
+    ),
 ]

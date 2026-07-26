@@ -379,9 +379,17 @@ def _fbHostAnchorConsistent(listFlags, dictWorkflow):
     Returns True when the anchor is absent (nothing to contradict) —
     absence of evidence is not evidence of tampering, and the anchor
     seeds itself on the first observation.
+
+    Nothing is read or written unless supervision is actually enabled
+    for this workflow. Anchoring every polled project would accumulate
+    a file per repository forever, and would make a legitimately
+    deleted-and-recreated repository read as tampered for the life of
+    the stale anchor.
     """
     from vaibify.gui import supervisionAnchor
 
+    if not fbSupervisionEnabled(dictWorkflow or {}):
+        return True
     sKey = supervisionAnchor.fsAnchorKeyFor(
         (dictWorkflow or {}).get("sProjectRepoPath") or "",
     )
