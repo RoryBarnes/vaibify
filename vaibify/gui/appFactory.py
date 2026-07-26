@@ -125,8 +125,13 @@ def fappCreateApplication(
 
     When ``iExpectedPort`` is non-zero, the SessionTokenMiddleware
     enforces a strict ``Host:`` header check (DNS rebinding defense).
-    CLI launchers pass the real bind port; test fixtures omit the
-    argument so TestClient's default ``testserver`` host is accepted.
+    ``0`` is the deliberate opt-out for the in-process test harness,
+    whose TestClient sends ``Host: testserver``; every production
+    launcher passes its real bind port, and
+    ``testProductionEntryPointsBindHostCheck`` fails CI if one stops
+    doing so. Omitting the state entirely fails closed in the
+    middleware — the sentinel must be chosen, never inherited by
+    accident.
     """
     dictConfig = {
         "sTitle": "Vaibify Workflow Viewer",

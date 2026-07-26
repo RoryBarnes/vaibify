@@ -12,6 +12,7 @@ from fastapi import Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.routing import Match
 
 from . import actionCatalog
 from . import containerOwnership
@@ -21,6 +22,7 @@ __all__ = [
     "SecurityHeadersMiddleware",
     "ActivityTrackingMiddleware",
     "fbIsAllowedHostHeader",
+    "fbRequestRidesAgentLane",
     "fnRegisterMiddleware",
 ]
 
@@ -74,6 +76,11 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
     ``X-Vaibify-Session`` header and reaches the backend through
     ``host.docker.internal``, so requests that present a valid agent
     token bypass the browser-oriented Host-header loopback check.
+
+    Authenticating as the agent is not the same as being allowed to act:
+    the agent lane is additionally filtered through the action catalog,
+    so a user-only action refused by ``vaibify-do`` cannot be reached by
+    calling the backend directly.
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -81,12 +88,59 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
             request.app.state, "dictContainerOwners", {},
         )
         if _fbAgentRequestAuthorized(request, dictContainerOwners):
+            if not _fbAgentLanePermitsRequest(request):
+                return _fresponseJsonError(
+                    403,
+                    "User-only action: ask the researcher to run it "
+                    "from the dashboard",
+                )
             return await call_next(request)
         if not _fbRequestHasAllowedHost(request):
             return _fresponseJsonError(400, "Invalid Host header")
         if _fbBrowserTokenRejected(request):
             return _fresponseJsonError(401, "Unauthorized")
         return await call_next(request)
+
+
+def fbRequestRidesAgentLane(request):
+    """Return True when this request authenticated as an in-container agent.
+
+    Exposed so a handler that must treat the agent differently from the
+    researcher's browser (the host-writing file pull, for instance) can
+    ask the same authority the middleware used, instead of re-deriving
+    the lane from raw headers.
+    """
+    dictContainerOwners = getattr(
+        request.app.state, "dictContainerOwners", {},
+    )
+    return _fbAgentRequestAuthorized(request, dictContainerOwners)
+
+
+def _fbAgentLanePermitsRequest(request):
+    """Return True when the catalog admits this request on the agent lane."""
+    return actionCatalog.fbAgentLanePermitsRoute(
+        request.method, _fsRouteTemplateForRequest(request),
+    )
+
+
+def _fsRouteTemplateForRequest(request):
+    """Return the path template of the route that will serve this request.
+
+    The middleware runs before routing, so the catalog lookup has only a
+    concrete URL to work with while the catalog is keyed by templates
+    like ``/api/files/{sContainerId}/pull``. Asking each registered
+    route whether it fully matches the request scope recovers the
+    template the router itself will choose. An unmatched request yields
+    ``""``, which the catalog treats as an unregistered route and fails
+    closed for state-mutating methods.
+    """
+    for route in request.app.routes:
+        if not hasattr(route, "matches"):
+            continue
+        matchResult, _ = route.matches(request.scope)
+        if matchResult == Match.FULL:
+            return getattr(route, "path", "")
+    return ""
 
 
 def _fbAgentRequestAuthorized(request, dictContainerOwners):
@@ -162,8 +216,20 @@ def _fresponseJsonError(iStatusCode, sDetail):
 
 
 def _fbRequestHasAllowedHost(request):
-    """Return True when the request Host header is a permitted loopback."""
-    iExpectedPort = getattr(request.app.state, "iExpectedPort", 0)
+    """Return True when the request Host header is a permitted loopback.
+
+    An application whose state was never initialised carries no
+    ``iExpectedPort`` at all. That is a misconfiguration, not a
+    deliberate opt-out, so it fails closed rather than silently
+    disabling the DNS-rebinding defence for every request the app
+    serves. The explicit value ``0`` remains the documented opt-out for
+    the in-process test harness, whose default ``Host`` is
+    ``testserver``; every production entry point passes its real bind
+    port, which ``testProductionEntryPointsBindHostCheck`` enforces.
+    """
+    iExpectedPort = getattr(request.app.state, "iExpectedPort", None)
+    if iExpectedPort is None:
+        return False
     if not iExpectedPort:
         return True
     sHostHeader = request.headers.get("host", "")

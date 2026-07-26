@@ -34,11 +34,17 @@ def _fsBuildPytestCommand(sDirectory, sFilePath):
 
 
 def _fnRegisterTestCommand(dictStep, bPassed, sFilePath):
-    """Add the pytest run command to the step if the test passed."""
+    """Add the pytest run command to the step if the test passed.
+
+    The path is shell-quoted because this command string is persisted
+    into ``saTestCommands`` and re-executed on every later test run: an
+    unquoted path carrying shell metacharacters would become a stored,
+    repeatedly-executed injection.
+    """
     if not bPassed:
         return
     dictStep.setdefault("saTestCommands", [])
-    sRunCmd = f"python -m pytest {sFilePath} -v"
+    sRunCmd = f"python -m pytest {fsShellQuote(sFilePath)} -v"
     if sRunCmd not in dictStep["saTestCommands"]:
         dictStep["saTestCommands"].append(sRunCmd)
 

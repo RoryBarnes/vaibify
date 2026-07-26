@@ -534,7 +534,8 @@ const PipeleyenApp = (function () {
     async function fnEnterNoWorkflow(sId) {
         try {
             var dictConnect = await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sId);
+                "/api/connect/" + sId +
+                "?sLeaseId=" + encodeURIComponent(fsGetLeaseId()));
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;

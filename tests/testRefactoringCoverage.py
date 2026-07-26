@@ -535,7 +535,7 @@ class TestFnRegisterTestCommand:
 
     def test_no_duplicate_registration(self):
         dictStep = {"saTestCommands": [
-            "python -m pytest tests/test_a.py -v"]}
+            "python -m pytest 'tests/test_a.py' -v"]}
         _fnRegisterTestCommand(dictStep, True, "tests/test_a.py")
         assert len(dictStep["saTestCommands"]) == 1
 

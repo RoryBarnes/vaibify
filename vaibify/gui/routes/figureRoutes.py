@@ -20,15 +20,22 @@ from ..pipelineServer import (
 def _flistBuildFigureCheckPaths(
     sAbsPath, sWorkdir, sDir, sFilePath,
 ):
-    """Build list of paths to check for figure existence."""
+    """Build the validated list of paths to probe for figure existence.
+
+    ``sWorkdir`` is a query parameter, so the workdir-relative fallback
+    is caller-controlled and must be jailed exactly as the GET path
+    jails its own fallback in ``_fbaFetchFallback``. Without that, the
+    HEAD probe's ``test -f`` answers existence questions about
+    arbitrary container paths — an oracle the GET route never granted.
+    """
     listPaths = [sAbsPath]
     if sWorkdir and not sFilePath.startswith("/"):
         if sWorkdir.startswith("/"):
-            listPaths.append(
-                posixpath.join(sWorkdir, sFilePath))
+            sFallback = posixpath.join(sWorkdir, sFilePath)
         else:
-            listPaths.append(
-                posixpath.join(sDir, sWorkdir, sFilePath))
+            sFallback = posixpath.join(sDir, sWorkdir, sFilePath)
+        listPaths.append(
+            fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))
     return listPaths
 
 
