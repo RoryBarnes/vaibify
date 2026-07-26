@@ -1635,6 +1635,130 @@ def testConftestTemplateHasVersionStamp():
     )
 
 
+# ---------------------------------------------------------------------
+# One derivation of the interactive flag.
+#
+# ``bInteractive`` decides a step's label, and the label is what the
+# researcher speaks and what an agent-issued command resolves. Truthiness
+# (``if step.bInteractive``), equality (``=== true``) and the normalizing
+# classifier DISAGREE on ``null``, on the string ``"false"`` and on an
+# absent key, so a second reader silently answers about a DIFFERENT step
+# than the ladder shows. ``pipelineUtils.fbStepIsInteractive`` and its JS
+# mirror are the only readers of the raw field; everything else asks them.
+# ---------------------------------------------------------------------
+
+# ``pipelineUtils`` holds the classifier itself; ``workflowMigrations``
+# is the load-time coercion that normalizes a legacy value exactly once.
+SET_RAW_INTERACTIVE_EXEMPT_PYTHON_FILES = {
+    "pipelineUtils.py",
+    "workflowMigrations.py",
+}
+
+# ``scriptUtilities.js`` holds the JS mirror of the classifier.
+SET_RAW_INTERACTIVE_EXEMPT_JS_FILES = {
+    "scriptUtilities.js",
+}
+
+_REGEX_RAW_INTERACTIVE_PYTHON = re.compile(
+    r"""\.get\(\s*["']bInteractive["']|\[\s*["']bInteractive["']\s*\]"""
+)
+
+_REGEX_RAW_INTERACTIVE_JS = re.compile(r"\.bInteractive\b")
+
+
+def _flistFindRawInteractiveReads(pathFile, regexRawRead):
+    """Return 'name:line: text' for each raw read of the persisted flag."""
+    listHits = []
+    for iNumber, sLine in enumerate(
+        fsReadSource(pathFile).splitlines(), start=1,
+    ):
+        if regexRawRead.search(sLine):
+            listHits.append(f"{pathFile.name}:{iNumber}: {sLine.strip()}")
+    return listHits
+
+
+def testInteractiveFlagHasExactlyOneClassifier():
+    """No module reads ``bInteractive`` raw; all ask the classifier.
+
+    Six JavaScript sites classified by truthiness while every other
+    reader classified by ``=== true``, and three Python sites read the
+    raw field with a ``False`` default. Those rules disagree on values
+    the field really takes -- ``null`` is the natural absent value of
+    the ``Optional[bool]`` API field, and the in-container agent edits
+    ``project.json`` by hand -- so the runner, the CLI, the clean-outputs
+    builder and the ladder could each answer about a different step.
+
+    Adding a new raw read is the regression this forbids: call
+    ``pipelineUtils.fbStepIsInteractive`` in Python and
+    ``VaibifyUtilities.fbStepIsInteractive`` in JavaScript instead.
+    """
+    listOffenders = []
+    for pathFile in sorted((REPO_ROOT / "vaibify").rglob("*.py")):
+        if pathFile.name in SET_RAW_INTERACTIVE_EXEMPT_PYTHON_FILES:
+            continue
+        listOffenders += _flistFindRawInteractiveReads(
+            pathFile, _REGEX_RAW_INTERACTIVE_PYTHON,
+        )
+    for pathFile in sorted(STATIC_DIR.glob("*.js")):
+        if pathFile.name in SET_RAW_INTERACTIVE_EXEMPT_JS_FILES:
+            continue
+        listOffenders += _flistFindRawInteractiveReads(
+            pathFile, _REGEX_RAW_INTERACTIVE_JS,
+        )
+    assert listOffenders == [], (
+        "These sites read the persisted bInteractive field directly "
+        "instead of asking the single classifier "
+        "(pipelineUtils.fbStepIsInteractive / "
+        "VaibifyUtilities.fbStepIsInteractive). A raw read classifies "
+        "null, \"false\" and a missing key differently from the step "
+        "ladder, so it can answer about the wrong step:\n  "
+        + "\n  ".join(listOffenders)
+    )
+
+
+def testGeneratedConftestTranscribesTheHostStepLabeller():
+    """The container conftest carries a COPY of the host label rule.
+
+    The generated conftest runs inside the container, which has no
+    vaibify install to import from, so the rule cannot be called across
+    the boundary -- the same constraint that makes
+    ``introspectionScript.py`` duplicate ``dataLoaders.py``. Transcribing
+    ``pipelineUtils``' own source keeps that copy honest: the container
+    and the dashboard must produce IDENTICAL labels for every value the
+    flag really takes, or a marker written in the container names a
+    different step than the badge the researcher sees.
+
+    Executed, not pattern-matched: the generated source is compiled and
+    run, and its labeller is compared against the host's.
+    """
+    from vaibify.gui import conftestManager, pipelineUtils
+    sSource = conftestManager.fsBuildConftestSource("/workspace/repo")
+    dictNamespace = {}
+    exec(compile(sSource, "<generated-conftest>", "exec"), dictNamespace)
+    assert "flistComputeAllStepLabels" in dictNamespace, (
+        "the generated conftest must define the transcribed labeller; "
+        "without it _fsLabelWithinWorkflow falls back to an inline "
+        "derivation, which is what the AGENTS.md label trap forbids"
+    )
+    listFlagValues = [
+        True, False, None, "true", "false", "", 0, 1, "0", "yes",
+    ]
+    listSteps = [
+        {"bInteractive": valueFlag} for valueFlag in listFlagValues
+    ] + [{"sName": "no flag at all"}]
+    listContainerLabels = dictNamespace["flistComputeAllStepLabels"](
+        listSteps,
+    )
+    listHostLabels = pipelineUtils.flistComputeAllStepLabels(listSteps)
+    assert listContainerLabels == listHostLabels, (
+        "the container conftest labels steps differently from the "
+        f"dashboard: container={listContainerLabels} "
+        f"host={listHostLabels}. The transcription in "
+        "conftestManager._fsTranscribeStepLabelDerivation has drifted "
+        "from pipelineUtils."
+    )
+
+
 # The conftest template body lives as a string literal inside
 # ``conftestManager.py`` and is exec'd inside containers; treat it as
 # exempt by file name. Documentation references that use angle-bracket
@@ -2628,6 +2752,278 @@ def testWebSocketRoutesResolveIdToNameBeforeGate():
         )
 
 
+# ---------------------------------------------------------------------
+# Documented guarantee => enforcement point.
+#
+# Nearly every defect the 2026-07 review found was a guarantee stated in
+# prose that no code enforced: the catalog's ``bAgentSafe`` flag was
+# metadata, the import route's docstring promised unreachability with no
+# gate behind it, and architecture.md described an ownership check the
+# connect handler did not perform. The suite stayed green throughout,
+# because no fixture drove the boundary. The two invariants below make a
+# prose promise fail CI when nothing implements it.
+# ---------------------------------------------------------------------
+
+# A registrar docstring that says the route touches host FILES is a
+# promise about the agent lane; the promise needs a gate. Deliberately
+# narrow: "host keyring", "host clock" and "host-log-tail" are not
+# arbitrary-file access and must not trip this.
+_REGEX_HOST_FILESYSTEM_CLAIM = re.compile(
+    r"host file(?:system)?s?\b|home-directory file", re.IGNORECASE,
+)
+
+# Either guard is acceptable: one refuses the agent outright, the other
+# confines what the agent may reach. Both consult the same lane
+# authority the middleware used rather than re-reading raw headers.
+_T_AGENT_LANE_GUARD_NAMES = (
+    "_fnRejectAgentTokenLane",
+    "fbRequestRidesAgentLane",
+)
+
+
+def _fbRegistersApplicationRoute(nodeFunction):
+    """Return True when a nested function carries an ``@app.<method>``."""
+    return any(
+        ast.unparse(decorator).startswith("app.")
+        for decorator in nodeFunction.decorator_list
+    )
+
+
+def _flistCollectRouteRegistrars(pathModule):
+    """Return (node, sSegment, sDocumentation) for each route registrar.
+
+    A registrar is a top-level function that registers at least one
+    handler with an ``@app.<method>`` decorator. The documentation is the
+    registrar's docstring joined with every nested handler's, because the
+    claim about what a route touches is written in either place.
+    """
+    sSource, treeAst = ftParseFile(pathModule)
+    listLines = sSource.splitlines()
+    listRegistrars = []
+    for node in treeAst.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        listNested = [
+            nodeChild for nodeChild in ast.walk(node)
+            if isinstance(nodeChild, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and nodeChild is not node
+        ]
+        if not any(_fbRegistersApplicationRoute(n) for n in listNested):
+            continue
+        sDocumentation = " ".join(
+            [ast.get_docstring(node) or ""]
+            + [ast.get_docstring(n) or "" for n in listNested]
+        )
+        listRegistrars.append((
+            node,
+            "\n".join(listLines[node.lineno - 1:node.end_lineno]),
+            # Collapsed to one line: a docstring wraps wherever it fits,
+            # so "reads the HOST\nfilesystem" must still match.
+            re.sub(r"\s+", " ", sDocumentation),
+        ))
+    return listRegistrars
+
+
+def testHostFilesystemRoutesRejectTheAgentLane():
+    """A route documented as touching host files must gate the agent lane.
+
+    ``project-context/import`` reads the HOST filesystem and said so in
+    its own docstring -- "an agent-invokable host read would let a
+    compromised in-container agent pull arbitrary home-directory files
+    into a public repository" -- while its only gate was a Docker
+    liveness check. The imported bytes land at ``.vaibify/AGENTS.md``,
+    which the agent-safe read and push actions then expose.
+
+    Catalog exclusion is metadata, not a gate. This invariant fails when
+    a THIRD such route appears without ``_fnRejectAgentTokenLane`` (which
+    refuses the lane) or ``fbRequestRidesAgentLane`` (which confines it),
+    so the promise can never again outrun its enforcement.
+    """
+    listOffenders = []
+    iClaimingRoutes = 0
+    for pathModule in sorted(GUI_DIR.rglob("*Routes.py")):
+        for node, sSegment, sDocumentation in _flistCollectRouteRegistrars(
+            pathModule,
+        ):
+            matchClaim = _REGEX_HOST_FILESYSTEM_CLAIM.search(sDocumentation)
+            if matchClaim is None:
+                continue
+            iClaimingRoutes += 1
+            if any(
+                sGuard + "(" in sSegment
+                for sGuard in _T_AGENT_LANE_GUARD_NAMES
+            ):
+                continue
+            listOffenders.append(
+                f"{pathModule.name}:{node.lineno}: {node.name} documents "
+                f"host-filesystem access ({matchClaim.group(0)!r}) but "
+                f"calls none of {_T_AGENT_LANE_GUARD_NAMES}"
+            )
+    assert listOffenders == [], (
+        "A route whose documentation promises the agent cannot reach "
+        "host files must enforce that promise at the route. Call "
+        "_fnRejectAgentTokenLane(requestHttp) as the handler's first "
+        "statement, or confine the agent with fbRequestRidesAgentLane:"
+        "\n  " + "\n  ".join(listOffenders)
+    )
+    assert iClaimingRoutes >= 2, (
+        f"only {iClaimingRoutes} route registrars matched the "
+        "host-filesystem trigger; the project-context import and the "
+        "personal-layer hash routes must both match, otherwise this "
+        "invariant has quietly become a no-op"
+    )
+
+
+_REGEX_EXCLUDED_PATH_TUPLE = re.compile(
+    r'^\s*\(\s*"(?P<method>[A-Z]+)"\s*,\s*"(?P<path>[^"]+)"\s*\)'
+)
+
+
+def _flistCollectExcludedPathRationales():
+    """Return (sPath, sRationale) for each intentionally-excluded route.
+
+    The rationale is the contiguous comment block written directly above
+    the path tuple -- the convention ``AGENTS.md`` requires for an
+    exclusion. Read from source rather than from the frozenset because a
+    frozenset carries no comments.
+    """
+    listLines = fsReadSource(
+        GUI_DIR / "actionCatalog.py",
+    ).splitlines()
+    listRationales = []
+    listComment = []
+    bInsideExclusions = False
+    for sLine in listLines:
+        if sLine.startswith("SET_INTENTIONALLY_EXCLUDED_PATHS"):
+            bInsideExclusions = True
+            continue
+        if not bInsideExclusions:
+            continue
+        if sLine.startswith("})"):
+            break
+        if sLine.strip().startswith("#"):
+            listComment.append(sLine.strip().lstrip("# "))
+            continue
+        matchTuple = _REGEX_EXCLUDED_PATH_TUPLE.match(sLine)
+        if matchTuple is not None:
+            listRationales.append(
+                (matchTuple.group("path"), " ".join(listComment)),
+            )
+        listComment = []
+    return listRationales
+
+
+def _fsFindRegistrarSegmentForPath(sPath):
+    """Return the source of the registrar that registers ``sPath``."""
+    for pathModule in sorted(GUI_DIR.rglob("*Routes.py")):
+        for _node, sSegment, _sDoc in _flistCollectRouteRegistrars(
+            pathModule,
+        ):
+            if '"' + sPath + '"' in sSegment:
+                return sSegment
+    return ""
+
+
+def testCatalogHostFilesystemRationalesHaveAnEnforcementPoint():
+    """A catalog exclusion citing host files must be enforced at the route.
+
+    The exclusion set is documentation: ``fbAgentLanePermitsRoute``
+    consults it, but the rationale beside each entry is prose an author
+    can write without wiring anything. Where that prose says the route
+    reaches HOST files, the handler itself must also refuse or confine
+    the agent lane -- defence in depth, and the difference between a
+    promise and a guarantee. This is the second reading of the same
+    claim: the route docstring is checked by
+    ``testHostFilesystemRoutesRejectTheAgentLane``; deleting either
+    wording alone must not silently drop the requirement.
+    """
+    listOffenders = []
+    iClaimingRoutes = 0
+    for sPath, sRationale in _flistCollectExcludedPathRationales():
+        if _REGEX_HOST_FILESYSTEM_CLAIM.search(sRationale) is None:
+            continue
+        iClaimingRoutes += 1
+        sSegment = _fsFindRegistrarSegmentForPath(sPath)
+        if not sSegment:
+            listOffenders.append(
+                f"{sPath}: excluded with a host-filesystem rationale "
+                f"but no registrar in vaibify/gui registers it"
+            )
+            continue
+        if not any(
+            sGuard + "(" in sSegment
+            for sGuard in _T_AGENT_LANE_GUARD_NAMES
+        ):
+            listOffenders.append(
+                f"{sPath}: the catalog rationale says it reaches host "
+                f"files, but the route calls none of "
+                f"{_T_AGENT_LANE_GUARD_NAMES}"
+            )
+    assert listOffenders == [], (
+        "Catalog exclusion is metadata, not a gate. A route excluded "
+        "because it touches host files must ALSO reject the agent lane "
+        "at the handler:\n  " + "\n  ".join(listOffenders)
+    )
+    assert iClaimingRoutes >= 2, (
+        f"only {iClaimingRoutes} catalog exclusions matched the "
+        "host-filesystem trigger; project-context/import and "
+        "personal-layer/hash must both match, otherwise this invariant "
+        "has quietly become a no-op"
+    )
+
+
+def testConnectHandlerGatesOnTheOwningLease():
+    """Connect authorizes through the shared guard, after id->name.
+
+    ``architecture.md`` named the owner-of-record map the sole authority
+    that claim, connect and both WebSocket gates consult. Connect
+    consulted nothing: it took no lease, so a second tab bypassed the
+    claim route's 409 and took the workflow, the project-repo path and
+    the container's agent session. ``testWebSocketGates...`` proves the
+    module imports the guard; this proves the handler CALLS it, and that
+    the docker id is resolved to the name-keyed map's key first.
+    """
+    sSource, treeAst = ftParseFile(ROUTES_DIR / "workflowRoutes.py")
+    dictFunctionByName = {
+        node.name: node for node in ast.walk(treeAst)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    nodeConnect = dictFunctionByName.get("fnConnect")
+    assert nodeConnect is not None, (
+        "workflowRoutes must still register a connect handler named "
+        "fnConnect"
+    )
+    sConnectBody = ast.unparse(nodeConnect)
+    assert "_fnRequireOwningLeaseForConnect" in sConnectBody, (
+        "fnConnect must call _fnRequireOwningLeaseForConnect; without "
+        "it a second browser tab connects to a container another "
+        "session owns and the claim route's 409 means nothing"
+    )
+    assert "requestHttp" in {
+        arg.arg for arg in nodeConnect.args.args
+    }, (
+        "fnConnect must accept the Request so the presented lease is "
+        "visible to the gate"
+    )
+    nodeGate = dictFunctionByName.get("_fnRequireOwningLeaseForConnect")
+    assert nodeGate is not None, (
+        "workflowRoutes must define _fnRequireOwningLeaseForConnect"
+    )
+    sGateBody = ast.unparse(nodeGate)
+    iResolve = sGateBody.find("fsContainerNameForId(")
+    iLease = sGateBody.find("fbCheckLeaseOwnership(")
+    assert iResolve != -1 and iLease != -1, (
+        "the connect gate must resolve the docker id to the container "
+        "name and then consult webSocketAuthorization."
+        "fbCheckLeaseOwnership -- never an inlined membership check"
+    )
+    assert iResolve < iLease, (
+        "the connect gate must call fsContainerNameForId BEFORE "
+        "fbCheckLeaseOwnership; the owner map is name-keyed, so an "
+        "id-keyed lookup silently misses and refuses every real session"
+    )
+
+
 def testPerContainerLiveConnectionCounterHasProductionDriver():
     """The per-container live-connection counter is driven from source.
 
@@ -2766,7 +3162,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a permanent flag, and reports container-vs-host clock skew.
     # _flistRecentWatchedChanges and _flistRepoRelativePaths are
     # extractions from functions this lane grew, not additions.
-    "routes/pipelineRoutes.py": 2721,
+    # +1 (2026-07-26): a top-level import of the single interactive-flag
+    # classifier. The clean-outputs builder read ``bInteractive`` raw,
+    # so a string or null flag made it skip — or wipe — a different set
+    # of steps than the ladder shows.
+    "routes/pipelineRoutes.py": 2722,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the

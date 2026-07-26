@@ -3,6 +3,8 @@
 var PipeleyenPipelineRunner = (function () {
     "use strict";
 
+    var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
+
     var iPreviousOutputCount = 0;
     var _iActiveSentinelMonitor = null;
     var _sStreamingViewer = null;
@@ -635,7 +637,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
-        if (step.bInteractive) {
+        if (fbStepIsInteractive(step)) {
             fnRunInteractiveStep(iIndex);
             return;
         }
@@ -651,7 +653,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
-        if (!step.bInteractive) {
+        if (!fbStepIsInteractive(step)) {
             _fnDispatchSingleStep(iIndex, "dataOnly");
             return;
         }
@@ -668,7 +670,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
-        if (!step.bInteractive) {
+        if (!fbStepIsInteractive(step)) {
             _fnDispatchSingleStep(iIndex, "plotsOnly");
             return;
         }
@@ -738,7 +740,7 @@ var PipeleyenPipelineRunner = (function () {
         var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
-        if (!step.bInteractive) {
+        if (!fbStepIsInteractive(step)) {
             _fnDispatchSingleStep(iIndex, "full");
             return;
         }
@@ -836,7 +838,7 @@ var PipeleyenPipelineRunner = (function () {
                 "pause at each one for your input.";
         }
         var bHasMiddle = dictWorkflow.listSteps.some(
-            function (step) { return step.bInteractive; }
+            function (step) { return fbStepIsInteractive(step); }
         );
         if (bHasMiddle) {
             return "\n\nThe pipeline contains interactive steps " +
@@ -850,7 +852,7 @@ var PipeleyenPipelineRunner = (function () {
         if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
         var iCount = 0;
         for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
-            if (!dictWorkflow.listSteps[i].bInteractive) break;
+            if (!fbStepIsInteractive(dictWorkflow.listSteps[i])) break;
             iCount++;
         }
         return iCount;

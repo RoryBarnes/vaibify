@@ -48,7 +48,7 @@ const PipeleyenStepEditor = (function () {
         document.getElementById("inputStepDirectory").value =
             dictStep.sDirectory || "";
         document.getElementById("inputInteractive").checked =
-            dictStep.bInteractive === true;
+            VaibifyUtilities.fbStepIsInteractive(dictStep);
         document.getElementById("inputPlotOnly").checked =
             dictStep.bPlotOnly !== false;
         document.getElementById("inputSetupCommands").value =

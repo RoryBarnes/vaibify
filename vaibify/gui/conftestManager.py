@@ -14,11 +14,14 @@ __all__ = [
     "fnMigrateFlatMarkers",
 ]
 
+import inspect
 import json
 import logging
 import posixpath
 import re
 from collections import OrderedDict
+
+from . import pipelineUtils
 
 
 logger = logging.getLogger("vaibify")
@@ -37,7 +40,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # The constant is embedded in every generated file as a comment line
 # beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
 # stale copies without parsing the source.
-S_CONFTEST_VERSION = "4"
+S_CONFTEST_VERSION = "5"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
@@ -121,7 +124,42 @@ def fsBuildConftestSource(sProjectRepoPath):
         sProjectRepoPath=sProjectRepoPath,
     )
     return (
-        _fsVersionStampLine() + sPrologue + _CONFTEST_MARKER_TEMPLATE
+        _fsVersionStampLine() + sPrologue
+        + _fsTranscribeStepLabelDerivation()
+        + _CONFTEST_MARKER_TEMPLATE
+    )
+
+
+def _fsTranscribeStepLabelDerivation():
+    """Return the HOST label derivation's own source, for the container.
+
+    The conftest runs inside the container, which has no vaibify
+    install to import from, so the step-label rule cannot be called
+    across the boundary. Transcribing
+    ``pipelineUtils.fbStepIsInteractive`` and
+    ``flistComputeAllStepLabels`` verbatim keeps the container's
+    labels identical to the dashboard's by construction: the container
+    gets a copy of the one derivation rather than a second one, and a
+    change to the classifier propagates on the next conftest refresh.
+    Appended after the prologue is formatted because the transcribed
+    source contains format braces of its own.
+    """
+    try:
+        sClassifier = inspect.getsource(
+            pipelineUtils.fbStepIsInteractive)
+        sLabeller = inspect.getsource(
+            pipelineUtils.flistComputeAllStepLabels)
+    except (OSError, TypeError) as error:
+        raise RuntimeError(
+            "Cannot transcribe the step-label derivation into the "
+            "container conftest because vaibify's own source is "
+            f"unreadable ({error}). Install vaibify from a source "
+            "distribution rather than a zipped one."
+        )
+    return (
+        "_T_INTERACTIVE_FALSE_TOKENS = "
+        + repr(pipelineUtils._T_INTERACTIVE_FALSE_TOKENS) + "\n"
+        + sClassifier + "\n" + sLabeller + "\n\n"
     )
 
 
@@ -692,19 +730,19 @@ def _fsLabelForStep(sStepDirRel):
 
 
 def _fsLabelWithinWorkflow(dictWorkflow, sStepDirRel):
-    """Return sLabel for sStepDirRel within one workflow, or empty."""
+    """Return sLabel for sStepDirRel within one workflow, or empty.
+
+    Labels come from the transcribed host derivation
+    (flistComputeAllStepLabels), never from an inline count, so a
+    marker written in the container names the same step the dashboard
+    names.
+    """
     listSteps = dictWorkflow.get("listSteps", [])
+    listLabels = flistComputeAllStepLabels(listSteps)
     for iIndex, dictStep in enumerate(listSteps):
         sCandidate = _fsStepDirRepoRel(dictStep.get("sDirectory", ""))
-        if sCandidate != sStepDirRel:
-            continue
-        bInteractive = dictStep.get("bInteractive", False)
-        sPrefix = "I" if bInteractive else "A"
-        iCount = sum(
-            1 for j in range(iIndex + 1)
-            if listSteps[j].get("bInteractive", False) == bInteractive
-        )
-        return "{}{:02d}".format(sPrefix, iCount)
+        if sCandidate == sStepDirRel:
+            return listLabels[iIndex]
     return ""
 
 

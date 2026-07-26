@@ -417,10 +417,12 @@ def test_boundary_signature_distinguishes_count_and_interactive_mix():
     assert "listSteps.length" in sBlock, (
         "Boundary signature must mix step count into the key."
     )
-    assert ".bInteractive" in sBlock, (
+    assert "fbStepIsInteractive" in sBlock, (
         "Boundary signature must distinguish interactive from "
-        "automated steps; otherwise inserting an interactive step "
-        "would skip the structural-change fallback."
+        "automated steps through the single classifier; otherwise "
+        "inserting an interactive step would skip the "
+        "structural-change fallback, and a raw read would classify "
+        "a string or null flag differently from the renderer."
     )
 
 

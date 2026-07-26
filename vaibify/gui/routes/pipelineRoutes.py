@@ -14,6 +14,7 @@ from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDiscon
 
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
+from ..pipelineUtils import fbStepIsInteractive
 from ..pipelineServer import (
     WORKSPACE_ROOT,
     fdictRequireWorkflow,
@@ -131,7 +132,7 @@ def _flistBuildCleanCommands(dictWorkflow):
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     listCleanCommands = []
     for dictStep in dictWorkflow.get("listSteps", []):
-        if dictStep.get("bInteractive", False):
+        if fbStepIsInteractive(dictStep):
             continue
         sDir = dictStep.get("sDirectory", "")
         for sKey in ("saOutputDataFiles", "saPlotFiles"):
