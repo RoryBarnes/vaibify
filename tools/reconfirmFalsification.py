@@ -72,7 +72,22 @@ def _fiRunTest(sNodeId):
 
 
 def _fbMutationCompiles(sMutated, pathSource):
-    """Return True when the mutated source still parses as Python."""
+    """Return True when the mutated source is still syntactically valid.
+
+    The check exists to separate "the test failed because of the
+    mutation" from "the test failed because the file no longer
+    parses". That distinction is only checkable here for Python;
+    a registry entry may legitimately target a non-Python source (the
+    JavaScript slug mirror, a shell hook), and running Python's
+    ``compile`` over those reports a SyntaxError for every mutation,
+    turning a genuine kill into a spurious ERROR.
+
+    Non-Python sources are therefore accepted unparsed. They are not
+    unchecked: the kill still requires pytest to exit 1 on an
+    assertion, and any other exit code is reported as an error.
+    """
+    if pathSource.suffix != ".py":
+        return True
     try:
         compile(sMutated, str(pathSource), "exec")
         return True
