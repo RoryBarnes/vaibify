@@ -1779,4 +1779,70 @@ def _fdictEntry(sRel):
         new="""    if False:
         return""",
     ),
+    Falsification(
+        # The one reconcile action that left the screen un-repainted.
+        nodeid='tests/testSyncEpoch.py::test_verify_remote_bumps_sync_epoch',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old="""        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictStatus""",
+        new="""        return dictStatus""",
+    ),
+    Falsification(
+        # An out-of-band push produces no HTTP traffic; this route is
+        # the only thing that can invalidate an open tab.
+        nodeid='tests/testSyncEpoch.py::test_reconcile_remote_state_bumps_sync_epoch',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old="""        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictResponse""",
+        new="""        )
+        return dictResponse""",
+    ),
+    Falsification(
+        # A file the verify never looked at must not be recorded as
+        # synced; equality on the coverage count is what enforces it.
+        nodeid='tests/testSyncEpoch.py::test_reconcile_marks_only_paths_the_verify_actually_covered',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='    if dictStatus.get("iTotalFiles") != len(listCanonical):',
+        new='    if dictStatus.get("iTotalFiles") > len(listCanonical):',
+    ),
+    Falsification(
+        # Sleeping a full cadence first is a first pass the 30-minute
+        # idle shutdown guarantees never happens.
+        nodeid='tests/testScheduledReverify.py::test_first_reverify_pass_does_not_wait_a_full_cadence',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""    if fElapsed is None:
+        return fStartupDelay""",
+        new="""    if fElapsed is None:
+        return max(float(fHoursCadence), 0.0) * 3600.0""",
+    ),
+    Falsification(
+        # Without the remaining-cadence term every restart re-verifies
+        # every remote within minutes.
+        nodeid='tests/testScheduledReverify.py::test_restart_resumes_the_cadence_instead_of_restarting_it',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    return max(fRemaining, fStartupDelay)',
+        new='    return fStartupDelay',
+    ),
+    Falsification(
+        # Inverting the guard skips every real workflow entry, so the
+        # scheduled pass invalidates nothing.
+        nodeid='tests/testScheduledReverify.py::test_completed_pass_bumps_every_touched_container_sync_epoch',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""        if isinstance(entryWorkflow, dict):
+            continue
+        fnBumpSyncEpoch(dictCtx, entryWorkflow[0])""",
+        new="""        if not isinstance(entryWorkflow, dict):
+            continue
+        fnBumpSyncEpoch(dictCtx, entryWorkflow[0])""",
+    ),
+    Falsification(
+        # No stamp means the cadence restarts on every hub start and
+        # the dashboard can never say "never run".
+        nodeid='tests/testScheduledReverify.py::test_a_completed_pass_persists_its_stamp',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""        fnRecordLastReverifyIso(_fsBuildIsoTimestamp())
+        _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows)""",
+        new="""        _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows)""",
+    ),
 ]

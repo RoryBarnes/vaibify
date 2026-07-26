@@ -2797,7 +2797,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # files, plus the switch of the push route onto githubMirror's
     # hardened token resolver. Both belong to the credential-bearing
     # sync family this module already owns.
-    "routes/syncRoutes.py": 2406,
+    # +27 (2026-07-26): verify-remote now bumps the sync epoch (the
+    # one reconcile action that left the screen un-repainted), and
+    # the read-only reverify-schedule endpoint makes "the background
+    # loop never ran" visible instead of implied.
+    "routes/syncRoutes.py": 2433,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -2973,7 +2977,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # enforcement point for bAgentSafe, which until now existed only as
     # client-side advice in vaibify-do. It belongs beside the data it
     # decides on; the catalog stays one cohesive responsibility.
-    "actionCatalog.py": 914,
+    # +17 (2026-07-26): the reconcile-remote-state entry plus the
+    # push-to-github description that now names it. One catalog
+    # entry per researcher-invokable action is this module's whole
+    # job; the growth is the job being done.
+    "actionCatalog.py": 931,
+    # +105 (2026-07-26): reconcile-remote-state — the one action that
+    # repairs the dashboard after a push vaibify did not make (an
+    # agent or a terminal 'git push'). It is fetch + verify-cache
+    # refresh + sync-status bookkeeping + epoch bump, and every one
+    # of those parts already lives here: the fetch cache, the fetch
+    # runner, and the remote-heads view are this module's, and a
+    # sibling route module may not import them. Same cohesive
+    # responsibility — reconciling the dashboard with origin — not a
+    # second concern.
+    "routes/gitRoutes.py": 845,
 }
 
 

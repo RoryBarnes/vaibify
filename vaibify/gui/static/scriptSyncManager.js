@@ -2454,15 +2454,47 @@ var VaibifySyncManager = (function () {
         await Promise.all(listPromises);
     }
 
+    var _dictReverifySchedule = {};
+
+    function _fsRenderReverifyScheduleHtml() {
+        /* The background loop rewrites the same verify cache these
+           rows read. Saying when it last completed a pass — and
+           saying "never" when it never has — keeps a stale row from
+           implying that something is keeping it current. */
+        var sWhen = _dictReverifySchedule.bEverRan
+            ? _fsHumanizeAge(_dictReverifySchedule.sLastReverifyIso)
+                .replace("verified", "ran")
+            : "never run";
+        var fHours = _dictReverifySchedule.fHoursCadence;
+        var sCadence = typeof fHours === "number" && fHours > 0
+            ? " (every " + fHours + "h)" : "";
+        return '<div class="sync-reverify-schedule">' +
+            'Background re-verify: ' +
+            VaibifyUtilities.fnEscapeHtml(sWhen + sCadence) +
+            '</div>';
+    }
+
     function _fnRedrawRemoteSyncPanel(sContainerId, elContainer) {
         if (!elContainer) return;
         var sHtml = '<div class="sync-remote-panel">' +
             _LIST_VERIFY_SERVICES.map(function (sService) {
                 return _fsRenderRemoteRowHtml(
                     sService, _dictVerifyStatusCache[sService]);
-            }).join("") + '</div>';
+            }).join("") +
+            _fsRenderReverifyScheduleHtml() + '</div>';
         elContainer.innerHTML = sHtml;
         _fnBindReverifyButtons(sContainerId, elContainer);
+    }
+
+    async function _fnLoadReverifySchedule(sContainerId) {
+        try {
+            _dictReverifySchedule = await VaibifyApi.fdictGet(
+                "/api/sync/" + encodeURIComponent(sContainerId) +
+                "/reverify-schedule"
+            ) || {};
+        } catch (error) {
+            _dictReverifySchedule = {};
+        }
     }
 
     function _fnBindReverifyButtons(sContainerId, elContainer) {
@@ -2559,6 +2591,7 @@ var VaibifySyncManager = (function () {
                 'Loading sync status\u2026</div>';
         }
         await _fnLoadAllVerifyStatus(sContainerId);
+        await _fnLoadReverifySchedule(sContainerId);
         _fnRedrawRemoteSyncPanel(sContainerId, elContainer);
     }
 

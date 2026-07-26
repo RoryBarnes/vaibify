@@ -2171,7 +2171,14 @@ def _fsRedactRemoteError(sMessage):
 
 
 def _fnRegisterRemoteVerify(app, dictCtx):
-    """Register POST /api/sync/{id}/{sService}/verify endpoint."""
+    """Register POST /api/sync/{id}/{sService}/verify endpoint.
+
+    A completed verify rewrites the cached remote status the Level-2
+    cells and per-file badges read, so it bumps the sync epoch — the
+    dashboard's only poll-free invalidation signal. Without the bump
+    the one action that reconciles the screen with the remote is also
+    the one action that leaves the screen un-repainted.
+    """
 
     @fnAgentAction("verify-remote")
     @app.post("/api/sync/{sContainerId}/{sService}/verify")
@@ -2185,7 +2192,7 @@ def _fnRegisterRemoteVerify(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow,
         )
         try:
-            return await asyncio.to_thread(
+            dictStatus = await asyncio.to_thread(
                 fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
                 filesRepo,
             )
@@ -2193,6 +2200,8 @@ def _fnRegisterRemoteVerify(app, dictCtx):
             raise
         except Exception as errorAny:
             _fnRaiseVerifyError(errorAny, sService)
+        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictStatus
 
 
 def _fnRegisterRemoteVerifyStatus(app, dictCtx):
@@ -2212,6 +2221,23 @@ def _fnRegisterRemoteVerifyStatus(app, dictCtx):
         return await asyncio.to_thread(
             scheduledReverify.fdictReadCachedSyncStatus,
             filesRepo, sService,
+        )
+
+
+def _fnRegisterReverifySchedule(app, dictCtx):
+    """Register GET /api/sync/{sContainerId}/reverify-schedule.
+
+    Exposes when the background re-verify loop last completed a pass.
+    Read-only, and honest about never having run: without it a stale
+    per-service age is indistinguishable from a cache the loop is
+    keeping current.
+    """
+    from vaibify.reproducibility import scheduledReverify
+
+    @app.get("/api/sync/{sContainerId}/reverify-schedule")
+    async def fnGetReverifySchedule(sContainerId: str):
+        return await asyncio.to_thread(
+            scheduledReverify.fdictDescribeReverifySchedule,
         )
 
 
@@ -2378,6 +2404,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterDatasetDownload(app, dictCtx)
     _fnRegisterRemoteVerify(app, dictCtx)
     _fnRegisterRemoteVerifyStatus(app, dictCtx)
+    _fnRegisterReverifySchedule(app, dictCtx)
     _fnRegisterArxivConfigure(app, dictCtx)
     _fnRegisterScheduledReverify(app, dictCtx)
     _fnRegisterEphemeralSecretSweep(app)

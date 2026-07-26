@@ -100,10 +100,15 @@ var VaibifyPolling = (function () {
 
     var _iLastSyncEpoch = null;
 
-    /* A sync-mutating route (push, pull, fetch, refresh-remotes)
-       bumps the server-side epoch. Detecting the bump here triggers
-       exactly one badge refresh — no extra polling loops and no
-       remote git queries on a timer. */
+    /* A sync-mutating route (push, pull, fetch, refresh-remotes,
+       verify-remote, reconcile-remote-state) bumps the server-side
+       epoch, as does a completed pass of the background re-verify
+       loop. Detecting the bump here triggers exactly one badge
+       refresh — no extra polling loops and no remote git queries on
+       a timer. The cached remote-verify results are dropped at the
+       same moment: several of those producers rewrite exactly that
+       cache, and a panel still holding the pre-bump copy would show
+       the researcher a verification that has since been superseded. */
     function _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictState) {
         var iEpoch = dictState ? dictState.iSyncEpoch : undefined;
         if (typeof iEpoch !== "number") return;
@@ -114,6 +119,11 @@ var VaibifyPolling = (function () {
         if (typeof VaibifyGitBadges !== "undefined" &&
             typeof VaibifyGitBadges.fnRefresh === "function") {
             VaibifyGitBadges.fnRefresh(sContainerId);
+        }
+        if (typeof VaibifySyncManager !== "undefined" &&
+            typeof VaibifySyncManager.fnInvalidateVerifyCache ===
+                "function") {
+            VaibifySyncManager.fnInvalidateVerifyCache();
         }
     }
 
