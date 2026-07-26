@@ -3,6 +3,7 @@
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import posixpath
 
 from fastapi import HTTPException, Request
 
@@ -22,7 +23,10 @@ from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     SaveAndRunTestRequest,
     TestGenerateRequest,
+    WORKSPACE_ROOT,
     fdictRequireWorkflow,
+    fnRejectWriteDenylistedPath,
+    fnValidatePathWithinRoot,
     _fsSanitizeServerError,
 )
 from ..testStatusManager import (
@@ -272,11 +276,35 @@ def _fnRegisterTestGenerate(app, dictCtx):
         return {"bSuccess": True}
 
 
-def _fnPersistTestEdit(connectionDocker, sContainerId, request):
+def _fsResolveTestFilePath(sFilePath, sProjectRepoPath):
+    """Return the validated container-absolute path for a test-file edit.
+
+    ``save-and-run-test`` is agent-safe and takes a caller-supplied
+    path, so it needs the same two guards the generic write route has
+    always had: containment in the project repo, and the write denylist
+    that keeps ``.git/hooks/`` (code execution on the next commit) and
+    ``.vaibify/`` (the metadata-integrity contract) out of reach. The
+    blast radius is the container's ``/workspace`` volume rather than
+    the host, which is why this was easy to miss.
+
+    Repo-relative inputs are joined onto the project repo, matching the
+    paths ``testGenerator`` writes; the workspace root is the fallback
+    for a workflow that has no detected repo.
+    """
+    sRoot = sProjectRepoPath or WORKSPACE_ROOT
+    sCandidate = (
+        sFilePath if sFilePath.startswith("/")
+        else posixpath.join(sRoot, sFilePath)
+    )
+    sNormalized = fnValidatePathWithinRoot(sCandidate, sRoot)
+    fnRejectWriteDenylistedPath(sNormalized, sRoot)
+    return sNormalized
+
+
+def _fnPersistTestEdit(connectionDocker, sContainerId, sFilePath, sContent):
     """Write the edited test file back to the container filesystem."""
     connectionDocker.fnWriteFile(
-        sContainerId, request.sFilePath,
-        request.sContent.encode("utf-8"),
+        sContainerId, sFilePath, sContent.encode("utf-8"),
     )
 
 
@@ -431,18 +459,25 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
+        sFilePath = _fsResolveTestFilePath(
+            request.sFilePath,
+            dictWorkflow.get("sProjectRepoPath", ""),
+        )
         iLevelBefore = fiAICSLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
-        _fnPersistTestEdit(dictCtx["docker"], sContainerId, request)
+        _fnPersistTestEdit(
+            dictCtx["docker"], sContainerId,
+            sFilePath, request.sContent,
+        )
         resultExec = await _fresultRunSaveAndRunTest(
             dictCtx["docker"], sContainerId, dictStep,
-            dictWorkflow, request.sFilePath,
+            dictWorkflow, sFilePath,
         )
         bPassed = resultExec.iExitCode == 0
         _fnRecordTestResult(dictStep, bPassed, dictWorkflow, iStepIndex)
-        _fnRegisterTestCommand(dictStep, bPassed, request.sFilePath)
+        _fnRegisterTestCommand(dictStep, bPassed, sFilePath)
         dictCtx["save"](sContainerId, dictWorkflow)
         await fnMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,

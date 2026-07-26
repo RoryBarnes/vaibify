@@ -264,7 +264,7 @@ def flistStepStandardsRepoPaths(dictStep):
     """Return repo-relative paths of test standards for one step.
 
     Defensively tolerates malformed ``dictTests`` shapes — a list, a
-    string, or any non-dict — by skipping the step. A workflow.json
+    string, or any non-dict — by skipping the step. A project.json
     that fails the schema check upstream should not crash the
     canonical-tracked-files computation here.
     """

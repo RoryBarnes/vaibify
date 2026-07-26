@@ -27,6 +27,7 @@ import os
 import posixpath
 
 from vaibify.reproducibility.overleafMirror import fsComputeBlobSha
+from .pipelineUtils import fsShellQuote
 
 __all__ = [
     "S_MTIME_CACHE_RELATIVE_PATH",
@@ -149,7 +150,8 @@ def fnSaveContainerCache(
         ).encode("utf-8")
         connectionDocker.fnWriteFile(sContainerId, sPathTemp, baBody)
         connectionDocker.ftResultExecuteCommand(
-            sContainerId, f"mv {sPathTemp} {sPath}",
+            sContainerId,
+            f"mv {fsShellQuote(sPathTemp)} {fsShellQuote(sPath)}",
         )
     except Exception:
         _logger.info(

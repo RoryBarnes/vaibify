@@ -38,7 +38,7 @@ var VaibifyMonitor = (function () {
     }
 
     function fnShowPanel() {
-        sContainerId = PipeleyenApp.fsGetContainerId();
+        sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
 
         if (!elMonitorPanel) {

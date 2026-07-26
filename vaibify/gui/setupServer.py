@@ -12,6 +12,7 @@ __all__ = [
 ]
 
 import os
+import secrets
 import subprocess
 import sys
 
@@ -20,6 +21,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import serverMiddleware
 from ..config.projectConfig import (
     fbValidateConfig,
     fconfigFromYamlDict,
@@ -72,6 +74,19 @@ def _fnRegisterWriteRoutes(app):
         return fdictProcessBuild(request.sProjectDirectory)
 
 
+def _fnRegisterSessionTokenRoute(app, sSessionToken):
+    """Register the token endpoint the wizard page authenticates with.
+
+    Same model as the main app: the token is readable only by a page
+    the browser loaded from this origin, so a cross-origin page cannot
+    obtain it and every other ``/api`` route stays unreachable to it.
+    """
+
+    @app.get("/api/session-token")
+    async def fnGetSessionToken():
+        return {"sToken": sSessionToken}
+
+
 def _fnRegisterIndexRoute(app):
     """Register the setup wizard index page."""
 
@@ -93,21 +108,40 @@ def _fnMountStaticFiles(app):
         )
 
 
-def fappCreateSetupApplication():
-    """Build and return the setup wizard FastAPI application."""
+def fappCreateSetupApplication(iExpectedPort=0):
+    """Build and return the setup wizard FastAPI application.
+
+    The wizard writes YAML into a caller-named host directory and
+    spawns a build there, so it carries the same session-token and
+    ``Host:`` header guards as the viewer app. ``iExpectedPort``
+    follows ``appFactory.fappCreateApplication``: a real bind port
+    enables the strict Host check, and 0 (the test default) skips it.
+    """
     app = FastAPI(title="Vaibify Setup Wizard")
+    app.state.sSessionToken = secrets.token_urlsafe(32)
+    app.state.iExpectedPort = iExpectedPort
+    serverMiddleware.fnRegisterMiddleware(app)
     _fnRegisterReadRoutes(app)
     _fnRegisterWriteRoutes(app)
+    _fnRegisterSessionTokenRoute(app, app.state.sSessionToken)
     _fnRegisterIndexRoute(app)
     _fnMountStaticFiles(app)
     return app
 
 
 def _fnValidateProjectDirectory(sDirectory):
-    """Reject directory paths that traverse outside home."""
-    sNormalized = os.path.normpath(os.path.abspath(sDirectory))
+    """Reject directory paths that resolve outside the home tree.
+
+    ``realpath`` plus the separator are both load-bearing: a bare
+    prefix test admits ``/home/researcherBackup`` when home is
+    ``/home/researcher``, and an unresolved path admits a symlink
+    under home that points anywhere on the host.
+    """
+    if not os.path.isabs(sDirectory):
+        raise HTTPException(400, "Directory must be an absolute path")
     sHome = os.path.expanduser("~")
-    if not sNormalized.startswith(sHome):
+    sResolved = os.path.realpath(sDirectory)
+    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):
         raise HTTPException(
             403, "Project directory must be under home")
 
@@ -130,7 +164,17 @@ def fdictProcessBuild(sProjectDirectory):
 
 
 def fnWriteConfigToDirectory(sProjectDirectory, dictConfig):
-    """Write a validated YAML config file into the project directory."""
+    """Write a validated YAML config file into the project directory.
+
+    ``ProjectConfig`` is a plain dataclass with no coercion, so an
+    unvalidated dict persists verbatim -- ``{"cpuLimit": "8"}`` lands
+    in vaibify.yml as a string and only surfaces later as a broken
+    ``docker run`` argument. Validation is enforced here rather than
+    in the route so no writer can bypass it.
+    """
+    if not fbValidateConfig(dictConfig):
+        raise HTTPException(
+            400, "Configuration failed validation; not written")
     sConfigPath = os.path.join(sProjectDirectory, "vaibify.yml")
     os.makedirs(sProjectDirectory, exist_ok=True)
     configProject = fconfigFromYamlDict(dictConfig)

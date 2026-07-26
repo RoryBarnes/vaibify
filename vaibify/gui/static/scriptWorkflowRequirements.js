@@ -385,7 +385,7 @@ var VaibifyWorkflowRequirements = (function () {
         // Declared: show the rules with edit + delete. Undeclared: the
         // inline declare form. The declaration is the researcher's
         // statement of how exactly a rerun must match their results;
-        // it is stored in workflow.json (there is no separate file).
+        // it is stored in project.json (there is no separate file).
         var bDeclared = Boolean(dictDeterminism &&
             Object.keys(dictDeterminism).length > 0);
         if (bDeclared) {
@@ -739,8 +739,12 @@ var VaibifyWorkflowRequirements = (function () {
             '<button type="button" class="btn ' +
             'wf-open-prompt-record">Prompt Record…</button></div>';
         if (dictRecord.bEnabled !== true) {
+            // The supervision chip renders whether or not the Prompt
+            // Record is on. Returning early here meant one toggle
+            // hid every permanent flag the watchdog had ever raised.
             return '<div class="requirement-row-status">Prompt ' +
-                'Record: Not tracked — optional.</div>' + sOpenButton;
+                'Record: Not tracked — optional.</div>' +
+                _fsRenderSupervisionChip(dictDetail) + sOpenButton;
         }
         var sState = "Prompt Record: on — " +
             (dictRecord.iSessionCount || 0) + " session(s), " +
@@ -758,23 +762,42 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _fsRenderSupervisionChip(dictDetail) {
-        // A permanent red chip: unattributed changes or a broken
-        // flag chain render until dealt with outside the tool —
-        // never silently cleared.
+        // A permanent red chip: unattributed changes, a broken chain,
+        // or a persisted count that disagrees with the evidence render
+        // until dealt with outside the tool — never silently cleared,
+        // and never conditional on any other panel's state.
         var dictSupervision = dictDetail.dictSupervision || {};
+        var sChip = "";
         if (dictSupervision.bFlagChainIntact === false) {
-            return '<div class="requirement-row-status ' +
-                'supervision-flag-chip">Supervision flag chain ' +
-                'BROKEN — a permanent flag was edited or removed.' +
-                '</div>';
+            sChip += _fsSupervisionChipLine('Supervision flag chain ' +
+                'BROKEN — a permanent flag was edited or removed.');
+        }
+        if (dictSupervision.bEventChainIntact === false) {
+            sChip += _fsSupervisionChipLine('Recorded-event chain ' +
+                'BROKEN — the attribution log was edited or ' +
+                'truncated.');
+        }
+        if (dictSupervision.bPersistedFlagCountMatches === false) {
+            sChip += _fsSupervisionChipLine('Supervision flag count ' +
+                'disagrees with the recorded flags — records were ' +
+                'removed.');
+        }
+        if (dictSupervision.bClockSkewSuspected === true) {
+            sChip += _fsSupervisionChipLine('Container and host ' +
+                'clocks disagree — attribution may be unreliable.');
         }
         if ((dictSupervision.iFlagCount || 0) > 0) {
-            return '<div class="requirement-row-status ' +
-                'supervision-flag-chip">' +
+            sChip += _fsSupervisionChipLine(
                 dictSupervision.iFlagCount + ' permanent ' +
-                'supervision flag(s) — see Prompt Record.</div>';
+                'supervision flag(s) — see Prompt Record.');
         }
-        return "";
+        return sChip;
+    }
+
+    function _fsSupervisionChipLine(sMessage) {
+        return '<div class="requirement-row-status ' +
+            'supervision-flag-chip">' + fnEscapeHtml(sMessage) +
+            '</div>';
     }
 
     function _flistAiRows(dictDetail, dictContext) {

@@ -35,11 +35,25 @@ def test_main_group_help_lists_all_commands():
     assert result.exit_code == 0
     for sCommand in (
         "init", "build", "start", "status",
-        "destroy", "config", "publish", "stop",
+        "destroy", "config", "stop",
         "connect", "verify", "setup", "gui",
         "push", "pull",
     ):
         assert sCommand in result.output
+
+
+def test_main_group_hides_unimplemented_publish():
+    """`publish` stays unregistered while both subcommands are stubs.
+
+    Advertising a command whose every path prints "Not yet
+    implemented." misrepresents what the tool can do; the stub module
+    lives on in vaibify/cli/commandPublish.py until it is real.
+    """
+    runner = CliRunner()
+    result = runner.invoke(main, ["--help"])
+    assert "publish" not in result.output
+    resultInvoke = runner.invoke(main, ["publish"])
+    assert resultInvoke.exit_code != 0
 
 
 def test_main_version_option():

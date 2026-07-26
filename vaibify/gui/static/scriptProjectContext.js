@@ -55,7 +55,7 @@ var VaibifyProjectContext = (function () {
     }
 
     async function fnGenerateTemplate() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             await VaibifyApi.fdictPost(
@@ -63,13 +63,13 @@ var VaibifyProjectContext = (function () {
                     "/project-context/template",
                 {},
             );
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Project context template written — click the file " +
                     "row to review and edit it.",
                 "success",
             );
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Template failed: " + _fsDetail(error), "error");
         }
     }
@@ -77,7 +77,7 @@ var VaibifyProjectContext = (function () {
     async function fnAdoptRepoRoot() {
         // The envelope flag says a root context file exists but not
         // which name; try the two adoptable basenames in order.
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         var listBasenames = ["CLAUDE.md", "AGENTS.md"];
         for (var i = 0; i < listBasenames.length; i++) {
@@ -86,7 +86,7 @@ var VaibifyProjectContext = (function () {
                     bAdoptRepoRoot: true,
                     sRootBasename: listBasenames[i],
                 });
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Adopted " + listBasenames[i] + " as the project " +
                         "context (the root name is now a symlink).",
                     "success",
@@ -94,7 +94,7 @@ var VaibifyProjectContext = (function () {
                 return;
             } catch (error) {
                 if (i === listBasenames.length - 1) {
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         "Adopt failed: " + _fsDetail(error), "error");
                 }
             }
@@ -161,7 +161,7 @@ var VaibifyProjectContext = (function () {
     }
 
     async function _fnImportHostFile(sHostPath, bOverwrite) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             await _fnPostImport(sContainerId, {
@@ -169,11 +169,11 @@ var VaibifyProjectContext = (function () {
                 bOverwrite: bOverwrite === true,
             });
             fnCloseImportPicker();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Imported the project context file.", "success");
         } catch (error) {
             if (String(_fsDetail(error)).indexOf("bOverwrite") !== -1) {
-                PipeleyenApp.fnShowConfirmModal(
+                VaibifyApp.fnShowConfirmModal(
                     "Replace project context",
                     "A project context file already exists. Replace " +
                         "it with the imported file?",
@@ -183,7 +183,7 @@ var VaibifyProjectContext = (function () {
                 );
                 return;
             }
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Import failed: " + _fsDetail(error), "error");
         }
     }

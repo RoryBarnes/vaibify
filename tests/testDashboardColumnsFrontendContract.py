@@ -1054,7 +1054,7 @@ def test_activate_workflow_wires_aics_and_repos_tabs():
         "workflow activation must wire the AICS tab or it renders "
         "'Connect to a workflow to see AICS status' while connected"
     )
-    assert "PipeleyenReposPanel.fnInit(sId)" in sActivate, (
+    assert "VaibifyReposPanel.fnInit(sId)" in sActivate, (
         "workflow activation must initialize the Repos panel or the "
         "Repos tab stays empty for the whole session"
     )

@@ -1,13 +1,13 @@
 /* Vaibify — File Browser (extracted from scriptApplication.js) */
 
-var PipeleyenFiles = (function () {
+var VaibifyFiles = (function () {
     "use strict";
 
     var sCurrentPath = "/workspace";
 
     async function fnLoadDirectory(sPath) {
         sCurrentPath = sPath || "/workspace";
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
 
         fnRenderBreadcrumb(sCurrentPath);
@@ -90,7 +90,7 @@ var PipeleyenFiles = (function () {
             if (elItem.dataset.isDir === "true") {
                 fnLoadDirectory(elItem.dataset.path);
             } else {
-                PipeleyenFigureViewer.fnDisplayInNextViewer(
+                VaibifyFigureViewer.fnDisplayInNextViewer(
                     elItem.dataset.path
                 );
             }
@@ -106,7 +106,7 @@ var PipeleyenFiles = (function () {
             var elItem = event.target.closest(".file-item");
             if (!elItem || elItem.dataset.isDir === "true") return;
             event.preventDefault();
-            PipeleyenFilePull.fnPromptPullToHost(elItem.dataset.path);
+            VaibifyFilePull.fnPromptPullToHost(elItem.dataset.path);
         });
     }
 
@@ -142,7 +142,7 @@ var PipeleyenFiles = (function () {
     }
 
     async function fnUploadDroppedFiles(fileList) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId || fileList.length === 0) return;
         for (var i = 0; i < fileList.length; i++) {
             await fnUploadOneFile(sContainerId, fileList[i]);
@@ -162,7 +162,7 @@ var PipeleyenFiles = (function () {
                 }
             );
         } catch (error) {
-            PipeleyenApp.fnShowConfirmModal(
+            VaibifyApp.fnShowConfirmModal(
                 "Upload Error",
                 "Failed to upload " + file.name,
                 function () {}

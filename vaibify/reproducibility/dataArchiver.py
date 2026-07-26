@@ -51,7 +51,7 @@ def fnArchiveOutputs(config, dictWorkflow, sWorkdir):
     config : dict
         Project configuration (must contain "sZenodoService" key).
     dictWorkflow : dict
-        Parsed workflow.json with step definitions.
+        Parsed project.json with step definitions.
     sWorkdir : str
         Working directory for the workflow.
     """
@@ -198,7 +198,7 @@ def _flistStepArchiveDeclaredPaths(dictStep, bArchiveTests):
 
 
 def fdictCollectOutputFiles(dictWorkflow, sWorkdir):
-    """Collect archivable file paths from workflow.json steps.
+    """Collect archivable file paths from project.json steps.
 
     Covers every declared output plus, by default, each step's test
     files and test standards (see ``flistCollectArchiveFilePaths``).
@@ -206,7 +206,7 @@ def fdictCollectOutputFiles(dictWorkflow, sWorkdir):
     Parameters
     ----------
     dictWorkflow : dict
-        Parsed workflow.json with step definitions.
+        Parsed project.json with step definitions.
     sWorkdir : str
         Working directory (used for resolving relative paths).
 
@@ -304,7 +304,7 @@ def _flistReadmeFooterLines():
         "",
         "Install vaibify and run:",
         "```",
-        "python director.py --config config/workflow.json",
+        "python director.py --config config/project.json",
         "```",
     ]
 

@@ -105,9 +105,9 @@ var VaibifyGitBadges = (function () {
             return s;
         }
         var sRepo = "";
-        if (typeof PipeleyenApp !== "undefined" &&
-            PipeleyenApp.fdictGetWorkflow) {
-            sRepo = (PipeleyenApp.fdictGetWorkflow() || {})
+        if (typeof VaibifyApp !== "undefined" &&
+            VaibifyApp.fdictGetWorkflow) {
+            sRepo = (VaibifyApp.fdictGetWorkflow() || {})
                 .sProjectRepoPath || "";
         }
         if (sRepo) {
@@ -251,13 +251,13 @@ var VaibifyGitBadges = (function () {
 
 
     function _fnRequestStepListRerender(listAffectedFiles) {
-        if (typeof PipeleyenApp === "undefined") return;
-        if (typeof PipeleyenApp.fnRenderStepListPartial === "function") {
-            PipeleyenApp.fnRenderStepListPartial(listAffectedFiles || []);
+        if (typeof VaibifyApp === "undefined") return;
+        if (typeof VaibifyApp.fnRenderStepListPartial === "function") {
+            VaibifyApp.fnRenderStepListPartial(listAffectedFiles || []);
             return;
         }
-        if (typeof PipeleyenApp.fnRenderStepList !== "function") return;
-        PipeleyenApp.fnRenderStepList();
+        if (typeof VaibifyApp.fnRenderStepList !== "function") return;
+        VaibifyApp.fnRenderStepList();
     }
 
     function fdictRepoSummary() {

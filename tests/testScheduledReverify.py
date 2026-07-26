@@ -475,6 +475,11 @@ def test_reverify_loop_uses_to_thread():
     or the test's wait_for never gets scheduled. Patching
     asyncio.sleep with a no-op coroutine breaks this and causes the
     test to spin without yielding (Py3.9-observed hang).
+
+    The first-pass delay is patched to 0.0 because the production
+    delay is deliberately never zero (see
+    ``ffComputeFirstReverifyDelay``); the completion stamp is patched
+    out so the test cannot write into the developer's home directory.
     """
     dictCtx = {"workflows": {"wf01": {"sWorkflowId": "wf01"}}}
 
@@ -495,6 +500,13 @@ def test_reverify_loop_uses_to_thread():
         ), patch(
             "vaibify.reproducibility.scheduledReverify.fnRunReverifyOnce",
             mockReverify,
+        ), patch(
+            "vaibify.reproducibility.scheduledReverify."
+            "ffComputeFirstReverifyDelay",
+            return_value=0.0,
+        ), patch(
+            "vaibify.reproducibility.scheduledReverify."
+            "fnRecordLastReverifyIso",
         ):
             taskLoop = asyncio.create_task(
                 scheduledReverify._fnReverifyLoop(dictCtx, 0.0),
@@ -764,3 +776,215 @@ def testVerifyExpectedHashesTrackCurrentFileContent(tmp_path):
     assert [d["sPath"] for d in dictAfter["listDiverged"]] == [
         "step01/data.csv",
     ]
+
+
+# ------- Scheduling: the loop must actually reach its first pass -------
+#
+# The hub self-terminates after 30 minutes idle, so a loop that slept a
+# full 6-hour cadence before its first pass only ever ran if a dashboard
+# tab stayed open for six continuous hours. These tests pin the two
+# properties that make the first pass reachable: a short first delay,
+# and a stamp that lets a restart resume the cadence instead of
+# restarting it. No test sleeps for real — the delay is computed, not
+# awaited.
+
+
+_F_SIX_HOUR_CADENCE = 6.0
+_F_ONE_HOUR_SECONDS = 3600.0
+
+
+@pytest.fixture
+def fixtureIsolatedHome(tmp_path, monkeypatch):
+    """Point the reverify stamp at a temporary home directory."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(
+        os.path, "expanduser", lambda sPath: sPath.replace(
+            "~", str(tmp_path), 1,
+        ),
+    )
+    return tmp_path
+
+
+@pytest.mark.falsification
+def test_first_reverify_pass_does_not_wait_a_full_cadence():
+    """A hub that has never re-verified must not wait 6 hours to start.
+
+    The hub's own idle shutdown is 30 minutes
+    (``serverLifespan.F_HUB_IDLE_TIMEOUT_SECONDS``), so any first delay
+    at or near the cadence is a first pass that never happens. The
+    delay must still be non-zero so a restart storm does not become a
+    remote-request storm.
+
+    Kills: returning the full cadence instead of the startup delay in
+    ``ffComputeFirstReverifyDelay`` (scheduledReverify) restores the
+    unreachable-first-pass bug.
+    """
+    fDelay = scheduledReverify.ffComputeFirstReverifyDelay(
+        _F_SIX_HOUR_CADENCE, "",
+    )
+    assert fDelay > 0.0
+    assert fDelay < 1800.0
+
+
+@pytest.mark.falsification
+def test_restart_resumes_the_cadence_instead_of_restarting_it():
+    """A recorded pass one hour ago leaves five hours of the cadence.
+
+    Without this the hub would re-verify every remote on every restart
+    once the startup delay elapsed, which is exactly the stampede the
+    original sleep-first loop was written to avoid.
+
+    Kills: ignoring the remaining cadence in
+    ``ffComputeFirstReverifyDelay`` (returning the startup delay
+    unconditionally) makes every restart re-verify within minutes.
+    """
+    fNowEpoch = 1785000000.0
+    sOneHourAgo = scheduledReverify.datetime.fromtimestamp(
+        fNowEpoch - _F_ONE_HOUR_SECONDS, scheduledReverify.timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fDelay = scheduledReverify.ffComputeFirstReverifyDelay(
+        _F_SIX_HOUR_CADENCE, sOneHourAgo, fNowEpoch,
+    )
+    assert abs(fDelay - 5.0 * _F_ONE_HOUR_SECONDS) < 1.0
+
+
+def test_an_overdue_stamp_falls_back_to_the_startup_delay():
+    """A pass older than the cadence is due now, modulo the startup wait."""
+    fNowEpoch = 1785000000.0
+    sLongAgo = scheduledReverify.datetime.fromtimestamp(
+        fNowEpoch - 30.0 * _F_ONE_HOUR_SECONDS,
+        scheduledReverify.timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fDelay = scheduledReverify.ffComputeFirstReverifyDelay(
+        _F_SIX_HOUR_CADENCE, sLongAgo, fNowEpoch,
+    )
+    assert 0.0 < fDelay < 1800.0
+
+
+def test_a_future_stamp_is_not_treated_as_a_completed_pass():
+    """An impossible timestamp is not evidence that a pass ran."""
+    fNowEpoch = 1785000000.0
+    sFuture = scheduledReverify.datetime.fromtimestamp(
+        fNowEpoch + 10.0 * _F_ONE_HOUR_SECONDS,
+        scheduledReverify.timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fDelay = scheduledReverify.ffComputeFirstReverifyDelay(
+        _F_SIX_HOUR_CADENCE, sFuture, fNowEpoch,
+    )
+    assert 0.0 < fDelay < 1800.0
+
+
+def test_reverify_stamp_round_trips_through_the_state_file(
+    fixtureIsolatedHome,
+):
+    """The stamp is real file state, readable by the next hub process."""
+    assert scheduledReverify.fsReadLastReverifyIso() == ""
+    dictBefore = scheduledReverify.fdictDescribeReverifySchedule()
+    assert dictBefore["bEverRan"] is False
+    scheduledReverify.fnRecordLastReverifyIso("2026-07-26T09:30:00Z")
+    assert (
+        scheduledReverify.fsReadLastReverifyIso()
+        == "2026-07-26T09:30:00Z"
+    )
+    dictAfter = scheduledReverify.fdictDescribeReverifySchedule()
+    assert dictAfter["bEverRan"] is True
+    assert dictAfter["sLastReverifyIso"] == "2026-07-26T09:30:00Z"
+    assert dictAfter["fHoursCadence"] == 6.0
+
+
+def test_a_corrupt_state_file_reads_as_never_ran(fixtureIsolatedHome):
+    """A damaged stamp must not suppress the next pass for a cadence."""
+    os.makedirs(fixtureIsolatedHome / ".vaibify", exist_ok=True)
+    with open(
+        scheduledReverify.fsReverifyStatePath(), "w", encoding="utf-8",
+    ) as fileState:
+        fileState.write("{not json at all")
+    assert scheduledReverify.fsReadLastReverifyIso() == ""
+
+
+def _fnDriveOneScheduledPass(dictCtx, mockRunOnce):
+    """Run exactly one iteration of the loop with the delay collapsed.
+
+    The first delay is patched to zero and the cadence set to an hour,
+    so the loop performs one pass and then parks on a sleep the test
+    cancels — one pass, deterministically, without sleeping for real.
+    """
+
+    async def _fnRunLoopOnce():
+        eventDispatched = asyncio.Event()
+
+        async def _fnFakeToThread(fnCallback, *args, **kwargs):
+            eventDispatched.set()
+            return fnCallback(*args, **kwargs)
+
+        with patch(
+            "vaibify.reproducibility.scheduledReverify.asyncio.to_thread",
+            _fnFakeToThread,
+        ), patch(
+            "vaibify.reproducibility.scheduledReverify.fnRunReverifyOnce",
+            mockRunOnce,
+        ), patch(
+            "vaibify.reproducibility.scheduledReverify."
+            "ffComputeFirstReverifyDelay",
+            return_value=0.0,
+        ):
+            taskLoop = asyncio.create_task(
+                scheduledReverify._fnReverifyLoop(dictCtx, 1.0),
+            )
+            await asyncio.wait_for(eventDispatched.wait(), timeout=2.0)
+            await asyncio.sleep(0)
+            taskLoop.cancel()
+            try:
+                await taskLoop
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(_fnRunLoopOnce())
+
+
+@pytest.mark.falsification
+def test_completed_pass_bumps_every_touched_container_sync_epoch(
+    fixtureIsolatedHome,
+):
+    """A scheduled pass rewrites the cache the L2 cells read.
+
+    The sync epoch is the dashboard's only poll-free invalidation
+    signal, so a pass that does not bump it leaves every open tab
+    rendering the previous verify result indefinitely.
+
+    Kills: inverting the tuple/dict guard in
+    ``_fnBumpSyncEpochForVerifiedContainers`` (scheduledReverify)
+    skips every real workflow entry, leaving the epoch at zero.
+    """
+    dictCtx = {
+        "workflows": {"container-alpha": {"sWorkflowId": "wf01"}},
+        "dictSyncEpochs": {},
+    }
+    _fnDriveOneScheduledPass(
+        dictCtx,
+        MagicMock(return_value={"sNowIso": "x", "listResults": []}),
+    )
+    assert dictCtx["dictSyncEpochs"]["container-alpha"] == 1
+
+
+@pytest.mark.falsification
+def test_a_completed_pass_persists_its_stamp(fixtureIsolatedHome):
+    """Only a persisted stamp lets the next hub resume the cadence.
+
+    Without it every restart re-verifies every remote shortly after
+    startup, and the dashboard can never distinguish "the background
+    loop has never run" from "the loop is keeping this current".
+
+    Kills: dropping the ``fnRecordLastReverifyIso`` call from
+    ``_fnReverifyLoop`` (scheduledReverify) leaves the stamp empty
+    forever, so the schedule restarts on every hub start.
+    """
+    assert scheduledReverify.fsReadLastReverifyIso() == ""
+    _fnDriveOneScheduledPass(
+        {"workflows": {}, "dictSyncEpochs": {}},
+        MagicMock(return_value={"sNowIso": "x", "listResults": []}),
+    )
+    assert scheduledReverify.fsReadLastReverifyIso() != ""
+    assert scheduledReverify.fdictDescribeReverifySchedule()[
+        "bEverRan"
+    ] is True

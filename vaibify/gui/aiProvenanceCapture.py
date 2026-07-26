@@ -40,14 +40,19 @@ def fdictCaptureAiProvenanceStamp(
     dictWorkflow, filesRepo, sContainerId, connectionDocker,
 ):
     """Assemble the machine-captured stamp with live container facts."""
-    from vaibify.docker.containerManager import fbContainerIsNetworkIsolated
+    from vaibify.docker.containerManager import ftProbeNetworkIsolation
 
+    # An unanswerable probe is recorded as None ("unknown"), never as
+    # False. This value is evidence inside the L3 attestation, and the
+    # boolean helper's fail-open False would assert "not isolated"
+    # about a container whose state could not be read.
+    bAnswered, bIsolated = ftProbeNetworkIsolation(sContainerId)
     return fdictBuildAiProvenanceStamp(
         dictWorkflow,
         filesRepo,
         sWorkspacePromptSha256=_fsHashWorkspacePrompt(
             connectionDocker, sContainerId,
         ),
-        bNetworkIsolatedAtCapture=fbContainerIsNetworkIsolated(sContainerId),
+        bNetworkIsolatedAtCapture=bIsolated if bAnswered else None,
         sHubInvokerModelId=fsResolveApiModelId(),
     )

@@ -496,8 +496,8 @@ var VaibifyNewWorkflowWizard = (function () {
             _fnHideModal();
             await VaibifyWorkflowManager.fnSelectWorkflow(
                 _sContainerId, dictResult.sPath, dictResult.sName);
-            PipeleyenApp.fnAnimateProjectBirth();
-            PipeleyenApp.fnShowToast("Project created", "success");
+            VaibifyApp.fnAnimateProjectBirth();
+            VaibifyApp.fnShowToast("Project created", "success");
             _fnResetWorkflowState();
         } catch (error) {
             _fnHandleSubmitError(error);
@@ -534,7 +534,7 @@ var VaibifyNewWorkflowWizard = (function () {
     function _fnHandleSubmitError(error) {
         var sMessage = VaibifyUtilities.fsSanitizeErrorForUser(
             (error && error.message) || "");
-        PipeleyenApp.fnShowToast(sMessage, "error");
+        VaibifyApp.fnShowToast(sMessage, "error");
         if (_fbErrorIsNameCollision(sMessage)) {
             _iWizardStep = 0;
             _fnRenderStep();

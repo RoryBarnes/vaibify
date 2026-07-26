@@ -16,7 +16,17 @@ __all__ = ["fnMain", "ftDecision"]
 
 LIST_BLOCKED_PATTERNS = [
     (
-        r"\bgit\s+push\s+(?:--force(?!-with-lease)|-f\b)",
+        # The flag may appear ANYWHERE in the argument list -- git
+        # accepts it after the remote and refspec, and the original
+        # pattern required it to follow "push" immediately, so the
+        # ordinary "git push origin main --force" was never blocked.
+        # A leading "+" on a refspec is the same force in disguise.
+        # Trailing (?!\S) keeps "-f" from matching inside a longer
+        # token, and the lookahead spares --force-with-lease wherever
+        # it sits. [^;&|] stops the scan at a command separator so a
+        # later unrelated command cannot arm this rule.
+        r"\bgit\s+push\b[^;&|]*?(?<!\S)"
+        r"(?:--force(?!-with-lease)|-f|\+\S+)(?!\S)",
         "Force-push can overwrite shared history. Use "
         "--force-with-lease or run the command manually.",
     ),

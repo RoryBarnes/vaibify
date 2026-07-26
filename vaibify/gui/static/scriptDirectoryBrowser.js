@@ -1,6 +1,6 @@
 /* Vaibify — Host directory browser (extracted from scriptApplication.js) */
 
-var PipeleyenDirectoryBrowser = (function () {
+var VaibifyDirectoryBrowser = (function () {
     "use strict";
 
     var _sBrowserCurrentPath = "";
@@ -271,18 +271,18 @@ var PipeleyenDirectoryBrowser = (function () {
             await VaibifyApi.fdictPost("/api/registry", {
                 sDirectory: _sBrowserCurrentPath,
             });
-            PipeleyenApp.fnShowToast("Container added", "success");
+            VaibifyApp.fnShowToast("Container added", "success");
             fnHandleModalClose();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
-        PipeleyenContainerManager.fnLoadContainers();
+        VaibifyContainerManager.fnLoadContainers();
     }
 
     function fnPromptCreateFolder() {
-        PipeleyenModals.fnShowInputModal(
+        VaibifyModals.fnShowInputModal(
             "New folder name",
             "",
             function (sFolderName) {
@@ -306,10 +306,10 @@ var PipeleyenDirectoryBrowser = (function () {
                  sFolderName: sFolderName}
             );
             await fnBrowseDirectory(sParentPath);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Created folder: " + sFolderName, "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }

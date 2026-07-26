@@ -1093,7 +1093,7 @@ def fbWorkflowHasProjectRepo(filesRepo):
 
     L1's "under git control" criterion is the existence of the repo
     discovery itself — the load-time auto-detector only populates
-    ``sProjectRepoPath`` when the workflow.json lives inside a git
+    ``sProjectRepoPath`` when the project.json lives inside a git
     work tree. Tracked-and-matched semantics belong to L2. Accepts a
     path string or a ``repoFiles`` adapter (whose root is consulted).
     """
@@ -1653,6 +1653,25 @@ def _fsOverleafRecordedCommit(dictWorkflow):
     return dictOverleaf.get("sLastPushCommit") or ""
 
 
+def _fdictRecomputeSupervisionEvidence(dictWorkflow, filesRepo):
+    """Return the supervision evidence recomputed from the repo files.
+
+    Read from the append-only attribution log rather than the
+    workflow's persisted flag count, so the AICS row cannot be turned
+    green by editing ``project.json``. An unreadable repo yields
+    ``None``, which the gate treats as fail-closed.
+    """
+    from vaibify.gui.attributionLog import (
+        fdictSummarizeSupervisionEvidence,
+    )
+    try:
+        return fdictSummarizeSupervisionEvidence(
+            ffilesEnsureRepoFiles(filesRepo), dictWorkflow,
+        )
+    except (OSError, ValueError):
+        return None
+
+
 def fdictLevel2Gaps(dictWorkflow, filesRepo):
     """Return per-criterion pass/fail for the L2 readiness card.
 
@@ -1713,6 +1732,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
         ),
         "bSupervisionClean": replayGate.fbSupervisionClean(
             dictWorkflow,
+            _fdictRecomputeSupervisionEvidence(dictWorkflow, filesRepo),
         ),
         "bProjectContextFileExists": ffilesEnsureRepoFiles(
             filesRepo,

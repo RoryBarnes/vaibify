@@ -134,7 +134,7 @@ def _fnMountUnixAdapter(sessionDocker):
 # invariant in ``tests/testArchitecturalInvariants.py`` keeps the two in
 # lock-step. Used as the default ownership stamp on tarballs written by
 # ``fnWriteFile`` / ``fnWriteFileViaTar`` so that backend-authored files
-# (workflow.json, state JSON, generated tests, log files, credential
+# (project.json, state JSON, generated tests, log files, credential
 # scratch, etc.) land owned by the in-container user — not root, which
 # would silently lock the file against subsequent in-container edits
 # (the in-container agent has no sudo by design).

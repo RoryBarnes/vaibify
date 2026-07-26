@@ -262,8 +262,11 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testFileStatusManagerStaleness.py::test_fbReconcileUserVerificationTimestamps_retains_stale',
         source='vaibify/gui/fileStatusManager.py',
-        old="""in ("passed", "stale"):""",
-        new="""in ("passed",):""",
+        # Anchored on the dictVerify accessor so it stays unique: the
+        # cross-machine hash pass added a second `in ("passed",
+        # "stale")` test elsewhere in this module.
+        old="""dictVerify.get("sUser") in ("passed", "stale"):""",
+        new="""dictVerify.get("sUser") in ("passed",):""",
     ),
     Falsification(
         nodeid='tests/testFileStatusManagerStaleness.py::test_fdictParseStatLines_handles_path_with_space',
@@ -449,30 +452,33 @@ LIST_FALSIFICATIONS = [
         new='if not iRejectCode:',
     ),
     Falsification(
+        # The ETag stamp is derived from the whole response payload
+        # (2026-07-25), so each signal is excluded by naming its key
+        # in _SET_ETAG_VOLATILE_KEYS rather than by deleting a hand-
+        # maintained list entry. Same break, expressed against the
+        # mechanism that replaced the list.
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_max_mtime_by_step_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""        ("maxByStep", sorted(
-            (dictResponse.get("dictMaxMtimeByStep") or {}).items(),
-        )),""",
-        new="""        ("maxByStep", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"dictMaxMtimeByStep"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_aics_level_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""("aicsLevel", dictResponse.get("iAICSLevel", 0)),""",
-        new="""("aicsLevel", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iAICSLevel"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_l2_blocker_count_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""("l2", dictResponse.get("iL2BlockerCount", 0)),""",
-        new="""("l2", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iL2BlockerCount"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_l3_blocker_count_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""("l3", dictResponse.get("iL3BlockerCount", 0)),""",
-        new="""("l3", 0),""",
+        old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iL3BlockerCount"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestSplitCachedAndChanged::test_stale_mtime_forces_rehash',
@@ -1307,8 +1313,15 @@ def _fdictEntry(sRel):
         # in-container agent a hash oracle over host files.
         nodeid='tests/testReplayRoutes.py::test_hash_route_rejects_agent_token_lane',
         source='vaibify/gui/routes/replayRoutes.py',
-        old='        _fnRejectAgentTokenLane(requestHttp)\n        dictCtx["require"]()',
-        new='        dictCtx["require"]()',
+        old=(
+            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"]()\n'
+            '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
+        ),
     ),
     Falsification(
         # Removing the personal-layer conjunct lets a project reach
@@ -1336,5 +1349,768 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/replayGate.py',
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
+    ),
+    # --- Config values that survive being written but not being read
+    #     back (resource limits, wizard save; 2026-07-25) ---
+    Falsification(
+        # The range check also rejects NaN (it fails every
+        # comparison), so what the finiteness check defends is the
+        # diagnostic: without it the refusal quotes a bound the value
+        # was never in.
+        nodeid='tests/testResourceLimitRoundTrip.py::test_non_finite_memory_limit_never_reaches_the_yaml',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if isinstance(numberValue, float) and not math.isfinite(\n        numberValue\n    ):',
+        new='    if False:',
+    ),
+    Falsification(
+        # Without the ceiling, %g renders a fat-fingered cap as
+        # 1e+06 and the project stops loading.
+        nodeid='tests/testResourceLimitRoundTrip.py::test_oversized_cpu_limit_never_reaches_the_yaml',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if not numberMinimum <= numberValue <= numberMaximum:',
+        new='    if not numberMinimum <= numberValue:',
+    ),
+    # --- Host GitHub credential resolution (Phase 1, 2026-07-25) ---
+    Falsification(
+        # The empty secret name is rejected by fsRetrieveSecret before
+        # it dispatches on the method, so the gh-auth fallback becomes
+        # dead code and every dashboard push is refused on a host
+        # whose `gh auth login` works.
+        nodeid='tests/testGithubTokenResolution.py::test_resolve_token_reaches_gh_auth_fallback_with_real_validation',
+        source='vaibify/reproducibility/githubAuth.py',
+        old='_S_GH_AUTH_SLOT_NAME = "gh_token"',
+        new='_S_GH_AUTH_SLOT_NAME = ""',
+    ),
+    Falsification(
+        # The same dead fallback embedded in the generated askpass
+        # helper makes host-side git authentication silently anonymous.
+        nodeid='tests/testGithubTokenResolution.py::test_askpass_helper_passes_a_valid_secret_name_to_gh_auth',
+        source='vaibify/reproducibility/githubAuth.py',
+        old='        sGhAuthNameRepr=repr(_S_GH_AUTH_SLOT_NAME),',
+        new='        sGhAuthNameRepr=repr(""),',
+    ),
+    Falsification(
+        # Grading connectivity on the container probe alone reports
+        # "Connected" right before the host-side push is refused.
+        nodeid='tests/testGithubTokenResolution.py::test_github_check_is_not_connected_without_a_host_credential',
+        source='vaibify/gui/syncDispatcher.py',
+        old='        "bConnected": bContainerReaches and bHostCredential,',
+        new='        "bConnected": bContainerReaches,',
+    ),
+    Falsification(
+        # A no-op sweep leaves live tokens readable on disk for months
+        # while reporting success.
+        nodeid='tests/testEphemeralStore.py::test_sweep_removes_stale_credential_files',
+        source='vaibify/config/ephemeralStore.py',
+        old='            os.remove(sPath)',
+        new='            pass',
+    ),
+    Falsification(
+        # githubAuth._PATTERN_SEGMENT allows dots in owner and repo
+        # names; this alphabet did not, so every dotted repository
+        # raised out of the push route as a bare HTTP 500.
+        nodeid='tests/testGithubTokenResolution.py::test_dotted_repository_slot_passes_real_secret_name_validation',
+        source='vaibify/config/secretManager.py',
+        old='r"^[a-zA-Z0-9_:./-]{1," + str(_I_MAXIMUM_SECRET_NAME_LENGTH) + r"}$"',
+        new='r"^[a-zA-Z0-9_:/-]{1," + str(_I_MAXIMUM_SECRET_NAME_LENGTH) + r"}$"',
+    ),
+    Falsification(
+        # The old 64-character cap was shorter than a real
+        # "github_token:<owner>/<repo>" slot, which runs to 153.
+        nodeid='tests/testGithubTokenResolution.py::test_widest_real_keyring_slot_fits_the_length_cap',
+        source='vaibify/config/secretManager.py',
+        old='_I_MAXIMUM_SECRET_NAME_LENGTH = 160',
+        new='_I_MAXIMUM_SECRET_NAME_LENGTH = 64',
+    ),
+    Falsification(
+        # Widening the alphabet to admit "." must not admit "." as a
+        # path SEGMENT: sName reaches /run/secrets/{sName}.
+        nodeid='tests/testGithubTokenResolution.py::test_widened_alphabet_still_refuses_path_traversal',
+        source='vaibify/config/secretManager.py',
+        old='if "" in listParts or "." in listParts or ".." in listParts:',
+        new='if "" in listParts or ".." in listParts:',
+    ),
+    # --- Step identity: labels and the rename cascade (2026-07-25) ---
+    Falsification(
+        # The shipped bug, restored on the RESOLVER side: comparing the
+        # raw field against a bool made a hand-edited
+        # "bInteractive": null resolve A01 to the SECOND step and A02
+        # to nothing at all.
+        nodeid='tests/testStepLabels.py::test_label_round_trip_is_total_over_every_flag_shape',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        if fbStepIsInteractive(dictStep) == bWantInteractive:',
+        new='        if dictStep.get("bInteractive", False) == bWantInteractive:',
+    ),
+    Falsification(
+        # The same disagreement from the LABELLER side: raw truthiness
+        # reads a quoted "false" as interactive, so the step is
+        # labelled I01 and resolved as automated.
+        nodeid='tests/testStepLabels.py::TestFbStepIsInteractive::test_the_string_false_is_not_read_as_a_non_empty_object',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        if fbStepIsInteractive(dictStep):\n            iInteractive += 1',
+        new='        if dictStep.get("bInteractive", False):\n            iInteractive += 1',
+    ),
+    Falsification(
+        # Without the undo, a failed marker or manifest stage leaves
+        # the directory at the new slug while project.json still names
+        # the old one -- and fbStepDirectoryConforms then reports the
+        # step healthy, so no warning ever appears.
+        nodeid='tests/testStepRename.py::test_apply_undoes_the_directory_move_when_a_later_stage_fails',
+        source='vaibify/gui/stepRename.py',
+        old="""            _fnUndoOrRecordSplit(
+                connectionDocker, sContainerId, sRepo, dictWorkflow,
+                iStepIndex, dictPlan, dictReport, errorCascade,
+            )
+            raise""",
+        new='            raise',
+    ),
+    Falsification(
+        # When the undo itself fails the pair has genuinely split;
+        # pointing the step at the directory that holds its bytes is
+        # what makes the split visible as a nonconforming step.
+        nodeid='tests/testStepRename.py::test_apply_makes_an_unrecoverable_split_visible_not_conforming',
+        source='vaibify/gui/stepRename.py',
+        old="""        _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan)
+        dictWorkflow["listSteps"][iStepIndex]["sName"] = \\
+            dictPlan["sOldName"]
+        raise StepRenameSplitError(""",
+        new='        raise StepRenameSplitError(',
+    ),
+    Falsification(
+        # Swallowing the parse error renames the step while its
+        # verification record stays behind under a name nothing will
+        # look for again.
+        nodeid='tests/testStepRename.py::test_apply_refuses_a_rename_when_the_marker_is_unreadable',
+        source='vaibify/gui/stepRename.py',
+        old="""    except (ValueError, OSError) as error:
+        # Loud, not silent: a marker that exists but cannot be read is
+        # a verification record about to be orphaned under a name
+        # nothing will look for again.
+        raise ValueError(
+            f"The step's verification marker '{sOldRelative}' could "
+            f"not be read ({error}) — refusing a rename that would "
+            "orphan the step's test record. Re-run the step's tests "
+            "or delete the marker, then rename.",
+        ) from error""",
+        new="""    except (ValueError, OSError):
+        return False""",
+    ),
+    Falsification(
+        # Gating uniqueness on the directory move lets a step with no
+        # directory yet be renamed onto another step's slug; the
+        # collision then surfaces at directory creation instead.
+        nodeid='tests/testStepRename.py::test_plan_rejects_a_slug_collision_with_no_directory_to_move',
+        source='vaibify/gui/stepRename.py',
+        old='    fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sNewName)',
+        new='    if bDirectoryRenamed:\n        fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sNewName)',
+    ),
+    Falsification(
+        # Falling through to the generic RuntimeError branch raises
+        # 500 without saving, so the nonconforming directory the
+        # cascade recorded is lost on the next load.
+        nodeid='tests/testStepRoutes.py::testRenameRoutePersistsAnUnrecoverableSplit',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old="""        except stepRename.StepRenameSplitError as error:
+            # The directory moved and could not be put back. The
+            # workflow now records where the bytes actually are, so it
+            # has to be PERSISTED or the nonconforming warning that
+            # leads the researcher to the repair is lost on reload.
+            dictCtx["save"](sContainerId, dictWorkflow)
+            raise HTTPException(500, str(error))
+""",
+        new='',
+    ),
+    # --- Dashboard honesty (Opus 5 review, phase 3, 2026-07-25) ---
+    Falsification(
+        # Reading a timezone-less stamp as the host's LOCAL time
+        # relocates a recorded cause by the host's UTC offset, so a
+        # legitimate event falls outside the window and ordinary work
+        # is flagged permanently.
+        nodeid='tests/testAttributionLog.py::test_naive_event_timestamp_is_read_as_utc_not_local',
+        source='vaibify/gui/attributionLog.py',
+        old=(
+            '    if dtParsed.tzinfo is None:\n'
+            '        return dtParsed.replace(tzinfo=timezone.utc)\n'
+            '    return dtParsed.astimezone(timezone.utc)'
+        ),
+        new='    return dtParsed',
+    ),
+    Falsification(
+        # Without a lower bound on event age, one forward-dated line
+        # appended from the container's shell sits inside the window
+        # of every later change and blinds the watchdog forever.
+        nodeid='tests/testAttributionLog.py::test_future_dated_event_never_attributes_a_change',
+        source='vaibify/gui/attributionLog.py',
+        old='        if fEpoch > fNowEpoch:\n            continue',
+        new='        if False:\n            continue',
+    ),
+    Falsification(
+        # Judging a terminal as two instants instead of an interval
+        # false-flags every ordinary edit made minutes into a session.
+        nodeid='tests/testAttributionLog.py::test_open_terminal_session_attributes_a_later_change',
+        source='vaibify/gui/attributionLog.py',
+        old=(
+            '    return iOpenCount > 0 and fSpanStart <= fAnchorEpoch '
+            '<= fNowEpoch'
+        ),
+        new='    return False',
+    ),
+    Falsification(
+        # Anchoring only on "now" reinstates the 60-vs-90 second gap:
+        # a change judged by a late tick is flagged even though its
+        # explaining event is exactly as old as the change.
+        nodeid='tests/testSupervisionWatchdog.py::test_delayed_tick_does_not_flag_an_explained_change',
+        source='vaibify/gui/attributionLog.py',
+        old=(
+            '    if fChangeEpoch is None:\n'
+            '        return [fNowEpoch]\n'
+            '    try:\n'
+            '        return [fNowEpoch, float(fChangeEpoch)]\n'
+            '    except (TypeError, ValueError):\n'
+            '        return [fNowEpoch]'
+        ),
+        new='    return [fNowEpoch]',
+    ),
+    Falsification(
+        # dictRunState drives the run marker for agent-initiated runs
+        # and fell outside the freshness stamp for a month; excluding
+        # it again lets a revalidating cache serve a stale body that
+        # clears a live run's lights.
+        nodeid='tests/testPipelineRoutesEtag.py::test_file_status_run_state_change_changes_etag',
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='_SET_ETAG_VOLATILE_KEYS = frozenset()',
+        new='_SET_ETAG_VOLATILE_KEYS = frozenset({"dictRunState"})',
+    ),
+    Falsification(
+        # Grading supervision on the persisted count makes the AICS
+        # row gradeable on self-report: the supervised agent edits
+        # project.json and the row turns green.
+        nodeid='tests/testReplayGate.py::test_supervision_is_not_gradeable_on_the_persisted_count',
+        source='vaibify/reproducibility/replayGate.py',
+        old=(
+            '    if not isinstance(dictEvidence, dict):\n'
+            '        return False\n'
+            '    if dictEvidence.get("iFlagCount") != 0:\n'
+            '        return False\n'
+            '    return (\n'
+            '        dictEvidence.get("bFlagChainIntact") is True\n'
+            '        and dictEvidence.get("bEventChainIntact") is True\n'
+            '        and dictEvidence.get("bPersistedFlagCountMatches") '
+            'is True\n'
+            '        and dictEvidence.get("bHostAnchorConsistent") '
+            'is True\n'
+            '    )'
+        ),
+        new=(
+            '    return int(dictSupervision.get('
+            '"iUnattributedFlagCount") or 0) == 0'
+        ),
+    ),
+    Falsification(
+        # Comparing only the declared model list leaves five of the
+        # six captured stamp fields hand-editable forever, and every
+        # one is folded into the L3 attestation.
+        nodeid='tests/testAiProvenanceStamp.py::test_edited_stamp_fields_are_detected_as_stale',
+        source='vaibify/reproducibility/aiProvenanceStamp.py',
+        old='    if not _fbStampShapeIntact(dictStamp):\n        return False',
+        new='    if False:\n        return False',
+    ),
+    Falsification(
+        # The import route reads an arbitrary HOST file into a
+        # repo-tracked, agent-readable, agent-pushable location; its
+        # docstring promised unreachability that nothing enforced.
+        nodeid='tests/testReplayRoutes.py::test_context_import_rejects_agent_token_lane',
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"]()\n'
+            '        dictWorkflow = fdictRequireWorkflow('
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        dictWorkflow = fdictRequireWorkflow('
+        ),
+    ),
+    # ---- Phase 4 security remediation (2026-07-25) ----
+    Falsification(
+        # Without the catalog check the agent lane returns to an
+        # unconditional pass-through, and every user-only action --
+        # kill-pipeline, delete-step, supervision/configure -- is
+        # reachable by a compromised in-container agent with curl.
+        nodeid='tests/testAgentLaneEnforcement.py::testAgentLaneRefusesEveryUserOnlyRoute',
+        source='vaibify/gui/serverMiddleware.py',
+        old='            if not _fbAgentLanePermitsRequest(request):',
+        new='            if False:',
+    ),
+    Falsification(
+        # Fail-open on an unregistered route would make the enforcement
+        # point decay: every route added later becomes agent-reachable
+        # by omission rather than by decision.
+        nodeid='tests/testAgentLaneEnforcement.py::testAgentLaneFailsClosedForUnregisteredMutatingRoute',
+        source='vaibify/gui/actionCatalog.py',
+        old='    return sMethod not in SET_STATE_MUTATING_METHODS',
+        new='    return True',
+    ),
+    Falsification(
+        # Connect with no ownership check lets a second browser tab
+        # bypass the claim route's 409 and take the workflow, the
+        # project-repo path, and the container's agent session.
+        nodeid='tests/testAgentLaneEnforcement.py::testConnectRefusesASessionWithoutTheOwningLease',
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old='    raise HTTPException(409, "In use in another browser session")',
+        new='    return',
+    ),
+    Falsification(
+        # docker cp runs on the HOST, so an unconfined agent-lane pull
+        # writes agent-authored bytes into a shell profile or an
+        # authorized-keys file -- code execution out of the sandbox.
+        nodeid='tests/testAgentLaneEnforcement.py::testAgentPullMustLandInTheExportDirectory',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='        if fbRequestRidesAgentLane(requestHttp):',
+        new='        if False:',
+    ),
+    Falsification(
+        # Writing .git/hooks/pre-commit is code execution on the next
+        # commit; writing .vaibify/ defeats the metadata-integrity
+        # contract the AICS truth system rests on.
+        nodeid='tests/testAgentLaneEnforcement.py::testSaveAndRunTestRefusesDenylistedPaths',
+        source='vaibify/gui/routes/testRoutes.py',
+        old='    fnRejectWriteDenylistedPath(sNormalized, sRoot)',
+        new='    pass',
+    ),
+    Falsification(
+        # An unvalidated fallback turns the HEAD probe's `test -f` into
+        # an existence oracle over arbitrary container paths.
+        nodeid='tests/testAgentLaneEnforcement.py::testFigureProbeValidatesTheWorkdirFallback',
+        source='vaibify/gui/routes/figureRoutes.py',
+        old='            fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
+        new='            sFallback)',
+    ),
+    Falsification(
+        # Without the control-character rejection a path carrying a
+        # newline plus the heredoc terminator escapes into
+        # /bin/bash -c in the batched existence check.
+        nodeid='tests/testInjectionGuards.py::testPathValidationRejectsControlCharacters',
+        source='vaibify/gui/pipelineServer.py',
+        old='    _fnRejectControlCharactersInPath(sResolvedPath)\n',
+        new='',
+    ),
+    Falsification(
+        # A prefix compare accepts http://localhost.evil.example, the
+        # same prefix-attack class fnValidatePathWithinRoot defends
+        # against.
+        nodeid='tests/testInjectionGuards.py::testLoopbackOriginRejectsASuffixDomain',
+        source='vaibify/gui/pipelineServer.py',
+        old='    return (tParsed.hostname or "") in _SET_LOOPBACK_ORIGIN_HOSTS',
+        new='    return sOrigin.startswith("http://localhost")',
+    ),
+    Falsification(
+        # Without containment, a traversing template name copies an
+        # arbitrary host directory into a project that is then mounted
+        # into a container.
+        nodeid='tests/testInjectionGuards.py::testTemplateNameCannotEscapeTheTemplateRoot',
+        source='vaibify/config/templateManager.py',
+        old='    if pathRoot not in pathTemplate.parents:',
+        new='    if False:',
+    ),
+    Falsification(
+        # saTestCommands is persisted and re-executed, so an unquoted
+        # path is a stored, repeatedly-executed injection.
+        nodeid='tests/testInjectionGuards.py::testPersistedTestCommandQuotesItsPath',
+        source='vaibify/gui/testStatusManager.py',
+        old='    sRunCmd = f"python -m pytest {fsShellQuote(sFilePath)} -v"',
+        new='    sRunCmd = f"python -m pytest {sFilePath} -v"',
+    ),
+    Falsification(
+        # sProjectRepoPath comes from the workflow, so an unquoted
+        # `mv {a} {b}` is command injection through a repo path.
+        nodeid='tests/testInjectionGuards.py::testContainerCacheRenameQuotesBothPaths',
+        source='vaibify/gui/mtimeCache.py',
+        old='            f"mv {fsShellQuote(sPathTemp)} {fsShellQuote(sPath)}",',
+        new='            f"mv {sPathTemp} {sPath}",',
+    ),
+    Falsification(
+        # Treating an undeclared expected port as "check disabled"
+        # silently drops the DNS-rebinding defence for every request an
+        # incorrectly wired app serves.
+        nodeid='tests/testInjectionGuards.py::testUndeclaredExpectedPortFailsTheHostCheckClosed',
+        source='vaibify/gui/serverMiddleware.py',
+        old='    if iExpectedPort is None:\n        return False',
+        new='    if iExpectedPort is None:\n        return True',
+    ),
+    Falsification(
+        # Recording the boolean helper's fail-open False turns "docker
+        # inspect could not answer" into the asserted fact "this
+        # container had network access", inside an L3 attestation.
+        nodeid='tests/testAiProvenanceStamp.py::test_unanswerable_isolation_probe_is_recorded_as_unknown',
+        source='vaibify/gui/aiProvenanceCapture.py',
+        old='        bNetworkIsolatedAtCapture=bIsolated if bAnswered else None,',
+        new='        bNetworkIsolatedAtCapture=bIsolated,',
+    ),
+    Falsification(
+        # flags.jsonl and project.json are both container-writable, so
+        # editing both leaves them agreeing. Only the host anchor, out
+        # of the container's reach, still remembers the erased flags.
+        nodeid='tests/testSupervisionAnchor.py::test_truncating_the_log_and_the_count_together_still_fails_the_gate',
+        source='vaibify/gui/attributionLog.py',
+        old="""    if supervisionAnchor.fbAnchorContradictedBy(
+        dictAnchor, listFlags, sHead,
+    ):
+        return False""",
+        new="""    if False:
+        return False""",
+    ),
+    Falsification(
+        # A count-only anchor misses an in-place rewrite of a flag's
+        # detail, so the anchor pins the chain head digest too.
+        nodeid='tests/testSupervisionAnchor.py::test_rewriting_records_in_place_is_caught_by_the_head_digest',
+        source='vaibify/gui/supervisionAnchor.py',
+        old="""    if len(listFlags) == iAnchored:
+        return bool(dictAnchor.get(_S_HEAD_KEY)) and (
+            dictAnchor.get(_S_HEAD_KEY) != sHeadSha256
+        )""",
+        new="""    if len(listFlags) == iAnchored:
+        return False""",
+    ),
+    Falsification(
+        # Without monotonicity a truncation writes its own smaller
+        # count back and launders itself on the next observation.
+        nodeid='tests/testSupervisionAnchor.py::test_anchor_never_lowers_itself',
+        source='vaibify/gui/supervisionAnchor.py',
+        old="""    if int(dictExisting.get(_S_COUNT_KEY) or 0) > int(iFlagCount):
+        return""",
+        new="""    if False:
+        return""",
+    ),
+    Falsification(
+        # Anchoring every polled project accumulates one host file per
+        # repository forever, makes a recreated repo read as tampered,
+        # and writes into the developer's home during test runs.
+        nodeid='tests/testSupervisionAnchor.py::test_supervision_disabled_writes_no_host_anchor',
+        source='vaibify/gui/attributionLog.py',
+        old="""    if not fbSupervisionEnabled(dictWorkflow or {}):
+        return True""",
+        new="""    if False:
+        return True""",
+    ),
+    Falsification(
+        # The one reconcile action that left the screen un-repainted.
+        nodeid='tests/testSyncEpoch.py::test_verify_remote_bumps_sync_epoch',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old="""        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictStatus""",
+        new="""        return dictStatus""",
+    ),
+    Falsification(
+        # An out-of-band push produces no HTTP traffic; this route is
+        # the only thing that can invalidate an open tab.
+        nodeid='tests/testSyncEpoch.py::test_reconcile_remote_state_bumps_sync_epoch',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old="""        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictResponse""",
+        new="""        )
+        return dictResponse""",
+    ),
+    Falsification(
+        # A file the verify never looked at must not be recorded as
+        # synced; equality on the coverage count is what enforces it.
+        nodeid='tests/testSyncEpoch.py::test_reconcile_marks_only_paths_the_verify_actually_covered',
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='    if dictStatus.get("iTotalFiles") != len(listCanonical):',
+        new='    if dictStatus.get("iTotalFiles") > len(listCanonical):',
+    ),
+    Falsification(
+        # Sleeping a full cadence first is a first pass the 30-minute
+        # idle shutdown guarantees never happens.
+        nodeid='tests/testScheduledReverify.py::test_first_reverify_pass_does_not_wait_a_full_cadence',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""    if fElapsed is None:
+        return fStartupDelay""",
+        new="""    if fElapsed is None:
+        return max(float(fHoursCadence), 0.0) * 3600.0""",
+    ),
+    Falsification(
+        # Without the remaining-cadence term every restart re-verifies
+        # every remote within minutes.
+        nodeid='tests/testScheduledReverify.py::test_restart_resumes_the_cadence_instead_of_restarting_it',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    return max(fRemaining, fStartupDelay)',
+        new='    return fStartupDelay',
+    ),
+    Falsification(
+        # Inverting the guard skips every real workflow entry, so the
+        # scheduled pass invalidates nothing.
+        nodeid='tests/testScheduledReverify.py::test_completed_pass_bumps_every_touched_container_sync_epoch',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""        if isinstance(entryWorkflow, dict):
+            continue
+        fnBumpSyncEpoch(dictCtx, entryWorkflow[0])""",
+        new="""        if not isinstance(entryWorkflow, dict):
+            continue
+        fnBumpSyncEpoch(dictCtx, entryWorkflow[0])""",
+    ),
+    Falsification(
+        # No stamp means the cadence restarts on every hub start and
+        # the dashboard can never say "never run".
+        nodeid='tests/testScheduledReverify.py::test_a_completed_pass_persists_its_stamp',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old="""        fnRecordLastReverifyIso(_fsBuildIsoTimestamp())
+        _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows)""",
+        new="""        _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows)""",
+    ),
+    Falsification(
+        # The owner map is name-keyed and every URL carries the docker
+        # id. Dropping the resolution is the historical fatal bug that
+        # a name == id fixture hid behind a green suite.
+        nodeid='tests/testLiveSessionBoundary.py::testConnectMintsTheLeaseThatOpensThePipelineWebSocket',
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old="""        sName = fsContainerNameForId(
+            dictCtx.get("docker"), sContainerId,
+        )""",
+        new="""        sName = sContainerId""",
+    ),
+    Falsification(
+        # Without the lease branch, any tab holding the shared token
+        # reaches the pipeline of a container another session owns.
+        nodeid='tests/testLiveSessionBoundary.py::testPipelineWebSocketRefusesALeaseConnectNeverMinted',
+        source='vaibify/gui/webSocketAuthorization.py',
+        old="""    if not fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
+        return I_REJECT_FOREIGN_LEASE""",
+        new="""    if False:
+        return I_REJECT_FOREIGN_LEASE""",
+    ),
+    Falsification(
+        # Without the lane budget, a duplicate tab that copied the
+        # lease drives runs into the container concurrently.
+        nodeid='tests/testLiveSessionBoundary.py::testDuplicateTabPipelineWebSocketIsRefusedOnTheServedApplication',
+        source='vaibify/gui/webSocketAuthorization.py',
+        old="""    if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
+        dictContainerOwners, sName,
+    ):""",
+        new="""    if False:""",
+    ),
+    Falsification(
+        # Budgeting the terminal lane too is the Run-Step-always-refused
+        # regression: the terminal strip holds the only slot.
+        nodeid='tests/testLiveSessionBoundary.py::testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication',
+        source='vaibify/gui/webSocketAuthorization.py',
+        old="""    fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=False,""",
+        new="""    fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=True,""",
+    ),
+    Falsification(
+        # A git checkout stamps every file with the checkout time, so
+        # without the restore every attestation dies on a machine hop.
+        nodeid='tests/testCrossMachineUserVerification.py::test_fresh_clone_does_not_discard_the_researchers_attestation',
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '        if dictRecorded and dictRecorded == dictCurrent:\n'
+            '            dictVerification["sUser"] = "passed"'
+        ),
+        new=(
+            '        if False:\n'
+            '            dictVerification["sUser"] = "passed"'
+        ),
+    ),
+    Falsification(
+        # Restoring on the mere presence of a recorded hash would
+        # launder a real change into a verified state.
+        nodeid='tests/testCrossMachineUserVerification.py::test_a_genuinely_changed_plot_stays_stale',
+        source='vaibify/gui/fileStatusManager.py',
+        old='        if dictRecorded and dictRecorded == dictCurrent:',
+        new='        if dictRecorded:',
+    ),
+    Falsification(
+        # Recording while stale would let a changed plot adopt its own
+        # new hash and verify itself on the following poll.
+        nodeid='tests/testCrossMachineUserVerification.py::test_a_stale_step_never_adopts_the_current_hash_as_verified',
+        source='vaibify/gui/fileStatusManager.py',
+        old='        if sUser == "passed":',
+        new='        if sUser in ("passed", "stale"):',
+    ),
+    Falsification(
+        # Observed on a real machine: sweeping an April-dated token
+        # broke a container that had bind-mounted it. Docker then
+        # creates a directory stub where the file was.
+        nodeid='tests/testEphemeralStore.py::test_sweep_spares_a_stale_file_a_container_still_mounts',
+        source='vaibify/config/ephemeralStore.py',
+        old=(
+            '            if sPath in setProtected:\n'
+            '                continue'
+        ),
+        new=(
+            '            if False:\n'
+            '                continue'
+        ),
+    ),
+
+    # ── Documented hard rules that no test could previously falsify ──
+    # (2026-07-26 audit). Mutation testing cannot reach this class: it
+    # finds weak tests over EXISTING code, and there is no mutant for an
+    # enforcement point that was never written.
+
+    Falsification(
+        # AGENTS.md "Ask first" names five sensitive categories; the
+        # credential manager is the one whose loss is unrecoverable
+        # (rotation is the only remediation).
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookAsksForEveryDocumentedPath',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old=(
+            '    (\n'
+            '        r"/vaibify/config/secretManager\\.py$",\n'
+            '        "secretManager.py handles credentials. A wrong line '
+            'can leak "\n'
+            '        "tokens into git history; rotation is the only '
+            'remediation. "\n'
+            '        "Pausing to confirm.",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        # NotebookEdit carries notebook_path, never file_path, so
+        # dropping the fallback silently exempts every notebook edit.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookReadsTheNotebookPathField',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old=(
+            '    return dictToolInput.get("file_path") or '
+            'dictToolInput.get("notebook_path", "")'
+        ),
+        new='    return dictToolInput.get("file_path", "")',
+    ),
+    Falsification(
+        # A hook that asks for everything is a hook the researcher
+        # learns to click through.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookLeavesOrdinarySourceFilesAlone',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old='    return False, ""',
+        new='    return True, ""',
+    ),
+    Falsification(
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookEmitsTheAskDecisionPayload',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old='            "permissionDecision": "ask",',
+        new='            "permissionDecision": "allow",',
+    ),
+    Falsification(
+        nodeid='tests/testHarnessHookMutationCoverage.py::testDestructiveGitHookDeniesTheDocumentedCommands',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old=(
+            '    (\n'
+            '        r"\\bgit\\s+rebase\\s+(?:-i\\b|--interactive\\b)",\n'
+            '        "Interactive rebase requires a TTY editor and is not "\n'
+            '        "appropriate in an agent session. Run manually.",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        # --force-with-lease is the documented escape hatch; denying it
+        # leaves the block with no legitimate way past.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testDestructiveGitHookPermitsForceWithLease',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old=r'(?:--force(?!-with-lease)|-f|\+\S+)(?!\S)',
+        new=r'(?:--force|-f|\+\S+)',
+    ),
+    Falsification(
+        # AGENTS.md calls these "hard-blocked": an ask-decision turns
+        # the block into a prompt an agent can talk its way through.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testDestructiveGitHookEmitsTheDenyDecisionPayload',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old='            "permissionDecision": "deny",',
+        new='            "permissionDecision": "ask",',
+    ),
+    Falsification(
+        # Write recreates a file wholesale; a matcher narrowed to Edit
+        # lets the highest-risk operation past a hook that still looks
+        # installed.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testHookSettingsRegisterBothPreToolUseHooks',
+        source='.claude/settings.json',
+        old='"matcher": "Edit|Write|NotebookEdit",',
+        new='"matcher": "Edit",',
+    ),
+    Falsification(
+        # docs/reproducibility.md: sSourceUrl is inert metadata, never
+        # fetched. It arrives from a project.json the in-container agent
+        # can write, so any dereference is agent-driven SSRF.
+        nodeid='tests/testProvenanceContractMutationCoverage.py::testRemoteSourceUrlIsNeverDereferencedByVaibifySource',
+        source='vaibify/gui/pipelineRunner.py',
+        old='        sSha = dictShaByPath.get(dictRemote.get("sPath", ""))',
+        new=(
+            '        sSha = dictShaByPath.get('
+            'dictRemote.get("sSourceUrl", ""))'
+        ),
+    ),
+    Falsification(
+        # docs/reproducibility.md: vaibify never stores tokens in
+        # environment variables (readable via /proc, docker inspect).
+        nodeid='tests/testProvenanceContractMutationCoverage.py::testCredentialsAreNeverWrittenIntoEnvironmentVariables',
+        source='vaibify/docker/dockerConnection.py',
+        old='            os.environ["DOCKER_HOST"] = sHost',
+        new='            os.environ["GITHUB_TOKEN"] = sHost',
+    ),
+    Falsification(
+        # The guard had zero coverage before this entry: dropping the
+        # call renames the step while its directory, test marker and
+        # manifest rows stay under the old slug.
+        nodeid='tests/testStepRenameCascadeMutationCoverage.py::testGenericStepUpdateRefusesARename',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        _fnRejectContractBreakingUpdates(\n'
+            '            dictWorkflow, iStepIndex, dictUpdates,\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        # Containment instead of equality: "analysis/Corner" would pass
+        # against the slug "CornerPlot".
+        nodeid='tests/testStepRenameCascadeMutationCoverage.py::testGenericStepUpdateRefusesADirectoryOffTheSlug',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='                and posixpath.basename(sDirectory) != sSlug:',
+        new='                and posixpath.basename(sDirectory) not in sSlug:',
+    ),
+    Falsification(
+        # The contract frees the PARENT path; a guard that refuses every
+        # sDirectory edit blocks legitimate reorganisation while looking
+        # like correct enforcement.
+        nodeid='tests/testStepRenameCascadeMutationCoverage.py::testGenericStepUpdateStillMovesTheParentPath',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        if sDirectory and "{" not in sDirectory \\\n'
+            '                and posixpath.basename(sDirectory) != sSlug:'
+        ),
+        new='        if sDirectory:',
+    ),
+    Falsification(
+        # git accepts the flag after the remote and refspec, so the
+        # positional pattern never blocked the ordinary invocation.
+        nodeid='tests/testForcePushArgumentOrder.py::testForcePushIsBlockedAnywhereInTheArgumentList',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old=r'r"\bgit\s+push\b[^;&|]*?(?<!\S)"',
+        new=r'r"\bgit\s+push\s+"',
+    ),
+    Falsification(
+        # Two guards protect --force-with-lease and each is
+        # sufficient alone: the (?!-with-lease) lookahead AND the
+        # trailing (?!\S), which fails because a "-" follows --force
+        # in the lease form. Removing either one alone therefore
+        # SURVIVES -- verified, not assumed. The mutation recorded
+        # here removes both, which is the only change that actually
+        # blocks the documented escape hatch.
+        nodeid='tests/testForcePushArgumentOrder.py::testLeaseExemptionSurvivesTheWidenedScan',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old=r'r"(?:--force(?!-with-lease)|-f|\+\S+)(?!\S)",',
+        new=r'r"(?:--force|-f|\+\S+)",',
+    ),
+    Falsification(
+        # The mirror painting a directory name the backend would never
+        # create is the exact drift AGENTS.md's "never write a second
+        # derivation" exists to prevent, and the pre-existing guard
+        # (source contains toUpperCase and slice(1)) survives it.
+        nodeid='tests/testStepSlugMirrorEquivalence.py::testJavascriptMirrorBodyMatchesItsPin',
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='sWord.slice(1)',
+        new='sWord.slice(1).toLowerCase()',
     ),
 ]

@@ -98,12 +98,12 @@ var VaibifyConnectionMonitor = (function () {
 
     function _fnShowReloadToast(dictError) {
         var sMessage = _fsBuildToastMessage(dictError);
-        if (typeof PipeleyenApp === "undefined" ||
-            typeof PipeleyenApp.fnShowToast !== "function") {
+        if (typeof VaibifyApp === "undefined" ||
+            typeof VaibifyApp.fnShowToast !== "function") {
             console.error(sMessage);
             return;
         }
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             sMessage, "error",
             function () { window.location.reload(); }
         );

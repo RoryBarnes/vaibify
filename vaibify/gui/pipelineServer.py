@@ -9,6 +9,7 @@ import re
 import secrets
 import signal
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger("vaibify")
@@ -35,12 +36,14 @@ __all__ = [
     "fnPipelineMessageLoop",
     "fnRejectNotConnected",
     "fnRejectTerminalStart",
+    "fnRejectWriteDenylistedPath",
     "fnRunTerminalSession",
     "fnSignalTerminalAbnormalExit",
     "fnTerminalInputLoop",
     "fnTerminalReadLoop",
     "fnValidatePathWithinRoot",
     "fbHasAgentToken",
+    "fbOriginIsLoopback",
     "fbValidateWebSocketOrigin",
     "fsContainerNameForId",
     "fsGetOriginHeader",
@@ -305,8 +308,27 @@ class DatasetDownloadRequest(BaseModel):
 # Shared utility functions
 # ---------------------------------------------------------------
 
+def _fnRejectControlCharactersInPath(sResolvedPath):
+    """Raise 403 if a path carries a newline, NUL, or other control byte.
+
+    Several callers interpolate a validated path into a shell command —
+    most sharply the batched existence check, which feeds paths into a
+    ``<<'__VAIBIFY_EOF__'`` heredoc. A path containing a newline plus
+    the terminator closes the heredoc early and the remainder executes
+    under ``/bin/bash -c``. No legitimate workflow path contains a
+    control character, so rejecting the whole class here protects every
+    caller rather than one call site.
+    """
+    for sCharacter in sResolvedPath:
+        if ord(sCharacter) < 32 or ord(sCharacter) == 127:
+            raise HTTPException(
+                403, "Control characters are not permitted in paths",
+            )
+
+
 def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
     """Raise 403 if sResolvedPath escapes sAllowedRoot via traversal."""
+    _fnRejectControlCharactersInPath(sResolvedPath)
     sNormalized = posixpath.normpath(sResolvedPath)
     sRoot = posixpath.normpath(sAllowedRoot)
     if not sNormalized.startswith(sRoot + "/") and sNormalized != sRoot:
@@ -314,6 +336,33 @@ def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
             403, "Path traversal is not permitted"
         )
     return sNormalized
+
+
+def fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
+    """Refuse writes to vaibify-managed metadata or the project contract file.
+
+    Writes that target paths under ``.git/`` (git internals at any
+    depth), under ``.vaibify/`` (vaibify-managed metadata), or that
+    match the basename ``project.json`` (which must only be edited via
+    the dedicated project routes) are rejected with HTTP 403.
+
+    Lives beside :func:`fnValidatePathWithinRoot` because every route
+    that writes caller-supplied content into the project repo must
+    apply both, and route modules may not import from one another.
+    ``.git/hooks/`` is code execution on the next commit; ``.vaibify/``
+    is the metadata-integrity contract the AICS truth system rests on.
+    """
+    sRepo = posixpath.normpath(sProjectRepoPath)
+    sRelative = posixpath.relpath(sNormalized, sRepo)
+    listSegments = sRelative.split("/")
+    if ".git" in listSegments:
+        raise HTTPException(403, "Writes under .git/ are not permitted")
+    if ".vaibify" in listSegments:
+        raise HTTPException(
+            403, "Writes under .vaibify/ are not permitted")
+    if posixpath.basename(sNormalized) == "project.json":
+        raise HTTPException(
+            403, "Direct writes to project.json are not permitted")
 
 
 def fdictExtractSettings(dictWorkflow):
@@ -1638,17 +1687,29 @@ def fbValidateWebSocketOrigin(websocket: WebSocket, sExpectedToken=None):
     """
     if sExpectedToken and fbHasAgentToken(websocket, sExpectedToken):
         return True
-    sOrigin = fsGetOriginHeader(websocket)
+    return fbOriginIsLoopback(fsGetOriginHeader(websocket))
+
+
+_SET_LOOPBACK_ORIGIN_HOSTS = frozenset(
+    {"127.0.0.1", "localhost", "::1"}
+)
+
+
+def fbOriginIsLoopback(sOrigin):
+    """Return True when an Origin header names an http(s) loopback host.
+
+    A prefix comparison would accept ``http://localhost.evil.example``
+    — the same prefix-attack class ``fnValidatePathWithinRoot`` already
+    defends against — so the origin is parsed and its host must equal a
+    loopback name exactly. ``urlsplit`` strips the brackets from an
+    IPv6 authority, hence the bare ``::1``.
+    """
     if not sOrigin:
         return False
-    listAllowed = [
-        "http://127.0.0.1", "http://localhost",
-        "https://127.0.0.1", "https://localhost",
-    ]
-    for sAllowed in listAllowed:
-        if sOrigin.startswith(sAllowed):
-            return True
-    return False
+    tParsed = urllib.parse.urlsplit(sOrigin)
+    if tParsed.scheme not in ("http", "https"):
+        return False
+    return (tParsed.hostname or "") in _SET_LOOPBACK_ORIGIN_HOSTS
 
 
 def fsGetOriginHeader(websocket: WebSocket):

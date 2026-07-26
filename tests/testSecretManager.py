@@ -309,8 +309,17 @@ def test_fsRetrieveSecret_rejects_empty_name():
 
 
 def test_fsRetrieveSecret_rejects_too_long_name():
-    """Names longer than 64 characters must be rejected."""
-    sLong = "a" * 65
+    """Names past the cap are rejected; the cap itself is derived.
+
+    Deriving the length from the module constant keeps this test from
+    freezing an old cap: the pre-2026-07 literal 64 was shorter than a
+    real ``github_token:<owner>/<repo>`` slot, so widening the cap had
+    to change the test too.
+    """
+    from vaibify.config.secretManager import (
+        _I_MAXIMUM_SECRET_NAME_LENGTH,
+    )
+    sLong = "a" * (_I_MAXIMUM_SECRET_NAME_LENGTH + 1)
     with pytest.raises(ValueError, match="Invalid secret name"):
         fsRetrieveSecret(sLong, "docker_secret")
 

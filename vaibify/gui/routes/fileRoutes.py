@@ -6,13 +6,14 @@ import hashlib
 import os
 import posixpath
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 
 from ..actionCatalog import fnAgentAction
 from ..pipelineUtils import fsShellQuote
+from ..serverMiddleware import fbRequestRidesAgentLane
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     FileUploadRequest,
@@ -20,6 +21,7 @@ from ..pipelineServer import (
     FileWriteRequest,
     WORKSPACE_ROOT,
     flistQueryDirectory,
+    fnRejectWriteDenylistedPath,
     fnValidatePathWithinRoot,
     fsResolveFigurePath,
     _fsSanitizeServerError,
@@ -35,25 +37,10 @@ class FileExistenceRequest(BaseModel):
     saRelativePaths: List[str]
 
 
-def _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
-    """Refuse writes to vaibify-managed metadata or the project contract file.
-
-    Writes that target paths under ``.git/`` (git internals at any depth),
-    under ``.vaibify/`` (vaibify-managed metadata), or that match the
-    basename ``project.json`` (which must only be edited via the dedicated
-    project routes) are rejected with HTTP 403.
-    """
-    sRepo = posixpath.normpath(sProjectRepoPath)
-    sRelative = posixpath.relpath(sNormalized, sRepo)
-    listSegments = sRelative.split("/")
-    if ".git" in listSegments:
-        raise HTTPException(403, "Writes under .git/ are not permitted")
-    if ".vaibify" in listSegments:
-        raise HTTPException(
-            403, "Writes under .vaibify/ are not permitted")
-    if posixpath.basename(sNormalized) == "project.json":
-        raise HTTPException(
-            403, "Direct writes to project.json are not permitted")
+# The write denylist moved to pipelineServer on 2026-07-25 so the test
+# routes could share it without a route-to-route import. Both names stay
+# bound here for callers and tests that already reference them.
+_fnRejectWriteDenylistedPath = fnRejectWriteDenylistedPath
 
 
 def _fnValidateHostDestination(sResolvedPath):
@@ -80,7 +67,7 @@ def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
 
     Inputs may already be absolute container paths (used by callers
     that pre-resolved via ``workflowDir``) or repo-relative paths from
-    workflow.json. Both are normalized and validated against the most
+    project.json. Both are normalized and validated against the most
     permissive of (project repo, workspace root) so traversal is
     impossible. Raises ``HTTPException`` 403 on escape.
     """
@@ -187,7 +174,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
             request.sDestination, sSafeFilename)
         sNormalized = fnValidatePathWithinRoot(
             sDestPath, sProjectRepoPath)
-        _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
+        fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         try:
             baContent = base64.b64decode(request.sContentBase64)
             await asyncio.to_thread(
@@ -275,12 +262,49 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
         )
 
 
+S_AGENT_EXPORT_DIRECTORY = os.path.join("~", ".vaibify", "exports")
+
+
+def _fsPrepareAgentExportRoot(sContainerId):
+    """Create and return this container's agent-lane export directory.
+
+    A file pull runs ``docker cp`` on the HOST, and the in-container
+    agent authors the bytes it is copying, so an unrestricted
+    destination is arbitrary agent-authored content landing anywhere
+    under ``$HOME`` — a shell profile, an SSH authorized-keys file, a
+    launch agent. Confining the agent lane to one inert, per-container
+    export directory keeps the capability (the researcher can still
+    collect what the agent produced) without letting it write anywhere
+    the host would later execute.
+    """
+    sBasename = posixpath.basename(sContainerId) or "unknown"
+    sRoot = os.path.realpath(os.path.expanduser(
+        os.path.join(S_AGENT_EXPORT_DIRECTORY, sBasename),
+    ))
+    os.makedirs(sRoot, mode=0o700, exist_ok=True)
+    return sRoot
+
+
+def _fnValidateAgentPullDestination(sResolvedPath, sContainerId):
+    """Raise 403 when an agent-lane pull lands outside the export root."""
+    sRoot = _fsPrepareAgentExportRoot(sContainerId)
+    if sResolvedPath == sRoot:
+        return
+    if not sResolvedPath.startswith(sRoot + os.sep):
+        raise HTTPException(
+            403,
+            "Agent file pulls must land under "
+            f"{S_AGENT_EXPORT_DIRECTORY}/<container>/",
+        )
+
+
 def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/pull."""
 
     @fnAgentAction("pull-file")
     @app.post("/api/files/{sContainerId}/pull")
     async def fnPullFile(
+        requestHttp: Request,
         sContainerId: str, request: FilePullRequest,
     ):
         import asyncio
@@ -290,6 +314,8 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         sHostDest = os.path.realpath(
             os.path.expanduser(request.sHostDestination))
         _pipelineServer._fnValidateHostDestination(sHostDest)
+        if fbRequestRidesAgentLane(requestHttp):
+            _fnValidateAgentPullDestination(sHostDest, sContainerId)
         try:
             await asyncio.to_thread(
                 _pipelineServer._fnDockerCopy,
@@ -387,7 +413,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         )
         sNormalized = fnValidatePathWithinRoot(
             sAbsPath, sProjectRepoPath)
-        _fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
+        fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         _fnRaiseConflictIfBaseHashMismatch(
             dictCtx, sContainerId, sNormalized, request.sBaseHash,
         )

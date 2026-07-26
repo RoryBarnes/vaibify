@@ -1,6 +1,6 @@
 /* Vaibify — Repos panel (tracked repos status, push, track/ignore) */
 
-var PipeleyenReposPanel = (function () {
+var VaibifyReposPanel = (function () {
     "use strict";
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
@@ -42,7 +42,7 @@ var PipeleyenReposPanel = (function () {
             );
             fnHandleStatusUpdate(dictStatus);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Failed to refresh repos: " + error.message, "error"
             );
         }
@@ -251,10 +251,10 @@ var PipeleyenReposPanel = (function () {
         // fails (e.g. no manifest yet); the backend reports that in
         // sPostPushVerifyWarning and the researcher must see it, or
         // "pushed" and "L2 still unknown" look like a contradiction.
-        PipeleyenApp.fnShowToast(sSuccessText, "success");
+        VaibifyApp.fnShowToast(sSuccessText, "success");
         var sWarning = dictResult.sPostPushVerifyWarning || "";
         if (sWarning) {
-            PipeleyenApp.fnShowToast(sWarning, "warning");
+            VaibifyApp.fnShowToast(sWarning, "warning");
         }
         _fnRefreshNow();
     }
@@ -266,7 +266,7 @@ var PipeleyenReposPanel = (function () {
         if (dictResult && dictResult.bSuccess) return true;
         var sMessage = ((dictResult && dictResult.sMessage) || "")
             .trim() || "unknown error — check the hub log";
-        PipeleyenApp.fnShowToast("Push failed: " + sMessage, "error");
+        VaibifyApp.fnShowToast("Push failed: " + sMessage, "error");
         return false;
     }
 
@@ -280,7 +280,7 @@ var PipeleyenReposPanel = (function () {
             if (!_fbPushSucceeded(dictResult)) return;
             _fnToastPushOutcome(dictResult, "Pushed to remote.");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Push failed: " + error.message, "error"
             );
         }
@@ -294,20 +294,20 @@ var PipeleyenReposPanel = (function () {
             );
             var listFiles = dictResult.listDirtyFiles || [];
             if (listFiles.length === 0) {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Nothing to commit.", "info");
                 return;
             }
             _fnShowFilePickerModal(sName, listFiles);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Failed to load dirty files: " +
                 error.message, "error");
         }
     }
 
     function _fnHandleUntrackClick(sName) {
-        PipeleyenModals.fnShowConfirmModal(
+        VaibifyModals.fnShowConfirmModal(
             "Untrack repository",
             "Stop tracking '" + sName + "'?",
             function () { _fnPostUntrack(sName); }
@@ -320,10 +320,10 @@ var PipeleyenReposPanel = (function () {
                 _fsApiBase() + "/" + encodeURIComponent(sName) +
                 "/untrack"
             );
-            PipeleyenApp.fnShowToast("Untracked " + sName, "success");
+            VaibifyApp.fnShowToast("Untracked " + sName, "success");
             _fnRefreshNow();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Untrack failed: " + error.message, "error"
             );
         }
@@ -332,7 +332,7 @@ var PipeleyenReposPanel = (function () {
     function _fnHandleCopyUrlClick(sName) {
         var dictRepo = _fdictFindRepo(sName);
         if (!dictRepo || !dictRepo.sUrl) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "No remote URL configured.", "error"
             );
             return;
@@ -343,17 +343,17 @@ var PipeleyenReposPanel = (function () {
     function _fnWriteClipboard(sText) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sText).then(function () {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "URL copied to clipboard.", "success"
                 );
             }, function () {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Clipboard unavailable: " + sText, "info"
                 );
             });
             return;
         }
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Clipboard unavailable: " + sText, "info"
         );
     }
@@ -408,7 +408,7 @@ var PipeleyenReposPanel = (function () {
     function _fnSubmitCommitModal(elModal, elInput, fnCallback) {
         var sValue = elInput.value.trim();
         if (!sValue) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Commit message is required.", "error"
             );
             return;
@@ -482,7 +482,7 @@ var PipeleyenReposPanel = (function () {
     function _fnSubmitFilePicker(elModal, sName) {
         var listPaths = _flistCollectCheckedPaths(elModal);
         if (listPaths.length === 0) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Select at least one file.", "error"
             );
             return;
@@ -491,7 +491,7 @@ var PipeleyenReposPanel = (function () {
             "#repoFilePickerMessage"
         ).value.trim();
         if (!sMessage) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Commit message is required.", "error"
             );
             return;
@@ -511,7 +511,7 @@ var PipeleyenReposPanel = (function () {
             _fnToastPushOutcome(
                 dictResult, "Pushed files to remote.");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Push failed: " + error.message, "error"
             );
         }
@@ -533,7 +533,7 @@ var PipeleyenReposPanel = (function () {
             );
             _fnRefreshNow();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 sAction + " failed: " + error.message, "error"
             );
         }
@@ -559,7 +559,7 @@ var PipeleyenReposPanel = (function () {
     }
 
     function _fnPromptOne(sName) {
-        PipeleyenModals.fnShowChoiceModal(
+        VaibifyModals.fnShowChoiceModal(
             "New repository detected",
             "Track or ignore '" + sName + "'?",
             _flistBuildPromptChoices(sName)

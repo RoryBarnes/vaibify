@@ -1,11 +1,11 @@
 /* Vaibify — Dependency detection modal (extracted from scriptApplication.js) */
 
-var PipeleyenDependencyScanner = (function () {
+var VaibifyDependencyScanner = (function () {
     "use strict";
 
     async function fnScanDependencies(iStep) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var dictStep = dictWorkflow.listSteps[iStep];
         var saCommands = dictStep.saDataCommands || [];
         if (saCommands.length === 0) {
@@ -21,12 +21,12 @@ var PipeleyenDependencyScanner = (function () {
                 {sUnitTest: "untested", sUser: "untested"};
             dictStep.dictVerification.sLastDepsCheck =
                 VaibifyUtilities.fsFormatUtcTimestamp();
-            PipeleyenApp.fnSaveStepUpdate(iStep, {
+            VaibifyApp.fnSaveStepUpdate(iStep, {
                 dictVerification: dictStep.dictVerification,
             });
             fnShowDependencyModal(iStep, dictResult);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Dependency scan failed", "error");
         }
     }
@@ -102,7 +102,7 @@ var PipeleyenDependencyScanner = (function () {
     }
 
     function _fsRenderExistingManualDeps(iCurrentStep, listRemovals) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = (dictWorkflow.listSteps || [])[iCurrentStep];
         if (!dictStep) return "";
         var saDeps = _flistFilterOutRemovals(
@@ -137,7 +137,7 @@ var PipeleyenDependencyScanner = (function () {
     /* ── Select Step sub-page ────────────────────────────────── */
 
     function fsRenderStepSelectPage(iCurrentStep, listRemovals) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var listSteps = dictWorkflow.listSteps || [];
         var dictStep = listSteps[iCurrentStep];
         var saDeps = _flistFilterOutRemovals(
@@ -170,7 +170,7 @@ var PipeleyenDependencyScanner = (function () {
     }
 
     function _fsetComputeAutoDeps(iCurrentStep, listRemovals) {
-        var listDeps = PipeleyenApp.flistGetStepDependencies(
+        var listDeps = VaibifyApp.flistGetStepDependencies(
             iCurrentStep);
         var setRemovedIndices = _fsetRemovedStepIndices(
             listRemovals);
@@ -231,7 +231,7 @@ var PipeleyenDependencyScanner = (function () {
     }
 
     function _flistCollectStepRemovals(elModal, iCurrentStep) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iCurrentStep];
         var saDepsJoined = (dictStep.saDependencies || []).join(" ");
         var listBoxes = elModal.querySelectorAll(
@@ -255,7 +255,7 @@ var PipeleyenDependencyScanner = (function () {
         var elList = elModal.querySelector("#listManualDeps");
         if (!elList) return;
         _fnRemoveExistingStepRows(elList);
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var listSteps = dictWorkflow.listSteps || [];
         for (var i = 0; i < listAdded.length; i++) {
             var iDep = listAdded[i];
@@ -341,7 +341,7 @@ var PipeleyenDependencyScanner = (function () {
     }
 
     async function fnLoadBrowserDirectory(elBrowser, sPath) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         elBrowser.innerHTML = '<div class="dep-browser-loading">' +
             'Loading...</div>';
         try {
@@ -448,7 +448,7 @@ var PipeleyenDependencyScanner = (function () {
         var match = sToken.match(/\{Step(\d+)\./);
         if (!match) return sToken;
         var iIndex = parseInt(match[1], 10) - 1;
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var listSteps = (dictWorkflow || {}).listSteps || [];
         if (iIndex >= 0 && iIndex < listSteps.length) {
             return listSteps[iIndex].sName || sToken;
@@ -510,7 +510,7 @@ var PipeleyenDependencyScanner = (function () {
             elBox.getAttribute("data-dep-step"), 10);
         var sStepId = "Step" +
             String(iDepStep + 1).padStart(2, "0");
-        var dictWf = PipeleyenApp.fdictGetWorkflow();
+        var dictWf = VaibifyApp.fdictGetWorkflow();
         var sDepName = (dictWf.listSteps[iDepStep] || {})
             .sName || sStepId;
         listChecked.push({
@@ -601,7 +601,7 @@ var PipeleyenDependencyScanner = (function () {
         var sLabel = elRow.querySelector(
             ".dependency-step-badge");
         var sName = sLabel ? sLabel.textContent : "this dependency";
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Remove Dependency",
             "Remove dependency on " + sName + "?",
             function () {
@@ -679,7 +679,7 @@ var PipeleyenDependencyScanner = (function () {
 
     function _fnHandleFileSelection(elModal, sPath, dictResult) {
         if (fbDepAlreadyListed(sPath, dictResult, elModal)) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Already listed as a dependency", "info");
             return;
         }
@@ -707,7 +707,7 @@ var PipeleyenDependencyScanner = (function () {
     /* ── Template resolution ──────────────────────────────────── */
 
     function fsResolvePathToTemplate(sPath) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var sBasename = sPath.split("/").pop();
         var sStem = sBasename.replace(/\.[^.]+$/, "");
         if (!sStem) return sPath;
@@ -751,7 +751,7 @@ var PipeleyenDependencyScanner = (function () {
     async function fnApplyDependencies(
         iStep, listChecked, listRemoved
     ) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
         var saCommands = dictStep.saDataCommands || [];
         var saDependencies = dictStep.saDependencies || [];
@@ -767,7 +767,7 @@ var PipeleyenDependencyScanner = (function () {
         );
         if (listNew.length === 0 &&
             saUpdated.length === saDependencies.length) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "No dependency changes", "info");
             return;
         }
@@ -776,7 +776,7 @@ var PipeleyenDependencyScanner = (function () {
         var iAdded = listNew.length;
         var iRemoved = saDependencies.length +
             listNew.length - saUpdated.length;
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             _fsFormatChangeMessage(iAdded, iRemoved), "success");
     }
 
@@ -801,14 +801,14 @@ var PipeleyenDependencyScanner = (function () {
     }
 
     async function fnSaveDependencies(iStep, saDependencies) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         try {
             await VaibifyApi.fdictPut(
                 "/api/steps/" + sContainerId + "/" + iStep,
                 {saDependencies: saDependencies});
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Failed to save dependencies", "error");
         }
     }

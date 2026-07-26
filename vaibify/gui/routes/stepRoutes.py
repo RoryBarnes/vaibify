@@ -449,6 +449,13 @@ def _fnRegisterStepRename(app, dictCtx):
                 dictWorkflow, iStepIndex, dictPlan,
                 dictCtx["paths"].get(sContainerId, ""),
             )
+        except stepRename.StepRenameSplitError as error:
+            # The directory moved and could not be put back. The
+            # workflow now records where the bytes actually are, so it
+            # has to be PERSISTED or the nonconforming warning that
+            # leads the researcher to the repair is lost on reload.
+            dictCtx["save"](sContainerId, dictWorkflow)
+            raise HTTPException(500, str(error))
         except ValueError as error:
             raise HTTPException(409, str(error))
         except RuntimeError as error:
@@ -488,6 +495,7 @@ def _fnRegisterAlignDirectories(app, dictCtx):
         filesRepo = ffilesForWorkflow(
             dictCtx, sContainerId, dictWorkflow)
         listAligned, listSkipped = [], []
+        bSplitRecorded = False
         for iIndex, dictStep in enumerate(
             dictWorkflow.get("listSteps", [])
         ):
@@ -510,11 +518,18 @@ def _fnRegisterAlignDirectories(app, dictCtx):
                     "sOldDirectory": dictPlan["sOldDirectory"],
                     "sNewDirectory": dictPlan["sNewDirectory"],
                 })
+            except stepRename.StepRenameSplitError as error:
+                # The batch continues, but this step's workflow entry
+                # was rewritten to match disk and must be saved.
+                bSplitRecorded = True
+                listSkipped.append({
+                    "sLabel": sLabel, "sReason": str(error),
+                })
             except (ValueError, RuntimeError) as error:
                 listSkipped.append({
                     "sLabel": sLabel, "sReason": str(error),
                 })
-        if listAligned:
+        if listAligned or bSplitRecorded:
             dictCtx["save"](sContainerId, dictWorkflow)
         return {
             "listAligned": listAligned,

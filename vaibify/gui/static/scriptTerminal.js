@@ -1,6 +1,6 @@
 /* Vaibify — Multi-pane terminal management with xterm.js */
 
-const PipeleyenTerminal = (function () {
+const VaibifyTerminal = (function () {
     "use strict";
 
     var I_MAX_PANES = 5;
@@ -168,7 +168,7 @@ const PipeleyenTerminal = (function () {
         var dictPane = listPanes[iPaneId];
         if (!dictPane) return;
 
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
 
         iTabCounter++;
@@ -275,7 +275,7 @@ const PipeleyenTerminal = (function () {
             // clear message instead of throwing — an exception here
             // used to propagate out of workflow activation and abort
             // the AICS/repos/badge initialization that follows it.
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "The terminal library failed to load — reload the " +
                 "page to restore terminal access.", "error");
             return;
@@ -343,7 +343,7 @@ const PipeleyenTerminal = (function () {
         if (!bMacintoshCopy && !bLinuxCopy) return true;
         if (!terminal.hasSelection()) return true;
         event.preventDefault();
-        PipeleyenFileOps.fnCopyToClipboard(terminal.getSelection());
+        VaibifyFileOps.fnCopyToClipboard(terminal.getSelection());
         return false;
     }
 
@@ -374,7 +374,7 @@ const PipeleyenTerminal = (function () {
             if (!terminal.hasSelection()) return;
             var sSelection = terminal.getSelection();
             if (sSelection) {
-                PipeleyenFileOps.fnCopyToClipboardQuietly(sSelection);
+                VaibifyFileOps.fnCopyToClipboardQuietly(sSelection);
             }
         }, I_COPY_ON_SELECT_DELAY_MS);
     }
@@ -383,7 +383,7 @@ const PipeleyenTerminal = (function () {
         if (!terminal.hasSelection()) return;
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenFileOps.fnCopyToClipboard(terminal.getSelection());
+        VaibifyFileOps.fnCopyToClipboard(terminal.getSelection());
     }
 
     function fnBindCopyAndSelectionHandlers(dictTab, terminal) {
@@ -404,9 +404,9 @@ const PipeleyenTerminal = (function () {
     function fnConnectTerminalWebSocket(dictTab, terminal) {
         var sProtocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var sToken = PipeleyenApp.fsGetSessionToken();
-        var sLeaseId = PipeleyenApp.fsGetLeaseId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var sToken = VaibifyApp.fsGetSessionToken();
+        var sLeaseId = VaibifyApp.fsGetLeaseId();
         var sUrl = sProtocol + "//" + window.location.host +
             "/ws/terminal/" + sContainerId +
             "?sToken=" + encodeURIComponent(sToken) +
@@ -545,7 +545,7 @@ const PipeleyenTerminal = (function () {
         if (!dictPane) return;
         if (iTabIndex < 0 || iTabIndex >= dictPane.listTabs.length) return;
 
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Close Terminal",
             "Are you sure you want to close this terminal tab?",
             function () {

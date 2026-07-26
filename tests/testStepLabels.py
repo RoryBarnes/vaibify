@@ -8,12 +8,16 @@ semantics and the decorator helpers that expose ``sLabel`` on the
 wire so agents do not have to translate in their heads.
 """
 
+import itertools
+
 import pytest
 
 from vaibify.gui.pipelineUtils import (
+    fbStepIsInteractive,
     fdictStepWithLabel,
     fdictWorkflowWithLabels,
     fiStepIndexFromLabel,
+    flistComputeAllStepLabels,
     flistStepsWithLabels,
     fnAttachStepLabels,
     fsLabelFromStepIndex,
@@ -214,3 +218,112 @@ class TestFnAttachStepLabels:
         dictWorkflow = {"listSteps": []}
         fnAttachStepLabels(dictWorkflow)
         assert dictWorkflow == {"listSteps": []}
+
+
+# ---------------------------------------------------------------------------
+# The label round trip must be TOTAL.
+#
+# Oracle (independent of the implementation): CLAUDE.md's Traps section
+# states that a label names a step, that labels are per-type
+# sequential, and that ``fiStepIndexFromLabel`` is the translation
+# every caller must use. Naming a step and then resolving that name
+# must therefore return the same step, for EVERY shape the persisted
+# ``bInteractive`` field can take — it is JSON the in-container agent
+# edits by hand and an ``Optional[bool]`` on the wire. Labeller and
+# resolver disagreeing is not cosmetic: an agent told to run ``A02``
+# runs a different step, silently.
+# ---------------------------------------------------------------------------
+
+_ABSENT_FLAG = object()
+
+_T_INTERACTIVE_FLAG_VALUES = (
+    True, False, None, "true", "false", 0, 1, _ABSENT_FLAG,
+)
+
+
+def _fdictStepWithFlag(sName, valueFlag):
+    """Build a step whose bInteractive carries one persisted shape."""
+    dictStep = {"sName": sName}
+    if valueFlag is not _ABSENT_FLAG:
+        dictStep["bInteractive"] = valueFlag
+    return dictStep
+
+
+@pytest.mark.falsification
+def test_label_round_trip_is_total_over_every_flag_shape():
+    """Every computed label resolves back to the step it names.
+
+    Kills: the resolver classifying by equality against a bool.
+    ``None`` is falsy but not equal to ``False``, so the labeller and
+    the resolver disagreed and ``A01`` resolved to the SECOND step —
+    executed against the real module before the fix.
+    """
+    for tFlags in itertools.product(
+        _T_INTERACTIVE_FLAG_VALUES, repeat=3,
+    ):
+        listSteps = [
+            _fdictStepWithFlag(f"Step{iIndex}", valueFlag)
+            for iIndex, valueFlag in enumerate(tFlags)
+        ]
+        dictWorkflow = {"listSteps": listSteps}
+        listLabels = flistComputeAllStepLabels(listSteps)
+        assert len(set(listLabels)) == len(listLabels), (
+            f"duplicate labels {listLabels} for flags {tFlags}"
+        )
+        for iIndex, sLabel in enumerate(listLabels):
+            assert fiStepIndexFromLabel(
+                dictWorkflow, sLabel) == iIndex, (
+                f"label {sLabel} (step {iIndex}) resolved elsewhere "
+                f"for flags {tFlags}"
+            )
+
+
+def test_label_round_trip_survives_a_hand_edited_null_flag():
+    """The exact document that shipped the wrong-step bug."""
+    listSteps = [
+        {"sName": "One", "bInteractive": None},
+        {"sName": "Two"},
+    ]
+    dictWorkflow = {"listSteps": listSteps}
+    assert flistComputeAllStepLabels(listSteps) == ["A01", "A02"]
+    assert fiStepIndexFromLabel(dictWorkflow, "A01") == 0
+    assert fiStepIndexFromLabel(dictWorkflow, "A02") == 1
+
+
+class TestFbStepIsInteractive:
+    """The single classifier's reading of each persisted shape."""
+
+    @pytest.mark.parametrize("valueFlag", [
+        True, "true", "True", " yes ", 1, "on",
+    ])
+    def test_interactive_readings(self, valueFlag):
+        assert fbStepIsInteractive({"bInteractive": valueFlag}) is True
+
+    @pytest.mark.parametrize("valueFlag", [
+        False, None, "", "false", "False", "0", "no", "off", "null", 0,
+    ])
+    def test_automated_readings(self, valueFlag):
+        assert fbStepIsInteractive({"bInteractive": valueFlag}) is False
+
+    def test_absent_flag_is_automated(self):
+        assert fbStepIsInteractive({"sName": "A"}) is False
+
+    def test_non_dict_is_automated(self):
+        assert fbStepIsInteractive(None) is False
+        assert fbStepIsInteractive("A01") is False
+
+    @pytest.mark.falsification
+    def test_the_string_false_is_not_read_as_a_non_empty_object(self):
+        """A quoted "false" is the word it spells, not a truthy string.
+
+        Kills: the labeller classifying by raw truthiness. A non-empty
+        string is truthy, so the step would be labelled ``I01`` while
+        every other reader — the resolver, the runner, the renderer —
+        calls it automated.
+        """
+        dictWorkflow = {"listSteps": [{
+            "sName": "One", "bInteractive": "false",
+        }]}
+        assert flistComputeAllStepLabels(
+            dictWorkflow["listSteps"]) == ["A01"]
+        assert fiStepIndexFromLabel(dictWorkflow, "A01") == 0

@@ -5089,6 +5089,12 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     font-variant-numeric: tabular-nums;
 }
 
+.sync-reverify-schedule {
+    padding: 4px 10px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
 .sync-status-pill {
     flex: 0 0 auto;
     display: inline-flex;
@@ -6006,7 +6012,7 @@ body.aics-level-3 .vaibify-checkmark[data-aics-level="3"] {
     color: var(--text-secondary);
 }
 
-/* The exact dictDeterminism entry as stored in workflow.json. */
+/* The exact dictDeterminism entry as stored in project.json. */
 .determinism-raw {
     font-size: 11px;
     color: var(--text-secondary);

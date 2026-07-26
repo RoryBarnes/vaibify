@@ -1,7 +1,9 @@
 /* Vaibify — Main application logic */
 
-const PipeleyenApp = (function () {
+const VaibifyApp = (function () {
     "use strict";
+
+    var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
 
     function fbIsTerminalFocused() {
         var elActive = document.activeElement;
@@ -208,7 +210,7 @@ const PipeleyenApp = (function () {
            the stored lease already matches. */
         if (!dictConnect || !dictConnect.sLeaseId) return;
         if (fsGetLeaseId() === dictConnect.sLeaseId) return;
-        var sName = PipeleyenContainerManager
+        var sName = VaibifyContainerManager
             .fsGetSelectedContainerName() || sId;
         fnRecordClaimedLease(sName, dictConnect.sLeaseId);
     }
@@ -217,7 +219,7 @@ const PipeleyenApp = (function () {
 
     function fnRegisterWebSocketHandlers() {
         VaibifyWebSocket.fnOnEvent("*",
-            PipeleyenPipelineRunner.fnHandlePipelineEvent);
+            VaibifyPipelineRunner.fnHandlePipelineEvent);
         VaibifyWebSocket.fnOnEvent("_wsClose", function (dictEvent) {
             fnClearRunningStatuses();
             fnRenderStepList();
@@ -249,7 +251,7 @@ const PipeleyenApp = (function () {
 
     function fnRegisterPollingHandlers() {
         VaibifyPolling.fnSetPipelineStateHandler(
-            PipeleyenPipelineRunner.fnHandlePipelinePollResult);
+            VaibifyPipelineRunner.fnHandlePipelinePollResult);
         VaibifyPolling.fnSetFileStatusHandler(
             fnProcessFileStatusResponse);
         VaibifyPolling.fnSetWorkflowDiscoveryHandler(
@@ -266,17 +268,17 @@ const PipeleyenApp = (function () {
         fnLoadUserName();
         fnLoadTimestampSetting();
         fnShowContainerLanding();
-        PipeleyenEventBindings.fnBindToolbarEvents();
-        PipeleyenEventBindings.fnBindWorkflowPickerEvents();
-        PipeleyenContainerManager.fnBindContainerLandingEvents();
-        PipeleyenContainerManager.fnBindAddContainerModal();
-        PipeleyenEventBindings.fnBindErrorModal();
-        PipeleyenTestManager.fnBindApiConfirmModal();
-        PipeleyenEventBindings.fnBindContextMenuEvents();
-        PipeleyenEventBindings.fnBindLeftPanelTabs();
-        PipeleyenEventBindings.fnBindResizeHandles();
-        PipeleyenEventBindings.fnBindGlobalSettingsToggle();
-        PipeleyenEventBindings.fnBindRefreshRemoteStatus();
+        VaibifyEventBindings.fnBindToolbarEvents();
+        VaibifyEventBindings.fnBindWorkflowPickerEvents();
+        VaibifyContainerManager.fnBindContainerLandingEvents();
+        VaibifyContainerManager.fnBindAddContainerModal();
+        VaibifyEventBindings.fnBindErrorModal();
+        VaibifyTestManager.fnBindApiConfirmModal();
+        VaibifyEventBindings.fnBindContextMenuEvents();
+        VaibifyEventBindings.fnBindLeftPanelTabs();
+        VaibifyEventBindings.fnBindResizeHandles();
+        VaibifyEventBindings.fnBindGlobalSettingsToggle();
+        VaibifyEventBindings.fnBindRefreshRemoteStatus();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
@@ -311,15 +313,15 @@ const PipeleyenApp = (function () {
         }
         _fnResetUiState();
         _fnInvalidateAllRenderCaches();
-        PipeleyenTestManager.fnResetState();
-        PipeleyenPipelineRunner.fnResetState();
+        VaibifyTestManager.fnResetState();
+        VaibifyPipelineRunner.fnResetState();
         VaibifyOverleafMirror.fnResetState();
         VaibifySyncManager.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
-        PipeleyenReposPanel.fnTeardown();
+        VaibifyReposPanel.fnTeardown();
         VaibifyAicsTab.fnSetContainerId(null);
     }
 
@@ -367,10 +369,10 @@ const PipeleyenApp = (function () {
             );
         }
         document.getElementById("activeContainerName").textContent =
-            PipeleyenContainerManager.fsGetSelectedContainerName() || "";
+            VaibifyContainerManager.fsGetSelectedContainerName() || "";
         document.getElementById("activeWorkflowName").textContent =
             sWorkflowName || "";
-        document.title = (PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify") +
+        document.title = (VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify") +
             (sWorkflowName ? ": " + sWorkflowName : "");
         fnShowMainLayout();
         fnRenderStepList();
@@ -378,7 +380,7 @@ const PipeleyenApp = (function () {
         fnPollAllStepFiles();
         fnStartFileChangePolling();
         try {
-            PipeleyenTerminal.fnEnsureTab();
+            VaibifyTerminal.fnEnsureTab();
         } catch (errorTerminal) {
             // A terminal failure must never abort the rest of
             // activation (AICS tab, repos panel, badges, pipeline
@@ -394,7 +396,7 @@ const PipeleyenApp = (function () {
         // states for the entire workflow session, which is the mode
         // researchers are actually in.
         VaibifyAicsTab.fnSetContainerId(sId);
-        PipeleyenReposPanel.fnInit(sId);
+        VaibifyReposPanel.fnInit(sId);
         // Badges otherwise stay empty until a sync action bumps the
         // epoch mid-session: the per-file remote icons render grey
         // and the declaration commit/remove buttons gate wrong on
@@ -402,7 +404,7 @@ const PipeleyenApp = (function () {
         if (typeof VaibifyGitBadges !== "undefined") {
             VaibifyGitBadges.fnRefresh(sId);
         }
-        PipeleyenPipelineRunner.fnRecoverPipelineState(sId);
+        VaibifyPipelineRunner.fnRecoverPipelineState(sId);
         fnLoadContainerSettings();
     }
 
@@ -534,18 +536,19 @@ const PipeleyenApp = (function () {
     async function fnEnterNoWorkflow(sId) {
         try {
             var dictConnect = await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sId);
+                "/api/connect/" + sId +
+                "?sLeaseId=" + encodeURIComponent(fsGetLeaseId()));
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             document.getElementById("activeContainerName").textContent =
-                PipeleyenContainerManager.fsGetSelectedContainerName() || "";
+                VaibifyContainerManager.fsGetSelectedContainerName() || "";
             _fnRenderToolkitBanner(0);
-            document.title = PipeleyenContainerManager.fsGetSelectedContainerName() || "Vaibify";
+            document.title = VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
-            PipeleyenTerminal.fnEnsureTab();
-            await PipeleyenReposPanel.fnInit(sId);
+            VaibifyTerminal.fnEnsureTab();
+            await VaibifyReposPanel.fnInit(sId);
             VaibifyAicsTab.fnSetContainerId(sId);
             VaibifyPolling.fnStartDiscoveryPolling(sId);
         } catch (error) {
@@ -681,10 +684,10 @@ const PipeleyenApp = (function () {
     }
 
     function fnShowContainerLanding() {
-        var sActiveName = PipeleyenContainerManager
+        var sActiveName = VaibifyContainerManager
             .fsGetSelectedContainerName();
         if (sActiveName) {
-            PipeleyenContainerManager.fnReleaseClaim(sActiveName);
+            VaibifyContainerManager.fnReleaseClaim(sActiveName);
         }
         document.getElementById("containerLanding").style.display = "flex";
         document.getElementById("workflowPicker").style.display = "none";
@@ -703,7 +706,7 @@ const PipeleyenApp = (function () {
         document.getElementById("mainLayout").classList.remove("active");
         document.title = sContainerName || "Vaibify";
         _fnStopContainerHubPolling();
-        var sContainerId = PipeleyenContainerManager
+        var sContainerId = VaibifyContainerManager
             .fsGetSelectedContainerId();
         _fnStartWorkflowHubPolling(sContainerId);
     }
@@ -725,7 +728,7 @@ const PipeleyenApp = (function () {
 
     async function _fnPollContainerHubIfIdle() {
         if (_fbContainerHubHasOpenMenu()) return;
-        await PipeleyenContainerManager.fnRefreshContainerHub();
+        await VaibifyContainerManager.fnRefreshContainerHub();
     }
 
     function _fbContainerHubHasOpenMenu() {
@@ -776,7 +779,7 @@ const PipeleyenApp = (function () {
             return;
         }
         if (elPicker && elPicker.style.display === "flex") {
-            var sContainerId = PipeleyenContainerManager
+            var sContainerId = VaibifyContainerManager
                 .fsGetSelectedContainerId();
             _fnStartWorkflowHubPolling(sContainerId);
         }
@@ -788,7 +791,7 @@ const PipeleyenApp = (function () {
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
-        PipeleyenReposPanel.fnTeardown();
+        VaibifyReposPanel.fnTeardown();
         if (_dictWorkflowState.iFileCheckTimer) {
             clearTimeout(_dictWorkflowState.iFileCheckTimer);
             _dictWorkflowState.iFileCheckTimer = null;
@@ -797,7 +800,7 @@ const PipeleyenApp = (function () {
             _dictWorkflowState.abortControllerFileCheck.abort();
             _dictWorkflowState.abortControllerFileCheck = null;
         }
-        PipeleyenPipelineRunner.fnCancelSentinelMonitor();
+        VaibifyPipelineRunner.fnCancelSentinelMonitor();
     }
 
     function fnDisconnect() {
@@ -811,17 +814,17 @@ const PipeleyenApp = (function () {
         _dictUiState.setLevelSeededSteps.clear();
         _dictUiState.setExpandedStepDescriptions.clear();
         _dictUiState.setDescriptionSeededSteps.clear();
-        PipeleyenTestManager.fnResetState();
+        VaibifyTestManager.fnResetState();
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictStepStatus = {};
         document.body.classList.remove(
             "aics-level-1", "aics-level-2", "aics-level-3",
         );
         _fnCancelAllTimers();
-        PipeleyenFigureViewer.fnReleaseResources();
-        PipeleyenTerminal.fnCloseAll();
+        VaibifyFigureViewer.fnReleaseResources();
+        VaibifyTerminal.fnCloseAll();
         fnShowContainerLanding();
-        PipeleyenContainerManager.fnLoadContainers();
+        VaibifyContainerManager.fnLoadContainers();
     }
 
     /* --- Template Resolution --- */
@@ -959,15 +962,15 @@ const PipeleyenApp = (function () {
             fsSettingsRowHtml("Terminal lines",
             '<input id="gsTerminalScrollback" class="gs-input-local"' +
             ' type="number" min="100"' +
-            ' value="' + PipeleyenTerminal.fiGetScrollback() + '"' +
-            (PipeleyenTerminal.fbScrollbackIsUnlimited()
+            ' value="' + VaibifyTerminal.fiGetScrollback() + '"' +
+            (VaibifyTerminal.fbScrollbackIsUnlimited()
                 ? " disabled" : "") +
             ' title="Lines of terminal scrollback to retain (min 100)">' +
             ' <label class="gs-inline-check" title="Retain up to' +
             ' 1,000,000 lines — effectively unlimited; protects' +
             ' browser memory"><input type="checkbox"' +
             ' id="gsTerminalScrollbackUnlimited"' +
-            (PipeleyenTerminal.fbScrollbackIsUnlimited()
+            (VaibifyTerminal.fbScrollbackIsUnlimited()
                 ? " checked" : "") + '> &#8734;</label>',
             "How many lines of output each terminal tab keeps; " +
             "the &#8734; checkbox retains effectively unlimited " +
@@ -1060,9 +1063,9 @@ const PipeleyenApp = (function () {
     function fnApplyTerminalScrollbackSetting(elNum, elUnlimited) {
         var bUnlimited = elUnlimited.checked;
         elNum.disabled = bUnlimited;
-        PipeleyenTerminal.fnSetScrollback(
+        VaibifyTerminal.fnSetScrollback(
             parseInt(elNum.value, 10), bUnlimited);
-        elNum.value = PipeleyenTerminal.fiGetScrollback();
+        elNum.value = VaibifyTerminal.fiGetScrollback();
     }
 
     function fnBindTerminalScrollbackControls() {
@@ -1286,11 +1289,11 @@ const PipeleyenApp = (function () {
             sProjectRepoPath: (_dictWorkflowState.dictWorkflow || {})
                 .sProjectRepoPath || "",
             sAiDeclarationFile: _fsFindAiDeclarationFile(),
-            setExpandedUnitTests: PipeleyenTestManager.fsetGetExpandedUnitTests(),
+            setExpandedUnitTests: VaibifyTestManager.fsetGetExpandedUnitTests(),
             fdictGetFalsificationState:
-                PipeleyenTestManager.fdictGetFalsificationState,
-            setStepsWithData: PipeleyenTestManager.fsetGetStepsWithData(),
-            setGeneratingInFlight: PipeleyenTestManager.fsetGetGeneratingInFlight(),
+                VaibifyTestManager.fdictGetFalsificationState,
+            setStepsWithData: VaibifyTestManager.fsetGetStepsWithData(),
+            setGeneratingInFlight: VaibifyTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,
             dictScriptModified: _dictWorkflowState.dictScriptModified,
             dictStaleArtifacts: _dictWorkflowState.dictStaleArtifacts,
@@ -1427,7 +1430,7 @@ const PipeleyenApp = (function () {
             if (listSteps[i].sStepKind === "ai-declaration") {
                 sKey += "D";
             } else {
-                sKey += listSteps[i].bInteractive === true ? "I" : "A";
+                sKey += fbStepIsInteractive(listSteps[i]) ? "I" : "A";
             }
         }
         return sKey;
@@ -1553,7 +1556,7 @@ const PipeleyenApp = (function () {
         fnBindStepEvents();
         fnUpdateHighlightState();
         VaibifyStepRenderer.fnFillAiDeclarationPreviews();
-        PipeleyenFileOps.fnScheduleFileExistenceCheck(
+        VaibifyFileOps.fnScheduleFileExistenceCheck(
             _dictWorkflowState);
     }
 
@@ -1564,7 +1567,7 @@ const PipeleyenApp = (function () {
         var bPrior = null;
         _dictRenderedStepHashes = {};
         listSteps.forEach(function (step, iIndex) {
-            var bInteractive = step.bInteractive === true;
+            var bInteractive = fbStepIsInteractive(step);
             if (bInteractive !== bPrior) {
                 sHtml += fsRenderStepTypeBanner(bInteractive);
                 bPrior = bInteractive;
@@ -1831,7 +1834,7 @@ const PipeleyenApp = (function () {
                 delete _dictWorkflowState.dictFileExistenceCache[sKey];
             }
         });
-        PipeleyenTestManager.fsetGetStepsWithData().delete(iStep);
+        VaibifyTestManager.fsetGetStepsWithData().delete(iStep);
     }
 
     function fnPollAllStepFiles() {
@@ -1846,13 +1849,13 @@ const PipeleyenApp = (function () {
         _dictWorkflowState.dictWorkflow.listSteps.forEach(
             function (step, iStep) {
                 if (dictMtimes[String(iStep)]) return;
-                PipeleyenFileOps.fnCheckStepDataFiles(
+                VaibifyFileOps.fnCheckStepDataFiles(
                     step, iStep, _dictWorkflowState);
             });
     }
 
     function fbStepRequiresUnitTests(dictStep) {
-        if (dictStep.bInteractive) return false;
+        if (fbStepIsInteractive(dictStep)) return false;
         if ((dictStep.saDataCommands || []).length === 0) return false;
         return true;
     }
@@ -1885,7 +1888,7 @@ const PipeleyenApp = (function () {
             return false;
         }
         var bHasData =
-            PipeleyenTestManager.fsetGetStepsWithData().has(iStep) ||
+            VaibifyTestManager.fsetGetStepsWithData().has(iStep) ||
             !!_dictWorkflowState.dictOutputMtimes[String(iStep)];
         if (!bHasData) return false;
         var sUser = dictVerify.sUser;
@@ -1899,12 +1902,12 @@ const PipeleyenApp = (function () {
     }
 
     function fbIsFileMissing(elText) {
-        return PipeleyenFileOps.fbIsFileMissing(
+        return VaibifyFileOps.fbIsFileMissing(
             elText, _dictWorkflowState.dictFileExistenceCache);
     }
 
     var fsInitialFileStatusClass =
-        PipeleyenFileOps.fsInitialFileStatusClass;
+        VaibifyFileOps.fsInitialFileStatusClass;
 
     function fsComputeStepLabel(iIndex) {
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
@@ -1928,7 +1931,7 @@ const PipeleyenApp = (function () {
         var iAuto = 0;
         var iInter = 0;
         for (var i = 0; i < listSteps.length; i++) {
-            var bInteractive = listSteps[i].bInteractive === true;
+            var bInteractive = fbStepIsInteractive(listSteps[i]);
             if (bInteractive) {
                 iInter++;
                 _dictStepLabelByIndex[i] =
@@ -2610,7 +2613,7 @@ const PipeleyenApp = (function () {
         if (!dictCell) return;
         var sTitle = "Level " + iLevel + " requirements — " +
             fsComputeStepLabel(iStepIndex);
-        PipeleyenModals.fnShowInfoModal(
+        VaibifyModals.fnShowInfoModal(
             sTitle,
             VaibifyStepRenderer.fsBuildLevelRequirementsListHtml(
                 dictCell, iLevel));
@@ -3224,7 +3227,7 @@ const PipeleyenApp = (function () {
         dictVisited[iStep] = "checking";
         var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(step);
-        var bInteractive = step.bInteractive === true;
+        var bInteractive = fbStepIsInteractive(step);
         var bPlotOnly = (step.saDataCommands || []).length === 0;
         if (bInteractive) {
             if (dictVerify.sUser !== "passed") {
@@ -3367,7 +3370,7 @@ const PipeleyenApp = (function () {
         if (_dictWorkflowState.bDelegatedEventsInitialized) return;
         _dictWorkflowState.bDelegatedEventsInitialized = true;
         var elList = document.getElementById("listSteps");
-        PipeleyenEventBindings.fnSetupDelegatedEvents(elList);
+        VaibifyEventBindings.fnSetupDelegatedEvents(elList);
     }
 
     async function fnPutStepEdit(iStep, dictUpdate) {
@@ -3470,7 +3473,7 @@ const PipeleyenApp = (function () {
     }
 
     function fnToggleUnitTestExpand(iStep) {
-        var setExpanded = PipeleyenTestManager.fsetGetExpandedUnitTests();
+        var setExpanded = VaibifyTestManager.fsetGetExpandedUnitTests();
         if (setExpanded.has(iStep)) {
             setExpanded.delete(iStep);
         } else {
@@ -3516,8 +3519,8 @@ const PipeleyenApp = (function () {
         fnRenderStepList();
     }
 
-    var fnShowConfirmModal = PipeleyenModals.fnShowConfirmModal;
-    var fnShowInputModal = PipeleyenModals.fnShowInputModal;
+    var fnShowConfirmModal = VaibifyModals.fnShowConfirmModal;
+    var fnShowInputModal = VaibifyModals.fnShowInputModal;
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
         await fnPutStepEdit(iStep, dictUpdate);
@@ -3577,9 +3580,9 @@ const PipeleyenApp = (function () {
         );
         if (iLevel >= 1) {
             document.body.classList.add("aics-level-" + iLevel);
-            PipeleyenTerminal.fnUpdateCursorColor("#b39ddb");
+            VaibifyTerminal.fnUpdateCursorColor("#b39ddb");
         } else {
-            PipeleyenTerminal.fnUpdateCursorColor("#13aed5");
+            VaibifyTerminal.fnUpdateCursorColor("#13aed5");
         }
         fnTriggerLevelTransitionAnimation(
             iLevel, _dictWorkflowState.iLastRenderedAICSLevel,
@@ -3600,7 +3603,7 @@ const PipeleyenApp = (function () {
             _fnHideAttestationBanner();
             return;
         }
-        var sId = PipeleyenContainerManager.fsGetSelectedContainerId();
+        var sId = VaibifyContainerManager.fsGetSelectedContainerId();
         if (!sId) {
             _fnHideAttestationBanner();
             return;
@@ -3763,7 +3766,7 @@ const PipeleyenApp = (function () {
 
     function fnAddNewItem(iStep, sArrayKey) {
         if (sArrayKey === "saInputDataFiles") {
-            PipeleyenModals.fnShowFilePickerModal(
+            VaibifyModals.fnShowFilePickerModal(
                 "Add Input Data",
                 "Pick the raw data file this step reads, or type "
                     + "its repo-relative path.",
@@ -3774,7 +3777,7 @@ const PipeleyenApp = (function () {
         }
         var sPlaceholder = sArrayKey === "saPlotFiles" ?
             "File path..." : "Command...";
-        PipeleyenModals.fnShowInlineInput(
+        VaibifyModals.fnShowInlineInput(
             iStep, sArrayKey, sPlaceholder);
     }
 
@@ -3826,7 +3829,7 @@ const PipeleyenApp = (function () {
         dictUpdate[sArray] = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray];
         await fnPutStepEdit(iStep, dictUpdate);
         if (sArray === "saDataCommands" && bScanDeps) {
-            PipeleyenDependencyScanner.fnScanDependencies(iStep);
+            VaibifyDependencyScanner.fnScanDependencies(iStep);
         }
     }
 
@@ -3837,7 +3840,7 @@ const PipeleyenApp = (function () {
             _dictUiState.setExpandedSteps.delete(iIndex);
         } else {
             _dictUiState.setExpandedSteps.add(iIndex);
-            PipeleyenPlotStandards.fnLoadPlotStandardStatus(
+            VaibifyPlotStandards.fnLoadPlotStandardStatus(
                 iIndex);
         }
         _dictUiState.iSelectedStepIndex = iIndex;
@@ -3941,7 +3944,7 @@ const PipeleyenApp = (function () {
             _fnPaintDagInViewport(_elDagViewport, sSvgText, dScale);
             return;
         }
-        PipeleyenFigureViewer.fnClaimNextViewerForReplacement(
+        VaibifyFigureViewer.fnClaimNextViewerForReplacement(
             "pipeline DAG", function (sViewerLetter) {
                 _elDagViewport = document.getElementById(
                     "viewport" + sViewerLetter);
@@ -3957,7 +3960,7 @@ const PipeleyenApp = (function () {
         if (dScale === "fit") {
             dScale = 1.0;
         }
-        var elToolbar = PipeleyenFigureViewer.fnCreateZoomToolbar(
+        var elToolbar = VaibifyFigureViewer.fnCreateZoomToolbar(
             dScale, function (dNewScale) {
                 _fnRenderDagWithZoom(sSvgText, dNewScale);
             }
@@ -4037,7 +4040,7 @@ const PipeleyenApp = (function () {
             var sContent = await VaibifyApi.fsGetText(
                 "/api/logs/" + _dictSessionState.sContainerId + "/" +
                 encodeURIComponent(sFilename));
-            PipeleyenFigureViewer.fnClaimNextViewerForReplacement(
+            VaibifyFigureViewer.fnClaimNextViewerForReplacement(
                 sFilename, function (sViewerLetter) {
                     var elViewport = document.getElementById(
                         "viewport" + sViewerLetter);
@@ -4091,7 +4094,7 @@ const PipeleyenApp = (function () {
                 dictStatus.sWorkflowFingerprint;
         }
         _fnReflectDispatchedRunState(dictStatus.dictRunState);
-        PipeleyenFileOps.fnDetectOutputFileChanges(
+        VaibifyFileOps.fnDetectOutputFileChanges(
             dictStatus.dictModTimes || {}, _dictWorkflowState);
         if (dictStatus.dictMaxMtimeByStep) {
             _dictWorkflowState.dictOutputMtimes =
@@ -4128,14 +4131,14 @@ const PipeleyenApp = (function () {
             fnApplyInvalidatedSteps(dictInv);
         }
         fnUpdateDepsTimestamps();
-        PipeleyenFileOps.fnUpdateScriptStatus(
+        VaibifyFileOps.fnUpdateScriptStatus(
             dictStatus.dictScriptStatus, _dictWorkflowState);
         if (dictStatus.dictTestMarkers) {
-            PipeleyenTestManager.fnApplyTestMarkers(
+            VaibifyTestManager.fnApplyTestMarkers(
                 dictStatus.dictTestMarkers);
         }
         if (dictStatus.dictTestFileChanges) {
-            PipeleyenTestManager.fnNotifyTestFileChanges(
+            VaibifyTestManager.fnNotifyTestFileChanges(
                 dictStatus.dictTestFileChanges);
         }
     }
@@ -4347,7 +4350,7 @@ const PipeleyenApp = (function () {
     }
 
     function _fbWithinGracePeriod(iStep, iNow, iGraceMs) {
-        var iAckedAt = PipeleyenPipelineRunner.fiGetAcknowledgedAt(iStep);
+        var iAckedAt = VaibifyPipelineRunner.fiGetAcknowledgedAt(iStep);
         if (iAckedAt && (iNow - iAckedAt) < iGraceMs) {
             return true;
         }
@@ -4358,7 +4361,7 @@ const PipeleyenApp = (function () {
         return false;
     }
 
-    var fnShowErrorModal = PipeleyenModals.fnShowErrorModal;
+    var fnShowErrorModal = VaibifyModals.fnShowErrorModal;
 
     async function fnAddAiDeclarationStep() {
         var sContainerId = _dictSessionState.sContainerId;
@@ -4401,22 +4404,22 @@ const PipeleyenApp = (function () {
 
     function fnHandleContextAction(sAction, iIndex) {
         if (sAction === "runStep") {
-            PipeleyenPipelineRunner.fnRunSingleStep(iIndex);
+            VaibifyPipelineRunner.fnRunSingleStep(iIndex);
         } else if (sAction === "edit") {
-            PipeleyenStepEditor.fnOpenEditModal(iIndex);
+            VaibifyStepEditor.fnOpenEditModal(iIndex);
         } else if (sAction === "runFrom") {
-            PipeleyenPipelineRunner.fnSendPipelineAction({
+            VaibifyPipelineRunner.fnSendPipelineAction({
                 sAction: "runFrom",
                 iStartStep: iIndex + 1,
             });
         } else if (sAction === "insertBefore") {
-            PipeleyenStepEditor.fnOpenInsertModal(iIndex);
+            VaibifyStepEditor.fnOpenInsertModal(iIndex);
         } else if (sAction === "insertAfter") {
-            PipeleyenStepEditor.fnOpenInsertModal(iIndex + 1);
+            VaibifyStepEditor.fnOpenInsertModal(iIndex + 1);
         } else if (sAction === "setRuntimeLimit") {
             fnOpenRuntimeLimitModal(iIndex);
         } else if (sAction === "rename") {
-            PipeleyenStepEditor.fnOpenRenameModal(iIndex);
+            VaibifyStepEditor.fnOpenRenameModal(iIndex);
         } else if (sAction === "delete") {
             fnDeleteStep(iIndex);
         }
@@ -4430,7 +4433,7 @@ const PipeleyenApp = (function () {
         var dictStats = step.dictRunStats || {};
         var bKnownSuccess = dictStats.iExitCode === 0
             && dictStats.fWallClock !== undefined;
-        PipeleyenModals.fnShowRuntimeLimitModal({
+        VaibifyModals.fnShowRuntimeLimitModal({
             sStepTitle: fsComputeStepLabel(iStep) + " " +
                 (step.sName || ""),
             fCurrentBudget: step.fWallClockBudgetSeconds || 0,
@@ -4475,14 +4478,14 @@ const PipeleyenApp = (function () {
     }
 
     function fnShowOutputNotAvailable() {
-        PipeleyenFigureViewer.fnShowPlaceholderInNextViewer(
+        VaibifyFigureViewer.fnShowPlaceholderInNextViewer(
             '<span class="placeholder output-missing-message">' +
             'Output not available. Run the step to generate.</span>',
             "missing output");
     }
 
     function fnShowBinaryNotViewable() {
-        PipeleyenFigureViewer.fnShowPlaceholderInNextViewer(
+        VaibifyFigureViewer.fnShowPlaceholderInNextViewer(
             '<span class="placeholder">' +
             'File cannot be viewed.</span>',
             "binary file");
@@ -4655,7 +4658,7 @@ const PipeleyenApp = (function () {
         fnResetLayout: fnResetLayout,
         fnReconnectToCurrentContainer: function () {
             if (_dictSessionState.sContainerId) {
-                PipeleyenContainerManager.fnConnectToContainer(
+                VaibifyContainerManager.fnConnectToContainer(
                     _dictSessionState.sContainerId);
             }
         },
@@ -4674,7 +4677,7 @@ const PipeleyenApp = (function () {
     };
 })();
 
-document.addEventListener("DOMContentLoaded", PipeleyenApp.fnInitialize);
+document.addEventListener("DOMContentLoaded", VaibifyApp.fnInitialize);
 
 function fnBlockUnload(event) {
     event.preventDefault();
@@ -4682,10 +4685,10 @@ function fnBlockUnload(event) {
 }
 
 function fnReleaseActiveContainerOnUnload() {
-    if (typeof PipeleyenContainerManager === "undefined") return;
-    if (typeof PipeleyenApp === "undefined") return;
-    var sName = PipeleyenContainerManager.fsGetSelectedContainerName();
-    var sLeaseId = PipeleyenApp.fsGetLeaseId();
+    if (typeof VaibifyContainerManager === "undefined") return;
+    if (typeof VaibifyApp === "undefined") return;
+    var sName = VaibifyContainerManager.fsGetSelectedContainerName();
+    var sLeaseId = VaibifyApp.fsGetLeaseId();
     if (!sName || !sLeaseId) return;
     try {
         navigator.sendBeacon(
@@ -4699,16 +4702,16 @@ function fnReleaseActiveContainerOnUnload() {
 
 window.addEventListener("beforeunload", fnBlockUnload);
 window.addEventListener("pagehide", function (event) {
-    PipeleyenApp.fnStopAllHubPolling();
+    VaibifyApp.fnStopAllHubPolling();
     if (event.persisted) return;
     fnReleaseActiveContainerOnUnload();
 });
 
 document.addEventListener("visibilitychange", function () {
     if (document.hidden) {
-        PipeleyenApp.fnStopAllHubPolling();
+        VaibifyApp.fnStopAllHubPolling();
     } else {
-        PipeleyenApp.fnResumeHubPollingForCurrentView();
+        VaibifyApp.fnResumeHubPollingForCurrentView();
     }
 });
 
@@ -4717,7 +4720,7 @@ window.addEventListener("keydown", function (event) {
         event.key === "w";
     if (!bCloseShortcut) return;
     event.preventDefault();
-    PipeleyenApp.fnShowConfirmModal(
+    VaibifyApp.fnShowConfirmModal(
         "Close Vaibify",
         "Are you sure you want to close this window? " +
             "Unsaved changes may be lost.",

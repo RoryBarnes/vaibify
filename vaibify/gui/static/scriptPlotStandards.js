@@ -1,11 +1,11 @@
 /* Vaibify — Plot standardization (extracted from scriptApplication.js) */
 
-var PipeleyenPlotStandards = (function () {
+var VaibifyPlotStandards = (function () {
     "use strict";
 
     async function fnLoadPlotStandardStatus(iStepIndex) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!sContainerId || !dictWorkflow) return;
         var step = dictWorkflow.listSteps[iStepIndex];
         if (!step || (step.saPlotFiles || []).length === 0) return;
@@ -17,20 +17,20 @@ var PipeleyenPlotStandards = (function () {
             var dictStandards = dictResult.dictStandards || {};
             for (var sBasename in dictStandards) {
                 var sKey = iStepIndex + ":" + sBasename;
-                PipeleyenApp.fnSetPlotStandardExists(
+                VaibifyApp.fnSetPlotStandardExists(
                     sKey, dictStandards[sBasename]);
             }
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         } catch (error) {
             /* Silently ignore - buttons remain hidden */
         }
     }
 
     function fnStandardizeAllPlots(iStepIndex) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         var sMessage = _fsBuildStandardizeMessage(iStepIndex);
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Make Standard",
             sMessage,
             function () {
@@ -47,7 +47,7 @@ var PipeleyenPlotStandards = (function () {
     }
 
     function _fsBuildRemoteWarning(iStepIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow) return "";
         var step = (dictWorkflow.listSteps || [])[iStepIndex];
         if (!step) return "";
@@ -95,8 +95,8 @@ var PipeleyenPlotStandards = (function () {
     }
 
     async function fnExecuteStandardizeAllPlots(iStepIndex) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        PipeleyenApp.fnShowToast(
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        VaibifyApp.fnShowToast(
             "Standardizing plots\u2026", "success");
         try {
             var dictResult = await VaibifyApi.fdictPost(
@@ -106,14 +106,14 @@ var PipeleyenPlotStandards = (function () {
             );
             fnApplyStandardizeResult(iStepIndex, dictResult);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
 
     function fnApplyStandardizeResult(iStepIndex, dictResult) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iStepIndex];
         if (!step) return;
         step.dictVerification = step.dictVerification || {};
@@ -123,22 +123,22 @@ var PipeleyenPlotStandards = (function () {
         var listBasenames =
             dictResult.listStandardizedBasenames || [];
         fnMarkStandardsExist(iStepIndex, listBasenames);
-        PipeleyenApp.fnSaveStepUpdate(iStepIndex, {
+        VaibifyApp.fnSaveStepUpdate(iStepIndex, {
             dictVerification: step.dictVerification,
         });
-        PipeleyenApp.fnRenderStepList();
-        PipeleyenApp.fnShowToast("Plot standards saved", "success");
+        VaibifyApp.fnRenderStepList();
+        VaibifyApp.fnShowToast("Plot standards saved", "success");
     }
 
     function fnMarkStandardsExist(iStepIndex, listBasenames) {
         for (var i = 0; i < listBasenames.length; i++) {
             var sKey = iStepIndex + ":" + listBasenames[i];
-            PipeleyenApp.fnSetPlotStandardExists(sKey, true);
+            VaibifyApp.fnSetPlotStandardExists(sKey, true);
         }
     }
 
     async function fnComparePlotToStandard(iStepIndex, sFileName) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             var dictResult = await VaibifyApi.fdictPost(
@@ -147,20 +147,20 @@ var PipeleyenPlotStandards = (function () {
                 {sFileName: sFileName}
             );
             if (dictResult.sPlotPath && dictResult.sStandardPath) {
-                PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                VaibifyFigureViewer.fnDisplayFileFromContainer(
                     dictResult.sPlotPath);
-                PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                VaibifyFigureViewer.fnDisplayFileFromContainer(
                     dictResult.sStandardPath);
             } else if (dictResult.sStandardPath) {
-                PipeleyenFigureViewer.fnDisplayFileFromContainer(
+                VaibifyFigureViewer.fnDisplayFileFromContainer(
                     dictResult.sStandardPath);
             } else {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "No standard found for " + sFileName,
                     "error");
             }
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
@@ -168,7 +168,7 @@ var PipeleyenPlotStandards = (function () {
 
     async function fnCompareStepPlots(iStepIndex) {
         if (!fbStepHasAnyStandard(iStepIndex)) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "No standards found. " +
                 "Use \u2018Make Standard\u2019 first.",
                 "error");
@@ -182,16 +182,16 @@ var PipeleyenPlotStandards = (function () {
     }
 
     function fbStepHasAnyStandard(iStepIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStepIndex];
         var listPlots = dictStep.saPlotFiles || [];
-        var dictVars = PipeleyenApp.fdictBuildClientVariables();
+        var dictVars = VaibifyApp.fdictBuildClientVariables();
         for (var i = 0; i < listPlots.length; i++) {
             var sResolved = VaibifyUtilities.fsResolveTemplate(
                 listPlots[i], dictVars);
             var sBasename = sResolved.split("/").pop();
             var sKey = iStepIndex + ":" + sBasename;
-            if (PipeleyenApp.fbGetPlotStandardExists(sKey) === true) {
+            if (VaibifyApp.fbGetPlotStandardExists(sKey) === true) {
                 return true;
             }
         }
@@ -199,18 +199,18 @@ var PipeleyenPlotStandards = (function () {
     }
 
     function fsFirstPlotBasename(iStepIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStepIndex];
         var listPlots = dictStep.saPlotFiles || [];
         if (listPlots.length === 0) return null;
-        var dictVars = PipeleyenApp.fdictBuildClientVariables();
+        var dictVars = VaibifyApp.fdictBuildClientVariables();
         var sResolved = VaibifyUtilities.fsResolveTemplate(
             listPlots[0], dictVars);
         return sResolved.split("/").pop();
     }
 
     function fiCountStepsWithPlots() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var listSteps = (dictWorkflow || {}).listSteps || [];
         var iCount = 0;
         for (var i = 0; i < listSteps.length; i++) {
@@ -222,16 +222,16 @@ var PipeleyenPlotStandards = (function () {
     }
 
     async function fnStandardizeAllWorkflowPlots() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!sContainerId || !dictWorkflow) return;
         var iCount = fiCountStepsWithPlots();
         if (iCount === 0) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "No steps have plot files", "error");
             return;
         }
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Standardize All Plots",
             "Create plot standards for " + iCount +
             " step(s)? This will overwrite existing standards.",
@@ -242,14 +242,14 @@ var PipeleyenPlotStandards = (function () {
     }
 
     async function fnStandardizeEachStep() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var listSteps = dictWorkflow.listSteps || [];
         for (var i = 0; i < listSteps.length; i++) {
             if ((listSteps[i].saPlotFiles || []).length > 0) {
                 await fnStandardizeAllPlots(i);
             }
         }
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "All plot standards updated", "success");
     }
 

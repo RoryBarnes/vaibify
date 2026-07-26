@@ -174,12 +174,12 @@ var VaibifyOverleafMirror = (function () {
         try {
             var dictResult = await fnRefreshMirrorFromServer(sContainerId);
             if (!dictResult.bSuccess) {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     dictResult.sMessage || "Mirror refresh failed",
                     "error");
             }
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsDescribeRefreshError(error), "error");
         }
         fnRenderFreshnessIndicator(elHost, sContainerId);
@@ -220,24 +220,24 @@ var VaibifyOverleafMirror = (function () {
         try {
             await fnFetchMirrorTree(sContainerId);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsDescribeTreeLoadError(error), "error");
             return;
         }
         if (!_dictState.sMirrorHeadSha) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Downloading Overleaf project structure\u2026",
                 "info");
             try {
                 await fnRefreshMirrorFromServer(sContainerId);
                 await fnFetchMirrorTree(sContainerId);
             } catch (error) {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     _fsDescribeRefreshError(error), "error");
                 return;
             }
         }
-        PipeleyenModals.fnShowTreePicker({
+        VaibifyModals.fnShowTreePicker({
             sTitle: "Select Overleaf target directory",
             listDirectories: _flistGetAllDirectories(),
             dictTreeIndex: _dictState.dictTreeIndex,

@@ -291,7 +291,7 @@ def test_label_memo_populated_in_single_forward_pass():
 
 
 def test_fnRenderStepListPartial_exposes_on_public_api():
-    """The partial-render entry must live on ``PipeleyenApp`` so
+    """The partial-render entry must live on ``VaibifyApp`` so
     cross-module callers (notably the git-badges refresh) can
     invalidate just the affected indices without a full re-render.
     Assert the exposed key, the function it points at, and the
@@ -299,7 +299,7 @@ def test_fnRenderStepListPartial_exposes_on_public_api():
     rename or comment-only revert cannot slip through."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     assert "fnRenderStepListPartial: fnRenderStepListPartial" in sSource, (
-        "PipeleyenApp must expose fnRenderStepListPartial in its "
+        "VaibifyApp must expose fnRenderStepListPartial in its "
         "public-API return object."
     )
     assert "function fnRenderStepListPartial(" in sSource, (
@@ -347,7 +347,7 @@ def test_poll_skips_steps_with_known_output_mtime():
     """``fnPollAllStepFiles`` must short-circuit on any step whose
     ``dictOutputMtimes`` entry is already populated — that already
     proves the step's output files exist on disk, so re-issuing
-    PipeleyenFileOps.fnCheckStepDataFiles would be ~1000 redundant
+    VaibifyFileOps.fnCheckStepDataFiles would be ~1000 redundant
     file probes per poll at N=100. Assert ordering: the existence
     lookup must precede the (only) call to ``fnCheckStepDataFiles``."""
     sSource = _fsReadStaticFile("scriptApplication.js")
@@ -417,10 +417,12 @@ def test_boundary_signature_distinguishes_count_and_interactive_mix():
     assert "listSteps.length" in sBlock, (
         "Boundary signature must mix step count into the key."
     )
-    assert ".bInteractive" in sBlock, (
+    assert "fbStepIsInteractive" in sBlock, (
         "Boundary signature must distinguish interactive from "
-        "automated steps; otherwise inserting an interactive step "
-        "would skip the structural-change fallback."
+        "automated steps through the single classifier; otherwise "
+        "inserting an interactive step would skip the "
+        "structural-change fallback, and a raw read would classify "
+        "a string or null flag differently from the renderer."
     )
 
 
@@ -616,6 +618,27 @@ def test_undeclared_input_shows_orange_pending_indicator():
     # input rows get their own status colours (drift = orange)
     assert 'tracked-file[data-array="saInputDataFiles"]' in sCss
     assert "file-necessary-red.file-stale-state" in sCss
+
+
+def test_step_renderer_classifies_interactive_through_the_mirror():
+    """The renderer must not read ``bInteractive`` raw.
+
+    The backend has one classifier (``pipelineUtils.fbStepIsInteractive``)
+    and ``scriptUtilities`` mirrors it. A renderer that tests the field
+    directly — ``=== true`` here, truthiness there — paints a ladder
+    that disagrees with the labels the backend hands to toasts, error
+    messages, and the in-container agent.
+    """
+    sUtilities = _fsReadStaticFile("scriptUtilities.js")
+    assert "function fbStepIsInteractive(" in sUtilities
+    assert "fbStepIsInteractive: fbStepIsInteractive," in sUtilities
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    assert "VaibifyUtilities.fbStepIsInteractive" in sRenderer
+    assert ".bInteractive" not in sRenderer, (
+        "scriptStepRenderer.js must classify through "
+        "VaibifyUtilities.fbStepIsInteractive, never by reading the "
+        "raw field"
+    )
 
 
 def test_client_l1_predicate_requires_input_declaration():

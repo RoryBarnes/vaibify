@@ -1,6 +1,6 @@
 /* Vaibify — DOM event binding and delegated click handlers */
 
-var PipeleyenEventBindings = (function () {
+var VaibifyEventBindings = (function () {
     "use strict";
 
     /* --- Delegated Click Handlers --- */
@@ -8,7 +8,7 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleDiscoveredButton(event, elMatch) {
         event.stopPropagation();
         var elDiscItem = elMatch.closest(".discovered-item");
-        PipeleyenApp.fnAddDiscoveredOutput(
+        VaibifyApp.fnAddDiscoveredOutput(
             parseInt(elDiscItem.dataset.step),
             elDiscItem.dataset.file,
             elMatch.dataset.target
@@ -37,7 +37,7 @@ var PipeleyenEventBindings = (function () {
 
     function _fnHandleTestAdd(event, elMatch) {
         event.stopPropagation();
-        PipeleyenTestManager.fnAddTestItem(
+        VaibifyTestManager.fnAddTestItem(
             parseInt(elMatch.dataset.step),
             elMatch.dataset.testType
         );
@@ -45,14 +45,14 @@ var PipeleyenEventBindings = (function () {
 
     function _fnHandleSectionAdd(event, elMatch) {
         event.stopPropagation();
-        PipeleyenApp.fnAddNewItem(
+        VaibifyApp.fnAddNewItem(
             parseInt(elMatch.dataset.step),
             elMatch.dataset.array
         );
     }
 
     function _fnHandleVerificationClickable(event, elMatch) {
-        PipeleyenApp.fnCycleUserVerification(
+        VaibifyApp.fnCycleUserVerification(
             parseInt(elMatch.dataset.step)
         );
     }
@@ -61,7 +61,7 @@ var PipeleyenEventBindings = (function () {
         var sSubApprover = elMatch.dataset.approver;
         var iSubStep = parseInt(elMatch.dataset.step);
         if (!sSubApprover) return;
-        var setSubExp = PipeleyenApp.fsetGetExpandedCategory(
+        var setSubExp = VaibifyApp.fsetGetExpandedCategory(
             sSubApprover);
         if (setSubExp.has(iSubStep)) {
             setSubExp.delete(iSubStep);
@@ -71,113 +71,113 @@ var PipeleyenEventBindings = (function () {
                 // On-demand only: the falsification state is read
                 // when the researcher opens the quantitative block,
                 // never on the poll path.
-                PipeleyenTestManager.fnFetchFalsificationState(
+                VaibifyTestManager.fnFetchFalsificationState(
                     iSubStep);
             }
         }
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
     }
 
     function _fnHandleVerificationExpandable(event, elMatch) {
         var sApprover = elMatch.dataset.approver;
         var iStep = parseInt(elMatch.dataset.step);
         if (sApprover === "unitTest") {
-            PipeleyenApp.fnToggleUnitTestExpand(iStep);
+            VaibifyApp.fnToggleUnitTestExpand(iStep);
         } else if (sApprover === "deps") {
-            PipeleyenApp.fnToggleDepsExpand(iStep);
+            VaibifyApp.fnToggleDepsExpand(iStep);
         }
     }
 
     function _fnHandleVerificationDeps(event, elMatch) {
-        PipeleyenApp.fnToggleDepsExpand(
+        VaibifyApp.fnToggleDepsExpand(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleMakeStandard(event, elMatch) {
-        PipeleyenPlotStandards.fnStandardizeAllPlots(
+        VaibifyPlotStandards.fnStandardizeAllPlots(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleCompareStandard(event, elMatch) {
-        PipeleyenPlotStandards.fnCompareStepPlots(
+        VaibifyPlotStandards.fnCompareStepPlots(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleTestFileItem(event, elMatch) {
-        PipeleyenFigureViewer.fnDisplayFileFromContainer(
+        VaibifyFigureViewer.fnDisplayFileFromContainer(
             elMatch.textContent.trim()
         );
     }
 
     function _fnHandleTestLastRun(event, elMatch) {
-        PipeleyenFigureViewer.fnDisplayFileFromContainer(
+        VaibifyFigureViewer.fnDisplayFileFromContainer(
             elMatch.dataset.log
         );
     }
 
     function _fnHandleGenerateTest(event, elMatch) {
-        PipeleyenTestManager.fnGenerateTests(
+        VaibifyTestManager.fnGenerateTests(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleInteractiveRun(event, elMatch) {
-        PipeleyenPipelineRunner.fnRunInteractiveStep(
+        VaibifyPipelineRunner.fnRunInteractiveStep(
             parseInt(elMatch.dataset.index));
     }
 
     function _fnHandleInteractivePlots(event, elMatch) {
-        PipeleyenPipelineRunner.fnRunInteractivePlots(
+        VaibifyPipelineRunner.fnRunInteractivePlots(
             parseInt(elMatch.dataset.index));
     }
 
     function _fnHandleRunTests(event, elMatch) {
-        PipeleyenTestManager.fnRunStepTests(
+        VaibifyTestManager.fnRunStepTests(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleRunCategory(event, elMatch) {
-        PipeleyenTestManager.fnRunCategoryTests(
+        VaibifyTestManager.fnRunCategoryTests(
             parseInt(elMatch.dataset.step),
             elMatch.dataset.category);
     }
 
     function _fnHandleRunFalsification(event, elMatch) {
-        PipeleyenTestManager.fnRunFalsification(
+        VaibifyTestManager.fnRunFalsification(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleRunData(event, elMatch) {
-        PipeleyenPipelineRunner.fnRunInteractiveStep(
+        VaibifyPipelineRunner.fnRunInteractiveStep(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleRunPlots(event, elMatch) {
-        PipeleyenPipelineRunner.fnRunInteractivePlots(
+        VaibifyPipelineRunner.fnRunInteractivePlots(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleAddDeps(event, elMatch) {
-        PipeleyenDependencyScanner.fnScanDependencies(
+        VaibifyDependencyScanner.fnScanDependencies(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleShowDeps(event, elMatch) {
-        PipeleyenApp.fnShowDag();
+        VaibifyApp.fnShowDag();
     }
 
     function _fnHandleRunStep(event, elMatch) {
-        PipeleyenPipelineRunner.fnRunStepCombined(
+        VaibifyPipelineRunner.fnRunStepCombined(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleTestCategoryFile(event, elMatch) {
-        PipeleyenTestManager.fnViewCategoryTestFile(
+        VaibifyTestManager.fnViewCategoryTestFile(
             parseInt(elMatch.dataset.step),
             elMatch.dataset.category);
     }
 
     function _fnHandleTestStandardsLink(event, elMatch) {
-        PipeleyenTestManager.fnViewStandardsFile(
+        VaibifyTestManager.fnViewStandardsFile(
             parseInt(elMatch.dataset.step),
             elMatch.dataset.category);
     }
@@ -185,9 +185,9 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleTestLogLink(event, elMatch) {
         var iLogStep = parseInt(elMatch.dataset.step, 10);
         var sCatKey = elMatch.dataset.category;
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictLogStep = dictWorkflow.listSteps[iLogStep];
-        var dictLogTests = PipeleyenApp.fdictGetTests(dictLogStep);
+        var dictLogTests = VaibifyApp.fdictGetTests(dictLogStep);
         var sLogCatKey = "dict" + sCatKey.charAt(0)
             .toUpperCase() + sCatKey.slice(1);
         var sOutput = (dictLogTests[sLogCatKey] || {})
@@ -196,18 +196,18 @@ var PipeleyenEventBindings = (function () {
             .toUpperCase() + sCatKey.slice(1);
         var bLogPassed = (dictLogStep.dictVerification || {})[
             sVerifyKey] === "passed";
-        PipeleyenFigureViewer.fnDisplayTestOutput(
+        VaibifyFigureViewer.fnDisplayTestOutput(
             sOutput, bLogPassed);
     }
 
     function _fnHandleTestEditCmd(event, elMatch) {
-        PipeleyenTestManager.fnEditTestFile(
+        VaibifyTestManager.fnEditTestFile(
             parseInt(elMatch.dataset.step),
             parseInt(elMatch.dataset.idx));
     }
 
     function _fnHandleTestDeleteCmd(event, elMatch) {
-        PipeleyenTestManager.fnDeleteTestCommand(
+        VaibifyTestManager.fnDeleteTestCommand(
             parseInt(elMatch.dataset.step),
             parseInt(elMatch.dataset.idx));
     }
@@ -216,15 +216,15 @@ var PipeleyenEventBindings = (function () {
         event.stopPropagation();
         var sFilePath = elMatch.dataset.file || "";
         if (!sFilePath) return;
-        var sRepoRoot = PipeleyenApp.fdictBuildClientVariables()
+        var sRepoRoot = VaibifyApp.fdictBuildClientVariables()
             .sRepoRoot || "";
-        PipeleyenFigureViewer.fnDisplayFileInViewer(
+        VaibifyFigureViewer.fnDisplayFileInViewer(
             "A", sFilePath, sRepoRoot);
     }
 
     function _fnHandleAddAiDeclarationStep(event, elMatch) {
         event.stopPropagation();
-        PipeleyenApp.fnAddAiDeclarationStep();
+        VaibifyApp.fnAddAiDeclarationStep();
     }
 
     var _DICT_DECLARATION_COMMIT_TOASTS = {
@@ -240,14 +240,14 @@ var PipeleyenEventBindings = (function () {
         // Scoped to the declaration file only: the dialog shows and
         // commits just that file. Committing is not publishing —
         // pushing happens from the Repos panel or the sync buttons.
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var sFilePath = elMatch.dataset.file || "";
         if (!sContainerId || !sFilePath) return;
         var sOutcome = await VaibifyManifestCheck.fsCommitSinglePath(
             sContainerId, sFilePath);
         var listToast = _DICT_DECLARATION_COMMIT_TOASTS[sOutcome];
         if (listToast) {
-            PipeleyenApp.fnShowToast(listToast[0], listToast[1]);
+            VaibifyApp.fnShowToast(listToast[0], listToast[1]);
         }
         _fnRefreshDeclarationGitState(sContainerId, sOutcome,
             ["committed", "clean", "failed"]);
@@ -264,14 +264,14 @@ var PipeleyenEventBindings = (function () {
         // Inverse of the commit action: confirms, then commits the
         // removal of the declaration file from git tracking. The
         // file itself stays on disk.
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var sFilePath = elMatch.dataset.file || "";
         if (!sContainerId || !sFilePath) return;
         var sOutcome = await VaibifyManifestCheck.fsRemoveSinglePath(
             sContainerId, sFilePath);
         var listToast = _DICT_DECLARATION_REMOVE_TOASTS[sOutcome];
         if (listToast) {
-            PipeleyenApp.fnShowToast(listToast[0], listToast[1]);
+            VaibifyApp.fnShowToast(listToast[0], listToast[1]);
         }
         _fnRefreshDeclarationGitState(sContainerId, sOutcome,
             ["removed", "failed"]);
@@ -298,25 +298,25 @@ var PipeleyenEventBindings = (function () {
     }
 
     function _fnHandleStepsBlockToggle(event, elMatch) {
-        PipeleyenApp.fnToggleStepsBlockExpand();
+        VaibifyApp.fnToggleStepsBlockExpand();
     }
 
     function _fnHandleProjectBlockToggle(event, elMatch) {
-        PipeleyenApp.fnToggleProjectBlockExpand();
+        VaibifyApp.fnToggleProjectBlockExpand();
     }
 
     function _fnHandleRequirementGroupToggle(event, elMatch) {
-        PipeleyenApp.fnToggleRequirementGroup(elMatch.dataset.group);
+        VaibifyApp.fnToggleRequirementGroup(elMatch.dataset.group);
     }
 
     function _fnHandleRequirementRowToggle(event, elMatch) {
-        PipeleyenApp.fnToggleRequirementRow(elMatch.dataset.req);
+        VaibifyApp.fnToggleRequirementRow(elMatch.dataset.req);
     }
 
     function _fnHandleProjectAction(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnRunProjectAction(
+        VaibifyApp.fnRunProjectAction(
             elMatch.dataset.wfAction, elMatch.dataset.wfArg || "",
             elMatch);
     }
@@ -324,7 +324,7 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleBulkDeclareNoInput(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnBulkDeclareNoInputData();
+        VaibifyApp.fnBulkDeclareNoInputData();
     }
 
     function _fnHandleOpenArxivConfig(event, elMatch) {
@@ -386,7 +386,7 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleStepLevelInfo(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnShowStepLevelRequirementsModal(
+        VaibifyApp.fnShowStepLevelRequirementsModal(
             parseInt(elMatch.dataset.step),
             parseInt(elMatch.dataset.level));
     }
@@ -394,7 +394,7 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleStepLevelSectionToggle(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnToggleStepLevelSection(
+        VaibifyApp.fnToggleStepLevelSection(
             parseInt(elMatch.dataset.step),
             parseInt(elMatch.dataset.level));
     }
@@ -402,7 +402,7 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleAlignDirectories(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Align directories",
             "Move every nonconforming step directory to its "
             + "name's camel-case form? Each move is a git mv; "
@@ -410,7 +410,7 @@ var PipeleyenEventBindings = (function () {
             + "The staged renames appear in the Repos panel until "
             + "you commit.",
             function () {
-                PipeleyenApp.fnAlignStepDirectories();
+                VaibifyApp.fnAlignStepDirectories();
             }
         );
     }
@@ -418,14 +418,14 @@ var PipeleyenEventBindings = (function () {
     function _fnHandleStepDescriptionToggle(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnToggleStepDescription(
+        VaibifyApp.fnToggleStepDescription(
             parseInt(elMatch.dataset.step));
     }
 
     function _fnHandleStepDescriptionEdit(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnBeginStepDescriptionEdit(
+        VaibifyApp.fnBeginStepDescriptionEdit(
             parseInt(elMatch.dataset.step));
     }
 
@@ -437,20 +437,20 @@ var PipeleyenEventBindings = (function () {
         if (!sLevel || !elStep) return;
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnExpandStepLevelSection(
+        VaibifyApp.fnExpandStepLevelSection(
             parseInt(elStep.dataset.index), parseInt(sLevel));
     }
 
     function _fnHandleToggleBinaryForm(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenApp.fnToggleBinaryAddForm();
+        VaibifyApp.fnToggleBinaryAddForm();
     }
 
     function _fnHandleProjectFileLink(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        PipeleyenFigureViewer.fnDisplayFileFromContainer(
+        VaibifyFigureViewer.fnDisplayFileFromContainer(
             elMatch.dataset.path);
     }
 
@@ -548,7 +548,7 @@ var PipeleyenEventBindings = (function () {
         var elStepItem = elTarget.closest(".step-item");
         if (elStepItem &&
             !elTarget.classList.contains("step-checkbox")) {
-            PipeleyenApp.fnToggleStepExpand(
+            VaibifyApp.fnToggleStepExpand(
                 parseInt(elStepItem.dataset.index));
         }
     }
@@ -557,17 +557,17 @@ var PipeleyenEventBindings = (function () {
         var elTarget = event.target;
         if (elTarget.classList.contains("step-checkbox")) {
             var elStep = elTarget.closest(".step-item");
-            PipeleyenApp.fnToggleStepEnabled(
+            VaibifyApp.fnToggleStepEnabled(
                 parseInt(elStep.dataset.index), elTarget.checked
             );
         }
         if (elTarget.classList.contains("plot-only-checkbox")) {
-            PipeleyenApp.fnTogglePlotOnly(
+            VaibifyApp.fnTogglePlotOnly(
                 parseInt(elTarget.dataset.step), elTarget.checked
             );
         }
         if (elTarget.classList.contains("no-input-data-checkbox")) {
-            PipeleyenApp.fnToggleNoInputData(
+            VaibifyApp.fnToggleNoInputData(
                 parseInt(elTarget.dataset.step), elTarget.checked
             );
         }
@@ -577,7 +577,7 @@ var PipeleyenEventBindings = (function () {
         var elStep = event.target.closest(".step-item");
         if (elStep) {
             event.preventDefault();
-            PipeleyenApp.fnShowContextMenu(
+            VaibifyApp.fnShowContextMenu(
                 event.pageX, event.pageY,
                 parseInt(elStep.dataset.index)
             );
@@ -636,7 +636,7 @@ var PipeleyenEventBindings = (function () {
                 var iFrom = parseInt(sStepData);
                 var iTo = parseInt(elStep.dataset.index);
                 if (iFrom !== iTo) {
-                    PipeleyenApp.fnReorderStep(iFrom, iTo);
+                    VaibifyApp.fnReorderStep(iFrom, iTo);
                 }
             }
         }
@@ -680,7 +680,7 @@ var PipeleyenEventBindings = (function () {
         if (elLogo) {
             elLogo.style.cursor = "pointer";
             elLogo.addEventListener("click", function () {
-                PipeleyenApp.fnDisconnect();
+                VaibifyApp.fnDisconnect();
             });
         }
     }
@@ -719,28 +719,28 @@ var PipeleyenEventBindings = (function () {
     function _fnBindMenuItemActions() {
         var dictActions = {
             btnRunSelected: function () {
-                PipeleyenPipelineRunner.fnRunSelected();
+                VaibifyPipelineRunner.fnRunSelected();
             },
             btnRunAll: function () {
-                PipeleyenPipelineRunner.fnRunAll();
+                VaibifyPipelineRunner.fnRunAll();
             },
             btnForceRunAll: function () {
-                PipeleyenPipelineRunner.fnForceRunAll();
+                VaibifyPipelineRunner.fnForceRunAll();
             },
             btnKillPipeline: function () {
-                PipeleyenPipelineRunner.fnKillPipeline();
+                VaibifyPipelineRunner.fnKillPipeline();
             },
             btnVerify: function () {
-                PipeleyenPipelineRunner.fnVerify();
+                VaibifyPipelineRunner.fnVerify();
             },
             btnRunAllTests: function () {
-                PipeleyenPipelineRunner.fnRunAllTests();
+                VaibifyPipelineRunner.fnRunAllTests();
             },
             btnVerifyDependencies: function () {
-                PipeleyenPipelineRunner.fnVerifyDependencies();
+                VaibifyPipelineRunner.fnVerifyDependencies();
             },
             btnStandardizeAllPlots: function () {
-                PipeleyenPlotStandards
+                VaibifyPlotStandards
                     .fnStandardizeAllWorkflowPlots();
             },
             btnOverleafPush: function () {
@@ -796,20 +796,20 @@ var PipeleyenEventBindings = (function () {
             },
             btnVerifyReproducibilityManifest: function () {
                 VaibifySyncManager.fdictVerifyManifest(
-                    PipeleyenApp.fsGetContainerId());
+                    VaibifyApp.fsGetContainerId());
             },
             btnShowDag: function () {
-                PipeleyenApp.fnShowDag();
+                VaibifyApp.fnShowDag();
             },
             btnVsCode: function () {
-                PipeleyenApp.fnOpenVsCode();
+                VaibifyApp.fnOpenVsCode();
             },
             btnMonitor: function () {},
             btnZenodoStatus: function () {
                 if (typeof VaibifyZenodoDepositCard ===
                     "undefined") return;
                 VaibifyZenodoDepositCard.fnOpen(
-                    PipeleyenApp.fsGetContainerId());
+                    VaibifyApp.fsGetContainerId());
             },
             btnZenodoStatusClose: function () {
                 if (typeof VaibifyZenodoDepositCard ===
@@ -817,21 +817,21 @@ var PipeleyenEventBindings = (function () {
                 VaibifyZenodoDepositCard.fnClose();
             },
             btnResetLayout: function () {
-                PipeleyenApp.fnResetLayout();
+                VaibifyApp.fnResetLayout();
             },
             btnAdminContainers: function () {
-                PipeleyenModals.fnShowConfirmModal(
+                VaibifyModals.fnShowConfirmModal(
                     "Leave Dashboard",
                     "This will disconnect from the container " +
                     "and end any running sessions. Continue?",
-                    PipeleyenApp.fnDisconnect);
+                    VaibifyApp.fnDisconnect);
             },
             btnAdminWorkflows: function () {
-                PipeleyenModals.fnShowConfirmModal(
+                VaibifyModals.fnShowConfirmModal(
                     "Switch Project",
                     "This will leave the current dashboard " +
                     "and end any running sessions. Continue?",
-                    PipeleyenApp.fnReconnectToCurrentContainer);
+                    VaibifyApp.fnReconnectToCurrentContainer);
             },
             btnAdminNewWindow: function () {
                 VaibifyUtilities.fnSpawnNewSession();
@@ -855,7 +855,7 @@ var PipeleyenEventBindings = (function () {
         var elModal = document.getElementById(
             "modalVerifyReproducibility");
         if (!elModal) return;
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         _elVerifyModalPriorFocus = document.activeElement;
         elModal.style.display = "flex";
@@ -941,28 +941,28 @@ var PipeleyenEventBindings = (function () {
     function fnBindWorkflowPickerEvents() {
         document.getElementById("btnWorkflowBack").addEventListener(
             "click", function () {
-                PipeleyenApp.fnShowContainerLanding();
-                PipeleyenContainerManager.fnLoadContainers();
+                VaibifyApp.fnShowContainerLanding();
+                VaibifyContainerManager.fnLoadContainers();
             }
         );
         document.getElementById("btnNoWorkflow").addEventListener(
             "click", function () {
-                var sId = PipeleyenContainerManager
+                var sId = VaibifyContainerManager
                     .fsGetSelectedContainerId();
-                if (sId) PipeleyenApp.fnEnterNoWorkflow(sId);
+                if (sId) VaibifyApp.fnEnterNoWorkflow(sId);
             }
         );
         document.getElementById("btnNewWorkflow").addEventListener(
             "click", function () {
-                PipeleyenContainerManager.fnCreateNewWorkflow();
+                VaibifyContainerManager.fnCreateNewWorkflow();
             }
         );
         document.getElementById("btnRefreshWorkflows")
             .addEventListener("click", function () {
-                var sId = PipeleyenContainerManager
+                var sId = VaibifyContainerManager
                     .fsGetSelectedContainerId();
                 if (sId) {
-                    PipeleyenContainerManager
+                    VaibifyContainerManager
                         .fnConnectToContainer(sId);
                 }
             }
@@ -992,10 +992,10 @@ var PipeleyenEventBindings = (function () {
             .forEach(function (el) {
                 el.addEventListener("click", function (event) {
                     event.stopPropagation();
-                    PipeleyenApp.fnHandleContextAction(
+                    VaibifyApp.fnHandleContextAction(
                         el.dataset.action,
-                        PipeleyenApp.fiGetContextStepIndex());
-                    PipeleyenApp.fnHideContextMenu();
+                        VaibifyApp.fiGetContextStepIndex());
+                    VaibifyApp.fnHideContextMenu();
                 });
             });
         document.addEventListener("click", function () {
@@ -1015,7 +1015,7 @@ var PipeleyenEventBindings = (function () {
                         });
                     el.classList.add("active");
                     var sPanel = el.dataset.panel;
-                    var bWorkflowMode = PipeleyenApp
+                    var bWorkflowMode = VaibifyApp
                         .fbIsWorkflowMode();
                     if (bWorkflowMode) {
                         document.getElementById("panelSteps")
@@ -1051,12 +1051,12 @@ var PipeleyenEventBindings = (function () {
                             "active", sPanel === "aics");
                     }
                     if (sPanel === "files") {
-                        PipeleyenFiles.fnLoadDirectory(
+                        VaibifyFiles.fnLoadDirectory(
                             "/workspace");
                     } else if (sPanel === "logs") {
-                        PipeleyenApp.fnLoadLogs();
+                        VaibifyApp.fnLoadLogs();
                     } else if (sPanel === "repos") {
-                        PipeleyenReposPanel.fnRender();
+                        VaibifyReposPanel.fnRender();
                     } else if (sPanel === "aics") {
                         VaibifyAicsTab.fnRender();
                     }
@@ -1157,7 +1157,7 @@ var PipeleyenEventBindings = (function () {
                     "mousemove", fnMouseMove);
                 document.removeEventListener(
                     "mouseup", fnMouseUp);
-                PipeleyenTerminal.fnFitActiveTerminal();
+                VaibifyTerminal.fnFitActiveTerminal();
             }
             document.addEventListener("mousemove", fnMouseMove);
             document.addEventListener("mouseup", fnMouseUp);
@@ -1173,7 +1173,7 @@ var PipeleyenEventBindings = (function () {
                     "globalSettingsPanel");
                 var bExpanded = el.classList.toggle("expanded");
                 if (bExpanded) {
-                    PipeleyenApp.fnRenderGlobalSettings();
+                    VaibifyApp.fnRenderGlobalSettings();
                 }
             }
         );
@@ -1187,7 +1187,7 @@ var PipeleyenEventBindings = (function () {
     }
 
     async function _fnRefreshRemoteStatus() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             await VaibifyApi.fdictPost(
@@ -1196,11 +1196,11 @@ var PipeleyenEventBindings = (function () {
             if (typeof VaibifyGitBadges !== "undefined") {
                 await VaibifyGitBadges.fnRefresh(sContainerId);
             }
-            PipeleyenApp.fnRenderStepList();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnRenderStepList();
+            VaibifyApp.fnShowToast(
                 "Remote status refreshed", "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         }

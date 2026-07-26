@@ -1,4 +1,4 @@
-"""Schema versioning and migrations for workflow.json.
+"""Schema versioning and migrations for project.json.
 
 Each persisted workflow file carries an integer version under the
 ``iWorkflowSchemaVersion`` top-level key. ``fnApplyMigrations`` runs
@@ -23,6 +23,7 @@ import posixpath
 import re
 
 from .pathContract import flistNormalizeModifiedFiles
+from .pipelineUtils import fbStepIsInteractive
 
 
 __all__ = [
@@ -39,13 +40,14 @@ __all__ = [
     "fnMigrateAbsoluteTestPaths",
     "fnMigrateArchiveToTracking",
     "fnMigrateRunEnabledKey",
+    "fnNormalizeInteractiveFlags",
     "fnNormalizeSceneReferences",
     "fbMigrateModifiedFilesToRepoRelative",
     "fnStampCurrentVersion",
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 9
+I_CURRENT_WORKFLOW_VERSION = 10
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -88,7 +90,7 @@ def fnApplyMigrations(dictWorkflow, sProjectRepoPath=""):
 def fnMigrateRunEnabledKey(dictWorkflow):
     """Rewrite legacy ``bEnabled`` step field to ``bRunEnabled``.
 
-    Older workflow.json files used ``bEnabled`` as the run-scope
+    Older project.json files used ``bEnabled`` as the run-scope
     flag. The field was renamed to keep run scope and verification
     scope unambiguous. Idempotent on already-migrated steps.
     """
@@ -134,7 +136,7 @@ def fnEnsureStepIds(dictWorkflow):
     ``sStepId`` is the identity primitive behind symbolic cross-step
     references (``{step:<id>.<stem>}``). Unlike ``sLabel`` — which is a
     derived, per-type-sequential field recomputed on every load — an
-    id is assigned ONCE, persisted in ``workflow.json``, and NEVER
+    id is assigned ONCE, persisted in ``project.json``, and NEVER
     regenerated, so a rename, insertion, or reorder leaves every
     reference intact. The id is a readable kebab slug of the step name,
     disambiguated with a numeric suffix on collision, falling back to
@@ -221,7 +223,7 @@ def fnMigrateArchiveToTracking(dictWorkflow):
 def fbMigrateModifiedFilesToRepoRelative(dictWorkflow):
     """Normalize legacy abs paths in dictVerification.listModifiedFiles.
 
-    Older workflow.json files stored absolute container paths in
+    Older project.json files stored absolute container paths in
     ``dictVerification['listModifiedFiles']``. The wire-format contract
     is now repo-relative. This migration rewrites each step's list in
     place and returns True if any change was made. Idempotent: a
@@ -617,6 +619,32 @@ def _fnMigrateV8ToV9(dictWorkflow, sProjectRepoPath):
         dictStep.setdefault("listRemoteData", [])
 
 
+def fnNormalizeInteractiveFlags(dictWorkflow):
+    """Coerce every persisted ``bInteractive`` to a real boolean.
+
+    A hand-edited ``null`` or ``"true"`` classifies one way under
+    truthiness and another under equality, which is how a step label
+    came to resolve to the wrong step. ``pipelineUtils`` decides the
+    reading; this bakes that reading into the document once so the
+    value on disk is unambiguous. Absent flags stay absent (the step
+    is automated by default) and booleans are left alone, so a
+    migrated workflow gains no keys it did not already carry.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            continue
+        if "bInteractive" not in dictStep:
+            continue
+        if isinstance(dictStep["bInteractive"], bool):
+            continue
+        dictStep["bInteractive"] = fbStepIsInteractive(dictStep)
+
+
+def _fnMigrateV9ToV10(dictWorkflow, sProjectRepoPath):
+    """Normalize hand-edited interactive flags to real booleans."""
+    fnNormalizeInteractiveFlags(dictWorkflow)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -627,4 +655,5 @@ T_MIGRATORS = (
     (6, _fnMigrateV6ToV7),
     (7, _fnMigrateV7ToV8),
     (8, _fnMigrateV8ToV9),
+    (9, _fnMigrateV9ToV10),
 )

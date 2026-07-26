@@ -132,18 +132,85 @@ def _fdictSupervisionEvidence(filesRepo):
     }
 
 
-def fbStampMatchesDeclaration(dictStamp, dictWorkflow):
-    """Return True iff the stamp reflects the current declared models.
+_LIST_STAMP_HASH_FIELDS = [
+    "sWorkspacePromptSha256",
+    "sProjectContextSha256",
+]
+
+
+def _fbHashFieldWellFormed(dictStamp, sField):
+    """Return True iff the field is '' or a 64-character hex digest."""
+    sValue = dictStamp.get(sField)
+    if sValue == "":
+        return True
+    if not isinstance(sValue, str) or len(sValue) != 64:
+        return False
+    return all(sCharacter in "0123456789abcdef" for sCharacter in sValue)
+
+
+def _fbStampShapeIntact(dictStamp):
+    """Return True iff every machine-written field still has its shape.
+
+    The shape check is what covers the fields no exec-free caller can
+    recompute: the workspace prompt hash (a container fact) and the
+    isolation probe. A hand edit that keeps the shape survives, but it
+    can no longer be an arbitrary string, and the fields that CAN be
+    recomputed are checked by value in
+    :func:`fbStampMatchesDeclaration`.
+    """
+    if dictStamp.get("sTrustBaseStatement") != S_TRUST_BASE_STATEMENT:
+        return False
+    bIsolated = dictStamp.get("bNetworkIsolatedAtCapture")
+    if bIsolated is not None and not isinstance(bIsolated, bool):
+        return False
+    if not all(
+        _fbHashFieldWellFormed(dictStamp, sField)
+        for sField in _LIST_STAMP_HASH_FIELDS
+    ):
+        return False
+    return _fbCapturedAtPlausible(dictStamp.get("sCapturedAtUtc"))
+
+
+def _fbCapturedAtPlausible(sCapturedAtUtc):
+    """Return True iff the capture time parses and is not in the future."""
+    try:
+        dtCaptured = datetime.fromisoformat(str(sCapturedAtUtc or ""))
+    except (TypeError, ValueError):
+        return False
+    if dtCaptured.tzinfo is None:
+        dtCaptured = dtCaptured.replace(tzinfo=timezone.utc)
+    return dtCaptured <= datetime.now(timezone.utc)
+
+
+def fbStampMatchesDeclaration(dictStamp, dictWorkflow, filesRepo=None):
+    """Return True iff the stamp still reflects captured reality.
 
     The poll side-effect uses this to keep the stamp machine-written:
     any drift — a new declaration, a removal, or a hand edit to the
-    stamp file — makes it stale and triggers a rewrite.
+    stamp file — makes it stale and triggers a rewrite. Comparing only
+    the declared model list left five of the six captured fields
+    hand-editable forever, and every one of them is folded into the L3
+    attestation, so an edited stamp became an attested claim.
+
+    Every field is now checked to the strongest degree an exec-free
+    caller can: by VALUE where it is recomputable (the declared
+    models, the trust-base constant, and — when ``filesRepo`` is given
+    — the project-context hash), and by SHAPE where it is a live
+    container fact this caller cannot re-probe without an exec.
     """
     if not isinstance(dictStamp, dict):
         return False
     dictProvenance = (dictWorkflow or {}).get(S_AI_PROVENANCE_KEY) or {}
     listDeclaredModels = list(dictProvenance.get(S_DECLARED_MODELS_KEY) or [])
-    return dictStamp.get("listDeclaredModels") == listDeclaredModels
+    if dictStamp.get("listDeclaredModels") != listDeclaredModels:
+        return False
+    if not _fbStampShapeIntact(dictStamp):
+        return False
+    if filesRepo is None:
+        return True
+    return dictStamp.get("sProjectContextSha256") == _sHashProjectContext(
+        filesRepo,
+    )
 
 
 def fnWriteAiProvenanceStamp(filesRepo, dictStamp):

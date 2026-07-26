@@ -327,3 +327,59 @@ def testAlignRouteMovesTheMarkerThroughRealWiring(tmp_path):
     assert dictMarker["dictOutputHashes"] == {
         "legacyDir/out.csv": "abc",
     }
+
+
+# ---------------------------------------------------------------------------
+# An unrecoverable rename cascade must be PERSISTED, not just reported.
+# The cascade rewrites the step to point at the directory that really
+# holds its files; a route that raises without saving throws that
+# warning away and the next load shows a step that looks healthy.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def testRenameRoutePersistsAnUnrecoverableSplit(monkeypatch):
+    """The route saves the workflow before surfacing a split cascade.
+
+    Kills: mapping StepRenameSplitError onto the generic RuntimeError
+    branch, which raises 500 without saving. The nonconforming
+    sDirectory the cascade wrote lives only in memory and is lost on
+    the next load, leaving the dashboard reporting a healthy step.
+    """
+    from vaibify.gui import stepRename
+
+    dictWorkflow = {
+        "sWorkflowName": "Split Test",
+        "sProjectRepoPath": "/workspace/repo",
+        "listSteps": [{
+            "sName": "Old Step", "sDirectory": "OldStep",
+            "sLabel": "A01", "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+    listSaves = []
+    dictCtx = _fdictBuildContext(dictWorkflow, listSaves)
+    dictCtx["docker"] = _FakeAlignDocker()
+    dictCtx["pipelineTasks"] = {}
+    dictCtx["paths"] = {
+        S_CONTAINER_ID: "/workspace/repo/.vaibify/workflows/study.json",
+    }
+
+    def fdictRaiseSplit(*tArgs, **dictKwargs):
+        dictWorkflow["listSteps"][0]["sDirectory"] = "NewStep"
+        raise stepRename.StepRenameSplitError("directory moved, undo failed")
+
+    monkeypatch.setattr(
+        stepRename, "fdictApplyStepRename", fdictRaiseSplit)
+    app = FastAPI()
+    stepRoutes.fnRegisterAll(app, dictCtx)
+    clientHttp = TestClient(app, raise_server_exceptions=False)
+
+    responseHttp = clientHttp.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/rename",
+        json={"sNewName": "New Step", "bDryRun": False},
+    )
+    assert responseHttp.status_code == 500
+    assert listSaves, (
+        "the split state must be persisted before the error surfaces"
+    )
+    assert dictWorkflow["listSteps"][0]["sDirectory"] == "NewStep"

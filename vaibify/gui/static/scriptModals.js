@@ -1,6 +1,6 @@
 /* Vaibify — Modal/dialog utilities */
 
-var PipeleyenModals = (function () {
+var VaibifyModals = (function () {
     "use strict";
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
@@ -292,7 +292,7 @@ var PipeleyenModals = (function () {
         function fnConfirm() {
             var sValue = elInput.value.trim();
             if (sValue) {
-                PipeleyenApp.fnCommitNewItem(iStep, sArrayKey, sValue);
+                VaibifyApp.fnCommitNewItem(iStep, sArrayKey, sValue);
             }
             elRow.remove();
         }
@@ -533,7 +533,7 @@ var PipeleyenModals = (function () {
     function fnShowFilePickerModal(sTitle, sMessage, fnOnSelect) {
         var elExisting = document.getElementById("modalFilePicker");
         if (elExisting) elExisting.remove();
-        var sRepoRoot = ((PipeleyenApp.fdictGetWorkflow() || {})
+        var sRepoRoot = ((VaibifyApp.fdictGetWorkflow() || {})
             .sProjectRepoPath || "").replace(/\/+$/, "");
         var elModal = document.createElement("div");
         elModal.id = "modalFilePicker";
@@ -623,7 +623,7 @@ var PipeleyenModals = (function () {
         _fnRenderPickerBreadcrumb(sPath, sRepoRoot);
         try {
             var listEntries = await VaibifyApi.fdictGet(
-                "/api/files/" + PipeleyenApp.fsGetContainerId() + sPath
+                "/api/files/" + VaibifyApp.fsGetContainerId() + sPath
             );
             elEntries.innerHTML = _fsRenderPickerEntries(listEntries);
         } catch (error) {

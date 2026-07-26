@@ -1,6 +1,6 @@
 /* Vaibify — Dual figure viewer with unified shared history */
 
-const PipeleyenFigureViewer = (function () {
+const VaibifyFigureViewer = (function () {
     "use strict";
 
     var fbIsFigureFile = VaibifyUtilities.fbIsFigureFile;
@@ -152,7 +152,7 @@ const PipeleyenFigureViewer = (function () {
     /* --- Public entry points --- */
 
     function fnLoadStepFigures(iStepIndex) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId || iStepIndex < 0) return;
 
         fnFetchResolvedStep(iStepIndex, function (dictStep) {
@@ -210,7 +210,7 @@ const PipeleyenFigureViewer = (function () {
             return;
         }
         if (!fbViewerHasOpenEditor(dictOther)) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Open editor in viewer " + dictPreferred.sId +
                 " protected — opened in viewer " + dictOther.sId,
                 "info");
@@ -239,7 +239,7 @@ const PipeleyenFigureViewer = (function () {
             sIncomingPath, bAnyDirty);
         var listChoices = _flistBuildBothOpenChoices(fnRetry);
         listChoices.push({sLabel: "Cancel"});
-        PipeleyenModals.fnShowChoiceModal(
+        VaibifyModals.fnShowChoiceModal(
             sTitle, sMessage, listChoices);
     }
 
@@ -314,7 +314,7 @@ const PipeleyenFigureViewer = (function () {
             fnOnConfirm();
             return;
         }
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Discard unsaved edits?",
             "Viewer " + dictViewer.sId + " has unsaved edits in " +
             _fsDirtyFileLabel(dictViewer) + ". " + sActionLabel +
@@ -346,8 +346,8 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnDisplayFigureByTemplate(sTemplatePath) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var iStepIndex = PipeleyenApp.fiGetSelectedStepIndex();
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var iStepIndex = VaibifyApp.fiGetSelectedStepIndex();
         if (!sContainerId || iStepIndex < 0) return;
 
         fnFetchResolvedStep(iStepIndex, function (dictStep) {
@@ -366,12 +366,12 @@ const PipeleyenFigureViewer = (function () {
     /* --- Internal --- */
 
     function fnFetchResolvedStep(iStepIndex, fnCallback) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         fetch("/api/steps/" + sContainerId + "/" + iStepIndex)
             .then(function (r) { return r.json(); })
             .then(fnCallback)
             .catch(function () {
-                var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+                var dictWorkflow = VaibifyApp.fdictGetWorkflow();
                 if (dictWorkflow && dictWorkflow.listSteps[iStepIndex]) {
                     fnCallback(dictWorkflow.listSteps[iStepIndex]);
                 }
@@ -426,7 +426,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnDisplayInViewport(dictViewer, dictEntry) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var sPath = dictEntry.sPath;
         var sWorkdir = dictEntry.sWorkdir || "";
         var sCleanPath = sPath.replace(/^\/+/, "");
@@ -738,7 +738,7 @@ const PipeleyenFigureViewer = (function () {
 
     function fnHandleEditClick(sText, sUrl, elViewport) {
         if (fbIsOutputFile(sUrl)) {
-            PipeleyenApp.fnShowConfirmModal(
+            VaibifyApp.fnShowConfirmModal(
                 "Edit Pipeline Output",
                 "This file is pipeline output that may be " +
                 "used for verification. Edit anyway?",
@@ -803,7 +803,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function _fdictParseFigureUrl(sUrl) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var sPrefix = "/api/figure/" + sContainerId + "/";
         var sRest = sUrl.split(sPrefix)[1] || "";
         var sWorkdir = "";
@@ -923,7 +923,7 @@ const PipeleyenFigureViewer = (function () {
         dictViewer.sWorkdir = dictUrl.sWorkdir;
         dictViewer.sSaveUrl = fsBuildSaveUrl(sUrl);
         dictViewer.elIndicator = elIndicator;
-        PipeleyenDraftManager.fsHashContent(sText).then(
+        VaibifyDraftManager.fsHashContent(sText).then(
             function (sHash) {
                 if (dictViewer.elTextarea === elTextarea) {
                     dictViewer.sBaseHash = sHash;
@@ -983,15 +983,15 @@ const PipeleyenFigureViewer = (function () {
         elTextarea.addEventListener("blur", function () {
             var sDraftKey = _fsCurrentDraftKey(dictViewer);
             if (sDraftKey) {
-                PipeleyenDraftManager.fnFlushPendingSaves(sDraftKey);
+                VaibifyDraftManager.fnFlushPendingSaves(sDraftKey);
             }
         });
     }
 
     function _fsCurrentDraftKey(dictViewer) {
         if (!dictViewer || !dictViewer.sFilePath) return "";
-        return PipeleyenDraftManager.fsBuildDraftKey(
-            PipeleyenApp.fsGetContainerId(),
+        return VaibifyDraftManager.fsBuildDraftKey(
+            VaibifyApp.fsGetContainerId(),
             dictViewer.sFilePath, dictViewer.sWorkdir);
     }
 
@@ -1009,10 +1009,10 @@ const PipeleyenFigureViewer = (function () {
             sBaseHash: dictViewer.sBaseHash || "",
             iTimestampMs: Date.now(),
         };
-        PipeleyenDraftManager.fnSaveLocalDraft(sDraftKey, dictDraft);
-        PipeleyenDraftManager.fnSaveRemoteDraft(
+        VaibifyDraftManager.fnSaveLocalDraft(sDraftKey, dictDraft);
+        VaibifyDraftManager.fnSaveRemoteDraft(
             sDraftKey, dictDraft,
-            PipeleyenApp.fsGetContainerId(),
+            VaibifyApp.fsGetContainerId(),
             dictViewer.sFilePath, dictViewer.sWorkdir);
         _fnScheduleIndicatorPromotion(dictViewer);
     }
@@ -1037,8 +1037,8 @@ const PipeleyenFigureViewer = (function () {
     function _fnDiscardDraftFor(dictViewer) {
         var sDraftKey = _fsCurrentDraftKey(dictViewer);
         if (!sDraftKey) return;
-        PipeleyenDraftManager.fnDeleteDraft(
-            sDraftKey, PipeleyenApp.fsGetContainerId(),
+        VaibifyDraftManager.fnDeleteDraft(
+            sDraftKey, VaibifyApp.fsGetContainerId(),
             dictViewer.sFilePath, dictViewer.sWorkdir);
     }
 
@@ -1053,7 +1053,7 @@ const PipeleyenFigureViewer = (function () {
             _fnDiscardDraftFor(dictViewer);
             return;
         }
-        var sCurrentHash = await PipeleyenDraftManager.fsHashContent(
+        var sCurrentHash = await VaibifyDraftManager.fsHashContent(
             dictViewer.sBaseText || "");
         var bStaleBase = Boolean(
             dictNewest.sBaseHash && sCurrentHash &&
@@ -1065,10 +1065,10 @@ const PipeleyenFigureViewer = (function () {
     async function _fdictPickNewestDraft(dictViewer) {
         var sDraftKey = _fsCurrentDraftKey(dictViewer);
         if (!sDraftKey) return null;
-        var dictLocal = PipeleyenDraftManager.fdictGetLocalDraft(
+        var dictLocal = VaibifyDraftManager.fdictGetLocalDraft(
             sDraftKey);
-        var dictRemote = await PipeleyenDraftManager.fdictGetRemoteDraft(
-            PipeleyenApp.fsGetContainerId(),
+        var dictRemote = await VaibifyDraftManager.fdictGetRemoteDraft(
+            VaibifyApp.fsGetContainerId(),
             dictViewer.sFilePath, dictViewer.sWorkdir);
         if (!dictLocal && !dictRemote) return null;
         if (!dictLocal) return dictRemote;
@@ -1165,7 +1165,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fsBuildSaveUrl(sUrl) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var sPrefix = "/api/figure/" + sContainerId + "/";
         var sFilePath = sUrl.split(sPrefix)[1] || "";
         var sWorkdir = "";
@@ -1214,7 +1214,7 @@ const PipeleyenFigureViewer = (function () {
             _fnHandleSaveSuccess(
                 sUrl, sContent, elViewport, dictViewer, fnOnSuccess);
         }).catch(function (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Save failed: " + error.message, "error");
         });
     }
@@ -1240,7 +1240,7 @@ const PipeleyenFigureViewer = (function () {
             _fnUpdateIndicator(dictViewer, "saved");
             _fnClearEditingState(dictViewer);
         }
-        PipeleyenApp.fnShowToast("File saved", "success");
+        VaibifyApp.fnShowToast("File saved", "success");
         fnRevertTestStateForFile(sUrl);
         fnRenderTextWithToolbar(sContent, sUrl, elViewport);
         if (fnOnSuccess) fnOnSuccess();
@@ -1252,7 +1252,7 @@ const PipeleyenFigureViewer = (function () {
         var dictDetail = (dictBody && dictBody.detail) || {};
         var sCurrentContent = dictDetail.sCurrentContent || "";
         var sCurrentHash = dictDetail.sCurrentHash || "";
-        PipeleyenModals.fnShowChoiceModal(
+        VaibifyModals.fnShowChoiceModal(
             "File changed on disk",
             "Another writer modified this file after you started " +
             "editing. Overwriting will discard their changes; " +
@@ -1289,7 +1289,7 @@ const PipeleyenFigureViewer = (function () {
                 sUrl, sContent, elViewport,
                 _fdictViewerForViewport(elViewport), fnOnSuccess);
         }).catch(function (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Overwrite failed: " + error.message, "error");
         });
     }
@@ -1303,7 +1303,7 @@ const PipeleyenFigureViewer = (function () {
             'padding:8px;font-size:0.85em;">' +
             VaibifyUtilities.fnEscapeHtml(sCurrentContent) +
             '</pre>';
-        PipeleyenModals.fnShowInfoModal("File on disk", sBody);
+        VaibifyModals.fnShowInfoModal("File on disk", sBody);
     }
 
     function fnBindEditorFind(elFind, elTextarea) {
@@ -1326,7 +1326,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fbIsOutputFile(sUrl) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return false;
         var sBasename = sUrl.split("/").pop().split("?")[0];
         for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
@@ -1340,9 +1340,9 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnRevertTestStateForFile(sUrl) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return;
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var sBasename = sUrl.split("/").pop().split("?")[0];
         for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
             var dictStep = dictWorkflow.listSteps[i];
@@ -1357,7 +1357,7 @@ const PipeleyenFigureViewer = (function () {
                         }),
                     });
                 }
-                PipeleyenApp.fnRenderStepList();
+                VaibifyApp.fnRenderStepList();
                 return;
             }
         }
@@ -1367,7 +1367,7 @@ const PipeleyenFigureViewer = (function () {
 
     function fnApplyTestFailureOutline(elViewport, sPath) {
         elViewport.classList.remove("viewport-test-failed");
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return;
         var sBasename = sPath.split("/").pop();
         for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
@@ -1573,7 +1573,7 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function fnAcceptAndRunTest(sPath, sContent, iStep, elTestViewport) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         var elProgressViewport = elTestViewport ||
             document.getElementById("viewportA");
@@ -1628,14 +1628,14 @@ const PipeleyenFigureViewer = (function () {
     }
 
     function _fnRecordTestVerification(iStep, bPassed) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps[iStep]) return;
         var dictV = dictWorkflow.listSteps[iStep]
             .dictVerification || {};
         dictV.sUnitTest = bPassed ? "passed" : "failed";
         dictWorkflow.listSteps[iStep].dictVerification = dictV;
-        if (bPassed) PipeleyenApp.fnClearOutputModified(iStep);
-        PipeleyenApp.fnRenderStepList();
+        if (bPassed) VaibifyApp.fnClearOutputModified(iStep);
+        VaibifyApp.fnRenderStepList();
     }
 
     function _fnDisplayTestAcceptOutput(sOutput, elProgressViewport) {
@@ -1656,7 +1656,7 @@ const PipeleyenFigureViewer = (function () {
         var sContent = elTextarea ?
             elTextarea.value :
             elViewport.querySelector("pre").textContent;
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         fetch("/api/file/" + sContainerId + "/" + sPath, {
             method: "PUT",
             headers: {"Content-Type": "application/json"},
@@ -1670,11 +1670,11 @@ const PipeleyenFigureViewer = (function () {
                 throw new Error(sDetail);
             });
             elViewport.classList.remove("viewport-test-generated");
-            PipeleyenTestManager.fnFinalizeGeneratedTest(iStep);
-            PipeleyenApp.fnShowToast("Test saved", "success");
+            VaibifyTestManager.fnFinalizeGeneratedTest(iStep);
+            VaibifyApp.fnShowToast("Test saved", "success");
             fnRenderTextWithToolbar(sContent, "", elViewport);
         }).catch(function (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Save failed: " + error.message, "error"
             );
         });
@@ -1690,7 +1690,7 @@ const PipeleyenFigureViewer = (function () {
         elViewport.classList.remove("viewport-test-generated");
         elViewport.innerHTML =
             '<span class="placeholder">Test generation cancelled</span>';
-        PipeleyenTestManager.fnCancelGeneratedTest(iStep);
+        VaibifyTestManager.fnCancelGeneratedTest(iStep);
     }
 
     function fnDisplayTestOutput(sOutput, bPassed) {

@@ -125,7 +125,7 @@ def _fsHashFileContents(pathFile):
 
 
 def fdictBuildDagFromWorkflow(dictWorkflow):
-    """Build a dependency graph from a workflow.json structure.
+    """Build a dependency graph from a project.json structure.
 
     Each step declares inputs and outputs; edges flow from inputs
     through the step to its outputs.
@@ -133,7 +133,7 @@ def fdictBuildDagFromWorkflow(dictWorkflow):
     Parameters
     ----------
     dictWorkflow : dict
-        Parsed workflow.json with a "listSteps" key.
+        Parsed project.json with a "listSteps" key.
 
     Returns
     -------
@@ -170,7 +170,7 @@ def flistDetectChangedOutputs(dictProvenance, dictWorkflow):
     dictProvenance : dict
         Previously stored provenance data.
     dictWorkflow : dict
-        Parsed workflow.json with step definitions.
+        Parsed project.json with step definitions.
 
     Returns
     -------
@@ -214,7 +214,7 @@ def fnUpdateProvenance(dictProvenance, dictWorkflow, sWorkdir):
     dictProvenance : dict
         Provenance dictionary to update in place.
     dictWorkflow : dict
-        Parsed workflow.json with step definitions.
+        Parsed project.json with step definitions.
     sWorkdir : str
         Working directory (currently unused but reserved).
     """

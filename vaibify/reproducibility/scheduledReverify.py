@@ -19,18 +19,26 @@ network round trip on every poll.
 
 The scheduled-loop entry point :func:`fnScheduleReverify` registers an
 ``asyncio`` task on the FastAPI lifespan that walks every loaded
-workflow at a configurable cadence. The first iteration is delayed by
-a full cadence interval (not ``0``) to avoid hammering remotes on
-every server restart. :func:`fnRunReverifyOnce` is a pure function of
-its inputs so tests can drive a single iteration without touching the
-event loop.
+workflow at a configurable cadence. The first iteration waits only a
+short jittered startup delay — long enough that a restart storm does
+not become a remote-request storm, short enough that the pass
+actually happens, because the hub self-terminates after 30 minutes
+idle and a loop that slept a full cadence first never reached its
+first pass. The completion stamp is persisted to
+``~/.vaibify/reverifyState.json`` so a restart RESUMES the cadence
+instead of restarting it, and so the dashboard can say "never run"
+instead of leaving a stale per-service age to imply otherwise.
+:func:`fnRunReverifyOnce` is a pure function of its inputs so tests
+can drive a single iteration without touching the event loop.
 """
 
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import posixpath
+import random
 from datetime import datetime, timezone
 
 from vaibify.reproducibility import (
@@ -49,24 +57,36 @@ __all__ = [
     "S_MANIFEST_FILENAME",
     "ReverifyConfigError",
     "fdictComputeLiveExpectedHashes",
+    "fdictDescribeReverifySchedule",
     "fdictLoadManifestExpectedHashes",
     "fdictVerifyRemoteService",
     "fdictReadCachedSyncStatus",
     "fnDeleteSyncStatus",
+    "fnRecordLastReverifyIso",
     "fnWriteSyncStatus",
     "fdictRunReverifyForWorkflow",
     "fnRunReverifyOnce",
     "fnScheduleReverify",
     "fsArxivCacheDir",
+    "fsReadLastReverifyIso",
 ]
 
 
+logger = logging.getLogger("vaibify")
+
 S_MANIFEST_FILENAME = "MANIFEST.sha256"
 S_SYNC_STATUS_FILENAME = "syncStatus.json"
+S_REVERIFY_STATE_FILENAME = "reverifyState.json"
 S_VAIBIFY_DIRECTORY = ".vaibify"
 LIST_SUPPORTED_SERVICES = ("github", "overleaf", "zenodo", "arxiv")
 S_ARXIV_CACHE_DIRECTORY = "arxivCache"
 _F_DEFAULT_CADENCE_HOURS = 6.0
+# The first pass of a hub process waits this long, plus a random
+# fraction of the jitter window. Deliberately short relative to the
+# cadence: the hub self-terminates after 30 minutes idle, so a first
+# pass scheduled a cadence away is a pass that never runs.
+_F_STARTUP_DELAY_SECONDS = 90.0
+_F_STARTUP_JITTER_SECONDS = 90.0
 
 
 class ReverifyConfigError(ValueError):
@@ -589,20 +609,143 @@ def _flistEnumerateWorkflows(dictCtx):
     return list(dictWorkflows.items())
 
 
+def fsReverifyStatePath():
+    """Return the host path of the hub-wide scheduled-reverify stamp."""
+    return os.path.join(
+        os.path.expanduser("~"), S_VAIBIFY_DIRECTORY,
+        S_REVERIFY_STATE_FILENAME,
+    )
+
+
+def fsReadLastReverifyIso():
+    """Return the stamp of the last completed scheduled pass, or "".
+
+    An absent, unreadable, or malformed state file reads as "never
+    ran". That is both the honest answer and the safe one: it makes
+    the loop run its first pass promptly instead of assuming a
+    schedule it has no evidence for.
+    """
+    try:
+        with open(
+            fsReverifyStatePath(), "r", encoding="utf-8",
+        ) as fileState:
+            dictState = json.load(fileState)
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(dictState, dict):
+        return ""
+    sLastIso = dictState.get("sLastReverifyIso")
+    return sLastIso if isinstance(sLastIso, str) else ""
+
+
+def fnRecordLastReverifyIso(sIso):
+    """Persist a completed pass so a restart resumes the cadence."""
+    sStatePath = fsReverifyStatePath()
+    try:
+        os.makedirs(os.path.dirname(sStatePath), exist_ok=True)
+        with open(sStatePath, "w", encoding="utf-8") as fileState:
+            json.dump({"sLastReverifyIso": sIso}, fileState)
+    except OSError:
+        logger.warning(
+            "Could not persist the scheduled-reverify stamp; the "
+            "cadence will restart on the next hub start.",
+            exc_info=True,
+        )
+
+
+def fdictDescribeReverifySchedule(fHoursCadence=_F_DEFAULT_CADENCE_HOURS):
+    """Return the scheduled-reverify state the dashboard renders.
+
+    ``bEverRan`` stays False until a pass completes, so "never run"
+    is visible rather than indistinguishable from a cache the loop is
+    keeping current. The stamp records when the scheduled PASS last
+    executed; per-service evidence of verification stays in each
+    repo's ``syncStatus.json``.
+    """
+    sLastIso = fsReadLastReverifyIso()
+    return {
+        "sLastReverifyIso": sLastIso,
+        "bEverRan": bool(sLastIso),
+        "fHoursCadence": float(fHoursCadence),
+    }
+
+
+def _ffMeasureSecondsSinceIso(sIso, fNowEpoch=None):
+    """Return seconds elapsed since an ISO stamp, or None when unusable.
+
+    A malformed stamp and a future-dated one both return None: an
+    impossible timestamp is not evidence of a completed pass, and
+    treating it as one would silently suppress the next pass for a
+    full cadence.
+    """
+    if not sIso:
+        return None
+    try:
+        dtStamp = datetime.strptime(sIso, "%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        return None
+    fNow = (
+        datetime.now(timezone.utc).timestamp()
+        if fNowEpoch is None else float(fNowEpoch)
+    )
+    fElapsed = fNow - dtStamp.replace(tzinfo=timezone.utc).timestamp()
+    return fElapsed if fElapsed >= 0.0 else None
+
+
+def ffComputeFirstReverifyDelay(fHoursCadence, sLastIso, fNowEpoch=None):
+    """Return the delay before this hub process runs its first pass.
+
+    Never zero — the anti-stampede intent of the original sleep-first
+    loop is preserved as a short jittered startup delay. When a
+    previous pass is recorded and the cadence has not yet elapsed, the
+    remaining cadence applies instead, so a restart resumes the
+    schedule rather than restarting it.
+    """
+    fStartupDelay = _F_STARTUP_DELAY_SECONDS + random.uniform(
+        0.0, _F_STARTUP_JITTER_SECONDS,
+    )
+    fElapsed = _ffMeasureSecondsSinceIso(sLastIso, fNowEpoch)
+    if fElapsed is None:
+        return fStartupDelay
+    fRemaining = max(float(fHoursCadence), 0.0) * 3600.0 - fElapsed
+    return max(fRemaining, fStartupDelay)
+
+
+def _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows):
+    """Invalidate the dashboard for every container this pass touched.
+
+    The sync epoch is the dashboard's only poll-free invalidation
+    signal. Without a bump here a scheduled pass rewrites the verify
+    cache the Level-2 cells read while every open tab keeps rendering
+    the previous result until the researcher clicks something.
+    """
+    from vaibify.gui.pipelineServer import fnBumpSyncEpoch
+    for entryWorkflow in listWorkflows:
+        if isinstance(entryWorkflow, dict):
+            continue
+        fnBumpSyncEpoch(dictCtx, entryWorkflow[0])
+
+
 async def _fnReverifyLoop(dictCtx, fHoursCadence):
-    """Forever loop: sleep first, then run one verify pass.
+    """Forever loop: wait, run one verify pass, record and invalidate.
 
     The verify pass itself is synchronous and performs blocking network
     I/O via ``requests``. It is dispatched through ``asyncio.to_thread``
     so the FastAPI event loop continues serving HTTP requests while the
-    reverify pass runs.
+    reverify pass runs. Only a completed pass records a stamp; a pass
+    that raised leaves the previous stamp in place so the next hub
+    start still treats the schedule as overdue.
     """
-    fSeconds = max(float(fHoursCadence), 0.0) * 3600.0
+    fCadenceSeconds = max(float(fHoursCadence), 0.0) * 3600.0
+    fDelaySeconds = ffComputeFirstReverifyDelay(
+        fHoursCadence, fsReadLastReverifyIso(),
+    )
     while True:
         try:
-            await asyncio.sleep(fSeconds)
+            await asyncio.sleep(fDelaySeconds)
         except asyncio.CancelledError:
             return
+        fDelaySeconds = fCadenceSeconds
         listWorkflows = _flistEnumerateWorkflows(dictCtx)
         try:
             await asyncio.to_thread(
@@ -610,14 +753,20 @@ async def _fnReverifyLoop(dictCtx, fHoursCadence):
             )
         except Exception:
             continue
+        fnRecordLastReverifyIso(_fsBuildIsoTimestamp())
+        _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows)
 
 
 def fnScheduleReverify(app, dictCtx, fHoursCadence=_F_DEFAULT_CADENCE_HOURS):
     """Register a recurring re-verify task on the FastAPI lifespan.
 
-    Cadence default is 6 hours. The first iteration runs ``fHoursCadence``
-    after startup, never immediately, so a server restart cannot trigger
-    a fresh round of network calls every reload.
+    Cadence default is 6 hours. The first iteration runs after the
+    short jittered startup delay, or after whatever remains of the
+    cadence since the stamp recorded by the previous hub process —
+    whichever is longer. Never immediately, so a restart cannot
+    trigger a fresh round of network calls on every reload, and never
+    a full cadence away, which is a first pass the 30-minute idle
+    shutdown guarantees never happens.
 
     Per-workflow cadence override (``fReverifyHoursCadence``) is
     reserved for a future commit; currently the global cadence applies

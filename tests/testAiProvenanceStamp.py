@@ -10,6 +10,8 @@ the container facts land in the right keys.
 import hashlib
 import json
 
+import pytest
+
 from vaibify.gui.aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from vaibify.reproducibility.aiProvenanceStamp import (
     S_TRUST_BASE_STATEMENT,
@@ -64,6 +66,57 @@ def test_stamp_matches_only_the_current_declaration():
     assert fbStampMatchesDeclaration(None, dictWorkflow) is False
 
 
+@pytest.mark.falsification
+def test_edited_stamp_fields_are_detected_as_stale():
+    """A hand edit to ANY captured field must trigger a rewrite.
+
+    Every field here is folded into the L3 attestation, so a stamp
+    edit that survives becomes an attested claim. Comparing only the
+    declared model list left five of the six fields hand-editable
+    forever, while the docstring promised the opposite.
+
+    Kills: Delete the ``if not _fbStampShapeIntact(dictStamp): return
+    False`` guard from ``fbStampMatchesDeclaration``
+    (``aiProvenanceStamp.py``).
+    """
+    dictWorkflow = _fdictWorkflowWithOneModel()
+    dictStamp = fdictBuildAiProvenanceStamp(dictWorkflow, "/nonexistent")
+    assert fbStampMatchesDeclaration(dictStamp, dictWorkflow) is True
+    dictTrustEdited = dict(
+        dictStamp, sTrustBaseStatement="Everything is fine.",
+    )
+    assert fbStampMatchesDeclaration(dictTrustEdited, dictWorkflow) is False
+    dictHashEdited = dict(dictStamp, sWorkspacePromptSha256="none")
+    assert fbStampMatchesDeclaration(dictHashEdited, dictWorkflow) is False
+    dictIsolationEdited = dict(
+        dictStamp, bNetworkIsolatedAtCapture="yes, sealed",
+    )
+    assert fbStampMatchesDeclaration(
+        dictIsolationEdited, dictWorkflow,
+    ) is False
+    dictTimeEdited = dict(dictStamp, sCapturedAtUtc="whenever")
+    assert fbStampMatchesDeclaration(dictTimeEdited, dictWorkflow) is False
+    dictFutureEdited = dict(
+        dictStamp, sCapturedAtUtc="2099-01-01T00:00:00+00:00",
+    )
+    assert fbStampMatchesDeclaration(dictFutureEdited, dictWorkflow) is False
+
+
+def test_edited_project_context_hash_is_detected_against_the_repo(tmp_path):
+    """With the repo in hand, the context hash is checked by VALUE."""
+    (tmp_path / ".vaibify").mkdir()
+    (tmp_path / ".vaibify" / "AGENTS.md").write_bytes(b"# context\n")
+    dictWorkflow = _fdictWorkflowWithOneModel()
+    dictStamp = fdictBuildAiProvenanceStamp(dictWorkflow, str(tmp_path))
+    assert fbStampMatchesDeclaration(
+        dictStamp, dictWorkflow, str(tmp_path),
+    ) is True
+    dictEdited = dict(dictStamp, sProjectContextSha256="0" * 64)
+    assert fbStampMatchesDeclaration(
+        dictEdited, dictWorkflow, str(tmp_path),
+    ) is False
+
+
 def test_write_persists_stamp_at_canonical_path(tmp_path):
     dictStamp = fdictBuildAiProvenanceStamp(
         _fdictWorkflowWithOneModel(), str(tmp_path),
@@ -89,8 +142,8 @@ class _StubDockerConnection:
 
 def test_capture_records_workspace_prompt_hash(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
-        lambda sContainerId: True,
+        "vaibify.docker.containerManager.ftProbeNetworkIsolation",
+        lambda sContainerId: (True, True),
     )
     baPrompt = b"# workspace prompt\n"
     dictStamp = fdictCaptureAiProvenanceStamp(
@@ -106,8 +159,8 @@ def test_capture_records_workspace_prompt_hash(tmp_path, monkeypatch):
 
 def test_capture_survives_unreachable_container(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
-        lambda sContainerId: False,
+        "vaibify.docker.containerManager.ftProbeNetworkIsolation",
+        lambda sContainerId: (True, False),
     )
 
     class _BrokenConnection:
@@ -120,3 +173,29 @@ def test_capture_survives_unreachable_container(tmp_path, monkeypatch):
     )
     assert dictStamp["sWorkspacePromptSha256"] == ""
     assert dictStamp["bNetworkIsolatedAtCapture"] is False
+
+
+@pytest.mark.falsification
+def test_unanswerable_isolation_probe_is_recorded_as_unknown(
+    tmp_path, monkeypatch,
+):
+    """A probe that could not answer must not assert "not isolated".
+
+    bNetworkIsolatedAtCapture is evidence folded into the L3
+    attestation. fbContainerIsNetworkIsolated fails OPEN (False) by
+    design, because the gating routes want a decision; recording that
+    same False here would turn "docker inspect could not answer" into
+    the asserted fact "this container had network access".
+
+    Kills: in aiProvenanceCapture.fdictCaptureAiProvenanceStamp,
+    replace ``bIsolated if bAnswered else None`` with ``bIsolated``.
+    """
+    monkeypatch.setattr(
+        "vaibify.docker.containerManager.ftProbeNetworkIsolation",
+        lambda sContainerId: (False, False),
+    )
+    dictStamp = fdictCaptureAiProvenanceStamp(
+        _fdictWorkflowWithOneModel(), str(tmp_path), "cid",
+        _StubDockerConnection(b""),
+    )
+    assert dictStamp["bNetworkIsolatedAtCapture"] is None

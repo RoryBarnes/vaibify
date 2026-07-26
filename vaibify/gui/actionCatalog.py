@@ -25,10 +25,12 @@ Design notes:
 __all__ = [
     "LIST_AGENT_ACTIONS",
     "SET_INTENTIONALLY_EXCLUDED_PATHS",
+    "SET_STATE_MUTATING_METHODS",
     "S_CATALOG_JSON_PATH",
     "S_CATALOG_SCHEMA_VERSION",
     "S_SESSION_ENV_PATH",
     "S_SESSION_HEADER_NAME",
+    "fbAgentLanePermitsRoute",
     "fdictBuildCatalogJson",
     "fdictLookupAction",
     "fnAgentAction",
@@ -51,7 +53,10 @@ def fnAgentAction(sName):
         async def fnHandler(...): ...
 
     The decorator is metadata only — it does not alter the handler's
-    behavior. The invariant test
+    behavior. Server-side enforcement of ``bAgentSafe`` lives in
+    :func:`fbAgentLanePermitsRoute`, consulted by
+    ``serverMiddleware.SessionTokenMiddleware`` on every agent-lane
+    request. The invariant test
     ``tests/testArchitecturalInvariants.py::testAgentActionRegistered``
     walks the FastAPI route registry and verifies that every
     state-mutating route either has this marker or is explicitly
@@ -278,7 +283,7 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/git/{sContainerId}/commit-canonical",
      "bAgentSafe": True,
      "sDescription": "Stage and commit the vaibify canonical "
-                     "state (workflow.json, markers). "
+                     "state (project.json, markers). "
                      "Args: {sCommitMessage} optional."},
     {"sName": "untrack-ai-declaration", "sCategory": "sync",
      "sMethod": "POST",
@@ -324,6 +329,20 @@ LIST_AGENT_ACTIONS = [
                      "bypass the 30s fetch cache. Agent-safe: only "
                      "remote-tracking refs change; the working tree "
                      "is untouched."},
+    {"sName": "reconcile-remote-state", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/git/{sContainerId}/reconcile-remote-state",
+     "bAgentSafe": True,
+     "sDescription": "Run this after ANY push that did not go "
+                     "through vaibify — a plain 'git push' in the "
+                     "terminal, or a push from a script. Fetches "
+                     "origin, re-runs the GitHub content verify the "
+                     "Published (L2) cells read, records what the "
+                     "verify proved, and repaints the dashboard. "
+                     "Without it the researcher's screen keeps "
+                     "showing the pre-push state. No args. "
+                     "Agent-safe: read-side plus bookkeeping — the "
+                     "working tree is untouched."},
     {"sName": "pull-project-repo", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/git/{sContainerId}/pull-project-repo",
@@ -345,7 +364,10 @@ LIST_AGENT_ACTIONS = [
                      "the token owner matches the remote before pushing. "
                      "This is NOT a general 'git push' of existing "
                      "commits — to push code/commits, push the branch "
-                     "directly."},
+                     "directly, then ALWAYS follow with "
+                     "reconcile-remote-state: a push vaibify did not "
+                     "make leaves the dashboard showing the pre-push "
+                     "state until something reconciles it."},
     {"sName": "add-file-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/add-file",
@@ -540,7 +562,7 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/workflow/{sContainerId}/determinism",
      "bAgentSafe": False,
      "sDescription": "Clear the workflow's declared determinism rules "
-                     "(stored in workflow.json). The declare endpoint "
+                     "(stored in project.json). The declare endpoint "
                      "only merges keys, so this is the one way to "
                      "retract a mistaken declaration; the researcher "
                      "then re-declares what still applies."},
@@ -726,7 +748,12 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/pull",
      "bAgentSafe": True,
-     "sDescription": "Copy a file from the container to the host."},
+     "sDescription": "Copy a file from the container to the host. "
+                     "Agent-lane pulls may only land under "
+                     "~/.vaibify/exports/<container>/ — the host write "
+                     "is otherwise arbitrary agent-authored content in "
+                     "the researcher's home directory. Tell the "
+                     "researcher where the file landed."},
     {"sName": "upload-file", "sCategory": "files",
      "sMethod": "POST",
      "sPath": "/api/files/{sContainerId}/upload",
@@ -832,7 +859,7 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # Dependency / script scans — triggered by the UI's poll loop,
     # not by a researcher clicking a button. These handlers are
     # read-only: they walk the step's saScripts and saDataCommands to
-    # report what the source code touches, never mutate workflow.json,
+    # report what the source code touches, never mutate project.json,
     # never write to the container filesystem, never reach the network.
     # Invariant: a scan must produce the same dictWorkflow on disk
     # before and after the call. Exclusion is safe so long as that
@@ -847,6 +874,45 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # Read-side Overleaf diff preparation.
     ("POST", "/api/overleaf/{sContainerId}/diff"),
 })
+
+
+SET_STATE_MUTATING_METHODS = frozenset(
+    {"POST", "PUT", "PATCH", "DELETE"}
+)
+
+
+def fbAgentLanePermitsRoute(sMethod, sRouteTemplate):
+    """Return True when the in-container agent may invoke this route.
+
+    The ``vaibify-do`` CLI already consults ``bAgentSafe`` before it
+    dispatches, but that check is client-side and a compromised agent
+    bypasses it by calling the backend directly. This predicate is the
+    server-side twin: the session middleware asks it on every agent-lane
+    request, so a user-only action is refused at the boundary rather
+    than merely discouraged at the client.
+
+    It fails **closed**. A state-mutating route with no catalog entry is
+    refused, so a newly added route stays invisible to the agent until
+    somebody deliberately registers it as agent-safe. Read-only methods
+    are admitted because the catalog only enumerates the actions the UI
+    exposes, not every GET the agent legitimately reads.
+
+    Several catalog entries share one path (a diagnostic read alias
+    beside the action it aliases), so the decision is "any entry for
+    this route is agent-safe", never the first entry found.
+    """
+    if (sMethod, sRouteTemplate) in SET_INTENTIONALLY_EXCLUDED_PATHS:
+        return False
+    listEntries = [
+        dictEntry for dictEntry in LIST_AGENT_ACTIONS
+        if dictEntry["sMethod"] == sMethod
+        and dictEntry["sPath"] == sRouteTemplate
+    ]
+    if listEntries:
+        return any(
+            dictEntry["bAgentSafe"] for dictEntry in listEntries
+        )
+    return sMethod not in SET_STATE_MUTATING_METHODS
 
 
 def fdictLookupAction(sName):

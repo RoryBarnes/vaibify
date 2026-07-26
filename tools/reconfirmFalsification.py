@@ -4,7 +4,11 @@
 This is the standing "negative control" for the test suite. For each entry
 in ``tests.falsificationRegistry.LIST_FALSIFICATIONS`` it:
 
-  1. requires the test to PASS on clean code (precondition),
+  1. requires the test to PASS on clean code (precondition -- asked
+     once for every node id in a single pytest run, because the answer
+     is the same for all of them and a separate interpreter start per
+     entry doubled the wall clock; a failing batch falls back to
+     per-entry checks so the offender is still named),
   2. applies ``old`` -> ``new`` in the source (``old`` must occur exactly once),
   3. requires the mutated source to still COMPILE (a mutation that breaks
      syntax would make pytest exit nonzero for the wrong reason),
@@ -59,11 +63,21 @@ def _fiRunTest(sNodeId):
     same-size mutations; a cold cache per run removes the timing from
     the equation.
     """
+    return _fiRunTests([sNodeId])
+
+
+def _fiRunTests(listNodeIds):
+    """Return the pytest exit code for running these test nodes together.
+
+    Same contract and the same cold bytecode cache as
+    :func:`_fiRunTest`; the list form exists so the shared precondition
+    can be answered in one interpreter start instead of one per entry.
+    """
     dictEnvironment = dict(os.environ)
     with tempfile.TemporaryDirectory() as sPycachePrefix:
         dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", sNodeId, "-q",
+            [sys.executable, "-m", "pytest", *listNodeIds, "-q",
              "-p", "no:cacheprovider"],
             cwd=REPO, capture_output=True, text=True,
             env=dictEnvironment,
@@ -72,7 +86,22 @@ def _fiRunTest(sNodeId):
 
 
 def _fbMutationCompiles(sMutated, pathSource):
-    """Return True when the mutated source still parses as Python."""
+    """Return True when the mutated source is still syntactically valid.
+
+    The check exists to separate "the test failed because of the
+    mutation" from "the test failed because the file no longer
+    parses". That distinction is only checkable here for Python;
+    a registry entry may legitimately target a non-Python source (the
+    JavaScript slug mirror, a shell hook), and running Python's
+    ``compile`` over those reports a SyntaxError for every mutation,
+    turning a genuine kill into a spurious ERROR.
+
+    Non-Python sources are therefore accepted unparsed. They are not
+    unchecked: the kill still requires pytest to exit 1 on an
+    assertion, and any other exit code is reported as an error.
+    """
+    if pathSource.suffix != ".py":
+        return True
     try:
         compile(sMutated, str(pathSource), "exec")
         return True
@@ -80,7 +109,23 @@ def _fbMutationCompiles(sMutated, pathSource):
         return False
 
 
-def _fsReconfirmOne(entry, sOriginal):
+def _fbAllPreconditionsPassInOneRun():
+    """Return True when every registered test passes on clean code.
+
+    The precondition -- "this test passes before the mutation" -- is
+    identical for every entry and costs a full interpreter start plus a
+    vaibify import each time it is checked separately. Asking it once
+    for all node ids halves the process count for the whole run, which
+    is the difference between finishing inside CI's ceiling and timing
+    out. When the batch passes, per-entry precondition runs are skipped;
+    when it fails, the caller falls back to checking each entry alone so
+    the offender is still named precisely.
+    """
+    listNodeIds = sorted({entry.nodeid for entry in LIST_FALSIFICATIONS})
+    return _fiRunTests(listNodeIds) == 0
+
+
+def _fsReconfirmOne(entry, sOriginal, bPreconditionKnownGood=False):
     """Apply one mutation, return the kill status, always restore the file."""
     pathSource = REPO / entry.source
     if entry.old not in sOriginal:
@@ -90,7 +135,7 @@ def _fsReconfirmOne(entry, sOriginal):
     sMutated = sOriginal.replace(entry.old, entry.new, 1)
     if not _fbMutationCompiles(sMutated, pathSource):
         return "ERROR: mutation does not compile"
-    if _fiRunTest(entry.nodeid) != 0:
+    if not bPreconditionKnownGood and _fiRunTest(entry.nodeid) != 0:
         return "ERROR: test does not pass on clean code"
     try:
         pathSource.write_text(sMutated, encoding="utf-8")
@@ -149,9 +194,18 @@ def _fnRestoreOriginals(dictOriginal):
 def main():
     """Re-confirm all entries; exit nonzero on any failure or coverage gap."""
     dictOriginal = _fdictCaptureOriginals()
+    bBatchClean = _fbAllPreconditionsPassInOneRun()
+    if not bBatchClean:
+        print(
+            "batched precondition run failed; falling back to a "
+            "per-entry check so the offender is named",
+        )
     try:
         listResults = [
-            (entry.nodeid, _fsReconfirmOne(entry, dictOriginal[entry.source]))
+            (entry.nodeid, _fsReconfirmOne(
+                entry, dictOriginal[entry.source],
+                bPreconditionKnownGood=bBatchClean,
+            ))
             for entry in LIST_FALSIFICATIONS
         ]
     finally:

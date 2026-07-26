@@ -747,7 +747,7 @@ def _fsRequireProjectRepoForGit(dictWorkflow):
 
     The GitHub push and add-file routes need to ``cd`` into the project
     repo before running ``git add``. The old workspace-as-repo model
-    used the workflow.json's parent directory, which now lands inside
+    used the project.json's parent directory, which now lands inside
     ``.vaibify/workflows/`` rather than at the repo root — every git
     add then fails with "no such directory" because step paths are
     repo-relative, not workflow-relative.
@@ -779,18 +779,21 @@ def _fnAssertGithubTokenBoundToRemote(
     from .. import containerGit
     from vaibify.reproducibility.githubAuth import (
         ftParseOwnerRepoFromRemoteUrl,
-        fsKeyringSlotFor,
-        fsResolveToken,
         fnAssertTokenOwnerBinding,
     )
+    # Deliberate reuse of githubMirror's hardened resolver rather than
+    # a bare fsKeyringSlotFor/fsResolveToken pair: it degrades to an
+    # empty token with a WARNING instead of escaping to the generic
+    # 500 handler, so an unresolvable credential is reported as the
+    # 409 the user can act on.
+    from vaibify.reproducibility.githubMirror import _fsResolveTokenSafely
     sRemoteUrl = containerGit.fsRemoteUrlInContainer(
         connectionDocker, sContainerId, sProjectRepoPath,
     )
     sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)
     if not sOwner or not sRepo:
         return
-    sSlot = fsKeyringSlotFor(sOwner, sRepo)
-    sToken = fsResolveToken(sSlot)
+    sToken = _fsResolveTokenSafely(sOwner, sRepo)
     try:
         fnAssertTokenOwnerBinding(sToken, sOwner)
     except ValueError as errorBinding:
@@ -2113,7 +2116,7 @@ def _fnRaiseVerifyError(errorAny, sService):
       missing for the service, dictPathMap references a path absent
       from the e-print, or a basename match is ambiguous and no
       dictPathMap entry disambiguates it).
-    * 422 — manifest is corrupt or remote config in workflow.json is
+    * 422 — manifest is corrupt or remote config in project.json is
       shape-invalid (e.g. a non-conforming GitHub owner string).
     * 502 — remote service failure (network, auth, rate limit, etc.).
 
@@ -2168,7 +2171,14 @@ def _fsRedactRemoteError(sMessage):
 
 
 def _fnRegisterRemoteVerify(app, dictCtx):
-    """Register POST /api/sync/{id}/{sService}/verify endpoint."""
+    """Register POST /api/sync/{id}/{sService}/verify endpoint.
+
+    A completed verify rewrites the cached remote status the Level-2
+    cells and per-file badges read, so it bumps the sync epoch — the
+    dashboard's only poll-free invalidation signal. Without the bump
+    the one action that reconciles the screen with the remote is also
+    the one action that leaves the screen un-repainted.
+    """
 
     @fnAgentAction("verify-remote")
     @app.post("/api/sync/{sContainerId}/{sService}/verify")
@@ -2182,7 +2192,7 @@ def _fnRegisterRemoteVerify(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow,
         )
         try:
-            return await asyncio.to_thread(
+            dictStatus = await asyncio.to_thread(
                 fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
                 filesRepo,
             )
@@ -2190,6 +2200,8 @@ def _fnRegisterRemoteVerify(app, dictCtx):
             raise
         except Exception as errorAny:
             _fnRaiseVerifyError(errorAny, sService)
+        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictStatus
 
 
 def _fnRegisterRemoteVerifyStatus(app, dictCtx):
@@ -2209,6 +2221,23 @@ def _fnRegisterRemoteVerifyStatus(app, dictCtx):
         return await asyncio.to_thread(
             scheduledReverify.fdictReadCachedSyncStatus,
             filesRepo, sService,
+        )
+
+
+def _fnRegisterReverifySchedule(app, dictCtx):
+    """Register GET /api/sync/{sContainerId}/reverify-schedule.
+
+    Exposes when the background re-verify loop last completed a pass.
+    Read-only, and honest about never having run: without it a stale
+    per-service age is indistinguishable from a cache the loop is
+    keeping current.
+    """
+    from vaibify.reproducibility import scheduledReverify
+
+    @app.get("/api/sync/{sContainerId}/reverify-schedule")
+    async def fnGetReverifySchedule(sContainerId: str):
+        return await asyncio.to_thread(
+            scheduledReverify.fdictDescribeReverifySchedule,
         )
 
 
@@ -2375,11 +2404,58 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterDatasetDownload(app, dictCtx)
     _fnRegisterRemoteVerify(app, dictCtx)
     _fnRegisterRemoteVerifyStatus(app, dictCtx)
+    _fnRegisterReverifySchedule(app, dictCtx)
     _fnRegisterArxivConfigure(app, dictCtx)
     _fnRegisterScheduledReverify(app, dictCtx)
+    _fnRegisterEphemeralSecretSweep(app, dictCtx)
 
 
 def _fnRegisterScheduledReverify(app, dictCtx):
     """Attach the periodic re-verify task to the FastAPI lifespan."""
     from vaibify.reproducibility import scheduledReverify
     scheduledReverify.fnScheduleReverify(app, dictCtx)
+
+
+def _fnRegisterEphemeralSecretSweep(app, dictCtx):
+    """Retire unreachable host credential files once, at hub startup.
+
+    The GitHub, Overleaf and Zenodo flows registered above all drop
+    live tokens into ``~/.vaibify/tmp``, and the container-mount path
+    cannot unlink at the point of use, so a periodic sweep is the only
+    mechanism available.
+
+    Age alone does not make a file garbage. A mounted secret lives as
+    long as the container that mounts it, which outlives any number of
+    hub restarts -- so the sweep first asks the daemon what is still
+    mounted and spares those paths. Deleting one leaves the container
+    permanently unstartable, which is the failure this sweep exists to
+    avoid causing.
+    """
+    from vaibify.config.ephemeralStore import fnSweepStaleEphemeralFiles
+
+    def fnSweepAtStartup(_app):
+        fnSweepStaleEphemeralFiles(
+            setProtectedPaths=_fsetMountedHostPaths(dictCtx),
+        )
+
+    app.state.listLifespanStartup.append(fnSweepAtStartup)
+
+
+def _fsetMountedHostPaths(dictCtx):
+    """Return every host path bind-mounted by any container.
+
+    Includes stopped containers: a stopped container is restartable,
+    and its mounts are re-resolved at start. An unreachable daemon
+    yields the empty set, which makes the sweep skip nothing rather
+    than delete something still in use -- the safe direction.
+    """
+    setPaths = set()
+    try:
+        for container in dictCtx["docker"].containers.list(all=True):
+            for dictMount in container.attrs.get("Mounts", []) or []:
+                sSource = dictMount.get("Source") or ""
+                if sSource:
+                    setPaths.add(sSource)
+    except Exception:  # noqa: BLE001 — never block hub startup
+        return set()
+    return setPaths

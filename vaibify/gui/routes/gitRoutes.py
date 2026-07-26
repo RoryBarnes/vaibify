@@ -8,6 +8,8 @@ Exposes:
 - ``POST /api/git/{id}/fetch-project-repo``   refresh remote-tracking refs
 - ``POST /api/git/{id}/pull-project-repo``    fast-forward to origin
 - ``POST /api/git/{id}/refresh-remotes``      fetch + remote-heads view
+- ``POST /api/git/{id}/reconcile-remote-state`` repaint after an
+  out-of-band push
 
 All git execution runs inside the container via ``docker exec`` — the
 default vaibify workspace is a Docker-managed named volume whose
@@ -16,7 +18,7 @@ reachable from the host.
 
 Every endpoint resolves the authoritative git target per request by
 reading ``dictWorkflow['sProjectRepoPath']`` — the project-repo
-subdirectory auto-detected from the active workflow's ``workflow.json``
+subdirectory auto-detected from the active workflow's ``project.json``
 location. If no project repo is attached (workflow not inside a git
 work tree), each endpoint surfaces a clear error rather than silently
 reporting "not a git repository" against the wrong root.
@@ -26,6 +28,7 @@ __all__ = ["fnRegisterAll"]
 
 import asyncio
 import datetime
+import logging
 import time
 
 from typing import List, Optional
@@ -39,11 +42,17 @@ from .. import (
     gitStatus,
     manifestCheck,
     stateContract,
+    workflowManager,
 )
 from ..actionCatalog import fnAgentAction
 from ..pipelineServer import fdictRequireWorkflow, fnBumpSyncEpoch
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    ffilesForWorkflow,
+    fsRefreshVerifyCacheAfterPush,
+)
 from ...reproducibility.manifestPaths import flistStepDeclarationRepoPaths
+
+logger = logging.getLogger("vaibify")
 
 
 F_FETCH_CACHE_SECONDS = 30.0
@@ -63,7 +72,7 @@ SET_TRACKED_CHANGE_STATES = {"dirty", "uncommitted", "conflict"}
 # into ``git commit -- <paths>`` so any pre-staged user files in the
 # index are left untouched. Never replace this with ``git add -A``.
 TUPLE_CURATED_COMMIT_KINDS = (
-    "workflow.json (per workflow, repo-relative)",
+    "project.json (per workflow, repo-relative)",
     ".vaibify/test_markers/*/*.json",
     ".vaibify/zenodo-refs.json",
     "MANIFEST.sha256 (when present at repo root)",
@@ -113,7 +122,7 @@ def _fsRequireProjectRepo(dictWorkflow):
     """Return the active workflow's project repo path or raise 404.
 
     The empty-string sentinel means the workflow loaded successfully
-    but is not inside a git work tree (legacy ``workflow.json`` at
+    but is not inside a git work tree (legacy ``project.json`` at
     ``/workspace``). Callers must surface the missing-repo state to
     the client rather than falling back to the workspace root.
     """
@@ -395,7 +404,7 @@ async def _fnApplyCanonicalGitAddCommit(
 ):
     """Run git add + commit, raising HTTPException on either failure.
 
-    The commit is restricted to the curated path list (workflow.json,
+    The commit is restricted to the curated path list (project.json,
     .vaibify/test_markers/*, MANIFEST.sha256, requirements.lock, and
     other explicit canonical entries) so any pre-staged user files are
     not swept into the canonical commit. See TUPLE_CURATED_COMMIT_KINDS
@@ -513,7 +522,7 @@ def _fnRequireDeclarationPath(dictWorkflow, sPath):
     widen past what the workflow itself declares. A leading ``:`` is
     rejected outright: git treats ``:``-prefixed pathspecs as magic
     (``:(glob)**`` matches every tracked file), and the membership
-    check alone cannot catch it because a hostile workflow.json can
+    check alone cannot catch it because a hostile project.json can
     declare the magic string as its own sDeclarationFile.
     """
     listDeclared = []
@@ -728,6 +737,101 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
         }
 
 
+def _flistProvenGithubSyncedPaths(dictWorkflow, dictStatus):
+    """Return the canonical paths this GitHub verify proved match origin.
+
+    Returns ``[]`` unless the verify covered every declared canonical
+    path — ``iTotalFiles`` counts only the declared paths that existed
+    locally, so a short count means the verify never looked at some of
+    them, and a file it never looked at cannot be recorded as synced.
+    """
+    from vaibify.reproducibility import manifestWriter
+    if not (dictStatus or {}).get("sLastVerified"):
+        return []
+    listCanonical = manifestWriter.flistCollectCanonicalRepoPaths(
+        dictWorkflow,
+    )
+    if dictStatus.get("iTotalFiles") != len(listCanonical):
+        return []
+    setDiverged = {
+        (dictEntry or {}).get("sPath")
+        for dictEntry in dictStatus.get("listDiverged") or []
+    }
+    return [
+        sPath for sPath in listCanonical if sPath not in setDiverged
+    ]
+
+
+def _fdictReconcileSyncStatusFromVerify(
+    dictCtx, sContainerId, dictWorkflow,
+):
+    """Record the refreshed GitHub verify into the workflow's sync status.
+
+    The verify cache is the only evidence an out-of-band push leaves
+    behind, so ``dictSyncStatus`` is updated from it and from nothing
+    else. Bookkeeping failures are logged rather than raised: the
+    remote state was still reconciled, and turning that into a 500
+    would hide the reconciliation that did happen.
+    """
+    from vaibify.reproducibility import scheduledReverify
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
+        filesRepo, "github",
+    )
+    listProven = _flistProvenGithubSyncedPaths(dictWorkflow, dictStatus)
+    if not listProven:
+        return dictStatus
+    try:
+        workflowManager.fnUpdateSyncStatus(
+            dictWorkflow, listProven, "Github",
+        )
+        dictCtx["save"](sContainerId, dictWorkflow)
+    except Exception:
+        logger.warning(
+            "Reconcile bookkeeping failed for container %s; the "
+            "remote state was refreshed but dictSyncStatus lags.",
+            sContainerId, exc_info=True,
+        )
+    return dictStatus
+
+
+def _fnRegisterReconcileRemoteState(app, dictCtx):
+    """Register POST /api/git/{sContainerId}/reconcile-remote-state.
+
+    The single action that repairs the dashboard after work that
+    bypassed vaibify — an agent or a researcher typing ``git push`` in
+    the container terminal. It re-fetches origin, re-runs the GitHub
+    verify that the Level-2 cells read, records what the verify
+    proved, and bumps the sync epoch so every open tab repaints once.
+    """
+
+    @fnAgentAction("reconcile-remote-state")
+    @app.post("/api/git/{sContainerId}/reconcile-remote-state")
+    async def fnReconcileRemoteState(sContainerId: str):
+        dictCtx["require"]()
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
+        docker = dictCtx["docker"]
+        await _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
+        _fnRecordFetchTime(sContainerId)
+        dictResponse = await _fdictCollectRefreshRemotesView(
+            docker, sContainerId, sRepo, False,
+        )
+        dictResponse["sVerifyWarning"] = (
+            await fsRefreshVerifyCacheAfterPush(
+                dictCtx, sContainerId, dictWorkflow, "github",
+            )
+        )
+        dictResponse["dictVerifyStatus"] = await asyncio.to_thread(
+            _fdictReconcileSyncStatusFromVerify,
+            dictCtx, sContainerId, dictWorkflow,
+        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictResponse
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all git-status dashboard routes."""
     _fnRegisterGitStatus(app, dictCtx)
@@ -738,3 +842,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterFetchProjectRepo(app, dictCtx)
     _fnRegisterPullProjectRepo(app, dictCtx)
     _fnRegisterRefreshRemotes(app, dictCtx)
+    _fnRegisterReconcileRemoteState(app, dictCtx)

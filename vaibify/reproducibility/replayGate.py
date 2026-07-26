@@ -126,17 +126,39 @@ def fbPromptRecordCurrent(dictWorkflow):
     return dictRecord.get("bFirstCaptureReviewed") is True
 
 
-def fbSupervisionClean(dictWorkflow):
+def fbSupervisionClean(dictWorkflow, dictEvidence=None):
     """Return True unless supervision is enabled with outstanding flags.
 
-    Opt-in semantics mirror :func:`fbPromptRecordCurrent`. The flag
-    count is threaded in by the caller via the workflow dict's
-    ``dictSupervision`` summary; this gate never reads files itself.
+    Opt-in semantics mirror :func:`fbPromptRecordCurrent`: supervision
+    not enabled is trivially clean.
+
+    Once enabled, the verdict is graded from ``dictEvidence`` —
+    recomputed from the append-only attribution files by
+    ``attributionLog.fdictSummarizeSupervisionEvidence`` — and never
+    from the workflow's own ``iUnattributedFlagCount``. That integer
+    lives in ``project.json``, which the supervised in-container agent
+    edits routinely, so grading on it made the AICS row gradeable on
+    self-report: setting it to zero turned the row green while the
+    flags file was full of permanent findings.
+
+    A broken chain, a persisted count that disagrees with the
+    recomputed one, and missing evidence all fail the gate. The last
+    one is the fail-closed case: absence of evidence is not evidence
+    of a clean interval, and this gate never reads files itself.
     """
     dictSupervision = _fdictAiProvenance(dictWorkflow).get(S_SUPERVISION_KEY) or {}
     if dictSupervision.get("bEnabled") is not True:
         return True
-    return int(dictSupervision.get("iUnattributedFlagCount") or 0) == 0
+    if not isinstance(dictEvidence, dict):
+        return False
+    if dictEvidence.get("iFlagCount") != 0:
+        return False
+    return (
+        dictEvidence.get("bFlagChainIntact") is True
+        and dictEvidence.get("bEventChainIntact") is True
+        and dictEvidence.get("bPersistedFlagCountMatches") is True
+        and dictEvidence.get("bHostAnchorConsistent") is True
+    )
 
 
 def fsReplayAxisState(dictWorkflow):

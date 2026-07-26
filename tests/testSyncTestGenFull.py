@@ -196,9 +196,13 @@ def test_ftResultGenerateLatex():
 
 def test_fdictCheckConnectivity_github():
     mockDocker = _fMockDocker(0, "")
-    dictResult = fdictCheckConnectivity(
-        mockDocker, "cid", "github"
-    )
+    with patch(
+        "vaibify.gui.syncDispatcher._fbHostGithubCredentialAvailable",
+        return_value=True,
+    ):
+        dictResult = fdictCheckConnectivity(
+            mockDocker, "cid", "github"
+        )
     assert "bConnected" in dictResult
 
 
@@ -223,15 +227,30 @@ def test_fdictCheckConnectivity_zenodo():
 # -----------------------------------------------------------------------
 
 
+def _fpatchHostGithubCredential(bAvailable):
+    """Pin the host-credential lane so the probe is host-independent.
+
+    ``_fdictCheckGithub`` now probes the host credential as well as
+    the container, so leaving it unpatched would make these assertions
+    depend on whether the developer happens to be ``gh auth login``-ed.
+    """
+    return patch(
+        "vaibify.gui.syncDispatcher._fbHostGithubCredentialAvailable",
+        return_value=bAvailable,
+    )
+
+
 def test_fdictCheckGithub_success():
     mockDocker = _fMockDocker(0, "")
-    dictResult = _fdictCheckGithub(mockDocker, "cid")
+    with _fpatchHostGithubCredential(True):
+        dictResult = _fdictCheckGithub(mockDocker, "cid")
     assert dictResult["bConnected"] is True
 
 
 def test_fdictCheckGithub_failure():
     mockDocker = _fMockDocker(1, "")
-    dictResult = _fdictCheckGithub(mockDocker, "cid")
+    with _fpatchHostGithubCredential(True):
+        dictResult = _fdictCheckGithub(mockDocker, "cid")
     assert dictResult["bConnected"] is False
 
 

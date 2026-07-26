@@ -6,7 +6,7 @@ import json
 import posixpath
 import re
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from typing import Optional
 
 from .. import workflowManager
@@ -16,8 +16,10 @@ from ..pipelineServer import (
     CreateWorkflowRequest,
     RequestProjectCreationRequest,
     fdictHandleConnect,
+    fsContainerNameForId,
     _fsSanitizeServerError,
 )
+from ..webSocketAuthorization import fbCheckLeaseOwnership
 
 
 _PATTERN_WORKFLOW_FILENAME = re.compile(
@@ -139,7 +141,7 @@ F_NEW_PROJECT_RUNTIME_LIMIT_SECONDS = 14400.0
 
 
 def _fdictBlankWorkflowContent(request):
-    """Return the minimum-viable workflow.json dict for a fresh create."""
+    """Return the minimum-viable project.json dict for a fresh create."""
     return {
         "sWorkflowName": request.sWorkflowName,
         "sPlotDirectory": "Plot",
@@ -250,15 +252,42 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
         }
 
 
+def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
+    """Refuse a connect that does not present the owning session's lease.
+
+    ``docs/architecture.md`` names the owner-of-record map the sole
+    authority that claim, connect, and both WebSocket gates consult, but
+    connect had no gate at all: a second browser tab could skip the
+    claim route's 409 and take the workflow, the project-repo path, and
+    the container's agent session out from under the owning session.
+    The lease check here is the shared guard's own
+    ``fbCheckLeaseOwnership``, so the two lanes can never drift apart.
+
+    An unowned container is left open because that is the viewer's
+    bootstrap: the viewer has no claim route and mints its lease inside
+    the connect handler, handing it back on the response.
+    """
+    dictContainerOwners = dictCtx.get("dictContainerOwners") or {}
+    sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
+    if dictContainerOwners.get(sName) is None:
+        return
+    if fbCheckLeaseOwnership(requestHttp, dictContainerOwners, sName):
+        return
+    raise HTTPException(409, "In use in another browser session")
+
+
 def _fnRegisterConnect(app, dictCtx):
     """Register POST /api/connect route."""
 
     @app.post("/api/connect/{sContainerId}")
     async def fnConnect(
+        requestHttp: Request,
         sContainerId: str,
         sWorkflowPath: Optional[str] = None,
     ):
         dictCtx["require"]()
+        _fnRequireOwningLeaseForConnect(
+            dictCtx, sContainerId, requestHttp)
         return await fdictHandleConnect(
             dictCtx, sContainerId, sWorkflowPath)
 

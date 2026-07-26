@@ -7,6 +7,8 @@ container at ``<sProjectRepoPath>/.vaibify/container_mtime_cache.json``
 and is reloaded on first access for a new dictCtx.
 """
 
+import shlex
+
 from vaibify.gui.routes import pipelineRoutes
 
 
@@ -40,7 +42,9 @@ class _RecordingFakeDocker:
     ):
         """Honor ``mv tmp final`` so the atomic-write contract works in tests."""
         if sCommand.startswith("mv "):
-            listParts = sCommand.split()
+            # The production command shell-quotes both paths, so
+            # the double must parse it the way a shell would.
+            listParts = shlex.split(sCommand)
             if len(listParts) == 3:
                 sSrc, sDst = listParts[1], listParts[2]
                 tSrc = (sContainerId, sSrc)

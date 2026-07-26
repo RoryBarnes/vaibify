@@ -388,6 +388,33 @@ def _fdictParseContainerState(sRawStatus):
     return {"bExists": bExists, "bRunning": bRunning, "sStatus": sStatus}
 
 
+def ftProbeNetworkIsolation(sContainerIdentifier):
+    """Return ``(bAnswered, bIsolated)`` for the container's NetworkMode.
+
+    ``bAnswered`` is False when ``docker inspect`` could not answer at
+    all — the container was just stopped or removed, the docker CLI is
+    absent, or the call timed out. Callers that need a *decision* want
+    :func:`fbContainerIsNetworkIsolated`, which collapses this to a
+    fail-open boolean. Callers that record isolation as *evidence*
+    (the AI-provenance stamp) must keep the two apart: writing
+    "not isolated" when the truth was unavailable turns an unknown
+    into an asserted fact inside an attestation.
+    """
+    try:
+        resultProcess = subprocess.run(
+            [
+                "docker", "inspect", "-f",
+                "{{.HostConfig.NetworkMode}}", sContainerIdentifier,
+            ],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return (False, False)
+    if resultProcess.returncode != 0:
+        return (False, False)
+    return (True, resultProcess.stdout.strip() == "none")
+
+
 def fbContainerIsNetworkIsolated(sContainerIdentifier):
     """Return True when the container's NetworkMode is ``none``.
 
@@ -411,19 +438,8 @@ def fbContainerIsNetworkIsolated(sContainerIdentifier):
     calls during transient docker-daemon hiccups; do not change
     without revisiting the gating routes' caller-facing semantics.
     """
-    try:
-        resultProcess = subprocess.run(
-            [
-                "docker", "inspect", "-f",
-                "{{.HostConfig.NetworkMode}}", sContainerIdentifier,
-            ],
-            capture_output=True, text=True, timeout=5,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-    if resultProcess.returncode != 0:
-        return False
-    return resultProcess.stdout.strip() == "none"
+    bAnswered, bIsolated = ftProbeNetworkIsolation(sContainerIdentifier)
+    return bAnswered and bIsolated
 
 
 _fnRunDockerCommand = fnRunDockerCommand
