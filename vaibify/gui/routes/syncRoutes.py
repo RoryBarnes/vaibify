@@ -779,18 +779,21 @@ def _fnAssertGithubTokenBoundToRemote(
     from .. import containerGit
     from vaibify.reproducibility.githubAuth import (
         ftParseOwnerRepoFromRemoteUrl,
-        fsKeyringSlotFor,
-        fsResolveToken,
         fnAssertTokenOwnerBinding,
     )
+    # Deliberate reuse of githubMirror's hardened resolver rather than
+    # a bare fsKeyringSlotFor/fsResolveToken pair: it degrades to an
+    # empty token with a WARNING instead of escaping to the generic
+    # 500 handler, so an unresolvable credential is reported as the
+    # 409 the user can act on.
+    from vaibify.reproducibility.githubMirror import _fsResolveTokenSafely
     sRemoteUrl = containerGit.fsRemoteUrlInContainer(
         connectionDocker, sContainerId, sProjectRepoPath,
     )
     sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)
     if not sOwner or not sRepo:
         return
-    sSlot = fsKeyringSlotFor(sOwner, sRepo)
-    sToken = fsResolveToken(sSlot)
+    sToken = _fsResolveTokenSafely(sOwner, sRepo)
     try:
         fnAssertTokenOwnerBinding(sToken, sOwner)
     except ValueError as errorBinding:
@@ -2377,9 +2380,27 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterRemoteVerifyStatus(app, dictCtx)
     _fnRegisterArxivConfigure(app, dictCtx)
     _fnRegisterScheduledReverify(app, dictCtx)
+    _fnRegisterEphemeralSecretSweep(app)
 
 
 def _fnRegisterScheduledReverify(app, dictCtx):
     """Attach the periodic re-verify task to the FastAPI lifespan."""
     from vaibify.reproducibility import scheduledReverify
     scheduledReverify.fnScheduleReverify(app, dictCtx)
+
+
+def _fnRegisterEphemeralSecretSweep(app):
+    """Retire stale host credential files once, at hub startup.
+
+    The GitHub, Overleaf and Zenodo flows registered above all drop
+    live tokens into ``~/.vaibify/tmp``; nothing there is meant to
+    outlive the session that wrote it, and the container-mount path
+    cannot unlink at the point of use. Startup is the one moment where
+    no session of this hub owns any of those files.
+    """
+    from vaibify.config.ephemeralStore import fnSweepStaleEphemeralFiles
+
+    def fnSweepAtStartup(_app):
+        fnSweepStaleEphemeralFiles()
+
+    app.state.listLifespanStartup.append(fnSweepAtStartup)

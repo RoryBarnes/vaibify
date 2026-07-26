@@ -2,8 +2,15 @@
 
 import os
 import stat
+import time
 
-from vaibify.config.ephemeralStore import fsGetEphemeralRoot
+import pytest
+
+from vaibify.config.ephemeralStore import (
+    F_STALE_EPHEMERAL_AGE_SECONDS,
+    fnSweepStaleEphemeralFiles,
+    fsGetEphemeralRoot,
+)
 
 
 def test_root_lives_under_user_home(monkeypatch, tmp_path):
@@ -60,3 +67,119 @@ def test_overleaf_write_token_file_uses_ephemeral_root(monkeypatch, tmp_path):
         assert sTokenPath.startswith(str(tmp_path))
     finally:
         os.remove(sTokenPath)
+
+
+# ---------------------------------------------------------------------
+# Stale-credential sweep. Every file written here holds a live token or
+# a path to one; 18 mounted-secret files from April were still readable
+# in July because nothing ever retired them.
+# ---------------------------------------------------------------------
+
+
+def _fsAgeOneFile(sRoot, sName, fAgeSeconds):
+    """Create a file under sRoot and backdate it by fAgeSeconds."""
+    sPath = os.path.join(sRoot, sName)
+    with open(sPath, "w") as fileHandle:
+        fileHandle.write("ghp_liveTokenShapedValue")
+    fMtime = time.time() - fAgeSeconds
+    os.utime(sPath, (fMtime, fMtime))
+    return sPath
+
+
+@pytest.mark.falsification
+def test_sweep_removes_stale_credential_files(monkeypatch, tmp_path):
+    """Files older than the cutoff are deleted; fresh ones survive.
+
+    Kills: ``os.remove(os.path.join(sRoot, sName))`` in
+    ``fnSweepStaleEphemeralFiles`` replaced by ``pass``, i.e. the sweep
+    reverted to a no-op that reports success while the tokens stay on
+    disk.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sRoot = fsGetEphemeralRoot()
+    sStale = _fsAgeOneFile(
+        sRoot, "vc_secret_gh_token_old.tmp",
+        F_STALE_EPHEMERAL_AGE_SECONDS + 60,
+    )
+    sFresh = _fsAgeOneFile(sRoot, "vc_secret_gh_token_new.tmp", 0)
+
+    fnSweepStaleEphemeralFiles()
+
+    assert not os.path.exists(sStale)
+    assert os.path.exists(sFresh)
+
+
+def test_sweep_retires_stale_askpass_scripts(monkeypatch, tmp_path):
+    """Askpass helpers point at credentials and are swept too."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sRoot = fsGetEphemeralRoot()
+    sStale = _fsAgeOneFile(
+        sRoot, "vc_gh_askpass_old.py",
+        F_STALE_EPHEMERAL_AGE_SECONDS + 60,
+    )
+
+    fnSweepStaleEphemeralFiles()
+
+    assert not os.path.exists(sStale)
+
+
+def test_sweep_honours_an_explicit_age_cutoff(monkeypatch, tmp_path):
+    """A caller may retire files younger than the default cutoff."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sRoot = fsGetEphemeralRoot()
+    sPath = _fsAgeOneFile(sRoot, "vc_secret_gh_token_x.tmp", 120)
+
+    fnSweepStaleEphemeralFiles(fMaxAgeSeconds=60)
+
+    assert not os.path.exists(sPath)
+
+
+def test_sweep_leaves_subdirectories_alone(monkeypatch, tmp_path):
+    """Only regular files are candidates; a stale directory survives."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sRoot = fsGetEphemeralRoot()
+    sSubdirectory = os.path.join(sRoot, "keepalive")
+    os.makedirs(sSubdirectory)
+    fMtime = time.time() - (F_STALE_EPHEMERAL_AGE_SECONDS + 60)
+    os.utime(sSubdirectory, (fMtime, fMtime))
+
+    fnSweepStaleEphemeralFiles()
+
+    assert os.path.isdir(sSubdirectory)
+
+
+def test_sweep_never_raises_when_the_root_is_unreadable(
+    monkeypatch, tmp_path,
+):
+    """A sweep failure must never block a container start."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    fsGetEphemeralRoot()
+    monkeypatch.setattr(
+        "vaibify.config.ephemeralStore.os.listdir",
+        lambda sPath: (_ for _ in ()).throw(PermissionError("denied")),
+    )
+    fnSweepStaleEphemeralFiles()
+
+
+def test_hub_startup_registers_the_credential_sweep():
+    """The sweep has a production driver, not just a definition."""
+    from fastapi import FastAPI
+    from vaibify.gui.routes import syncRoutes
+
+    app = FastAPI()
+    app.state.listLifespanStartup = []
+    app.state.listLifespanShutdown = []
+    syncRoutes.fnRegisterAll(
+        app,
+        {
+            "workflows": {}, "paths": {},
+            "require": lambda: None,
+            "save": lambda sId, dictWf: None,
+            "docker": object(),
+        },
+    )
+    listNames = [
+        getattr(fnHook, "__name__", "")
+        for fnHook in app.state.listLifespanStartup
+    ]
+    assert "fnSweepAtStartup" in listNames

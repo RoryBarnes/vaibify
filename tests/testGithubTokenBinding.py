@@ -42,6 +42,23 @@ def _fdictBuildPushContext():
     }
 
 
+def _fpatchHostCredentialSources(sToken):
+    """Patch the credential *sources*, never the resolver itself.
+
+    Patching ``fsResolveToken`` wholesale is exactly what let the
+    empty-secret-name defect ship: the resolver's own ``gh auth``
+    fallback was dead code and no test noticed. These patches sit at
+    the subprocess/keyring boundary instead, so the real
+    ``fsResolveToken``, the real secret-name validation, and the real
+    ``githubMirror._fsResolveTokenSafely`` all run.
+    """
+    return patch.multiple(
+        "vaibify.config.secretManager",
+        _fbKeyringHasSecret=lambda sName: False,
+        _fsRetrieveViaGhAuth=lambda: sToken,
+    )
+
+
 def _fnFakePushRecorder(dictCaptured):
     """Build a fake ftResultPushToGithub that records args."""
     def _fnFake(
@@ -70,10 +87,7 @@ def test_push_refuses_with_409_when_token_belongs_to_wrong_user():
     with patch(
         "vaibify.gui.containerGit.fsRemoteUrlInContainer",
         return_value="https://github.com/victim/myrepo.git",
-    ), patch(
-        "vaibify.reproducibility.githubAuth.fsResolveToken",
-        return_value="ghp_fakeToken",
-    ), patch(
+    ), _fpatchHostCredentialSources("ghp_fakeToken"), patch(
         "vaibify.reproducibility.githubAuth._ftFetchLoginFresh",
         return_value=("attacker", ""),
     ), patch(
@@ -105,10 +119,7 @@ def test_push_proceeds_when_token_owner_matches_remote_owner():
     with patch(
         "vaibify.gui.containerGit.fsRemoteUrlInContainer",
         return_value="https://github.com/victim/myrepo.git",
-    ), patch(
-        "vaibify.reproducibility.githubAuth.fsResolveToken",
-        return_value="ghp_validToken",
-    ), patch(
+    ), _fpatchHostCredentialSources("ghp_validToken"), patch(
         "vaibify.reproducibility.githubAuth._ftFetchLoginFresh",
         return_value=("victim", ""),
     ), patch(
@@ -140,10 +151,7 @@ def test_push_refuses_when_user_endpoint_is_unreachable():
     with patch(
         "vaibify.gui.containerGit.fsRemoteUrlInContainer",
         return_value="https://github.com/victim/myrepo.git",
-    ), patch(
-        "vaibify.reproducibility.githubAuth.fsResolveToken",
-        return_value="ghp_orphanToken",
-    ), patch(
+    ), _fpatchHostCredentialSources("ghp_orphanToken"), patch(
         "vaibify.reproducibility.githubAuth._ftFetchLoginFresh",
         return_value=("", "GitHub /user unreachable"),
     ), patch(

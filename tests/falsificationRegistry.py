@@ -1337,4 +1337,39 @@ def _fdictEntry(sRel):
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
     ),
+    # --- Host GitHub credential resolution (Phase 1, 2026-07-25) ---
+    Falsification(
+        # The empty secret name is rejected by fsRetrieveSecret before
+        # it dispatches on the method, so the gh-auth fallback becomes
+        # dead code and every dashboard push is refused on a host
+        # whose `gh auth login` works.
+        nodeid='tests/testGithubTokenResolution.py::test_resolve_token_reaches_gh_auth_fallback_with_real_validation',
+        source='vaibify/reproducibility/githubAuth.py',
+        old='_S_GH_AUTH_SLOT_NAME = "gh_token"',
+        new='_S_GH_AUTH_SLOT_NAME = ""',
+    ),
+    Falsification(
+        # The same dead fallback embedded in the generated askpass
+        # helper makes host-side git authentication silently anonymous.
+        nodeid='tests/testGithubTokenResolution.py::test_askpass_helper_passes_a_valid_secret_name_to_gh_auth',
+        source='vaibify/reproducibility/githubAuth.py',
+        old='        sGhAuthNameRepr=repr(_S_GH_AUTH_SLOT_NAME),',
+        new='        sGhAuthNameRepr=repr(""),',
+    ),
+    Falsification(
+        # Grading connectivity on the container probe alone reports
+        # "Connected" right before the host-side push is refused.
+        nodeid='tests/testGithubTokenResolution.py::test_github_check_is_not_connected_without_a_host_credential',
+        source='vaibify/gui/syncDispatcher.py',
+        old='        "bConnected": bContainerReaches and bHostCredential,',
+        new='        "bConnected": bContainerReaches,',
+    ),
+    Falsification(
+        # A no-op sweep leaves live tokens readable on disk for months
+        # while reporting success.
+        nodeid='tests/testEphemeralStore.py::test_sweep_removes_stale_credential_files',
+        source='vaibify/config/ephemeralStore.py',
+        old='            os.remove(os.path.join(sRoot, sName))',
+        new='            pass',
+    ),
 ]

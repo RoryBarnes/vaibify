@@ -2738,7 +2738,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # manuscript/ so the read-manuscript skill reads the real paper
     # instead of hallucinating it. Cohesive with the Overleaf route
     # family it sits in.
-    "routes/syncRoutes.py": 2385,
+    # +21 (2026-07-25): the hub-startup sweep of stale host credential
+    # files, plus the switch of the push route onto githubMirror's
+    # hardened token resolver. Both belong to the credential-bearing
+    # sync family this module already owns.
+    "routes/syncRoutes.py": 2406,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -2852,7 +2856,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # keyring snapshot/restore primitive for the connect flow's
     # stage-validate-commit; the secret never crosses the exec
     # boundary.
-    "syncDispatcher.py": 1673,
+    # +69 (2026-07-25): the GitHub connectivity check grew a host lane.
+    # The push runs on the host, so a container-only probe reported
+    # "Connected" while every dashboard push was refused; the check now
+    # resolves the same credential the push will use and reports both
+    # lanes separately. Cohesive with the connectivity family here.
+    "syncDispatcher.py": 1742,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
