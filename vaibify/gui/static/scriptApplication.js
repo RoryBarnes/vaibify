@@ -3,6 +3,8 @@
 const PipeleyenApp = (function () {
     "use strict";
 
+    var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
+
     function fbIsTerminalFocused() {
         var elActive = document.activeElement;
         if (!elActive) return false;
@@ -1428,7 +1430,7 @@ const PipeleyenApp = (function () {
             if (listSteps[i].sStepKind === "ai-declaration") {
                 sKey += "D";
             } else {
-                sKey += listSteps[i].bInteractive === true ? "I" : "A";
+                sKey += fbStepIsInteractive(listSteps[i]) ? "I" : "A";
             }
         }
         return sKey;
@@ -1565,7 +1567,7 @@ const PipeleyenApp = (function () {
         var bPrior = null;
         _dictRenderedStepHashes = {};
         listSteps.forEach(function (step, iIndex) {
-            var bInteractive = step.bInteractive === true;
+            var bInteractive = fbStepIsInteractive(step);
             if (bInteractive !== bPrior) {
                 sHtml += fsRenderStepTypeBanner(bInteractive);
                 bPrior = bInteractive;
@@ -1853,7 +1855,7 @@ const PipeleyenApp = (function () {
     }
 
     function fbStepRequiresUnitTests(dictStep) {
-        if (dictStep.bInteractive) return false;
+        if (fbStepIsInteractive(dictStep)) return false;
         if ((dictStep.saDataCommands || []).length === 0) return false;
         return true;
     }
@@ -1929,7 +1931,7 @@ const PipeleyenApp = (function () {
         var iAuto = 0;
         var iInter = 0;
         for (var i = 0; i < listSteps.length; i++) {
-            var bInteractive = listSteps[i].bInteractive === true;
+            var bInteractive = fbStepIsInteractive(listSteps[i]);
             if (bInteractive) {
                 iInter++;
                 _dictStepLabelByIndex[i] =
@@ -3225,7 +3227,7 @@ const PipeleyenApp = (function () {
         dictVisited[iStep] = "checking";
         var step = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(step);
-        var bInteractive = step.bInteractive === true;
+        var bInteractive = fbStepIsInteractive(step);
         var bPlotOnly = (step.saDataCommands || []).length === 0;
         if (bInteractive) {
             if (dictVerify.sUser !== "passed") {

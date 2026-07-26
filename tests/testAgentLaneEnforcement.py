@@ -158,11 +158,37 @@ def _fsFillRouteTemplate(sTemplate):
     return sFilled
 
 
+def _flistApplicationMutatingRoutes():
+    """Return (sMethod, sTemplate) for every state-mutating route served.
+
+    Built from the routes the application really registers rather than
+    from the catalog, so a route added tomorrow is enumerated even when
+    nobody remembers to catalogue it.
+    """
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker", MockDockerConnection,
+    ):
+        appViewer = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser",
+        )
+    listRoutes = []
+    for route in appViewer.routes:
+        setMethods = set(getattr(route, "methods", None) or ())
+        for sMethod in sorted(
+            actionCatalog.SET_STATE_MUTATING_METHODS & setMethods
+        ):
+            listRoutes.append((sMethod, route.path))
+    return listRoutes
+
+
 def _flistCollectUserOnlyRoutes():
     """Return (sMethod, sTemplate, sLabel) for every agent-forbidden route.
 
-    Table-driven off the catalog itself, so a user-only action added
-    later is covered without anybody remembering to extend this file.
+    Derived from the SERVED route table, not the catalog: a user-only
+    catalog entry, an intentionally-excluded path, and a route with no
+    catalog entry at all are all enumerated the same way, so the
+    fail-closed rule is driven for real routes rather than only for an
+    invented one. The catalog supplies the label, for a readable failure.
 
     Two exclusions. A path with no container segment cannot authenticate
     on the agent lane at all, so it is already refused a step earlier.
@@ -171,27 +197,23 @@ def _flistCollectUserOnlyRoutes():
     diagnostic endpoint the agent may read; ``fbAgentLanePermitsRoute``
     decides per route, not per catalog entry.
     """
-    setAgentSafeRoutes = {
-        (dictEntry["sMethod"], dictEntry["sPath"])
+    dictLabelByRoute = {
+        (dictEntry["sMethod"], dictEntry["sPath"]): dictEntry["sName"]
         for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
-        if dictEntry["bAgentSafe"]
     }
-    listRoutes = [
-        (dictEntry["sMethod"], dictEntry["sPath"], dictEntry["sName"])
-        for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
-        if dictEntry["sMethod"] != "WS"
-        and not dictEntry["bAgentSafe"]
-    ]
-    listRoutes += [
-        (sMethod, sPath, "intentionally-excluded")
-        for sMethod, sPath in
-        actionCatalog.SET_INTENTIONALLY_EXCLUDED_PATHS
-    ]
-    return sorted(
-        tRoute for tRoute in listRoutes
-        if "{sContainerId}" in tRoute[1]
-        and (tRoute[0], tRoute[1]) not in setAgentSafeRoutes
-    )
+    listRoutes = []
+    for sMethod, sPath in _flistApplicationMutatingRoutes():
+        if "{sContainerId}" not in sPath:
+            continue
+        if actionCatalog.fbAgentLanePermitsRoute(sMethod, sPath):
+            continue
+        listRoutes.append((
+            sMethod, sPath,
+            dictLabelByRoute.get(
+                (sMethod, sPath), "uncatalogued-state-mutating-route",
+            ),
+        ))
+    return sorted(set(listRoutes))
 
 
 def testAliasedRoutesAreOnlyReadOnlyDiagnostics():

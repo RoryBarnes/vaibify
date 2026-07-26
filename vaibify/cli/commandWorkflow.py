@@ -39,14 +39,20 @@ def _fnPrintStepRow(iIndex, dictStep):
 
 
 def _fdictStepDetail(iStepIndex, dictStep):
-    """Build a detail dict for a single step."""
+    """Build a detail dict for a single step.
+
+    ``bInteractive`` is reported through the single classifier rather
+    than read raw, so the CLI can never disagree with the label the
+    dashboard and the agent-facing commands show for the same step.
+    """
+    from vaibify.gui.pipelineUtils import fbStepIsInteractive
     return {
         "iNumber": iStepIndex + 1,
         "sName": dictStep.get("sName", ""),
         "sDirectory": dictStep.get("sDirectory", ""),
         "bRunEnabled": dictStep.get("bRunEnabled", True),
         "bPlotOnly": dictStep.get("bPlotOnly", True),
-        "bInteractive": dictStep.get("bInteractive", False),
+        "bInteractive": fbStepIsInteractive(dictStep),
         "dictVerification": dictStep.get("dictVerification", {}),
         "dictRunStats": dictStep.get("dictRunStats", {}),
         "saDataCommands": dictStep.get("saDataCommands", []),
@@ -57,12 +63,13 @@ def _fdictStepDetail(iStepIndex, dictStep):
 
 def _fnPrintStepDetail(iStepIndex, dictStep):
     """Print detailed info for a single step."""
+    from vaibify.gui.pipelineUtils import fbStepIsInteractive
     dictDetail = _fdictStepDetail(iStepIndex, dictStep)
     click.echo(f"Step {dictDetail['iNumber']}: {dictDetail['sName']}")
     click.echo(f"  Directory:   {dictDetail['sDirectory']}")
     click.echo(f"  Enabled:     {dictDetail['bRunEnabled']}")
     click.echo(f"  Plot only:   {dictDetail['bPlotOnly']}")
-    click.echo(f"  Interactive: {dictDetail['bInteractive']}")
+    click.echo(f"  Interactive: {fbStepIsInteractive(dictStep)}")
     dictVerification = dictDetail["dictVerification"]
     click.echo(f"  User status: {dictVerification.get('sUser', 'untested')}")
     dictRunStats = dictDetail["dictRunStats"]

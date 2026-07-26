@@ -1856,4 +1856,43 @@ def _fdictEntry(sRel):
         _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows)""",
         new="""        _fnBumpSyncEpochForVerifiedContainers(dictCtx, listWorkflows)""",
     ),
+    Falsification(
+        # The owner map is name-keyed and every URL carries the docker
+        # id. Dropping the resolution is the historical fatal bug that
+        # a name == id fixture hid behind a green suite.
+        nodeid='tests/testLiveSessionBoundary.py::testConnectMintsTheLeaseThatOpensThePipelineWebSocket',
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old="""        sName = fsContainerNameForId(
+            dictCtx.get("docker"), sContainerId,
+        )""",
+        new="""        sName = sContainerId""",
+    ),
+    Falsification(
+        # Without the lease branch, any tab holding the shared token
+        # reaches the pipeline of a container another session owns.
+        nodeid='tests/testLiveSessionBoundary.py::testPipelineWebSocketRefusesALeaseConnectNeverMinted',
+        source='vaibify/gui/webSocketAuthorization.py',
+        old="""    if not fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
+        return I_REJECT_FOREIGN_LEASE""",
+        new="""    if False:
+        return I_REJECT_FOREIGN_LEASE""",
+    ),
+    Falsification(
+        # Without the lane budget, a duplicate tab that copied the
+        # lease drives runs into the container concurrently.
+        nodeid='tests/testLiveSessionBoundary.py::testDuplicateTabPipelineWebSocketIsRefusedOnTheServedApplication',
+        source='vaibify/gui/webSocketAuthorization.py',
+        old="""    if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
+        dictContainerOwners, sName,
+    ):""",
+        new="""    if False:""",
+    ),
+    Falsification(
+        # Budgeting the terminal lane too is the Run-Step-always-refused
+        # regression: the terminal strip holds the only slot.
+        nodeid='tests/testLiveSessionBoundary.py::testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication',
+        source='vaibify/gui/webSocketAuthorization.py',
+        old="""    fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=False,""",
+        new="""    fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=True,""",
+    ),
 ]
