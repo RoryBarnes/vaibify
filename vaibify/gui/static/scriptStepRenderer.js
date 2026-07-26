@@ -5,6 +5,7 @@ var VaibifyStepRenderer = (function () {
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
     var fsBuildLevelCell = VaibifyUtilities.fsBuildLevelCell;
+    var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
 
     var _DICT_CATEGORY_TO_REMOTE_KEYS = {
         saPlotFiles: ["sGithub", "sOverleaf", "sZenodo", "sArxiv"],
@@ -418,7 +419,7 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderStepItem(step, iIndex, dictVars, dictContext) {
-        var bInteractive = step.bInteractive === true;
+        var bInteractive = fbStepIsInteractive(step);
         // The run light is EXECUTION-ONLY (its original meaning):
         // queued / running / how the last run ended. Verification
         // lives entirely in the ⚠ + L1/L2/L3 strip; the light and
@@ -518,7 +519,7 @@ var VaibifyStepRenderer = (function () {
     function _fsRenderLevelOneBody(
         step, iIndex, dictVars, dictContext, sResolvedDir
     ) {
-        var bInteractive = step.bInteractive === true;
+        var bInteractive = fbStepIsInteractive(step);
         var sHtml = "";
         if (!bInteractive) {
             sHtml += '<div class="detail-label plot-only-row">' +
@@ -677,7 +678,7 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderRunStepButton(step, iIndex) {
-        if (step.bInteractive) return "";
+        if (fbStepIsInteractive(step)) return "";
         var bHasDataCmds = (step.saDataCommands || []).length > 0;
         var bHasPlotCmds = (step.saPlotCommands || []).length > 0;
         if (!bHasDataCmds && !bHasPlotCmds) return "";
@@ -687,7 +688,7 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderVerificationBlock(step, iIndex, dictContext) {
-        var bInteractive = step.bInteractive === true;
+        var bInteractive = fbStepIsInteractive(step);
         var bPlotOnly = (step.saDataCommands || []).length === 0;
         var dictVerify = dictContext.fdictGetVerification(step);
         var sHtml = '<div class="detail-label">Verification</div>';

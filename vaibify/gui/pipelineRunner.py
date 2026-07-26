@@ -38,6 +38,7 @@ SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
 from .pipelineUtils import (  # noqa: F401
     fdictMapOutputTokenStems,
     fsShellQuote,
+    fbStepIsInteractive,
     fsLabelFromStepIndex,
     fiStepIndexFromLabel,
     flistStepsWithLabels,
@@ -1201,7 +1202,7 @@ async def _fiRunStepList(
         ):
             continue
         sStepLabel = fsLabelFromStepIndex(dictWorkflow, iIndex)
-        if dictStep.get("bInteractive", False):
+        if fbStepIsInteractive(dictStep):
             iExitCode = await _fiHandleInteractiveStep(
                 connectionDocker, sContainerId, dictStep,
                 iStepNumber, fnStatusCallback, dictInteractive,

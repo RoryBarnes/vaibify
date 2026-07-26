@@ -618,6 +618,27 @@ def test_undeclared_input_shows_orange_pending_indicator():
     assert "file-necessary-red.file-stale-state" in sCss
 
 
+def test_step_renderer_classifies_interactive_through_the_mirror():
+    """The renderer must not read ``bInteractive`` raw.
+
+    The backend has one classifier (``pipelineUtils.fbStepIsInteractive``)
+    and ``scriptUtilities`` mirrors it. A renderer that tests the field
+    directly — ``=== true`` here, truthiness there — paints a ladder
+    that disagrees with the labels the backend hands to toasts, error
+    messages, and the in-container agent.
+    """
+    sUtilities = _fsReadStaticFile("scriptUtilities.js")
+    assert "function fbStepIsInteractive(" in sUtilities
+    assert "fbStepIsInteractive: fbStepIsInteractive," in sUtilities
+    sRenderer = _fsReadStaticFile("scriptStepRenderer.js")
+    assert "VaibifyUtilities.fbStepIsInteractive" in sRenderer
+    assert ".bInteractive" not in sRenderer, (
+        "scriptStepRenderer.js must classify through "
+        "VaibifyUtilities.fbStepIsInteractive, never by reading the "
+        "raw field"
+    )
+
+
 def test_client_l1_predicate_requires_input_declaration():
     """The client fbStepIsAtLeastLevel1 must gate on the input
     declaration too, or the client L1 chip and file colours would

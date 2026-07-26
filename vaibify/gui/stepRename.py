@@ -39,11 +39,27 @@ from .pipelineUtils import (
 )
 
 __all__ = [
+    "StepRenameSplitError",
     "fdictPlanStepRename",
     "fdictPlanDirectoryAlignment",
     "fdictApplyStepRename",
     "flistScanScriptsForOldName",
 ]
+
+
+class StepRenameSplitError(RuntimeError):
+    """Disk and the workflow dict genuinely disagree after a cascade.
+
+    Raised only in the one state the cascade cannot resolve itself:
+    the step directory moved, a later stage failed, and the move
+    could not be undone. The workflow dict is left pointing at the
+    directory that really holds the bytes while the step name stays
+    unchanged, so ``fbStepDirectoryConforms`` reports the step
+    nonconforming and the dashboard shows the red warning with the
+    align action beside it. Callers MUST persist the workflow before
+    surfacing the error — an unsaved warning is a silent one.
+    """
+
 
 _T_STEP_PATH_ARRAY_KEYS = (
     "saStepScripts", "saOutputDataFiles", "saPlotFiles",
@@ -201,8 +217,11 @@ def _fdictPlanDirectoryChange(dictWorkflow, iStepIndex, sNewName):
         sNewDirectory = sOldDirectory
     bDirectoryRenamed = bool(sOldDirectory) and not bTemplated \
         and sNewDirectory != sOldDirectory
-    if bDirectoryRenamed:
-        fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sNewName)
+    # Unconditional, matching step creation: the slug is a property of
+    # the NAME, so a step with no directory yet (or a templated one)
+    # can otherwise be renamed onto another step's slug and the
+    # collision only surfaces later, when the directory is created.
+    fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sNewName)
     return {
         "sOldName": sOldName,
         "sNewName": sNewName,
@@ -261,6 +280,22 @@ def flistScanScriptsForOldName(
     return listMentioning
 
 
+def _fsBuildDirectoryMoveCommand(sRepo, sFromDirectory, sToDirectory):
+    """Return the ``git mv`` (plain ``mv`` fallback) command for a move.
+
+    The forward move and the undo must stay the same operation — an
+    undo that reached the working tree differently could leave the
+    repo in a third state — so both build the command here.
+    """
+    return (
+        "cd " + fsShellQuote(sRepo) + " && (git mv "
+        + fsShellQuote(sFromDirectory) + " "
+        + fsShellQuote(sToDirectory) + " 2>/dev/null || mv "
+        + fsShellQuote(sFromDirectory) + " "
+        + fsShellQuote(sToDirectory) + ")"
+    )
+
+
 def _fnMoveStepDirectory(
     connectionDocker, sContainerId, sRepo, dictPlan,
 ):
@@ -284,12 +319,9 @@ def _fnMoveStepDirectory(
         return False
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId,
-        "cd " + fsShellQuote(sRepo) + " && (git mv "
-        + fsShellQuote(dictPlan["sOldDirectory"]) + " "
-        + fsShellQuote(dictPlan["sNewDirectory"]) + " 2>/dev/null"
-        + " || mv "
-        + fsShellQuote(dictPlan["sOldDirectory"]) + " "
-        + fsShellQuote(dictPlan["sNewDirectory"]) + ")",
+        _fsBuildDirectoryMoveCommand(
+            sRepo, dictPlan["sOldDirectory"], dictPlan["sNewDirectory"],
+        ),
     )
     if iExitCode != 0:
         raise RuntimeError(
@@ -297,6 +329,20 @@ def _fnMoveStepDirectory(
             + (sOutput or "").strip()[:500],
         )
     return True
+
+
+def _fnUndoStepDirectoryMove(
+    connectionDocker, sContainerId, sRepo, dictPlan,
+):
+    """Move the directory back; raise RuntimeError when the undo fails."""
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId,
+        _fsBuildDirectoryMoveCommand(
+            sRepo, dictPlan["sNewDirectory"], dictPlan["sOldDirectory"],
+        ),
+    )
+    if iExitCode != 0:
+        raise RuntimeError((sOutput or "").strip()[:500])
 
 
 def _fbMoveMarkerFile(filesRepo, dictPlan, sWorkflowPath):
@@ -324,8 +370,16 @@ def _fbMoveMarkerFile(filesRepo, dictPlan, sWorkflowPath):
     )
     try:
         dictMarker = json.loads(filesRepo.fsReadText(sOldRelative))
-    except (ValueError, OSError):
-        return False
+    except (ValueError, OSError) as error:
+        # Loud, not silent: a marker that exists but cannot be read is
+        # a verification record about to be orphaned under a name
+        # nothing will look for again.
+        raise ValueError(
+            f"The step's verification marker '{sOldRelative}' could "
+            f"not be read ({error}) — refusing a rename that would "
+            "orphan the step's test record. Re-run the step's tests "
+            "or delete the marker, then rename.",
+        ) from error
     if isinstance(dictMarker, dict) \
             and dictMarker.get("sDirectory"):
         dictMarker["sDirectory"] = dictPlan["sNewDirectory"]
@@ -387,17 +441,57 @@ def _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan):
             )
 
 
+def _fnUndoOrRecordSplit(
+    connectionDocker, sContainerId, sRepo, dictWorkflow, iStepIndex,
+    dictPlan, dictReport, errorCascade,
+):
+    """Reverse a completed directory move, or make the split loud.
+
+    The marker and manifest stages follow bytes that have already
+    moved, so when one of them fails the honest repair is to put the
+    bytes back: the caller then re-raises into an error toast with the
+    workflow dict untouched. When even the undo fails, disk and the
+    workflow have genuinely split — the step is pointed at the
+    directory that really exists (its NAME deliberately left alone, so
+    the pair reads nonconforming) and ``StepRenameSplitError`` carries
+    both failures to the researcher.
+    """
+    if not dictReport["bDirectoryMoved"]:
+        return
+    try:
+        _fnUndoStepDirectoryMove(
+            connectionDocker, sContainerId, sRepo, dictPlan,
+        )
+    except RuntimeError as errorUndo:
+        _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan)
+        dictWorkflow["listSteps"][iStepIndex]["sName"] = \
+            dictPlan["sOldName"]
+        raise StepRenameSplitError(
+            f"The step directory moved to "
+            f"'{dictPlan['sNewDirectory']}' but the rename could not "
+            f"be completed ({errorCascade}) and could not be undone "
+            f"({errorUndo}). The project now points at the directory "
+            "on disk and the step is flagged as not matching its "
+            "name — align the directories or rename the step again.",
+        ) from errorCascade
+    dictReport["bDirectoryMoved"] = False
+
+
 def fdictApplyStepRename(
     connectionDocker, sContainerId, filesRepo,
     dictWorkflow, iStepIndex, dictPlan, sWorkflowPath,
 ):
     """Execute the planned rename; return a report of what moved.
 
-    Order matters: the directory moves first (it can fail — name
-    collision, git error — and nothing else must have changed when it
-    does), then the marker and manifest follow the bytes, and the
-    workflow dict is rewritten last so a mid-cascade failure leaves
-    the JSON still pointing at whatever is actually on disk.
+    Transactional in both directions. The directory moves first (it
+    can fail — name collision, git error — and nothing else must have
+    changed when it does); if the marker or manifest stage then fails,
+    the move is UNDONE before the error propagates, so the workflow
+    dict and disk still describe the same world. Only an undo that
+    itself fails leaves them split, and that case raises
+    ``StepRenameSplitError`` into the dashboard's warning path rather
+    than the silently-conforming state that made the old
+    rewrite-the-JSON-last ordering dishonest.
     """
     dictReport = {
         "bDirectoryMoved": False,
@@ -425,11 +519,18 @@ def fdictApplyStepRename(
         dictReport["bDirectoryMoved"] = _fnMoveStepDirectory(
             connectionDocker, sContainerId, sRepo, dictPlan,
         )
-        dictReport["bMarkerMoved"] = _fbMoveMarkerFile(
-            filesRepo, dictPlan, sWorkflowPath,
-        )
-        dictReport["bManifestRewritten"] = _fbRewriteManifestPaths(
-            filesRepo, dictPlan,
-        )
+        try:
+            dictReport["bMarkerMoved"] = _fbMoveMarkerFile(
+                filesRepo, dictPlan, sWorkflowPath,
+            )
+            dictReport["bManifestRewritten"] = _fbRewriteManifestPaths(
+                filesRepo, dictPlan,
+            )
+        except Exception as errorCascade:
+            _fnUndoOrRecordSplit(
+                connectionDocker, sContainerId, sRepo, dictWorkflow,
+                iStepIndex, dictPlan, dictReport, errorCascade,
+            )
+            raise
     _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan)
     return dictReport

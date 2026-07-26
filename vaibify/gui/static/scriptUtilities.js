@@ -95,6 +95,27 @@ var VaibifyUtilities = (function () {
         return sBasename === fsSlugFromStepName(dictStep.sName || "");
     }
 
+    /* --- Interactive-flag contract ---
+       Mirror of pipelineUtils.fbStepIsInteractive. The backend
+       decides which label a step carries; a renderer that reads the
+       flag differently paints a ladder that disagrees with the labels
+       agents and toasts use. Persisted values reach the browser as
+       booleans, null, strings, or absent. */
+
+    var SET_INTERACTIVE_FALSE_TOKENS = new Set([
+        "", "false", "0", "no", "off", "none", "null",
+    ]);
+
+    function fbStepIsInteractive(dictStep) {
+        if (!dictStep) return false;
+        var valueFlag = dictStep.bInteractive;
+        if (typeof valueFlag === "string") {
+            return !SET_INTERACTIVE_FALSE_TOKENS.has(
+                valueFlag.trim().toLowerCase());
+        }
+        return Boolean(valueFlag);
+    }
+
     function fbIsFigureFile(sPath) {
         var iDot = sPath.lastIndexOf(".");
         if (iDot === -1) return false;
@@ -313,6 +334,7 @@ var VaibifyUtilities = (function () {
         fsSummarizeLevelStates: fsSummarizeLevelStates,
         fsSlugFromStepName: fsSlugFromStepName,
         fbStepDirectoryConforms: fbStepDirectoryConforms,
+        fbStepIsInteractive: fbStepIsInteractive,
         fbIsFigureFile: fbIsFigureFile,
         fbIsBinaryFile: fbIsBinaryFile,
         fsSanitizeErrorForUser: fsSanitizeErrorForUser,

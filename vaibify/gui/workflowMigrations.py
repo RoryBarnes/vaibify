@@ -23,6 +23,7 @@ import posixpath
 import re
 
 from .pathContract import flistNormalizeModifiedFiles
+from .pipelineUtils import fbStepIsInteractive
 
 
 __all__ = [
@@ -39,13 +40,14 @@ __all__ = [
     "fnMigrateAbsoluteTestPaths",
     "fnMigrateArchiveToTracking",
     "fnMigrateRunEnabledKey",
+    "fnNormalizeInteractiveFlags",
     "fnNormalizeSceneReferences",
     "fbMigrateModifiedFilesToRepoRelative",
     "fnStampCurrentVersion",
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 9
+I_CURRENT_WORKFLOW_VERSION = 10
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -617,6 +619,32 @@ def _fnMigrateV8ToV9(dictWorkflow, sProjectRepoPath):
         dictStep.setdefault("listRemoteData", [])
 
 
+def fnNormalizeInteractiveFlags(dictWorkflow):
+    """Coerce every persisted ``bInteractive`` to a real boolean.
+
+    A hand-edited ``null`` or ``"true"`` classifies one way under
+    truthiness and another under equality, which is how a step label
+    came to resolve to the wrong step. ``pipelineUtils`` decides the
+    reading; this bakes that reading into the document once so the
+    value on disk is unambiguous. Absent flags stay absent (the step
+    is automated by default) and booleans are left alone, so a
+    migrated workflow gains no keys it did not already carry.
+    """
+    for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if not isinstance(dictStep, dict):
+            continue
+        if "bInteractive" not in dictStep:
+            continue
+        if isinstance(dictStep["bInteractive"], bool):
+            continue
+        dictStep["bInteractive"] = fbStepIsInteractive(dictStep)
+
+
+def _fnMigrateV9ToV10(dictWorkflow, sProjectRepoPath):
+    """Normalize hand-edited interactive flags to real booleans."""
+    fnNormalizeInteractiveFlags(dictWorkflow)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -627,4 +655,5 @@ T_MIGRATORS = (
     (6, _fnMigrateV6ToV7),
     (7, _fnMigrateV7ToV8),
     (8, _fnMigrateV8ToV9),
+    (9, _fnMigrateV9ToV10),
 )

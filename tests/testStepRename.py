@@ -12,6 +12,7 @@ import json
 import pytest
 
 from vaibify.gui import stepRename
+from vaibify.gui.pipelineUtils import fbStepDirectoryConforms
 from vaibify.reproducibility.manifestWriter import (
     fbRewriteManifestPathPrefix,
 )
@@ -320,6 +321,150 @@ def test_apply_moves_the_marker_and_rewrites_its_directory():
         filesRepo.dictFiles[sMarkerDir + "/NewStep.json"],
     )
     assert dictMarker["sDirectory"] == "NewStep"
+
+
+# --------------------------------------------------------------------------
+# Apply: the cascade is transactional, and a split state is LOUD.
+#
+# Oracle (independent of the implementation): the module's own
+# contract is that the workflow dict and disk describe the same world
+# — and CLAUDE.md forbids a dashboard state that misrepresents
+# reality. A cascade that half-applies must therefore either undo
+# itself or surface; the one thing it may never do is leave a step
+# that ``fbStepDirectoryConforms`` calls healthy while its files sit
+# under a different name.
+# --------------------------------------------------------------------------
+
+
+class _FailingWriteRepoFiles(_FakeRepoFiles):
+    """Repo files whose writes fail — a full disk, a read-only mount."""
+
+    def fnWriteTextAtomic(self, sRelPath, sContent):
+        raise OSError("no space left on device")
+
+
+def _fdictMarkerFiles():
+    """One marker under the old directory's name."""
+    return {
+        ".vaibify/test_markers/study/OldStep.json": json.dumps(
+            {"sLabel": "A01", "sDirectory": "OldStep"},
+        ),
+    }
+
+
+# The undo needle must precede the forward one: _FakeDocker returns the
+# FIRST matching entry, and both commands contain "git mv".
+_DICT_MOVE_THEN_UNDO_SUCCEEDS = {
+    "git mv 'NewStep' 'OldStep'": (0, ""),
+    "test -e": (1, ""), "test -d": (0, ""), "git mv": (0, ""),
+}
+
+_DICT_MOVE_SUCCEEDS_UNDO_FAILS = {
+    "git mv 'NewStep' 'OldStep'": (1, "permission denied"),
+    "test -e": (1, ""), "test -d": (0, ""), "git mv": (0, ""),
+}
+
+
+@pytest.mark.falsification
+def test_apply_undoes_the_directory_move_when_a_later_stage_fails():
+    """A failed marker stage puts the directory back before raising.
+
+    Kills: letting the downstream failure propagate with the directory
+    already moved. The workflow dict then still names the old
+    directory, ``fbStepDirectoryConforms`` reports the step healthy,
+    and the dashboard shows a green step whose files have vanished.
+    """
+    dictWorkflow = _fdictWorkflow()
+    dictPlan = stepRename.fdictPlanStepRename(dictWorkflow, 0, "NewStep")
+    connectionDocker = _FakeDocker(_DICT_MOVE_THEN_UNDO_SUCCEEDS)
+    with pytest.raises(OSError):
+        stepRename.fdictApplyStepRename(
+            connectionDocker, "cid",
+            _FailingWriteRepoFiles(_fdictMarkerFiles()),
+            dictWorkflow, 0, dictPlan, S_WORKFLOW_PATH,
+        )
+    assert any("git mv 'NewStep' 'OldStep'" in sCommand
+               for sCommand in connectionDocker.listCommands), (
+        "the directory move must be undone when the cascade fails"
+    )
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["sName"] == "OldStep"
+    assert dictStep["sDirectory"] == "OldStep"
+    assert fbStepDirectoryConforms(dictStep) is True
+
+
+@pytest.mark.falsification
+def test_apply_makes_an_unrecoverable_split_visible_not_conforming():
+    """When the undo also fails, the step must read NONCONFORMING.
+
+    Kills: raising the downstream failure without pointing the step at
+    the directory that really holds its files. The name would still
+    match the old directory, the ⚠ column would stay clear, and the
+    only record of the split would be a toast the researcher can
+    dismiss.
+    """
+    dictWorkflow = _fdictWorkflow()
+    dictPlan = stepRename.fdictPlanStepRename(dictWorkflow, 0, "NewStep")
+    connectionDocker = _FakeDocker(_DICT_MOVE_SUCCEEDS_UNDO_FAILS)
+    with pytest.raises(stepRename.StepRenameSplitError) as excInfo:
+        stepRename.fdictApplyStepRename(
+            connectionDocker, "cid",
+            _FailingWriteRepoFiles(_fdictMarkerFiles()),
+            dictWorkflow, 0, dictPlan, S_WORKFLOW_PATH,
+        )
+    assert "NewStep" in str(excInfo.value)
+    dictStep = dictWorkflow["listSteps"][0]
+    assert dictStep["sDirectory"] == "NewStep", (
+        "the workflow must record where the bytes actually are"
+    )
+    assert dictStep["sName"] == "OldStep", (
+        "the name must NOT follow, or the step reads healthy again"
+    )
+    assert fbStepDirectoryConforms(dictStep) is False
+
+
+@pytest.mark.falsification
+def test_apply_refuses_a_rename_when_the_marker_is_unreadable():
+    """A corrupt marker aborts the rename instead of dropping it.
+
+    Kills: swallowing the parse error and returning False. The rename
+    then completes while the step's verification record stays behind
+    under a name nothing will ever look for again — a verified step
+    silently demoted to untested.
+    """
+    dictWorkflow = _fdictWorkflow()
+    dictPlan = stepRename.fdictPlanStepRename(dictWorkflow, 0, "NewStep")
+    filesRepo = _FakeRepoFiles({
+        ".vaibify/test_markers/study/OldStep.json": "{ truncated",
+    })
+    connectionDocker = _FakeDocker(_DICT_MOVE_THEN_UNDO_SUCCEEDS)
+    with pytest.raises(ValueError) as excInfo:
+        stepRename.fdictApplyStepRename(
+            connectionDocker, "cid", filesRepo,
+            dictWorkflow, 0, dictPlan, S_WORKFLOW_PATH,
+        )
+    assert "marker" in str(excInfo.value)
+    assert dictWorkflow["listSteps"][0]["sName"] == "OldStep"
+    assert ".vaibify/test_markers/study/OldStep.json" in \
+        filesRepo.dictFiles, "the corrupt marker must not be deleted"
+
+
+@pytest.mark.falsification
+def test_plan_rejects_a_slug_collision_with_no_directory_to_move():
+    """Uniqueness is a property of the NAME, not of the directory move.
+
+    Kills: checking uniqueness only when ``bDirectoryRenamed`` is
+    true. A step whose directory does not exist yet could then be
+    renamed onto another step's slug, and the collision would surface
+    only later, when the two directories try to occupy one path.
+    """
+    dictWorkflow = _fdictWorkflow({"sDirectory": ""})
+    dictWorkflow["listSteps"].append({
+        "sName": "Taken", "sDirectory": "Taken", "sLabel": "A02",
+    })
+    with pytest.raises(ValueError) as excInfo:
+        stepRename.fdictPlanStepRename(dictWorkflow, 0, "Taken")
+    assert "unique" in str(excInfo.value)
 
 
 def test_apply_without_a_marker_reports_no_move():

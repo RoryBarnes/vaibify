@@ -49,6 +49,7 @@ def testExtractsDunderAll():
     listExpected = [
         "fdictMapOutputTokenStems",
         "fsShellQuote",
+        "fbStepIsInteractive",
         "fsLabelFromStepIndex",
         "fiStepIndexFromLabel",
         "flistStepsWithLabels",

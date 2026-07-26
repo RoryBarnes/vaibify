@@ -1337,4 +1337,94 @@ def _fdictEntry(sRel):
         old='    if not fbWorkflowDeclaresPersonalLayer(dictWorkflow):\n        return "untracked"',
         new='    if False:\n        return "untracked"',
     ),
+    # --- Step identity: labels and the rename cascade (2026-07-25) ---
+    Falsification(
+        # The shipped bug, restored on the RESOLVER side: comparing the
+        # raw field against a bool made a hand-edited
+        # "bInteractive": null resolve A01 to the SECOND step and A02
+        # to nothing at all.
+        nodeid='tests/testStepLabels.py::test_label_round_trip_is_total_over_every_flag_shape',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        if fbStepIsInteractive(dictStep) == bWantInteractive:',
+        new='        if dictStep.get("bInteractive", False) == bWantInteractive:',
+    ),
+    Falsification(
+        # The same disagreement from the LABELLER side: raw truthiness
+        # reads a quoted "false" as interactive, so the step is
+        # labelled I01 and resolved as automated.
+        nodeid='tests/testStepLabels.py::TestFbStepIsInteractive::test_the_string_false_is_not_read_as_a_non_empty_object',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        if fbStepIsInteractive(dictStep):\n            iInteractive += 1',
+        new='        if dictStep.get("bInteractive", False):\n            iInteractive += 1',
+    ),
+    Falsification(
+        # Without the undo, a failed marker or manifest stage leaves
+        # the directory at the new slug while project.json still names
+        # the old one -- and fbStepDirectoryConforms then reports the
+        # step healthy, so no warning ever appears.
+        nodeid='tests/testStepRename.py::test_apply_undoes_the_directory_move_when_a_later_stage_fails',
+        source='vaibify/gui/stepRename.py',
+        old="""            _fnUndoOrRecordSplit(
+                connectionDocker, sContainerId, sRepo, dictWorkflow,
+                iStepIndex, dictPlan, dictReport, errorCascade,
+            )
+            raise""",
+        new='            raise',
+    ),
+    Falsification(
+        # When the undo itself fails the pair has genuinely split;
+        # pointing the step at the directory that holds its bytes is
+        # what makes the split visible as a nonconforming step.
+        nodeid='tests/testStepRename.py::test_apply_makes_an_unrecoverable_split_visible_not_conforming',
+        source='vaibify/gui/stepRename.py',
+        old="""        _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan)
+        dictWorkflow["listSteps"][iStepIndex]["sName"] = \\
+            dictPlan["sOldName"]
+        raise StepRenameSplitError(""",
+        new='        raise StepRenameSplitError(',
+    ),
+    Falsification(
+        # Swallowing the parse error renames the step while its
+        # verification record stays behind under a name nothing will
+        # look for again.
+        nodeid='tests/testStepRename.py::test_apply_refuses_a_rename_when_the_marker_is_unreadable',
+        source='vaibify/gui/stepRename.py',
+        old="""    except (ValueError, OSError) as error:
+        # Loud, not silent: a marker that exists but cannot be read is
+        # a verification record about to be orphaned under a name
+        # nothing will look for again.
+        raise ValueError(
+            f"The step's verification marker '{sOldRelative}' could "
+            f"not be read ({error}) — refusing a rename that would "
+            "orphan the step's test record. Re-run the step's tests "
+            "or delete the marker, then rename.",
+        ) from error""",
+        new="""    except (ValueError, OSError):
+        return False""",
+    ),
+    Falsification(
+        # Gating uniqueness on the directory move lets a step with no
+        # directory yet be renamed onto another step's slug; the
+        # collision then surfaces at directory creation instead.
+        nodeid='tests/testStepRename.py::test_plan_rejects_a_slug_collision_with_no_directory_to_move',
+        source='vaibify/gui/stepRename.py',
+        old='    fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sNewName)',
+        new='    if bDirectoryRenamed:\n        fnRequireUniqueStepSlug(dictWorkflow, iStepIndex, sNewName)',
+    ),
+    Falsification(
+        # Falling through to the generic RuntimeError branch raises
+        # 500 without saving, so the nonconforming directory the
+        # cascade recorded is lost on the next load.
+        nodeid='tests/testStepRoutes.py::testRenameRoutePersistsAnUnrecoverableSplit',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old="""        except stepRename.StepRenameSplitError as error:
+            # The directory moved and could not be put back. The
+            # workflow now records where the bytes actually are, so it
+            # has to be PERSISTED or the nonconforming warning that
+            # leads the researcher to the repair is lost on reload.
+            dictCtx["save"](sContainerId, dictWorkflow)
+            raise HTTPException(500, str(error))
+""",
+        new='',
+    ),
 ]
