@@ -1790,6 +1790,7 @@ def _fdictEntry(sRel):
         new="""    if False:
         return True""",
     ),
+    Falsification(
         # The one reconcile action that left the screen un-repainted.
         nodeid='tests/testSyncEpoch.py::test_verify_remote_bumps_sync_epoch',
         source='vaibify/gui/routes/syncRoutes.py',
