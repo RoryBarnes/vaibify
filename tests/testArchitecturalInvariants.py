@@ -3204,7 +3204,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # one reconcile action that left the screen un-repainted), and
     # the read-only reverify-schedule endpoint makes "the background
     # loop never ran" visible instead of implied.
-    "routes/syncRoutes.py": 2433,
+    # +28 (2026-07-26): _fsetMountedHostPaths and the sweep hook's
+    # docker-mount enumeration. The sweep deleted a secret an
+    # existing container had bind-mounted, leaving it unstartable;
+    # reachability, not age, decides now. Cohesive with the other
+    # credential-lifecycle wiring this module already registers.
+    "routes/syncRoutes.py": 2461,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.

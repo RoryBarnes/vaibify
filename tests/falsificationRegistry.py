@@ -1402,7 +1402,7 @@ def _fdictEntry(sRel):
         # while reporting success.
         nodeid='tests/testEphemeralStore.py::test_sweep_removes_stale_credential_files',
         source='vaibify/config/ephemeralStore.py',
-        old='            os.remove(os.path.join(sRoot, sName))',
+        old='            os.remove(sPath)',
         new='            pass',
     ),
     Falsification(
@@ -1927,5 +1927,20 @@ def _fdictEntry(sRel):
         source='vaibify/gui/fileStatusManager.py',
         old='        if sUser == "passed":',
         new='        if sUser in ("passed", "stale"):',
+    ),
+    Falsification(
+        # Observed on a real machine: sweeping an April-dated token
+        # broke a container that had bind-mounted it. Docker then
+        # creates a directory stub where the file was.
+        nodeid='tests/testEphemeralStore.py::test_sweep_spares_a_stale_file_a_container_still_mounts',
+        source='vaibify/config/ephemeralStore.py',
+        old=(
+            '            if sPath in setProtected:\n'
+            '                continue'
+        ),
+        new=(
+            '            if False:\n'
+            '                continue'
+        ),
     ),
 ]

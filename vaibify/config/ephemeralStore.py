@@ -41,8 +41,18 @@ def fsGetEphemeralRoot():
 
 def fnSweepStaleEphemeralFiles(
     fMaxAgeSeconds=F_STALE_EPHEMERAL_AGE_SECONDS,
+    setProtectedPaths=None,
 ):
     """Delete ephemeral files older than ``fMaxAgeSeconds``.
+
+    ``setProtectedPaths`` names absolute paths that must survive the
+    sweep whatever their age. A mounted secret is bind-mounted into a
+    container for that container's whole life, which outlives any
+    number of hub restarts, and deleting the source leaves the
+    container permanently unstartable: Docker fails the mount and
+    silently creates a directory stub where the file was. Age alone is
+    therefore not evidence that a file is garbage -- reachability is,
+    and only the caller can enumerate what the daemon still mounts.
 
     Live credentials must not accumulate on disk: every mounted secret
     and every askpass helper written here holds a usable token or a
@@ -51,11 +61,15 @@ def fnSweepStaleEphemeralFiles(
     unreachable garbage. Failures are swallowed — a sweep must never
     be the reason a container fails to start.
     """
+    setProtected = set(setProtectedPaths or ())
     try:
         sRoot = fsGetEphemeralRoot()
         fCutoff = time.time() - fMaxAgeSeconds
         for sName in _flistFindStaleEphemeralFiles(sRoot, fCutoff):
-            os.remove(os.path.join(sRoot, sName))
+            sPath = os.path.join(sRoot, sName)
+            if sPath in setProtected:
+                continue
+            os.remove(sPath)
     except OSError:
         return
 

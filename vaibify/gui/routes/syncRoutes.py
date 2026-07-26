@@ -2407,7 +2407,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterReverifySchedule(app, dictCtx)
     _fnRegisterArxivConfigure(app, dictCtx)
     _fnRegisterScheduledReverify(app, dictCtx)
-    _fnRegisterEphemeralSecretSweep(app)
+    _fnRegisterEphemeralSecretSweep(app, dictCtx)
 
 
 def _fnRegisterScheduledReverify(app, dictCtx):
@@ -2416,18 +2416,46 @@ def _fnRegisterScheduledReverify(app, dictCtx):
     scheduledReverify.fnScheduleReverify(app, dictCtx)
 
 
-def _fnRegisterEphemeralSecretSweep(app):
-    """Retire stale host credential files once, at hub startup.
+def _fnRegisterEphemeralSecretSweep(app, dictCtx):
+    """Retire unreachable host credential files once, at hub startup.
 
     The GitHub, Overleaf and Zenodo flows registered above all drop
-    live tokens into ``~/.vaibify/tmp``; nothing there is meant to
-    outlive the session that wrote it, and the container-mount path
-    cannot unlink at the point of use. Startup is the one moment where
-    no session of this hub owns any of those files.
+    live tokens into ``~/.vaibify/tmp``, and the container-mount path
+    cannot unlink at the point of use, so a periodic sweep is the only
+    mechanism available.
+
+    Age alone does not make a file garbage. A mounted secret lives as
+    long as the container that mounts it, which outlives any number of
+    hub restarts -- so the sweep first asks the daemon what is still
+    mounted and spares those paths. Deleting one leaves the container
+    permanently unstartable, which is the failure this sweep exists to
+    avoid causing.
     """
     from vaibify.config.ephemeralStore import fnSweepStaleEphemeralFiles
 
     def fnSweepAtStartup(_app):
-        fnSweepStaleEphemeralFiles()
+        fnSweepStaleEphemeralFiles(
+            setProtectedPaths=_fsetMountedHostPaths(dictCtx),
+        )
 
     app.state.listLifespanStartup.append(fnSweepAtStartup)
+
+
+def _fsetMountedHostPaths(dictCtx):
+    """Return every host path bind-mounted by any container.
+
+    Includes stopped containers: a stopped container is restartable,
+    and its mounts are re-resolved at start. An unreachable daemon
+    yields the empty set, which makes the sweep skip nothing rather
+    than delete something still in use -- the safe direction.
+    """
+    setPaths = set()
+    try:
+        for container in dictCtx["docker"].containers.list(all=True):
+            for dictMount in container.attrs.get("Mounts", []) or []:
+                sSource = dictMount.get("Source") or ""
+                if sSource:
+                    setPaths.add(sSource)
+    except Exception:  # noqa: BLE001 — never block hub startup
+        return set()
+    return setPaths

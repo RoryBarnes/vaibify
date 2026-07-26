@@ -183,3 +183,35 @@ def test_hub_startup_registers_the_credential_sweep():
         for fnHook in app.state.listLifespanStartup
     ]
     assert "fnSweepAtStartup" in listNames
+
+
+@pytest.mark.falsification
+def test_sweep_spares_a_stale_file_a_container_still_mounts(
+    tmp_path, monkeypatch,
+):
+    """A mounted secret must survive the sweep whatever its age.
+
+    A bind-mounted secret lives as long as the container that mounts
+    it, which outlives any number of hub restarts. Deleting the source
+    leaves the container permanently unstartable -- Docker fails the
+    mount and creates a directory stub where the file was. Observed on
+    a real machine: sweeping an April-dated token broke a container
+    that had mounted it.
+
+    Kills: in ephemeralStore.fnSweepStaleEphemeralFiles, drop the
+    ``if sPath in setProtected: continue`` guard.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sRoot = fsGetEphemeralRoot()
+    os.makedirs(sRoot, exist_ok=True)
+    sMounted = os.path.join(sRoot, "vc_secret_gh_token_mounted.tmp")
+    sOrphan = os.path.join(sRoot, "vc_secret_gh_token_orphan.tmp")
+    for sPath in (sMounted, sOrphan):
+        with open(sPath, "w") as fileHandle:
+            fileHandle.write("token")
+        os.utime(sPath, (0, 0))
+
+    fnSweepStaleEphemeralFiles(setProtectedPaths={sMounted})
+
+    assert os.path.exists(sMounted), "a mounted secret was deleted"
+    assert not os.path.exists(sOrphan), "an orphan should be swept"
