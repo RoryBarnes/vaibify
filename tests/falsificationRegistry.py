@@ -1943,4 +1943,143 @@ def _fdictEntry(sRel):
             '                continue'
         ),
     ),
+
+    # ── Documented hard rules that no test could previously falsify ──
+    # (2026-07-26 audit). Mutation testing cannot reach this class: it
+    # finds weak tests over EXISTING code, and there is no mutant for an
+    # enforcement point that was never written.
+
+    Falsification(
+        # AGENTS.md "Ask first" names five sensitive categories; the
+        # credential manager is the one whose loss is unrecoverable
+        # (rotation is the only remediation).
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookAsksForEveryDocumentedPath',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old=(
+            '    (\n'
+            '        r"/vaibify/config/secretManager\\.py$",\n'
+            '        "secretManager.py handles credentials. A wrong line '
+            'can leak "\n'
+            '        "tokens into git history; rotation is the only '
+            'remediation. "\n'
+            '        "Pausing to confirm.",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        # NotebookEdit carries notebook_path, never file_path, so
+        # dropping the fallback silently exempts every notebook edit.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookReadsTheNotebookPathField',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old=(
+            '    return dictToolInput.get("file_path") or '
+            'dictToolInput.get("notebook_path", "")'
+        ),
+        new='    return dictToolInput.get("file_path", "")',
+    ),
+    Falsification(
+        # A hook that asks for everything is a hook the researcher
+        # learns to click through.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookLeavesOrdinarySourceFilesAlone',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old='    return False, ""',
+        new='    return True, ""',
+    ),
+    Falsification(
+        nodeid='tests/testHarnessHookMutationCoverage.py::testSensitiveEditHookEmitsTheAskDecisionPayload',
+        source='.claude/hooks/askSensitiveEdit.py',
+        old='            "permissionDecision": "ask",',
+        new='            "permissionDecision": "allow",',
+    ),
+    Falsification(
+        nodeid='tests/testHarnessHookMutationCoverage.py::testDestructiveGitHookDeniesTheDocumentedCommands',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old=(
+            '    (\n'
+            '        r"\\bgit\\s+rebase\\s+(?:-i\\b|--interactive\\b)",\n'
+            '        "Interactive rebase requires a TTY editor and is not "\n'
+            '        "appropriate in an agent session. Run manually.",\n'
+            '    ),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        # --force-with-lease is the documented escape hatch; denying it
+        # leaves the block with no legitimate way past.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testDestructiveGitHookPermitsForceWithLease',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old='r"\\bgit\\s+push\\s+(?:--force(?!-with-lease)|-f\\b)"',
+        new='r"\\bgit\\s+push\\s+(?:--force|-f\\b)"',
+    ),
+    Falsification(
+        # AGENTS.md calls these "hard-blocked": an ask-decision turns
+        # the block into a prompt an agent can talk its way through.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testDestructiveGitHookEmitsTheDenyDecisionPayload',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old='            "permissionDecision": "deny",',
+        new='            "permissionDecision": "ask",',
+    ),
+    Falsification(
+        # Write recreates a file wholesale; a matcher narrowed to Edit
+        # lets the highest-risk operation past a hook that still looks
+        # installed.
+        nodeid='tests/testHarnessHookMutationCoverage.py::testHookSettingsRegisterBothPreToolUseHooks',
+        source='.claude/settings.json',
+        old='"matcher": "Edit|Write|NotebookEdit",',
+        new='"matcher": "Edit",',
+    ),
+    Falsification(
+        # docs/reproducibility.md: sSourceUrl is inert metadata, never
+        # fetched. It arrives from a project.json the in-container agent
+        # can write, so any dereference is agent-driven SSRF.
+        nodeid='tests/testProvenanceContractMutationCoverage.py::testRemoteSourceUrlIsNeverDereferencedByVaibifySource',
+        source='vaibify/gui/pipelineRunner.py',
+        old='        sSha = dictShaByPath.get(dictRemote.get("sPath", ""))',
+        new=(
+            '        sSha = dictShaByPath.get('
+            'dictRemote.get("sSourceUrl", ""))'
+        ),
+    ),
+    Falsification(
+        # docs/reproducibility.md: vaibify never stores tokens in
+        # environment variables (readable via /proc, docker inspect).
+        nodeid='tests/testProvenanceContractMutationCoverage.py::testCredentialsAreNeverWrittenIntoEnvironmentVariables',
+        source='vaibify/docker/dockerConnection.py',
+        old='            os.environ["DOCKER_HOST"] = sHost',
+        new='            os.environ["GITHUB_TOKEN"] = sHost',
+    ),
+    Falsification(
+        # The guard had zero coverage before this entry: dropping the
+        # call renames the step while its directory, test marker and
+        # manifest rows stay under the old slug.
+        nodeid='tests/testStepRenameCascadeMutationCoverage.py::testGenericStepUpdateRefusesARename',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        _fnRejectContractBreakingUpdates(\n'
+            '            dictWorkflow, iStepIndex, dictUpdates,\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        # Containment instead of equality: "analysis/Corner" would pass
+        # against the slug "CornerPlot".
+        nodeid='tests/testStepRenameCascadeMutationCoverage.py::testGenericStepUpdateRefusesADirectoryOffTheSlug',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='                and posixpath.basename(sDirectory) != sSlug:',
+        new='                and posixpath.basename(sDirectory) not in sSlug:',
+    ),
+    Falsification(
+        # The contract frees the PARENT path; a guard that refuses every
+        # sDirectory edit blocks legitimate reorganisation while looking
+        # like correct enforcement.
+        nodeid='tests/testStepRenameCascadeMutationCoverage.py::testGenericStepUpdateStillMovesTheParentPath',
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        if sDirectory and "{" not in sDirectory \\\n'
+            '                and posixpath.basename(sDirectory) != sSlug:'
+        ),
+        new='        if sDirectory:',
+    ),
 ]
