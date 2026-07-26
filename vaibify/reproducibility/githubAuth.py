@@ -39,6 +39,13 @@ __all__ = [
 
 _PATTERN_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# ``gh_auth`` ignores the secret name entirely — it shells out to
+# ``gh auth token`` — but ``secretManager.fsRetrieveSecret`` validates
+# the name BEFORE dispatching on the method, so an empty name raises
+# and the whole fallback becomes unreachable. This is the slot name
+# ``registryRoutes`` already mounts the same credential under.
+_S_GH_AUTH_SLOT_NAME = "gh_token"
+
 _PATTERN_HTTPS_REMOTE = re.compile(
     r"^https?://[^/]+/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?/?$"
 )
@@ -102,7 +109,7 @@ _S_ASKPASS_BODY_TEMPLATE = (
     "        sToken = ''\n"
     "if not sToken:\n"
     "    try:\n"
-    "        sToken = fsRetrieveSecret('', 'gh_auth') or ''\n"
+    "        sToken = fsRetrieveSecret({sGhAuthNameRepr}, 'gh_auth') or ''\n"
     "    except Exception:\n"
     "        sToken = ''\n"
     "print(sToken)\n"
@@ -117,7 +124,10 @@ def _fsBuildAskpassSource(sKeyringSlot):
     both the username and the password, so a single lookup suffices.
     """
     sShebang = "#!" + sys.executable + "\n"
-    sBody = _S_ASKPASS_BODY_TEMPLATE.format(sSlotRepr=repr(sKeyringSlot))
+    sBody = _S_ASKPASS_BODY_TEMPLATE.format(
+        sSlotRepr=repr(sKeyringSlot),
+        sGhAuthNameRepr=repr(_S_GH_AUTH_SLOT_NAME),
+    )
     return sShebang + sBody
 
 
@@ -136,20 +146,22 @@ def fsResolveToken(sKeyringSlot):
     """Return the GitHub token for sKeyringSlot, or empty on failure.
 
     Tries the namespaced keyring slot first, then ``gh auth token``.
-    Never raises; an empty return value tells the caller auth isn't
-    available so it can surface a clear UI error instead of failing
-    somewhere deep inside git.
+    Never raises — the keyring probe is inside the guarded block
+    because ``fbSecretExists`` validates the slot name and raises on a
+    shape it dislikes. An empty return value tells the caller auth
+    isn't available so it can surface a clear UI error instead of
+    failing somewhere deep inside git.
     """
     from vaibify.config.secretManager import (
         fbSecretExists, fsRetrieveSecret,
     )
-    if sKeyringSlot and fbSecretExists(sKeyringSlot, "keyring"):
-        try:
-            return fsRetrieveSecret(sKeyringSlot, "keyring") or ""
-        except Exception:
-            pass
     try:
-        return fsRetrieveSecret("", "gh_auth") or ""
+        if sKeyringSlot and fbSecretExists(sKeyringSlot, "keyring"):
+            return fsRetrieveSecret(sKeyringSlot, "keyring") or ""
+    except Exception:
+        pass
+    try:
+        return fsRetrieveSecret(_S_GH_AUTH_SLOT_NAME, "gh_auth") or ""
     except Exception:
         return ""
 

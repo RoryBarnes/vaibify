@@ -14,7 +14,15 @@ from pathlib import Path
 
 
 _VALID_METHODS = {"gh_auth", "keyring", "docker_secret"}
-_RE_SECRET_NAME = re.compile(r"^[a-zA-Z0-9_:/-]{1,64}$")
+
+# Long enough for the widest real per-remote slot: "github_token:"
+# (13) + a 39-character GitHub owner + "/" + a 100-character repository
+# name = 153. The old 64-character cap silently rejected ordinary
+# owner/repo pairs.
+_I_MAXIMUM_SECRET_NAME_LENGTH = 160
+_RE_SECRET_NAME = re.compile(
+    r"^[a-zA-Z0-9_:./-]{1," + str(_I_MAXIMUM_SECRET_NAME_LENGTH) + r"}$"
+)
 
 
 def fsRetrieveSecret(sName, sMethod):
@@ -44,21 +52,27 @@ def _fnValidateSecretName(sName):
     Audit M6: ``sName`` flows into ``/run/secrets/{sName}`` (see
     ``_fsRetrieveViaDockerSecret``) and into keyring service names.
     Per-remote keyring slots use ``service:owner/repo`` form (see
-    ``githubAuth.fsKeyringSlotFor``), so ``:`` and ``/`` are
-    valid alphabet members. The path-segment guard below rejects
-    ``..``, empty segments, and leading slashes so a malicious slot
-    name still cannot escape the ``/run/secrets`` directory.
+    ``githubAuth.fsKeyringSlotFor``), so ``:``, ``/`` and ``.`` are
+    valid alphabet members — GitHub owners and repositories may
+    contain dots, and rejecting them here while
+    ``githubAuth._PATTERN_SEGMENT`` accepted them made every dotted
+    repository raise instead of resolving. The path-segment guard
+    below rejects ``.``, ``..``, empty segments, and leading slashes
+    so a malicious slot name still cannot escape the ``/run/secrets``
+    directory.
     """
     if not isinstance(sName, str) or not _RE_SECRET_NAME.match(sName):
         raise ValueError(
-            f"Invalid secret name '{sName}'. "
-            "Must match ^[a-zA-Z0-9_:/-]{1,64}$."
+            f"Invalid secret name '{sName}'. Must match "
+            "^[a-zA-Z0-9_:./-]{1,"
+            f"{_I_MAXIMUM_SECRET_NAME_LENGTH}"
+            "}$."
         )
     listParts = sName.split("/")
-    if "" in listParts or ".." in listParts:
+    if "" in listParts or "." in listParts or ".." in listParts:
         raise ValueError(
-            f"Invalid secret name '{sName}'. "
-            "Path segments must be non-empty and cannot be '..'."
+            f"Invalid secret name '{sName}'. Path segments must be "
+            "non-empty and cannot be '.' or '..'."
         )
 
 

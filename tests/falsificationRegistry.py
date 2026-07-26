@@ -1390,4 +1390,64 @@ def _fdictEntry(sRel):
         old='    sResolved = os.path.realpath(sDirectory)',
         new='    sResolved = os.path.abspath(sDirectory)',
     ),
+    # --- Host GitHub credential resolution (Phase 1, 2026-07-25) ---
+    Falsification(
+        # The empty secret name is rejected by fsRetrieveSecret before
+        # it dispatches on the method, so the gh-auth fallback becomes
+        # dead code and every dashboard push is refused on a host
+        # whose `gh auth login` works.
+        nodeid='tests/testGithubTokenResolution.py::test_resolve_token_reaches_gh_auth_fallback_with_real_validation',
+        source='vaibify/reproducibility/githubAuth.py',
+        old='_S_GH_AUTH_SLOT_NAME = "gh_token"',
+        new='_S_GH_AUTH_SLOT_NAME = ""',
+    ),
+    Falsification(
+        # The same dead fallback embedded in the generated askpass
+        # helper makes host-side git authentication silently anonymous.
+        nodeid='tests/testGithubTokenResolution.py::test_askpass_helper_passes_a_valid_secret_name_to_gh_auth',
+        source='vaibify/reproducibility/githubAuth.py',
+        old='        sGhAuthNameRepr=repr(_S_GH_AUTH_SLOT_NAME),',
+        new='        sGhAuthNameRepr=repr(""),',
+    ),
+    Falsification(
+        # Grading connectivity on the container probe alone reports
+        # "Connected" right before the host-side push is refused.
+        nodeid='tests/testGithubTokenResolution.py::test_github_check_is_not_connected_without_a_host_credential',
+        source='vaibify/gui/syncDispatcher.py',
+        old='        "bConnected": bContainerReaches and bHostCredential,',
+        new='        "bConnected": bContainerReaches,',
+    ),
+    Falsification(
+        # A no-op sweep leaves live tokens readable on disk for months
+        # while reporting success.
+        nodeid='tests/testEphemeralStore.py::test_sweep_removes_stale_credential_files',
+        source='vaibify/config/ephemeralStore.py',
+        old='            os.remove(os.path.join(sRoot, sName))',
+        new='            pass',
+    ),
+    Falsification(
+        # githubAuth._PATTERN_SEGMENT allows dots in owner and repo
+        # names; this alphabet did not, so every dotted repository
+        # raised out of the push route as a bare HTTP 500.
+        nodeid='tests/testGithubTokenResolution.py::test_dotted_repository_slot_passes_real_secret_name_validation',
+        source='vaibify/config/secretManager.py',
+        old='r"^[a-zA-Z0-9_:./-]{1," + str(_I_MAXIMUM_SECRET_NAME_LENGTH) + r"}$"',
+        new='r"^[a-zA-Z0-9_:/-]{1," + str(_I_MAXIMUM_SECRET_NAME_LENGTH) + r"}$"',
+    ),
+    Falsification(
+        # The old 64-character cap was shorter than a real
+        # "github_token:<owner>/<repo>" slot, which runs to 153.
+        nodeid='tests/testGithubTokenResolution.py::test_widest_real_keyring_slot_fits_the_length_cap',
+        source='vaibify/config/secretManager.py',
+        old='_I_MAXIMUM_SECRET_NAME_LENGTH = 160',
+        new='_I_MAXIMUM_SECRET_NAME_LENGTH = 64',
+    ),
+    Falsification(
+        # Widening the alphabet to admit "." must not admit "." as a
+        # path SEGMENT: sName reaches /run/secrets/{sName}.
+        nodeid='tests/testGithubTokenResolution.py::test_widened_alphabet_still_refuses_path_traversal',
+        source='vaibify/config/secretManager.py',
+        old='if "" in listParts or "." in listParts or ".." in listParts:',
+        new='if "" in listParts or ".." in listParts:',
+    ),
 ]
