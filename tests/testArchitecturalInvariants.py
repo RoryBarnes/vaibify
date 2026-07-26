@@ -578,7 +578,12 @@ def _flistScanForTerm(pathRoot, sTerm):
     inline labels are the most likely vehicle for a project-specific
     name to leak into a release build.
     """
-    regexTerm = re.compile(r"\b" + re.escape(sTerm) + r"\b", re.IGNORECASE)
+    # Anchored on a LEADING boundary only. The trailing \b was the
+    # bug: "_" and letters are word characters, so \bgj1132\b never
+    # matched GJ1132_XUV, GJ1132XUV, or KeplerFfdCorner -- i.e. every
+    # form the identifier actually takes in this repository. A leading
+    # boundary still prevents matching inside an unrelated word.
+    regexTerm = re.compile(r"\b" + re.escape(sTerm), re.IGNORECASE)
     listHits = []
     for sGlob in _TUPLE_SCIENCE_SCAN_GLOBS:
         for pathFile in pathRoot.rglob(sGlob):

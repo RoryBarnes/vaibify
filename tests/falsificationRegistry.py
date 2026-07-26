@@ -2009,8 +2009,8 @@ def _fdictEntry(sRel):
         # leaves the block with no legitimate way past.
         nodeid='tests/testHarnessHookMutationCoverage.py::testDestructiveGitHookPermitsForceWithLease',
         source='.claude/hooks/blockDestructiveGit.py',
-        old='r"\\bgit\\s+push\\s+(?:--force(?!-with-lease)|-f\\b)"',
-        new='r"\\bgit\\s+push\\s+(?:--force|-f\\b)"',
+        old=r'(?:--force(?!-with-lease)|-f|\+\S+)(?!\S)',
+        new=r'(?:--force|-f|\+\S+)',
     ),
     Falsification(
         # AGENTS.md calls these "hard-blocked": an ask-decision turns
@@ -2081,5 +2081,26 @@ def _fdictEntry(sRel):
             '                and posixpath.basename(sDirectory) != sSlug:'
         ),
         new='        if sDirectory:',
+    ),
+    Falsification(
+        # git accepts the flag after the remote and refspec, so the
+        # positional pattern never blocked the ordinary invocation.
+        nodeid='tests/testForcePushArgumentOrder.py::testForcePushIsBlockedAnywhereInTheArgumentList',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old=r'r"\bgit\s+push\b[^;&|]*?(?<!\S)"',
+        new=r'r"\bgit\s+push\s+"',
+    ),
+    Falsification(
+        # Two guards protect --force-with-lease and each is
+        # sufficient alone: the (?!-with-lease) lookahead AND the
+        # trailing (?!\S), which fails because a "-" follows --force
+        # in the lease form. Removing either one alone therefore
+        # SURVIVES -- verified, not assumed. The mutation recorded
+        # here removes both, which is the only change that actually
+        # blocks the documented escape hatch.
+        nodeid='tests/testForcePushArgumentOrder.py::testLeaseExemptionSurvivesTheWidenedScan',
+        source='.claude/hooks/blockDestructiveGit.py',
+        old=r'r"(?:--force(?!-with-lease)|-f|\+\S+)(?!\S)",',
+        new=r'r"(?:--force|-f|\+\S+)",',
     ),
 ]

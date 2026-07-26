@@ -35,8 +35,8 @@ __all__ = [
 # split the name on whitespace, uppercase each word's first letter,
 # preserve the rest of the word as typed, concatenate. Hyphens pass
 # through verbatim (astronomical designators like TOI-540 depend on
-# them). "Step Name" -> "StepName"; "GJ 1132 XUV" -> "GJ1132XUV";
-# "TESS Flare Candidates" -> "TESSFlareCandidates". Parent path
+# them). "Step Name" -> "StepName"; "Spectral Line Fit" ->
+# "SpectralLineFit". Parent path
 # components are free; only the final component is governed.
 # ---------------------------------------------------------------------------
 

@@ -578,7 +578,7 @@ def _fsStepDirRepoRel(sDir):
     """Return a step directory as a posix path relative to the project repo.
 
     Accepts container-absolute paths whose prefix matches
-    ``_PROJECT_REPO`` (e.g. ``/workspace/GJ1132_XUV/step1``), legacy
+    ``_PROJECT_REPO`` (e.g. ``/workspace/ProjectRepo/step1``), legacy
     workspace-rooted paths, or already-relative paths. Produces a
     normalized repo-relative posix string so the workflow's
     repo-relative entries and the live ``__file__``-derived directory
