@@ -141,7 +141,7 @@ def fbVerifyTier1(sProjectRepo):
 def _fnReportIncompleteCoverage(sProjectRepo):
     """Print an advisory line when any workflow declares paths the manifest omits.
 
-    Aggregates across every workflow.json under ``.vaibify/workflows/``
+    Aggregates across every project.json under ``.vaibify/workflows/``
     so multi-workflow projects are not silently skipped. The manifest
     is one file pinning artefacts across the whole project repo, so
     the completeness check is project-wide.
@@ -166,7 +166,7 @@ def _fdictAggregateAllWorkflows(sProjectRepo):
     Carries forward the first non-empty ``dictDeterminism`` block so
     Tier 4's determinism check can read it; the project ladders L3 as
     a whole, not per-workflow. Returns ``None`` when no readable
-    workflow.json files exist so the coverage check is skipped rather
+    project.json files exist so the coverage check is skipped rather
     than reported as empty.
     """
     pathWorkflows = Path(sProjectRepo) / ".vaibify" / "workflows"
@@ -197,7 +197,7 @@ def _fdictAggregateAllWorkflows(sProjectRepo):
 
 
 def _fdictLoadWorkflowFile(pathFile):
-    """Parse one workflow.json or return None on read/parse failure."""
+    """Parse one project.json or return None on read/parse failure."""
     try:
         with open(pathFile, "r", encoding="utf-8") as fileHandle:
             return json.load(fileHandle)

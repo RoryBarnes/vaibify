@@ -830,25 +830,94 @@ def _fdictCheckHostKeyring(sTokenName):
     return {"bConnected": False, "sMessage": "Token not found"}
 
 
+_S_GITHUB_REACHABILITY_COMMAND = (
+    "for sDir in /workspace/*/; do "
+    "  if [ -d \"$sDir/.git\" ]; then "
+    "    cd \"$sDir\" && "
+    "    git ls-remote --exit-code origin HEAD "
+    "    >/dev/null 2>&1 && exit 0; "
+    "  fi; "
+    "done; exit 1"
+)
+
+_S_GITHUB_REMOTE_URL_COMMAND = (
+    "for sDir in /workspace/*/; do "
+    "  if [ -d \"$sDir/.git\" ]; then "
+    "    cd \"$sDir\" && git remote get-url origin && exit 0; "
+    "  fi; "
+    "done; exit 1"
+)
+
+_S_HOST_CREDENTIAL_MISSING_MESSAGE = (
+    "Container reaches GitHub, but this host cannot resolve a GitHub "
+    "credential, so a push from the dashboard will be refused. Run "
+    "'gh auth login' or store a per-repository token in Settings."
+)
+
+
 def _fdictCheckGithub(connectionDocker, sContainerId):
-    """Check GitHub connectivity by testing a git remote."""
-    sTestCommand = (
-        "for sDir in /workspace/*/; do "
-        "  if [ -d \"$sDir/.git\" ]; then "
-        "    cd \"$sDir\" && "
-        "    git ls-remote --exit-code origin HEAD "
-        "    >/dev/null 2>&1 && exit 0; "
-        "  fi; "
-        "done; exit 1"
-    )
+    """Report GitHub readiness for both lanes a dashboard push depends on.
+
+    The container lane answers "can the container reach the remote".
+    The host lane answers "can this process resolve the credential the
+    dashboard's own push will use" — the push runs on the host, not in
+    the container. The two fail independently, so probing only the
+    container reports Connected while every UI push is refused. Both
+    are probed and both are reported.
+    """
     iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sTestCommand
+        sContainerId, _S_GITHUB_REACHABILITY_COMMAND,
     )
-    if iExitCode == 0:
-        return {"bConnected": True, "sMessage": "Connected"}
+    bContainerReaches = iExitCode == 0
+    bHostCredential = _fbHostGithubCredentialAvailable(
+        _fsReadGithubRemoteUrl(connectionDocker, sContainerId),
+    )
+    return _fdictDescribeGithubConnectivity(
+        bContainerReaches, bHostCredential,
+    )
+
+
+def _fsReadGithubRemoteUrl(connectionDocker, sContainerId):
+    """Return the origin URL of the first git repo under /workspace."""
+    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, _S_GITHUB_REMOTE_URL_COMMAND,
+    )
+    if iExitCode != 0:
+        return ""
+    return (sOutput or "").strip().split("\n")[-1].strip()
+
+
+def _fbHostGithubCredentialAvailable(sRemoteUrl):
+    """Return True when the host resolves the token the push will use.
+
+    Exercises exactly the resolution the push route performs — the
+    per-repository keyring slot with a ``gh auth token`` fallback — so
+    the dashboard cannot report Connected while the push is refused.
+    An unparseable remote yields an empty slot, which still exercises
+    the fallback.
+    """
+    from vaibify.reproducibility.githubAuth import (
+        fsKeyringSlotFromRemoteUrl, fsResolveToken,
+    )
+    try:
+        return bool(fsResolveToken(fsKeyringSlotFromRemoteUrl(sRemoteUrl)))
+    except Exception:
+        return False
+
+
+def _fdictDescribeGithubConnectivity(bContainerReaches, bHostCredential):
+    """Build the connectivity payload naming whichever lane failed."""
+    if not bContainerReaches:
+        sMessage = "Cannot reach GitHub from container"
+    elif not bHostCredential:
+        sMessage = _S_HOST_CREDENTIAL_MISSING_MESSAGE
+    else:
+        sMessage = "Connected"
     return {
-        "bConnected": False,
-        "sMessage": "Cannot reach GitHub from container",
+        "bConnected": bContainerReaches and bHostCredential,
+        "bContainerReachesGithub": bContainerReaches,
+        "bHostCredentialAvailable": bHostCredential,
+        "sMessage": sMessage,
     }
 
 

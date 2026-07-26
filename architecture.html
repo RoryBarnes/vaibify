@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev557 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev587 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=12946ea6"></script>
+      <script src="_static/documentation_options.js?v=ae897711"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -60,6 +60,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#mental-model">Mental model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-happy-path">The happy path</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#file-status-polling">File-status polling</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-poll-s-freshness-stamp-and-why-it-ships-no-store">The poll’s freshness stamp, and why it ships <code class="docutils literal notranslate"><span class="pre">no-store</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#architectural-decisions-with-tradeoffs">Architectural decisions with tradeoffs</a></li>
@@ -70,6 +71,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#claim-arbitration">Claim arbitration</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-one-live-pipeline-connection-invariant">The one-live-pipeline-connection invariant</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-shared-authorization-guard">The shared authorization guard</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#bagentsafe-is-enforced-not-advertised"><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-four-release-triggers">The four release triggers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#idle-self-shutdown">Idle self-shutdown</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#pid-reuse-proof-staleness">PID-reuse-proof staleness</a></li>
@@ -196,7 +198,7 @@ list treats dashboard honesty as a hard invariant.</p>
 <p>The most concrete way to understand how vaibify verifies a project is to watch what happens
 when a researcher clicks <strong>Run All</strong> in the browser.</p>
 <ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">PipeleyenPipelineRunner.fnRunAll()</span></code> fires in <code class="docutils literal notranslate"><span class="pre">scriptPipelineRunner.js</span></code>.
+<li><p><code class="docutils literal notranslate"><span class="pre">VaibifyPipelineRunner.fnRunAll()</span></code> fires in <code class="docutils literal notranslate"><span class="pre">scriptPipelineRunner.js</span></code>.
 The click was registered by the delegated handlers in
 <code class="docutils literal notranslate"><span class="pre">scriptEventBindings.js</span></code> and dispatched through <code class="docutils literal notranslate"><span class="pre">scriptApplication.js</span></code>.</p></li>
 <li><p>The runner sends a single WebSocket message through <code class="docutils literal notranslate"><span class="pre">VaibifyWebSocket</span></code>,
@@ -214,7 +216,7 @@ pause and wait for the researcher via the protocol in
 <code class="docutils literal notranslate"><span class="pre">interactiveSteps.py</span></code>.</p></li>
 <li><p>The frontend dispatches these events through <code class="docutils literal notranslate"><span class="pre">VaibifyWebSocket</span></code> to
 handlers registered by <code class="docutils literal notranslate"><span class="pre">scriptPipelineRunner.js</span></code>. Each handler
-updates the step’s status via <code class="docutils literal notranslate"><span class="pre">PipeleyenApp.fnSetStepStatus()</span></code> and
+updates the step’s status via <code class="docutils literal notranslate"><span class="pre">VaibifyApp.fnSetStepStatus()</span></code> and
 requests a render.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">fnRenderStepList()</span></code> is debounced with <code class="docutils literal notranslate"><span class="pre">requestAnimationFrame</span></code>, so
 a burst of events from a fast step coalesces into one DOM rebuild.
@@ -225,15 +227,15 @@ event. The next file-status poll (below) detects any new or modified
 output files and degrades stale verifications.</p></li>
 </ol>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">User</span> <span class="n">clicks</span> <span class="s2">&quot;Run All&quot;</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenPipelineRunner</span><span class="o">.</span><span class="n">fnRunAll</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyPipelineRunner</span><span class="o">.</span><span class="n">fnRunAll</span><span class="p">()</span>
   <span class="o">-&gt;</span> <span class="n">VaibifyWebSocket</span><span class="o">.</span><span class="n">fnSend</span><span class="p">({</span><span class="n">sAction</span><span class="p">:</span> <span class="s2">&quot;runAll&quot;</span><span class="p">})</span>
   <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineServer</span> <span class="n">WebSocket</span> <span class="n">handler</span>
   <span class="o">-&gt;</span> <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">fnRunAllSteps</span><span class="p">()</span>
   <span class="o">-&gt;</span> <span class="n">For</span> <span class="n">each</span> <span class="n">step</span><span class="p">:</span> <span class="n">backend</span> <span class="n">emits</span> <span class="n">stepStarted</span><span class="p">,</span> <span class="n">output</span><span class="p">,</span> <span class="n">stepPass</span> <span class="ow">or</span>
      <span class="n">stepFail</span> <span class="n">via</span> <span class="n">WebSocket</span>
   <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">VaibifyWebSocket</span> <span class="n">dispatches</span> <span class="n">to</span> <span class="n">registered</span> <span class="n">handlers</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenPipelineRunner</span><span class="o">.</span><span class="n">fnHandlePipelineEvent</span><span class="p">()</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnSetStepStatus</span><span class="p">()</span> <span class="o">+</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyPipelineRunner</span><span class="o">.</span><span class="n">fnHandlePipelineEvent</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyApp</span><span class="o">.</span><span class="n">fnSetStepStatus</span><span class="p">()</span> <span class="o">+</span> <span class="n">VaibifyApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span>
   <span class="o">-&gt;</span> <span class="n">VaibifyStepRenderer</span><span class="o">.</span><span class="n">fsRenderStepItem</span><span class="p">()</span> <span class="n">generates</span> <span class="n">HTML</span>
   <span class="o">-&gt;</span> <span class="n">DOM</span> <span class="n">updated</span> <span class="p">(</span><span class="n">debounced</span><span class="p">)</span>
 </pre></div>
@@ -255,9 +257,9 @@ about.</p>
   <span class="o">-&gt;</span> <span class="n">fileStatusManager</span><span class="p">:</span> <span class="n">compute</span> <span class="n">mtimes</span><span class="p">,</span> <span class="n">detect</span> <span class="n">changes</span><span class="p">,</span> <span class="n">check</span> <span class="n">stale</span>
      <span class="n">verifications</span>
   <span class="o">-&gt;</span> <span class="n">Response</span><span class="p">:</span> <span class="p">{</span><span class="n">dictModTimes</span><span class="p">,</span> <span class="n">dictInvalidatedSteps</span><span class="p">,</span> <span class="n">dictTestMarkers</span><span class="p">,</span> <span class="o">...</span><span class="p">}</span>
-  <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnProcessFileStatusResponse</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">VaibifyApp</span><span class="o">.</span><span class="n">fnProcessFileStatusResponse</span><span class="p">()</span>
   <span class="o">-&gt;</span> <span class="n">Updates</span> <span class="n">caches</span><span class="p">,</span> <span class="n">applies</span> <span class="n">invalidations</span><span class="p">,</span> <span class="n">applies</span> <span class="n">test</span> <span class="n">markers</span>
-  <span class="o">-&gt;</span> <span class="n">PipeleyenApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span> <span class="p">(</span><span class="n">debounced</span><span class="p">,</span> <span class="n">cascading</span> <span class="n">updates</span>
+  <span class="o">-&gt;</span> <span class="n">VaibifyApp</span><span class="o">.</span><span class="n">fnRenderStepList</span><span class="p">()</span> <span class="p">(</span><span class="n">debounced</span><span class="p">,</span> <span class="n">cascading</span> <span class="n">updates</span>
      <span class="n">coalesce</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -316,6 +318,33 @@ the next successful poll sees. Do not extend them into result
 caching: that would re-introduce the stale-dashboard failure mode
 the <span class="xref myst">AGENTS.md</span> “do not suppress or misrepresent
 state” trap warns about.</p>
+</section>
+<section id="the-poll-s-freshness-stamp-and-why-it-ships-no-store">
+<h3>The poll’s freshness stamp, and why it ships <code class="docutils literal notranslate"><span class="pre">no-store</span></code><a class="headerlink" href="#the-poll-s-freshness-stamp-and-why-it-ships-no-store" title="Link to this heading"></a></h3>
+<p>The file-status response carries an <code class="docutils literal notranslate"><span class="pre">ETag</span></code> so a client that echoes it
+in <code class="docutils literal notranslate"><span class="pre">If-None-Match</span></code> gets a <code class="docutils literal notranslate"><span class="pre">304</span></code> instead of a payload that can reach
+500 KB on a large project. That optimization has one failure mode,
+and the repository shipped it: the stamp was assembled from a
+hand-maintained list of signals, so every field added to the payload
+afterwards fell outside it. Two responses differing only in
+<code class="docutils literal notranslate"><span class="pre">dictRunState</span></code> — an agent-dispatched run starting, say — hashed
+identically, and a client holding the stale body could not tell.</p>
+<p>Two changes make the stamp honest, and both are load-bearing:</p>
+<ul class="simple">
+<li><p>The stamp is derived from the <strong>whole serialized payload</strong> minus an
+explicit volatile-key set, so a field added tomorrow is covered the
+moment it exists. A hand-maintained signal list is exactly the
+artifact that drifts.</p></li>
+<li><p>The response carries <code class="docutils literal notranslate"><span class="pre">Cache-Control:</span> <span class="pre">no-store</span></code>
+(<code class="docutils literal notranslate"><span class="pre">S_FILE_STATUS_CACHE_CONTROL</span></code>). Without it, a <code class="docutils literal notranslate"><span class="pre">200</span></code> bearing an
+<code class="docutils literal notranslate"><span class="pre">ETag</span></code> and no freshness directive is heuristically cacheable: the
+browser may revalidate on its own and hand the JavaScript a cached
+body it never re-downloaded. The frontend manages no ETags itself,
+so that revalidation would be invisible to it.</p></li>
+</ul>
+<p>The stamp is the correctness fix; <code class="docutils literal notranslate"><span class="pre">no-store</span></code> is the belt-and-braces
+guarantee that no private cache can serve a stale dashboard behind a
+revalidation the application cannot observe.</p>
 </section>
 </section>
 <section id="architectural-decisions-with-tradeoffs">
@@ -647,6 +676,35 @@ a multi-container hub cannot authenticate against another. The REST
 <code class="docutils literal notranslate"><span class="pre">SessionTokenMiddleware</span></code> enforces the same per-container scoping by
 matching the presented token against the owner of the container id named
 in the request path; a request that names no container fails closed.</p>
+</section>
+<section id="bagentsafe-is-enforced-not-advertised">
+<h3><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised<a class="headerlink" href="#bagentsafe-is-enforced-not-advertised" title="Link to this heading"></a></h3>
+<p>Authorizing the agent lane answers <em>which container</em> an agent may act
+on. It does not answer <em>what it may do there</em>, and for a long time
+nothing did. <code class="docutils literal notranslate"><span class="pre">fnAgentAction</span></code> attaches a name to a handler and changes
+no behaviour; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was consumed only by <code class="docutils literal notranslate"><span class="pre">docker/vaibifyDo.py</span></code>
+<strong>inside</strong> the container, which an agent bypasses with <code class="docutils literal notranslate"><span class="pre">curl</span></code>. Every
+route the catalog marked researcher-only — <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>,
+<code class="docutils literal notranslate"><span class="pre">delete-step</span></code>, <code class="docutils literal notranslate"><span class="pre">declare-determinism</span></code>, <code class="docutils literal notranslate"><span class="pre">supervision/configure</span></code>,
+<code class="docutils literal notranslate"><span class="pre">publish-to-zenodo</span></code> — was reachable by a compromised agent on its own
+container. The exclusion set’s own rationale, that “the supervised
+party must never switch its own supervision on or off”, was false.</p>
+<p><code class="docutils literal notranslate"><span class="pre">SessionTokenMiddleware</span></code> now resolves each request to its <strong>route
+template</strong> (via the router’s own matcher, so it cannot disagree with
+dispatch) and refuses the agent lane for any route whose catalog
+entries are all <code class="docutils literal notranslate"><span class="pre">bAgentSafe:</span> <span class="pre">False</span></code>, for anything in
+<code class="docutils literal notranslate"><span class="pre">SET_INTENTIONALLY_EXCLUDED_PATHS</span></code>, and — <strong>failing closed</strong> — for any
+state-mutating route carrying no catalog entry at all. Adding a route
+and forgetting to register it now denies the agent rather than
+silently admitting it.</p>
+<p>Two limits are worth stating rather than discovering. The gate is
+HTTP-only: <code class="docutils literal notranslate"><span class="pre">BaseHTTPMiddleware</span></code> never sees a <code class="docutils literal notranslate"><span class="pre">websocket</span></code> scope, so
+WebSocket actions are outside it — every WS catalog entry is
+agent-safe today and <code class="docutils literal notranslate"><span class="pre">testEveryWebSocketActionIsAgentSafe</span></code> fails CI if
+a user-only one appears, but that is a tripwire, not enforcement. And
+routes that read host state need their own refusal at the handler
+(<code class="docutils literal notranslate"><span class="pre">_fnRejectAgentTokenLane</span></code>), because a host-file read is a capability
+question the catalog alone cannot express.</p>
 </section>
 <section id="the-four-release-triggers">
 <h3>The four release triggers<a class="headerlink" href="#the-four-release-triggers" title="Link to this heading"></a></h3>
@@ -993,10 +1051,16 @@ model ID + date range; open-weights models add weights source and
 revision hash; undeclared is the criterion’s only failing state and
 gates L2) <strong>→ recorded</strong> (the opt-in Prompt Record is enabled and
 its first capture reviewed) <strong>→ supervised</strong> (the attribution
-watchdog is on: every detected repo change during a watched interval
-must attribute to a recorded action channel — pipeline dispatch,
-editor save, context write, open terminal session — within a
-60-second window; unattributed changes and manifest drift across hub
+watchdog is on: every detected change to a <strong>declared</strong> path during a
+watched interval — the outputs, scripts, markers, test sources,
+inputs and binaries the poll already stats, not the whole repository
+— must attribute to a recorded action channel: pipeline dispatch,
+editor save, context write, or an open terminal session, the last
+treated as an interval rather than an instant so ordinary work
+mid-session does not read as unattributed. Attribution is judged
+against the change’s own mtime, within a 60-second window bounded at
+both ends, so a future-dated event cannot vouch for everything that
+follows it. Unattributed changes and manifest drift across hub
 downtime become permanent, hash-chained flags that
 <code class="docutils literal notranslate"><span class="pre">gui/attributionLog.py</span></code> never removes. Granularity is the window and
 the channel, not the file path, and terminal <em>content</em> is not yet
@@ -1104,7 +1168,7 @@ as a single cohesive module; see the technical-debt list below.</p>
 <section id="core-application">
 <h3>Core application<a class="headerlink" href="#core-application" title="Link to this heading"></a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">scriptApplication.js</span></code> — <code class="docutils literal notranslate"><span class="pre">PipeleyenApp</span></code>: application state,
+<li><p><code class="docutils literal notranslate"><span class="pre">scriptApplication.js</span></code> — <code class="docutils literal notranslate"><span class="pre">VaibifyApp</span></code>: application state,
 initialization, rendering orchestration. Exposes the public API that
 other modules call.</p></li>
 </ul>

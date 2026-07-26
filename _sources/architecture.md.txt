@@ -69,7 +69,7 @@ list treats dashboard honesty as a hard invariant.
 The most concrete way to understand how vaibify verifies a project is to watch what happens
 when a researcher clicks **Run All** in the browser.
 
-1. `PipeleyenPipelineRunner.fnRunAll()` fires in `scriptPipelineRunner.js`.
+1. `VaibifyPipelineRunner.fnRunAll()` fires in `scriptPipelineRunner.js`.
    The click was registered by the delegated handlers in
    `scriptEventBindings.js` and dispatched through `scriptApplication.js`.
 
@@ -91,7 +91,7 @@ when a researcher clicks **Run All** in the browser.
 
 5. The frontend dispatches these events through `VaibifyWebSocket` to
    handlers registered by `scriptPipelineRunner.js`. Each handler
-   updates the step's status via `PipeleyenApp.fnSetStepStatus()` and
+   updates the step's status via `VaibifyApp.fnSetStepStatus()` and
    requests a render.
 
 6. `fnRenderStepList()` is debounced with `requestAnimationFrame`, so
@@ -105,15 +105,15 @@ when a researcher clicks **Run All** in the browser.
 
 ```
 User clicks "Run All"
-  -> PipeleyenPipelineRunner.fnRunAll()
+  -> VaibifyPipelineRunner.fnRunAll()
   -> VaibifyWebSocket.fnSend({sAction: "runAll"})
   -> Backend: pipelineServer WebSocket handler
   -> pipelineRunner.fnRunAllSteps()
   -> For each step: backend emits stepStarted, output, stepPass or
      stepFail via WebSocket
   -> Frontend: VaibifyWebSocket dispatches to registered handlers
-  -> PipeleyenPipelineRunner.fnHandlePipelineEvent()
-  -> PipeleyenApp.fnSetStepStatus() + PipeleyenApp.fnRenderStepList()
+  -> VaibifyPipelineRunner.fnHandlePipelineEvent()
+  -> VaibifyApp.fnSetStepStatus() + VaibifyApp.fnRenderStepList()
   -> VaibifyStepRenderer.fsRenderStepItem() generates HTML
   -> DOM updated (debounced)
 ```
@@ -138,9 +138,9 @@ Every 5 seconds (VaibifyPolling):
   -> fileStatusManager: compute mtimes, detect changes, check stale
      verifications
   -> Response: {dictModTimes, dictInvalidatedSteps, dictTestMarkers, ...}
-  -> Frontend: PipeleyenApp.fnProcessFileStatusResponse()
+  -> Frontend: VaibifyApp.fnProcessFileStatusResponse()
   -> Updates caches, applies invalidations, applies test markers
-  -> PipeleyenApp.fnRenderStepList() (debounced, cascading updates
+  -> VaibifyApp.fnRenderStepList() (debounced, cascading updates
      coalesce)
 ```
 
@@ -204,6 +204,34 @@ the next successful poll sees. Do not extend them into result
 caching: that would re-introduce the stale-dashboard failure mode
 the [AGENTS.md](../AGENTS.md) "do not suppress or misrepresent
 state" trap warns about.
+
+### The poll's freshness stamp, and why it ships `no-store`
+
+The file-status response carries an `ETag` so a client that echoes it
+in `If-None-Match` gets a `304` instead of a payload that can reach
+500 KB on a large project. That optimization has one failure mode,
+and the repository shipped it: the stamp was assembled from a
+hand-maintained list of signals, so every field added to the payload
+afterwards fell outside it. Two responses differing only in
+`dictRunState` — an agent-dispatched run starting, say — hashed
+identically, and a client holding the stale body could not tell.
+
+Two changes make the stamp honest, and both are load-bearing:
+
+- The stamp is derived from the **whole serialized payload** minus an
+  explicit volatile-key set, so a field added tomorrow is covered the
+  moment it exists. A hand-maintained signal list is exactly the
+  artifact that drifts.
+- The response carries `Cache-Control: no-store`
+  (`S_FILE_STATUS_CACHE_CONTROL`). Without it, a `200` bearing an
+  `ETag` and no freshness directive is heuristically cacheable: the
+  browser may revalidate on its own and hand the JavaScript a cached
+  body it never re-downloaded. The frontend manages no ETags itself,
+  so that revalidation would be invisible to it.
+
+The stamp is the correctness fix; `no-store` is the belt-and-braces
+guarantee that no private cache can serve a stale dashboard behind a
+revalidation the application cannot observe.
 
 ## Architectural decisions with tradeoffs
 
@@ -525,6 +553,37 @@ a multi-container hub cannot authenticate against another. The REST
 `SessionTokenMiddleware` enforces the same per-container scoping by
 matching the presented token against the owner of the container id named
 in the request path; a request that names no container fails closed.
+
+### `bAgentSafe` is enforced, not advertised
+
+Authorizing the agent lane answers *which container* an agent may act
+on. It does not answer *what it may do there*, and for a long time
+nothing did. `fnAgentAction` attaches a name to a handler and changes
+no behaviour; `bAgentSafe` was consumed only by `docker/vaibifyDo.py`
+**inside** the container, which an agent bypasses with `curl`. Every
+route the catalog marked researcher-only — `clean-outputs`,
+`delete-step`, `declare-determinism`, `supervision/configure`,
+`publish-to-zenodo` — was reachable by a compromised agent on its own
+container. The exclusion set's own rationale, that "the supervised
+party must never switch its own supervision on or off", was false.
+
+`SessionTokenMiddleware` now resolves each request to its **route
+template** (via the router's own matcher, so it cannot disagree with
+dispatch) and refuses the agent lane for any route whose catalog
+entries are all `bAgentSafe: False`, for anything in
+`SET_INTENTIONALLY_EXCLUDED_PATHS`, and — **failing closed** — for any
+state-mutating route carrying no catalog entry at all. Adding a route
+and forgetting to register it now denies the agent rather than
+silently admitting it.
+
+Two limits are worth stating rather than discovering. The gate is
+HTTP-only: `BaseHTTPMiddleware` never sees a `websocket` scope, so
+WebSocket actions are outside it — every WS catalog entry is
+agent-safe today and `testEveryWebSocketActionIsAgentSafe` fails CI if
+a user-only one appears, but that is a tripwire, not enforcement. And
+routes that read host state need their own refusal at the handler
+(`_fnRejectAgentTokenLane`), because a host-file read is a capability
+question the catalog alone cannot express.
 
 ### The four release triggers
 
@@ -872,10 +931,16 @@ model ID + date range; open-weights models add weights source and
 revision hash; undeclared is the criterion's only failing state and
 gates L2) **→ recorded** (the opt-in Prompt Record is enabled and
 its first capture reviewed) **→ supervised** (the attribution
-watchdog is on: every detected repo change during a watched interval
-must attribute to a recorded action channel — pipeline dispatch,
-editor save, context write, open terminal session — within a
-60-second window; unattributed changes and manifest drift across hub
+watchdog is on: every detected change to a **declared** path during a
+watched interval — the outputs, scripts, markers, test sources,
+inputs and binaries the poll already stats, not the whole repository
+— must attribute to a recorded action channel: pipeline dispatch,
+editor save, context write, or an open terminal session, the last
+treated as an interval rather than an instant so ordinary work
+mid-session does not read as unattributed. Attribution is judged
+against the change's own mtime, within a 60-second window bounded at
+both ends, so a future-dated event cannot vouch for everything that
+follows it. Unattributed changes and manifest drift across hub
 downtime become permanent, hash-chained flags that
 `gui/attributionLog.py` never removes. Granularity is the window and
 the channel, not the file path, and terminal *content* is not yet
@@ -986,7 +1051,7 @@ as a single cohesive module; see the technical-debt list below.
 
 ### Core application
 
-- `scriptApplication.js` — `PipeleyenApp`: application state,
+- `scriptApplication.js` — `VaibifyApp`: application state,
   initialization, rendering orchestration. Exposes the public API that
   other modules call.
 
