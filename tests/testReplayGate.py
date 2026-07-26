@@ -146,6 +146,7 @@ def _fdictCleanEvidence(**dictOverrides):
         "bFlagChainIntact": True,
         "bEventChainIntact": True,
         "bPersistedFlagCountMatches": True,
+        "bHostAnchorConsistent": True,
     }
     dictEvidence.update(dictOverrides)
     return dictEvidence

@@ -142,8 +142,8 @@ class _StubDockerConnection:
 
 def test_capture_records_workspace_prompt_hash(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
-        lambda sContainerId: True,
+        "vaibify.docker.containerManager.ftProbeNetworkIsolation",
+        lambda sContainerId: (True, True),
     )
     baPrompt = b"# workspace prompt\n"
     dictStamp = fdictCaptureAiProvenanceStamp(
@@ -159,8 +159,8 @@ def test_capture_records_workspace_prompt_hash(tmp_path, monkeypatch):
 
 def test_capture_survives_unreachable_container(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
-        lambda sContainerId: False,
+        "vaibify.docker.containerManager.ftProbeNetworkIsolation",
+        lambda sContainerId: (True, False),
     )
 
     class _BrokenConnection:
@@ -173,3 +173,29 @@ def test_capture_survives_unreachable_container(tmp_path, monkeypatch):
     )
     assert dictStamp["sWorkspacePromptSha256"] == ""
     assert dictStamp["bNetworkIsolatedAtCapture"] is False
+
+
+@pytest.mark.falsification
+def test_unanswerable_isolation_probe_is_recorded_as_unknown(
+    tmp_path, monkeypatch,
+):
+    """A probe that could not answer must not assert "not isolated".
+
+    bNetworkIsolatedAtCapture is evidence folded into the L3
+    attestation. fbContainerIsNetworkIsolated fails OPEN (False) by
+    design, because the gating routes want a decision; recording that
+    same False here would turn "docker inspect could not answer" into
+    the asserted fact "this container had network access".
+
+    Kills: in aiProvenanceCapture.fdictCaptureAiProvenanceStamp,
+    replace ``bIsolated if bAnswered else None`` with ``bIsolated``.
+    """
+    monkeypatch.setattr(
+        "vaibify.docker.containerManager.ftProbeNetworkIsolation",
+        lambda sContainerId: (False, False),
+    )
+    dictStamp = fdictCaptureAiProvenanceStamp(
+        _fdictWorkflowWithOneModel(), str(tmp_path), "cid",
+        _StubDockerConnection(b""),
+    )
+    assert dictStamp["bNetworkIsolatedAtCapture"] is None

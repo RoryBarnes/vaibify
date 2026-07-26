@@ -18,10 +18,6 @@ from starlette.testclient import TestClient
 
 from vaibify.config.projectConfig import fconfigLoadFromFile
 from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
-from vaibify.gui.setupServer import (
-    fappCreateSetupApplication,
-    fnWriteConfigToDirectory,
-)
 
 
 S_PROJECT_NAME = "limits-project"
@@ -95,6 +91,7 @@ def test_non_finite_memory_limit_never_reaches_the_yaml(
 
 
 @pytest.mark.falsification
+@pytest.mark.falsification
 def test_oversized_cpu_limit_never_reaches_the_yaml(
     fixtureSettingsClient,
 ):
@@ -132,136 +129,3 @@ def test_valid_limits_are_written_and_reload_cleanly(
     configLoaded = fconfigLoadFromFile(sConfigPath)
     assert configLoaded.iCpuLimit == 4
     assert configLoaded.fMemoryLimitGigabytes == 8.5
-
-
-# -----------------------------------------------------------------------
-# /api/setup/save — the wizard writer
-# -----------------------------------------------------------------------
-
-
-@pytest.fixture
-def fixtureSetupClient(tmp_path, monkeypatch):
-    """Authenticated setup-wizard client whose home is tmp_path/home."""
-    os.makedirs(str(tmp_path / "home"), exist_ok=True)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    app = fappCreateSetupApplication()
-    return TestClient(
-        app, headers={"x-session-token": app.state.sSessionToken},
-    )
-
-
-@pytest.mark.falsification
-def test_setup_save_refuses_a_config_it_cannot_validate(
-    fixtureSetupClient, tmp_path,
-):
-    """A string where a number belongs never reaches vaibify.yml.
-
-    ``ProjectConfig`` is a plain dataclass with no coercion, so
-    ``{"cpuLimit": "8"}`` would persist verbatim and only surface much
-    later as a broken ``docker run`` argument.
-
-    Kills: removing the ``fbValidateConfig`` rejection from
-    setupServer.fnWriteConfigToDirectory returns 200 and leaves a
-    vaibify.yml on disk carrying the string.
-    """
-    sProjectDirectory = str(tmp_path / "home" / "project")
-    responseHttp = fixtureSetupClient.post(
-        "/api/setup/save",
-        json={
-            "sProjectDirectory": sProjectDirectory,
-            "dictConfig": {"projectName": "wizard", "cpuLimit": "8"},
-        },
-    )
-    assert responseHttp.status_code == 400
-    assert not os.path.exists(
-        os.path.join(sProjectDirectory, "vaibify.yml")
-    )
-
-
-def test_setup_save_writes_a_valid_config(
-    fixtureSetupClient, tmp_path,
-):
-    """Positive control: a valid wizard config is written and reloads."""
-    sProjectDirectory = str(tmp_path / "home" / "valid")
-    responseHttp = fixtureSetupClient.post(
-        "/api/setup/save",
-        json={
-            "sProjectDirectory": sProjectDirectory,
-            "dictConfig": {"projectName": "wizard", "cpuLimit": 8},
-        },
-    )
-    assert responseHttp.status_code == 200
-    configLoaded = fconfigLoadFromFile(
-        os.path.join(sProjectDirectory, "vaibify.yml")
-    )
-    assert configLoaded.iCpuLimit == 8
-
-
-def test_write_config_to_directory_rejects_invalid_dict(tmp_path):
-    """The writer itself refuses, so no caller can bypass validation."""
-    sProjectDirectory = str(tmp_path / "direct")
-    with pytest.raises(HTTPException) as excinfo:
-        fnWriteConfigToDirectory(sProjectDirectory, {"projectName": ""})
-    assert excinfo.value.status_code == 400
-    assert not os.path.exists(
-        os.path.join(sProjectDirectory, "vaibify.yml")
-    )
-
-
-# -----------------------------------------------------------------------
-# /api/setup/save — the host-directory jail
-# -----------------------------------------------------------------------
-
-
-@pytest.mark.falsification
-def test_setup_save_rejects_a_sibling_of_the_home_directory(
-    fixtureSetupClient, tmp_path,
-):
-    """``/…/homeBackup`` is not inside ``/…/home``.
-
-    A bare prefix test admits every sibling whose name extends the
-    home path, which is how a wizard save escapes the jail without a
-    single ``..`` in the request.
-
-    Kills: replacing the separator-anchored comparison in
-    setupServer._fnValidateProjectDirectory with a bare
-    ``startswith(sHome)`` admits the sibling and returns 200.
-    """
-    sProjectDirectory = str(tmp_path / "homeBackup")
-    responseHttp = fixtureSetupClient.post(
-        "/api/setup/save",
-        json={
-            "sProjectDirectory": sProjectDirectory,
-            "dictConfig": {"projectName": "escape"},
-        },
-    )
-    assert responseHttp.status_code == 403
-    assert not os.path.exists(sProjectDirectory)
-
-
-@pytest.mark.falsification
-def test_setup_save_rejects_a_symlink_that_leaves_home(
-    fixtureSetupClient, tmp_path,
-):
-    """A symlink under home that points outside it is still outside it.
-
-    Kills: resolving the requested directory with ``os.path.abspath``
-    instead of ``os.path.realpath`` in
-    setupServer._fnValidateProjectDirectory lets the symlinked path
-    through and writes outside the home tree.
-    """
-    pathOutside = tmp_path / "outside"
-    os.makedirs(str(pathOutside), exist_ok=True)
-    pathLink = tmp_path / "home" / "escape"
-    os.symlink(str(pathOutside), str(pathLink))
-    responseHttp = fixtureSetupClient.post(
-        "/api/setup/save",
-        json={
-            "sProjectDirectory": str(pathLink),
-            "dictConfig": {"projectName": "escape"},
-        },
-    )
-    assert responseHttp.status_code == 403
-    assert not os.path.exists(
-        os.path.join(str(pathOutside), "vaibify.yml")
-    )

@@ -157,6 +157,7 @@ def fbSupervisionClean(dictWorkflow, dictEvidence=None):
         dictEvidence.get("bFlagChainIntact") is True
         and dictEvidence.get("bEventChainIntact") is True
         and dictEvidence.get("bPersistedFlagCountMatches") is True
+        and dictEvidence.get("bHostAnchorConsistent") is True
     )
 
 

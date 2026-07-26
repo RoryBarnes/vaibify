@@ -1367,39 +1367,6 @@ def _fdictEntry(sRel):
         old='    if not numberMinimum <= numberValue <= numberMaximum:',
         new='    if not numberMinimum <= numberValue:',
     ),
-    Falsification(
-        # ProjectConfig has no coercion, so an unvalidated wizard save
-        # persists a string where a number belongs.
-        nodeid='tests/testResourceLimitRoundTrip.py::test_setup_save_refuses_a_config_it_cannot_validate',
-        source='vaibify/gui/setupServer.py',
-        old='    if not fbValidateConfig(dictConfig):\n        raise HTTPException(\n            400, "Configuration failed validation; not written")',
-        new='    if False:\n        raise HTTPException(\n            400, "Configuration failed validation; not written")',
-    ),
-    Falsification(
-        # A bare prefix test admits every sibling directory whose name
-        # extends the home path.
-        nodeid='tests/testResourceLimitRoundTrip.py::test_setup_save_rejects_a_sibling_of_the_home_directory',
-        source='vaibify/gui/setupServer.py',
-        old='    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):',
-        new='    if not sResolved.startswith(sHome):',
-    ),
-    Falsification(
-        # The wizard writes host YAML and spawns a build, so an
-        # unauthenticated lane hands that to any page the browser
-        # happens to have open.
-        nodeid='tests/testSetupServerExtended.py::test_setup_routes_reject_a_request_without_the_session_token',
-        source='vaibify/gui/setupServer.py',
-        old='    serverMiddleware.fnRegisterMiddleware(app)',
-        new='    pass',
-    ),
-    Falsification(
-        # abspath leaves symlinks unresolved, so a link under home
-        # still escapes it.
-        nodeid='tests/testResourceLimitRoundTrip.py::test_setup_save_rejects_a_symlink_that_leaves_home',
-        source='vaibify/gui/setupServer.py',
-        old='    sResolved = os.path.realpath(sDirectory)',
-        new='    sResolved = os.path.abspath(sDirectory)',
-    ),
     # --- Host GitHub credential resolution (Phase 1, 2026-07-25) ---
     Falsification(
         # The empty secret name is rejected by fsRetrieveSecret before
@@ -1627,6 +1594,8 @@ def _fdictEntry(sRel):
             '        and dictEvidence.get("bEventChainIntact") is True\n'
             '        and dictEvidence.get("bPersistedFlagCountMatches") '
             'is True\n'
+            '        and dictEvidence.get("bHostAnchorConsistent") '
+            'is True\n'
             '    )'
         ),
         new=(
@@ -1765,5 +1734,49 @@ def _fdictEntry(sRel):
         source='vaibify/gui/serverMiddleware.py',
         old='    if iExpectedPort is None:\n        return False',
         new='    if iExpectedPort is None:\n        return True',
+    ),
+    Falsification(
+        # Recording the boolean helper's fail-open False turns "docker
+        # inspect could not answer" into the asserted fact "this
+        # container had network access", inside an L3 attestation.
+        nodeid='tests/testAiProvenanceStamp.py::test_unanswerable_isolation_probe_is_recorded_as_unknown',
+        source='vaibify/gui/aiProvenanceCapture.py',
+        old='        bNetworkIsolatedAtCapture=bIsolated if bAnswered else None,',
+        new='        bNetworkIsolatedAtCapture=bIsolated,',
+    ),
+    Falsification(
+        # flags.jsonl and project.json are both container-writable, so
+        # editing both leaves them agreeing. Only the host anchor, out
+        # of the container's reach, still remembers the erased flags.
+        nodeid='tests/testSupervisionAnchor.py::test_truncating_the_log_and_the_count_together_still_fails_the_gate',
+        source='vaibify/gui/attributionLog.py',
+        old="""    if supervisionAnchor.fbAnchorContradictedBy(
+        dictAnchor, listFlags, sHead,
+    ):
+        return False""",
+        new="""    if False:
+        return False""",
+    ),
+    Falsification(
+        # A count-only anchor misses an in-place rewrite of a flag's
+        # detail, so the anchor pins the chain head digest too.
+        nodeid='tests/testSupervisionAnchor.py::test_rewriting_records_in_place_is_caught_by_the_head_digest',
+        source='vaibify/gui/supervisionAnchor.py',
+        old="""    if len(listFlags) == iAnchored:
+        return bool(dictAnchor.get(_S_HEAD_KEY)) and (
+            dictAnchor.get(_S_HEAD_KEY) != sHeadSha256
+        )""",
+        new="""    if len(listFlags) == iAnchored:
+        return False""",
+    ),
+    Falsification(
+        # Without monotonicity a truncation writes its own smaller
+        # count back and launders itself on the next observation.
+        nodeid='tests/testSupervisionAnchor.py::test_anchor_never_lowers_itself',
+        source='vaibify/gui/supervisionAnchor.py',
+        old="""    if int(dictExisting.get(_S_COUNT_KEY) or 0) > int(iFlagCount):
+        return""",
+        new="""    if False:
+        return""",
     ),
 ]

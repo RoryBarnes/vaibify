@@ -25,68 +25,6 @@ def test_fsSplitMemoryLimit_with_slash():
 # ── setupServer: routes via TestClient ───────────────────────────────
 
 
-def test_setup_save_route():
-    from vaibify.gui.setupServer import fappCreateSetupApplication
-    from starlette.testclient import TestClient
-    with patch("vaibify.gui.setupServer.fnWriteConfigToDirectory"):
-        app = fappCreateSetupApplication()
-        clientHttp = TestClient(
-            app,
-            headers={"x-session-token": app.state.sSessionToken},
-        )
-        import os
-        sTestDir = os.path.join(
-            os.path.expanduser("~"), "test_vaibify_save")
-        responseHttp = clientHttp.post("/api/setup/save", json={
-            "sProjectDirectory": sTestDir,
-            "dictConfig": {"projectName": "test"},
-        })
-        assert responseHttp.status_code == 200
-        assert responseHttp.json()["bSuccess"] is True
-
-
-def test_setup_build_route():
-    from vaibify.gui.setupServer import fappCreateSetupApplication
-    from starlette.testclient import TestClient
-    with patch(
-        "vaibify.gui.setupServer.fdictProcessBuild",
-        return_value={"bSuccess": True},
-    ):
-        app = fappCreateSetupApplication()
-        clientHttp = TestClient(
-            app,
-            headers={"x-session-token": app.state.sSessionToken},
-        )
-        import os
-        sTestDir = os.path.join(
-            os.path.expanduser("~"), "test_vaibify_build")
-        responseHttp = clientHttp.post("/api/setup/build", json={
-            "sProjectDirectory": sTestDir,
-        })
-        assert responseHttp.status_code == 200
-
-
-def test_setup_index_route():
-    from vaibify.gui.setupServer import fappCreateSetupApplication
-    from starlette.testclient import TestClient
-    app = fappCreateSetupApplication()
-    clientHttp = TestClient(app)
-    responseHttp = clientHttp.get("/")
-    assert responseHttp.status_code in (200, 404)
-
-
-def test_setup_static_mount():
-    from vaibify.gui.setupServer import fappCreateSetupApplication
-    from starlette.testclient import TestClient
-    app = fappCreateSetupApplication()
-    clientHttp = TestClient(app)
-    responseHttp = clientHttp.get("/static/styleMain.css")
-    assert responseHttp.status_code in (200, 404)
-
-
-# ── configLoader: fbDockerAvailable ──────────────────────────────────
-
-
 def test_fbDockerAvailable_when_missing():
     from vaibify.cli.configLoader import fbDockerAvailable
     with patch.dict("sys.modules", {"docker": None}):

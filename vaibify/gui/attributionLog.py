@@ -352,5 +352,46 @@ def fdictSummarizeSupervisionEvidence(filesRepo, dictWorkflow=None):
             dictWorkflow is None
             or _fiPersistedFlagCount(dictSupervision) == len(listFlags)
         ),
+        "bHostAnchorConsistent": _fbHostAnchorConsistent(
+            listFlags, dictWorkflow,
+        ),
         "listFlags": listFlags,
     }
+
+
+def _fsFlagChainHead(listFlags):
+    """Return the digest of the last flag record, or '' when empty."""
+    if not listFlags:
+        return ""
+    return _fsHashChainedRecord(listFlags[-1])
+
+
+def _fbHostAnchorConsistent(listFlags, dictWorkflow):
+    """Return False only when the host anchor is actively contradicted.
+
+    ``bPersistedFlagCountMatches`` compares two artifacts that live in
+    the same container-writable repository, so an agent that truncates
+    ``flags.jsonl`` *and* zeroes ``project.json``'s count leaves them
+    agreeing. The host anchor is the half that closes: it lives under
+    the researcher's home directory, outside the container the
+    supervised party is confined to.
+
+    Returns True when the anchor is absent (nothing to contradict) —
+    absence of evidence is not evidence of tampering, and the anchor
+    seeds itself on the first observation.
+    """
+    from vaibify.gui import supervisionAnchor
+
+    sKey = supervisionAnchor.fsAnchorKeyFor(
+        (dictWorkflow or {}).get("sProjectRepoPath") or "",
+    )
+    if not sKey:
+        return True
+    sHead = _fsFlagChainHead(listFlags)
+    dictAnchor = supervisionAnchor.fdictReadAnchor(sKey)
+    if supervisionAnchor.fbAnchorContradictedBy(
+        dictAnchor, listFlags, sHead,
+    ):
+        return False
+    supervisionAnchor.fnRecordAnchor(sKey, len(listFlags), sHead)
+    return True
