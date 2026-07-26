@@ -402,8 +402,33 @@ agent: when a researcher says "Claude, run unit tests on step A09",
 the agent has no way to translate that request into a backend call,
 so the dashboard silently drifts out of sync as the agent improvises.
 
+**`bAgentSafe` is enforced server-side (2026-07-26).** It used to be
+advertisement: `fnAgentAction` changes no behaviour, and the flag was
+consumed only by `docker/vaibifyDo.py` *inside* the container, which
+an agent bypasses with `curl`. `SessionTokenMiddleware` now resolves
+each request to its route template and refuses the agent lane for any
+route whose catalog entries are all `bAgentSafe: False`, for anything
+in `SET_INTENTIONALLY_EXCLUDED_PATHS`, and — **failing closed** — for
+any state-mutating route with no catalog entry at all.
+
+Two consequences follow. Getting `bAgentSafe` wrong is now a security
+decision, not a documentation one: marking a destructive route safe
+hands it to a compromised agent. And forgetting to register a route
+denies the agent rather than silently admitting it, so a new action
+that "does nothing when the agent calls it" is usually a missing
+catalog entry.
+
+The gate is HTTP-only — `BaseHTTPMiddleware` never sees a `websocket`
+scope — so WebSocket actions rely on
+`testEveryWebSocketActionIsAgentSafe` as a tripwire instead. A route
+that reads host filesystem state needs its own
+`_fnRejectAgentTokenLane` call at the handler; the catalog cannot
+express that capability on its own.
+
 `tests/testArchitecturalInvariants.py::testAgentActionRegistered`
-fails CI if the registration is missing.
+fails CI if the registration is missing, and
+`tests/testAgentLaneEnforcement.py` drives every non-agent-safe route
+with an agent token and asserts a 403.
 
 The catalog authority is
 [vaibify/gui/actionCatalog.py](vaibify/gui/actionCatalog.py); the
