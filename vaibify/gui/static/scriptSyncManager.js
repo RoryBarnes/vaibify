@@ -95,7 +95,7 @@ var VaibifySyncManager = (function () {
     var _sCacheWorkflowId = "";
 
     async function fnOpenPushModal(sService) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         if (await _fbContainerIsIsolated(sContainerId)) {
             _fnShowIsolationBlockedToast(sService);
@@ -146,7 +146,7 @@ var VaibifySyncManager = (function () {
             overleaf: "Overleaf", github: "GitHub", zenodo: "Zenodo",
         };
         var sLabel = dictLabels[sService] || sService;
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             sLabel + " push disabled: container is in isolation "
             + "mode (no network). Disable in vaibify.yml: "
             + "networkIsolation: false, then rebuild.",
@@ -178,7 +178,7 @@ var VaibifySyncManager = (function () {
 
     async function fnPopulatePushModal(sService) {
         _fnResetPushState();
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var listFiles = await VaibifyApi.fdictGet(
             "/api/sync/" + sContainerId + "/files" +
             "?sService=" + encodeURIComponent(sService)
@@ -279,7 +279,7 @@ var VaibifySyncManager = (function () {
     }
 
     function _fsCurrentOverleafTarget() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow) return "figures";
         return dictWorkflow.sOverleafFigureDirectory || "figures";
     }
@@ -406,7 +406,7 @@ var VaibifySyncManager = (function () {
             _fnApplyDiffResult(dictResult, iToken);
         } catch (error) {
             if (iToken !== _iDiffRequestToken) return;
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsDescribeDiffError(error), "error");
             _fnShowAnnotationError();
         }
@@ -572,7 +572,7 @@ var VaibifySyncManager = (function () {
         elBtn.addEventListener("click", function () {
             _sPushTargetDirectory = _sSuggestedTargetDirectory;
             _fnUpdateTargetDisplay();
-            var sContainerId = PipeleyenApp.fsGetContainerId();
+            var sContainerId = VaibifyApp.fsGetContainerId();
             _fnScheduleDiffRefresh(sContainerId);
         });
     }
@@ -758,7 +758,7 @@ var VaibifySyncManager = (function () {
 
     async function _fnBeginPush(listPaths) {
         if (listPaths.length === 0) {
-            PipeleyenApp.fnShowToast("No files selected", "error");
+            VaibifyApp.fnShowToast("No files selected", "error");
             return;
         }
         if (_sPushService === "overleaf") {
@@ -773,7 +773,7 @@ var VaibifySyncManager = (function () {
         var sTarget = (_sPushTargetDirectory || "").trim();
         if (sTarget === "") return true;
         if (sTarget.charAt(0) === "/" || sTarget.charAt(0) === "\\") {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Target directory must not start with a slash.",
                 "error");
             return false;
@@ -781,7 +781,7 @@ var VaibifySyncManager = (function () {
         var listSegments = sTarget.split("/");
         for (var iIndex = 0; iIndex < listSegments.length; iIndex += 1) {
             if (listSegments[iIndex] === "..") {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Target directory must not contain '..'.",
                     "error");
                 return false;
@@ -791,14 +791,14 @@ var VaibifySyncManager = (function () {
     }
 
     function _fnConfirmAndDispatchOverleafPush(listPaths) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
         var sProjectId = dictWorkflow.sOverleafProjectId || "";
         var sMessage = "Push " + fsFormatFileCount(listPaths.length) +
             " to Overleaf project `" + sProjectId + "`?";
         var dictDetails = {
             sDetails: listPaths.join("\n"),
         };
-        PipeleyenModals.fnShowConfirmModal(
+        VaibifyModals.fnShowConfirmModal(
             "Confirm Overleaf push",
             sMessage,
             function () { _fnDispatchPush(listPaths); },
@@ -814,7 +814,7 @@ var VaibifySyncManager = (function () {
         );
         var sEndpoint = _fsServiceEndpoint(_sPushService);
         var sAction = _fsServiceAction(_sPushService);
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var dictBody = {listFilePaths: listPaths};
         if (_sPushService === "overleaf" && _sPushTargetDirectory) {
             dictBody.sTargetDirectory = _sPushTargetDirectory;
@@ -835,10 +835,10 @@ var VaibifySyncManager = (function () {
             }
             _fnSurfacePushSuccess(dictResult);
             await _fnRefreshBadgesAfterSync(sContainerId);
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         } catch (error) {
             _fnRemoveToast(elProgress);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
     }
@@ -851,14 +851,14 @@ var VaibifySyncManager = (function () {
                     dictResult);
             }
         } else {
-            PipeleyenApp.fnShowToast("Push complete!", "success");
+            VaibifyApp.fnShowToast("Push complete!", "success");
         }
         if (dictResult.sPostPushVerifyWarning) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 dictResult.sPostPushVerifyWarning, "warning");
         }
         if (dictResult.sBookkeepingWarning) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 dictResult.sBookkeepingWarning, "info");
         }
     }
@@ -873,7 +873,7 @@ var VaibifySyncManager = (function () {
     function _fnHandleIndeterminatePushResult(
         sContainerId, dictResult,
     ) {
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             (dictResult.sMessage ||
                 "The push outcome could not be confirmed.") +
             " Checking GitHub now…", "info");
@@ -881,18 +881,18 @@ var VaibifySyncManager = (function () {
     }
 
     async function _fnRefreshRemotesFromGithub(sContainerId) {
-        var sId = sContainerId || PipeleyenApp.fsGetContainerId();
+        var sId = sContainerId || VaibifyApp.fsGetContainerId();
         if (!sId) return;
         try {
             await VaibifyApi.fdictPost(
                 "/api/git/" + encodeURIComponent(sId) +
                 "/refresh-remotes", {bForce: true});
             await _fnRefreshBadgesAfterSync(sId);
-            PipeleyenApp.fnRenderStepList();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnRenderStepList();
+            VaibifyApp.fnShowToast(
                 "Refreshed from GitHub.", "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
     }
@@ -1078,7 +1078,7 @@ var VaibifySyncManager = (function () {
         } else if (sService === "zenodo") {
             _fnSetupZenodoFields(elToken, elModal);
         } else {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "GitHub uses gh auth. Run 'gh auth login' " +
                 "on your host machine.", "error"
             );
@@ -1162,7 +1162,7 @@ var VaibifySyncManager = (function () {
     }
 
     async function _fbHostHasOverleafCredential() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return false;
         try {
             var dictResult = await VaibifyApi.fdictGet(
@@ -1209,7 +1209,7 @@ var VaibifySyncManager = (function () {
         var elModal = document.getElementById("modalConnectionSetup");
         var sProjectId = document.getElementById(
             "inputSetupProjectId").value.trim();
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         var dictBody = {
             sService: "overleaf", sProjectId: sProjectId,
         };
@@ -1219,16 +1219,16 @@ var VaibifySyncManager = (function () {
             );
             elModal.style.display = "none";
             if (dictResult.bConnected) {
-                PipeleyenApp.fnShowToast("Connected!", "success");
+                VaibifyApp.fnShowToast("Connected!", "success");
                 fnOpenPushModal("overleaf");
             } else {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     dictResult.sMessage || "Connection failed",
                     "error"
                 );
             }
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
     }
@@ -1326,7 +1326,7 @@ var VaibifySyncManager = (function () {
         if (sService === "zenodo") {
             dictBody.sZenodoInstance = _fsReadZenodoInstance();
         }
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/sync/" + sContainerId + "/setup",
@@ -1334,16 +1334,16 @@ var VaibifySyncManager = (function () {
             );
             _fnHideConnectionSetup();
             if (dictResult.bConnected) {
-                PipeleyenApp.fnShowToast("Connected!", "success");
+                VaibifyApp.fnShowToast("Connected!", "success");
                 fnOpenPushModal(sService);
             } else {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     dictResult.sMessage || "Connection failed",
                     "error"
                 );
             }
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsSanitizeError(error.message), "error");
         }
     }
@@ -1415,7 +1415,7 @@ var VaibifySyncManager = (function () {
     async function fnSyncFileToRemote(
         sRemoteKey, sResolved, sWorkdir,
     ) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId || !sResolved) return;
         if (sRemoteKey === "sOverleaf") {
             fnOpenPushModal("overleaf");
@@ -1698,7 +1698,7 @@ var VaibifySyncManager = (function () {
         var elMenu = document.getElementById("remotePicklistMenu");
         if (!elMenu) return;
         fnDismissAllPicklists();
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
         var listItems = _flistBuildPicklistItems(
             sRemoteKey, sResolved, sWorkdir, dictWorkflow);
         var elList = elMenu.querySelector(".picklist-items");
@@ -1756,12 +1756,12 @@ var VaibifySyncManager = (function () {
 
 
     async function _fnTriggerArxivVerifyFromPicklist() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             await _fdictPostVerify(sContainerId, "arxiv");
             await VaibifyGitBadges.fnRefresh(sContainerId);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "arXiv verify complete", "success");
         } catch (error) {
             _fnReportVerifyError(error);
@@ -1904,15 +1904,15 @@ var VaibifySyncManager = (function () {
             _fnViewCommandInputs(
                 dictItem.listInputs, dictRow.sWorkdir);
         } else if (dictItem.sAction === "pullToHost") {
-            PipeleyenFilePull.fnPromptPullToHost(dictRow.sResolved);
+            VaibifyFilePull.fnPromptPullToHost(dictRow.sResolved);
         } else if (dictItem.sAction === "copyPath") {
-            PipeleyenFileOps.fnCopyToClipboard(dictRow.sResolved);
+            VaibifyFileOps.fnCopyToClipboard(dictRow.sResolved);
         } else if (dictItem.sAction === "editItem") {
-            PipeleyenFileOps.fnInlineEditItem(
+            VaibifyFileOps.fnInlineEditItem(
                 dictRow.elItem, dictRow.iStep,
                 dictRow.sArray, dictRow.iIdx);
         } else if (dictItem.sAction === "deleteItem") {
-            PipeleyenApp.fnDeleteDetailItem(
+            VaibifyApp.fnDeleteDetailItem(
                 dictRow.iStep, dictRow.sArray, dictRow.iIdx);
         }
     }
@@ -1927,23 +1927,23 @@ var VaibifySyncManager = (function () {
         var elText = dictRow.elItem.querySelector(".detail-text");
         if ((elText && elText.classList.contains("file-binary")) ||
             VaibifyUtilities.fbIsBinaryFile(dictRow.sResolved)) {
-            PipeleyenApp.fnShowBinaryNotViewable();
+            VaibifyApp.fnShowBinaryNotViewable();
             return;
         }
-        if (elText && PipeleyenApp.fbIsFileMissing(elText)) {
-            PipeleyenApp.fnShowOutputNotAvailable();
+        if (elText && VaibifyApp.fbIsFileMissing(elText)) {
+            VaibifyApp.fnShowOutputNotAvailable();
             return;
         }
-        PipeleyenFigureViewer.fnDisplayInNextViewer(
+        VaibifyFigureViewer.fnDisplayInNextViewer(
             dictRow.sResolved, dictRow.sWorkdir);
     }
 
     function _fnViewCommandFile(sPath, sWorkdir) {
         if (VaibifyUtilities.fbIsBinaryFile(sPath)) {
-            PipeleyenApp.fnShowBinaryNotViewable();
+            VaibifyApp.fnShowBinaryNotViewable();
             return;
         }
-        PipeleyenFigureViewer.fnDisplayInNextViewer(sPath, sWorkdir);
+        VaibifyFigureViewer.fnDisplayInNextViewer(sPath, sWorkdir);
     }
 
     function _fnViewCommandInputs(listInputs, sWorkdir) {
@@ -1959,7 +1959,7 @@ var VaibifySyncManager = (function () {
                 },
             };
         });
-        PipeleyenModals.fnShowFileChoiceModal(
+        VaibifyModals.fnShowFileChoiceModal(
             "View Input", "Which input file do you want to view?",
             listChoices);
     }
@@ -1969,7 +1969,7 @@ var VaibifySyncManager = (function () {
     ) {
         var sKey = sRemoteKey + "|" + sResolved;
         if (_setActiveFileSyncs.has(sKey)) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Sync already in progress for " +
                 _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey] + ".",
                 "info");
@@ -1981,13 +1981,13 @@ var VaibifySyncManager = (function () {
         _setActiveFileSyncs.delete(sKey);
         _fnSurfaceSyncOutcome(dictOutcome);
         await VaibifyGitBadges.fnRefresh(sContainerId);
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
     }
 
     function _fnSurfaceSyncOutcome(dictOutcome) {
         if (!dictOutcome) return;
         if (dictOutcome.sError) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsSanitizeError(dictOutcome.sError), "error");
             return;
         }
@@ -2006,7 +2006,7 @@ var VaibifySyncManager = (function () {
     }
 
     function _fnShowOverleafPerFileNotice() {
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Overleaf sync is project-level. " +
             "Use Sync › Push to Overleaf.",
             "info",
@@ -2014,7 +2014,7 @@ var VaibifySyncManager = (function () {
     }
 
     function _fnShowAlreadySyncedToast(sRemoteKey) {
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Already synced with " +
             _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey] + ".",
             "info",
@@ -2053,7 +2053,7 @@ var VaibifySyncManager = (function () {
         sContainerId, sRemoteKey, sResolved,
     ) {
         var sLabel = _DICT_REMOTE_KEY_TO_LABEL[sRemoteKey];
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Syncing to " + sLabel + "…", "info");
         if (sRemoteKey === "sGithub") {
             var dictGh = await VaibifyApi.fdictPost(
@@ -2074,7 +2074,7 @@ var VaibifySyncManager = (function () {
 
     function _fdictBuildPushOutcome(dictResult, sServiceLabel) {
         if (dictResult && dictResult.bSuccess) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Synced to " + sServiceLabel + ".", "success");
             return {};
         }
@@ -2092,7 +2092,7 @@ var VaibifySyncManager = (function () {
     }
 
     async function fnOpenZenodoMetadataModal() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return false;
         var dictMeta;
         try {
@@ -2100,7 +2100,7 @@ var VaibifySyncManager = (function () {
                 "/api/zenodo/" + sContainerId + "/metadata"
             );
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Failed to load metadata: " +
                 _fsSanitizeError(error.message), "error");
             return false;
@@ -2233,7 +2233,7 @@ var VaibifySyncManager = (function () {
             return false;
         }
         elModal.style.display = "none";
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Zenodo metadata saved.", "success");
         return true;
     }
@@ -2291,7 +2291,7 @@ var VaibifySyncManager = (function () {
             return true;
         }
         if (_fbZenodoMetadataComplete(dictMeta)) return true;
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Zenodo needs a title and at least one creator. " +
             "Fill in the metadata form first.", "warning");
         var bSaved = await _fbRunZenodoMetadataModal(
@@ -2527,7 +2527,7 @@ var VaibifySyncManager = (function () {
     }
 
     function _fnReportVerifyError(error) {
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             _DICT_SYNC_ERROR_MESSAGES.verifyFailed + " (" +
             _fsSanitizeError(error.message) + ")",
             "error");
@@ -2539,13 +2539,13 @@ var VaibifySyncManager = (function () {
         // up the rewritten cache on the next poll, so no optimistic
         // state is painted here — only the button disables while the
         // network round trip is live.
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         if (elButton) elButton.disabled = true;
         try {
             await _fdictPostVerify(sContainerId, sService);
             fnInvalidateVerifyCache();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Verification of " + sService + " complete — " +
                 "status updates on the next refresh.", "success");
         } catch (error) {
@@ -2555,7 +2555,7 @@ var VaibifySyncManager = (function () {
                 // "remote could not be reached" boilerplate would
                 // misdescribe it. The server's detail already says
                 // exactly what to do; show it verbatim.
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     _fsSanitizeError(error.message), "error");
             } else {
                 _fnReportVerifyError(error);
@@ -2689,7 +2689,7 @@ var VaibifySyncManager = (function () {
             _fnShowManifestVerifyToast(dictResult);
             return dictResult;
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _DICT_SYNC_ERROR_MESSAGES.verifyFailed + " (" +
                 _fsSanitizeError(error.message) + ")",
                 "error");
@@ -2705,13 +2705,13 @@ var VaibifySyncManager = (function () {
         var saIncomplete = dict.saIncomplete || [];
         var iIncomplete = saIncomplete.length;
         if (listMismatches.length === 0 && iIncomplete === 0) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Manifest verified: " + iMatching + "/" + iTotal +
                 " files match.", "success");
             return;
         }
         if (listMismatches.length === 0) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Manifest verified " + iMatching + "/" + iTotal +
                 ", but " + iIncomplete +
                 " declared path(s) not pinned: " +
@@ -2724,7 +2724,7 @@ var VaibifySyncManager = (function () {
         var sExtra = iIncomplete > 0
             ? " Plus " + iIncomplete + " not pinned."
             : "";
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Manifest mismatch: " + iMatching + "/" + iTotal +
             " match. " + sList + sExtra, "error");
     }
@@ -2838,7 +2838,7 @@ var VaibifySyncManager = (function () {
         var sEmail = document.getElementById(
             "inputGitIdentityEmail").value.trim();
         if (!_fbValidateGitIdentityClient(sName, sEmail)) return;
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             await VaibifyApi.fdictPost(
@@ -2846,7 +2846,7 @@ var VaibifySyncManager = (function () {
                     "/identity",
                 {sName: sName, sEmail: sEmail},
             );
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Git identity saved. Try the sync again.",
                 "success");
             fnCloseGitIdentityModal();

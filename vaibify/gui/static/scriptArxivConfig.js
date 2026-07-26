@@ -32,7 +32,7 @@ var VaibifyArxivConfig = (function () {
     }
 
     function _fdictCurrentArxivConfig() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
         var dictRemotes = dictWorkflow.dictRemotes || {};
         return dictRemotes.arxiv || {};
     }
@@ -170,7 +170,7 @@ var VaibifyArxivConfig = (function () {
     }
 
     async function _fnPostConfigureAndHandle(dictBody, sSuccessMessage) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             var dictResult = await VaibifyApi.fdictPost(
@@ -188,7 +188,7 @@ var VaibifyArxivConfig = (function () {
     }
 
     function _fnApplyConfigureResultToWorkflow(dictResult, dictBody) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow) return;
         var dictRemotes = dictWorkflow.dictRemotes || {};
         if (dictBody.bRemove) {
@@ -201,13 +201,13 @@ var VaibifyArxivConfig = (function () {
 
     function _fnShowSuccessOrVerifyWarning(dictResult, sSuccessMessage) {
         if (dictResult && dictResult.sVerifyError) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Saved, but verify failed: " + dictResult.sVerifyError,
                 "warning",
             );
             return;
         }
-        PipeleyenApp.fnShowToast(sSuccessMessage, "success");
+        VaibifyApp.fnShowToast(sSuccessMessage, "success");
     }
 
     function _fsExtractErrorDetail(error) {

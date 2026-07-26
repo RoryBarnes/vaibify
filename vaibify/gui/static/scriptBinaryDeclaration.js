@@ -35,7 +35,7 @@ var VaibifyBinaryDeclaration = (function () {
     }
 
     function _fdictCurrentBinaryState() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
         return {
             bNoStandaloneBinaries: !!dictWorkflow.bNoStandaloneBinaries,
             listDeclaredBinaries:
@@ -112,7 +112,7 @@ var VaibifyBinaryDeclaration = (function () {
             _fnShowError("Enter a binary path before capturing.");
             return;
         }
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         await _fnPostCapture(sContainerId, sPath);
     }
@@ -224,7 +224,7 @@ var VaibifyBinaryDeclaration = (function () {
             _fnShowError(sError);
             return;
         }
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         await _fnPostSaveAndApply(sContainerId, dictBody);
     }
@@ -272,7 +272,7 @@ var VaibifyBinaryDeclaration = (function () {
     }
 
     function _fnApplyResultToWorkflow(dictResult) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow) return;
         dictWorkflow.bNoStandaloneBinaries =
             !!dictResult.bNoStandaloneBinaries;

@@ -291,7 +291,7 @@ def test_label_memo_populated_in_single_forward_pass():
 
 
 def test_fnRenderStepListPartial_exposes_on_public_api():
-    """The partial-render entry must live on ``PipeleyenApp`` so
+    """The partial-render entry must live on ``VaibifyApp`` so
     cross-module callers (notably the git-badges refresh) can
     invalidate just the affected indices without a full re-render.
     Assert the exposed key, the function it points at, and the
@@ -299,7 +299,7 @@ def test_fnRenderStepListPartial_exposes_on_public_api():
     rename or comment-only revert cannot slip through."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     assert "fnRenderStepListPartial: fnRenderStepListPartial" in sSource, (
-        "PipeleyenApp must expose fnRenderStepListPartial in its "
+        "VaibifyApp must expose fnRenderStepListPartial in its "
         "public-API return object."
     )
     assert "function fnRenderStepListPartial(" in sSource, (
@@ -347,7 +347,7 @@ def test_poll_skips_steps_with_known_output_mtime():
     """``fnPollAllStepFiles`` must short-circuit on any step whose
     ``dictOutputMtimes`` entry is already populated — that already
     proves the step's output files exist on disk, so re-issuing
-    PipeleyenFileOps.fnCheckStepDataFiles would be ~1000 redundant
+    VaibifyFileOps.fnCheckStepDataFiles would be ~1000 redundant
     file probes per poll at N=100. Assert ordering: the existence
     lookup must precede the (only) call to ``fnCheckStepDataFiles``."""
     sSource = _fsReadStaticFile("scriptApplication.js")

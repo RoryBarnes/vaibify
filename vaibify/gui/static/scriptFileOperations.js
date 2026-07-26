@@ -1,6 +1,6 @@
 /* Vaibify — File existence checking, status coloring, and change detection */
 
-var PipeleyenFileOps = (function () {
+var VaibifyFileOps = (function () {
     "use strict";
 
     var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
@@ -10,7 +10,7 @@ var PipeleyenFileOps = (function () {
     function fnCopyToClipboard(sText) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sText).then(function () {
-                PipeleyenApp.fnShowToast("Copied to clipboard", "success");
+                VaibifyApp.fnShowToast("Copied to clipboard", "success");
             }).catch(function () {
                 _fnCopyToClipboardFallback(sText);
             });
@@ -39,9 +39,9 @@ var PipeleyenFileOps = (function () {
         elTextarea.select();
         try {
             document.execCommand("copy");
-            PipeleyenApp.fnShowToast("Copied to clipboard", "success");
+            VaibifyApp.fnShowToast("Copied to clipboard", "success");
         } catch (e) {
-            PipeleyenApp.fnShowToast("Copy failed", "error");
+            VaibifyApp.fnShowToast("Copy failed", "error");
         }
         document.body.removeChild(elTextarea);
     }
@@ -49,7 +49,7 @@ var PipeleyenFileOps = (function () {
     /* --- Inline Editing --- */
 
     function fnInlineEditItem(el, iStep, sArray, iIdx) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var sRaw = dictWorkflow.listSteps[iStep][sArray][iIdx];
         var elText = el.querySelector(".detail-text");
         var elOverflowButton = el.querySelector(".row-overflow-btn");
@@ -71,12 +71,12 @@ var PipeleyenFileOps = (function () {
             if (sNewValue && sNewValue !== sRaw) {
                 dictWorkflow.listSteps[iStep][sArray][iIdx] =
                     sNewValue;
-                PipeleyenApp.fnSaveStepArray(iStep, sArray, true);
+                VaibifyApp.fnSaveStepArray(iStep, sArray, true);
             }
             elInput.removeEventListener("blur", fnFinishEdit);
             elInput.remove();
             elText.style.display = "";
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         }
 
         elInput.addEventListener("keydown", function (event) {
@@ -117,7 +117,7 @@ var PipeleyenFileOps = (function () {
     }
 
     function _fnRunBatchedExistenceCheck(dictState) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         var dictPlan = _fdictPlanExistenceRequests(dictState);
         if (dictPlan.listPaths.length === 0) {
@@ -225,9 +225,9 @@ var PipeleyenFileOps = (function () {
     function _fnCollectDataFilePlan(
         dictPlan, setSeenPaths, dictState
     ) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow) return;
-        var setExpanded = PipeleyenApp.fsetGetExpandedSteps();
+        var setExpanded = VaibifyApp.fsetGetExpandedSteps();
         dictWorkflow.listSteps.forEach(function (step, iStep) {
             if (!setExpanded.has(iStep)) return;
             _fnCollectStepDataPlan(
@@ -239,7 +239,7 @@ var PipeleyenFileOps = (function () {
     function _fnCollectStepDataPlan(
         step, iStep, dictPlan, setSeenPaths, dictState
     ) {
-        if (PipeleyenTestManager.fsetGetStepsWithData()
+        if (VaibifyTestManager.fsetGetStepsWithData()
             .has(iStep)) return;
         var listNecessary = _flistNecessaryDataFiles(step, iStep);
         if (listNecessary.length === 0) return;
@@ -301,7 +301,7 @@ var PipeleyenFileOps = (function () {
         var sArray = el.dataset.array;
         var sRaw = el.dataset.raw || "";
         var bNecessaryData = sArray === "saOutputDataFiles" &&
-            PipeleyenApp.fsGetFileCategory(
+            VaibifyApp.fsGetFileCategory(
                 iStep, sRaw, sArray) === "archive";
         if (bNecessaryData) {
             dictDataCounts[iStep] =
@@ -331,7 +331,7 @@ var PipeleyenFileOps = (function () {
                 (dictPresentCount[dictItem.iStep] || 0) + 1;
             if (dictPresentCount[dictItem.iStep] >=
                 dictItem.iStepTotal) {
-                PipeleyenTestManager.fsetGetStepsWithData()
+                VaibifyTestManager.fsetGetStepsWithData()
                     .add(dictItem.iStep);
                 _fnUpdateGenerateButton(dictItem.iStep);
             }
@@ -354,7 +354,7 @@ var PipeleyenFileOps = (function () {
     function _flistNecessaryDataFiles(step, iStep) {
         var listData = step.saOutputDataFiles || [];
         return listData.filter(function (sFile) {
-            return PipeleyenApp.fsGetFileCategory(
+            return VaibifyApp.fsGetFileCategory(
                 iStep, sFile, "saOutputDataFiles"
             ) === "archive";
         });
@@ -373,7 +373,7 @@ var PipeleyenFileOps = (function () {
         if (!bNecessaryData) return;
         dictPresent[iStep] = (dictPresent[iStep] || 0) + 1;
         if (dictPresent[iStep] >= (dictCounts[iStep] || 0)) {
-            PipeleyenTestManager.fsetGetStepsWithData().add(iStep);
+            VaibifyTestManager.fsetGetStepsWithData().add(iStep);
             _fnUpdateGenerateButton(iStep);
         }
     }
@@ -429,9 +429,9 @@ var PipeleyenFileOps = (function () {
         // for the .file-necessary-red treatment so the researcher can
         // tell missing apart from stale apart from never-attested.
         if (!bExists) return "file-missing-state";
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = (dictWorkflow.listSteps || [])[iStep] || {};
-        var dictVerify = PipeleyenApp.fdictGetVerification(dictStep);
+        var dictVerify = VaibifyApp.fdictGetVerification(dictStep);
         if ((dictVerify.listModifiedFiles || []).length > 0) {
             return "file-stale-state";
         }
@@ -445,8 +445,8 @@ var PipeleyenFileOps = (function () {
         // appears in a blocker's ``listOffendingFiles``. Files that
         // are not individually offending keep the resolved-path title;
         // the step-level hint belongs to the banner glyph, not here.
-        if (!PipeleyenApp.fsBlockerHintForFile) return;
-        var sHint = PipeleyenApp.fsBlockerHintForFile(iStep, sRaw);
+        if (!VaibifyApp.fsBlockerHintForFile) return;
+        var sHint = VaibifyApp.fsBlockerHintForFile(iStep, sRaw);
         if (sHint) {
             elText.setAttribute("title", sHint);
         }
@@ -456,7 +456,7 @@ var PipeleyenFileOps = (function () {
         iStep, sArrayKey, sRaw, sResolved, bExists
     ) {
         if (fbIsBinaryFile(sRaw)) return "file-binary";
-        var sCategory = PipeleyenApp.fsGetFileCategory(
+        var sCategory = VaibifyApp.fsGetFileCategory(
             iStep, sRaw, sArrayKey
         );
         if (sCategory === "supporting") {
@@ -469,14 +469,14 @@ var PipeleyenFileOps = (function () {
 
     function _fsNecessaryFileClass(iStep, sResolved, bExists) {
         if (!bExists) return "file-necessary-red";
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
-        var dictVerify = PipeleyenApp.fdictGetVerification(dictStep);
+        var dictVerify = VaibifyApp.fdictGetVerification(dictStep);
         var listModified = dictVerify.listModifiedFiles || [];
         if (_fbFileInModifiedList(sResolved, listModified)) {
             return "file-necessary-red";
         }
-        if (PipeleyenApp.fbStepIsAtLeastLevel1(
+        if (VaibifyApp.fbStepIsAtLeastLevel1(
             dictStep, iStep)) {
             return "file-necessary-valid";
         }
@@ -533,7 +533,7 @@ var PipeleyenFileOps = (function () {
                 dictState.dictFileModTimes = dictNewMods;
                 dictState.dictFileExistenceCache = {};
                 fnScheduleFileExistenceCheck(dictState);
-                PipeleyenApp.fnRenderStepList();
+                VaibifyApp.fnRenderStepList();
                 return;
             }
         }
@@ -559,7 +559,7 @@ var PipeleyenFileOps = (function () {
         if (JSON.stringify(dictState.dictScriptModified) !== sPrev ||
                 JSON.stringify(dictState.dictStaleArtifacts) !==
                 sPrevStale) {
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         }
     }
 

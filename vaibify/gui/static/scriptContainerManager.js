@@ -1,6 +1,6 @@
 /* Vaibify — Container landing page (extracted from scriptApplication.js) */
 
-var PipeleyenContainerManager = (function () {
+var VaibifyContainerManager = (function () {
     "use strict";
 
     var _sSelectedContainerId = null;
@@ -84,19 +84,19 @@ var PipeleyenContainerManager = (function () {
                 "/api/system/docker-status/retry"
             );
             if (dictStatus.bAvailable) {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Docker is available", "success"
                 );
                 await fnLoadContainers();
                 return;
             }
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Docker still unavailable. " + (dictStatus.sHint || ""),
                 "error"
             );
             await _fnRefreshDockerStatusBanner();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error"
             );
@@ -288,7 +288,7 @@ var PipeleyenContainerManager = (function () {
             '.container-tile[data-name="' + sName + '"]'
         );
         if (elTile && elTile.dataset.locked === "true") {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Container '" + sName + "': " +
                 (elTile.dataset.lockedMessage ||
                  _fsLockedMessage(0)), "warning");
@@ -321,7 +321,7 @@ var PipeleyenContainerManager = (function () {
         if (!dictReadiness || !dictReadiness.bReady) {
             var sStatus = dictReadiness ? dictReadiness.sStatus : "";
             if (sStatus !== "failed" && sStatus !== "stalled") {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Container took too long to initialize. "
                     + "Connecting anyway — some data may be "
                     + "incomplete.", "warning");
@@ -331,12 +331,12 @@ var PipeleyenContainerManager = (function () {
     }
 
     async function _fbClaimContainer(sName) {
-        var sLeaseId = PipeleyenApp.fsGetLeaseForContainer(sName);
+        var sLeaseId = VaibifyApp.fsGetLeaseForContainer(sName);
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
                 "/claim?sLeaseId=" + encodeURIComponent(sLeaseId), {});
-            PipeleyenApp.fnRecordClaimedLease(sName, dictResult.sLeaseId);
+            VaibifyApp.fnRecordClaimedLease(sName, dictResult.sLeaseId);
             return true;
         } catch (error) {
             _fnReportClaimRefusal(sName, error);
@@ -350,13 +350,13 @@ var PipeleyenContainerManager = (function () {
             || (dictDetail.iLockedByPort
                 ? _fsLockedMessage(dictDetail.iLockedByPort)
                 : _fsLockedMessage(0));
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Container '" + sName + "': " + sReason, "warning");
     }
 
     async function fnReleaseClaim(sName) {
         if (!sName) return;
-        var sLeaseId = PipeleyenApp.fsGetLeaseForContainer(sName);
+        var sLeaseId = VaibifyApp.fsGetLeaseForContainer(sName);
         try {
             await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
@@ -364,7 +364,7 @@ var PipeleyenContainerManager = (function () {
         } catch (error) {
             /* release is best-effort; the grace reaper will clean up */
         }
-        PipeleyenApp.fnForgetLease();
+        VaibifyApp.fnForgetLease();
     }
 
     async function fnHandleContainerAction(sName, sAction) {
@@ -385,7 +385,7 @@ var PipeleyenContainerManager = (function () {
             );
             fnShowContainerSettingsModal(sName, dictSettings);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
@@ -486,11 +486,11 @@ var PipeleyenContainerManager = (function () {
                 + "/settings",
                 dictSettings
             );
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Settings saved. Use Restart to apply.",
                 "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
@@ -504,7 +504,7 @@ var PipeleyenContainerManager = (function () {
                 encodeURIComponent(sName) + "/build";
             if (bNoCache) sUrl += "?bNoCache=true";
             await VaibifyApi.fdictPostRaw(sUrl);
-            PipeleyenApp.fnShowToast("Build complete", "success");
+            VaibifyApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
         } catch (error) {
             _fnReportBuildFailure(error);
@@ -518,7 +518,7 @@ var PipeleyenContainerManager = (function () {
         var sTail = (error.dictDetail && error.dictDetail.sStderrTail)
             || "";
         if (!sTail) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
             return;
@@ -557,9 +557,9 @@ var PipeleyenContainerManager = (function () {
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/start"
             );
-            PipeleyenApp.fnShowToast("Container started", "success");
+            VaibifyApp.fnShowToast("Container started", "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         } finally {
@@ -569,15 +569,15 @@ var PipeleyenContainerManager = (function () {
 
     async function fnStopContainer(sName) {
         fnSetTilePending(sName);
-        PipeleyenTerminal.fnCloseAll();
+        VaibifyTerminal.fnCloseAll();
         try {
             await VaibifyApi.fdictPostRaw(
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/stop"
             );
-            PipeleyenApp.fnShowToast("Container stopped", "success");
+            VaibifyApp.fnShowToast("Container stopped", "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         } finally {
@@ -586,13 +586,13 @@ var PipeleyenContainerManager = (function () {
     }
 
     async function fnRestartContainer(sName) {
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Restart Container",
             "Stop the container and start it again using the " +
             "current image. Open terminal sessions will close. " +
             "Workspace files are preserved.",
             async function () {
-                PipeleyenTerminal.fnCloseAll();
+                VaibifyTerminal.fnCloseAll();
                 await fnStopContainer(sName);
                 await fnStartContainer(sName);
             },
@@ -610,14 +610,14 @@ var PipeleyenContainerManager = (function () {
     }
 
     async function fnRebuildContainer(sName) {
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Rebuild Container",
             "Stop the container, rebuild the image with your " +
             "current vaibify.yml settings, then start a fresh " +
             "container. Open terminal sessions will close. " +
             "Workspace files are preserved.",
             async function () {
-                PipeleyenTerminal.fnCloseAll();
+                VaibifyTerminal.fnCloseAll();
                 await fnStopContainer(sName);
                 await fnBuildContainer(sName, false);
             },
@@ -634,13 +634,13 @@ var PipeleyenContainerManager = (function () {
     }
 
     async function fnForceRebuildContainer(sName) {
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Force Rebuild (Slow)",
             "Rebuild every layer of the image from scratch, " +
             "ignoring the build cache. This can take several " +
             "minutes. Workspace files are preserved.",
             async function () {
-                PipeleyenTerminal.fnCloseAll();
+                VaibifyTerminal.fnCloseAll();
                 await fnStopContainer(sName);
                 await fnBuildContainer(sName, true);
             },
@@ -661,7 +661,7 @@ var PipeleyenContainerManager = (function () {
     }
 
     async function fnRemoveContainer(sName) {
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Remove from List",
             "Remove '" + sName + "' from the dashboard. The " +
             "Docker image and workspace files are not deleted " +
@@ -677,10 +677,10 @@ var PipeleyenContainerManager = (function () {
                         "/api/registry/"
                         + encodeURIComponent(sName)
                     );
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         "Container removed", "success");
                 } catch (error) {
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         VaibifyUtilities.fsSanitizeErrorForUser(
                             error.message), "error");
                 }
@@ -700,7 +700,7 @@ var PipeleyenContainerManager = (function () {
     }
 
     function _fsRegistryUrl() {
-        var sLeaseId = PipeleyenApp.fsGetLeaseId();
+        var sLeaseId = VaibifyApp.fsGetLeaseId();
         return "/api/registry?sLeaseId=" + encodeURIComponent(sLeaseId);
     }
 
@@ -813,7 +813,7 @@ var PipeleyenContainerManager = (function () {
     function _fnShowStaleImageBanner(dictReadiness) {
         var sReason = dictReadiness.sReason
             || "Container image is out of date. Rebuild via kebab menu.";
-        PipeleyenApp.fnShowToast(sReason, "warning");
+        VaibifyApp.fnShowToast(sReason, "warning");
     }
 
     function _fnShowReadinessFailureBanner(dictReadiness) {
@@ -821,11 +821,11 @@ var PipeleyenContainerManager = (function () {
         var sMessage =
             "Container start failed: " + sReason +
             " Run `vaibify stop && vaibify build && vaibify start`.";
-        PipeleyenApp.fnShowToast(sMessage, "error");
+        VaibifyApp.fnShowToast(sMessage, "error");
     }
 
     function _fnShowReadinessStalledBanner() {
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Container is running but not responding to exec. " +
             "Try `vaibify stop && vaibify start`.",
             "error",
@@ -838,7 +838,7 @@ var PipeleyenContainerManager = (function () {
         var sJoined = listWarnings.map(function (sLine) {
             return "- " + sLine;
         }).join("\n");
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Container started with " + sLabel + ":\n" + sJoined,
             "warning",
         );
@@ -857,7 +857,7 @@ var PipeleyenContainerManager = (function () {
     async function fnConnectToContainerByName(sName) {
         var sContainerId = await _fsResolveContainerId(sName);
         if (!sContainerId) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Container not found for " + sName, "error");
             return;
         }
@@ -878,10 +878,10 @@ var PipeleyenContainerManager = (function () {
                 "/api/workflows/" + sId);
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
-            PipeleyenApp.fnShowWorkflowPicker(_sSelectedContainerName);
+            VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
@@ -928,24 +928,24 @@ var PipeleyenContainerManager = (function () {
             );
         });
         document.getElementById("btnBrowserBack").addEventListener(
-            "click", PipeleyenDirectoryBrowser.fnBrowserNavigateBack
+            "click", VaibifyDirectoryBrowser.fnBrowserNavigateBack
         );
         document.getElementById("btnBrowserForward").addEventListener(
-            "click", PipeleyenDirectoryBrowser.fnBrowserNavigateForward
+            "click", VaibifyDirectoryBrowser.fnBrowserNavigateForward
         );
     }
 
     function fnBindAddContainerModal() {
         document.getElementById("btnAddContainerCancel").addEventListener(
-            "click", PipeleyenDirectoryBrowser.fnHandleModalClose
+            "click", VaibifyDirectoryBrowser.fnHandleModalClose
         );
         document.getElementById("btnAddContainerConfirm").addEventListener(
-            "click", PipeleyenDirectoryBrowser.fnSelectDirectory
+            "click", VaibifyDirectoryBrowser.fnSelectDirectory
         );
         var elNewFolder = document.getElementById("btnDirectoryNewFolder");
         if (elNewFolder) {
             elNewFolder.addEventListener(
-                "click", PipeleyenDirectoryBrowser.fnPromptCreateFolder
+                "click", VaibifyDirectoryBrowser.fnPromptCreateFolder
             );
         }
         fnBindAddChoiceModal();
@@ -968,7 +968,7 @@ var PipeleyenContainerManager = (function () {
             "click", function () {
                 document.getElementById("modalAddChoice")
                     .style.display = "none";
-                PipeleyenDirectoryBrowser.fnOpenDirectoryBrowser();
+                VaibifyDirectoryBrowser.fnOpenDirectoryBrowser();
             }
         );
         document.getElementById("btnChoiceCreateNew").addEventListener(
@@ -985,7 +985,7 @@ var PipeleyenContainerManager = (function () {
     }
 
     function _fnShowAddChoiceHelp() {
-        PipeleyenModals.fnShowInfoModal(
+        VaibifyModals.fnShowInfoModal(
             "Add Container — Help", _S_ADD_CHOICE_HELP);
         var elInfo = document.getElementById("modalInfo");
         if (elInfo) elInfo.style.zIndex = "1200";

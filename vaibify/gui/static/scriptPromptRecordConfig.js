@@ -39,7 +39,7 @@ var VaibifyPromptRecordConfig = (function () {
     }
 
     async function _fnRefresh() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         var elBody = _felGet("promptRecordBody");
         elBody.innerHTML = '<span class="placeholder">Loading…</span>';
@@ -231,7 +231,7 @@ var VaibifyPromptRecordConfig = (function () {
     }
 
     async function _fnRunAction(sAction) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         var sBase = "/api/workflow/" +
             encodeURIComponent(sContainerId) + "/prompt-record";
@@ -255,7 +255,7 @@ var VaibifyPromptRecordConfig = (function () {
             }
             _fnRefresh();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Prompt Record action failed: " + _fsDetail(error),
                 "error");
         }

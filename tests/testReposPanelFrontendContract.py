@@ -53,13 +53,13 @@ def test_repos_panel_registers_polling_handler():
 
 def test_repos_panel_iife_module_name():
     sSource = _fsReadStaticFile("scriptReposPanel.js")
-    assert "var PipeleyenReposPanel" in sSource
+    assert "var VaibifyReposPanel" in sSource
 
 
 def test_application_wires_repos_panel_lifecycle():
     sSource = _fsReadStaticFile("scriptApplication.js")
-    assert "PipeleyenReposPanel.fnInit" in sSource
-    assert "PipeleyenReposPanel.fnTeardown" in sSource
+    assert "VaibifyReposPanel.fnInit" in sSource
+    assert "VaibifyReposPanel.fnTeardown" in sSource
 
 
 def test_no_workflow_mode_includes_repos_tab():

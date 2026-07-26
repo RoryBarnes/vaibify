@@ -67,7 +67,7 @@ var VaibifyWorkflowManager = (function () {
      * cannot bypass the claim route's 409 and take the workflow. */
     function _fsLeaseQuery() {
         return "&sLeaseId=" +
-            encodeURIComponent(PipeleyenApp.fsGetLeaseId());
+            encodeURIComponent(VaibifyApp.fsGetLeaseId());
     }
 
     function _fdictFetchWorkflow(sId, sPath) {
@@ -113,11 +113,11 @@ var VaibifyWorkflowManager = (function () {
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sWorkflowPathArg);
-            PipeleyenApp.fnActivateWorkflow(
+            VaibifyApp.fnActivateWorkflow(
                 sId, dictResult, sWorkflowName);
             fnCheckOriginDrift(sId, false);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         } finally {
@@ -129,19 +129,19 @@ var VaibifyWorkflowManager = (function () {
 
     async function fnRefreshWorkflow() {
         if (_bRefreshing) return;
-        var sId = PipeleyenApp.fsGetContainerId();
-        var sPath = PipeleyenApp.fsGetWorkflowPath();
+        var sId = VaibifyApp.fsGetContainerId();
+        var sPath = VaibifyApp.fsGetWorkflowPath();
         if (!sId || !sPath) return;
         _bRefreshing = true;
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sPath);
-            PipeleyenApp.fnRefreshWorkflowData(dictResult);
+            VaibifyApp.fnRefreshWorkflowData(dictResult);
             await fnCheckOriginDrift(sId, false);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Project refreshed", "info");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         } finally {
@@ -165,7 +165,7 @@ var VaibifyWorkflowManager = (function () {
     }
 
     async function fnPullProjectRepo() {
-        var sId = PipeleyenApp.fsGetContainerId();
+        var sId = VaibifyApp.fsGetContainerId();
         if (!sId) return;
         try {
             var dictResult = await VaibifyApi.fdictPost(
@@ -175,14 +175,14 @@ var VaibifyWorkflowManager = (function () {
                 _fnRenderDriftBanner(sId, null, dictResult);
                 return;
             }
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Pulled to " + (dictResult.sNewHeadSha || "").slice(0, 7),
                 "success"
             );
             _fnHideDriftBanner();
             await fnRefreshWorkflow();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         }
@@ -224,24 +224,24 @@ var VaibifyWorkflowManager = (function () {
     }
 
     async function fnCommitCanonicalAndPull() {
-        var sId = PipeleyenApp.fsGetContainerId();
+        var sId = VaibifyApp.fsGetContainerId();
         if (!sId) return;
         try {
             var dictCommit = await VaibifyApi.fdictPost(
                 "/api/git/" + sId + "/commit-canonical", {});
             if (!dictCommit || !dictCommit.bSuccess) {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Could not commit canonical state files",
                     "error");
                 return;
             }
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Committed " + (dictCommit.iFilesCommitted || 0) +
                 " state files — pulling…",
                 "info");
             await fnPullProjectRepo();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         }
@@ -311,7 +311,7 @@ var VaibifyWorkflowManager = (function () {
             elDropdown.classList.remove("active");
             return;
         }
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
@@ -319,7 +319,7 @@ var VaibifyWorkflowManager = (function () {
             _fnRenderWorkflowDropdown(listWorkflows);
             elDropdown.classList.add("active");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Could not load projects", "error");
         }
     }
@@ -332,8 +332,8 @@ var VaibifyWorkflowManager = (function () {
     function _fnRenderWorkflowDropdown(listWorkflows) {
         var elDropdown = document.getElementById(
             "workflowDropdown");
-        var sWorkflowPath = PipeleyenApp.fsGetWorkflowPath();
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var sWorkflowPath = VaibifyApp.fsGetWorkflowPath();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var bInNoWorkflow = !sWorkflowPath && !dictWorkflow;
         var sHtml = '<div class="workflow-dropdown-item new-workflow"'
             + ' data-action="newWorkflow">'
@@ -366,8 +366,8 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fnBindWorkflowDropdownItems(elDropdown) {
-        var sWorkflowPath = PipeleyenApp.fsGetWorkflowPath();
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var sWorkflowPath = VaibifyApp.fsGetWorkflowPath();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         elDropdown.querySelectorAll(".workflow-dropdown-item")
             .forEach(function (el) {
                 el.addEventListener("click", function (event) {
@@ -375,13 +375,13 @@ var VaibifyWorkflowManager = (function () {
                     fnHideWorkflowDropdown();
                     if (el.dataset.action === "newWorkflow") {
                         VaibifyNewWorkflowWizard.fnLaunch(
-                            PipeleyenApp.fsGetContainerId());
+                            VaibifyApp.fsGetContainerId());
                         return;
                     }
                     if (el.dataset.action === "noWorkflow") {
                         if (!dictWorkflow && !sWorkflowPath) return;
-                        PipeleyenApp.fnEnterNoWorkflow(
-                            PipeleyenApp.fsGetContainerId());
+                        VaibifyApp.fnEnterNoWorkflow(
+                            VaibifyApp.fsGetContainerId());
                         return;
                     }
                     var sPath = el.dataset.path;
@@ -393,23 +393,23 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function fnConfirmWorkflowSwitch(sNewPath, sNewName) {
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Switch Project",
             "Switch to \"" + sNewName + "\"?\n\n" +
             "Current project state will be saved.",
             async function () {
                 await fnSaveCurrentWorkflow();
                 fnSelectWorkflow(
-                    PipeleyenApp.fsGetContainerId(),
+                    VaibifyApp.fsGetContainerId(),
                     sNewPath, sNewName);
             }
         );
     }
 
     async function fnSaveCurrentWorkflow() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
-        var sWorkflowPath = PipeleyenApp.fsGetWorkflowPath();
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
+        var sWorkflowPath = VaibifyApp.fsGetWorkflowPath();
         if (!sContainerId || !dictWorkflow || !sWorkflowPath) return;
         try {
             await VaibifyApi.fdictPostRaw(
@@ -419,7 +419,7 @@ var VaibifyWorkflowManager = (function () {
                 _fsLeaseQuery()
             );
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Could not save project", "error");
         }
     }
@@ -665,7 +665,7 @@ var VaibifyWorkflowManager = (function () {
     function _fnHandleWizardHelpClick() {
         var sTitle = _LIST_WIZARD_TITLES[_iWizardStep] + " — Help";
         var sBody = _LIST_WIZARD_HELP[_iWizardStep] || "";
-        PipeleyenModals.fnShowInfoModal(sTitle, sBody);
+        VaibifyModals.fnShowInfoModal(sTitle, sBody);
         _fnRaiseInfoModalAboveWizard();
     }
 
@@ -752,7 +752,7 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fnHandleChooseDirectoryClick() {
-        PipeleyenDirectoryBrowser.fnOpenForCreate(
+        VaibifyDirectoryBrowser.fnOpenForCreate(
             _fnApplyChosenDirectory);
     }
 
@@ -1263,23 +1263,23 @@ var VaibifyWorkflowManager = (function () {
 
     function _fbValidateWizardStep(iStep) {
         if (iStep === 0 && !_dictWizardData.sDirectory) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Directory path is required.", "warning");
             return false;
         }
         if (iStep === 1 && !_dictWizardData.sTemplateName) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Please select a template.", "warning");
             return false;
         }
         if (iStep === 2 && !_dictWizardData.sProjectName) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Project name is required.", "warning");
             return false;
         }
         if (iStep === 4 && _fbIsToolkit() &&
             _dictWizardData.listRepositories.length === 0) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Toolkit containers require at least one " +
                 "repository URL.", "warning");
             return false;
@@ -1295,11 +1295,11 @@ var VaibifyWorkflowManager = (function () {
             await VaibifyApi.fdictPost(
                 "/api/projects/create", _dictWizardData);
             _fnCloseWizard();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Project created successfully.");
-            PipeleyenContainerManager.fnLoadContainers();
+            VaibifyContainerManager.fnLoadContainers();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         } finally {

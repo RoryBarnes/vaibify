@@ -1,6 +1,6 @@
 /* Vaibify — Step CRUD modal forms */
 
-const PipeleyenStepEditor = (function () {
+const VaibifyStepEditor = (function () {
     "use strict";
 
     var _I_STEP_COUNT_MAX = 500;
@@ -34,7 +34,7 @@ const PipeleyenStepEditor = (function () {
         iEditIndex = iIndex;
         iInsertPosition = -1;
 
-        const dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        const dictWorkflow = VaibifyApp.fdictGetWorkflow();
         const dictStep = dictWorkflow.listSteps[iIndex];
 
         // Renames go through the cascade (right-click → Rename) so
@@ -132,15 +132,15 @@ const PipeleyenStepEditor = (function () {
     async function fnSave() {
         const dictData = fdictBuildStepFromForm();
         if (!dictData.sName) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Step name is required",
                 "error"
             );
             return;
         }
 
-        const sContainerId = PipeleyenApp.fsGetContainerId();
-        const dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        const sContainerId = VaibifyApp.fsGetContainerId();
+        const dictWorkflow = VaibifyApp.fdictGetWorkflow();
 
         try {
             if (sMode === "edit") {
@@ -160,7 +160,7 @@ const PipeleyenStepEditor = (function () {
                 if (response.ok) {
                     const dictUpdated = await response.json();
                     dictWorkflow.listSteps[iEditIndex] = dictUpdated;
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         "Step updated",
                         "success"
                     );
@@ -169,7 +169,7 @@ const PipeleyenStepEditor = (function () {
                 }
             } else if (sMode === "insert") {
                 if ((dictWorkflow.listSteps || []).length >= _I_STEP_COUNT_MAX) {
-                    PipeleyenModals.fnShowInfoModal(
+                    VaibifyModals.fnShowInfoModal(
                         "Step limit reached",
                         "Vaibify projects are capped at 500 steps. Remove or combine steps before adding another.");
                     return;
@@ -190,11 +190,11 @@ const PipeleyenStepEditor = (function () {
                 if (response.ok) {
                     const result = await response.json();
                     if (result.bShouldWarnHundredSteps) {
-                        PipeleyenModals.fnShowInfoModal(
+                        VaibifyModals.fnShowInfoModal(
                             "Project milestone", _S_HUNDRED_STEP_WARN_HTML);
                     }
                     dictWorkflow.listSteps = result.listSteps;
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         "Step inserted (references renumbered)",
                         "success"
                     );
@@ -203,7 +203,7 @@ const PipeleyenStepEditor = (function () {
                 }
             } else {
                 if ((dictWorkflow.listSteps || []).length >= _I_STEP_COUNT_MAX) {
-                    PipeleyenModals.fnShowInfoModal(
+                    VaibifyModals.fnShowInfoModal(
                         "Step limit reached",
                         "Vaibify projects are capped at 500 steps. Remove or combine steps before adding another.");
                     return;
@@ -223,11 +223,11 @@ const PipeleyenStepEditor = (function () {
                 if (response.ok) {
                     const result = await response.json();
                     if (result.bShouldWarnHundredSteps) {
-                        PipeleyenModals.fnShowInfoModal(
+                        VaibifyModals.fnShowInfoModal(
                             "Project milestone", _S_HUNDRED_STEP_WARN_HTML);
                     }
                     dictWorkflow.listSteps.push(result.dictStep);
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         "Step created",
                         "success"
                     );
@@ -235,10 +235,10 @@ const PipeleyenStepEditor = (function () {
                     throw new Error("Create failed");
                 }
             }
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
             fnHideModal();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Save failed: " + error.message,
                 "error"
             );
@@ -319,11 +319,11 @@ const PipeleyenStepEditor = (function () {
        honesty step, not an opt-out. */
 
     function fnOpenRenameModal(iIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow
             && dictWorkflow.listSteps[iIndex];
         if (!dictStep) return;
-        PipeleyenModals.fnShowInputModal(
+        VaibifyModals.fnShowInputModal(
             "Rename step '" + (dictStep.sName || "") + "' to:",
             dictStep.sName || "",
             function (sNewName) {
@@ -334,19 +334,19 @@ const PipeleyenStepEditor = (function () {
     }
 
     async function _fnPreviewRename(iIndex, sNewName) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         try {
             var dictPlan = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iIndex +
                 "/rename",
                 {sNewName: sNewName, bDryRun: true});
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
             return;
         }
-        PipeleyenModals.fnShowConfirmModal(
+        VaibifyModals.fnShowConfirmModal(
             "Rename step",
             _fsDescribeRenamePlan(dictPlan),
             function () { _fnApplyRename(iIndex, sNewName); }
@@ -389,19 +389,19 @@ const PipeleyenStepEditor = (function () {
     }
 
     async function _fnApplyRename(iIndex, sNewName) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         try {
             await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iIndex +
                 "/rename",
                 {sNewName: sNewName, bDryRun: false});
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
             return;
         }
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Step renamed to '" + sNewName + "'", "success");
         await VaibifyWorkflowManager.fnRefreshWorkflow();
     }

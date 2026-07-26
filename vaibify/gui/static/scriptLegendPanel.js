@@ -6,7 +6,7 @@
    the sandbox makes that safe), and carries the symbol legend — what
    each mark means, nothing more. The requirements themselves and how
    to meet them live on the AICS tab. Criterion rows come from
-   ``PipeleyenApp.fdictBlockerGlyphCatalog`` so the legend cannot
+   ``VaibifyApp.fdictBlockerGlyphCatalog`` so the legend cannot
    drift from the glyphs actually rendered. */
 
 var VaibifyLegendPanel = (function () {
@@ -275,8 +275,8 @@ var VaibifyLegendPanel = (function () {
     }
 
     function _fdictGlyphCatalog() {
-        if (PipeleyenApp && PipeleyenApp.fdictBlockerGlyphCatalog) {
-            return PipeleyenApp.fdictBlockerGlyphCatalog();
+        if (VaibifyApp && VaibifyApp.fdictBlockerGlyphCatalog) {
+            return VaibifyApp.fdictBlockerGlyphCatalog();
         }
         return {};
     }

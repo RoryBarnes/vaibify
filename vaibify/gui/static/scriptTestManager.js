@@ -1,6 +1,6 @@
 /* Vaibify — Test generation, running, and state (extracted from scriptApplication.js) */
 
-var PipeleyenTestManager = (function () {
+var VaibifyTestManager = (function () {
     "use strict";
 
     var setExpandedUnitTests = new Set();
@@ -16,12 +16,12 @@ var PipeleyenTestManager = (function () {
     /* --- Test Generation --- */
 
     async function fnGenerateTests(iStep) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iStep];
         if (setGeneratingInFlight.has(iStep)) return;
         if (step && (step.saTestCommands || []).length > 0) {
             var bConfirmed = await new Promise(function (resolve) {
-                PipeleyenApp.fnShowConfirmModal(
+                VaibifyApp.fnShowConfirmModal(
                     "Replace Tests",
                     "Tests already exist for this step. " +
                     "Replacing them will overwrite the " +
@@ -33,9 +33,9 @@ var PipeleyenTestManager = (function () {
             if (!bConfirmed) return;
         }
         setGeneratingInFlight.add(iStep);
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
         try {
-            var sContainerId = PipeleyenApp.fsGetContainerId();
+            var sContainerId = VaibifyApp.fsGetContainerId();
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/generate-test",
@@ -43,8 +43,8 @@ var PipeleyenTestManager = (function () {
             );
             setGeneratingInFlight.delete(iStep);
             if (dictResult.bNeedsFallback) {
-                PipeleyenApp.fnRenderStepList();
-                PipeleyenApp.fnShowConfirmModal(
+                VaibifyApp.fnRenderStepList();
+                VaibifyApp.fnShowConfirmModal(
                     "Claude Code Not Found",
                     "Test generation requires Claude Code, " +
                     "which is not installed in this container. " +
@@ -55,9 +55,9 @@ var PipeleyenTestManager = (function () {
                 return;
             }
             if (dictResult.bNeedsOverwriteConfirm) {
-                PipeleyenApp.fnRenderStepList();
+                VaibifyApp.fnRenderStepList();
                 var listFiles = dictResult.listModifiedFiles || [];
-                PipeleyenApp.fnShowConfirmModal(
+                VaibifyApp.fnShowConfirmModal(
                     "Custom Test Files Detected",
                     "The following test files have been " +
                     "customized and will be overwritten:\n\n" +
@@ -70,9 +70,9 @@ var PipeleyenTestManager = (function () {
                 return;
             }
             if (!dictResult.bGenerated) {
-                PipeleyenApp.fnRenderStepList();
-                PipeleyenApp.fnShowToast("No tests generated", "error");
-                PipeleyenApp.fnShowErrorModal(
+                VaibifyApp.fnRenderStepList();
+                VaibifyApp.fnShowToast("No tests generated", "error");
+                VaibifyApp.fnShowErrorModal(
                     "Test generation failed:\n\n" +
                     (dictResult.sMessage || "No tests generated")
                 );
@@ -81,8 +81,8 @@ var PipeleyenTestManager = (function () {
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
             setGeneratingInFlight.delete(iStep);
-            PipeleyenApp.fnRenderStepList();
-            PipeleyenApp.fnShowErrorModal(
+            VaibifyApp.fnRenderStepList();
+            VaibifyApp.fnShowErrorModal(
                 "Test generation failed:\n\n" +
                 (error.message || String(error))
             );
@@ -91,9 +91,9 @@ var PipeleyenTestManager = (function () {
 
     async function fnGenerateTestsForced(iStep) {
         setGeneratingInFlight.add(iStep);
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
         try {
-            var sContainerId = PipeleyenApp.fsGetContainerId();
+            var sContainerId = VaibifyApp.fsGetContainerId();
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/generate-test",
@@ -103,8 +103,8 @@ var PipeleyenTestManager = (function () {
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
             setGeneratingInFlight.delete(iStep);
-            PipeleyenApp.fnRenderStepList();
-            PipeleyenApp.fnShowErrorModal(
+            VaibifyApp.fnRenderStepList();
+            VaibifyApp.fnShowErrorModal(
                 "Test generation failed:\n\n" +
                 (error.message || String(error))
             );
@@ -112,10 +112,10 @@ var PipeleyenTestManager = (function () {
     }
 
     function fnHandleGeneratedTest(iStep, dictResult) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
         if (!dictStep.dictTests) {
-            dictStep.dictTests = PipeleyenApp.fdictGetTests(dictStep);
+            dictStep.dictTests = VaibifyApp.fdictGetTests(dictStep);
         }
         if (!dictStep.dictVerification) {
             dictStep.dictVerification = {
@@ -154,7 +154,7 @@ var PipeleyenTestManager = (function () {
                 dictCatResult.saCommands || []);
         }
         dictStep.saTestCommands = listAllCommands;
-        PipeleyenApp.fnSaveStepUpdate(iStep, {
+        VaibifyApp.fnSaveStepUpdate(iStep, {
             dictTests: dictStep.dictTests,
             dictVerification: dictStep.dictVerification,
             saTestCommands: listAllCommands,
@@ -162,16 +162,16 @@ var PipeleyenTestManager = (function () {
         if (!setExpandedUnitTests.has(iStep)) {
             setExpandedUnitTests.add(iStep);
         }
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
         var iSuccessCount = listCategories.length - listErrors.length;
-        var sStepLabel = PipeleyenApp.fsComputeStepLabel(iStep);
+        var sStepLabel = VaibifyApp.fsComputeStepLabel(iStep);
         if (listErrors.length > 0) {
-            PipeleyenApp.fnShowErrorModal(
+            VaibifyApp.fnShowErrorModal(
                 listErrors.join(", ") +
                 " failed to generate.\n" +
                 "Fix manually or ask a coding agent to fix.");
         }
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             sStepLabel + ": " + iSuccessCount +
             " of 3 test categories generated. Running\u2026",
             iSuccessCount === 3 ? "success" : "error");
@@ -186,19 +186,19 @@ var PipeleyenTestManager = (function () {
         if (!dictQ) return;
         var sClass = dictQ.sStochasticityClassification || "";
         if (sClass === "stochastic") {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 sStepLabel + ": stochastic outputs detected. " +
                 "Standards use distributional metrics " +
                 "(Mean, P5, P25, P50, P75, P95, std).",
                 "info");
         } else if (sClass === "stochastic_unseeded") {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 sStepLabel + ": stochastic outputs without a fixed " +
                 "seed. Tolerance is a placeholder \u2014 seed the " +
                 "source of randomness, then regenerate.",
                 "warning");
         } else if (sClass === "unintrospectable") {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 sStepLabel + ": introspector could not parse this " +
                 "step's outputs. Standards came from the LLM " +
                 "fallback \u2014 review them carefully.",
@@ -214,7 +214,7 @@ var PipeleyenTestManager = (function () {
 
     function fnFinalizeGeneratedTest(iStep) {
         setGeneratedTestsPending.delete(iStep);
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
         if (!dictStep.dictVerification) {
             dictStep.dictVerification = {
@@ -225,25 +225,25 @@ var PipeleyenTestManager = (function () {
         dictStep.dictVerification.sQuantitative = "untested";
         dictStep.dictVerification.sIntegrity = "untested";
         dictStep.dictVerification.sUnitTest = "untested";
-        PipeleyenApp.fnSaveStepUpdate(iStep, {
+        VaibifyApp.fnSaveStepUpdate(iStep, {
             dictTests: dictStep.dictTests,
             dictVerification: dictStep.dictVerification,
         });
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
     }
 
     async function fnCancelGeneratedTest(iStep) {
         setGeneratedTestsPending.delete(iStep);
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         try {
             await VaibifyApi.fnDelete(
                 "/api/steps/" + sContainerId + "/" + iStep +
                 "/generated-test"
             );
         } catch (error) {
-            PipeleyenApp.fnShowToast("Delete failed", "error");
+            VaibifyApp.fnShowToast("Delete failed", "error");
         }
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
         dictStep.saTestCommands = [];
         dictStep.saTestFiles = [];
@@ -255,13 +255,13 @@ var PipeleyenTestManager = (function () {
             dictIntegrity: {saCommands: [], sFilePath: ""},
             listUserTests: [],
         };
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
     }
 
     async function fnGenerateTestsWithApi(iStep, sApiKey) {
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Generating tests via API...", "success");
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStep +
@@ -270,7 +270,7 @@ var PipeleyenTestManager = (function () {
             );
             fnHandleGeneratedTest(iStep, dictResult);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
@@ -291,7 +291,7 @@ var PipeleyenTestManager = (function () {
                     "inputApiKey"
                 ).value.trim();
                 if (!sApiKey) {
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         "API key is required", "error");
                     return;
                 }
@@ -304,7 +304,7 @@ var PipeleyenTestManager = (function () {
     /* --- Test Running --- */
 
     async function fnRunCategoryTests(iStepIndex, sCategory) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/steps/" + sContainerId + "/" + iStepIndex +
@@ -314,7 +314,7 @@ var PipeleyenTestManager = (function () {
             fnUpdateCategoryTestState(
                 iStepIndex, sCategory, dictResult);
         } catch (error) {
-            PipeleyenApp.fnShowErrorModal(
+            VaibifyApp.fnShowErrorModal(
                 "Test run failed: " + error.message);
         }
     }
@@ -327,7 +327,7 @@ var PipeleyenTestManager = (function () {
 
     async function fnFetchFalsificationState(iStepIndex) {
         if (_setFalsificationFetchInFlight.has(iStepIndex)) return;
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         _setFalsificationFetchInFlight.add(iStepIndex);
         try {
@@ -336,9 +336,9 @@ var PipeleyenTestManager = (function () {
                 "/falsification"
             );
             _dictFalsificationByStep[iStepIndex] = dictResult;
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Falsification status fetch failed: " +
                 error.message, "error");
         } finally {
@@ -347,7 +347,7 @@ var PipeleyenTestManager = (function () {
     }
 
     async function fnRunFalsification(iStepIndex) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             await VaibifyApi.fdictPostRaw(
@@ -355,14 +355,14 @@ var PipeleyenTestManager = (function () {
                 "/run-falsification"
             );
         } catch (error) {
-            PipeleyenApp.fnShowErrorModal(
+            VaibifyApp.fnShowErrorModal(
                 "Falsification check refused: " + error.message);
             return;
         }
         var dictState = _dictFalsificationByStep[iStepIndex] || {};
         dictState.dictInFlight = {sPhase: "starting"};
         _dictFalsificationByStep[iStepIndex] = dictState;
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
         _fnPollFalsificationUntilDone(iStepIndex);
     }
 
@@ -380,13 +380,13 @@ var PipeleyenTestManager = (function () {
     }
 
     async function fnRunStepTests(iStepIndex) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iStepIndex];
         if (!step || !step.saTestCommands ||
             step.saTestCommands.length === 0) return;
-        PipeleyenApp.fnShowToast("Running tests for Step " +
+        VaibifyApp.fnShowToast("Running tests for Step " +
             (iStepIndex + 1) + "...", "success");
         try {
             var dictResult = await VaibifyApi.fdictPostRaw(
@@ -398,26 +398,26 @@ var PipeleyenTestManager = (function () {
                 step, dictResult.dictCategoryResults);
             step.dictVerification.sUnitTest =
                 dictResult.bPassed ? "passed" : "failed";
-            PipeleyenApp.fnClearOutputModified(iStepIndex);
+            VaibifyApp.fnClearOutputModified(iStepIndex);
             var dictStepUpdate = {
                 dictVerification: step.dictVerification,
             };
             if (step.dictTests) {
                 dictStepUpdate.dictTests = step.dictTests;
             }
-            PipeleyenApp.fnSaveStepUpdate(iStepIndex, dictStepUpdate);
-            PipeleyenApp.fnRenderStepList();
-            PipeleyenApp.fnUpdateHighlightState();
+            VaibifyApp.fnSaveStepUpdate(iStepIndex, dictStepUpdate);
+            VaibifyApp.fnRenderStepList();
+            VaibifyApp.fnUpdateHighlightState();
             var sOutput = fsCollectTestOutput(dictResult);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 dictResult.bPassed ?
                     "Tests passed" : "Tests FAILED",
                 dictResult.bPassed ? "success" : "error"
             );
-            PipeleyenFigureViewer.fnDisplayTestOutput(
+            VaibifyFigureViewer.fnDisplayTestOutput(
                 sOutput, dictResult.bPassed);
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
@@ -460,7 +460,7 @@ var PipeleyenTestManager = (function () {
     function fnUpdateCategoryTestState(
         iStepIndex, sCategory, dictResult
     ) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStepIndex];
         if (!dictStep.dictVerification) {
             dictStep.dictVerification = {
@@ -478,26 +478,26 @@ var PipeleyenTestManager = (function () {
             dictTests[sCatKey].sLastOutput = dictResult.sOutput;
         }
         fnComputeAggregateTestState(iStepIndex);
-        PipeleyenApp.fnClearOutputModified(iStepIndex);
+        VaibifyApp.fnClearOutputModified(iStepIndex);
         var dictCatUpdate = {
             dictVerification: dictStep.dictVerification,
         };
         if (dictStep.dictTests) {
             dictCatUpdate.dictTests = dictStep.dictTests;
         }
-        PipeleyenApp.fnSaveStepUpdate(iStepIndex, dictCatUpdate);
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnSaveStepUpdate(iStepIndex, dictCatUpdate);
+        VaibifyApp.fnRenderStepList();
         var sLabel = VaibifyUtilities.fsTestCategoryLabel(sCategory);
-        PipeleyenApp.fnShowToast(sLabel + ": " +
+        VaibifyApp.fnShowToast(sLabel + ": " +
             (dictResult.bPassed ? "Passed" : "Failed"),
             dictResult.bPassed ? "success" : "error");
     }
 
     function fnComputeAggregateTestState(iStepIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var dictVerify = PipeleyenApp.fdictGetVerification(dictStep);
-        var dictTests = PipeleyenApp.fdictGetTests(dictStep);
+        var dictVerify = VaibifyApp.fdictGetVerification(dictStep);
+        var dictTests = VaibifyApp.fdictGetTests(dictStep);
         var listCategories = [
             "qualitative", "quantitative", "integrity"];
         var bAllPassed = true;
@@ -563,7 +563,7 @@ var PipeleyenTestManager = (function () {
     }
 
     function fnHandleTestResult(dictEvent) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var iStep = dictEvent.iStepNumber - 1;
         var dictStep = dictWorkflow.listSteps[iStep];
         if (!dictStep.dictVerification) {
@@ -575,63 +575,63 @@ var PipeleyenTestManager = (function () {
         fnApplyTestResultToCategories(
             dictStep, dictEvent.sResult, dictEvent.sOutput || "",
             dictEvent.dictCategoryResults || null);
-        PipeleyenApp.fnClearOutputModified(iStep);
+        VaibifyApp.fnClearOutputModified(iStep);
         var dictUpdate = {
             dictVerification: dictStep.dictVerification,
         };
         if (dictStep.dictTests) {
             dictUpdate.dictTests = dictStep.dictTests;
         }
-        PipeleyenApp.fnSaveStepUpdate(iStep, dictUpdate);
-        PipeleyenApp.fnRenderStepList();
-        PipeleyenApp.fnUpdateHighlightState();
+        VaibifyApp.fnSaveStepUpdate(iStep, dictUpdate);
+        VaibifyApp.fnRenderStepList();
+        VaibifyApp.fnUpdateHighlightState();
         var sLabel = dictEvent.sResult === "passed" ?
             "Tests passed" : "Tests FAILED";
-        var sStepLabel = PipeleyenApp.fsComputeStepLabel(iStep);
-        PipeleyenApp.fnShowToast("Step " + sStepLabel + ": " + sLabel,
+        var sStepLabel = VaibifyApp.fsComputeStepLabel(iStep);
+        VaibifyApp.fnShowToast("Step " + sStepLabel + ": " + sLabel,
             dictEvent.sResult === "passed" ? "success" : "error");
     }
 
     /* --- Test UI --- */
 
     function fnViewCategoryTestFile(iStepIndex, sCategory) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var dictTests = PipeleyenApp.fdictGetTests(dictStep);
+        var dictTests = VaibifyApp.fdictGetTests(dictStep);
         var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
             sCategory.slice(1);
         var dictCat = dictTests[sCatKey] || {};
         var sFilePath = dictCat.sFilePath || "";
         if (!sFilePath) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "No test file for this category", "error");
             return;
         }
         var sDir = dictStep.sDirectory || "";
-        PipeleyenFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
+        VaibifyFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
     }
 
     function fnViewStandardsFile(iStepIndex, sCategory) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStepIndex];
-        var dictTests = PipeleyenApp.fdictGetTests(dictStep);
+        var dictTests = VaibifyApp.fdictGetTests(dictStep);
         var sCatKey = "dict" + sCategory.charAt(0).toUpperCase() +
             sCategory.slice(1);
         var dictCat = dictTests[sCatKey] || {};
         var sStandardsPath = dictCat.sStandardsPath || "";
         if (!sStandardsPath) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "No standards file for this category", "error");
             return;
         }
         var sDir = dictStep.sDirectory || "";
-        PipeleyenFigureViewer.fnDisplayInNextViewer(
+        VaibifyFigureViewer.fnDisplayInNextViewer(
             sStandardsPath, sDir);
     }
 
     function fnAddTestItem(iStep, sType) {
         if (sType === "user") {
-            PipeleyenApp.fnShowInputModal(
+            VaibifyApp.fnShowInputModal(
                 "Test name",
                 "e.g. Check convergence tolerance",
                 function (sValue) {
@@ -644,14 +644,14 @@ var PipeleyenTestManager = (function () {
             "Test file path" : "Test command";
         var sPlaceholder = sType === "file" ?
             "e.g. test_step01.py" : "e.g. pytest test_step01.py";
-        PipeleyenApp.fnShowInputModal(
+        VaibifyApp.fnShowInputModal(
             sLabel, sPlaceholder, function (sValue) {
                 _fnSaveTestItem(iStep, sType, sValue);
             });
     }
 
     async function _fnSaveTestItem(iStep, sType, sValue) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
         var sKey = sType === "file" ?
             "saTestFiles" : "saTestCommands";
@@ -659,15 +659,15 @@ var PipeleyenTestManager = (function () {
         dictStep[sKey].push(sValue.trim());
         var dictUpdate = {};
         dictUpdate[sKey] = dictStep[sKey];
-        await PipeleyenApp.fnSaveStepUpdate(iStep, dictUpdate);
-        PipeleyenApp.fnRenderStepList();
+        await VaibifyApp.fnSaveStepUpdate(iStep, dictUpdate);
+        VaibifyApp.fnRenderStepList();
     }
 
     async function _fnSaveUserTest(iStep, sName) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStep];
         if (!dictStep.dictTests) {
-            dictStep.dictTests = PipeleyenApp.fdictGetTests(dictStep);
+            dictStep.dictTests = VaibifyApp.fdictGetTests(dictStep);
         }
         if (!dictStep.dictTests.listUserTests) {
             dictStep.dictTests.listUserTests = [];
@@ -677,14 +677,14 @@ var PipeleyenTestManager = (function () {
             sCommand: "",
             sFilePath: "",
         });
-        await PipeleyenApp.fnSaveStepUpdate(iStep, {
+        await VaibifyApp.fnSaveStepUpdate(iStep, {
             dictTests: dictStep.dictTests,
         });
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
     }
 
     function fnEditTestFile(iStepIndex, iCmdIdx) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iStepIndex];
         if (!step) return;
         var sCmd = (step.saTestCommands || [])[iCmdIdx];
@@ -698,16 +698,16 @@ var PipeleyenTestManager = (function () {
         if (sFilePath.charAt(0) !== "/" && sDir) {
             sFilePath = sDir + "/" + sFilePath;
         }
-        PipeleyenFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
+        VaibifyFigureViewer.fnDisplayInNextViewer(sFilePath, sDir);
     }
 
     function fnDeleteTestCommand(iStepIndex, iCmdIdx) {
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Delete Test",
             "Delete this test command and its test file? " +
             "This cannot be undone.",
             async function () {
-                var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+                var dictWorkflow = VaibifyApp.fdictGetWorkflow();
                 var step = dictWorkflow.listSteps[iStepIndex];
                 if (!step) return;
                 var listCmds = step.saTestCommands || [];
@@ -715,11 +715,11 @@ var PipeleyenTestManager = (function () {
                 listCmds.splice(iCmdIdx, 1);
                 step.dictVerification = step.dictVerification || {};
                 step.dictVerification.sUnitTest = "untested";
-                await PipeleyenApp.fnSaveStepUpdate(iStepIndex, {
+                await VaibifyApp.fnSaveStepUpdate(iStepIndex, {
                     saTestCommands: listCmds,
                     dictVerification: step.dictVerification,
                 });
-                PipeleyenApp.fnRenderStepList();
+                VaibifyApp.fnRenderStepList();
             }
         );
     }
@@ -737,22 +737,22 @@ var PipeleyenTestManager = (function () {
             // any toast about pass/fail would be misleading.
             if (dictEntry.bStale) continue;
             var dictMarker = dictEntry.dictMarker || {};
-            var sLabel = PipeleyenApp.fsComputeStepLabel(iStep);
+            var sLabel = VaibifyApp.fsComputeStepLabel(iStep);
             var iExitStatus = dictMarker.iExitStatus || 0;
             var sVerb = iExitStatus === 0 ? "passed" : "failed";
             var sVariant = iExitStatus === 0 ? "success" : "error";
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Step " + sLabel + ": tests " + sVerb +
                 " (external run detected)", sVariant
             );
         }
-        if (bAnyChanged) PipeleyenApp.fnRenderStepList();
+        if (bAnyChanged) VaibifyApp.fnRenderStepList();
     }
 
     function fbApplyStepMarker(iStep, dictEntry) {
         var dictMarker = dictEntry.dictMarker || {};
         var sIndex = String(iStep);
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow && dictWorkflow.listSteps
             ? dictWorkflow.listSteps[iStep] : null;
         if (!dictStep) return false;
@@ -836,8 +836,8 @@ var PipeleyenTestManager = (function () {
                 iStep, listNew
             );
             if (!bSeedOnly && listUnseen.length > 0) {
-                var sLabel = PipeleyenApp.fsComputeStepLabel(iStep);
-                PipeleyenApp.fnShowToast(
+                var sLabel = VaibifyApp.fsComputeStepLabel(iStep);
+                VaibifyApp.fnShowToast(
                     "Step " + sLabel + ": " + listUnseen.length +
                     " new test file(s) discovered", "info"
                 );

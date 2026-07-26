@@ -157,7 +157,7 @@ var VaibifyPolling = (function () {
             var dictStatus = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sContainerId + "/file-status" +
                 "?iWorkflowEpoch=" + encodeURIComponent(
-                    PipeleyenApp.fiGetWorkflowEpoch())
+                    VaibifyApp.fiGetWorkflowEpoch())
             );
             _fnReportPollSuccess("file-status");
             if (_fnOnFileStatus) {

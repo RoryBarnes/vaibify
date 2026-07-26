@@ -58,8 +58,8 @@ var VaibifyWebSocket = (function () {
     }
 
     function _fsActiveLease() {
-        if (typeof PipeleyenApp === "undefined") return "";
-        return PipeleyenApp.fsGetLeaseId() || "";
+        if (typeof VaibifyApp === "undefined") return "";
+        return VaibifyApp.fsGetLeaseId() || "";
     }
 
     function _fnOpenSocket(sContainerId, sSessionToken) {

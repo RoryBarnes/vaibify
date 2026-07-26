@@ -1635,10 +1635,10 @@ var VaibifyStepRenderer = (function () {
     }
 
     function _fnFetchDeclarationPreview(elShell) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         var sFilePath = elShell.dataset.file.replace(/^\/+/, "");
-        var sRepoRoot = PipeleyenApp.fdictBuildClientVariables()
+        var sRepoRoot = VaibifyApp.fdictBuildClientVariables()
             .sRepoRoot || "";
         var sUrl = "/api/figure/" + sContainerId + "/" + sFilePath +
             "?sWorkdir=" + encodeURIComponent(sRepoRoot);

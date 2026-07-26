@@ -1,6 +1,6 @@
 /* Vaibify — Pull-to-host modal (extracted from scriptApplication.js) */
 
-var PipeleyenFilePull = (function () {
+var VaibifyFilePull = (function () {
     "use strict";
 
     function fnPromptPullToHost(sContainerPath) {
@@ -60,7 +60,7 @@ var PipeleyenFilePull = (function () {
             var dictResult = await VaibifyApi.fdictGet(sUrl);
             fnRenderPullDirectoryList(elModal, dictResult);
         } catch (error) {
-            PipeleyenApp.fnShowToast("Cannot browse host", "error");
+            VaibifyApp.fnShowToast("Cannot browse host", "error");
         }
     }
 
@@ -128,10 +128,10 @@ var PipeleyenFilePull = (function () {
     async function fnExecutePullToHost(
         sContainerPath, sHostDestination
     ) {
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Pulling " + sContainerPath + "...", "success");
         try {
-            var sContainerId = PipeleyenApp.fsGetContainerId();
+            var sContainerId = VaibifyApp.fsGetContainerId();
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/files/" + sContainerId + "/pull",
                 {
@@ -139,10 +139,10 @@ var PipeleyenFilePull = (function () {
                     sHostDestination: sHostDestination,
                 }
             );
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Pulled to " + dictResult.sHostPath, "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Pull failed: " + error.message, "error");
         }
     }

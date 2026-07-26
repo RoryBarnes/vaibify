@@ -147,25 +147,25 @@ var VaibifyPersonalLayer = (function () {
     }
 
     async function fnDeclareStatus(sStatus) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             var dictResult = await _fdictPostDeclare(
                 sContainerId, {sStatus: sStatus});
             _fnApplyResultToWorkflow(dictResult);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Personal layer declared: " +
                     (_DICT_STATUS_LABELS[sStatus] || sStatus) + ".",
                 "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Declaration failed: " + _fsDetail(error), "error");
         }
     }
 
     async function fnAddCommitment(elButton) {
         var elForm = elButton.closest(".personal-layer-add-form");
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!elForm || !sContainerId) return;
         var sLabel = (elForm.querySelector(".personal-layer-label")
             .value || "").trim();
@@ -173,7 +173,7 @@ var VaibifyPersonalLayer = (function () {
             .querySelector(".personal-layer-host-path")
             .value || "").trim();
         if (!sLabel || !sHostPath) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Both fields are needed: a label and the file's " +
                     "path on this computer.", "warning");
             return;
@@ -189,12 +189,12 @@ var VaibifyPersonalLayer = (function () {
                     (dictHashResult || {}).dictHashCommitment,
             });
             _fnApplyResultToWorkflow(dictResult);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Hash commitment recorded for '" + sLabel +
                     "' — only the digest, byte count, and " +
                     "date were stored.", "success");
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Commitment failed: " + _fsDetail(error), "error");
         }
     }
@@ -207,7 +207,7 @@ var VaibifyPersonalLayer = (function () {
     }
 
     function _fnApplyResultToWorkflow(dictResult) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow) return;
         var dictProvenance = dictWorkflow.dictAiProvenance || {};
         dictProvenance.dictPersonalLayer =

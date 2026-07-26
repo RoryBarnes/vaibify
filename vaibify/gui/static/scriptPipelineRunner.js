@@ -1,6 +1,6 @@
 /* Vaibify — Pipeline execution and state recovery (extracted from scriptApplication.js) */
 
-var PipeleyenPipelineRunner = (function () {
+var VaibifyPipelineRunner = (function () {
     "use strict";
 
     var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
@@ -19,14 +19,14 @@ var PipeleyenPipelineRunner = (function () {
         if (!_bRemoteDataPulledThisRun) return;
         _bRemoteDataPulledThisRun = false;
         VaibifyManifestCheck.fbOfferCommitAfterGenerate(
-            PipeleyenApp.fsGetContainerId());
+            VaibifyApp.fsGetContainerId());
     }
 
     /* --- WebSocket --- */
 
     function fnConnectPipelineWebSocket() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        var sSessionToken = PipeleyenApp.fsGetSessionToken();
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        var sSessionToken = VaibifyApp.fsGetSessionToken();
         return VaibifyWebSocket.fnConnect(
             sContainerId, sSessionToken);
     }
@@ -44,7 +44,7 @@ var PipeleyenPipelineRunner = (function () {
             fnAppendPipelineOutput(dictEvent.sLine);
         } else if (dictEvent.sType === "verifyTimeout") {
             fnAppendPipelineOutput(dictEvent.sLine);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Verification timed out on a step — it's reported "
                 + "unverified. See the run log.", "warning");
         } else if (dictEvent.sType === "commandFailed") {
@@ -53,99 +53,99 @@ var PipeleyenPipelineRunner = (function () {
                 "\n  Directory: " + dictEvent.sDirectory +
                 "\n  Exit code: " + dictEvent.iExitCode;
             fnAppendPipelineOutput(sMessage);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Command failed (exit "
                 + dictEvent.iExitCode + ")", "error");
         } else if (dictEvent.sType === "preflightFailed") {
             var sErrors = dictEvent.listErrors.join("\n");
-            PipeleyenApp.fnShowErrorModal(
+            VaibifyApp.fnShowErrorModal(
                 "Pre-flight validation failed:\n\n" + sErrors
             );
         } else if (dictEvent.sType === "testResult") {
-            PipeleyenTestManager.fnHandleTestResult(dictEvent);
+            VaibifyTestManager.fnHandleTestResult(dictEvent);
         } else if (dictEvent.sType === "stepStarted") {
-            PipeleyenApp.fnSetStepStatus(
+            VaibifyApp.fnSetStepStatus(
                 dictEvent.iStepNumber - 1, "running");
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "stepStats") {
             var iStepIdx = dictEvent.iStepNumber - 1;
-            var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+            var dictWorkflow = VaibifyApp.fdictGetWorkflow();
             if (dictWorkflow && dictWorkflow.listSteps[iStepIdx]) {
                 dictWorkflow.listSteps[iStepIdx].dictRunStats =
                     dictEvent.dictRunStats;
-                PipeleyenApp.fnRenderStepList();
+                VaibifyApp.fnRenderStepList();
             }
         } else if (dictEvent.sType === "remoteDataRecorded") {
             var iRemoteIdx = dictEvent.iStepNumber - 1;
-            var dictWfRemote = PipeleyenApp.fdictGetWorkflow();
+            var dictWfRemote = VaibifyApp.fdictGetWorkflow();
             if (dictWfRemote && dictWfRemote.listSteps[iRemoteIdx]) {
                 dictWfRemote.listSteps[iRemoteIdx].listRemoteData =
                     dictEvent.listRemoteData || [];
-                PipeleyenApp.fnRenderStepList();
+                VaibifyApp.fnRenderStepList();
             }
             // Remember that this run changed pulled data so the
             // end-of-run handler can offer to commit it — canonical
             // data must not sit silently uncommitted.
             _bRemoteDataPulledThisRun = true;
         } else if (dictEvent.sType === "stepSkipped") {
-            PipeleyenApp.fnSetStepStatus(
+            VaibifyApp.fnSetStepStatus(
                 dictEvent.iStepNumber - 1, "skipped");
             fnAppendPipelineOutput(
                 "Step " + dictEvent.iStepNumber +
                 ": SKIPPED (inputs unchanged)");
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "discoveredOutputs") {
-            PipeleyenApp.fnHandleDiscoveredOutputs(dictEvent);
+            VaibifyApp.fnHandleDiscoveredOutputs(dictEvent);
         } else if (dictEvent.sType === "stepPass") {
             var iPassIdx = dictEvent.iStepNumber - 1;
-            PipeleyenApp.fnSetStepStatus(iPassIdx, "pass");
-            PipeleyenApp.fnClearOutputModified(iPassIdx);
+            VaibifyApp.fnSetStepStatus(iPassIdx, "pass");
+            VaibifyApp.fnClearOutputModified(iPassIdx);
             fnResetUserVerification(iPassIdx);
             fnAcknowledgeStepCompletion(iPassIdx);
-            PipeleyenApp.fnInvalidateStepFileCache(iPassIdx);
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnInvalidateStepFileCache(iPassIdx);
+            VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "stepFail") {
             var iFailIdx = dictEvent.iStepNumber - 1;
-            PipeleyenApp.fnSetStepStatus(iFailIdx, "fail");
+            VaibifyApp.fnSetStepStatus(iFailIdx, "fail");
             fnResetUserVerification(iFailIdx);
-            PipeleyenApp.fnInvalidateStepFileCache(iFailIdx);
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnInvalidateStepFileCache(iFailIdx);
+            VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {
             VaibifyPolling.fnStopPipelinePolling();
             VaibifyPolling.fnStopFilePolling();
             fnInitPipelineOutput();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 _fsStartedToast(dictEvent.sCommand), "success");
         } else if (dictEvent.sType === "completed") {
-            PipeleyenApp.fnClearRunningStatuses();
-            PipeleyenApp.fnStartFileChangePolling();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnClearRunningStatuses();
+            VaibifyApp.fnStartFileChangePolling();
+            VaibifyApp.fnShowToast(
                 _fsCompletedToast(dictEvent.sCommand), "success");
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "failed") {
-            PipeleyenApp.fnClearRunningStatuses();
-            PipeleyenApp.fnStartFileChangePolling();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnClearRunningStatuses();
+            VaibifyApp.fnStartFileChangePolling();
+            VaibifyApp.fnShowToast(
                 "Pipeline failed (exit " + dictEvent.iExitCode + ")",
                 "error"
             );
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
             _fnFinalizeLogDisplay(dictEvent.sLogPath);
             // A later step failing does not un-pull the data: the
             // successful pull still left fresh files that need review
             // and commit, so the offer fires here too.
             _fnOfferCommitIfRemoteDataPulled();
         } else if (dictEvent.sType === "runRefused") {
-            PipeleyenApp.fnResetQueuedSteps(
+            VaibifyApp.fnResetQueuedSteps(
                 dictEvent.listStepIndices || []);
-            PipeleyenApp.fnRenderStepList();
+            VaibifyApp.fnRenderStepList();
             if (dictEvent.sReason === "remoteDataOverwrite") {
                 _fnHandleRemoteOverwriteRefusal(dictEvent);
                 return;
             }
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 dictEvent.sMessage ||
                 "A pipeline action is already running.", "error");
         } else if (dictEvent.sType === "interactivePause") {
@@ -173,7 +173,7 @@ var PipeleyenPipelineRunner = (function () {
         // is no consequence to consent to.
         if (!_SET_RUN_ACTIONS_WITH_NOTICE[dictAction
             && dictAction.sAction]) return;
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
         var fDefault =
             dictWorkflow.fDefaultWallClockBudgetSeconds || 0;
         if (!(fDefault > 0)) return;
@@ -187,7 +187,7 @@ var PipeleyenPipelineRunner = (function () {
         var sLimit = fDefault % 3600 === 0
             ? (fDefault / 3600) + " hours"
             : fDefault + " seconds";
-        PipeleyenApp.fnShowToast(
+        VaibifyApp.fnShowToast(
             "Heads-up: steps in this project are expected to " +
             "finish within " + sLimit + ". A step running longer " +
             "is flagged as possibly hung — the run is never " +
@@ -214,7 +214,7 @@ var PipeleyenPipelineRunner = (function () {
     /* --- Interactive --- */
 
     function fnShowInteractivePauseDialog(dictEvent) {
-        var sLabel = PipeleyenApp.fsComputeStepLabel(
+        var sLabel = VaibifyApp.fsComputeStepLabel(
             dictEvent.iStepIndex);
         _fnShowTwoActionModal(
             "Interactive Step Reached",
@@ -286,7 +286,7 @@ var PipeleyenPipelineRunner = (function () {
         var sFullCommand = _fsBuildInteractiveCommand(
             sDirectory, listCommands, sSentinel
         );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCommand);
+        VaibifyTerminal.fnSendCommandInFreshTab(sFullCommand);
         _fnMonitorTerminalForSentinel(sSentinel);
     }
 
@@ -305,7 +305,7 @@ var PipeleyenPipelineRunner = (function () {
     function _fsResolveStepDirectory(sDirectory) {
         if (!sDirectory) return "";
         if (sDirectory.charAt(0) === "/") return sDirectory;
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow() || {};
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
         var sRepo = dictWorkflow.sProjectRepoPath || "";
         if (!sRepo) return sDirectory;
         return sRepo.replace(/\/+$/, "") + "/" + sDirectory;
@@ -328,7 +328,7 @@ var PipeleyenPipelineRunner = (function () {
             if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
                 clearInterval(_iActiveSentinelMonitor);
                 _iActiveSentinelMonitor = null;
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "Interactive step timed out after 24 hours",
                     "error");
                 _fnSendInteractiveComplete(1);
@@ -375,33 +375,33 @@ var PipeleyenPipelineRunner = (function () {
     /* --- State --- */
 
     function fnResetUserVerification(iStepIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow.listSteps[iStepIndex];
         if (!dictStep) return;
-        var dictVerify = PipeleyenApp.fdictGetVerification(dictStep);
+        var dictVerify = VaibifyApp.fdictGetVerification(dictStep);
         if (dictVerify.sUser === "untested") return;
         dictVerify.sUser = "untested";
         delete dictVerify.sLastUserUpdate;
         dictStep.dictVerification = dictVerify;
-        PipeleyenApp.fnSaveStepUpdate(iStepIndex, {
+        VaibifyApp.fnSaveStepUpdate(iStepIndex, {
             dictVerification: dictStep.dictVerification,
         });
     }
 
     function fnAcknowledgeStepCompletion(iStepIndex) {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         dictAcknowledgedAt[iStepIndex] = Date.now();
         VaibifyApi.fdictPostRaw(
             "/api/pipeline/" + sContainerId +
             "/acknowledge-step/" + iStepIndex
         ).then(function () {
-            PipeleyenApp.fnClearOutputModified(iStepIndex);
+            VaibifyApp.fnClearOutputModified(iStepIndex);
         }).catch(function () { /* best effort */ });
     }
 
     function fnClearOutputModified(iStep) {
-        PipeleyenApp.fnClearOutputModified(iStep);
+        VaibifyApp.fnClearOutputModified(iStep);
     }
 
     async function fnRecoverPipelineState(sId) {
@@ -413,13 +413,13 @@ var PipeleyenPipelineRunner = (function () {
                     dictState.iExitCode >= 0) {
                     fnApplyCompletedState(dictState);
                 }
-                PipeleyenApp.fnStartFileChangePolling();
+                VaibifyApp.fnStartFileChangePolling();
                 return;
             }
             fnApplyRunningState(dictState, true);
             VaibifyPolling.fnStartPipelinePolling(sId);
         } catch (error) {
-            PipeleyenApp.fnStartFileChangePolling();
+            VaibifyApp.fnStartFileChangePolling();
         }
     }
 
@@ -429,14 +429,14 @@ var PipeleyenPipelineRunner = (function () {
             VaibifyPolling.fnStopPipelinePolling();
             fnApplyCompletedState(dictState);
             _fnFinalizeLogDisplay(dictState.sLogPath);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 dictState.iExitCode === 0 ?
                     "Pipeline completed" :
                     "Pipeline failed (exit " +
                     dictState.iExitCode + ")",
                 dictState.iExitCode === 0 ? "success" : "error"
             );
-            PipeleyenApp.fnStartFileChangePolling();
+            VaibifyApp.fnStartFileChangePolling();
             return;
         }
         fnApplyRunningState(dictState, false);
@@ -445,7 +445,7 @@ var PipeleyenPipelineRunner = (function () {
     function fnApplyRunningState(dictState, bInitial) {
         if (bInitial) {
             fnInitPipelineOutput();
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Reconnected to running pipeline", "success"
             );
             iPreviousOutputCount = 0;
@@ -455,15 +455,15 @@ var PipeleyenPipelineRunner = (function () {
             var iStep = parseInt(sKey) - 1;
             var sStatus = dictResults[sKey].sStatus;
             if (sStatus === "passed") {
-                PipeleyenApp.fnSetStepStatus(iStep, "pass");
+                VaibifyApp.fnSetStepStatus(iStep, "pass");
             } else if (sStatus === "failed") {
-                PipeleyenApp.fnSetStepStatus(iStep, "fail");
+                VaibifyApp.fnSetStepStatus(iStep, "fail");
             } else if (sStatus === "skipped") {
-                PipeleyenApp.fnSetStepStatus(iStep, "");
+                VaibifyApp.fnSetStepStatus(iStep, "");
             }
         }
         if (dictState.iActiveStep > 0) {
-            PipeleyenApp.fnSetStepStatus(
+            VaibifyApp.fnSetStepStatus(
                 dictState.iActiveStep - 1, "running");
         }
         var iStepCount = dictState.iStepCount || 0;
@@ -472,7 +472,7 @@ var PipeleyenPipelineRunner = (function () {
             if (!dictResults[sIdx] &&
                 i !== dictState.iActiveStep - 1) {
                 if (!dictResults[sIdx]) {
-                    PipeleyenApp.fnSetStepStatus(i, "queued");
+                    VaibifyApp.fnSetStepStatus(i, "queued");
                 }
             }
         }
@@ -494,29 +494,29 @@ var PipeleyenPipelineRunner = (function () {
             elOutput.scrollTop = elOutput.scrollHeight;
             iPreviousOutputCount = listOutput.length;
         }
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
     }
 
     function fnApplyCompletedState(dictState) {
-        PipeleyenApp.fnClearRunningStatuses();
+        VaibifyApp.fnClearRunningStatuses();
         var dictResults = dictState.dictStepResults || {};
         for (var sKey in dictResults) {
             var iStep = parseInt(sKey) - 1;
             var sStatus = dictResults[sKey].sStatus;
             if (sStatus === "passed") {
-                PipeleyenApp.fnSetStepStatus(iStep, "pass");
+                VaibifyApp.fnSetStepStatus(iStep, "pass");
             } else if (sStatus === "failed") {
-                PipeleyenApp.fnSetStepStatus(iStep, "fail");
+                VaibifyApp.fnSetStepStatus(iStep, "fail");
             }
         }
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
     }
 
     /* --- Output --- */
 
     function fnInitPipelineOutput() {
         if (_sStreamingViewer === null) {
-            PipeleyenFigureViewer.fnClaimNextViewerForReplacement(
+            VaibifyFigureViewer.fnClaimNextViewerForReplacement(
                 "pipeline output", function (sViewer) {
                     _sStreamingViewer = sViewer;
                     _fnPaintPipelineOutputViewer();
@@ -570,7 +570,7 @@ var PipeleyenPipelineRunner = (function () {
                 sAction: dictEvent.sAction,
                 bConfirmRemoteOverwrite: true,
             });
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Overwrite canonical data?",
             "Step(s) " +
             (dictEvent.listStepLabels || []).join(", ") +
@@ -598,7 +598,7 @@ var PipeleyenPipelineRunner = (function () {
             fnProceed();
             return;
         }
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         VaibifyApi.fdictPost(
             "/api/files/" + sContainerId + "/exist",
             {saRelativePaths: listPaths}
@@ -612,7 +612,7 @@ var PipeleyenPipelineRunner = (function () {
                 fnProceed();
                 return;
             }
-            PipeleyenApp.fnShowConfirmModal(
+            VaibifyApp.fnShowConfirmModal(
                 "Overwrite canonical data?",
                 "This step pulls remote data over the committed " +
                 "copy:\n" + listExisting.join("\n") +
@@ -622,7 +622,7 @@ var PipeleyenPipelineRunner = (function () {
                 fnProceed);
         }).catch(function () {
             // The existence check could not run — fail safe: ask.
-            PipeleyenApp.fnShowConfirmModal(
+            VaibifyApp.fnShowConfirmModal(
                 "Overwrite canonical data?",
                 "This step declares remote-pulled data and the " +
                 "current files could not be checked. Overwrite if " +
@@ -634,15 +634,15 @@ var PipeleyenPipelineRunner = (function () {
     /* --- Execution --- */
 
     function fnRunSingleStep(iIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         if (fbStepIsInteractive(step)) {
             fnRunInteractiveStep(iIndex);
             return;
         }
-        PipeleyenApp.fnSetStepStatus(iIndex, "queued");
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnSetStepStatus(iIndex, "queued");
+        VaibifyApp.fnRenderStepList();
         fnSendPipelineAction({
             sAction: "runSelected",
             listStepIndices: [iIndex],
@@ -650,14 +650,14 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fnRunInteractiveStep(iIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         if (!fbStepIsInteractive(step)) {
             _fnDispatchSingleStep(iIndex, "dataOnly");
             return;
         }
-        var dictVars = PipeleyenApp.fdictBuildClientVariables();
+        var dictVars = VaibifyApp.fdictBuildClientVariables();
         var listCmds = (step.saDataCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
@@ -667,14 +667,14 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fnRunInteractivePlots(iIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         if (!fbStepIsInteractive(step)) {
             _fnDispatchSingleStep(iIndex, "plotsOnly");
             return;
         }
-        var dictVars = PipeleyenApp.fdictBuildClientVariables();
+        var dictVars = VaibifyApp.fdictBuildClientVariables();
         var listCmds = (step.saPlotCommands || []).map(function (c) {
             return VaibifyUtilities.fsResolveTemplate(c, dictVars);
         });
@@ -688,7 +688,7 @@ var PipeleyenPipelineRunner = (function () {
         // points (data, plots, combined) — identical before the
         // remote-overwrite gate forced the extraction (rule of three).
         if (listCmds.length === 0) return;
-        var dictVars = PipeleyenApp.fdictBuildClientVariables();
+        var dictVars = VaibifyApp.fdictBuildClientVariables();
         var sDir = VaibifyUtilities.fsResolveTemplate(
             step.sDirectory, dictVars);
         var sUuid = _fsGenerateUuid();
@@ -696,15 +696,15 @@ var PipeleyenPipelineRunner = (function () {
         var sFullCmd = _fsBuildInteractiveCommand(
             sDir, listCmds, sSentinel
         );
-        PipeleyenTerminal.fnSendCommandInFreshTab(sFullCmd);
+        VaibifyTerminal.fnSendCommandInFreshTab(sFullCmd);
         _fnMonitorStepCompletion(sSentinel, iIndex);
         var elStrip = document.getElementById("terminalStrip");
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }
 
     function _fnDispatchSingleStep(iIndex, sRunMode) {
-        PipeleyenApp.fnSetStepStatus(iIndex, "queued");
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnSetStepStatus(iIndex, "queued");
+        VaibifyApp.fnRenderStepList();
         fnSendPipelineAction({
             sAction: "runSelected",
             listStepIndices: [iIndex],
@@ -713,14 +713,14 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fnRunStepCombined(iIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         var bHasOutputFiles = fbStepHasOutputFiles(step);
         var setStepsWithData =
-            PipeleyenTestManager.fsetGetStepsWithData();
+            VaibifyTestManager.fsetGetStepsWithData();
         if (bHasOutputFiles && setStepsWithData.has(iIndex)) {
-            PipeleyenApp.fnShowConfirmModal(
+            VaibifyApp.fnShowConfirmModal(
                 "Overwrite Output",
                 "Output files already exist. Overwrite?",
                 function () { fnExecuteStepCombined(iIndex); }
@@ -737,14 +737,14 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fnExecuteStepCombined(iIndex) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow.listSteps[iIndex];
         if (!step) return;
         if (!fbStepIsInteractive(step)) {
             _fnDispatchSingleStep(iIndex, "full");
             return;
         }
-        var dictVars = PipeleyenApp.fdictBuildClientVariables();
+        var dictVars = VaibifyApp.fdictBuildClientVariables();
         var listCmds = flistResolveStepCommands(step, dictVars);
         fnConfirmRemoteOverwriteThen(step, function () {
             _fnLaunchInteractiveCommands(iIndex, step, listCmds);
@@ -784,28 +784,28 @@ var PipeleyenPipelineRunner = (function () {
 
     function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
         var sStatus = iExitCode === 0 ? "pass" : "fail";
-        PipeleyenApp.fnSetStepStatus(iStepIndex, sStatus);
+        VaibifyApp.fnSetStepStatus(iStepIndex, sStatus);
         fnResetUserVerification(iStepIndex);
         if (iExitCode === 0) {
-            PipeleyenApp.fnClearOutputModified(iStepIndex);
+            VaibifyApp.fnClearOutputModified(iStepIndex);
         }
         fnAcknowledgeStepCompletion(iStepIndex);
-        PipeleyenApp.fnInvalidateStepFileCache(iStepIndex);
-        PipeleyenApp.fnRenderStepList();
-        var sLabel = PipeleyenApp.fsComputeStepLabel(iStepIndex);
+        VaibifyApp.fnInvalidateStepFileCache(iStepIndex);
+        VaibifyApp.fnRenderStepList();
+        var sLabel = VaibifyApp.fsComputeStepLabel(iStepIndex);
         var sVerb = iExitCode === 0 ? "completed" : "failed";
-        PipeleyenApp.fnShowToast("Step " + sLabel + " " + sVerb,
+        VaibifyApp.fnShowToast("Step " + sLabel + " " + sVerb,
             iExitCode === 0 ? "success" : "error");
         // A standalone Run-in-Terminal pull never produces the
         // remoteDataRecorded event (no server runner), so the commit
         // offer keys off the step's declaration directly.
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var step = dictWorkflow &&
             dictWorkflow.listSteps[iStepIndex];
         if (iExitCode === 0 && step &&
             (step.listRemoteData || []).length > 0) {
             VaibifyManifestCheck.fbOfferCommitAfterGenerate(
-                PipeleyenApp.fsGetContainerId());
+                VaibifyApp.fsGetContainerId());
         }
     }
 
@@ -819,9 +819,9 @@ var PipeleyenPipelineRunner = (function () {
                     el.closest(".step-item").dataset.index
                 );
                 listIndices.push(iIndex);
-                PipeleyenApp.fnSetStepStatus(iIndex, "queued");
+                VaibifyApp.fnSetStepStatus(iIndex, "queued");
             });
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnRenderStepList();
         fnSendPipelineAction({
             sAction: "runSelected",
             listStepIndices: listIndices,
@@ -829,7 +829,7 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fsInteractiveWarning() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return "";
         var iLeading = fiCountLeadingInteractive();
         if (iLeading > 0) {
@@ -848,7 +848,7 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fiCountLeadingInteractive() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
         var iCount = 0;
         for (var i = 0; i < dictWorkflow.listSteps.length; i++) {
@@ -871,7 +871,7 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fsEstimateRunTimeSeconds() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
         var fTotal = 0;
         dictWorkflow.listSteps.forEach(function (step) {
@@ -894,32 +894,32 @@ var PipeleyenPipelineRunner = (function () {
             sMessage += "\n\n" + sEstimate;
         }
         sMessage += sSleepWarn;
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Run All", sMessage, async function () {
-                var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+                var dictWorkflow = VaibifyApp.fdictGetWorkflow();
                 var listEnablePromises = [];
                 dictWorkflow.listSteps.forEach(
                     function (step, iIndex) {
                         if (step.bRunEnabled === false) {
                             listEnablePromises.push(
-                                PipeleyenApp.fnToggleStepEnabled(
+                                VaibifyApp.fnToggleStepEnabled(
                                     iIndex, true)
                             );
                         }
-                        PipeleyenApp.fnSetStepStatus(
+                        VaibifyApp.fnSetStepStatus(
                             iIndex, "queued");
                     });
                 if (listEnablePromises.length > 0) {
                     await Promise.all(listEnablePromises);
                 }
-                PipeleyenApp.fnRenderStepList();
+                VaibifyApp.fnRenderStepList();
                 fnSendPipelineAction({ sAction: "runAll" });
             });
     }
 
     async function fnForceRunAll() {
         var sSleepWarn = await fsGetSleepWarning();
-        PipeleyenApp.fnShowConfirmModal(
+        VaibifyApp.fnShowConfirmModal(
             "Force Run All",
             "This will clear input hashes and re-run every " +
             "automatic step from scratch. Interactive step " +
@@ -929,7 +929,7 @@ var PipeleyenPipelineRunner = (function () {
                 var sEstimate = fsEstimateRunTime();
                 var sTimeMsg = sEstimate ?
                     "\n\n" + sEstimate : "";
-                PipeleyenApp.fnShowConfirmModal(
+                VaibifyApp.fnShowConfirmModal(
                     "Confirm Clean Rebuild",
                     "Are you sure? This cannot be undone." +
                     sTimeMsg + sSleepWarn,
@@ -942,8 +942,8 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     function fnKillPipeline() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        PipeleyenApp.fnShowConfirmModal(
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        VaibifyApp.fnShowConfirmModal(
             "Stop All Tasks",
             "This will kill all running pipeline processes " +
             "in the container.\n\n" +
@@ -954,17 +954,17 @@ var PipeleyenPipelineRunner = (function () {
                         "/api/pipeline/" + sContainerId + "/kill"
                     );
                     if (dictResult.bSuccess) {
-                        PipeleyenApp.fnClearAllStepStatuses();
-                        PipeleyenApp.fnRenderStepList();
-                        PipeleyenApp.fnShowToast(
+                        VaibifyApp.fnClearAllStepStatuses();
+                        VaibifyApp.fnRenderStepList();
+                        VaibifyApp.fnShowToast(
                             "Killed " + dictResult.iProcessesKilled +
                             " process(es)", "success");
                     } else {
-                        PipeleyenApp.fnShowToast(
+                        VaibifyApp.fnShowToast(
                             "Kill failed", "error");
                     }
                 } catch (error) {
-                    PipeleyenApp.fnShowToast(
+                    VaibifyApp.fnShowToast(
                         VaibifyUtilities.fsSanitizeErrorForUser(
                             error.message), "error");
                 }
@@ -973,44 +973,44 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     async function _fnExecuteForceRunAll() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
-        PipeleyenApp.fnShowToast("Stopping running tasks...", "success");
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        VaibifyApp.fnShowToast("Stopping running tasks...", "success");
         try {
             await VaibifyApi.fdictPostRaw(
                 "/api/pipeline/" + sContainerId + "/kill"
             );
         } catch (error) { /* continue even if kill fails */ }
-        PipeleyenApp.fnShowToast("Cleaning outputs...", "success");
+        VaibifyApp.fnShowToast("Cleaning outputs...", "success");
         try {
             await VaibifyApi.fdictPostRaw(
                 "/api/pipeline/" + sContainerId + "/clean"
             );
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
             return;
         }
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var listEnablePromises = [];
         dictWorkflow.listSteps.forEach(function (step, iIndex) {
             if (step.bRunEnabled === false) {
                 listEnablePromises.push(
-                    PipeleyenApp.fnToggleStepEnabled(iIndex, true)
+                    VaibifyApp.fnToggleStepEnabled(iIndex, true)
                 );
             }
-            PipeleyenApp.fnSetStepStatus(iIndex, "queued");
+            VaibifyApp.fnSetStepStatus(iIndex, "queued");
         });
         if (listEnablePromises.length > 0) {
             await Promise.all(listEnablePromises);
         }
-        PipeleyenApp.fnClearFileExistenceCache();
-        PipeleyenApp.fnRenderStepList();
+        VaibifyApp.fnClearFileExistenceCache();
+        VaibifyApp.fnRenderStepList();
         fnSendPipelineAction({ sAction: "forceRunAll" });
     }
 
     function fsEstimateRunTime() {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow || !dictWorkflow.listSteps) return "";
         var fTotalSeconds = 0;
         var iStepsWithTime = 0;
@@ -1063,32 +1063,32 @@ var PipeleyenPipelineRunner = (function () {
     }
 
     async function fnVerifyDependencies() {
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             var result = await VaibifyApi.fdictGet(
                 "/api/steps/" + sContainerId + "/validate");
             var listWarnings = result.listWarnings;
             if (listWarnings.length === 0) {
-                PipeleyenApp.fnShowToast(
+                VaibifyApp.fnShowToast(
                     "All cross-step references are valid",
                     "success"
                 );
             } else {
                 listWarnings.forEach(function (sWarning) {
-                    PipeleyenApp.fnShowToast(sWarning, "error");
+                    VaibifyApp.fnShowToast(sWarning, "error");
                 });
             }
-            PipeleyenApp.fnStartFileChangePolling();
+            VaibifyApp.fnStartFileChangePolling();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
         }
     }
 
     function fnDisplayLogInViewer(sLogPath) {
-        PipeleyenFigureViewer.fnDisplayFileFromContainer(sLogPath);
+        VaibifyFigureViewer.fnDisplayFileFromContainer(sLogPath);
     }
 
     function _fnFinalizeLogDisplay(sLogPath) {
@@ -1097,7 +1097,7 @@ var PipeleyenPipelineRunner = (function () {
             return;
         }
         if (_sStreamingViewer !== null) {
-            PipeleyenFigureViewer.fnDisplayFileInViewer(
+            VaibifyFigureViewer.fnDisplayFileInViewer(
                 _sStreamingViewer, sLogPath, "");
             _sStreamingViewer = null;
         } else {

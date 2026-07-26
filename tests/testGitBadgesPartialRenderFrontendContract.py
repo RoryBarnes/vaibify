@@ -11,7 +11,7 @@ assertions in the established frontend-contract pattern.
 Background
 ----------
 Before this change, every 5-second polling tick that observed any
-badge state change triggered ``PipeleyenApp.fnRenderStepList()`` — a
+badge state change triggered ``VaibifyApp.fnRenderStepList()`` — a
 full rebuild of every step card. On large workflows this dominated
 steady-state cost. The badge-cache module now publishes which files'
 badges actually changed, so the application layer can re-render just
@@ -79,18 +79,18 @@ def test_badge_map_changed_preserves_boolean_meaning():
 
 
 def test_refresh_prefers_partial_render_when_available():
-    """fnRefresh must call PipeleyenApp.fnRenderStepListPartial when
+    """fnRefresh must call VaibifyApp.fnRenderStepListPartial when
     that entry point exists, passing the list of affected files."""
     sSource = _fsReadStaticFile("scriptGitBadges.js")
     assert (
-        'typeof PipeleyenApp.fnRenderStepListPartial === "function"'
+        'typeof VaibifyApp.fnRenderStepListPartial === "function"'
         in sSource
     ), (
         "Badge module must guard the partial-render call with a "
         "typeof check so it stays safe before the application layer "
         "exposes fnRenderStepListPartial"
     )
-    assert "PipeleyenApp.fnRenderStepListPartial(" in sSource, (
+    assert "VaibifyApp.fnRenderStepListPartial(" in sSource, (
         "Badge module must invoke fnRenderStepListPartial with the "
         "affected-files list when the entry point is defined"
     )
@@ -101,22 +101,22 @@ def test_refresh_falls_back_to_full_render_for_legacy_callers():
     layer, test stubs), fnRefresh must still call the existing full
     re-render so the dashboard stays in sync."""
     sSource = _fsReadStaticFile("scriptGitBadges.js")
-    assert "PipeleyenApp.fnRenderStepList()" in sSource, (
+    assert "VaibifyApp.fnRenderStepList()" in sSource, (
         "Badge module must retain the full-render fallback path so "
         "the badge-side change is safe to land before the application "
         "layer's partial entry point exists"
     )
     assert (
-        'typeof PipeleyenApp.fnRenderStepList !== "function"'
+        'typeof VaibifyApp.fnRenderStepList !== "function"'
         in sSource
     ), (
         "Badge module must also guard the legacy full-render call so "
-        "it tolerates missing PipeleyenApp.fnRenderStepList"
+        "it tolerates missing VaibifyApp.fnRenderStepList"
     )
 
 
 def test_rerender_dispatcher_consumes_affected_files_argument():
-    """The dispatcher between fnRefresh and PipeleyenApp must accept
+    """The dispatcher between fnRefresh and VaibifyApp must accept
     the listAffectedFiles argument so the partial path can scope its
     work; this prevents a silent regression to the full re-render."""
     sSource = _fsReadStaticFile("scriptGitBadges.js")

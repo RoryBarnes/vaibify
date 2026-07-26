@@ -410,9 +410,9 @@ var VaibifyAicsTab = (function () {
     function _fbRequirementMet(dictReq) {
         var sKey = dictReq.sStateKey;
         if (sKey === "gitRepo") {
-            var dictWorkflow = (PipeleyenApp &&
-                PipeleyenApp.fdictGetWorkflow)
-                ? PipeleyenApp.fdictGetWorkflow() : null;
+            var dictWorkflow = (VaibifyApp &&
+                VaibifyApp.fdictGetWorkflow)
+                ? VaibifyApp.fdictGetWorkflow() : null;
             return Boolean((dictWorkflow || {}).sProjectRepoPath);
         }
         if (sKey === "stepsSelfConsistent") {
@@ -534,8 +534,8 @@ var VaibifyAicsTab = (function () {
         // Mirror the AICS-tab's read of /level2/readiness into the
         // application state so per-step level dots can render before
         // the AICS tab is open.
-        if (PipeleyenApp && PipeleyenApp.fnSetCachedAicsLevel) {
-            PipeleyenApp.fnSetCachedAicsLevel(iLevel);
+        if (VaibifyApp && VaibifyApp.fnSetCachedAicsLevel) {
+            VaibifyApp.fnSetCachedAicsLevel(iLevel);
         }
     }
 
@@ -574,11 +574,11 @@ var VaibifyAicsTab = (function () {
     }
 
     function _fdictBlockerCountsByLevel() {
-        if (PipeleyenApp && PipeleyenApp.fdictBlockerCountsByLevel) {
-            return PipeleyenApp.fdictBlockerCountsByLevel();
+        if (VaibifyApp && VaibifyApp.fdictBlockerCountsByLevel) {
+            return VaibifyApp.fdictBlockerCountsByLevel();
         }
-        var iCount = (PipeleyenApp && PipeleyenApp.fiGetL1BlockerCount)
-            ? PipeleyenApp.fiGetL1BlockerCount() : 0;
+        var iCount = (VaibifyApp && VaibifyApp.fiGetL1BlockerCount)
+            ? VaibifyApp.fiGetL1BlockerCount() : 0;
         return {iLevel1: iCount, iLevel2: 0, iLevel3: 0};
     }
 
@@ -680,7 +680,7 @@ var VaibifyAicsTab = (function () {
         // Row-level deep link: open the Project-block group + row,
         // then scroll the row header into view once the re-render
         // has painted it.
-        PipeleyenApp.fnExpandRequirementRow(sReqGroup, sReqRow);
+        VaibifyApp.fnExpandRequirementRow(sReqGroup, sReqRow);
         window.requestAnimationFrame(function () {
             var elRow = document.querySelector(
                 '.requirement-row-header[data-req="' + sReqRow + '"]'
@@ -712,12 +712,12 @@ var VaibifyAicsTab = (function () {
                 "/ai-declaration/generate-template",
                 {}
             );
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "AI_USAGE.md template written to " +
                 dictResult.sRelativePath, "info"
             );
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Template generation failed: " + error.message,
                 "error"
             );
@@ -864,13 +864,13 @@ var VaibifyAicsTab = (function () {
                 "/level3/verify",
                 {}
             );
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Level 3 verification started. Watch the pipeline " +
                 "progress; results will appear in the attestation " +
                 "card when the rebuild completes.", "info"
             );
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Level 3 verification failed to start: " + error.message,
                 "error"
             );

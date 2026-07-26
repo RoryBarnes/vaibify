@@ -35,7 +35,7 @@
  *   fsBuildDraftKey(sContainerId, sFilePath, sWorkdir)
  */
 
-var PipeleyenDraftManager = (function () {
+var VaibifyDraftManager = (function () {
     "use strict";
 
     var S_STORAGE_KEY = "vaibifyDrafts";

@@ -320,7 +320,7 @@ var VaibifyUtilities = (function () {
             var windowChild = window.open(dictResponse.sUrl, "_blank");
             if (windowChild) windowChild.focus();
         } catch (error) {
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Could not open new vaibify window: " +
                 fsSanitizeErrorForUser(error.message),
                 "error");

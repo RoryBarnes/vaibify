@@ -69,7 +69,7 @@ list treats dashboard honesty as a hard invariant.
 The most concrete way to understand how vaibify verifies a project is to watch what happens
 when a researcher clicks **Run All** in the browser.
 
-1. `PipeleyenPipelineRunner.fnRunAll()` fires in `scriptPipelineRunner.js`.
+1. `VaibifyPipelineRunner.fnRunAll()` fires in `scriptPipelineRunner.js`.
    The click was registered by the delegated handlers in
    `scriptEventBindings.js` and dispatched through `scriptApplication.js`.
 
@@ -91,7 +91,7 @@ when a researcher clicks **Run All** in the browser.
 
 5. The frontend dispatches these events through `VaibifyWebSocket` to
    handlers registered by `scriptPipelineRunner.js`. Each handler
-   updates the step's status via `PipeleyenApp.fnSetStepStatus()` and
+   updates the step's status via `VaibifyApp.fnSetStepStatus()` and
    requests a render.
 
 6. `fnRenderStepList()` is debounced with `requestAnimationFrame`, so
@@ -105,15 +105,15 @@ when a researcher clicks **Run All** in the browser.
 
 ```
 User clicks "Run All"
-  -> PipeleyenPipelineRunner.fnRunAll()
+  -> VaibifyPipelineRunner.fnRunAll()
   -> VaibifyWebSocket.fnSend({sAction: "runAll"})
   -> Backend: pipelineServer WebSocket handler
   -> pipelineRunner.fnRunAllSteps()
   -> For each step: backend emits stepStarted, output, stepPass or
      stepFail via WebSocket
   -> Frontend: VaibifyWebSocket dispatches to registered handlers
-  -> PipeleyenPipelineRunner.fnHandlePipelineEvent()
-  -> PipeleyenApp.fnSetStepStatus() + PipeleyenApp.fnRenderStepList()
+  -> VaibifyPipelineRunner.fnHandlePipelineEvent()
+  -> VaibifyApp.fnSetStepStatus() + VaibifyApp.fnRenderStepList()
   -> VaibifyStepRenderer.fsRenderStepItem() generates HTML
   -> DOM updated (debounced)
 ```
@@ -138,9 +138,9 @@ Every 5 seconds (VaibifyPolling):
   -> fileStatusManager: compute mtimes, detect changes, check stale
      verifications
   -> Response: {dictModTimes, dictInvalidatedSteps, dictTestMarkers, ...}
-  -> Frontend: PipeleyenApp.fnProcessFileStatusResponse()
+  -> Frontend: VaibifyApp.fnProcessFileStatusResponse()
   -> Updates caches, applies invalidations, applies test markers
-  -> PipeleyenApp.fnRenderStepList() (debounced, cascading updates
+  -> VaibifyApp.fnRenderStepList() (debounced, cascading updates
      coalesce)
 ```
 
@@ -986,7 +986,7 @@ as a single cohesive module; see the technical-debt list below.
 
 ### Core application
 
-- `scriptApplication.js` — `PipeleyenApp`: application state,
+- `scriptApplication.js` — `VaibifyApp`: application state,
   initialization, rendering orchestration. Exposes the public API that
   other modules call.
 

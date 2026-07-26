@@ -26,7 +26,7 @@ var ModuleName = (function () {
 - Scripts load via `<script>` tags in a specific order set by the HTML
   template; new modules must be added in the correct load position.
 - Module names start with a capital letter (`VaibifyUtilities`,
-  `PipeleyenApp`); file names use camelCase with a `script` prefix
+  `VaibifyApp`); file names use camelCase with a `script` prefix
   (`scriptUtilities.js`).
 
 ## State management
@@ -294,7 +294,7 @@ pattern wholesale.
   can scan without expanding the verification panel. Logic in
   `scriptFileOperations.js::_fsRedModifierClass`.
 - `_dictWorkflowState.iCachedAicsLevel` is a scalar (not a Set);
-  mutate it via `PipeleyenApp.fnSetCachedAicsLevel(iLevel)`. The
+  mutate it via `VaibifyApp.fnSetCachedAicsLevel(iLevel)`. The
   shared-Sets-by-reference trap does not apply.
 
 ## Discovery commands

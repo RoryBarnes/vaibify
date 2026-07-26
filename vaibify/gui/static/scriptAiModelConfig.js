@@ -126,7 +126,7 @@ var VaibifyAiModelConfig = (function () {
         _fnClearError();
         var dictModel = _fdictReadForm();
         if (!_fbValidateBeforeSubmit(dictModel)) return;
-        var sContainerId = PipeleyenApp.fsGetContainerId();
+        var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
             var dictResult = await VaibifyApi.fdictPost(
@@ -135,7 +135,7 @@ var VaibifyAiModelConfig = (function () {
                 dictModel,
             );
             _fnApplyResultToWorkflow(dictResult);
-            PipeleyenApp.fnShowToast(
+            VaibifyApp.fnShowToast(
                 "Declared " + dictModel.sVendor + " / " +
                     dictModel.sModelId + ".",
                 "success",
@@ -147,7 +147,7 @@ var VaibifyAiModelConfig = (function () {
     }
 
     function _fnApplyResultToWorkflow(dictResult) {
-        var dictWorkflow = PipeleyenApp.fdictGetWorkflow();
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         if (!dictWorkflow) return;
         var dictProvenance = dictWorkflow.dictAiProvenance || {};
         dictProvenance.listDeclaredModels =

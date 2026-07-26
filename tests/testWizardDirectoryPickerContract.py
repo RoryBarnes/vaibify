@@ -1,6 +1,6 @@
 """Frontend contract checks for the wizard directory picker.
 
-Verifies that PipeleyenDirectoryBrowser exposes the new "create" mode
+Verifies that VaibifyDirectoryBrowser exposes the new "create" mode
 API, that scriptWorkflowManager wires it into the wizard's first step,
 and that the index.html markup carries the new DOM nodes. Mirrors the
 string-presence pattern in testReposPanelFrontendContract.py.
@@ -48,7 +48,7 @@ def test_directory_browser_has_mode_state():
 
 def test_workflow_manager_uses_directory_picker():
     sSource = _fsReadStaticFile("scriptWorkflowManager.js")
-    assert "PipeleyenDirectoryBrowser.fnOpenForCreate" in sSource
+    assert "VaibifyDirectoryBrowser.fnOpenForCreate" in sSource
     assert "btnWizardChooseDirectory" in sSource
 
 
@@ -148,7 +148,7 @@ def test_wizard_help_click_handler_wired():
     sSource = _fsReadStaticFile("scriptWorkflowManager.js")
     assert "_fnHandleWizardHelpClick" in sSource
     assert "btnWizardHelp" in sSource
-    assert "PipeleyenModals.fnShowInfoModal" in sSource
+    assert "VaibifyModals.fnShowInfoModal" in sSource
 
 
 def test_info_modal_exported_by_modals_module():
@@ -192,7 +192,7 @@ def test_add_choice_help_handler_wired():
     assert "_fnShowAddChoiceHelp" in sSource
     assert "_S_ADD_CHOICE_HELP" in sSource
     assert "btnAddChoiceHelp" in sSource
-    assert "PipeleyenModals.fnShowInfoModal" in sSource
+    assert "VaibifyModals.fnShowInfoModal" in sSource
 
 
 def test_add_choice_help_text_explains_both_paths():
