@@ -635,3 +635,51 @@ def test_v8_to_v9_preserves_existing_declarations():
     assert dictStep["saInputDataFiles"] == ["data/raw.csv"]
     assert dictStep["bNoInputData"] is True
     assert dictStep["listRemoteData"] == [{"sPath": "data/raw.csv"}]
+
+
+def _fdictWorkflowWithInteractiveFlags(listFlags):
+    """Workflow at v9 whose steps carry hand-edited interactive flags."""
+    listSteps = [
+        {
+            "sName": f"Step{iIndex}", "sDirectory": f"Step{iIndex}",
+            "saPlotCommands": [], "saPlotFiles": [],
+            "bInteractive": valueFlag,
+        }
+        for iIndex, valueFlag in enumerate(listFlags)
+    ]
+    return {S_VERSION_KEY: 9, "listSteps": listSteps}
+
+
+def test_v9_to_v10_coerces_hand_edited_interactive_flags():
+    """A null or quoted flag becomes a real boolean on the document.
+
+    The in-container agent edits project.json directly, so the flag
+    that decides a step's label arrives in whatever shape a hand
+    produced. Normalizing once at load keeps the persisted value
+    unambiguous.
+    """
+    dictWorkflow = _fdictWorkflowWithInteractiveFlags(
+        [None, "true", "false", 1],
+    )
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    listFlags = [
+        dictStep["bInteractive"]
+        for dictStep in dictWorkflow["listSteps"]
+    ]
+    assert listFlags == [False, True, False, True]
+    assert all(isinstance(bFlag, bool) for bFlag in listFlags)
+
+
+def test_v9_to_v10_leaves_booleans_and_absent_flags_alone():
+    """Migration adds no key a workflow did not already carry."""
+    dictWorkflow = {
+        S_VERSION_KEY: 9,
+        "listSteps": [
+            {"sName": "Plain", "sDirectory": "Plain"},
+            {"sName": "Declared", "sDirectory": "Declared",
+             "bInteractive": True},
+        ],
+    }
+    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    assert "bInteractive" not in dictWorkflow["listSteps"][0]
+    assert dictWorkflow["listSteps"][1]["bInteractive"] is True

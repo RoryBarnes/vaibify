@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 __all__ = [
     "fdictMapOutputTokenStems",
     "fsShellQuote",
+    "fbStepIsInteractive",
     "fsLabelFromStepIndex",
     "fiStepIndexFromLabel",
     "flistStepsWithLabels",
@@ -169,6 +170,42 @@ def fsShellQuote(sValue):
     return "'" + sValue.replace("'", "'\\''") + "'"
 
 
+# ---------------------------------------------------------------------------
+# Interactive-flag contract.
+#
+# ``bInteractive`` decides which label a step carries and therefore
+# which step an agent-issued label resolves to. It arrives from JSON
+# the in-container agent edits by hand and from an API field typed
+# ``Optional[bool]``, so its persisted value can be a real boolean,
+# ``null``, a quoted string, a number, or absent entirely. Truthiness
+# and equality-against-``True`` disagree on every one of those, and a
+# labeller that disagrees with the label resolver hands the researcher
+# the WRONG step (shipped live: ``"bInteractive": null`` made ``A01``
+# resolve to the second step). One classifier, called everywhere.
+# ---------------------------------------------------------------------------
+
+_T_INTERACTIVE_FALSE_TOKENS = (
+    "", "false", "0", "no", "off", "none", "null",
+)
+
+
+def fbStepIsInteractive(dictStep):
+    """Return True iff the step is declared interactive.
+
+    The single classifier for ``bInteractive``. Real booleans pass
+    through; a JSON string is read as the word it spells rather than
+    as a non-empty object; everything else, ``null`` and absence
+    included, is automated.
+    """
+    if not isinstance(dictStep, dict):
+        return False
+    valueFlag = dictStep.get("bInteractive", False)
+    if isinstance(valueFlag, str):
+        return valueFlag.strip().lower() \
+            not in _T_INTERACTIVE_FALSE_TOKENS
+    return bool(valueFlag)
+
+
 def fsLabelFromStepIndex(dictWorkflow, iStepIndex):
     """Return the display label (A01, I01) for a 0-based step index.
 
@@ -196,8 +233,7 @@ def flistComputeAllStepLabels(listSteps):
     iAutomated = 0
     iInteractive = 0
     for dictStep in listSteps:
-        bInteractive = dictStep.get("bInteractive", False)
-        if bInteractive:
+        if fbStepIsInteractive(dictStep):
             iInteractive += 1
             listLabels.append(f"I{iInteractive:02d}")
         else:
@@ -236,8 +272,7 @@ def _fiResolveLabelWithinType(dictWorkflow, sLabel, sPrefix, iWanted):
     listSteps = dictWorkflow.get("listSteps", [])
     iCount = 0
     for iIndex, dictStep in enumerate(listSteps):
-        bInteractive = dictStep.get("bInteractive", False)
-        if bInteractive == bWantInteractive:
+        if fbStepIsInteractive(dictStep) == bWantInteractive:
             iCount += 1
             if iCount == iWanted:
                 return iIndex

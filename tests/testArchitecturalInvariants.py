@@ -312,12 +312,16 @@ def testWorkflowMigrationsImportsOnlyLeafModules():
 
     The migration registry is imported by workflowManager.py and
     director.py, so it must sit at the bottom of the dependency graph
-    or those callers form a cycle. ``pathContract`` is the only other
-    leaf module the migrators need; new intra-package imports here
-    are almost always a sign that the migrator should pull state from
-    its caller instead of reaching back into the package.
+    or those callers form a cycle. ``pathContract`` and
+    ``pipelineUtils`` are themselves leaf modules (the latter is
+    pinned as one by ``testLeafModuleHasNoIntraPackageImports``), so
+    importing them cannot close a cycle; a migrator that normalizes a
+    field must use the same reader production uses rather than a
+    second copy of the rule. Any OTHER intra-package import here is
+    almost always a sign that the migrator should pull state from its
+    caller instead of reaching back into the package.
     """
-    setAllowedLeaves = {".pathContract"}
+    setAllowedLeaves = {".pathContract", ".pipelineUtils"}
     sPath = GUI_DIR / "workflowMigrations.py"
     _, treeAst = ftParseFile(sPath)
     listImports = flistExtractImports(treeAst)
@@ -2873,7 +2877,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +4 (2026-07-18): the orchestrator re-export shim carries the
     # slug-contract helpers (fsSlugFromStepName etc.) from
     # pipelineUtils, as testOrchestratorReExportsAreComplete demands.
-    "pipelineRunner.py": 1499,
+    # +1 (2026-07-25): the same shim carries fbStepIsInteractive, the
+    # single interactive-flag classifier the runner now uses to pick
+    # the interactive lane. No new responsibility.
+    "pipelineRunner.py": 1500,
     "dataLoaders.py": 1222,
     "introspectionScript.py": 1192,
     "testGenerator.py": 1063,
