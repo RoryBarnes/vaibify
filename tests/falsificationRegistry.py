@@ -2103,4 +2103,14 @@ def _fdictEntry(sRel):
         old=r'r"(?:--force(?!-with-lease)|-f|\+\S+)(?!\S)",',
         new=r'r"(?:--force|-f|\+\S+)",',
     ),
+    Falsification(
+        # The mirror painting a directory name the backend would never
+        # create is the exact drift AGENTS.md's "never write a second
+        # derivation" exists to prevent, and the pre-existing guard
+        # (source contains toUpperCase and slice(1)) survives it.
+        nodeid='tests/testStepSlugMirrorEquivalence.py::testJavascriptMirrorBodyMatchesItsPin',
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='sWord.slice(1)',
+        new='sWord.slice(1).toLowerCase()',
+    ),
 ]

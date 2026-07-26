@@ -137,13 +137,61 @@ exercised. Concretely:
   adjusting import graphs, touching `workflowManager.py` or
   `director.py`):
   `python -m pytest tests/testArchitecturalInvariants.py -v`
-- After JS changes: exercise the feature in the running GUI. Type
-  checking does not validate UI correctness.
+- After JS changes: see "Required after JS changes" below — the
+  Python suite does not execute the frontend at all.
 - After editing any `.claude/skills/*/SKILL.md`:
   `python -m pytest tests/testSkillIntegrity.py -v` (referential
   integrity), then run the trigger and outcome evaluation harnesses
   in `tools/` before merging skill changes — see
   [docs/skillTesting.md](docs/skillTesting.md).
+
+### Required after JS changes
+
+Type checking and string-presence contract tests do not validate UI
+correctness. Neither does a green Python suite: the frontend is not
+executed by it at all.
+
+**Every JS change must be loaded in a browser before it merges.** The
+check below takes about a minute and needs no Docker:
+
+```bash
+python -m vaibify --port 8137     # scratch port, not your usual hub
+```
+
+Then, in the browser at `http://127.0.0.1:8137/`:
+
+1. **Read the console.** Zero errors is the bar. A single
+   `ReferenceError` means a module failed to evaluate and every
+   feature below it in load order is dead.
+2. **Enumerate the globals.** In the console:
+   `Object.keys(window).filter(k => /^Vaibify/.test(k)).length`.
+   Then check any global your change touched resolves *as a bare
+   identifier*, not via `window.`: modules declared with `const`
+   create a global lexical binding, so `window.VaibifyApp` is
+   `undefined` while `VaibifyApp` works. Probing the wrong one
+   produces a false alarm.
+3. **Confirm any new cross-module call resolves**, e.g.
+   `typeof VaibifyApp.fsGetLeaseId` → `"function"`.
+4. **Look at the page.** It should render, and any unavailable
+   dependency (Docker down, no containers) must be reported honestly
+   on screen rather than hidden.
+
+Kill the scratch hub when done.
+
+**Container-dependent paths need a container.** Anything touching the
+lease, the WebSockets, or the file-status poll is not verified by the
+above. Start Docker, open a project, and exercise the specific path.
+
+#### If you are a delegated agent and cannot do this
+
+Say so explicitly in your report, and name the exact surface you did
+not verify — "the three JS call sites in `scriptWorkflowManager.js`
+were not executed or syntax-checked; no JS runtime on this host."
+
+Silence about an unverified surface reads as verification. That is the
+failure mode this section exists to prevent. The orchestrator runs the
+check before merging, and cannot do so if it does not know what to
+look at.
 - Docker-dependent tests (`tests/testContainerBuildIntegration.py`)
   are excluded from routine runs and are the only tests that require
   a live container. They are parametrized via the
@@ -523,6 +571,28 @@ correct approach.
   WebSocket/viewer paths. When a behavior crosses the
   HTTP/WebSocket/container boundary, assert it with name != id and an
   actual connection, not a unit stub.
+- Five parallel agents changed JavaScript in one session and none could
+  load a browser; the merged branch was green and the frontend entirely
+  unexecuted. A green Python suite says nothing about the frontend.
+  Load the page — see "Required after JS changes".
+- `VaibifyApp` and friends are declared with `const`, which creates a
+  global *lexical* binding, not a `window` property. A probe using
+  `window.VaibifyApp` reports `undefined` for a module that is working
+  perfectly. Use the bare identifier.
+- A startup sweep deleted every "stale" credential file in
+  `~/.vaibify/tmp`, including one an existing container had
+  bind-mounted for months, leaving it unstartable (Docker fails the
+  mount and creates a directory stub where the file was). Age is not
+  evidence that a host file is garbage — reachability is. Before
+  deleting anything under `~/.vaibify`, ask the daemon what it still
+  mounts.
+- A guarantee stated only in prose is not enforced, and mutation
+  testing cannot find it: there is no mutant for a guard that was
+  never written. `bAgentSafe` was metadata, the force-push hook missed
+  every ordinary invocation order, and the science-name scan could not
+  match the identifiers it existed to catch — all three passed CI for
+  months. When adding a rule here, name the test that fails when it is
+  broken.
 
 ## Pointers
 
