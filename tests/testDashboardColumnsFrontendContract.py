@@ -1469,7 +1469,7 @@ def test_every_settings_row_carries_a_tooltip():
     assert "sTooltip" in sBuilder
     for sSource in (
         _fsExtractFunctionBlock(sApplication, "fsGlobalSettingsHtml"),
-        _fsExtractFunctionBlock(sApplication, "fsClaudeSettingsHtml"),
+        _fsExtractFunctionBlock(sApplication, "_fsAgentAutoUpdateRow"),
     ):
         iCalls = sSource.count("fsSettingsRowHtml(")
         # Each call spans label + input + tooltip; count the
@@ -1478,7 +1478,8 @@ def test_every_settings_row_carries_a_tooltip():
     for sRow in (
         "Plot Dir", "Figure Type", "Cores", "Tolerance",
         "Poll Interval", "Show timestamps", "Terminal lines",
-        "Auto Archive", "Runtime limit", "Claude auto-update",
+        "Auto Archive", "Runtime limit", "Claude Code", "Codex",
+        "Gemini CLI", " auto-update",
     ):
         assert sRow in sApplication, (
             "settings row disappeared: " + sRow

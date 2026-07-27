@@ -221,3 +221,22 @@ def test_existing_config_returns_auto_update_flag(tmp_path):
     assert responseHttp.status_code == 200
     dictResult = responseHttp.json()
     assert dictResult["bClaudeAutoUpdate"] is False
+
+
+def test_setup_wizard_persists_each_new_agent_auto_update_flag(tmp_path):
+    app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
+    clientHttp = TestClient(app)
+    responseHttp = clientHttp.post(
+        "/api/setup/save", json={
+            "sProjectName": "multi-agent",
+            "sPackageManager": "pip",
+            "listFeatures": ["codex", "gemini"],
+            "bCodexAutoUpdate": False,
+            "bGeminiAutoUpdate": True,
+        },
+    )
+    assert responseHttp.status_code == 200
+    with open(tmp_path / "vaibify.yml", "r") as fileHandle:
+        dictSaved = yaml.safe_load(fileHandle)
+    assert dictSaved["features"]["codexAutoUpdate"] is False
+    assert dictSaved["features"]["geminiAutoUpdate"] is True

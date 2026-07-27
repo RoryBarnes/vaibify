@@ -573,6 +573,43 @@ that itself is an edit to a sensitive file and an ask-first action.
 Temporary bypass is available via `--disable-hooks` at the CLI level
 if a human is driving.
 
+## A container may host Claude, Codex, or Gemini
+
+Container agents are overlays selected by feature flags
+(`docker/Dockerfile.claude`, `.codex`, `.gemini`). Each installs **as
+the unprivileged container user**, not root, so the provider's own
+updater can replace its binary without sudo — do not "fix" that by
+installing as root, and do not add sudo to the image.
+
+**Agent-facing docs have one source and three names.** Inside the
+container the canonical file is
+`/workspace/<repo>/.vaibify/AGENTS.md`; `entrypoint.sh`'s
+`fnLinkRepoClaudeMd` symlinks `/workspace/<repo>/CLAUDE.md`,
+`/workspace/<repo>/AGENTS.md` and `/workspace/<repo>/GEMINI.md` to it,
+and migrates a legacy CLAUDE.md in that directory into place. So write
+in-container agent guidance once, to the canonical file. Never author
+a provider-specific one — a second *real* file at one of those names
+shadows the symlink for that provider only, and the three agents
+silently start reading different instructions.
+
+(These are container paths, deliberately absolute:
+`tools/checkAgentDocsPaths.py` resolves repo-relative references and
+would flag them as broken, because they exist only inside a running
+container.)
+
+**All three agents share one login store and one user.** Each agent's
+config directory is persisted into the workspace volume and symlinked
+back into the home directory (`fnPersistAgentConfig`), so logins
+survive container recreation. This pattern predates multi-agent
+support; what changed is the blast radius. Every agent runs as the
+same container user, so file permissions isolate nothing between
+them: whichever agent is compromised can read all three providers'
+credentials, and they are reachable through the dashboard's file
+routes like any other workspace path. Treat "an agent was
+compromised" as "every configured provider's session was exposed"
+when reasoning about a threat, and do not add a fourth provider
+without revisiting that.
+
 ## Known technical debt
 
 These are known, deliberate, and load-bearing — do not "fix" them

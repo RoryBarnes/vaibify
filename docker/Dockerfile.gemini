@@ -1,0 +1,20 @@
+# Vaibify — Gemini CLI overlay
+#
+# Gemini CLI is installed after Vaibify's shared Node.js overlay.
+
+ARG BASE_IMAGE=vaibify:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+USER ${CONTAINER_USER}
+
+RUN if ! npm install --global --fetch-retries=3 @google/gemini-cli; then \
+        echo "" >&2; \
+        printf '%s\n' "vaibify build (gemini overlay): Gemini CLI install failed." >&2; \
+        printf '%s\n' "  - npm could not install @google/gemini-cli." >&2; \
+        printf '%s\n' "  - Resolve this build host's path to registry.npmjs.org and rebuild," >&2; \
+        printf '%s\n' "    or disable the Gemini overlay (features: { gemini: false })." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    fi

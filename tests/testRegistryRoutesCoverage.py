@@ -34,6 +34,10 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
     monkeypatch.setattr(
         registryManager, "_S_REGISTRY_PATH", sRegistryPath,
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDir, "registry.lock"),
+    )
 
 
 # ---------------------------------------------------------------
@@ -269,6 +273,8 @@ class TestContainerSettings:
         mockConfig = MagicMock()
         mockConfig.bNeverSleep = True
         mockConfig.features.bClaude = False
+        mockConfig.features.bCodex = False
+        mockConfig.features.bGemini = False
         mockConfig.iCpuLimit = 1
         mockConfig.fMemoryLimitGigabytes = 1.5
         with patch(
@@ -282,6 +288,8 @@ class TestContainerSettings:
         dictBody = response.json()
         assert dictBody["bNeverSleep"] is True
         assert dictBody["bClaudeInstalled"] is False
+        assert dictBody["bCodexInstalled"] is False
+        assert dictBody["bGeminiInstalled"] is False
         assert "bClaudeAutoUpdate" not in dictBody
         assert dictBody["iCpuLimit"] == 1
         assert dictBody["fMemoryLimitGigabytes"] == 1.5
@@ -561,6 +569,44 @@ class TestClaudeAutoUpdateSettings:
             json={"bClaudeAutoUpdate": True},
         )
         assert response.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "sAgent,sAutoUpdateField",
+    [
+        ("codex", "bCodexAutoUpdate"),
+        ("gemini", "bGeminiAutoUpdate"),
+        ("opencode", "bOpenCodeAutoUpdate"),
+        ("cline", "bClineAutoUpdate"),
+        ("openhands", "bOpenHandsAutoUpdate"),
+        ("pi", "bPiAutoUpdate"),
+    ],
+)
+def test_post_updates_each_new_agent_auto_update_setting(
+    fixtureSettingsClient, tmp_path, sAgent, sAutoUpdateField,
+):
+    """Each provider writes only its own nested YAML preference."""
+    sProjectDir = str(tmp_path / (sAgent + "-project"))
+    os.makedirs(sProjectDir)
+    sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write(
+            "projectName: " + sAgent + "-project\nfeatures:\n"
+            "  " + sAgent + ": true\n"
+        )
+    fixtureSettingsClient.post(
+        "/api/registry", json={"sDirectory": sProjectDir},
+    )
+    response = fixtureSettingsClient.post(
+        "/api/containers/" + sAgent + "-project/settings",
+        json={sAutoUpdateField: False},
+    )
+    assert response.status_code == 200
+    assert response.json()["bRestartRequired"] is True
+    response = fixtureSettingsClient.get(
+        "/api/containers/" + sAgent + "-project/settings",
+    )
+    assert response.json()[sAutoUpdateField] is False
 
 
 # ---------------------------------------------------------------

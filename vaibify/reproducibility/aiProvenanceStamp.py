@@ -71,6 +71,7 @@ def fdictBuildAiProvenanceStamp(
     sWorkspacePromptSha256="",
     bNetworkIsolatedAtCapture=None,
     sHubInvokerModelId="",
+    dictAgentCliVersions=None,
 ):
     """Build the machine-captured stamp for the current declaration.
 
@@ -85,6 +86,7 @@ def fdictBuildAiProvenanceStamp(
     return {
         "listDeclaredModels": listDeclaredModels,
         "sHubInvokerModelId": sHubInvokerModelId,
+        "dictAgentCliVersions": dict(dictAgentCliVersions or {}),
         "sWorkspacePromptSha256": sWorkspacePromptSha256,
         "sProjectContextSha256": _sHashProjectContext(filesRepo),
         "bNetworkIsolatedAtCapture": bNetworkIsolatedAtCapture,
@@ -159,6 +161,19 @@ def _fbStampShapeIntact(dictStamp):
     :func:`fbStampMatchesDeclaration`.
     """
     if dictStamp.get("sTrustBaseStatement") != S_TRUST_BASE_STATEMENT:
+        return False
+    dictVersions = dictStamp.get("dictAgentCliVersions")
+    if not isinstance(dictVersions, dict):
+        return False
+    if any(
+        sAgent not in {
+            "claude", "codex", "gemini", "opencode", "cline",
+            "openhands", "pi",
+        }
+        or not isinstance(sVersion, str)
+        or len(sVersion) > 200
+        for sAgent, sVersion in dictVersions.items()
+    ):
         return False
     bIsolated = dictStamp.get("bNetworkIsolatedAtCapture")
     if bIsolated is not None and not isinstance(bIsolated, bool):

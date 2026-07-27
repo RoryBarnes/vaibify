@@ -22,6 +22,8 @@ or the explicit ``exit 1`` will trip the corresponding test.
 """
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCKER_DIR = REPO_ROOT / "docker"
@@ -102,6 +104,47 @@ def testClaudeNativeInstallerCurlIsHardened():
     )
 
 
+def testCodexNativeInstallerCurlIsHardened():
+    """The Codex native installer download must retry + diagnose."""
+    sSource = fsReadDockerfile("Dockerfile.codex")
+    sBlock = fsFindBlockContaining(sSource, "chatgpt.com/codex/install.sh")
+    fnAssertHardenedBlock(
+        sBlock, "--retry", "Dockerfile.codex native installer",
+    )
+
+
+def testGeminiNodeAndNpmInstallsAreHardened():
+    """NodeSource and npm failures must fail the build with diagnostics."""
+    sSource = fsReadDockerfile("Dockerfile.node")
+    sNodeBlock = fsFindBlockContaining(sSource, "deb.nodesource.com")
+    fnAssertHardenedBlock(
+        sNodeBlock, "--retry", "Dockerfile.node NodeSource install",
+    )
+    sSource = fsReadDockerfile("Dockerfile.gemini")
+    sNpmBlock = fsFindBlockContaining(sSource, "@google/gemini-cli")
+    fnAssertHardenedBlock(
+        sNpmBlock, "--fetch-retries=3", "Dockerfile.gemini npm install",
+    )
+
+
+@pytest.mark.parametrize(
+    "sDockerfile,sNeedle,sRetryFlag",
+    [
+        ("Dockerfile.opencode", "opencode.ai/install", "--retry"),
+        ("Dockerfile.cline", "npm install", "--fetch-retries=3"),
+        ("Dockerfile.openhands", "uv tool install", "UV_HTTP_RETRIES=3"),
+        ("Dockerfile.pi", "npm install", "--fetch-retries=3"),
+    ],
+)
+def testAdditionalAgentInstallersAreHardened(
+    sDockerfile, sNeedle, sRetryFlag,
+):
+    """Every new network installer must retry rather than fail transiently."""
+    sSource = fsReadDockerfile(sDockerfile)
+    sBlock = fsFindBlockContaining(sSource, sNeedle)
+    fnAssertHardenedBlock(sBlock, sRetryFlag, sDockerfile)
+
+
 def testCranKeyringCurlIsHardened():
     """F-B-04: CRAN keyring fetch must retry + diagnose."""
     sSource = fsReadDockerfile("Dockerfile.rlang")
@@ -154,6 +197,8 @@ def testDiagnosticBlocksUsePrintfNotEcho():
     saTargets = [
         "Dockerfile",
         "Dockerfile.claude",
+        "Dockerfile.codex",
+        "Dockerfile.gemini",
         "Dockerfile.rlang",
         "Dockerfile.julia",
     ]

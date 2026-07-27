@@ -87,8 +87,30 @@ def fnWriteDefaultConfig(sProjectName, bMinimal=False):
         config.listPythonPackages = []
         config.features.bLatex = False
         config.features.bJupyter = False
+    else:
+        _fnApplyInstallerAgentDefaults(config)
     fnSaveToFile(config, sConfigPath)
     click.echo(f"Created {sConfigPath}")
+
+
+def _fnApplyInstallerAgentDefaults(config):
+    """Enable safe CLI defaults selected by the host installer."""
+    pathDefaults = pathlib.Path.home() / ".vaibify" / "agent-defaults"
+    if not pathDefaults.is_file():
+        return
+    dictFields = {
+        "claude": "bClaude",
+        "codex": "bCodex",
+        "gemini": "bGemini",
+        "opencode": "bOpenCode",
+        "cline": "bCline",
+        "openhands": "bOpenHands",
+        "pi": "bPi",
+    }
+    for sAgent in pathDefaults.read_text(encoding="utf-8").splitlines():
+        sField = dictFields.get(sAgent.strip().lower())
+        if sField:
+            setattr(config.features, sField, True)
 
 
 def fnRegisterProject():

@@ -19,7 +19,8 @@ def _fConfigWithFeatures(**kwargs):
     dictDefaults = dict(
         bJupyter=False, bRLanguage=False, bJulia=False,
         bDatabase=False, bDvc=False, bLatex=True,
-        bClaude=False, bGpu=False,
+        bClaude=False, bCodex=False, bGemini=False, bOpenCode=False,
+        bCline=False, bOpenHands=False, bPi=False, bGpu=False,
     )
     dictDefaults.update(kwargs)
     features = SimpleNamespace(**dictDefaults)

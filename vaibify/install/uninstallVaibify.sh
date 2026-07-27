@@ -3,7 +3,8 @@
 #
 # Removes the Docker image, volume, and container created by Vaibify,
 # the symlinks and PATH entries created by installVaibify.sh, and the
-# .claude_enabled marker if present. Does not uninstall Docker, Colima, or
+# legacy .claude_enabled marker and installer agent defaults if present. Does
+# not uninstall Docker, Colima, or
 # the GitHub CLI.
 #
 # Usage:
@@ -158,13 +159,17 @@ fnRemovePathEntry() {
 }
 
 # ---------------------------------------------------------------------------
-# fnRemoveClaudeMarker: Remove the .claude_enabled marker file
+# fnRemoveAgentDefaults: Remove legacy marker and installer defaults
 # ---------------------------------------------------------------------------
-fnRemoveClaudeMarker() {
+fnRemoveAgentDefaults() {
     local sMarkerDir="$1"
     if [ -f "${sMarkerDir}/.claude_enabled" ]; then
         rm -f "${sMarkerDir}/.claude_enabled"
         echo "[uninstall] Removed Claude Code marker."
+    fi
+    if [ -f "${HOME}/.vaibify/agent-defaults" ]; then
+        rm -f "${HOME}/.vaibify/agent-defaults"
+        echo "[uninstall] Removed Vaibify agent defaults."
     fi
 }
 
@@ -201,7 +206,7 @@ fnRemoveVolume
 fnRemoveSymlinks
 fnRemovePathEntry
 sRepoDir="$(cd "$(dirname "$0")" && pwd)"
-fnRemoveClaudeMarker "${sRepoDir}"
+fnRemoveAgentDefaults "${sRepoDir}"
 
 echo ""
 echo "[uninstall] Vaibify has been uninstalled."

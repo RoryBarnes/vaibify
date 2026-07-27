@@ -101,7 +101,10 @@ def _fnIsolateProjectRegistry():
     what the browser renders is fully determined by this file.
     """
     from vaibify.config import registryManager
-    with tempfile.TemporaryDirectory() as sHome:
+    # Project creation correctly permits directories beneath the user's
+    # home. Put this disposable root inside the isolated worktree, which
+    # is beneath that home, so the wizard exercises the real path guard.
+    with tempfile.TemporaryDirectory(dir=os.getcwd()) as sHome:
         sRegistry = os.path.join(sHome, "registry.json")
         with open(sRegistry, "w") as fileHandle:
             json.dump({"listProjects": [{
@@ -139,7 +142,7 @@ def serverHub():
 
     adapterDocker = FailClosedDockerAdapter()
     iPort = _fiFreePort()
-    with _fnIsolateProjectRegistry(), patch.object(
+    with _fnIsolateProjectRegistry() as sHome, patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         lambda *args, **kwargs: adapterDocker,
     ):
@@ -155,6 +158,7 @@ def serverHub():
             yield SimpleNamespace(
                 iPort=iPort,
                 sBaseUrl=f"http://127.0.0.1:{iPort}",
+                sHome=sHome,
                 adapterDocker=adapterDocker,
                 app=app,
             )

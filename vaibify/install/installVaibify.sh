@@ -7,12 +7,21 @@
 # Vaibify bin directory to the user's shell configuration.
 #
 # Usage:
-#   sh installVaibify.sh [-y|--yes] [--claude]
+#   sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|opencode|cline|openhands|pi]
+#                         [--install-claude] [--install-codex]
+#                         [--install-gemini] [--install-opencode]
+#                         [--install-cline] [--install-openhands] [--install-pi]
 
 set -e
 
 VC_REPO="https://github.com/RoryBarnes/Vaibify.git"
 bInstallClaude=false
+bInstallCodex=false
+bInstallGemini=false
+bInstallOpenCode=false
+bInstallCline=false
+bInstallOpenHands=false
+bInstallPi=false
 bAssumeYes=false
 
 # ---------------------------------------------------------------------------
@@ -27,17 +36,66 @@ fnParseArguments() {
             -y|--yes)
                 bAssumeYes=true
                 ;;
-            --claude)
+            --claude|--install-claude)
                 bInstallClaude=true
+                ;;
+            --install-codex)
+                bInstallCodex=true
+                ;;
+            --install-gemini)
+                bInstallGemini=true
+                ;;
+            --install-opencode)
+                bInstallOpenCode=true
+                ;;
+            --install-cline)
+                bInstallCline=true
+                ;;
+            --install-openhands)
+                bInstallOpenHands=true
+                ;;
+            --install-pi)
+                bInstallPi=true
+                ;;
+            --agent=*)
+                fnSelectAgent "${1#--agent=}"
+                ;;
+            --agent)
+                shift
+                if [ $# -eq 0 ]; then
+                    fnPrintError "--agent requires a supported agent name"
+                    exit 1
+                fi
+                fnSelectAgent "$1"
                 ;;
             *)
                 fnPrintError "Unknown option: $1"
-                echo "Usage: sh installVaibify.sh [-y|--yes] [--claude]" >&2
+                echo "Usage: sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|opencode|cline|openhands|pi] [--install-claude] [--install-codex] [--install-gemini] [--install-opencode] [--install-cline] [--install-openhands] [--install-pi]" >&2
                 exit 1
                 ;;
         esac
         shift
     done
+}
+
+# ---------------------------------------------------------------------------
+# fnSelectAgent: Enable one default in-container agent by name
+# ---------------------------------------------------------------------------
+fnSelectAgent() {
+    sAgent=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    case "${sAgent}" in
+        claude) bInstallClaude=true ;;
+        codex) bInstallCodex=true ;;
+        gemini) bInstallGemini=true ;;
+        opencode) bInstallOpenCode=true ;;
+        cline) bInstallCline=true ;;
+        openhands) bInstallOpenHands=true ;;
+        pi) bInstallPi=true ;;
+        *)
+            fnPrintError "Unknown agent: $1 (choose claude, codex, gemini, opencode, cline, openhands, or pi)"
+            exit 1
+            ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
@@ -309,19 +367,49 @@ fnLinkColimaSocket() {
 }
 
 # ---------------------------------------------------------------------------
-# fnEnableClaude: Mark Vaibify to include Claude Code in Docker image
+# fnEnableAgentDefaults: Save selected agents as defaults for vaibify init.
+# Project configuration, not a repository-local marker, is the authority for
+# image overlays. The old .claude_enabled marker was never consumed by builds.
 # ---------------------------------------------------------------------------
-fnEnableClaude() {
-    local sVcDirectory="$1"
-
-    touch "${sVcDirectory}/.claude_enabled"
-    echo "[install] Claude Code will be included in the Docker image."
-    echo "[install] The image will be built with Claude Code on first run."
+fnEnableAgentDefaults() {
+    local sConfigDirectory="${HOME}/.vaibify"
+    local sDefaultsFile="${sConfigDirectory}/agent-defaults"
+    mkdir -p "${sConfigDirectory}"
+    : > "${sDefaultsFile}"
+    if [ "${bInstallClaude}" = true ]; then
+        printf '%s\n' "claude" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallCodex}" = true ]; then
+        printf '%s\n' "codex" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallGemini}" = true ]; then
+        printf '%s\n' "gemini" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallOpenCode}" = true ]; then
+        printf '%s\n' "opencode" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallCline}" = true ]; then
+        printf '%s\n' "cline" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallOpenHands}" = true ]; then
+        printf '%s\n' "openhands" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallPi}" = true ]; then
+        printf '%s\n' "pi" >> "${sDefaultsFile}"
+    fi
+    chmod 600 "${sDefaultsFile}"
+    echo "[install] Selected agent defaults will be enabled by vaibify init:"
+    sed 's/^/  - /' "${sDefaultsFile}"
+    echo "[install] Each project's vaibify.yml remains the final authority."
 }
 
 # ===========================================================================
 # Main
 # ===========================================================================
+if [ -n "${VC_TESTING:-}" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 fnParseArguments "$@"
 fnDetectPlatform
 echo "[install] Detected platform: ${sPlatform}"
@@ -360,8 +448,11 @@ elif [ "${sPlatform}" = "Linux" ]; then
     echo "[install] Installation complete."
 fi
 
-if [ "${bInstallClaude}" = true ]; then
-    fnEnableClaude "$(pwd)"
+if [ "${bInstallClaude}" = true ] || [ "${bInstallCodex}" = true ] \
+    || [ "${bInstallGemini}" = true ] || [ "${bInstallOpenCode}" = true ] \
+    || [ "${bInstallCline}" = true ] || [ "${bInstallOpenHands}" = true ] \
+    || [ "${bInstallPi}" = true ]; then
+    fnEnableAgentDefaults
 fi
 
 if [ "${sPlatform}" = "Darwin" ]; then

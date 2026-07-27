@@ -54,22 +54,20 @@ def test_dockerfile_bakes_skills_and_monitor():
     assert "pip install --no-cache-dir claude-monitor" in sDockerfile
 
 
-def test_entrypoint_installs_skills_for_the_container_user():
-    """The entrypoint copies skills to ~/.claude/skills and chowns.
-
-    Without the chown, root-owned skill files would be unreadable
-    noise to the unprivileged agent — the same ownership trap as the
-    host-to-container file writes.
-    """
+def test_entrypoint_installs_skills_for_each_installed_agent():
+    """The entrypoint copies skills to every provider's native path."""
     sEntrypoint = _fsReadDockerFile("entrypoint.sh")
     assert "fnInstallAgentSkills()" in sEntrypoint
     assert "/usr/share/vaibify/skills" in sEntrypoint
-    assert '/home/${CONTAINER_USER}/.claude/skills' in sEntrypoint
+    assert '"/home/${CONTAINER_USER}/.${sAgent}/skills"' in sEntrypoint
     iDefinition = sEntrypoint.index("fnInstallAgentSkills()")
     sBody = sEntrypoint[iDefinition:sEntrypoint.index(
         "\n}", iDefinition,
     )]
-    assert "chown -R" in sBody
+    assert "for sAgent in claude codex gemini opencode cline openhands pi" in sBody
+    assert ".config/opencode/skills" in sBody
+    assert ".cline/data/settings/skills" in sBody
+    assert ".pi/agent/skills" in sBody
     # The main flow must actually call it (defined-but-never-called
     # was exactly the failure mode of the push-manifest recorder).
     sAfterDefinition = sEntrypoint[iDefinition + len(
@@ -341,7 +339,7 @@ def testLinkRepoClaudeMdCanonicalizesAgentsMd(tmp_path):
         "legacy context\n"
     )
     assert not (pathRepo / ".vaibify" / "CLAUDE.md").exists()
-    for sName in ("CLAUDE.md", "AGENTS.md"):
+    for sName in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
         assert (pathRepo / sName).is_symlink()
         assert (pathRepo / sName).read_text() == "legacy context\n"
     assert not (pathOther / "CLAUDE.md").is_symlink()

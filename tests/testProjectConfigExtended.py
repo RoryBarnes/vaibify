@@ -279,6 +279,54 @@ def test_claude_auto_update_missing_key_defaults_true():
     assert configLoaded.features.bClaudeAutoUpdate is True
 
 
+@pytest.mark.parametrize(
+    "sAgent,sEnabled,sAutoUpdate",
+    [
+        ("codex", "bCodex", "bCodexAutoUpdate"),
+        ("gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("opencode", "bOpenCode", "bOpenCodeAutoUpdate"),
+        ("cline", "bCline", "bClineAutoUpdate"),
+        ("openhands", "bOpenHands", "bOpenHandsAutoUpdate"),
+        ("pi", "bPi", "bPiAutoUpdate"),
+    ],
+)
+def test_new_agent_auto_update_roundtrip_and_legacy_default(
+    sAgent, sEnabled, sAutoUpdate,
+):
+    """Each provider persists its own setting and old files default safely."""
+    import yaml
+    config = ProjectConfig(
+        sProjectName=sAgent,
+        features=FeaturesConfig(**{sEnabled: True, sAutoUpdate: False}),
+    )
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        fnSaveToFile(config, sPath)
+        assert getattr(fconfigLoadFromFile(sPath).features, sAutoUpdate) is False
+        with open(sPath, "w") as fileHandle:
+            yaml.safe_dump({"projectName": "legacy", "features": {
+                sAgent: True,
+            }}, fileHandle)
+        assert getattr(fconfigLoadFromFile(sPath).features, sAutoUpdate) is True
+
+
+@pytest.mark.falsification
+def test_pi_auto_update_yaml_mapping_cannot_be_dropped():
+    """A disabled Pi update preference must survive configuration parsing.
+
+    Kills: delete the ``piAutoUpdate`` mapping from
+    ``_FEATURES_YAML_TO_HUNGARIAN`` in ``projectConfig.py``.
+    """
+    from vaibify.config.projectConfig import fconfigFromYamlDict
+
+    config = fconfigFromYamlDict({
+        "projectName": "pi-preference",
+        "features": {"pi": True, "piAutoUpdate": False},
+    })
+    assert config.features.bPi is True
+    assert config.features.bPiAutoUpdate is False
+
+
 # ---------------------------------------------------------------------------
 # iDashboardPort — stable per-project port persistence
 # ---------------------------------------------------------------------------

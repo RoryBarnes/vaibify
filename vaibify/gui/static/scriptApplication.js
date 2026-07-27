@@ -64,7 +64,7 @@ const VaibifyApp = (function () {
             iLastRenderedAICSLevel: 0,
             listUndoStack: [],
             dictContainerSettings: null,
-            bClaudeRestartNeeded: false,
+            bAgentRestartNeeded: false,
         };
     }
 
@@ -995,27 +995,46 @@ const VaibifyApp = (function () {
             "step without its own (right-click a step to set one); " +
             "a longer-running step is flagged as possibly hung — " +
             "the run is never stopped. 0 = no limit") +
-            fsClaudeSettingsHtml();
+            fsAgentSettingsHtml();
     }
 
-    function fsClaudeSettingsHtml() {
+    function fsAgentSettingsHtml() {
         var dictSettings = _dictWorkflowState.dictContainerSettings;
-        if (!dictSettings || !dictSettings.bClaudeInstalled) {
+        if (!dictSettings) {
             return "";
         }
-        var sChecked = dictSettings.bClaudeAutoUpdate ? " checked" : "";
-        var sNotice = _dictWorkflowState.bClaudeRestartNeeded
+        var listAgents = [
+            {sKey: "claude", sLabel: "Claude Code", sField: "bClaude"},
+            {sKey: "codex", sLabel: "Codex", sField: "bCodex"},
+            {sKey: "gemini", sLabel: "Gemini CLI", sField: "bGemini"},
+            {sKey: "opencode", sLabel: "OpenCode", sField: "bOpenCode"},
+            {sKey: "cline", sLabel: "Cline", sField: "bCline"},
+            {sKey: "openhands", sLabel: "OpenHands", sField: "bOpenHands"},
+            {sKey: "pi", sLabel: "Pi", sField: "bPi"},
+        ].filter(function (dictAgent) {
+            var sInstalled = dictAgent.sField + "Installed";
+            return dictSettings[sInstalled];
+        });
+        if (listAgents.length === 0) return "";
+        var sNotice = _dictWorkflowState.bAgentRestartNeeded
             ? '<div class="gs-notice">Restart the container to '
-              + 'apply the new Claude auto-update setting.</div>'
+              + 'apply the new agent auto-update setting.</div>'
             : "";
         return '<div class="gs-section-heading">Container</div>' +
-            fsSettingsRowHtml("Claude auto-update",
-                '<input type="checkbox" id="gsClaudeAutoUpdate"'
-                + sChecked + '>',
-                "Allow Claude Code inside the container to update " +
-                "itself; a change takes effect after a container " +
-                "restart") +
+            listAgents.map(_fsAgentAutoUpdateRow).join("") +
             sNotice;
+    }
+
+    function _fsAgentAutoUpdateRow(dictAgent) {
+        var sSetting = dictAgent.sField + "AutoUpdate";
+        var sChecked = _dictWorkflowState.dictContainerSettings[sSetting]
+            ? " checked" : "";
+        return fsSettingsRowHtml(dictAgent.sLabel + " auto-update",
+            '<input type="checkbox" class="gs-agent-auto-update" '
+            + 'data-agent="' + dictAgent.sKey + '"' + sChecked + '>',
+            "Allow " + dictAgent.sLabel + " inside the container to " +
+            "update itself; a change takes effect after a container " +
+            "restart");
     }
 
     function fnBindSettingsSliders() {
@@ -1049,14 +1068,14 @@ const VaibifyApp = (function () {
             elAutoArchive.addEventListener(
                 "change", fnSaveGlobalSettings);
         }
-        var elClaudeAuto = document.getElementById(
-            "gsClaudeAutoUpdate");
-        if (elClaudeAuto) {
-            elClaudeAuto.addEventListener(
-                "change", function () {
-                    fnSaveClaudeAutoUpdate(elClaudeAuto.checked);
+        document.querySelectorAll(".gs-agent-auto-update")
+            .forEach(function (elAgentAutoUpdate) {
+                elAgentAutoUpdate.addEventListener("change", function () {
+                    fnSaveAgentAutoUpdate(
+                        elAgentAutoUpdate.dataset.agent,
+                        elAgentAutoUpdate.checked);
                 });
-        }
+            });
         fnBindTerminalScrollbackControls();
     }
 
@@ -1095,30 +1114,42 @@ const VaibifyApp = (function () {
         }
     }
 
-    function fnApplyClaudeSaveResult(bValue, dictResult) {
+    function fnApplyAgentSaveResult(sAgent, bValue, dictResult) {
         if (_dictWorkflowState.dictContainerSettings) {
-            _dictWorkflowState.dictContainerSettings
-                .bClaudeAutoUpdate = bValue;
+            _dictWorkflowState.dictContainerSettings[
+                _fsAgentSettingsField(sAgent) + "AutoUpdate"
+            ] = bValue;
         }
-        _dictWorkflowState.bClaudeRestartNeeded =
+        _dictWorkflowState.bAgentRestartNeeded =
             Boolean(dictResult && dictResult.bRestartRequired);
         fnRenderGlobalSettings();
-        fnShowToast("Claude setting saved", "success");
+        fnShowToast(sAgent + " setting saved", "success");
     }
 
-    async function fnSaveClaudeAutoUpdate(bValue) {
+    async function fnSaveAgentAutoUpdate(sAgent, bValue) {
         var sId = _dictSessionState.sContainerId;
         if (!sId) return;
+        var dictPayload = {};
+        dictPayload[_fsAgentSettingsField(sAgent) + "AutoUpdate"] = bValue;
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/containers/"
                 + encodeURIComponent(sId) + "/settings",
-                { bClaudeAutoUpdate: bValue });
-            fnApplyClaudeSaveResult(bValue, dictResult);
+                dictPayload);
+            fnApplyAgentSaveResult(sAgent, bValue, dictResult);
         } catch (error) {
             fnShowToast(
-                "Failed to save Claude setting", "error");
+                "Failed to save " + sAgent + " setting", "error");
         }
+    }
+
+    function _fsAgentSettingsField(sAgent) {
+        var dictFields = {
+            claude: "bClaude", codex: "bCodex", gemini: "bGemini",
+            opencode: "bOpenCode", cline: "bCline",
+            openhands: "bOpenHands", pi: "bPi",
+        };
+        return dictFields[sAgent];
     }
 
     function fnRenderGlobalSettings() {

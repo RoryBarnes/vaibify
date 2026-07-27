@@ -36,6 +36,34 @@ def _fsHashWorkspacePrompt(connectionDocker, sContainerId):
     return fsHashFileObjectSha256(io.BytesIO(baContent))
 
 
+def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
+    """Return installed CLI versions observed inside the live container."""
+    sCommand = (
+        'for sAgent in claude codex gemini opencode cline openhands pi; do '
+        'if command -v "${sAgent}" >/dev/null 2>&1; then '
+        'sVersion=$(timeout 5 "${sAgent}" --version 2>/dev/null | head -n 1); '
+        'printf "%s\\t%s\\n" "${sAgent}" "${sVersion}"; fi; done'
+    )
+    try:
+        resultExec = connectionDocker.texecRunInContainerStreamed(
+            sContainerId, sCommand,
+        )
+    except Exception as exc:  # noqa: BLE001 — absence is a provenance fact
+        logger.info("Agent CLI versions not capturable: %s", exc)
+        return {}
+    if resultExec.iExitCode != 0:
+        return {}
+    dictVersions = {}
+    for sLine in resultExec.sStdout.splitlines():
+        sAgent, sSeparator, sVersion = sLine.partition("\t")
+        if sSeparator and sAgent in {
+            "claude", "codex", "gemini", "opencode", "cline",
+            "openhands", "pi",
+        }:
+            dictVersions[sAgent] = sVersion[:200]
+    return dictVersions
+
+
 def fdictCaptureAiProvenanceStamp(
     dictWorkflow, filesRepo, sContainerId, connectionDocker,
 ):
@@ -55,4 +83,7 @@ def fdictCaptureAiProvenanceStamp(
         ),
         bNetworkIsolatedAtCapture=bIsolated if bAnswered else None,
         sHubInvokerModelId=fsResolveApiModelId(),
+        dictAgentCliVersions=_fdictCaptureAgentCliVersions(
+            connectionDocker, sContainerId,
+        ),
     )

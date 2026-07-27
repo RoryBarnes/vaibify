@@ -39,7 +39,15 @@ _LIST_OVERLAY_ORDER = [
     "julia",
     "database",
     "dvc",
+    "node",
+    "uv",
     "claude",
+    "codex",
+    "gemini",
+    "opencode",
+    "cline",
+    "openhands",
+    "pi",
 ]
 
 _DICT_OVERLAY_DOCKERFILE_MAP = {
@@ -50,6 +58,14 @@ _DICT_OVERLAY_DOCKERFILE_MAP = {
     "dvc": "overlays/dvc.dockerfile",
     "gpu": "overlays/gpu.dockerfile",
     "claude": "Dockerfile.claude",
+    "codex": "Dockerfile.codex",
+    "gemini": "Dockerfile.gemini",
+    "node": "Dockerfile.node",
+    "uv": "Dockerfile.uv",
+    "opencode": "Dockerfile.opencode",
+    "cline": "Dockerfile.cline",
+    "openhands": "Dockerfile.openhands",
+    "pi": "Dockerfile.pi",
 }
 
 _GPU_BASE_IMAGE = "nvidia/cuda:12.2.0-devel-ubuntu22.04"
@@ -62,6 +78,12 @@ _DICT_FEATURE_TO_OVERLAY = {
     "bDvc": "dvc",
     "bGpu": "gpu",
     "bClaude": "claude",
+    "bCodex": "codex",
+    "bGemini": "gemini",
+    "bOpenCode": "opencode",
+    "bCline": "cline",
+    "bOpenHands": "openhands",
+    "bPi": "pi",
 }
 
 
@@ -127,6 +149,11 @@ def flistDetermineOverlays(config):
     for sFeatureField, sOverlayName in _DICT_FEATURE_TO_OVERLAY.items():
         if getattr(config.features, sFeatureField, False):
             listEnabled.append(sOverlayName)
+    if any(getattr(config.features, sField, False) for sField in (
+            "bGemini", "bCline", "bPi")):
+        listEnabled.append("node")
+    if getattr(config.features, "bOpenHands", False):
+        listEnabled.append("uv")
     return _flistSortByCanonicalOrder(listEnabled)
 
 

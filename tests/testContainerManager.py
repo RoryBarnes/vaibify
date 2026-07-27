@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 import os
 
 from vaibify.docker.containerManager import (
@@ -172,6 +174,12 @@ def _fConfigMinimal():
     """Return a minimal mock config for flistBuildRunArgs."""
     features = SimpleNamespace(
         bGpu=False, bClaude=False, bClaudeAutoUpdate=True,
+        bCodex=False, bCodexAutoUpdate=True,
+        bGemini=False, bGeminiAutoUpdate=True,
+        bOpenCode=False, bOpenCodeAutoUpdate=True,
+        bCline=False, bClineAutoUpdate=True,
+        bOpenHands=False, bOpenHandsAutoUpdate=True,
+        bPi=False, bPiAutoUpdate=True,
     )
     return SimpleNamespace(
         sProjectName="testproj",
@@ -273,6 +281,35 @@ def test_flistBuildRunArgs_claude_auto_update_false(mockX11):
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
+@pytest.mark.parametrize(
+    "sAgent,sEnabledField,sAutoUpdateField",
+    [
+        ("Codex", "bCodex", "bCodexAutoUpdate"),
+        ("Gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("OpenCode", "bOpenCode", "bOpenCodeAutoUpdate"),
+        ("Cline", "bCline", "bClineAutoUpdate"),
+        ("OpenHands", "bOpenHands", "bOpenHandsAutoUpdate"),
+        ("Pi", "bPi", "bPiAutoUpdate"),
+    ],
+)
+def test_flistBuildRunArgs_agent_auto_update_is_provider_specific(
+    mockX11, sAgent, sEnabledField, sAutoUpdateField,
+):
+    """Codex and Gemini use their own env keys, never Claude's key."""
+    config = _fConfigMinimal()
+    setattr(config.features, sEnabledField, True)
+    setattr(config.features, sAutoUpdateField, False)
+    saArgs = flistBuildRunArgs(config)
+    assert "VAIBIFY_" + sAgent.upper() + "_AUTO_UPDATE=false" in saArgs
+    assert not any(
+        "VAIBIFY_CLAUDE_AUTO_UPDATE" in sArg for sArg in saArgs
+    )
+
+
+@patch(
+    "vaibify.docker.containerManager.flistConfigureX11Args",
+    return_value=[],
+)
 def test_flistBuildRunArgs_mounts_credentials_volume(mockX11):
     """The credentials volume must mount the container keyring data
     dir so Zenodo/GitHub tokens survive ``docker rm`` + ``docker run``
@@ -359,6 +396,20 @@ def test_fnAddAgentHostBridge_appends_when_agent_enabled():
     assert saArgs == [
         "--rm", "--add-host", "host.docker.internal:host-gateway",
     ]
+
+
+@pytest.mark.parametrize(
+    "sAgent", ["bCodex", "bGemini", "bOpenCode", "bCline",
+                "bOpenHands", "bPi"],
+)
+def test_fnAddAgentHostBridge_supports_every_provider(sAgent):
+    """A non-Claude provider still gets the vaibify-do host bridge."""
+    from vaibify.docker.containerManager import _fnAddAgentHostBridge
+    config = _fConfigMinimal()
+    setattr(config.features, sAgent, True)
+    saArgs = []
+    _fnAddAgentHostBridge(config, saArgs)
+    assert saArgs == ["--add-host", "host.docker.internal:host-gateway"]
 
 
 def test_fnAddAgentHostBridge_no_op_when_agent_disabled():

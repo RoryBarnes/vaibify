@@ -27,6 +27,7 @@ caught up to a day late.
 """
 
 import json
+import os
 
 import pytest
 
@@ -226,3 +227,83 @@ def testTheDockerFakeRefusesUnmodelledCalls(serverHub):
         serverHub.adapterDocker.ftResultExecuteCommand(
             "any-container", "rm -rf /workspace",
         )
+
+
+# ---------------------------------------------------------------------
+# Journey 4 -- agent choices persist from the real creation wizard
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "sAgent,sProjectName,sFeatureField,sAutoUpdateField",
+    [
+        ("codex", "browser-codex", "bCodex", "bCodexAutoUpdate"),
+        ("gemini", "browser-gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("opencode", "browser-opencode", "bOpenCode", "bOpenCodeAutoUpdate"),
+        ("cline", "browser-cline", "bCline", "bClineAutoUpdate"),
+        ("openhands", "browser-openhands", "bOpenHands", "bOpenHandsAutoUpdate"),
+        ("pi", "browser-pi", "bPi", "bPiAutoUpdate"),
+    ],
+)
+def testCreationWizardPersistsSelectedAgent(
+    pageDashboard, serverHub, sAgent, sProjectName,
+    sFeatureField, sAutoUpdateField,
+):
+    """A selected agent must reach the saved config with auto-update on.
+
+    This drives the normal browser flow, including the host-directory
+    picker.  Inspecting the written config is deliberate: the checkbox
+    state alone could agree with a broken request serializer, while the
+    config is what the image builder later consumes.
+    """
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+
+    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.locator("#btnAddContainer").click()
+    pageDashboard.locator("#btnChoiceCreateNew").click()
+    pageDashboard.locator("#btnWizardChooseDirectory").click()
+    sRelativeDirectory = os.path.relpath(
+        serverHub.sHome, os.path.expanduser("~"),
+    )
+    for sDirectoryPart in sRelativeDirectory.split(os.sep):
+        pageDashboard.locator(
+            f".directory-entry-name:text-is('{sDirectoryPart}')"
+        ).click()
+    pageDashboard.locator("#btnDirectoryNewFolder").click()
+    pageDashboard.locator("#modalInput .input-modal-field").fill(
+        sProjectName
+    )
+    pageDashboard.locator("#btnInputConfirm").click()
+    pageDashboard.locator(
+        f".directory-entry-name:text-is('{sProjectName}')"
+    ).click()
+    pageDashboard.locator("#btnAddContainerConfirm").click()
+
+    pageDashboard.locator("#btnWizardNext").click()
+    pageDashboard.locator("[data-template='sandbox']").click()
+    pageDashboard.locator("#btnWizardNext").click()
+    pageDashboard.locator("#inputWizardProjectName").fill(sProjectName)
+    pageDashboard.locator("#btnWizardNext").click()
+    pageDashboard.locator("#btnWizardNext").click()
+    pageDashboard.locator("#btnWizardNext").click()
+    pageDashboard.locator(
+        f".wizard-feature-input[data-feature='{sAgent}']"
+    ).check()
+    pageDashboard.locator("#btnWizardNext").click()
+    pageDashboard.locator("#btnWizardNext").click()
+
+    with pageDashboard.expect_response(
+        lambda response: response.url.endswith("/api/projects/create")
+        and response.status == 200,
+    ) as responseInfo:
+        pageDashboard.locator("#btnWizardNext").click()
+    response = responseInfo.value
+    dictRequest = response.request.post_data_json
+    assert sAgent in dictRequest["listFeatures"]
+
+    sConfigPath = os.path.join(
+        serverHub.sHome, sProjectName, "vaibify.yml",
+    )
+    configProject = fconfigLoadFromFile(sConfigPath)
+    assert getattr(configProject.features, sFeatureField) is True
+    assert getattr(configProject.features, sAutoUpdateField) is True

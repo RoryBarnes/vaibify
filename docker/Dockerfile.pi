@@ -1,0 +1,12 @@
+# Vaibify — Pi coding agent overlay
+
+ARG BASE_IMAGE=vaibify:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+USER ${CONTAINER_USER}
+
+RUN npm install --global --fetch-retries=3 --ignore-scripts \
+        @earendil-works/pi-coding-agent \
+    || { echo "vaibify build: Pi installation failed" >&2; exit 1; }

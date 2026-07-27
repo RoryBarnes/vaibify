@@ -57,12 +57,3 @@ RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
 # the user's profile, but non-login subprocesses won't see it without
 # this explicit ENV.
 ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
-
-# vaibify-do lives under /usr/local/bin so the container user can
-# invoke it without a home-dir lookup. Briefly switch to root for
-# the copy, then restore the unprivileged user from the base image.
-USER root
-COPY vaibifyDo.py /usr/local/bin/vaibify-do
-RUN chmod 0755 /usr/local/bin/vaibify-do
-
-USER ${CONTAINER_USER}

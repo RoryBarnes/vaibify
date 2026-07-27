@@ -24,6 +24,18 @@ class FeaturesConfig:
     bLatex: bool = True
     bClaude: bool = False
     bClaudeAutoUpdate: bool = True
+    bCodex: bool = False
+    bCodexAutoUpdate: bool = True
+    bGemini: bool = False
+    bGeminiAutoUpdate: bool = True
+    bOpenCode: bool = False
+    bOpenCodeAutoUpdate: bool = True
+    bCline: bool = False
+    bClineAutoUpdate: bool = True
+    bOpenHands: bool = False
+    bOpenHandsAutoUpdate: bool = True
+    bPi: bool = False
+    bPiAutoUpdate: bool = True
     bGpu: bool = False
 
 
@@ -126,6 +138,18 @@ _FEATURES_YAML_TO_HUNGARIAN = {
     "latex": "bLatex",
     "claude": "bClaude",
     "claudeAutoUpdate": "bClaudeAutoUpdate",
+    "codex": "bCodex",
+    "codexAutoUpdate": "bCodexAutoUpdate",
+    "gemini": "bGemini",
+    "geminiAutoUpdate": "bGeminiAutoUpdate",
+    "opencode": "bOpenCode",
+    "opencodeAutoUpdate": "bOpenCodeAutoUpdate",
+    "cline": "bCline",
+    "clineAutoUpdate": "bClineAutoUpdate",
+    "openhands": "bOpenHands",
+    "openhandsAutoUpdate": "bOpenHandsAutoUpdate",
+    "pi": "bPi",
+    "piAutoUpdate": "bPiAutoUpdate",
     "gpu": "bGpu",
 }
 
@@ -498,6 +522,18 @@ def _fdictFeaturesToYaml(features):
         "latex": features.bLatex,
         "claude": features.bClaude,
         "claudeAutoUpdate": features.bClaudeAutoUpdate,
+        "codex": features.bCodex,
+        "codexAutoUpdate": features.bCodexAutoUpdate,
+        "gemini": features.bGemini,
+        "geminiAutoUpdate": features.bGeminiAutoUpdate,
+        "opencode": features.bOpenCode,
+        "opencodeAutoUpdate": features.bOpenCodeAutoUpdate,
+        "cline": features.bCline,
+        "clineAutoUpdate": features.bClineAutoUpdate,
+        "openhands": features.bOpenHands,
+        "openhandsAutoUpdate": features.bOpenHandsAutoUpdate,
+        "pi": features.bPi,
+        "piAutoUpdate": features.bPiAutoUpdate,
         "gpu": features.bGpu,
     }
 

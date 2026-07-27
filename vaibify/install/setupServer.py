@@ -45,6 +45,12 @@ class WizardConfigRequest(BaseModel):
     sZenodoDepositionId: str = ""
     bNeverSleep: bool = False
     bClaudeAutoUpdate: bool = True
+    bCodexAutoUpdate: bool = True
+    bGeminiAutoUpdate: bool = True
+    bOpenCodeAutoUpdate: bool = True
+    bClineAutoUpdate: bool = True
+    bOpenHandsAutoUpdate: bool = True
+    bPiAutoUpdate: bool = True
 
 
 class ValidateResponse(BaseModel):
@@ -207,6 +213,18 @@ def _fdictConfigToWizardFormat(config):
         ),
         "bNeverSleep": config.bNeverSleep,
         "bClaudeAutoUpdate": config.features.bClaudeAutoUpdate,
+        "bCodexAutoUpdate": config.features.bCodexAutoUpdate,
+        "bGeminiAutoUpdate": config.features.bGeminiAutoUpdate,
+        "bOpenCodeAutoUpdate": getattr(
+            config.features, "bOpenCodeAutoUpdate", True,
+        ),
+        "bClineAutoUpdate": getattr(
+            config.features, "bClineAutoUpdate", True,
+        ),
+        "bOpenHandsAutoUpdate": getattr(
+            config.features, "bOpenHandsAutoUpdate", True,
+        ),
+        "bPiAutoUpdate": getattr(config.features, "bPiAutoUpdate", True),
     }
 
 
@@ -220,6 +238,12 @@ def _flistEnabledFeatures(features):
         "dvc": features.bDvc,
         "latex": features.bLatex,
         "claude": features.bClaude,
+        "codex": features.bCodex,
+        "gemini": features.bGemini,
+        "opencode": getattr(features, "bOpenCode", False),
+        "cline": getattr(features, "bCline", False),
+        "openhands": getattr(features, "bOpenHands", False),
+        "pi": getattr(features, "bPi", False),
         "gpu": features.bGpu,
     }
     return [s for s, b in dictMap.items() if b]
@@ -229,6 +253,12 @@ def _fdictWizardToYaml(request):
     """Convert wizard form data to vaibify.yml-compatible dict."""
     dictFeatures = _fdictFeaturesFromList(request.listFeatures)
     dictFeatures["claudeAutoUpdate"] = request.bClaudeAutoUpdate
+    dictFeatures["codexAutoUpdate"] = request.bCodexAutoUpdate
+    dictFeatures["geminiAutoUpdate"] = request.bGeminiAutoUpdate
+    dictFeatures["opencodeAutoUpdate"] = request.bOpenCodeAutoUpdate
+    dictFeatures["clineAutoUpdate"] = request.bClineAutoUpdate
+    dictFeatures["openhandsAutoUpdate"] = request.bOpenHandsAutoUpdate
+    dictFeatures["piAutoUpdate"] = request.bPiAutoUpdate
     listRepos = _flistReposFromUrls(request.listRepositories)
     dictYaml = {
         "projectName": request.sProjectName,
@@ -256,7 +286,8 @@ def _fdictFeaturesFromList(listFeatures):
     """Convert a list of feature name strings to a bool dict."""
     listAllFeatures = [
         "jupyter", "rLanguage", "julia", "database",
-        "dvc", "latex", "claude", "gpu",
+        "dvc", "latex", "claude", "codex", "gemini", "opencode",
+        "cline", "openhands", "pi", "gpu",
     ]
     return {s: s in listFeatures for s in listAllFeatures}
 

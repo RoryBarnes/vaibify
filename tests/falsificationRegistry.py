@@ -1631,6 +1631,29 @@ def _fdictEntry(sRel):
             '        dictWorkflow = fdictRequireWorkflow('
         ),
     ),
+    Falsification(
+        # The version field is machine-recorded provenance, so accepting a
+        # made-up provider name turns arbitrary unvalidated data into an
+        # attestation claim.
+        nodeid='tests/testAiProvenanceStamp.py::test_agent_version_stamp_rejects_unexpected_provider_name',
+        source='vaibify/reproducibility/aiProvenanceStamp.py',
+        old=(
+            '        sAgent not in {\n'
+            '            "claude", "codex", "gemini", "opencode", "cline",\n'
+            '            "openhands", "pi",\n'
+            '        }\n'
+        ),
+        new='        False\n',
+    ),
+    Falsification(
+        # A disabled update choice is an explicit user preference. If this
+        # mapping vanishes, deserialization silently restores the default
+        # true and the dashboard misrepresents what will run at startup.
+        nodeid='tests/testProjectConfigExtended.py::test_pi_auto_update_yaml_mapping_cannot_be_dropped',
+        source='vaibify/config/projectConfig.py',
+        old='    "piAutoUpdate": "bPiAutoUpdate",\n',
+        new='',
+    ),
     # ---- Phase 4 security remediation (2026-07-25) ----
     Falsification(
         # Without the catalog check the agent lane returns to an

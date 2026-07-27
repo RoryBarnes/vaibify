@@ -46,7 +46,25 @@ Nested under the `features` key:
 | `dvc`        | boolean | `false` | Install DVC for data versioning  |
 | `latex`      | boolean | `true`  | Install TeX Live                 |
 | `claude`     | boolean | `false` | Install Claude Code CLI          |
+| `claudeAutoUpdate` | boolean | `true` | Allow Claude Code to update itself |
+| `codex`      | boolean | `false` | Install OpenAI Codex CLI         |
+| `codexAutoUpdate` | boolean | `true` | Update Codex when the container starts |
+| `gemini`     | boolean | `false` | Install Google Gemini CLI        |
+| `geminiAutoUpdate` | boolean | `true` | Allow Gemini CLI to update itself |
+| `opencode`   | boolean | `false` | Install OpenCode CLI             |
+| `opencodeAutoUpdate` | boolean | `true` | Update OpenCode when the container starts |
+| `cline`      | boolean | `false` | Install Cline CLI                |
+| `clineAutoUpdate` | boolean | `true` | Update Cline when the container starts |
+| `openhands`  | boolean | `false` | Install OpenHands CLI            |
+| `openhandsAutoUpdate` | boolean | `true` | Update OpenHands when the container starts |
+| `pi`         | boolean | `false` | Install Pi coding agent          |
+| `piAutoUpdate` | boolean | `true` | Update Pi when the container starts |
 | `gpu`        | boolean | `false` | Enable NVIDIA GPU passthrough    |
+
+All enabled CLIs receive the same Vaibify context, skills, persistent
+configuration directory, and `vaibify-do` dashboard bridge. Auto-updates
+need network access; when `networkIsolation` is enabled, Vaibify records a
+startup warning that the update was deferred.
 
 ### Reproducibility Block
 
