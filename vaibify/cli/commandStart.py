@@ -40,6 +40,50 @@ def _fnStartContainer(config, sDockerDir, sCommand):
         _fnHandleDockerRuntimeError(error, config.sProjectName)
 
 
+def _fnStartContainerDetached(config, sDockerDir):
+    """Start the container in the background and print its identity.
+
+    The interactive path allocates a TTY (``--rm -it``), which fails on
+    a CI runner and blocks the shell everywhere else. The container
+    manager has always been able to start detached — this exposes it.
+    """
+    try:
+        from vaibify.docker.containerManager import (
+            fsStartContainerDetached,
+        )
+    except ImportError:
+        click.echo(
+            "Error: Docker support is not installed. "
+            "Install with: pip install vaibify[docker]"
+        )
+        sys.exit(1)
+    try:
+        sContainerId = fsStartContainerDetached(config, sDockerDir)
+    except RuntimeError as error:
+        _fnHandleDockerRuntimeError(error, config.sProjectName)
+        return
+    click.echo(
+        f"Started {config.sProjectName} detached ({sContainerId[:12]})."
+    )
+
+
+def _fnRejectCommandWithDetach(sCommand):
+    """Exit when a command is passed to a detached start.
+
+    A detached container runs ``sleep infinity`` so the researcher can
+    exec into it; honouring a command would mean the container exits as
+    soon as the command finishes. Refusing beats silently dropping it.
+    """
+    if sCommand is None:
+        return
+    click.echo(
+        "Error: --detach starts an idle container; a COMMAND cannot "
+        "run in it. Start detached, then: vaibify connect",
+        err=True,
+    )
+    sys.exit(2)
+
+
 def _fnHandleDockerRuntimeError(error, sProjectName):
     """Print a friendly message for known Docker exit scenarios."""
     sMessage = str(error)
@@ -454,8 +498,12 @@ def _fnEnforcePreflightOrExit(listResults):
     help="Project name (omit if in a project directory "
     "or only one project exists).",
 )
+@click.option(
+    "--detach", "-d", "bDetach", is_flag=True, default=False,
+    help="Start in the background instead of attaching a terminal.",
+)
 @click.argument("command", required=False, default=None)
-def start(bGui, bJupyter, iPort, sProjectName, command):
+def start(bGui, bJupyter, iPort, sProjectName, bDetach, command):
     """Start the Vaibify environment."""
     config = fconfigResolveProject(sProjectName)
     sConfigPath = fsResolveProjectConfigPath(sProjectName)
@@ -464,6 +512,10 @@ def start(bGui, bJupyter, iPort, sProjectName, command):
     _fnPrintWarningsIfAny(listPreflight)
     sDockerDir = fsDockerDir()
     click.echo(f"Starting container {config.sProjectName} ...")
-    _fnStartContainer(config, sDockerDir, command)
+    if bDetach:
+        _fnRejectCommandWithDetach(command)
+        _fnStartContainerDetached(config, sDockerDir)
+    else:
+        _fnStartContainer(config, sDockerDir, command)
     if bGui:
         fnLaunchGui(config, iPort, sConfigPath)

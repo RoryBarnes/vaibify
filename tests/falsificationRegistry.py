@@ -2197,9 +2197,14 @@ def _fdictEntry(sRel):
         # permissive mock it exists not to become.
         nodeid='tests/testBrowserLaneContract.py::testTheFakeRaisesRatherThanInventingAnAnswer',
         source='tests/browser/fakeDockerAdapter.py',
-        old="""        raise UnmodelledContainerCall(
-            "The browser lane's Docker adapter was asked to run a """,
-        new="""        return (0, "")
+        # Anchored on the line BEFORE the raise, not on the raise's
+        # first two lines: splitting a multi-line string literal left a
+        # dangling quote, so the mutation could not compile and the
+        # harness scored it ERROR -- never KILLED -- for two commits.
+        old="""            return (0, "{}")
+        raise UnmodelledContainerCall(""",
+        new="""            return (0, "{}")
+        return (0, "")
         raise UnmodelledContainerCall(""",
     ),
     Falsification(
@@ -2218,5 +2223,32 @@ def _fdictEntry(sRel):
         source='.github/workflows/freshImageBuild.yml',
         old="      - 'vaibify/gui/director.py'\n",
         new="",
+    ),
+    Falsification(
+        # Moves the host CLI onto the in-container agent's credential —
+        # the wrong principal, and one the catalog deliberately fences.
+        nodeid='tests/testCliHubSessionMutationCoverage.py::test_the_cli_authenticates_as_the_researcher_not_as_the_agent',
+        source='vaibify/cli/hubSession.py',
+        old='S_BROWSER_TOKEN_HEADER = "X-Session-Token"',
+        new='S_BROWSER_TOKEN_HEADER = "X-Vaibify-Session"',
+    ),
+    Falsification(
+        # Sends the lease where the route does not read it, so the
+        # release succeeds with bReleased false and the container stays
+        # held. Observed live before this test existed.
+        nodeid='tests/testCliHubSessionMutationCoverage.py::test_release_sends_the_lease_where_the_route_reads_it',
+        source='vaibify/cli/hubSession.py',
+        old="""            None, F_BOOTSTRAP_TIMEOUT_SECONDS,
+            dictQuery={"sLeaseId": dictSession["sLeaseId"]},""",
+        new="""            {"sLeaseId": dictSession["sLeaseId"]},
+            F_BOOTSTRAP_TIMEOUT_SECONDS,""",
+    ),
+    Falsification(
+        # Paths a route by the lease's key (container name) instead of
+        # the docker id the exec behind it needs.
+        nodeid='tests/testCliHubSessionMutationCoverage.py::test_generated_paths_carry_the_container_id_not_the_name',
+        source='vaibify/cli/actionCommands.py',
+        old='    dictValues["sContainerId"] = dictSession["sContainerId"]',
+        new='    dictValues["sContainerId"] = dictSession["sContainerName"]',
     ),
 ]

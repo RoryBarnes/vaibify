@@ -85,6 +85,7 @@ def _fnConfigureErrorLogging(sLogDirOverride=None):
         loggerVaibify.addHandler(rotatingHandler)
     _fnAttachHostIncidentHandler(loggerVaibify)
 
+from .actionCommands import do
 from .commandBuild import build
 from .commandCat import cat
 from .commandConfig import config
@@ -222,6 +223,7 @@ main.add_command(test)
 main.add_command(generate_standards)
 main.add_command(doctor)
 main.add_command(sessions)
+main.add_command(do)
 
 
 @main.command("stop")
