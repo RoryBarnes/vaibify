@@ -175,9 +175,9 @@ cosmic-ray init cosmic-ray.toml session.sqlite && cosmic-ray exec cosmic-ray.tom
 | `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14 |
 | `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14) |
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
-| `browser.yml` | Lane 1 — the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
-| `containerAcceptance.yml` | Lane 2 — the modelled container commands, against a real container | nightly + manual |
-| `freshImageBuild.yml` | Lane 3 — a full image build from scratch, then acceptance | weekly, manual, and on `docker/**` pull requests |
+| `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
+| `containerAcceptance.yml` | the modelled container commands, against a real container | nightly + manual |
+| `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `docker/**` pull requests |
 | `badges.yml` | recomputes the live test / falsification / invariant counts | on push to `main` |
 
 ## The three execution lanes
@@ -187,7 +187,7 @@ browser both absent. Three lanes exist because that leaves two real
 boundaries unexercised, and both have shipped bugs a green suite could
 not see.
 
-**Lane 1 (`browser.yml`)** loads the real dashboard in real Chromium
+**The browser lane (`browser.yml`)** loads the real dashboard in real Chromium
 against a real uvicorn hub and fails on any console error, uncaught
 promise rejection, or failed asset. It runs on one cell — a browser
 journey does not become more trustworthy by running 24 times across
@@ -197,16 +197,16 @@ anything else raises rather than returning a default. That rule exists
 because this suite already carries ~20 permissive Docker mocks, one of
 which answers success to any command it does not recognise.
 
-**Lane 2 (`containerAcceptance.yml`)** puts each of those modelled
+**The container-acceptance lane (`containerAcceptance.yml`)** puts each of those modelled
 commands to a real container, so a fake that drifts from the daemon is
 caught rather than believed. Every entry in the fake's contract names
 an assertion in `tests/testContainerAcceptance.py`, and
 `testEveryNamedLaneTwoAssertionExists` fails if one of those names is
 fiction. It runs nightly, which means **drift is caught up to a day
-late**: Lane 1 failing blocks merge, Lane 2 failing blocks the next
+late**: the browser lane failing blocks merge, container acceptance blocks the next
 release, not retroactively.
 
-**Lane 3 (`freshImageBuild.yml`)** builds the image from scratch. Lane
+**The fresh-image lane (`freshImageBuild.yml`)** builds the image from scratch. Lane
 2 reuses a cached image keyed by `tools/computeBuildInputHash.py` —
 which hashes every build input, including the entrypoint, the agent
 CLI, the overlays, the skills, the staged-doc *sources*, and the

@@ -169,8 +169,8 @@ Docker adapter, so it says nothing about container launch, file
 ownership on write, the real transport, terminal content, figure
 rendering, or the sync panel. Those belong to the container
 acceptance lane, which runs **nightly** — meaning drift between the
-fake and a real container is caught up to a day late. Lane 1 failing
-blocks merge; Lane 2 failing blocks the next release, not
+fake and a real container is caught up to a day late. The browser lane
+failing blocks merge; the container-acceptance lane failing blocks the next release, not
 retroactively. Do not read a green browser lane as "the frontend is
 verified".
 
@@ -225,19 +225,19 @@ verification.
 
 | Lane | What is real | When | What it proves |
 |---|---|---|---|
-| 1 — browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behaviour reach the screen honestly |
-| 2 — container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands Lane 1's fake models |
-| 3 — fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `docker/**` PRs | the image still builds; the container user is unprivileged |
+| browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behaviour reach the screen honestly |
+| container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands The browser lane's fake models |
+| fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `docker/**` PRs | the image still builds; the container user is unprivileged |
 
 Two properties hold these together and must not be weakened:
 
-- **The Lane 1 fake is fail-closed and declared.** Every command it
-  answers is listed in `LIST_MODELLED_COMMANDS` with the Lane 2
+- **The browser lane's fake is fail-closed and declared.** Every command
+  it answers is listed in `LIST_MODELLED_COMMANDS` with the container
   assertion that confirms it; anything else raises. Never give it a
   catch-all return — this suite already carries ~20 permissive Docker
   mocks, and `testDockerConnectionLive.py` records where that habit
   led. `tests/testBrowserLaneContract.py` enforces both halves,
-  including that each named Lane 2 assertion actually exists.
+  including that each named container-acceptance assertion actually exists.
 - **No lane may skip itself green.** `VAIBIFY_REQUIRE_DOCKER_DAEMON`
   and `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into
   a failure in CI. The `docker info || exit 0` guard this replaced
