@@ -1,9 +1,12 @@
 """AICS Level 1-3 gate functions.
 
 Single source of truth for the ``iAICSLevel`` integer that drives the
-dashboard theme. ``fiAICSLevel`` short-circuits up the ladder. Phase 1
-shipped L1; Phase 2 fills in L2 (Publication) here. L3 remains stubbed
-``return False`` until Phase 3 (Reproducibility) lands.
+dashboard theme. ``fiAICSLevel`` short-circuits up the ladder. All
+three rungs are implemented here: L1 (Self-Consistent), L2
+(Publication) via ``_fbComputeLevel2``'s seven conjuncts, and L3
+(Reproducible) via ``fbAtLeastLevel3`` -- L2 plus ``fbL3ReadinessOK``'s
+seven verifiers plus a current L3 attestation. L4 and L5 are outside
+vaibify's scope by design; see ``docs/reproducibility.md``.
 
 Per-step L1 predicates live in ``stepPredicates`` (pure leaf module);
 L2 predicates are split across this module and ``scheduledReverify``
@@ -91,32 +94,6 @@ __all__ = [
     "fnClearLevelBlockerCache",
     "fnLevelComputationContext",
 ]
-
-
-# L2/L3 blocker-list namespace reservation.
-#
-# Part C of the L1 honest-rendering work introduces ``flistLevel1Blockers``
-# as the per-step diagnostic surface that drives the dashboard's check
-# rendering, banner glyphs, and file/edge glyphs. The same shape is
-# expected at the higher levels:
-#
-#   def flistLevel2Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
-#       """Return per-step L2 blockers (publication-gate criteria).
-#
-#       Reserved for the Phase 2 follow-up. Will surface gaps in the
-#       GitHub mirror / Zenodo deposit / AI-declaration step the same
-#       way L1 surfaces upstream-modified / axis-not-green / user-not-
-#       approved. NOT IMPLEMENTED IN THIS PHASE.
-#       """
-#
-#   def flistLevel3Blockers(dictWorkflow, dictNewModTimes, sProjectRepoPath):
-#       """Return per-step L3 blockers (reproducibility-gate criteria).
-#
-#       Reserved for the Phase 3 follow-up. Will surface gaps in the
-#       manifest / dependency lock / environment snapshot / Dockerfile /
-#       reproduce script / determinism declaration the same way L1
-#       surfaces its three criteria. NOT IMPLEMENTED IN THIS PHASE.
-#       """
 
 
 F_MAX_STALE_HOURS = 24.0

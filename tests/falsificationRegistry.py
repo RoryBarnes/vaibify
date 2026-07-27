@@ -2158,6 +2158,22 @@ def _fdictEntry(sRel):
         new="""    if not fbWorkflowFullySyncedWithZenodo(""",
     ),
     Falsification(
+        # Restores the claim the docs carried for months: that the
+        # mutation gate grades every pull request. It does not.
+        nodeid='tests/testDocsMatchWorkflowTriggers.py::test_documented_mutation_trigger_matches_the_workflow',
+        source='docs/testing.md',
+        old="| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |",
+        new="| `mutation.yml` | the cosmic-ray gate on a PR's changed lines (warn-only) | on pull requests |",
+    ),
+    Falsification(
+        # Strips the UNREACHABLE note while the module still has no
+        # product caller -- the state the docs were in for months.
+        nodeid='tests/testOrphanedPublishMachinery.py::testUnreachableGeneratorSaysSoOrGainsACaller',
+        source='vaibify/reproducibility/githubWorkflow.py',
+        old='UNREACHABLE -- no product code imports this module.',
+        new='Reachable from the GUI publish pane.',
+    ),
+    Falsification(
         # Declares a gitignored generated copy as a build input. The
         # artifact is absent on any clean checkout, so a test that only
         # inspected RESOLVED paths scored this mutant as surviving --

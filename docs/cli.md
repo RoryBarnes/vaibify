@@ -361,11 +361,15 @@ session**, so it can never signal an unrelated process, and `--all`
 
 ## Publishing
 
-The `vaibify publish` subcommands are **coming soon**. The publishing
-machinery (Zenodo archive, GitHub Actions workflow generation) is
-already available through the GUI's Settings → Publish pane; the
-CLI counterparts will land in a future release. Until then, both
-subcommands print `Not yet implemented.` and exit.
+The `vaibify publish` subcommands are **not implemented**. Both print
+`Not yet implemented.` and exit.
+
+There is no Settings → Publish pane. This section previously said the
+publishing machinery was "already available" through one; it never
+existed, and `vaibify/reproducibility/githubWorkflow.py` — the GitHub
+Actions generator behind that claim — has no caller anywhere in the
+product. Zenodo archiving is real and reachable, but through the AICS
+Level 2 workflow in the dashboard, not a publish pane.
 
 ### `vaibify publish workflow` *(coming soon)*
 

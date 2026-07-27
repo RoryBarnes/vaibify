@@ -148,10 +148,18 @@ Both deserve attention; neither is a rung on this ladder.
 
 ## Where vaibify sits
 
-At time of writing, vaibify targets **L1 working, L2 as the
-near-term goal, L3 as a stretch goal for a companion demonstration**
-(the GJ 1132 XUV paper appendix). L4 and L5 are described here for
-completeness; the 2026 development effort does not attempt them.
+Vaibify implements **L1, L2, and L3**, and stops there by design.
+All three have working enforcement in
+`vaibify/reproducibility/levelGates.py`: `fbAtLeastLevel1`,
+`_fbComputeLevel2`'s seven conjuncts, and `fbAtLeastLevel3` (L2 plus
+seven readiness verifiers plus a current attestation), each with a
+blocker list that tells the researcher exactly what is missing.
+
+L4 and L5 are described here for completeness and are **not
+implemented**: they depend on institutional archiving and third-party
+attestation that sit outside a local-first tool. See
+[reproducibility.md](reproducibility.md), which is the normative
+statement of the L3 ceiling.
 
 Two deliberate design choices shape the implementation.
 
