@@ -52,6 +52,32 @@ def testEveryModelledCommandNamesItsLaneTwoAssertion():
     )
 
 
+@pytest.mark.falsification
+def testModelledCommandsValidateTheirArgumentsNotJustTheVerb():
+    """Kills: matching a command's verb while ignoring its target.
+
+    A substring match on "test -d" answers 0 for *any* path, and on
+    "cp -f" for any copy -- semantically wrong calls that a permissive
+    mock waves through. Both are scoped to the paths they exist to
+    serve, so a probe that has wandered outside the workspace, or a
+    copy of something other than the state file, surfaces as an
+    unmodelled call.
+
+    Mutation: drop the scope check from ``_ftAnswerDirectoryProbe``.
+    """
+    adapter = fakeDockerAdapter.FailClosedDockerAdapter()
+    with pytest.raises(fakeDockerAdapter.UnmodelledContainerCall):
+        adapter.ftResultExecuteCommand("cid", "test -d /etc/shadow")
+    with pytest.raises(fakeDockerAdapter.UnmodelledContainerCall):
+        adapter.ftResultExecuteCommand(
+            "cid", "cp -f /etc/passwd /tmp/stolen",
+        )
+    # The calls they DO exist for still work.
+    assert adapter.ftResultExecuteCommand(
+        "cid", f"test -d {fakeDockerAdapter.S_PROJECT_REPO}",
+    ) == (0, "")
+
+
 def testEveryNamedLaneTwoAssertionExists():
     """The named Lane 2 test must be a real test, not a comment.
 

@@ -89,20 +89,34 @@ jobs:
         if: steps.imagecache.outputs.cache-hit != 'true'
         run: |
           cd /tmp/acceptanceProject && python -m vaibify build
-          docker save acceptance-project:base -o /tmp/vaibifyImage.tar
+          # BOTH tags. The build produces :base and then tags :latest,
+          # and container start looks for :latest -- saving only :base
+          # meant a cache hit restored an image the start path could
+          # not find.
+          docker save acceptance-project:base acceptance-project:latest \
+            -o /tmp/vaibifyImage.tar
 
       - name: Load the cached image
         if: steps.imagecache.outputs.cache-hit == 'true'
         run: docker load -i /tmp/vaibifyImage.tar
 
-      - name: Start the container
+      - name: Require the tag the start path actually uses
         run: |
-          cd /tmp/acceptanceProject && python -m vaibify start
-          docker ps --format '{{.Names}}'
+          docker image inspect acceptance-project:latest >/dev/null
+
+      - name: Start the container and seed a project repository
+        id: bootstrap
+        run: |
+          python tools/bootstrapAcceptanceContainer.py \
+            --project-dir /tmp/acceptanceProject | tee /tmp/bootstrap.txt
+          sed -n 's/^repo=//p' /tmp/bootstrap.txt \
+            >> /tmp/repo.txt
+          echo "sRepo=$(cat /tmp/repo.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Run the acceptance assertions
         env:
           VAIBIFY_ACCEPTANCE_CONTAINER: acceptance-project
+          VAIBIFY_ACCEPTANCE_REPO: ${{ steps.bootstrap.outputs.sRepo }}
           # Both demands: no daemon, or no container, must FAIL rather
           # than skip. A lane that skips itself green is the defect
           # this whole effort exists to remove.

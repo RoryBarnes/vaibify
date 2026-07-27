@@ -34,6 +34,7 @@ import json
 
 S_CONTAINER_ID = "browserlane0container0id0000000000000000000000000000000000000000"
 S_CONTAINER_NAME = "browser-lane-project"
+S_WORKSPACE_ROOT = "/workspace"
 S_PROJECT_REPO = "/workspace/browserLaneProject"
 S_WORKFLOW_PATH = f"{S_PROJECT_REPO}/.vaibify/workflows/project.json"
 
@@ -172,6 +173,36 @@ class FailClosedDockerAdapter:
             "sImage": "ubuntu:24.04",
         }]
 
+    def _ftAnswerDirectoryProbe(self, sCommand):
+        """Answer `test -d`, but only for paths inside the workspace.
+
+        A bare substring match on "test -d" would answer 0 for any
+        path at all, including one outside the volume -- which is
+        exactly the kind of semantically-wrong-but-green answer a
+        permissive mock gives. Scoping it to the workspace means a
+        probe that has wandered surfaces as an unmodelled call.
+        """
+        if S_WORKSPACE_ROOT not in sCommand:
+            raise UnmodelledContainerCall(
+                "Directory probe outside the workspace volume, which "
+                f"this fake does not speak for:\n  {sCommand}"
+            )
+        return (0, "")
+
+    def _ftAnswerFileMove(self, sCommand):
+        """Answer `cp -f`/`mv -f` only for the atomic state-save paths.
+
+        These commands carry the state.json backup-and-rename. Answering
+        0 for an arbitrary copy or move would let a test pass while the
+        code moved the wrong file.
+        """
+        if ".vaibify/state.json" not in sCommand:
+            raise UnmodelledContainerCall(
+                "Copy/move of something other than the workflow state "
+                f"file, which this fake does not model:\n  {sCommand}"
+            )
+        return (0, "")
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         self.listSeenCommands.append(sCommand)
         if "git rev-parse --show-toplevel" in sCommand:
@@ -181,9 +212,9 @@ class FailClosedDockerAdapter:
         if "pipeline_state" in sCommand:
             return (1, "")
         if "test -d" in sCommand:
-            return (0, "")
+            return self._ftAnswerDirectoryProbe(sCommand)
         if "cp -f" in sCommand or "mv -f" in sCommand:
-            return (0, "")
+            return self._ftAnswerFileMove(sCommand)
         if "printenv CONTAINER_USER" in sCommand:
             return (0, "researcher\n")
         if "vaibifyPoll.list" in sCommand:

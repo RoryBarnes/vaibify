@@ -19,9 +19,8 @@ import sys
 import pytest
 
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / "tools")
-)
+_PATH_REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PATH_REPO / "tools"))
 
 from computeBuildInputHash import (  # noqa: E402
     flistBuildInputPaths,
@@ -116,6 +115,51 @@ def testInputsBeyondTheDockerfileAreKeyed():
         assert sRequired in listInputs, (
             f"{sRequired} can change the image but is not keyed."
         )
+
+
+@pytest.mark.falsification
+def testFreshBuildTriggerCoversEveryHashInput():
+    """Kills: a build input that can merge without a fresh build.
+
+    The hash and the workflow trigger are two statements of the same
+    thing -- "these files change the image" -- written in different
+    files, and they drifted immediately: the hash correctly covered
+    director.py, the reproducibility clients and the staged docs
+    while the trigger listed only docker/** and two builder modules.
+    A change to a script COPYed into the image could merge with no
+    fresh build while the hash said the image had changed.
+
+    Mutation: drop a path from the workflow's pull_request paths.
+    """
+    import fnmatch
+    import yaml
+
+    pathWorkflow = (
+        _PATH_REPO / ".github" / "workflows" / "freshImageBuild.yml"
+    )
+    dictWorkflow = yaml.safe_load(pathWorkflow.read_text())
+    # ``on`` is a YAML 1.1 boolean; accept either spelling.
+    dictOn = dictWorkflow.get("on", dictWorkflow.get(True))
+    listPatterns = dictOn["pull_request"]["paths"]
+
+    def fbCovered(sInput):
+        for sPattern in listPatterns:
+            if fnmatch.fnmatch(sInput, sPattern):
+                return True
+            sPrefix = sPattern.replace("/**", "/")
+            if sPattern.endswith("/**") and sInput.startswith(sPrefix):
+                return True
+        return False
+
+    listUncovered = [
+        sInput for sInput in flistBuildInputPaths()
+        if not fbCovered(sInput)
+    ]
+    assert not listUncovered, (
+        "These files are hashed into the image key but no "
+        "freshImageBuild.yml trigger path matches them, so changing "
+        f"one merges without a fresh build: {listUncovered}"
+    )
 
 
 def testAbsentInputStillChangesTheKey():

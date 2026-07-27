@@ -24,10 +24,26 @@ on:
     - cron: '0 5 * * 0'
   workflow_dispatch:
   pull_request:
+    # Must cover every input tools/computeBuildInputHash.py hashes.
+    # It did not: director.py, the reproducibility clients and the
+    # staged docs all ship INTO the image, so a change to one could
+    # merge without a fresh build while the hash correctly said the
+    # image had changed. testFreshBuildTriggerCoversEveryHashInput
+    # fails if these drift apart again.
     paths:
       - 'docker/**'
       - 'vaibify/cli/commandBuild.py'
       - 'vaibify/docker/imageBuilder.py'
+      - 'vaibify/gui/director.py'
+      - 'vaibify/reproducibility/overleafSync.py'
+      - 'vaibify/reproducibility/latexConnector.py'
+      - 'vaibify/reproducibility/zenodoClient.py'
+      - 'docs/dashboard.md'
+      - 'docs/pipelines.md'
+      - 'docs/reproducibility.md'
+      - 'docs/testFormats.md'
+      - 'docs/vision.md'
+      - 'vaibify/docs/scriptAuthoring.md'
 
 jobs:
   freshbuild:
@@ -76,13 +92,18 @@ jobs:
         run: |
           cd /tmp/freshBuildProject && python -m vaibify build --no-cache
 
-      - name: Start the container
+      - name: Start the container and seed a project repository
+        id: bootstrap
         run: |
-          cd /tmp/freshBuildProject && python -m vaibify start
+          python tools/bootstrapAcceptanceContainer.py \
+            --project-dir /tmp/freshBuildProject | tee /tmp/bootstrap.txt
+          echo "sRepo=$(sed -n 's/^repo=//p' /tmp/bootstrap.txt)" \
+            >> "$GITHUB_OUTPUT"
 
       - name: Run the acceptance assertions
         env:
           VAIBIFY_ACCEPTANCE_CONTAINER: fresh-build-project
+          VAIBIFY_ACCEPTANCE_REPO: ${{ steps.bootstrap.outputs.sRepo }}
           VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
         run: |
           python -m pytest tests/testContainerAcceptance.py -m docker \

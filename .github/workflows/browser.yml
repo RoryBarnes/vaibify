@@ -56,16 +56,20 @@ jobs:
           # false green the docker-smoke guard used to ship.
           VAIBIFY_REQUIRE_BROWSER: '1'
         run: |
-          python -m pytest tests/browser -m browser --tb=short -v \
-            --tracing retain-on-failure \
-            --video retain-on-failure \
-            --screenshot only-on-failure \
-            --output test-results
+          python -m pytest tests/browser -m browser --tb=short -v
 
+      # Trace, video, screenshot and console log are written by the
+      # pageDashboard fixture itself, not by pytest-playwright's
+      # --tracing/--video options: those live in the plugin's own
+      # context fixture, which this lane does not use, so passing them
+      # here produced an empty directory and a confident upload step.
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: browser-lane-failure
           path: test-results/
-          if-no-files-found: ignore
+          # NOT 'ignore'. A failed browser run with no trace means the
+          # artifact plumbing broke, and that must be visible rather
+          # than silently uploading nothing.
+          if-no-files-found: error

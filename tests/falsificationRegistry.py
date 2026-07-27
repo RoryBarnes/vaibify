@@ -2188,8 +2188,26 @@ def _fdictEntry(sRel):
         # permissive mock it exists not to become.
         nodeid='tests/testBrowserLaneContract.py::testTheFakeRaisesRatherThanInventingAnAnswer',
         source='tests/browser/fakeDockerAdapter.py',
-        old="""        raise UnmodelledContainerCall(""",
+        old="""        raise UnmodelledContainerCall(
+            "The browser lane's Docker adapter was asked to run a """,
         new="""        return (0, "")
         raise UnmodelledContainerCall(""",
+    ),
+    Falsification(
+        # A verb-only match answers 0 for any path at all -- the
+        # permissive behaviour this fake exists not to have.
+        nodeid='tests/testBrowserLaneContract.py::testModelledCommandsValidateTheirArgumentsNotJustTheVerb',
+        source='tests/browser/fakeDockerAdapter.py',
+        old='        if S_WORKSPACE_ROOT not in sCommand:',
+        new='        if False:',
+    ),
+    Falsification(
+        # Drops a build input from the fresh-build trigger while the
+        # hash still covers it -- the drift that let a script COPYed
+        # into the image merge with no fresh build.
+        nodeid='tests/testBuildInputHash.py::testFreshBuildTriggerCoversEveryHashInput',
+        source='.github/workflows/freshImageBuild.yml',
+        old="      - 'vaibify/gui/director.py'\n",
+        new="",
     ),
 ]

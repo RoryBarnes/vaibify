@@ -31,6 +31,21 @@ from tests.testDockerConnectionLive import S_REQUIRE_DAEMON_ENV
 pytestmark = pytest.mark.docker
 
 S_ACCEPTANCE_CONTAINER_ENV = "VAIBIFY_ACCEPTANCE_CONTAINER"
+S_ACCEPTANCE_REPO_ENV = "VAIBIFY_ACCEPTANCE_REPO"
+
+
+def _fsAcceptanceRepo():
+    """Return the seeded project repo path inside the container.
+
+    Deliberately NOT ``/workspace``. That is a Docker-managed named
+    volume and the workflow discovery root, never itself a repository
+    -- making it one reintroduces the all-grey-badges bug. The
+    bootstrap seeds a real repo one level down and passes its path
+    here.
+    """
+    return os.environ.get(
+        S_ACCEPTANCE_REPO_ENV, "/workspace/acceptanceProject",
+    )
 
 
 def _fsRequireAcceptanceContainer():
@@ -66,13 +81,14 @@ def testRealContainerDetectsProjectRepo():
     """
     sContainer = _fsRequireAcceptanceContainer()
     connection = _fconnectionOpen()
+    sRepo = _fsAcceptanceRepo()
     iCode, sOutput = connection.ftResultExecuteCommand(
         sContainer,
-        "cd /workspace && git rev-parse --show-toplevel",
+        f"cd {sRepo} && git rev-parse --show-toplevel",
     )
     assert iCode == 0, f"exit {iCode}: {sOutput!r}"
-    assert sOutput.strip().startswith("/"), (
-        f"Not an absolute repo path: {sOutput!r}"
+    assert sOutput.strip() == sRepo, (
+        f"expected the seeded repo {sRepo!r}, got {sOutput.strip()!r}"
     )
 
 

@@ -18,6 +18,8 @@ harness does.
 import contextlib
 import json
 import os
+import pathlib
+import shutil
 import socket
 import tempfile
 import threading
@@ -172,8 +174,18 @@ def browserChromium():
         browser.close()
 
 
+S_ARTIFACT_DIRECTORY = "test-results"
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Stash each phase's report so fixtures can see the outcome."""
+    outcome = yield
+    setattr(item, f"report_{call.when}", outcome.get_result())
+
+
 @pytest.fixture
-def pageDashboard(browserChromium, serverHub):
+def pageDashboard(browserChromium, serverHub, request):
     """A fresh page that records every console error and page error.
 
     The recorded lists are attached to the page object so a journey can
@@ -181,8 +193,22 @@ def pageDashboard(browserChromium, serverHub):
     application is zero errors, because a single ReferenceError means a
     module failed to evaluate and every module below it in load order
     is dead.
+
+    Tracing and video are configured HERE rather than through
+    pytest-playwright's ``--tracing`` / ``--video`` options. Those are
+    implemented inside the plugin's own ``context`` fixture, and this
+    fixture builds its context directly, so passing those flags on the
+    command line produced no artifacts at all -- a CI step that
+    promised a trace on failure and uploaded an empty directory.
     """
-    contextBrowser = browserChromium.new_context()
+    pathArtifacts = (
+        pathlib.Path(S_ARTIFACT_DIRECTORY) / request.node.name
+    )
+    pathArtifacts.mkdir(parents=True, exist_ok=True)
+    contextBrowser = browserChromium.new_context(
+        record_video_dir=str(pathArtifacts),
+    )
+    contextBrowser.tracing.start(screenshots=True, snapshots=True)
     page = contextBrowser.new_page()
     page.listConsoleErrors = []
     page.listPageErrors = []
@@ -193,5 +219,24 @@ def pageDashboard(browserChromium, serverHub):
     page.on("pageerror", lambda error: page.listPageErrors.append(
         str(error)
     ))
+
     yield page
+
+    bFailed = any(
+        getattr(getattr(request.node, f"report_{sPhase}", None),
+                "failed", False)
+        for sPhase in ("setup", "call")
+    )
+    if bFailed:
+        contextBrowser.tracing.stop(
+            path=str(pathArtifacts / "trace.zip")
+        )
+        page.screenshot(path=str(pathArtifacts / "failure.png"))
+        (pathArtifacts / "console.log").write_text(
+            "\n".join(page.listConsoleErrors + page.listPageErrors)
+        )
+        contextBrowser.close()
+        return
+    contextBrowser.tracing.stop()
     contextBrowser.close()
+    shutil.rmtree(pathArtifacts, ignore_errors=True)
