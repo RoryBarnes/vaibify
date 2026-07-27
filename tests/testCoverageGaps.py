@@ -54,7 +54,9 @@ def _fConfigFull():
     features = SimpleNamespace(
         bJupyter=False, bRLanguage=False, bJulia=False,
         bDatabase=False, bDvc=False, bLatex=True,
-        bClaude=False, bClaudeAutoUpdate=True, bGpu=False,
+        bClaude=False, bClaudeAutoUpdate=True,
+        bCodex=False, bCodexAutoUpdate=True,
+        bGemini=False, bGeminiAutoUpdate=True, bGpu=False,
     )
     reproducibility = SimpleNamespace(
         overleaf=SimpleNamespace(sProjectId="abc123"),
@@ -1285,11 +1287,13 @@ def test_flistEnabledFeatures():
     features = SimpleNamespace(
         bJupyter=True, bRLanguage=False, bJulia=False,
         bDatabase=False, bDvc=False, bLatex=True,
-        bClaude=False, bGpu=False,
+        bClaude=False, bCodex=True, bGemini=False, bGpu=False,
     )
     listResult = _flistEnabledFeatures(features)
     assert "jupyter" in listResult
     assert "latex" in listResult
+    assert "codex" in listResult
+    assert "gemini" not in listResult
     assert "gpu" not in listResult
 
 
