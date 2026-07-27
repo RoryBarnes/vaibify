@@ -2113,4 +2113,26 @@ def _fdictEntry(sRel):
         old='sWord.slice(1)',
         new='sWord.slice(1).toLowerCase()',
     ),
+    Falsification(
+        # The decision is asserted as a pure value rather than through
+        # pytest.skip/pytest.fail on purpose: a guard broken the
+        # obvious way turns the run into a SKIP, and a skipped test is
+        # not a failed one, so an outcome-only test would score this
+        # mutant as surviving.
+        nodeid='tests/testDockerLiveDaemonRequirement.py::test_demanded_but_unreachable_daemon_resolves_to_failure',
+        source='tests/testDockerConnectionLive.py',
+        old="""    if bDemanded:
+        return S_OUTCOME_FAIL""",
+        new="""    if bDemanded:
+        return S_OUTCOME_SKIP""",
+    ),
+    Falsification(
+        # Reintroduces the exact shell guard that made a job
+        # advertised as live-Docker coverage report success for
+        # having run nothing.
+        nodeid='tests/testDockerLiveDaemonRequirement.py::test_no_workflow_swallows_an_unreachable_docker_daemon',
+        source='.github/workflows/tests-linux.yml',
+        old='          python -m pytest tests/ -m docker_live --tb=short -v',
+        new='          docker info >/dev/null 2>&1 || { echo "skipping"; exit 0; }\n          python -m pytest tests/ -m docker_live --tb=short -v',
+    ),
 ]
