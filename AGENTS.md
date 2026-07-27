@@ -581,7 +581,18 @@ the unprivileged container user**, not root, so the provider's own
 updater can replace its binary without sudo — do not "fix" that by
 installing as root, and do not add sudo to the image.
 
-**Agent-facing docs have one source and three names.** Inside the
+**Cline is the exception to the flat-name rule.** Six of the seven
+agents read a repo-root markdown file, so a symlink serves them. Cline
+reads a `.clinerules/` **directory**, so `fnLinkClineRules` creates it
+with a symlink inside pointing back at the canonical file — a flat
+`.clinerules` symlink would be a file where a directory is expected.
+It is gated on Cline being installed, because a stray directory in the
+researcher's repository is the sort of thing that gets committed by
+accident. `tests/testEntrypointAgentDocLinks.py` fails if an agent is
+added to the skills loop without a path to the guidance, which is
+exactly how Cline came to ship with skills and no instructions.
+
+**Agent-facing docs have one source and several names.** Inside the
 container the canonical file is
 `/workspace/<repo>/.vaibify/AGENTS.md`; `entrypoint.sh`'s
 `fnLinkRepoClaudeMd` symlinks `/workspace/<repo>/CLAUDE.md`,

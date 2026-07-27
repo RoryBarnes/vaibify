@@ -1013,6 +1013,10 @@ fnLinkRepoClaudeMd() {
             echo "[vaib]   Migrated .vaibify/CLAUDE.md to AGENTS.md"
         fi
         [ -f "${sSource}" ] || continue
+        # Repo-root FILE conventions. Verified per provider rather than
+        # assumed: Claude reads CLAUDE.md, Gemini reads GEMINI.md, and
+        # Codex, OpenCode, OpenHands (v1) and Pi all read AGENTS.md. The
+        # three names below therefore cover six of the seven agents.
         local sName
         for sName in CLAUDE.md AGENTS.md GEMINI.md; do
             local sTarget="${sRepoDir}/${sName}"
@@ -1021,7 +1025,37 @@ fnLinkRepoClaudeMd() {
                 echo "[vaib]   Linked ${sName} in $(basename "${sRepoDir}")"
             fi
         done
+        fnLinkClineRules "${sRepoDir}"
     done
+}
+
+# ---------------------------------------------------------------------------
+# fnLinkClineRules: Give Cline the guidance the flat names cannot carry
+# ---------------------------------------------------------------------------
+# Cline is the one installed agent that does not read a repo-root
+# markdown file. Its project convention is a `.clinerules/` DIRECTORY of
+# markdown files, so a flat `.clinerules` symlink would be the wrong
+# shape entirely -- which is why it cannot join the loop above.
+#
+# Gated on Cline actually being installed. The flat names are harmless
+# to create unconditionally (a stray symlink costs nothing), but a
+# directory appearing in the researcher's git repository is the kind of
+# thing that gets committed by accident, so it is only made for a
+# container that has Cline in it.
+fnLinkClineRules() {
+    local sRepoDir="$1"
+    command -v cline > /dev/null 2>&1 || return 0
+    local sRulesDir="${sRepoDir}/.clinerules"
+    if [ -e "${sRulesDir}" ] && [ ! -d "${sRulesDir}" ]; then
+        return 0
+    fi
+    mkdir -p "${sRulesDir}"
+    local sTarget="${sRulesDir}/vaibify.md"
+    if [ ! -e "${sTarget}" ] && [ ! -L "${sTarget}" ]; then
+        ln -s "../.vaibify/AGENTS.md" "${sTarget}"
+        echo "[vaib]   Linked .clinerules/vaibify.md in" \
+            "$(basename "${sRepoDir}")"
+    fi
 }
 
 # ---------------------------------------------------------------------------
