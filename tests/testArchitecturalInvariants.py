@@ -1208,6 +1208,100 @@ def testAgentActionCatalogShape():
     )
 
 
+def testEveryCatalogActionHasCliCommand():
+    """Every catalog action must be reachable from the host CLI.
+
+    ``LIST_AGENT_ACTIONS`` is the inventory of what a researcher can do
+    from the dashboard, and ``vaibify do`` is generated from it, so a
+    researcher can drive the same actions from a script. An entry the
+    generator cannot dispatch — an unsupported transport, a path
+    placeholder no CLI argument supplies — would otherwise disappear
+    from the CLI in silence while the dashboard kept the button. The
+    escape hatch is ``SET_ACTIONS_WITHOUT_CLI``, which must name real
+    actions and carry a written rationale.
+
+    WHAT THIS DOES AND DOES NOT PROVE. Because ``vaibify do`` is
+    *generated* from the catalog, a well-formed entry on a supported
+    transport gets a command automatically, and this test passes for it
+    by construction. Verified: adding a fake POST action leaves this
+    green. So it is a tripwire on the GENERATOR, not evidence that any
+    particular action works end to end. What it genuinely catches, both
+    confirmed by running:
+
+    * an entry on a transport the generator does not implement (a PATCH
+      entry fails here), and
+    * an entry whose path carries a placeholder no CLI argument can
+      bind (``/api/x/{sTotallyUnknownThing}`` fails here).
+
+    Proof that an action actually reaches the hub and does the right
+    thing comes from driving it against a live hub, not from here.
+    """
+    from vaibify.cli.actionCommands import (
+        SET_ACTIONS_WITHOUT_CLI, do, flistArgumentPlaceholders,
+    )
+    from vaibify.gui import actionCatalog
+    listViolations = []
+    setCatalogNames = set()
+    for dictEntry in actionCatalog.LIST_AGENT_ACTIONS:
+        sName = dictEntry["sName"]
+        setCatalogNames.add(sName)
+        if sName in SET_ACTIONS_WITHOUT_CLI:
+            continue
+        commandAction = do.commands.get(sName)
+        if commandAction is None:
+            listViolations.append(
+                f"{sName} ({dictEntry['sMethod']} {dictEntry['sPath']}) "
+                f"has no 'vaibify do' command and is not in "
+                f"SET_ACTIONS_WITHOUT_CLI"
+            )
+            continue
+        setParameterNames = {
+            parameter.name for parameter in commandAction.params
+        }
+        for sPlaceholder in flistArgumentPlaceholders(dictEntry):
+            if sPlaceholder.lower() not in setParameterNames:
+                listViolations.append(
+                    f"{sName}: path placeholder {sPlaceholder} has no "
+                    f"CLI argument"
+                )
+    for sExempt in sorted(SET_ACTIONS_WITHOUT_CLI - setCatalogNames):
+        listViolations.append(
+            f"SET_ACTIONS_WITHOUT_CLI names {sExempt!r}, which is not a "
+            f"catalog action"
+        )
+    assert listViolations == [], (
+        "Catalog actions unreachable from the host CLI:\n  "
+        + "\n  ".join(listViolations)
+    )
+
+
+def testGeneratedActionsNeverShadowTopLevelCommands():
+    """Generated action commands must stay nested under ``vaibify do``.
+
+    Several catalog names mean something different from the top-level
+    command they resemble — ``vaibify push`` copies host files into the
+    container, while the ``push-to-github`` action is the Level-2
+    publication flow. Click's ``add_command`` overwrites silently, so a
+    generator that registered flat would replace a hand-written command
+    with no error at all.
+    """
+    from vaibify.cli.actionCommands import do
+    from vaibify.cli.main import main
+    from vaibify.gui import actionCatalog
+    setCatalogNames = {
+        dictEntry["sName"]
+        for dictEntry in actionCatalog.LIST_AGENT_ACTIONS
+    }
+    setShadowed = setCatalogNames & set(main.commands)
+    assert setShadowed == set(), (
+        "Catalog actions registered as top-level commands: "
+        + ", ".join(sorted(setShadowed))
+    )
+    assert main.commands.get("do") is do, (
+        "The generated action group must be registered as 'vaibify do'"
+    )
+
+
 def testHostHashRouteIsNeverAgentInvokable():
     """The personal-layer hash route must never look agent-safe.
 

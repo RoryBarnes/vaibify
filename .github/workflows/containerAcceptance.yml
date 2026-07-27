@@ -68,22 +68,13 @@ jobs:
           key: vaibify-image-${{ steps.buildhash.outputs.sHash }}
 
       - name: Scaffold a neutral project
+        # One statement of what a minimal config is, shipped in the CLI
+        # (vaibify init --minimal), rather than a heredoc per workflow
+        # that drifts from it.
         run: |
           mkdir -p /tmp/acceptanceProject
-          cat > /tmp/acceptanceProject/vaibify.yml <<'YAML'
-          projectName: acceptance-project
-          pythonVersion: '3.12'
-          containerUser: researcher
-          workspaceRoot: /workspace
-          packageManager: pip
-          baseImage: 'ubuntu:24.04'
-          systemPackages: []
-          pythonPackages: []
-          repositories: []
-          features:
-            latex: false
-            jupyter: false
-          YAML
+          cd /tmp/acceptanceProject
+          python -m vaibify init --name acceptance-project --minimal
 
       - name: Build the image on a cache miss
         if: steps.imagecache.outputs.cache-hit != 'true'

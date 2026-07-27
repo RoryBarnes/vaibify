@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """Start a container and seed a disposable project repo inside it.
 
-CI-only setup for the container acceptance lane. It exists because
-``vaibify start`` is the *interactive* path: ``flistBuildRunArgs``
-returns ``--rm -it`` unless asked for detached, so on a runner with no
-TTY it fails, and even when it does not, an attached container blocks
-the job. The GUI already starts containers detached through
-``fsStartContainerDetached``; this uses that same API rather than
-inventing a third way to start a container.
+CI-only setup for the container acceptance lane. The container start is
+the public CLI path (``vaibify start --detach``), so this tool no longer
+reaches into ``containerManager`` for the detached start the CLI used to
+withhold.
 
-It also supplies the thing the acceptance assertions need and the
+What remains here is the thing the acceptance assertions need and the
 inline heredoc scaffold never had: a real git repository. Note *where*
 -- at ``/workspace/<name>``, never at ``/workspace`` itself.
 ``/workspace`` is a Docker-managed named volume and the discovery root,
@@ -71,6 +68,21 @@ def _fnRunInContainer(sContainer, sScript):
     return result.stdout
 
 
+def fnStartContainerDetached(sConfigPath):
+    """Start the project's container in the background via the CLI."""
+    result = subprocess.run(
+        [sys.executable, "-m", "vaibify", "--config", sConfigPath,
+         "start", "--detach"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "vaibify start --detach failed (%d): %s"
+            % (result.returncode, result.stderr.strip())
+        )
+    print(result.stdout.strip())
+
+
 def fnWaitUntilResponsive(sContainer, fTimeoutSeconds=60.0):
     """Block until the container answers a trivial command."""
     fDeadline = time.monotonic() + fTimeoutSeconds
@@ -130,13 +142,11 @@ def main():
     args = parser.parse_args()
 
     from vaibify.config.projectConfig import fconfigLoadFromFile
-    from vaibify.docker import containerManager
 
     sConfigPath = str(pathlib.Path(args.project_dir) / "vaibify.yml")
     config = fconfigLoadFromFile(sConfigPath)
-    sDockerDir = str(REPO / "docker")
 
-    containerManager.fsStartContainerDetached(config, sDockerDir)
+    fnStartContainerDetached(sConfigPath)
     fnWaitUntilResponsive(config.sProjectName)
     sRepo = fnSeedProjectRepository(
         config.sProjectName, config.sWorkspaceRoot,

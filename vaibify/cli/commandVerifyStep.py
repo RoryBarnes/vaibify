@@ -26,6 +26,30 @@ def _fnValidateStatus(sStatus):
         sys.exit(2)
 
 
+def _fiResolveStepNumber(sStep, dictWorkflow):
+    """Return the 1-based step number for a label or a number.
+
+    Researchers speak labels (``A09``, ``I01``); the rest of vaibify —
+    error messages, the dashboard, the agent commands — uses them too,
+    so this command accepts them rather than making the researcher
+    count rows. The translation is the single labeller in
+    ``pipelineUtils``, never an inline one.
+    """
+    from vaibify.gui.pipelineUtils import fiStepIndexFromLabel
+    try:
+        return int(sStep)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return fiStepIndexFromLabel(dictWorkflow, str(sStep)) + 1
+    except (KeyError, ValueError, IndexError):
+        click.echo(
+            f"Error: '{sStep}' is neither a step number nor a step "
+            f"label present in this project."
+        )
+        sys.exit(2)
+
+
 def _fnValidateStepIndex(iStep, iStepCount):
     """Exit if the step index is out of range."""
     if iStep < 1 or iStep > iStepCount:
@@ -49,15 +73,15 @@ def _fnSetUserVerification(dictWorkflow, iStepIndex, sStatus):
     help="Project name.",
 )
 @click.option(
-    "--step", "iStep", required=True, type=int,
-    help="Step number to verify (1-based).",
+    "--step", "sStep", required=True,
+    help="Step to verify: a label (A09, I01) or a 1-based number.",
 )
 @click.option(
     "--status", "sStatus", required=True,
     type=click.Choice(T_VALID_STATUSES, case_sensitive=False),
     help="Verification status to set.",
 )
-def verify_step(sProjectName, iStep, sStatus):
+def verify_step(sProjectName, sStep, sStatus):
     """Set the user verification status for a pipeline step."""
     _fnValidateStatus(sStatus)
     configProject = fconfigResolveProject(sProjectName)
@@ -67,6 +91,7 @@ def verify_step(sProjectName, iStep, sStatus):
     dictWorkflow = dictResult["dictWorkflow"]
     sWorkflowPath = dictResult["sWorkflowPath"]
     listSteps = dictWorkflow.get("listSteps", [])
+    iStep = _fiResolveStepNumber(sStep, dictWorkflow)
     _fnValidateStepIndex(iStep, len(listSteps))
     iStepIndex = iStep - 1
     _fnSetUserVerification(dictWorkflow, iStepIndex, sStatus)

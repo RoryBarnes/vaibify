@@ -71,22 +71,12 @@ jobs:
           echo "Build inputs hash to $(python tools/computeBuildInputHash.py)"
 
       - name: Scaffold a neutral project
+        # Same minimal config as the acceptance lane, from the same
+        # source: vaibify init --minimal.
         run: |
           mkdir -p /tmp/freshBuildProject
-          cat > /tmp/freshBuildProject/vaibify.yml <<'YAML'
-          projectName: fresh-build-project
-          pythonVersion: '3.12'
-          containerUser: researcher
-          workspaceRoot: /workspace
-          packageManager: pip
-          baseImage: 'ubuntu:24.04'
-          systemPackages: []
-          pythonPackages: []
-          repositories: []
-          features:
-            latex: false
-            jupyter: false
-          YAML
+          cd /tmp/freshBuildProject
+          python -m vaibify init --name fresh-build-project --minimal
 
       - name: Build the image from scratch
         run: |
