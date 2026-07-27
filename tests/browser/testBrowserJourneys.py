@@ -181,14 +181,19 @@ def testSeededProjectReachesTheBrowser(pageDashboard, serverHub):
     )
 
 
-def testDuplicateSessionTokenHeaderIsRefused(pageDashboard, serverHub):
-    """Sending the token twice must fail closed, not fail open.
+def testDoubledSessionTokenHeaderIsRefused(pageDashboard, serverHub):
+    """A doubled token HEADER must fail closed, not fail open.
+
+    Renamed from "duplicate session", which implied coverage this does
+    not have: this is one browser sending one header twice, an
+    entirely different mechanism from a second browser session
+    copying a lease (see the duplicate-session journey below).
 
     Discovered while building this lane: because the app's fetch
     wrapper already injects the header, a caller that also sets it
-    produces a doubled value. The important property is the direction
-    of the failure -- a doubled credential is refused, never accepted
-    by prefix or by taking the first element.
+    produces a doubled value. The property that matters is the
+    direction of the failure -- a doubled credential is refused, never
+    accepted by prefix or by taking the first element.
     """
     pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
     iStatus = pageDashboard.evaluate(

@@ -102,6 +102,42 @@ LIST_MODELLED_COMMANDS = [
         "sPurpose": "pipeline-state read (absent on a fresh project)",
         "sLaneTwoAssertion": "testRealContainerHasNoPipelineStateYet",
     },
+    {
+        "sMatch": "test -d",
+        "sPurpose": "directory probe during workflow discovery",
+        "sLaneTwoAssertion": "testRealContainerProbesDirectories",
+    },
+    {
+        "sMatch": "cp -f",
+        "sPurpose": "state.json backup before an atomic save",
+        "sLaneTwoAssertion": "testRealContainerCopiesAndRenamesFiles",
+    },
+    {
+        "sMatch": "mv -f",
+        "sPurpose": "atomic state.json rename from its .tmp",
+        "sLaneTwoAssertion": "testRealContainerCopiesAndRenamesFiles",
+    },
+    {
+        "sMatch": "printenv CONTAINER_USER",
+        "sPurpose": "resolving the unprivileged container user",
+        "sLaneTwoAssertion": "testRealContainerReportsItsContainerUser",
+    },
+    {
+        "sMatch": "vaibifyPoll.list",
+        "sPurpose": (
+            "file-status poll: mtimes for the watched paths plus a "
+            "sha256 fingerprint of the workflow file"
+        ),
+        "sLaneTwoAssertion": "testRealContainerStatsAndFingerprints",
+    },
+    {
+        "sMatch": "python3 -c",
+        "sPurpose": (
+            "conftest-version scan, marker directory creation, and "
+            "marker copy -- all run as python3 reading stdin"
+        ),
+        "sLaneTwoAssertion": "testRealContainerRunsPython3OverStdin",
+    },
 ]
 
 
@@ -115,6 +151,18 @@ class FailClosedDockerAdapter:
     def __init__(self):
         self._dictFiles = {}
         self.listSeenCommands = []
+        # Modification times the file-status poll reports, keyed by
+        # container path. Mutable on purpose: the stale-state journey
+        # ages an upstream artifact by bumping its stamp here, which is
+        # what a real edit inside the container would do.
+        self.dictFileModifiedTimes = {
+            f"{S_PROJECT_REPO}/Generate/output.dat": 1000,
+            f"{S_PROJECT_REPO}/Analyze/summary.json": 2000,
+        }
+
+    def fnTouchFile(self, sPath, iModifiedTime):
+        """Age or freshen one watched path, as an in-container edit would."""
+        self.dictFileModifiedTimes[sPath] = iModifiedTime
 
     def flistGetRunningContainers(self):
         return [{
@@ -132,6 +180,24 @@ class FailClosedDockerAdapter:
             return (0, S_WORKFLOW_PATH + "\n")
         if "pipeline_state" in sCommand:
             return (1, "")
+        if "test -d" in sCommand:
+            return (0, "")
+        if "cp -f" in sCommand or "mv -f" in sCommand:
+            return (0, "")
+        if "printenv CONTAINER_USER" in sCommand:
+            return (0, "researcher\n")
+        if "vaibifyPoll.list" in sCommand:
+            listLines = [
+                f"{sPath} {iStamp}" for sPath, iStamp
+                in sorted(self.dictFileModifiedTimes.items())
+            ]
+            listLines.append("fingerprint:" + "0" * 64)
+            return (0, "\n".join(listLines) + "\n")
+        if "python3 -c" in sCommand:
+            # The conftest-version scan parses stdout as JSON; the
+            # directory-creation and marker-copy helpers ignore it.
+            # An empty object satisfies all three.
+            return (0, "{}")
         raise UnmodelledContainerCall(
             "The browser lane's Docker adapter was asked to run a "
             f"command its contract does not model:\n  {sCommand}\n"
@@ -149,6 +215,12 @@ class FailClosedDockerAdapter:
         raise FileNotFoundError(sPath)
 
     def fnWriteFile(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
+        self._dictFiles[sPath] = baContent
+
+    def fnWriteFileViaTar(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
     ):
