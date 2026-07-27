@@ -44,18 +44,22 @@ container. The terminal runs in your browser over WebSocket and behaves
 like a standard terminal emulator. Multiple sessions can run
 concurrently — open as many as you like.
 
-If Claude Code is enabled for the project, run
+If an agent CLI is enabled for the project, start it from a terminal. For
+example:
 
 ```bash
 claude --dangerously-skip-permissions
+codex
+gemini
 ```
 
-from a terminal session to start an in-container coding agent. The
-option's name sounds alarming, but inside a vaibify container it is
-the intended mode: the container is an isolated sandbox, the agent
-runs as an unprivileged user with no sudo, and everything it edits is
-tracked in git and hash-pinned in the project manifest. Your
-protection comes from verifying results, not from approving each
+Each CLI receives the same Vaibify context, skills, and `vaibify-do`
+dashboard bridge. Claude's option skips its per-command prompts; use an
+equivalent unattended mode for another provider only when you explicitly
+intend it. The container is an isolated sandbox, the agent runs as an
+unprivileged user with no sudo, and everything it edits is tracked in git
+and hash-pinned in the project manifest. Your protection comes from
+verifying results, not from approving each
 command — see the **Using AI** section of the [Help panel](#the-help-panel)
 and the [Security model](security.md). The agent can in turn ask the
 dashboard to run steps, generate tests, push to GitHub, and so on —
@@ -391,7 +395,8 @@ an action exists — a button that performs it in place:
   **Adopt repo-root context file** when no project context file
   exists yet. The context file (`.vaibify/AGENTS.md`) is the
   standing instructions the in-container agent reads; the entrypoint
-  symlinks it to both root names (`CLAUDE.md` and `AGENTS.md`) so
+  symlinks it to provider-recognized root names (`CLAUDE.md`, `AGENTS.md`,
+  and `GEMINI.md`) so
   any agent tooling finds it. Once it exists, click its file row to
   view and edit it in place (saves go through a dedicated,
   path-fixed route; the generic editor still refuses `.vaibify/`
@@ -559,7 +564,7 @@ contains:
 
 - A link to the full online documentation.
 - **Using AI** — how to start the in-container coding agent
-  (`claude --dangerously-skip-permissions`) and why skipping
+  (Claude Code, Codex, or Gemini) and why skipping
   per-command permission prompts is the intended, safe mode inside the
   sandbox: the container isolates the agent from your host, every
   edit is tracked in git and hash-pinned, and a full rebuild
@@ -704,9 +709,8 @@ what is actually on disk, not what a tool merely touched.
 
 ## Agent actions
 
-When an AI coding agent is running inside the container (typically
-Claude Code, started by typing `claude --dangerously-skip-permissions`
-in the terminal), it can ask the dashboard to perform named operations
+When an AI coding agent is running inside the container (Claude Code,
+Codex, or Gemini), it can ask the dashboard to perform named operations
 on the user's behalf. These *agent actions* are the bridge between the
 agent's text-only world and the dashboard's verified state. This
 scheme enforces deterministic behavior.

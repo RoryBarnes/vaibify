@@ -85,12 +85,15 @@ var VaibifySetup = (function () {
         }
     }
 
-    function fnToggleClaudeAutoUpdateVisibility() {
-        var elClaude = document.getElementById("featureClaude");
-        var elRow = document.getElementById("claudeAutoUpdateRow");
-        if (elClaude && elRow) {
-            elRow.style.display = elClaude.checked ? "" : "none";
-        }
+    function fnToggleAgentAutoUpdateVisibility() {
+        ["Claude", "Codex", "Gemini"].forEach(function (sAgent) {
+            var elFeature = document.getElementById("feature" + sAgent);
+            var elRow = document.getElementById(
+                sAgent.toLowerCase() + "AutoUpdateRow");
+            if (elFeature && elRow) {
+                elRow.style.display = elFeature.checked ? "" : "none";
+            }
+        });
     }
 
     function fnBindFormEvents() {
@@ -101,12 +104,14 @@ var VaibifySetup = (function () {
                 fnSyncFeatureCardCheckedClass(elCheckbox);
             });
         });
-        var elClaude = document.getElementById("featureClaude");
-        if (elClaude) {
-            elClaude.addEventListener(
-                "change", fnToggleClaudeAutoUpdateVisibility
-            );
-        }
+        ["Claude", "Codex", "Gemini"].forEach(function (sAgent) {
+            var elFeature = document.getElementById("feature" + sAgent);
+            if (elFeature) {
+                elFeature.addEventListener(
+                    "change", fnToggleAgentAutoUpdateVisibility
+                );
+            }
+        });
 
         document.getElementById("btnAddRepo").addEventListener(
             "click", fnAddRepository
@@ -200,7 +205,9 @@ var VaibifySetup = (function () {
             fnSetFeatureCheckboxes(dictConfig.listFeatures);
         }
 
-        fnSetClaudeAutoUpdate(dictConfig.bClaudeAutoUpdate);
+        fnSetAgentAutoUpdate("claude", dictConfig.bClaudeAutoUpdate);
+        fnSetAgentAutoUpdate("codex", dictConfig.bCodexAutoUpdate);
+        fnSetAgentAutoUpdate("gemini", dictConfig.bGeminiAutoUpdate);
 
         if (dictConfig.listPipPackages) {
             document.getElementById("pipPackages").value =
@@ -219,12 +226,12 @@ var VaibifySetup = (function () {
         }
     }
 
-    function fnSetClaudeAutoUpdate(bValue) {
-        var el = document.getElementById("claudeAutoUpdate");
+    function fnSetAgentAutoUpdate(sAgent, bValue) {
+        var el = document.getElementById(sAgent + "AutoUpdate");
         if (el) {
             el.checked = bValue !== false;
         }
-        fnToggleClaudeAutoUpdateVisibility();
+        fnToggleAgentAutoUpdateVisibility();
     }
 
     function fnSetFeatureCheckboxes(listFeatures) {
@@ -236,6 +243,8 @@ var VaibifySetup = (function () {
             dvc: "featureDvc",
             latex: "featureLatex",
             claude: "featureClaude",
+            codex: "featureCodex",
+            gemini: "featureGemini",
             gpu: "featureGpu",
         };
         Object.keys(dictFeatureMap).forEach(function (sKey) {
@@ -285,12 +294,14 @@ var VaibifySetup = (function () {
             bNeverSleep: document.getElementById(
                 "neverSleep"
             ).checked,
-            bClaudeAutoUpdate: fbReadClaudeAutoUpdate(),
+            bClaudeAutoUpdate: fbReadAgentAutoUpdate("claude"),
+            bCodexAutoUpdate: fbReadAgentAutoUpdate("codex"),
+            bGeminiAutoUpdate: fbReadAgentAutoUpdate("gemini"),
         };
     }
 
-    function fbReadClaudeAutoUpdate() {
-        var el = document.getElementById("claudeAutoUpdate");
+    function fbReadAgentAutoUpdate(sAgent) {
+        var el = document.getElementById(sAgent + "AutoUpdate");
         return el ? el.checked : true;
     }
 

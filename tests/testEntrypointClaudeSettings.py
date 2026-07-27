@@ -55,11 +55,10 @@ def test_persist_runs_before_theme_in_workspace_phase():
     """Symlink must be established before theme writes settings.json."""
     sContent = _fsReadEntrypoint()
     sBody = _fsWorkspacePhaseBody(sContent)
+    iPersist = sBody.find("fnPersistInstalledAgentConfigs")
     iGuardStart = sBody.find("command -v claude")
-    sAfterGuard = sBody[iGuardStart:iGuardStart + 400]
-    iPersist = sAfterGuard.find("fnPersistClaudeConfig")
-    iTheme = sAfterGuard.find("fnConfigureClaudeTheme")
-    iAutoUpdate = sAfterGuard.find("fnConfigureClaudeAutoUpdate")
+    iTheme = sBody.find("fnConfigureClaudeTheme", iGuardStart)
+    iAutoUpdate = sBody.find("fnConfigureClaudeAutoUpdate", iGuardStart)
     assert 0 <= iPersist < iTheme < iAutoUpdate
 
 
@@ -87,6 +86,15 @@ def test_auto_update_function_uses_container_user_home():
     assert iFunc != -1
     sBody = sContent[iFunc:iFunc + 600]
     assert "/home/${CONTAINER_USER}/.claude" in sBody
+
+
+def test_provider_config_migration_replaces_existing_home_directory():
+    """A real config directory must become a volume symlink, not nest one."""
+    sContent = _fsReadEntrypoint()
+    iFunc = sContent.find("fnPersistAgentConfig()")
+    sBody = sContent[iFunc:sContent.find("\n}", iFunc)]
+    assert 'rm -rf "${sHomeConfig}"' in sBody
+    assert 'ln -sfn "${sVolumeConfig}" "${sHomeConfig}"' in sBody
 
 
 def _ftRunMerge(sSettingsPath, sFlag):

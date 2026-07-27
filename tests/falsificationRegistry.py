@@ -1631,6 +1631,15 @@ def _fdictEntry(sRel):
             '        dictWorkflow = fdictRequireWorkflow('
         ),
     ),
+    Falsification(
+        # The version field is machine-recorded provenance, so accepting a
+        # made-up provider name turns arbitrary unvalidated data into an
+        # attestation claim.
+        nodeid='tests/testAiProvenanceStamp.py::test_agent_version_stamp_rejects_unexpected_provider_name',
+        source='vaibify/reproducibility/aiProvenanceStamp.py',
+        old='        sAgent not in {"claude", "codex", "gemini"}\n',
+        new='        False\n',
+    ),
     # ---- Phase 4 security remediation (2026-07-25) ----
     Falsification(
         # Without the catalog check the agent lane returns to an

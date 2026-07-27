@@ -102,6 +102,28 @@ def testClaudeNativeInstallerCurlIsHardened():
     )
 
 
+def testCodexNativeInstallerCurlIsHardened():
+    """The Codex native installer download must retry + diagnose."""
+    sSource = fsReadDockerfile("Dockerfile.codex")
+    sBlock = fsFindBlockContaining(sSource, "chatgpt.com/codex/install.sh")
+    fnAssertHardenedBlock(
+        sBlock, "--retry", "Dockerfile.codex native installer",
+    )
+
+
+def testGeminiNodeAndNpmInstallsAreHardened():
+    """NodeSource and npm failures must fail the build with diagnostics."""
+    sSource = fsReadDockerfile("Dockerfile.gemini")
+    sNodeBlock = fsFindBlockContaining(sSource, "deb.nodesource.com")
+    fnAssertHardenedBlock(
+        sNodeBlock, "--retry", "Dockerfile.gemini NodeSource install",
+    )
+    sNpmBlock = fsFindBlockContaining(sSource, "@google/gemini-cli")
+    fnAssertHardenedBlock(
+        sNpmBlock, "--fetch-retries=3", "Dockerfile.gemini npm install",
+    )
+
+
 def testCranKeyringCurlIsHardened():
     """F-B-04: CRAN keyring fetch must retry + diagnose."""
     sSource = fsReadDockerfile("Dockerfile.rlang")
@@ -154,6 +176,8 @@ def testDiagnosticBlocksUsePrintfNotEcho():
     saTargets = [
         "Dockerfile",
         "Dockerfile.claude",
+        "Dockerfile.codex",
+        "Dockerfile.gemini",
         "Dockerfile.rlang",
         "Dockerfile.julia",
     ]

@@ -92,7 +92,7 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddPortForwarding(config, saRunArgs)
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
-    _fnAddClaudeEnv(config, saRunArgs)
+    _fnAddAgentUpdateEnvs(config, saRunArgs)
     _fnAddAgentHostBridge(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
@@ -239,18 +239,27 @@ def _fnAddGpuPassthrough(config, saRunArgs):
         saRunArgs.extend(["--gpus", "all"])
 
 
-def _fnAddClaudeEnv(config, saRunArgs):
-    """Pass Claude Code auto-update flag into the container via env var."""
-    if not config.features.bClaude:
-        return
-    sFlag = "true" if config.features.bClaudeAutoUpdate else "false"
-    saRunArgs.extend(["-e", f"VAIBIFY_CLAUDE_AUTO_UPDATE={sFlag}"])
+def _fnAddAgentUpdateEnvs(config, saRunArgs):
+    """Pass every enabled agent's auto-update preference into the container."""
+    features = config.features
+    for sAgent, sFeature, sAutoUpdate in (
+        ("CLAUDE", "bClaude", "bClaudeAutoUpdate"),
+        ("CODEX", "bCodex", "bCodexAutoUpdate"),
+        ("GEMINI", "bGemini", "bGeminiAutoUpdate"),
+    ):
+        if not getattr(features, sFeature, False):
+            continue
+        sFlag = "true" if getattr(features, sAutoUpdate, True) else "false"
+        saRunArgs.extend(["-e", f"VAIBIFY_{sAgent}_AUTO_UPDATE={sFlag}"])
 
 
 def _fnAddNetworkIsolation(config, saRunArgs):
     """Add network isolation flag if enabled in config."""
     if config.bNetworkIsolation:
-        saRunArgs.extend(["--network", "none"])
+        saRunArgs.extend([
+            "--network", "none",
+            "-e", "VAIBIFY_NETWORK_ISOLATED=true",
+        ])
 
 
 def _fnAddAgentHostBridge(config, saRunArgs):
@@ -259,7 +268,7 @@ def _fnAddAgentHostBridge(config, saRunArgs):
     The hosts-file entry is only useful for the in-container
     ``vaibify-do`` agent calling back to the host backend. Adding it
     unconditionally widens the container's egress surface for projects
-    that never run an agent. Emit ``--add-host`` only when Claude is
+    that never run an agent. Emit ``--add-host`` only when an agent is
     enabled (so the agent bridge is actually used) and network
     isolation is off (no point poking a hole in a sealed container).
     """
@@ -277,7 +286,10 @@ def _fbAgentBridgeRequired(config):
     features = getattr(config, "features", None)
     if features is None:
         return False
-    return bool(getattr(features, "bClaude", False))
+    return any(
+        getattr(features, sFeature, False)
+        for sFeature in ("bClaude", "bCodex", "bGemini")
+    )
 
 
 def fnMountSecrets(config, saRunArgs, listCleanupFiles):

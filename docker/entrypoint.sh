@@ -242,30 +242,24 @@ HELPER
 # fnConfigureGit: Wire git's credential lookup to the callback helper
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# fnInstallAgentSkills: Copy vaibify-shipped agent skills into the
-# container user's Claude Code skills directory. Skills are baked into
-# the image at /usr/share/vaibify/skills (one directory per skill,
-# each holding a SKILL.md) and copied fresh on every container start
-# so an image rebuild updates them. The copy is chowned to the
-# unprivileged user so the agent can read them and the researcher can
-# edit or disable them without touching the image.
+# fnInstallAgentSkills: Copy vaibify-shipped skills into each installed
+# agent's native skills directory. The workspace phase already runs as
+# the unprivileged user, so the copied files stay editable by that user.
 # ---------------------------------------------------------------------------
 fnInstallAgentSkills() {
     local sSourceDir="/usr/share/vaibify/skills"
-    local sTargetDir="/home/${CONTAINER_USER}/.claude/skills"
     if [ ! -d "${sSourceDir}" ]; then
         return 0
     fi
-    mkdir -p "${sTargetDir}"
-    cp -R "${sSourceDir}/." "${sTargetDir}/"
-    # --no-dereference: this runs as root over a directory the
-    # unprivileged user can seed with symlinks between restarts; a
-    # followed link would chown a file outside the target.
-    chown -R --no-dereference \
-        "${CONTAINER_USER}:${CONTAINER_USER}" \
-        "/home/${CONTAINER_USER}/.claude"
-    echo "[vaib] Agent skills installed:" \
-        "$(ls "${sSourceDir}" | tr '\n' ' ')"
+    local sAgent
+    for sAgent in claude codex gemini; do
+        command -v "${sAgent}" > /dev/null 2>&1 || continue
+        local sTargetDir="/home/${CONTAINER_USER}/.${sAgent}/skills"
+        mkdir -p "${sTargetDir}"
+        cp -R "${sSourceDir}/." "${sTargetDir}/"
+        echo "[vaib] ${sAgent} skills installed: " \
+            "$(ls "${sSourceDir}" | tr '\n' ' ')"
+    done
 }
 
 fnConfigureGit() {
@@ -648,11 +642,32 @@ fnSourceBinariesInBashrc() {
 }
 
 # ---------------------------------------------------------------------------
-# fnPersistClaudeConfig: Symlink Claude Code config to the workspace volume
+# fnPersistAgentConfig: Symlink one agent's config to the workspace volume
 # ---------------------------------------------------------------------------
-fnPersistClaudeConfig() {
-    mkdir -p "${WORKSPACE}/.claude"
-    ln -sfn "${WORKSPACE}/.claude" "/home/${CONTAINER_USER}/.claude"
+fnPersistAgentConfig() {
+    local sAgent="$1"
+    local sVolumeConfig="${WORKSPACE}/.${sAgent}"
+    local sHomeConfig="/home/${CONTAINER_USER}/.${sAgent}"
+    mkdir -p "${sVolumeConfig}"
+    if [ -d "${sHomeConfig}" ] && [ ! -L "${sHomeConfig}" ]; then
+        cp -an "${sHomeConfig}/." "${sVolumeConfig}/" 2>/dev/null || true
+        rm -rf "${sHomeConfig}"
+    elif [ -e "${sHomeConfig}" ] && [ ! -L "${sHomeConfig}" ]; then
+        rm -f "${sHomeConfig}"
+    fi
+    ln -sfn "${sVolumeConfig}" "${sHomeConfig}"
+}
+
+# ---------------------------------------------------------------------------
+# fnPersistInstalledAgentConfigs: Persist every installed CLI's login and
+# settings state on the workspace volume, matching Claude's existing model.
+# ---------------------------------------------------------------------------
+fnPersistInstalledAgentConfigs() {
+    local sAgent
+    for sAgent in claude codex gemini; do
+        command -v "${sAgent}" > /dev/null 2>&1 || continue
+        fnPersistAgentConfig "${sAgent}"
+    done
 }
 
 # ---------------------------------------------------------------------------
@@ -717,6 +732,12 @@ fnPrintSummary() {
     fi
     if command -v claude > /dev/null 2>&1; then
         echo "  Claude:    $(claude --version 2>&1)"
+    fi
+    if command -v codex > /dev/null 2>&1; then
+        echo "  Codex:     $(codex --version 2>&1)"
+    fi
+    if command -v gemini > /dev/null 2>&1; then
+        echo "  Gemini:    $(gemini --version 2>&1)"
     fi
     if command -v R > /dev/null 2>&1; then
         echo "  R:         $(R --version | head -1)"
@@ -937,13 +958,19 @@ it permanent:
 - Test changes with `pytest` before committing
 - All repositories are public or will be — never embed secrets in code
 CLAUDEMD
-    echo "[vaib] Generated workspace CLAUDE.md."
+    if [ ! -e "${WORKSPACE}/AGENTS.md" ]; then
+        ln -s "CLAUDE.md" "${WORKSPACE}/AGENTS.md"
+    fi
+    if [ ! -e "${WORKSPACE}/GEMINI.md" ]; then
+        ln -s "CLAUDE.md" "${WORKSPACE}/GEMINI.md"
+    fi
+    echo "[vaib] Generated shared agent context."
     fnLinkRepoClaudeMd
 }
 
 # ---------------------------------------------------------------------------
 # fnLinkRepoClaudeMd: Canonicalize project context on .vaibify/AGENTS.md
-# and symlink both repo-root names (CLAUDE.md + AGENTS.md) to it.
+# and symlink provider-recognized repo-root names to it.
 # ---------------------------------------------------------------------------
 fnLinkRepoClaudeMd() {
     for sVaibDir in "${WORKSPACE}"/*/.vaibify; do
@@ -960,7 +987,7 @@ fnLinkRepoClaudeMd() {
         fi
         [ -f "${sSource}" ] || continue
         local sName
-        for sName in CLAUDE.md AGENTS.md; do
+        for sName in CLAUDE.md AGENTS.md GEMINI.md; do
             local sTarget="${sRepoDir}/${sName}"
             if [ ! -e "${sTarget}" ] && [ ! -L "${sTarget}" ]; then
                 ln -s ".vaibify/AGENTS.md" "${sTarget}"
@@ -1008,6 +1035,67 @@ with open(sSettings, "w") as fileHandle:
     json.dump(dictContents, fileHandle, indent=2)
 PYEOF
     echo "[vaib] Claude auto-update set to ${sFlag}."
+}
+
+# ---------------------------------------------------------------------------
+# fnConfigureCodexAutoUpdate: Update Codex at startup when explicitly enabled.
+# Codex's supported update mechanism is its ``codex update`` command.
+# ---------------------------------------------------------------------------
+fnConfigureCodexAutoUpdate() {
+    local sFlag="${VAIBIFY_CODEX_AUTO_UPDATE:-true}"
+    if [ "${sFlag}" != "true" ]; then
+        echo "[vaib] Codex auto-update disabled."
+        return
+    fi
+    if [ "${VAIBIFY_NETWORK_ISOLATED:-false}" = "true" ]; then
+        fnAppendStartupWarning "Codex" "agent-update-deferred" \
+            "network isolation is enabled"
+        return
+    fi
+    if codex update; then
+        echo "[vaib] Codex auto-update completed."
+    else
+        fnAppendStartupWarning "Codex" "agent-update-failed" \
+            "codex update exited non-zero"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# fnConfigureGeminiAutoUpdate: Persist Gemini's documented auto-update
+# preference and AGENTS.md context convention without replacing user keys.
+# ---------------------------------------------------------------------------
+fnConfigureGeminiAutoUpdate() {
+    local sFlag="${VAIBIFY_GEMINI_AUTO_UPDATE:-true}"
+    local sConfigDir="/home/${CONTAINER_USER}/.gemini"
+    local sSettingsFile="${sConfigDir}/settings.json"
+    mkdir -p "${sConfigDir}"
+    [ -f "${sSettingsFile}" ] || echo '{}' > "${sSettingsFile}"
+    VAIB_SETTINGS="${sSettingsFile}" VAIB_FLAG="${sFlag}" python3 - << 'PYEOF'
+import json, os
+sSettings = os.environ["VAIB_SETTINGS"]
+bAutoUpdate = os.environ["VAIB_FLAG"] == "true"
+with open(sSettings) as fileHandle:
+    dictContents = json.load(fileHandle)
+if not isinstance(dictContents, dict):
+    dictContents = {}
+dictGeneral = dictContents.setdefault("general", {})
+if not isinstance(dictGeneral, dict):
+    dictGeneral = {}
+    dictContents["general"] = dictGeneral
+dictGeneral["enableAutoUpdate"] = bAutoUpdate
+dictContext = dictContents.setdefault("context", {})
+if not isinstance(dictContext, dict):
+    dictContext = {}
+    dictContents["context"] = dictContext
+dictContext["fileName"] = ["AGENTS.md"]
+with open(sSettings, "w") as fileHandle:
+    json.dump(dictContents, fileHandle, indent=2)
+PYEOF
+    if [ "${sFlag}" = "true" ] && [ "${VAIBIFY_NETWORK_ISOLATED:-false}" = "true" ]; then
+        fnAppendStartupWarning "Gemini" "agent-update-deferred" \
+            "network isolation is enabled"
+    fi
+    echo "[vaib] Gemini auto-update set to ${sFlag}."
 }
 
 # ---------------------------------------------------------------------------
@@ -1069,14 +1157,20 @@ fnRunWorkspacePhase() {
     fnSourceBinariesInEnv
     fnCreateVaibifyDirectory
     fnWriteClaudeMd
+    fnPersistInstalledAgentConfigs
     fnInstallAgentSkills
     fnPersistGitConfig
     fnParseReposConf
     fnSyncAllRepos
     if command -v claude > /dev/null 2>&1; then
-        fnPersistClaudeConfig
         fnConfigureClaudeTheme
         fnConfigureClaudeAutoUpdate
+    fi
+    if command -v codex > /dev/null 2>&1; then
+        fnConfigureCodexAutoUpdate
+    fi
+    if command -v gemini > /dev/null 2>&1; then
+        fnConfigureGeminiAutoUpdate
     fi
     fnBuildBinaries
     fnSourceBinariesInBashrc

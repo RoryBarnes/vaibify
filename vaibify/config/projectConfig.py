@@ -24,6 +24,10 @@ class FeaturesConfig:
     bLatex: bool = True
     bClaude: bool = False
     bClaudeAutoUpdate: bool = True
+    bCodex: bool = False
+    bCodexAutoUpdate: bool = True
+    bGemini: bool = False
+    bGeminiAutoUpdate: bool = True
     bGpu: bool = False
 
 
@@ -126,6 +130,10 @@ _FEATURES_YAML_TO_HUNGARIAN = {
     "latex": "bLatex",
     "claude": "bClaude",
     "claudeAutoUpdate": "bClaudeAutoUpdate",
+    "codex": "bCodex",
+    "codexAutoUpdate": "bCodexAutoUpdate",
+    "gemini": "bGemini",
+    "geminiAutoUpdate": "bGeminiAutoUpdate",
     "gpu": "bGpu",
 }
 
@@ -498,6 +506,10 @@ def _fdictFeaturesToYaml(features):
         "latex": features.bLatex,
         "claude": features.bClaude,
         "claudeAutoUpdate": features.bClaudeAutoUpdate,
+        "codex": features.bCodex,
+        "codexAutoUpdate": features.bCodexAutoUpdate,
+        "gemini": features.bGemini,
+        "geminiAutoUpdate": features.bGeminiAutoUpdate,
         "gpu": features.bGpu,
     }
 

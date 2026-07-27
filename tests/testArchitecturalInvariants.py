@@ -3407,7 +3407,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # package list the image build would silently drop. Project
     # creation validation is this module's existing responsibility,
     # so this is the cohesive-module case, not a new concern.
-    "registryRoutes.py": 1125,
+    # +33 (2026-07-26): independent Codex/Gemini settings request fields,
+    # readback, and validation. This is the existing container-settings API;
+    # extracting a provider abstraction for three short branches would add
+    # indirection without separating a distinct responsibility.
+    "registryRoutes.py": 1158,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

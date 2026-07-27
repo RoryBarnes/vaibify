@@ -18,6 +18,10 @@ def fixtureIsolateRegistry(tmp_path, monkeypatch):
     monkeypatch.setattr(
         registryManager, "_S_REGISTRY_PATH", sRegistryPath,
     )
+    monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDir, "registry.lock"),
+    )
 
 
 @pytest.fixture
@@ -241,6 +245,32 @@ def testCreateProjectDisablesClaudeAutoUpdate(
         os.path.join(sProjectDir, "vaibify.yml"))
     assert config.features.bClaude is True
     assert config.features.bClaudeAutoUpdate is False
+
+
+def testCreateProjectPersistsCodexAndGeminiSettings(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """Provider fields do not collapse into the legacy Claude setting."""
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    _fnPrepSandboxTemplate(tmp_path, monkeypatch)
+    sProjectDir = str(tmp_path / "multi-agent")
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sDirectory": sProjectDir,
+            "sProjectName": "multi-agent",
+            "sTemplateName": "sandbox",
+            "listFeatures": ["codex", "gemini"],
+            "bCodexAutoUpdate": False,
+            "bGeminiAutoUpdate": True,
+        },
+    )
+    assert response.status_code == 200
+    config = fconfigLoadFromFile(os.path.join(sProjectDir, "vaibify.yml"))
+    assert config.features.bCodex is True
+    assert config.features.bCodexAutoUpdate is False
+    assert config.features.bGemini is True
+    assert config.features.bGeminiAutoUpdate is True
 
 
 def testCreateProjectPersistsGithubAuthSecret(

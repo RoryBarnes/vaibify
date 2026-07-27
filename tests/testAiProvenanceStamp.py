@@ -9,6 +9,7 @@ the container facts land in the right keys.
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -139,6 +140,9 @@ class _StubDockerConnection:
     def fbaFetchFile(self, sContainerId, sFilePath):
         return self._baPrompt
 
+    def texecRunInContainerStreamed(self, sContainerId, sCommand):
+        return SimpleNamespace(iExitCode=0, sStdout="codex\tcodex-cli 1.0\n")
+
 
 def test_capture_records_workspace_prompt_hash(tmp_path, monkeypatch):
     monkeypatch.setattr(
@@ -155,6 +159,7 @@ def test_capture_records_workspace_prompt_hash(tmp_path, monkeypatch):
     ).hexdigest()
     assert dictStamp["bNetworkIsolatedAtCapture"] is True
     assert dictStamp["sHubInvokerModelId"] != ""
+    assert dictStamp["dictAgentCliVersions"] == {"codex": "codex-cli 1.0"}
 
 
 def test_capture_survives_unreachable_container(tmp_path, monkeypatch):
@@ -173,6 +178,21 @@ def test_capture_survives_unreachable_container(tmp_path, monkeypatch):
     )
     assert dictStamp["sWorkspacePromptSha256"] == ""
     assert dictStamp["bNetworkIsolatedAtCapture"] is False
+
+
+@pytest.mark.falsification
+def test_agent_version_stamp_rejects_unexpected_provider_name():
+    """The provider-version record admits only known CLI identities.
+
+    Kills: remove the ``sAgent not in {\"claude\", \"codex\", \"gemini\"}``
+    check from ``_fbStampShapeIntact`` in ``aiProvenanceStamp.py``.
+    """
+    dictWorkflow = _fdictWorkflowWithOneModel()
+    dictStamp = fdictBuildAiProvenanceStamp(
+        dictWorkflow, "/nonexistent",
+        dictAgentCliVersions={"unexpected": "1.0"},
+    )
+    assert fbStampMatchesDeclaration(dictStamp, dictWorkflow) is False
 
 
 @pytest.mark.falsification

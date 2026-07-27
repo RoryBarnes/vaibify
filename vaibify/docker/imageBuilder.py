@@ -40,6 +40,8 @@ _LIST_OVERLAY_ORDER = [
     "database",
     "dvc",
     "claude",
+    "codex",
+    "gemini",
 ]
 
 _DICT_OVERLAY_DOCKERFILE_MAP = {
@@ -50,6 +52,8 @@ _DICT_OVERLAY_DOCKERFILE_MAP = {
     "dvc": "overlays/dvc.dockerfile",
     "gpu": "overlays/gpu.dockerfile",
     "claude": "Dockerfile.claude",
+    "codex": "Dockerfile.codex",
+    "gemini": "Dockerfile.gemini",
 }
 
 _GPU_BASE_IMAGE = "nvidia/cuda:12.2.0-devel-ubuntu22.04"
@@ -62,6 +66,8 @@ _DICT_FEATURE_TO_OVERLAY = {
     "bDvc": "dvc",
     "bGpu": "gpu",
     "bClaude": "claude",
+    "bCodex": "codex",
+    "bGemini": "gemini",
 }
 
 

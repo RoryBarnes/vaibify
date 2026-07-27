@@ -581,6 +581,10 @@ var VaibifyWorkflowManager = (function () {
     var _LIST_FEATURE_DEFINITIONS = [
         {sKey: "claude", sLabel: "Claude Code CLI",
          sHint: "Install the Claude Code agent inside the container."},
+        {sKey: "codex", sLabel: "Codex CLI",
+         sHint: "Install the OpenAI Codex agent inside the container."},
+        {sKey: "gemini", sLabel: "Gemini CLI",
+         sHint: "Install the Google Gemini agent inside the container."},
         {sKey: "jupyter", sLabel: "JupyterLab",
          sHint: "Install JupyterLab for notebook-based work."},
         {sKey: "latex", sLabel: "LaTeX (TeX Live)",

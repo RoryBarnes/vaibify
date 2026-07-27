@@ -46,7 +46,17 @@ Nested under the `features` key:
 | `dvc`        | boolean | `false` | Install DVC for data versioning  |
 | `latex`      | boolean | `true`  | Install TeX Live                 |
 | `claude`     | boolean | `false` | Install Claude Code CLI          |
+| `claudeAutoUpdate` | boolean | `true` | Allow Claude Code to update itself |
+| `codex`      | boolean | `false` | Install OpenAI Codex CLI         |
+| `codexAutoUpdate` | boolean | `true` | Update Codex when the container starts |
+| `gemini`     | boolean | `false` | Install Google Gemini CLI        |
+| `geminiAutoUpdate` | boolean | `true` | Allow Gemini CLI to update itself |
 | `gpu`        | boolean | `false` | Enable NVIDIA GPU passthrough    |
+
+All enabled CLIs receive the same Vaibify context, skills, persistent
+configuration directory, and `vaibify-do` dashboard bridge. Auto-updates
+need network access; when `networkIsolation` is enabled, Vaibify records a
+startup warning that the update was deferred.
 
 ### Reproducibility Block
 

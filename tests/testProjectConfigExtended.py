@@ -279,6 +279,27 @@ def test_claude_auto_update_missing_key_defaults_true():
     assert configLoaded.features.bClaudeAutoUpdate is True
 
 
+@pytest.mark.parametrize("sAgent", ["codex", "gemini"])
+def test_new_agent_auto_update_roundtrip_and_legacy_default(sAgent):
+    """Each provider persists its own setting and old files default safely."""
+    import yaml
+    sEnabled = "b" + sAgent.capitalize()
+    sAutoUpdate = sEnabled + "AutoUpdate"
+    config = ProjectConfig(
+        sProjectName=sAgent,
+        features=FeaturesConfig(**{sEnabled: True, sAutoUpdate: False}),
+    )
+    with tempfile.TemporaryDirectory() as sTmpDir:
+        sPath = os.path.join(sTmpDir, "vaibify.yml")
+        fnSaveToFile(config, sPath)
+        assert getattr(fconfigLoadFromFile(sPath).features, sAutoUpdate) is False
+        with open(sPath, "w") as fileHandle:
+            yaml.safe_dump({"projectName": "legacy", "features": {
+                sAgent: True,
+            }}, fileHandle)
+        assert getattr(fconfigLoadFromFile(sPath).features, sAutoUpdate) is True
+
+
 # ---------------------------------------------------------------------------
 # iDashboardPort — stable per-project port persistence
 # ---------------------------------------------------------------------------
