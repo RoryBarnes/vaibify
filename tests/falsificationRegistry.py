@@ -2157,4 +2157,13 @@ def _fdictEntry(sRel):
     if not fbWorkflowFullySyncedWithZenodo(""",
         new="""    if not fbWorkflowFullySyncedWithZenodo(""",
     ),
+    Falsification(
+        # Turns the browser lane's fail-closed adapter into the
+        # permissive mock it exists not to become.
+        nodeid='tests/testBrowserLaneContract.py::testTheFakeRaisesRatherThanInventingAnAnswer',
+        source='tests/browser/fakeDockerAdapter.py',
+        old="""        raise UnmodelledContainerCall(""",
+        new="""        return (0, "")
+        raise UnmodelledContainerCall(""",
+    ),
 ]

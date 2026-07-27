@@ -63,6 +63,12 @@ dev = [
     "pytest-asyncio",
     "httpx",
 ]
+browser = [
+    # Lane 1: real Chromium against a real uvicorn hub. Playwright's
+    # Python binding manages its own browser binary, so no npm, no
+    # package.json, and no JS toolchain enters the repository.
+    "pytest-playwright",
+]
 mutation = [
     "cosmic-ray",
     # The mutation test-command runs the suite with -n auto. The local
