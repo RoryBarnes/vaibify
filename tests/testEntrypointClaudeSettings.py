@@ -97,6 +97,20 @@ def test_provider_config_migration_replaces_existing_home_directory():
     assert 'ln -sfn "${sVolumeConfig}" "${sHomeConfig}"' in sBody
 
 
+def test_persisting_absent_agent_configs_succeeds():
+    """An image without optional CLIs must complete the workspace phase."""
+    sScript = (
+        'source "' + _S_ENTRYPOINT + '"\n'
+        'PATH=/usr/bin:/bin\n'
+        'fnPersistInstalledAgentConfigs\n'
+    )
+    subprocess.run(
+        ["bash", "-euc", sScript],
+        check=True,
+        capture_output=True,
+    )
+
+
 def _ftRunMerge(sSettingsPath, sFlag):
     """Run the same JSON merge the entrypoint performs."""
     sScript = """

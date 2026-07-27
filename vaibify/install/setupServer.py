@@ -215,10 +215,16 @@ def _fdictConfigToWizardFormat(config):
         "bClaudeAutoUpdate": config.features.bClaudeAutoUpdate,
         "bCodexAutoUpdate": config.features.bCodexAutoUpdate,
         "bGeminiAutoUpdate": config.features.bGeminiAutoUpdate,
-        "bOpenCodeAutoUpdate": config.features.bOpenCodeAutoUpdate,
-        "bClineAutoUpdate": config.features.bClineAutoUpdate,
-        "bOpenHandsAutoUpdate": config.features.bOpenHandsAutoUpdate,
-        "bPiAutoUpdate": config.features.bPiAutoUpdate,
+        "bOpenCodeAutoUpdate": getattr(
+            config.features, "bOpenCodeAutoUpdate", True,
+        ),
+        "bClineAutoUpdate": getattr(
+            config.features, "bClineAutoUpdate", True,
+        ),
+        "bOpenHandsAutoUpdate": getattr(
+            config.features, "bOpenHandsAutoUpdate", True,
+        ),
+        "bPiAutoUpdate": getattr(config.features, "bPiAutoUpdate", True),
     }
 
 
@@ -234,10 +240,10 @@ def _flistEnabledFeatures(features):
         "claude": features.bClaude,
         "codex": features.bCodex,
         "gemini": features.bGemini,
-        "opencode": features.bOpenCode,
-        "cline": features.bCline,
-        "openhands": features.bOpenHands,
-        "pi": features.bPi,
+        "opencode": getattr(features, "bOpenCode", False),
+        "cline": getattr(features, "bCline", False),
+        "openhands": getattr(features, "bOpenHands", False),
+        "pi": getattr(features, "bPi", False),
         "gpu": features.bGpu,
     }
     return [s for s, b in dictMap.items() if b]

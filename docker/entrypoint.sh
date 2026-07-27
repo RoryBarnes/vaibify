@@ -671,7 +671,6 @@ fnPersistAgentConfig() {
 # settings state on the workspace volume, matching Claude's existing model.
 # ---------------------------------------------------------------------------
 fnPersistInstalledAgentConfigs() {
-    local sAgent
     command -v claude > /dev/null 2>&1 && fnPersistAgentConfig claude
     command -v codex > /dev/null 2>&1 && fnPersistAgentConfig codex
     command -v gemini > /dev/null 2>&1 && fnPersistAgentConfig gemini
@@ -680,6 +679,10 @@ fnPersistInstalledAgentConfigs() {
     command -v cline > /dev/null 2>&1 && fnPersistAgentConfig cline
     command -v openhands > /dev/null 2>&1 && fnPersistAgentConfig openhands
     command -v pi > /dev/null 2>&1 && fnPersistAgentConfig pi
+    # Optional CLIs are normally absent in a freshly built image.  The
+    # final command probe must not become this helper's return status:
+    # the workspace phase runs with ``set -e``.
+    return 0
 }
 
 # ---------------------------------------------------------------------------
