@@ -2158,6 +2158,16 @@ def _fdictEntry(sRel):
         new="""    if not fbWorkflowFullySyncedWithZenodo(""",
     ),
     Falsification(
+        # Declares a gitignored generated copy as a build input. The
+        # artifact is absent on any clean checkout, so a test that only
+        # inspected RESOLVED paths scored this mutant as surviving --
+        # which is exactly what the harness reported the first time.
+        nodeid='tests/testBuildInputHash.py::testGeneratedBuildContextCopiesAreNotKeyed',
+        source='tools/computeBuildInputHash.py',
+        old='    "docker/vaibifyDo.py",',
+        new='    "docker/vaibifyDo.py",\n    "docker/director.py",',
+    ),
+    Falsification(
         # Turns the browser lane's fail-closed adapter into the
         # permissive mock it exists not to become.
         nodeid='tests/testBrowserLaneContract.py::testTheFakeRaisesRatherThanInventingAnAnswer',

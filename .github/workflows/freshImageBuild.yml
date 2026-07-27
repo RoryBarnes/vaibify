@@ -1,0 +1,99 @@
+name: fresh-image-build
+
+# Lane 3 -- a full image build from scratch, then the acceptance run.
+#
+# Lane 2 reuses a cached image keyed by the build-input hash, which is
+# the right trade for a nightly regression check but says nothing about
+# whether the image still BUILDS. Base images move, apt archives rotate,
+# and a pinned third-party source can vanish. This lane is where that
+# surfaces.
+#
+# It runs weekly, on demand, and whenever a build input changes on a
+# pull request -- the path filter is the whole point: ordinary Python
+# and frontend changes must not pay a 60-minute build, and Dockerfile
+# or entrypoint changes must not merge without one.
+#
+# This is NOT supply-chain reproducibility. A content-addressed image
+# gives stable regression testing and good provenance; it does not make
+# a rebuild deterministic while pip installs are unpinned. MultiNest is
+# now pinned to a commit; a dependency lock and an SBOM remain open
+# work, deliberately sequenced after the execution lanes.
+
+on:
+  schedule:
+    - cron: '0 5 * * 0'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docker/**'
+      - 'vaibify/cli/commandBuild.py'
+      - 'vaibify/docker/imageBuilder.py'
+
+jobs:
+  freshbuild:
+    name: 'lane 3 (build from scratch)'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Record the build-input hash
+        run: |
+          echo "Build inputs hash to $(python tools/computeBuildInputHash.py)"
+
+      - name: Scaffold a neutral project
+        run: |
+          mkdir -p /tmp/freshBuildProject
+          cat > /tmp/freshBuildProject/vaibify.yml <<'YAML'
+          projectName: fresh-build-project
+          pythonVersion: '3.12'
+          containerUser: researcher
+          workspaceRoot: /workspace
+          packageManager: pip
+          baseImage: 'ubuntu:24.04'
+          systemPackages: []
+          pythonPackages: []
+          repositories: []
+          features:
+            latex: false
+            jupyter: false
+          YAML
+
+      - name: Build the image from scratch
+        run: |
+          cd /tmp/freshBuildProject && python -m vaibify build --no-cache
+
+      - name: Start the container
+        run: |
+          cd /tmp/freshBuildProject && python -m vaibify start
+
+      - name: Run the acceptance assertions
+        env:
+          VAIBIFY_ACCEPTANCE_CONTAINER: fresh-build-project
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
+        run: |
+          python -m pytest tests/testContainerAcceptance.py -m docker \
+            --tb=short -v
+
+      - name: Confirm the container user is unprivileged
+        run: |
+          sUid=$(docker exec fresh-build-project id -u)
+          echo "container uid: ${sUid}"
+          test "${sUid}" = "1000"
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f fresh-build-project || true

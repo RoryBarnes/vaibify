@@ -1,0 +1,117 @@
+name: container-acceptance
+
+# Lane 2 -- the host/Docker/container boundary, nightly.
+#
+# Lane 1 drives a fail-closed FAKE Docker adapter. That fake models
+# three container commands, and this lane is what proves a real
+# container answers them the same way: every entry in the fake's
+# LIST_MODELLED_COMMANDS names an assertion in
+# tests/testContainerAcceptance.py, and testEveryNamedLaneTwoAssertionExists
+# fails if one of those names is fiction.
+#
+# The image is keyed by tools/computeBuildInputHash.py, which hashes
+# every build input -- Dockerfiles, entrypoint, agent CLI, overlays,
+# skills, staged-doc SOURCES, and the generator itself. A two-file hash
+# over Dockerfile+requirements would reuse a stale image after an
+# entrypoint change, so the key covers all of it. The cache means an
+# unchanged tree reuses one immutable image instead of rebuilding.
+#
+# Timing, stated plainly: this runs nightly, so fake-vs-reality drift
+# is caught up to a day late and pull requests merge in between.
+# Lane 1 failing blocks merge; this failing blocks the next release,
+# not retroactively.
+#
+# NOT YET DONE: driving the Lane 1 browser journeys against this
+# container. That needs a second server fixture bound to a real
+# adapter, and is the next increment -- do not read a green run here
+# as "the dashboard works against a real container".
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  acceptance:
+    name: 'lane 2 (real container)'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compute the build-input hash
+        id: buildhash
+        run: |
+          sHash=$(python tools/computeBuildInputHash.py)
+          echo "sHash=${sHash}" >> "$GITHUB_OUTPUT"
+          echo "Build inputs hash to ${sHash}"
+          python tools/computeBuildInputHash.py --list
+
+      - name: Restore the image for this build-input hash
+        id: imagecache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vaibifyImage.tar
+          key: vaibify-image-${{ steps.buildhash.outputs.sHash }}
+
+      - name: Scaffold a neutral project
+        run: |
+          mkdir -p /tmp/acceptanceProject
+          cat > /tmp/acceptanceProject/vaibify.yml <<'YAML'
+          projectName: acceptance-project
+          pythonVersion: '3.12'
+          containerUser: researcher
+          workspaceRoot: /workspace
+          packageManager: pip
+          baseImage: 'ubuntu:24.04'
+          systemPackages: []
+          pythonPackages: []
+          repositories: []
+          features:
+            latex: false
+            jupyter: false
+          YAML
+
+      - name: Build the image on a cache miss
+        if: steps.imagecache.outputs.cache-hit != 'true'
+        run: |
+          cd /tmp/acceptanceProject && python -m vaibify build
+          docker save acceptance-project:base -o /tmp/vaibifyImage.tar
+
+      - name: Load the cached image
+        if: steps.imagecache.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/vaibifyImage.tar
+
+      - name: Start the container
+        run: |
+          cd /tmp/acceptanceProject && python -m vaibify start
+          docker ps --format '{{.Names}}'
+
+      - name: Run the acceptance assertions
+        env:
+          VAIBIFY_ACCEPTANCE_CONTAINER: acceptance-project
+          # Both demands: no daemon, or no container, must FAIL rather
+          # than skip. A lane that skips itself green is the defect
+          # this whole effort exists to remove.
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
+        run: |
+          python -m pytest tests/testContainerAcceptance.py -m docker \
+            --tb=short -v
+
+      - name: Stop the container
+        if: always()
+        run: |
+          docker rm -f acceptance-project || true

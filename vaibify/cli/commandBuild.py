@@ -329,6 +329,15 @@ def fnCopyDirectorScript(sDockerDir):
     shutil.copy2(sSourcePath, sDestPath)
 
 
+# The reproducibility modules that ship into the image. Named here
+# rather than inline so the build and the build-input hash read one
+# list; a second copy is how a staged file starts being rebuilt
+# without changing the image key.
+T_CONTAINER_SCRIPT_SOURCES = (
+    "overleafSync.py", "latexConnector.py", "zenodoClient.py",
+)
+
+
 def fnCopyContainerScripts(sDockerDir):
     """Stage the reproducibility modules that ship into the image.
 
@@ -343,9 +352,7 @@ def fnCopyContainerScripts(sDockerDir):
         pathlib.Path(__file__).resolve().parents[1]
         / "reproducibility"
     )
-    for sFileName in (
-        "overleafSync.py", "latexConnector.py", "zenodoClient.py",
-    ):
+    for sFileName in T_CONTAINER_SCRIPT_SOURCES:
         sSourcePath = str(pathReproducibility / sFileName)
         sDestPath = os.path.join(sDockerDir, sFileName)
         shutil.copy2(sSourcePath, sDestPath)
@@ -356,7 +363,7 @@ def fnCopyContainerScripts(sDockerDir):
 # vaibify-doc-map skill can point at real files that cost zero context
 # until read. Each entry is (source-relative-to-repo-root, dest-name).
 # When adding one, also extend the vaibify-doc-map skill's table.
-_T_STAGED_DOCS = (
+T_STAGED_DOCS = (
     ("docs/dashboard.md", "dashboard.md"),
     ("docs/reproducibility.md", "reproducibility.md"),
     ("docs/vision.md", "vision.md"),
@@ -379,7 +386,7 @@ def fnStageCuratedDocs(sDockerDir):
     pathRepoRoot = pathlib.Path(__file__).resolve().parents[2]
     sStagedDir = os.path.join(sDockerDir, "docs-staged")
     os.makedirs(sStagedDir, exist_ok=True)
-    for sRelSource, sDestName in _T_STAGED_DOCS:
+    for sRelSource, sDestName in T_STAGED_DOCS:
         pathSource = pathRepoRoot / sRelSource
         if not pathSource.is_file():
             print(
