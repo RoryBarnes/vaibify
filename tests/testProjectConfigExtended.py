@@ -33,6 +33,20 @@ def test_fbValidateConfig_valid():
     assert fbValidateConfig(dictConfig) is True
 
 
+def test_fbValidateConfig_rejects_conda_packages():
+    """A hand-edited vaibify.yml must not smuggle the field back in.
+
+    The create route refuses it, but the route is not the only way a
+    config reaches the build; editing the file directly bypasses it.
+    Nothing installs these packages, so accepting the file would put
+    the container in a state the config does not describe.
+    """
+    dictConfig = fdictLoadDefaults()
+    dictConfig["projectName"] = "testproj"
+    dictConfig["condaPackages"] = ["scipy"]
+    assert fbValidateConfig(dictConfig) is False
+
+
 def test_fbValidateConfig_missing_name():
     dictConfig = fdictLoadDefaults()
     dictConfig["projectName"] = ""

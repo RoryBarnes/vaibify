@@ -3403,7 +3403,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # otherwise render into vaibify.yml as text PyYAML reads back as a
     # string, bricking every later load. Cohesive with the guard it
     # replaces.
-    "registryRoutes.py": 1106,
+    # 1106 -> 1125: _fnRejectUninstallablePackages, refusing a conda
+    # package list the image build would silently drop. Project
+    # creation validation is this module's existing responsibility,
+    # so this is the cohesive-module case, not a new concern.
+    "registryRoutes.py": 1125,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

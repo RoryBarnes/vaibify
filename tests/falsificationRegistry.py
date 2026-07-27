@@ -2135,4 +2135,13 @@ def _fdictEntry(sRel):
         old='          python -m pytest tests/ -m docker_live --tb=short -v',
         new='          docker info >/dev/null 2>&1 || { echo "skipping"; exit 0; }\n          python -m pytest tests/ -m docker_live --tb=short -v',
     ),
+    Falsification(
+        # The route accepted the list, wrote it to vaibify.yml, and the
+        # build dropped it silently. Removing the guard restores that.
+        nodeid='tests/testCreationWizardRoutes.py::testCreateProjectRejectsCondaPackages',
+        source='vaibify/gui/registryRoutes.py',
+        old="""        _fnRejectUninstallablePackages(request.listCondaPackages)
+        _fnRejectDuplicateProjectName(request.sProjectName)""",
+        new="""        _fnRejectDuplicateProjectName(request.sProjectName)""",
+    ),
 ]

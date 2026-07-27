@@ -940,6 +940,7 @@ def _fnRegisterCreateProject(app, dictCtx):
         _fnRequireValidResourceLimits(
             request.iCpuLimit, request.fMemoryLimitGigabytes,
         )
+        _fnRejectUninstallablePackages(request.listCondaPackages)
         _fnRejectDuplicateProjectName(request.sProjectName)
         _fnScaffoldProject(request)
         _fnWriteProjectConfig(request)
@@ -955,6 +956,26 @@ def _fnValidateCreateDirectory(sDirectory):
     sResolved = os.path.realpath(sDirectory)
     if sResolved != sHome and not sResolved.startswith(sHome + os.sep):
         raise HTTPException(403, "Path is outside allowed root")
+
+
+def _fnRejectUninstallablePackages(listCondaPackages):
+    """Raise 400 for conda packages, which the image build ignores.
+
+    The Dockerfile installs Miniforge for a non-pip package manager but
+    never runs ``conda install``, and no build argument carries the
+    list, so accepting the field created a container without the
+    requested packages and said nothing. Refusing is the honest
+    behaviour until that wiring exists.
+    """
+    if not listCondaPackages:
+        return
+    raise HTTPException(
+        400,
+        "condaPackages is not supported yet: the image build has no "
+        "conda install step, so these packages would be recorded in "
+        "vaibify.yml and never installed. List them under "
+        "pythonPackages, or install them inside the container.",
+    )
 
 
 def _fnRejectDuplicateProjectName(sProjectName):
@@ -1050,8 +1071,6 @@ def _fnAttachOptionalPackages(dictYaml, request):
         dictYaml["systemPackages"] = list(request.listSystemPackages)
     if request.listPythonPackages:
         dictYaml["pythonPackages"] = list(request.listPythonPackages)
-    if request.listCondaPackages:
-        dictYaml["condaPackages"] = list(request.listCondaPackages)
     if request.sPipInstallFlags:
         dictYaml["pipInstallFlags"] = request.sPipInstallFlags
 
