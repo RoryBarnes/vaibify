@@ -3,6 +3,22 @@
 Produces a YAML workflow file that checks out the repository, builds
 the Vaibify image, runs the pipeline, and optionally uploads
 artefacts.
+
+UNREACHABLE -- no product code imports this module. Nothing in
+``vaibify/``, ``docker/``, ``bin/``, or the frontend calls
+``fsGenerateWorkflow`` or ``fnWriteWorkflow``; the only importer is its
+own test. ``docs/cli.md`` used to advertise it as "already available
+through the GUI's Settings → Publish pane", and no such pane has ever
+existed. That claim is now corrected.
+
+It is kept, not deleted, because wiring it is a product decision rather
+than a cleanup: generating a workflow that builds an image and runs a
+pipeline in someone's CI expands vaibify's remote-execution surface,
+and that call belongs to the maintainer. Until it is made, treat this
+module as dead code that happens to be tested.
+``tests/testOrphanedPublishMachinery.py`` fails if the docs start
+claiming it is reachable again, or if it gains a caller while still
+documented as unreachable.
 """
 
 from pathlib import Path

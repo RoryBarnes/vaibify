@@ -4,11 +4,24 @@ Vaibify's test suite has **three kinds of test**, distinguished not by
 where they live (they are all `pytest` tests under `tests/`) but by the
 question each one answers.
 
-| Kind | Question it answers | Where | Count |
-|---|---|---|---|
-| **Unit / behavior tests** | Does input *X* produce output *Y*? | `tests/` | ~6,500 |
-| **Architectural invariants** | Is the codebase wired together the way it must be? | `tests/testArchitecturalInvariants.py` | ~52 |
-| **Falsification tests** | If a safety guard broke, would any test *notice*? | marked `@pytest.mark.falsification` across `tests/` | ~146 |
+| Kind | Question it answers | Where |
+|---|---|---|
+| **Unit / behavior tests** | Does input *X* produce output *Y*? | `tests/` |
+| **Architectural invariants** | Is the codebase wired together the way it must be? | `tests/testArchitecturalInvariants.py` |
+| **Falsification tests** | If a safety guard broke, would any test *notice*? | marked `@pytest.mark.falsification` across `tests/` |
+
+Counts are deliberately not written here. They were, and they went
+stale: this table claimed ~146 falsification tests long after the real
+number passed 290, which is the same prose-drifts-from-code failure the
+falsification tests themselves exist to catch. The live numbers are on
+the README badges, refreshed by `badges.yml` on every push to `main`.
+To count them yourself:
+
+```bash
+python -m pytest tests/ -m "not docker and not docker_live" --collect-only -q | grep -c "::"
+python -m pytest tests/testArchitecturalInvariants.py --collect-only -q | grep -c "::"
+python -m pytest -m falsification --collect-only -q | grep -c "::"
+```
 
 The first two are conventional. The third is the one that needs
 explaining.
@@ -94,40 +107,41 @@ runs them as two separate workflows:
 
 | | **Falsification** (`falsification.yml`) | **Mutation gate** (`mutation.yml`, cosmic-ray) |
 |---|---|---|
-| What it mutates | the guards our *existing* falsification tests already defend | the *newly changed* code in a pull request |
-| What it answers | "do our existing guard-tests still catch their known breaks?" | "did this PR add a guard with **no** defending test?" |
+| What it mutates | the guards our *existing* falsification tests already defend | the code a branch changed against a chosen base |
+| What it answers | "do our existing guard-tests still catch their known breaks?" | "did this branch add a guard with **no** defending test?" |
 | Direction | backward-looking — maintains the committed suite | forward-looking — discovers new gaps |
+| When it runs | automatically, on every pull request | **manually only** — see below |
 | On failure | **fails the job** (a guard lost its test) | **warns only** — never fails the build |
 
-**Why warn-only, and how you are alerted.** The mutation gate never puts
-a red ✗ on a pull request. Mutation testing inevitably produces
-*equivalent mutants* — code changes with no observable effect (e.g.
-reordering a commutative comparison) — that *no* test could ever catch,
-so failing the build on every survivor would cry wolf and train everyone
-to ignore it. Instead the gate reports each surviving mutant three ways, on
-the pull request itself:
+**The mutation gate is manual, and that is a real gap.** It triggers on
+`workflow_dispatch` only. It used to run per-PR, but mutation-testing a
+large feature-branch diff exceeded the 60-minute ceiling and was
+cancelled before it could post any signal — an advisory gate that dies
+on the PRs that matter most is pure friction. So it was made on-demand
+(commit `94abe35`), which means **Python can merge with no mutation
+feedback at all**. Falsification and the architectural invariants are
+still graded for real on every PR; the mutation gate is not.
 
-- a **sticky PR comment** — a single comment the gate updates in place on
-  every run (never a new one each time), listing every surviving mutant;
-  it is the hardest signal to miss and reflects the latest run, including
-  a clean "all killed" state,
-- an inline **`::warning::` annotation** on the exact changed line, shown
-  in the PR's *Files changed* tab, and
-- a **job-summary table** on the workflow run (module, line, operator,
-  function).
+Run it deliberately from the Actions tab or with
+`gh workflow run mutation.yml`, choosing `base_ref` (default `main`) and
+`max_mutants` (default 300, `0` = uncapped). Any mutants dropped by the
+cap are reported, never silently discarded.
 
-So the signal is "here are the newly changed lines a test would not have
-caught if they were wrong" — a review prompt, not a pass/fail verdict.
-Read it on any PR that changes Python under `vaibify/`; a clean run says
-so explicitly ("All N mutant(s) on the changed lines were killed"). The
-comment is best-effort: a pull request from a fork gets a read-only token
-and cannot be commented on, in which case the annotations and job summary
-still appear.
+**Why warn-only.** Mutation testing inevitably produces *equivalent
+mutants* — code changes with no observable effect (e.g. reordering a
+commutative comparison) — that *no* test could ever catch, so failing
+the build on every survivor would cry wolf and train everyone to ignore
+it. Surviving mutants are surfaced as `::warning::` annotations on the
+changed lines and as a job-summary table (module, line, operator,
+function). The sticky-PR-comment step is still in the workflow but is
+inert while the trigger is manual: it is guarded on
+`event_name == pull_request`, kept only so re-enabling the per-PR mode
+is a one-line change.
 
 **Do the two gates overlap?** Barely, and by design. They mutate
 *different* sets of lines: falsification re-checks only lines that already
 carry a committed falsification test, while the mutation gate touches only
-lines a pull request *changed*. The two intersect just when a PR edits an
+lines a branch *changed*. The two intersect just when a branch edits an
 already-guarded line — where the double coverage is harmless. Otherwise
 they are complementary: falsification stops old guarantees from decaying,
 the mutation gate flags new code that arrived without a guarantee.
@@ -160,8 +174,49 @@ cosmic-ray init cosmic-ray.toml session.sqlite && cosmic-ray exec cosmic-ray.tom
 |---|---|---|
 | `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14 |
 | `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14) |
-| `mutation.yml` | the cosmic-ray gate on a PR's changed lines (warn-only) | on pull requests |
+| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
+| `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
+| `containerAcceptance.yml` | the modelled container commands, against a real container | nightly + manual |
+| `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `docker/**` pull requests |
 | `badges.yml` | recomputes the live test / falsification / invariant counts | on push to `main` |
+
+## The three execution lanes
+
+Most of this suite runs in one process with the Docker daemon and the
+browser both absent. Three lanes exist because that leaves two real
+boundaries unexercised, and both have shipped bugs a green suite could
+not see.
+
+**The browser lane (`browser.yml`)** loads the real dashboard in real Chromium
+against a real uvicorn hub and fails on any console error, uncaught
+promise rejection, or failed asset. It runs on one cell — a browser
+journey does not become more trustworthy by running 24 times across
+the OS/Python matrix. Its Docker adapter is a **fail-closed fake**:
+every command it answers is declared in `LIST_MODELLED_COMMANDS`, and
+anything else raises rather than returning a default. That rule exists
+because this suite already carries ~20 permissive Docker mocks, one of
+which answers success to any command it does not recognise.
+
+**The container-acceptance lane (`containerAcceptance.yml`)** puts each of those modelled
+commands to a real container, so a fake that drifts from the daemon is
+caught rather than believed. Every entry in the fake's contract names
+an assertion in `tests/testContainerAcceptance.py`, and
+`testEveryNamedLaneTwoAssertionExists` fails if one of those names is
+fiction. It runs nightly, which means **drift is caught up to a day
+late**: the browser lane failing blocks merge, container acceptance blocks the next
+release, not retroactively.
+
+**The fresh-image lane (`freshImageBuild.yml`)** builds the image from scratch. Lane
+2 reuses a cached image keyed by `tools/computeBuildInputHash.py` —
+which hashes every build input, including the entrypoint, the agent
+CLI, the overlays, the skills, the staged-doc *sources*, and the
+generator itself — so it says nothing about whether the image still
+builds.
+
+None of the three may skip itself green. `VAIBIFY_REQUIRE_DOCKER_DAEMON`
+and `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into a
+failure in CI, because the guard they replaced (`docker info || exit 0`)
+reported success for having run nothing.
 
 The harness runs on a *subset* because whether a test catches its
 mutation is deterministic and OS/Python-independent; the full-matrix

@@ -66,14 +66,27 @@ def fnCopyDirectoryContents(sSourceDir, sDestDir):
             shutil.copy2(str(sItem), str(sDest))
 
 
-def fnWriteDefaultConfig(sTemplateName):
-    """Write a minimal vaibify.yml using the ProjectConfig defaults."""
+def fnWriteDefaultConfig(sProjectName, bMinimal=False):
+    """Write a vaibify.yml for sProjectName using the ProjectConfig defaults.
+
+    ``bMinimal`` strips the configuration to the smallest thing that
+    still builds — no optional features, no extra system or Python
+    packages — which is what a scripted environment (CI, a fresh clone,
+    a reproduction attempt) wants when it needs a container and nothing
+    else. It is the one statement of "minimal config", so a workflow
+    file never has to hand-write another.
+    """
     from vaibify.config.projectConfig import (
         ProjectConfig,
         fnSaveToFile,
     )
     sConfigPath = fsConfigPath()
-    config = ProjectConfig(sProjectName=sTemplateName)
+    config = ProjectConfig(sProjectName=sProjectName)
+    if bMinimal:
+        config.listSystemPackages = []
+        config.listPythonPackages = []
+        config.features.bLatex = False
+        config.features.bJupyter = False
     fnSaveToFile(config, sConfigPath)
     click.echo(f"Created {sConfigPath}")
 
@@ -94,15 +107,28 @@ def fnRegisterProject():
     help="Name of the project template to use.",
 )
 @click.option(
+    "--name",
+    "sProjectName",
+    default=None,
+    help="Project name; scaffolds without a template when given alone.",
+)
+@click.option(
+    "--minimal",
+    "bMinimal",
+    is_flag=True,
+    default=False,
+    help="Smallest config that still builds: no features, no packages.",
+)
+@click.option(
     "--force",
     "bForce",
     is_flag=True,
     default=False,
     help="Overwrite existing vaibify.yml.",
 )
-def init(sTemplateName, bForce):
+def init(sTemplateName, sProjectName, bMinimal, bForce):
     """Initialize a new Vaibify project in the current directory."""
-    if sTemplateName is None:
+    if sTemplateName is None and sProjectName is None:
         fnPrintAvailableTemplates()
         return
     if fbConfigExists() and not bForce:
@@ -111,7 +137,11 @@ def init(sTemplateName, bForce):
             "Use --force to overwrite."
         )
         sys.exit(1)
-    fnCopyTemplate(sTemplateName)
-    fnWriteDefaultConfig(sTemplateName)
+    if sTemplateName is not None:
+        fnCopyTemplate(sTemplateName)
+    fnWriteDefaultConfig(sProjectName or sTemplateName, bMinimal)
     fnRegisterProject()
-    click.echo(f"Initialized Vaibify project with '{sTemplateName}'.")
+    click.echo(
+        f"Initialized Vaibify project "
+        f"'{sProjectName or sTemplateName}'."
+    )

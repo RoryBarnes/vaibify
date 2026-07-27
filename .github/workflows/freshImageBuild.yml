@@ -1,0 +1,130 @@
+name: fresh-image-build
+
+# A full image build from scratch, then the acceptance run.
+#
+# The container-acceptance lane reuses a cached image keyed by the build-input hash, which is
+# the right trade for a nightly regression check but says nothing about
+# whether the image still BUILDS. Base images move, apt archives rotate,
+# and a pinned third-party source can vanish. This lane is where that
+# surfaces.
+#
+# It runs weekly, on demand, and whenever a build input changes on a
+# pull request -- the path filter is the whole point: ordinary Python
+# and frontend changes must not pay a 60-minute build, and Dockerfile
+# or entrypoint changes must not merge without one.
+#
+# This is NOT supply-chain reproducibility. A content-addressed image
+# gives stable regression testing and good provenance; it does not make
+# a rebuild deterministic while pip installs are unpinned. MultiNest is
+# now pinned to a commit; a dependency lock and an SBOM remain open
+# work, deliberately sequenced after the execution lanes.
+
+on:
+  schedule:
+    - cron: '0 5 * * 0'
+  workflow_dispatch:
+  pull_request:
+    # Must cover every input tools/computeBuildInputHash.py hashes.
+    # It did not: director.py, the reproducibility clients and the
+    # staged docs all ship INTO the image, so a change to one could
+    # merge without a fresh build while the hash correctly said the
+    # image had changed. testFreshBuildTriggerCoversEveryHashInput
+    # fails if these drift apart again.
+    paths:
+      - 'docker/**'
+      - 'vaibify/cli/commandBuild.py'
+      - 'vaibify/docker/imageBuilder.py'
+      - 'vaibify/gui/director.py'
+      - 'vaibify/reproducibility/overleafSync.py'
+      - 'vaibify/reproducibility/latexConnector.py'
+      - 'vaibify/reproducibility/zenodoClient.py'
+      - 'docs/dashboard.md'
+      - 'docs/pipelines.md'
+      - 'docs/reproducibility.md'
+      - 'docs/testFormats.md'
+      - 'docs/vision.md'
+      - 'vaibify/docs/scriptAuthoring.md'
+
+jobs:
+  freshbuild:
+    name: 'image build from scratch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Record the build-input hash
+        run: |
+          echo "Build inputs hash to $(python tools/computeBuildInputHash.py)"
+
+      - name: Scaffold a neutral project
+        # Same minimal config as the acceptance lane, from the same
+        # source: vaibify init --minimal.
+        run: |
+          mkdir -p /tmp/freshBuildProject
+          cd /tmp/freshBuildProject
+          python -m vaibify init --name fresh-build-project --minimal
+
+      - name: Build the image from scratch
+        run: |
+          cd /tmp/freshBuildProject && python -m vaibify build --no-cache
+
+      - name: Start the container and seed a project repository
+        id: bootstrap
+        run: |
+          python tools/bootstrapAcceptanceContainer.py \
+            --project-dir /tmp/freshBuildProject | tee /tmp/bootstrap.txt
+          echo "sRepo=$(sed -n 's/^repo=//p' /tmp/bootstrap.txt)" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Run the acceptance assertions
+        env:
+          VAIBIFY_ACCEPTANCE_CONTAINER: fresh-build-project
+          VAIBIFY_ACCEPTANCE_REPO: ${{ steps.bootstrap.outputs.sRepo }}
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
+        run: |
+          python -m pytest tests/testContainerAcceptance.py -m docker \
+            --tb=short -v
+
+      # A bare `docker exec` is NOT the right probe here, and asserting
+      # on one was wrong the first time this ran. The container is
+      # started with `--user 0` so the entrypoint's root phase can
+      # write system paths before dropping via gosu, and `--user 0`
+      # overrides the image's USER for every later bare exec --
+      # confirmed by experiment, not inference. The backend never
+      # issues a bare exec: DockerConnection resolves the image's
+      # Config.User and passes it explicitly, so GUI and CLI commands
+      # do land unprivileged.
+      #
+      # So assert the property the backend actually relies on: the
+      # image declares a non-root default user, and an exec as that
+      # user is UID 1000 (the uid the keyring volume and every
+      # host->container write are pinned to).
+      - name: Confirm the image's default user is unprivileged
+        run: |
+          sUser=$(docker image inspect fresh-build-project:latest \
+            --format '{{.Config.User}}')
+          echo "image Config.User: '${sUser}'"
+          test -n "${sUser}"
+          test "${sUser}" != "root"
+          test "${sUser}" != "0"
+          sUid=$(docker exec --user "${sUser}" fresh-build-project id -u)
+          echo "uid as the image's declared user: ${sUid}"
+          test "${sUid}" = "1000"
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f fresh-build-project || true

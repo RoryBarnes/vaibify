@@ -28,19 +28,29 @@ browser-based dashboard for managing multiple projects.
 
 ### `vaibify init`
 
-Create a new project from a template.
+Create a new project, from a template or from nothing.
 
 ```bash
-vaibify init [--template NAME] [--force]
+vaibify init [--template NAME] [--name NAME] [--minimal] [--force]
 ```
 
 | Option           | Description                                   |
 |------------------|-----------------------------------------------|
 | `--template`     | Template name: `sandbox` or `workflow`            |
+| `--name`         | Project name; scaffolds without a template when given alone |
+| `--minimal`      | Smallest config that still builds: no optional features, no extra packages |
 | `--force`        | Overwrite existing configuration files         |
 
-Creates `vaibify.yml`, `container.conf`, and `project.json` in the current
-directory.
+With `--template`, this copies the template's files and creates
+`vaibify.yml` in the current directory. With `--name` alone it writes
+only `vaibify.yml`, which is what a script wants:
+
+```bash
+mkdir myProject && cd myProject
+vaibify init --name myProject --minimal
+```
+
+Run with neither option, it lists the available templates and exits.
 
 ### `vaibify register`
 
@@ -94,17 +104,24 @@ vaibify build [--no-cache] [--project/-p NAME]
 
 ### `vaibify start`
 
-Start the container in the background.
+Start the container. By default it attaches a terminal and holds the
+shell; `--detach` leaves it running in the background instead, which is
+what a script or a CI job needs.
 
 ```bash
-vaibify start [--gui] [--jupyter] [--project/-p NAME]
+vaibify start [--detach/-d] [--gui] [--jupyter] [--project/-p NAME]
 ```
 
 | Option             | Description                                  |
 |--------------------|----------------------------------------------|
+| `--detach`, `-d`   | Start in the background and return           |
 | `--gui`            | Launch the pipeline viewer after starting     |
 | `--jupyter`        | Start JupyterLab inside the container         |
 | `--project`, `-p`  | Target project name (optional if only one exists) |
+
+A detached container runs idle so you can `vaibify connect` into it; a
+COMMAND argument is refused with `--detach` rather than silently
+dropped.
 
 ### `vaibify stop`
 
@@ -129,11 +146,34 @@ vaibify destroy [--volumes] [--project/-p NAME]
 
 ### `vaibify status`
 
-Report the state of the container, image, and workspace volume.
+Report the state of the container, image, and workspace volume — and,
+on request, the project's AICS level and everything blocking the next
+one.
 
 ```bash
-vaibify status [--project/-p NAME]
+vaibify status [--aics] [--json] [--project/-p NAME]
 ```
+
+| Option             | Description                                  |
+|--------------------|----------------------------------------------|
+| `--aics`           | Also print the AICS level and its blockers   |
+| `--json`           | Emit environment and AICS status as one JSON object |
+
+The level and the blockers come from the same gates the dashboard
+renders, read straight from the container, so no browser and no running
+hub is needed:
+
+```bash
+vaibify status --json | python -c \
+  "import json,sys; print(json.load(sys.stdin)['dictAics']['iAICSLevel'])"
+```
+
+One criterion is honestly absent. The dashboard polls file modification
+times and therefore also evaluates `script-stale`; a single read of the
+container has no mtime history, so that criterion is not evaluated here.
+The payload says which criteria were skipped in
+`listUnevaluatedCriteria` rather than letting the silence read as a
+pass.
 
 ## Working with the Container
 
@@ -359,13 +399,68 @@ holds. `stop` **refuses any PID that is not a known live Vaibify
 session**, so it can never signal an unrelated process, and `--all`
 **excludes the current session** so a session never stops itself.
 
+## Dashboard actions from the host: `vaibify do`
+
+Everything a researcher can do from the dashboard has a name in the
+agent-action catalog (`vaibify/gui/actionCatalog.py`), and every one of
+those names is a `vaibify do` subcommand, generated from the catalog
+itself. The CLI therefore cannot drift from the dashboard: a new
+dashboard action is a new CLI command, and an action the CLI could not
+dispatch fails CI
+(`testArchitecturalInvariants.py::testEveryCatalogActionHasCliCommand`).
+
+```bash
+vaibify do                       # list every action, grouped by category
+vaibify do <action> --help       # one action's arguments
+vaibify do run-step A09          # run one step through the dashboard's own path
+vaibify do push-to-github \
+    listFilePaths='["Step/out.csv"]'
+vaibify do check-l2-readiness --json
+```
+
+| Option             | Description                                  |
+|--------------------|----------------------------------------------|
+| `--project`, `-p`  | Target project name (optional if only one exists) |
+| `--port`           | Port of the vaibify session to drive (required when several are live) |
+| `--workflow`       | Container path of the `project.json` to connect |
+| `--json`           | Emit one JSON object per line                |
+| `--dry-run`        | Print the call that would be made; send nothing |
+| `--timeout`        | Seconds to wait on the hub (0 disables the limit) |
+
+Path parameters become positional arguments (`vaibify do
+run-test-category A09 sCategory=integrity`); request-body fields are
+`key=value` pairs, coerced to numbers, booleans, and JSON by shape. A
+whole JSON object also works: `vaibify do declare-ai-model '{"sVendor":
+"...", "sModelId": "..."}'`.
+
+**A hub must be running.** These commands drive the same backend the
+browser drives, so the dashboard sees every one of them; they are not a
+second, parallel way to change a project. Start one with `vaibify` in
+another terminal.
+
+**One session per container still holds.** The CLI claims the container's
+lease for the duration of one command and releases it afterwards, so a
+container currently open in a dashboard tab answers with *"In use in
+another browser session"* rather than being taken over.
+
+**The CLI is the researcher lane.** It authenticates with the hub's
+shared session token exactly as the browser does. The `bAgentSafe` flag
+in the catalog governs what a compromised *in-container agent* may
+invoke; it does not restrict the person at their own terminal, so
+user-only actions like `clean-outputs` are available here and are marked
+in `--help`.
+
 ## Publishing
 
-The `vaibify publish` subcommands are **coming soon**. The publishing
-machinery (Zenodo archive, GitHub Actions workflow generation) is
-already available through the GUI's Settings → Publish pane; the
-CLI counterparts will land in a future release. Until then, both
-subcommands print `Not yet implemented.` and exit.
+The `vaibify publish` subcommands are **not implemented**. Both print
+`Not yet implemented.` and exit.
+
+There is no Settings → Publish pane. This section previously said the
+publishing machinery was "already available" through one; it never
+existed, and `vaibify/reproducibility/githubWorkflow.py` — the GitHub
+Actions generator behind that claim — has no caller anywhere in the
+product. Zenodo archiving is real and reachable, but through the AICS
+Level 2 workflow in the dashboard, not a publish pane.
 
 ### `vaibify publish workflow` *(coming soon)*
 

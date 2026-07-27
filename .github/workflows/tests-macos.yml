@@ -37,4 +37,4 @@ jobs:
       - name: Run tests
         timeout-minutes: 15
         run: |
-          python -m pytest tests/ -m "not docker" --tb=short -v --junitxml=junit/test-results.xml --cov --cov-report=xml --cov-report=term
+          python -m pytest tests/ -m "not docker and not docker_live and not browser" --tb=short -v --junitxml=junit/test-results.xml --cov --cov-report=xml --cov-report=term

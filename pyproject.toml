@@ -31,7 +31,9 @@ dependencies = [
     "fastapi>=0.115.0",
     "starlette>=0.49.1",
     "uvicorn>=0.20",
-    "websockets>=11.0",
+    # >=12.0 for websockets.sync.client, which the host CLI uses to
+    # drive the pipeline socket as the researcher (vaibify/cli/hubSession.py).
+    "websockets>=12.0",
     "aiofiles>=23.0",
     "jinja2>=3.1.6",
     "tqdm>=4.60",
@@ -62,6 +64,12 @@ formats = [
 dev = [
     "pytest-asyncio",
     "httpx",
+]
+browser = [
+    # Lane 1: real Chromium against a real uvicorn hub. Playwright's
+    # Python binding manages its own browser binary, so no npm, no
+    # package.json, and no JS toolchain enters the repository.
+    "pytest-playwright",
 ]
 mutation = [
     "cosmic-ray",

@@ -148,11 +148,35 @@ exercised. Concretely:
 ### Required after JS changes
 
 Type checking and string-presence contract tests do not validate UI
-correctness. Neither does a green Python suite: the frontend is not
-executed by it at all.
+correctness. Neither does the ordinary Python suite: it does not
+execute the frontend at all.
 
-**Every JS change must be loaded in a browser before it merges.** The
-check below takes about a minute and needs no Docker:
+**CI now does.** The browser lane (`tests/browser/`, run by
+`.github/workflows/browser.yml`) loads the real dashboard in real
+Chromium against a real uvicorn hub, and fails on any console error,
+uncaught promise rejection, or failed asset. Pushing a branch is
+therefore a genuine verification path, which it never used to be.
+
+Run it locally when you want the fast signal:
+
+```bash
+pip install -e '.[browser]' && python -m playwright install chromium
+python -m pytest tests/browser -m browser
+```
+
+**What the browser lane does not cover.** It drives a fail-closed fake
+Docker adapter, so it says nothing about container launch, file
+ownership on write, the real transport, terminal content, figure
+rendering, or the sync panel. Those belong to the container
+acceptance lane, which runs **nightly** — meaning drift between the
+fake and a real container is caught up to a day late. The browser lane
+failing blocks merge; the container-acceptance lane failing blocks the next release, not
+retroactively. Do not read a green browser lane as "the frontend is
+verified".
+
+The manual check below is still the right tool when you are working
+on something the lane does not assert — layout, wording, a specific
+interaction. It takes about a minute and needs no Docker:
 
 ```bash
 python -m vaibify --port 8137     # scratch port, not your usual hub
@@ -184,14 +208,42 @@ above. Start Docker, open a project, and exercise the specific path.
 
 #### If you are a delegated agent and cannot do this
 
-Say so explicitly in your report, and name the exact surface you did
-not verify — "the three JS call sites in `scriptWorkflowManager.js`
-were not executed or syntax-checked; no JS runtime on this host."
+**Push the branch and let the browser lane run it.** That is now the
+answer, and it is why the lane exists: the old rule asked delegated
+agents to load a page they had no browser for, so five of them once
+changed JavaScript in one session, none could follow the rule, and the
+merged branch was green with the frontend entirely unexecuted. A rule
+nobody can follow is not a control.
 
-Silence about an unverified surface reads as verification. That is the
-failure mode this section exists to prevent. The orchestrator runs the
-check before merging, and cannot do so if it does not know what to
-look at.
+If you also cannot push, say so explicitly and name the exact surface
+you did not verify — "the three JS call sites in
+`scriptWorkflowManager.js` were not executed; no JS runtime and no
+push on this host." Silence about an unverified surface reads as
+verification.
+
+### The three execution lanes
+
+| Lane | What is real | When | What it proves |
+|---|---|---|---|
+| browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behaviour reach the screen honestly |
+| container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands The browser lane's fake models |
+| fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `docker/**` PRs | the image still builds; the container user is unprivileged |
+
+Two properties hold these together and must not be weakened:
+
+- **The browser lane's fake is fail-closed and declared.** Every command
+  it answers is listed in `LIST_MODELLED_COMMANDS` with the container
+  assertion that confirms it; anything else raises. Never give it a
+  catch-all return — this suite already carries ~20 permissive Docker
+  mocks, and `testDockerConnectionLive.py` records where that habit
+  led. `tests/testBrowserLaneContract.py` enforces both halves,
+  including that each named container-acceptance assertion actually exists.
+- **No lane may skip itself green.** `VAIBIFY_REQUIRE_DOCKER_DAEMON`
+  and `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into
+  a failure in CI. The `docker info || exit 0` guard this replaced
+  reported success for having run nothing;
+  `tests/testDockerLiveDaemonRequirement.py` forbids its return.
+
 - Docker-dependent tests (`tests/testContainerBuildIntegration.py`)
   are excluded from routine runs and are the only tests that require
   a live container. They are parametrized via the
@@ -537,6 +589,18 @@ without discussion:
   `testGenerator`, and `syncDispatcher` for backward compatibility.
   Callers should migrate toward canonical imports over time; do not
   delete the re-exports until external callers are updated.
+- `vaibify/reproducibility/githubWorkflow.py` is implemented, tested,
+  and **unreachable** — no product code imports it. Kept rather than
+  deleted because wiring it expands remote-execution surface, which is
+  a product decision. `tests/testOrphanedPublishMachinery.py` fails if
+  the docs re-advertise it or if it gains a caller while still marked
+  unreachable.
+- `condaPackages` is refused at validation rather than installed. The
+  Dockerfile installs Miniforge for a non-pip package manager but has
+  no `conda install` step and no build argument carries the list, so
+  accepting the field produced a container without the requested
+  packages and said nothing. Wiring it is the honest fix; refusing is
+  the honest interim.
 ## Discovery commands
 
 Rather than memorizing structural facts, run these when you need them:
@@ -593,6 +657,31 @@ correct approach.
   match the identifiers it existed to catch — all three passed CI for
   months. When adding a rule here, name the test that fails when it is
   broken.
+- A CI step that reports success for having run nothing is worse than
+  no step. The live-Docker job was guarded by `docker info || exit 0`,
+  so an unreachable daemon turned it green; `pytest -m docker` was
+  selected by no job at all. Both looked like coverage on the workflow
+  list. When a check can be skipped, ask what the skip reports.
+- A source-mutating tool must not share a working tree. Running
+  `reconfirmFalsification.py` beside any other pytest run made that
+  run read half-mutated source, producing failures in tests nobody had
+  touched — twice diagnosed as flakiness or test-order leakage, which
+  is the natural wrong answer. It now mutates only inside a disposable
+  git worktree, and refuses a dirty checkout unless
+  `--include-local-diff` is passed. Note the diagnostic: with no
+  randomisation plugin installed, pytest's collection order is fixed,
+  so two identical-order runs failing in *different* tests cannot be
+  an ordering problem — that pattern means something outside pytest is
+  editing the sources.
+- An external review is evidence, not a verdict. A 2026-07-26 review
+  correctly identified the browser/container execution hole and the
+  doc drift, and was wrong about the falsification suite being
+  order-unstable. A parallel audit over-reported the fixture-collapse
+  sweep: of three flagged key pairs only one was real, because
+  `sName`/`sDirectory` are *required* to agree by the slug contract
+  and no code ever compares `sVersion` to `sExpectedVersion`. Check
+  each claim against the source before acting on it; manufacturing a
+  change to match a confident report is worse than ignoring it.
 
 ## Pointers
 

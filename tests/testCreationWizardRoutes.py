@@ -309,7 +309,6 @@ def testCreateProjectPersistsPackagesAndToggles(
             "listSystemPackages": ["gfortran", "libhdf5-dev"],
             "listPythonPackages": ["numpy", "matplotlib"],
             "sPackageManager": "conda",
-            "listCondaPackages": ["scipy"],
             "bNeverSleep": True,
             "bNetworkIsolation": True,
             "sContainerUser": "researcher",
@@ -324,9 +323,41 @@ def testCreateProjectPersistsPackagesAndToggles(
     assert "numpy" in config.listPythonPackages
     assert "matplotlib" in config.listPythonPackages
     assert config.sPackageManager == "conda"
-    assert "scipy" in config.listCondaPackages
     assert config.bNeverSleep is True
     assert config.bNetworkIsolation is True
+
+
+@pytest.mark.falsification
+def testCreateProjectRejectsCondaPackages(fixtureClient, tmp_path,
+                                          monkeypatch):
+    """Kills: accepting a package list the image build never installs.
+
+    This test previously asserted the opposite -- that ``scipy``
+    round-tripped into ``vaibify.yml``. It did, and nothing ever
+    installed it: the Dockerfile has no ``conda install`` step and no
+    build argument carries the list, so the researcher got a container
+    without the package and no indication of it. Recording a request
+    the build silently drops is the config-file equivalent of a
+    dashboard showing a state the container is not in.
+
+    Mutation: drop the ``_fnRejectUninstallablePackages`` call from the
+    create route and the request is accepted again.
+    """
+    _fnPrepSandboxTemplate(tmp_path, monkeypatch)
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sDirectory": str(tmp_path / "conda-project"),
+            "sProjectName": "conda-project",
+            "sTemplateName": "sandbox",
+            "sPythonVersion": "3.12",
+            "sPackageManager": "conda",
+            "listCondaPackages": ["scipy"],
+        },
+    )
+    assert response.status_code == 400
+    assert "conda" in response.json()["detail"].lower()
+    assert not (tmp_path / "conda-project" / "vaibify.yml").exists()
 
 
 def testCreateProjectRelativePathRejected(fixtureClient):

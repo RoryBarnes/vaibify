@@ -20,22 +20,34 @@ It prints KILLED / SURVIVED / ERROR per entry, lists any
 ``falsification``-marked test that has no registry entry, and exits
 nonzero unless every entry is KILLED and every marked test is covered.
 
-Hermetic: every touched source file's original bytes are captured up
-front and restored from that in-memory snapshot in an outer ``finally``,
-so the working tree is returned to its exact starting state (including
-uncommitted edits) on any exit path -- normal completion, exception, or
-interrupt. ``git checkout --`` is used ONLY as a last-resort backstop for
-files whose in-memory restore write itself failed; a clean run never
-touches HEAD state. The guarantee covers exactly the registry ``source``
-files; side effects a test writes elsewhere are not tracked (the marked
-tests use ``tmp_path``). Run it deliberately -- it mutates source, so it
-is NOT collected by ``pytest tests/``:
+STRUCTURAL ISOLATION -- this harness never touches your files.
+Everything runs inside a disposable git worktree checked out from HEAD
+and removed on exit. The previous design mutated the real working tree
+and restored it from an in-memory snapshot, which was correct in the
+normal case but had two failure modes that both bit in practice:
+
+* Running it beside any other pytest invocation made that other run
+  read half-mutated source, producing failures in tests nobody
+  touched. Diagnosing this as flakiness or test-order leakage is the
+  natural mistake, and it has been made more than once. A snapshot
+  cannot fix it -- only not mutating shared files can.
+* A crash between write and restore left the developer's checkout
+  mutated.
+
+Because the worktree is checked out from HEAD, uncommitted work is NOT
+included by default. Silently verifying code you do not have would
+defeat the point, so a dirty tree is refused unless you pass
+``--include-local-diff``, which copies tracked modifications *and*
+untracked non-ignored files into the worktree first.
 
     python tools/reconfirmFalsification.py
+    python tools/reconfirmFalsification.py --include-local-diff
 """
 
+import argparse
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,6 +55,11 @@ import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+
+# The tree the mutations are applied to. Rebound by main() to the
+# disposable worktree; only the registry import below reads the real
+# repository.
+PATH_TREE = REPO
 
 from tests.falsificationRegistry import LIST_FALSIFICATIONS  # noqa: E402
 
@@ -74,12 +91,16 @@ def _fiRunTests(listNodeIds):
     can be answered in one interpreter start instead of one per entry.
     """
     dictEnvironment = dict(os.environ)
+    # An editable install resolves ``vaibify`` to the real checkout, so
+    # without this the worktree's tests would import the very sources
+    # the isolation exists to leave alone.
+    dictEnvironment["PYTHONPATH"] = str(PATH_TREE)
     with tempfile.TemporaryDirectory() as sPycachePrefix:
         dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
         result = subprocess.run(
             [sys.executable, "-m", "pytest", *listNodeIds, "-q",
              "-p", "no:cacheprovider"],
-            cwd=REPO, capture_output=True, text=True,
+            cwd=PATH_TREE, capture_output=True, text=True,
             env=dictEnvironment,
         )
     return result.returncode
@@ -127,7 +148,7 @@ def _fbAllPreconditionsPassInOneRun():
 
 def _fsReconfirmOne(entry, sOriginal, bPreconditionKnownGood=False):
     """Apply one mutation, return the kill status, always restore the file."""
-    pathSource = REPO / entry.source
+    pathSource = PATH_TREE / entry.source
     if entry.old not in sOriginal:
         return "ERROR: old-text absent"
     if sOriginal.count(entry.old) != 1:
@@ -154,7 +175,7 @@ def _flistMarkedTestsWithoutEntry():
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-m", "falsification",
          "--collect-only", "-q", "-p", "no:cacheprovider"],
-        cwd=REPO, capture_output=True, text=True,
+        cwd=PATH_TREE, capture_output=True, text=True,
     )
     setMarked = {
         sLine.strip() for sLine in result.stdout.splitlines()
@@ -174,7 +195,7 @@ def _flistMarkedTestsWithoutEntry():
 def _fdictCaptureOriginals():
     """Snapshot every registry source file's bytes before any mutation."""
     return {
-        sSource: (REPO / sSource).read_text(encoding="utf-8")
+        sSource: (PATH_TREE / sSource).read_text(encoding="utf-8")
         for sSource in sorted({entry.source for entry in LIST_FALSIFICATIONS})
     }
 
@@ -184,14 +205,76 @@ def _fnRestoreOriginals(dictOriginal):
     listFailed = []
     for sSource, sBytes in dictOriginal.items():
         try:
-            (REPO / sSource).write_text(sBytes, encoding="utf-8")
+            (PATH_TREE / sSource).write_text(sBytes, encoding="utf-8")
         except OSError:
             listFailed.append(sSource)
     if listFailed:
-        subprocess.run(["git", "checkout", "--", *listFailed], cwd=REPO)
+        subprocess.run(["git", "checkout", "--", *listFailed], cwd=PATH_TREE)
 
 
-def main():
+def _flistUncommittedChanges():
+    """Return ``git status --porcelain`` lines for the real checkout."""
+    result = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=REPO,
+        capture_output=True, text=True, check=True,
+    )
+    return [sLine for sLine in result.stdout.splitlines() if sLine.strip()]
+
+
+def _flistUntrackedFiles():
+    """Return repo-relative paths git knows about but does not track."""
+    result = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"], cwd=REPO,
+        capture_output=True, text=True, check=True,
+    )
+    return [sLine for sLine in result.stdout.splitlines() if sLine.strip()]
+
+
+def fsCreateDisposableWorktree():
+    """Return the path of a fresh detached worktree checked out at HEAD."""
+    sParent = tempfile.mkdtemp(prefix="vaibify-falsification-")
+    sWorktree = str(pathlib.Path(sParent) / "tree")
+    subprocess.run(
+        ["git", "worktree", "add", "--detach", "--quiet", sWorktree,
+         "HEAD"],
+        cwd=REPO, check=True,
+    )
+    return sWorktree
+
+
+def fnCopyLocalChangesIntoWorktree(sWorktree):
+    """Replay tracked edits and untracked files into the worktree.
+
+    Untracked files matter as much as the diff: a newly written test
+    and its registry entry are both untracked on the run that first
+    confirms them, and a worktree without them reports the entry as
+    uncovered rather than killed.
+    """
+    sDiff = subprocess.run(
+        ["git", "diff", "HEAD"], cwd=REPO,
+        capture_output=True, text=True, check=True,
+    ).stdout
+    if sDiff.strip():
+        subprocess.run(
+            ["git", "apply", "-"], cwd=sWorktree,
+            input=sDiff, text=True, check=True,
+        )
+    for sRelative in _flistUntrackedFiles():
+        pathTarget = pathlib.Path(sWorktree) / sRelative
+        pathTarget.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / sRelative, pathTarget)
+
+
+def fnRemoveDisposableWorktree(sWorktree):
+    """Remove the worktree and the temporary directory holding it."""
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", sWorktree],
+        cwd=REPO, check=False, capture_output=True,
+    )
+    shutil.rmtree(pathlib.Path(sWorktree).parent, ignore_errors=True)
+
+
+def fnReconfirmAll():
     """Re-confirm all entries; exit nonzero on any failure or coverage gap."""
     dictOriginal = _fdictCaptureOriginals()
     bBatchClean = _fbAllPreconditionsPassInOneRun()
@@ -223,6 +306,50 @@ def main():
             print("  " + sNodeId)
     if listBad or listUncovered:
         sys.exit(1)
+
+
+def main():
+    """Run the re-confirmation inside a disposable worktree."""
+    global PATH_TREE
+    parser = argparse.ArgumentParser(
+        description=(
+            "Re-confirm every falsification test still kills its "
+            "recorded mutation, inside a disposable git worktree."
+        ),
+    )
+    parser.add_argument(
+        "--include-local-diff", action="store_true",
+        help=(
+            "Replay uncommitted tracked edits and untracked files into "
+            "the worktree. Without it a dirty checkout is refused, "
+            "because verifying HEAD while you hold local changes "
+            "reports on code you do not have."
+        ),
+    )
+    args = parser.parse_args()
+
+    listDirty = _flistUncommittedChanges()
+    if listDirty and not args.include_local_diff:
+        print(
+            "Refusing to run: the working tree has uncommitted changes "
+            "and this harness checks out HEAD, so it would report on "
+            "code you do not have.\nRe-run with --include-local-diff to "
+            "replay them into the worktree, or commit/stash first.",
+            file=sys.stderr,
+        )
+        for sLine in listDirty[:20]:
+            print("  " + sLine, file=sys.stderr)
+        sys.exit(2)
+
+    sWorktree = fsCreateDisposableWorktree()
+    try:
+        if args.include_local_diff:
+            fnCopyLocalChangesIntoWorktree(sWorktree)
+        PATH_TREE = pathlib.Path(sWorktree)
+        fnReconfirmAll()
+    finally:
+        PATH_TREE = REPO
+        fnRemoveDisposableWorktree(sWorktree)
 
 
 if __name__ == "__main__":

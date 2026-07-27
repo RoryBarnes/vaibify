@@ -1,0 +1,75 @@
+name: browser
+
+# The frontend, executed in a real browser.
+#
+# Until this job existed, ~30,000 lines of JavaScript were verified by
+# nothing: no runner, no linter, no type check, and no CI workflow that
+# so much as mentioned a .js file. The only guard was a manual browser
+# checklist in AGENTS.md that a delegated agent physically cannot
+# follow, and a branch once merged fully green with the frontend
+# entirely unexecuted.
+#
+# ONE cell on purpose -- Linux, one Python, Chromium. A browser journey
+# does not become more trustworthy by running 24 times across the
+# OS/Python matrix; it becomes slower.
+#
+# This lane does NOT speak for the Docker boundary. It drives a
+# fail-closed fake adapter, and the container acceptance lane is what
+# proves a real container answers the same way. This lane failing
+# blocks merge; container acceptance blocks the next release.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  browser:
+    name: 'frontend (chromium)'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,browser]"
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run the browser lane
+        timeout-minutes: 10
+        env:
+          # Turns the "playwright not installed" skip into a failure.
+          # A browser job that goes green without a browser is the same
+          # false green the docker-smoke guard used to ship.
+          VAIBIFY_REQUIRE_BROWSER: '1'
+        run: |
+          python -m pytest tests/browser -m browser --tb=short -v
+
+      # Trace, video, screenshot and console log are written by the
+      # pageDashboard fixture itself, not by pytest-playwright's
+      # --tracing/--video options: those live in the plugin's own
+      # context fixture, which this lane does not use, so passing them
+      # here produced an empty directory and a confident upload step.
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-lane-failure
+          path: test-results/
+          # NOT 'ignore'. A failed browser run with no trace means the
+          # artifact plumbing broke, and that must be visible rather
+          # than silently uploading nothing.
+          if-no-files-found: error

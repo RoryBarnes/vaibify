@@ -2113,4 +2113,133 @@ def _fdictEntry(sRel):
         old='sWord.slice(1)',
         new='sWord.slice(1).toLowerCase()',
     ),
+    Falsification(
+        # The decision is asserted as a pure value rather than through
+        # pytest.skip/pytest.fail on purpose: a guard broken the
+        # obvious way turns the run into a SKIP, and a skipped test is
+        # not a failed one, so an outcome-only test would score this
+        # mutant as surviving.
+        nodeid='tests/testDockerLiveDaemonRequirement.py::test_demanded_but_unreachable_daemon_resolves_to_failure',
+        source='tests/testDockerConnectionLive.py',
+        old="""    if bDemanded:
+        return S_OUTCOME_FAIL""",
+        new="""    if bDemanded:
+        return S_OUTCOME_SKIP""",
+    ),
+    Falsification(
+        # Reintroduces the exact shell guard that made a job
+        # advertised as live-Docker coverage report success for
+        # having run nothing.
+        nodeid='tests/testDockerLiveDaemonRequirement.py::test_no_workflow_swallows_an_unreachable_docker_daemon',
+        source='.github/workflows/tests-linux.yml',
+        old='          python -m pytest tests/ -m docker_live --tb=short -v',
+        new='          docker info >/dev/null 2>&1 || { echo "skipping"; exit 0; }\n          python -m pytest tests/ -m docker_live --tb=short -v',
+    ),
+    Falsification(
+        # The route accepted the list, wrote it to vaibify.yml, and the
+        # build dropped it silently. Removing the guard restores that.
+        nodeid='tests/testCreationWizardRoutes.py::testCreateProjectRejectsCondaPackages',
+        source='vaibify/gui/registryRoutes.py',
+        old="""        _fnRejectUninstallablePackages(request.listCondaPackages)
+        _fnRejectDuplicateProjectName(request.sProjectName)""",
+        new="""        _fnRejectDuplicateProjectName(request.sProjectName)""",
+    ),
+    Falsification(
+        # Every L2 composition fixture writes the same sha on both
+        # sides of the comparison, so removing the GitHub conjunct
+        # entirely leaves them all green. Only a drifting sha sees it.
+        nodeid='tests/testLevelGates.py::test_fbAtLeastLevel2_committed_sha_drift_blocks_l2',
+        source='vaibify/reproducibility/levelGates.py',
+        old="""    if not fbWorkflowFullySyncedWithGithub(
+        dictWorkflow, filesRepo,
+    ):
+        return False
+    if not fbWorkflowFullySyncedWithZenodo(""",
+        new="""    if not fbWorkflowFullySyncedWithZenodo(""",
+    ),
+    Falsification(
+        # Restores the claim the docs carried for months: that the
+        # mutation gate grades every pull request. It does not.
+        nodeid='tests/testDocsMatchWorkflowTriggers.py::test_documented_mutation_trigger_matches_the_workflow',
+        source='docs/testing.md',
+        old="| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |",
+        new="| `mutation.yml` | the cosmic-ray gate on a PR's changed lines (warn-only) | on pull requests |",
+    ),
+    Falsification(
+        # Strips the UNREACHABLE note while the module still has no
+        # product caller -- the state the docs were in for months.
+        nodeid='tests/testOrphanedPublishMachinery.py::testUnreachableGeneratorSaysSoOrGainsACaller',
+        source='vaibify/reproducibility/githubWorkflow.py',
+        old='UNREACHABLE -- no product code imports this module.',
+        new='Reachable from the GUI publish pane.',
+    ),
+    Falsification(
+        # Declares a gitignored generated copy as a build input. The
+        # artifact is absent on any clean checkout, so a test that only
+        # inspected RESOLVED paths scored this mutant as surviving --
+        # which is exactly what the harness reported the first time.
+        nodeid='tests/testBuildInputHash.py::testGeneratedBuildContextCopiesAreNotKeyed',
+        source='tools/computeBuildInputHash.py',
+        old='    "docker/vaibifyDo.py",',
+        new='    "docker/vaibifyDo.py",\n    "docker/director.py",',
+    ),
+    Falsification(
+        # Turns the browser lane's fail-closed adapter into the
+        # permissive mock it exists not to become.
+        nodeid='tests/testBrowserLaneContract.py::testTheFakeRaisesRatherThanInventingAnAnswer',
+        source='tests/browser/fakeDockerAdapter.py',
+        # Anchored on the line BEFORE the raise, not on the raise's
+        # first two lines: splitting a multi-line string literal left a
+        # dangling quote, so the mutation could not compile and the
+        # harness scored it ERROR -- never KILLED -- for two commits.
+        old="""            return (0, "{}")
+        raise UnmodelledContainerCall(""",
+        new="""            return (0, "{}")
+        return (0, "")
+        raise UnmodelledContainerCall(""",
+    ),
+    Falsification(
+        # A verb-only match answers 0 for any path at all -- the
+        # permissive behaviour this fake exists not to have.
+        nodeid='tests/testBrowserLaneContract.py::testModelledCommandsValidateTheirArgumentsNotJustTheVerb',
+        source='tests/browser/fakeDockerAdapter.py',
+        old='        if S_WORKSPACE_ROOT not in sCommand:',
+        new='        if False:',
+    ),
+    Falsification(
+        # Drops a build input from the fresh-build trigger while the
+        # hash still covers it -- the drift that let a script COPYed
+        # into the image merge with no fresh build.
+        nodeid='tests/testBuildInputHash.py::testFreshBuildTriggerCoversEveryHashInput',
+        source='.github/workflows/freshImageBuild.yml',
+        old="      - 'vaibify/gui/director.py'\n",
+        new="",
+    ),
+    Falsification(
+        # Moves the host CLI onto the in-container agent's credential —
+        # the wrong principal, and one the catalog deliberately fences.
+        nodeid='tests/testCliHubSessionMutationCoverage.py::test_the_cli_authenticates_as_the_researcher_not_as_the_agent',
+        source='vaibify/cli/hubSession.py',
+        old='S_BROWSER_TOKEN_HEADER = "X-Session-Token"',
+        new='S_BROWSER_TOKEN_HEADER = "X-Vaibify-Session"',
+    ),
+    Falsification(
+        # Sends the lease where the route does not read it, so the
+        # release succeeds with bReleased false and the container stays
+        # held. Observed live before this test existed.
+        nodeid='tests/testCliHubSessionMutationCoverage.py::test_release_sends_the_lease_where_the_route_reads_it',
+        source='vaibify/cli/hubSession.py',
+        old="""            None, F_BOOTSTRAP_TIMEOUT_SECONDS,
+            dictQuery={"sLeaseId": dictSession["sLeaseId"]},""",
+        new="""            {"sLeaseId": dictSession["sLeaseId"]},
+            F_BOOTSTRAP_TIMEOUT_SECONDS,""",
+    ),
+    Falsification(
+        # Paths a route by the lease's key (container name) instead of
+        # the docker id the exec behind it needs.
+        nodeid='tests/testCliHubSessionMutationCoverage.py::test_generated_paths_carry_the_container_id_not_the_name',
+        source='vaibify/cli/actionCommands.py',
+        old='    dictValues["sContainerId"] = dictSession["sContainerId"]',
+        new='    dictValues["sContainerId"] = dictSession["sContainerName"]',
+    ),
 ]

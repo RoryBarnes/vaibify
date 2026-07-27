@@ -217,6 +217,7 @@ def fbValidateConfig(dictConfig):
     listChecks = [
         _fbValidateProjectName,
         _fbValidatePackageManager,
+        _fbValidateCondaPackages,
         _fbValidateListFields,
         _fbValidateFeatures,
         _fbValidateDashboardPort,
@@ -298,6 +299,23 @@ def _fbValidatePackageManager(dictConfig):
     if sManager not in _VALID_PACKAGE_MANAGERS:
         return False
     return True
+
+
+def _fbValidateCondaPackages(dictConfig):
+    """Reject conda packages, which nothing would install.
+
+    ``condaPackages`` is parsed, serialized, and round-tripped, and the
+    image build then ignores it entirely: the Dockerfile installs
+    Miniforge for a non-pip package manager but has no ``conda
+    install`` step, and ``imageBuilder._flistBuildArgPairs`` passes no
+    build argument carrying the list. Accepting the field silently
+    produced a container without the requested packages.
+
+    Refusing is the honest behaviour until the build wiring exists.
+    Declaring packages that never arrive is the same defect class as a
+    dashboard reporting a state the container is not in.
+    """
+    return not dictConfig.get("condaPackages")
 
 
 def _fbValidateListFields(dictConfig):
