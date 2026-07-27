@@ -24,6 +24,8 @@ gap.
 import os
 import re
 
+import pytest
+
 
 _S_ENTRYPOINT = os.path.join(
     os.path.dirname(__file__), "..", "docker", "entrypoint.sh",
@@ -83,12 +85,16 @@ def testClineGetsARulesDirectoryNotAFlatSymlink():
     )
 
 
+@pytest.mark.falsification
 def testEveryAgentWithSkillsAlsoHasADocPath():
-    """No agent may be installed-for but not documented-to.
+    """Kills: an agent gaining skills but no path to the guidance.
 
     The gap this catches is real history: four agents were added to
     the skills loop while the doc-link list stayed at three names, so
     Cline shipped with skills and no project guidance.
+
+    Mutation: add an eighth agent to ``fnInstallAgentSkills``'s loop
+    without giving it a doc path.
     """
     sEntrypoint = _fsReadEntrypoint()
     listAgents = _flistAgentsTheSkillsLoopCovers(sEntrypoint)

@@ -2265,4 +2265,13 @@ def _fdictEntry(sRel):
         old='    dictValues["sContainerId"] = dictSession["sContainerId"]',
         new='    dictValues["sContainerId"] = dictSession["sContainerName"]',
     ),
+    Falsification(
+        # An agent that gets skills installed but no path to the
+        # project's guidance starts with no instructions at all --
+        # silently. Exactly how Cline shipped.
+        nodeid='tests/testEntrypointAgentDocLinks.py::testEveryAgentWithSkillsAlsoHasADocPath',
+        source='docker/entrypoint.sh',
+        old='    for sAgent in claude codex gemini opencode cline openhands pi; do',
+        new='    for sAgent in claude codex gemini opencode cline openhands pi newagent; do',
+    ),
 ]
