@@ -2144,4 +2144,17 @@ def _fdictEntry(sRel):
         _fnRejectDuplicateProjectName(request.sProjectName)""",
         new="""        _fnRejectDuplicateProjectName(request.sProjectName)""",
     ),
+    Falsification(
+        # Every L2 composition fixture writes the same sha on both
+        # sides of the comparison, so removing the GitHub conjunct
+        # entirely leaves them all green. Only a drifting sha sees it.
+        nodeid='tests/testLevelGates.py::test_fbAtLeastLevel2_committed_sha_drift_blocks_l2',
+        source='vaibify/reproducibility/levelGates.py',
+        old="""    if not fbWorkflowFullySyncedWithGithub(
+        dictWorkflow, filesRepo,
+    ):
+        return False
+    if not fbWorkflowFullySyncedWithZenodo(""",
+        new="""    if not fbWorkflowFullySyncedWithZenodo(""",
+    ),
 ]

@@ -330,6 +330,32 @@ def test_fbAtLeastLevel2_all_criteria_green_returns_true(tmp_path):
     assert fiAICSLevel(dictWorkflow, sProjectRepo) == 2
 
 
+@pytest.mark.falsification
+def test_fbAtLeastLevel2_committed_sha_drift_blocks_l2(tmp_path):
+    """Kills: dropping the GitHub conjunct from the L2 composition.
+
+    Everything is green except that the live config's commit SHA has
+    moved past the one the last verify recorded -- the researcher
+    committed and did not push. The gate itself is well covered by the
+    unit tests above, but every *composition* test writes the same
+    ``abc123`` on both sides of the comparison, so removing the GitHub
+    conjunct from ``_fbComputeLevel2`` outright would leave them all
+    green. Driving the two SHAs apart here is what makes the
+    composition observable.
+
+    Mutation: delete the ``fbWorkflowFullySyncedWithGithub`` check
+    from ``_fbComputeLevel2``.
+    """
+    sProjectRepo = str(tmp_path)
+    _fnWriteAllGreenSyncStatus(sProjectRepo)
+    dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
+    # Deliberately NOT the "abc123" the cache recorded.
+    dictWorkflow["dictRemotes"]["github"]["sCommittedSha"] = "def456"
+    assert fbAtLeastLevel1(dictWorkflow, sProjectRepo) is True
+    assert fbAtLeastLevel2(dictWorkflow, sProjectRepo) is False
+    assert fiAICSLevel(dictWorkflow, sProjectRepo) == 1
+
+
 def test_fbAtLeastLevel2_no_ai_declaration_step_returns_false(tmp_path):
     sProjectRepo = str(tmp_path)
     _fnWriteAllGreenSyncStatus(sProjectRepo)
