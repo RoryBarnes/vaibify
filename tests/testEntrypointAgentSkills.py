@@ -64,7 +64,10 @@ def test_entrypoint_installs_skills_for_each_installed_agent():
     sBody = sEntrypoint[iDefinition:sEntrypoint.index(
         "\n}", iDefinition,
     )]
-    assert "for sAgent in claude codex gemini" in sBody
+    assert "for sAgent in claude codex gemini opencode cline openhands pi" in sBody
+    assert ".config/opencode/skills" in sBody
+    assert ".cline/data/settings/skills" in sBody
+    assert ".pi/agent/skills" in sBody
     # The main flow must actually call it (defined-but-never-called
     # was exactly the failure mode of the push-manifest recorder).
     sAfterDefinition = sEntrypoint[iDefinition + len(

@@ -246,6 +246,10 @@ def _fnAddAgentUpdateEnvs(config, saRunArgs):
         ("CLAUDE", "bClaude", "bClaudeAutoUpdate"),
         ("CODEX", "bCodex", "bCodexAutoUpdate"),
         ("GEMINI", "bGemini", "bGeminiAutoUpdate"),
+        ("OPENCODE", "bOpenCode", "bOpenCodeAutoUpdate"),
+        ("CLINE", "bCline", "bClineAutoUpdate"),
+        ("OPENHANDS", "bOpenHands", "bOpenHandsAutoUpdate"),
+        ("PI", "bPi", "bPiAutoUpdate"),
     ):
         if not getattr(features, sFeature, False):
             continue
@@ -288,7 +292,10 @@ def _fbAgentBridgeRequired(config):
         return False
     return any(
         getattr(features, sFeature, False)
-        for sFeature in ("bClaude", "bCodex", "bGemini")
+        for sFeature in (
+            "bClaude", "bCodex", "bGemini", "bOpenCode", "bCline",
+            "bOpenHands", "bPi",
+        )
     )
 
 

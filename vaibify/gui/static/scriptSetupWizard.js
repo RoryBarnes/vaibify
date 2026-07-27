@@ -86,7 +86,8 @@ var VaibifySetup = (function () {
     }
 
     function fnToggleAgentAutoUpdateVisibility() {
-        ["Claude", "Codex", "Gemini"].forEach(function (sAgent) {
+        ["Claude", "Codex", "Gemini", "OpenCode", "Cline",
+            "OpenHands", "Pi"].forEach(function (sAgent) {
             var elFeature = document.getElementById("feature" + sAgent);
             var elRow = document.getElementById(
                 sAgent.toLowerCase() + "AutoUpdateRow");
@@ -104,7 +105,8 @@ var VaibifySetup = (function () {
                 fnSyncFeatureCardCheckedClass(elCheckbox);
             });
         });
-        ["Claude", "Codex", "Gemini"].forEach(function (sAgent) {
+        ["Claude", "Codex", "Gemini", "OpenCode", "Cline",
+            "OpenHands", "Pi"].forEach(function (sAgent) {
             var elFeature = document.getElementById("feature" + sAgent);
             if (elFeature) {
                 elFeature.addEventListener(
@@ -208,6 +210,10 @@ var VaibifySetup = (function () {
         fnSetAgentAutoUpdate("claude", dictConfig.bClaudeAutoUpdate);
         fnSetAgentAutoUpdate("codex", dictConfig.bCodexAutoUpdate);
         fnSetAgentAutoUpdate("gemini", dictConfig.bGeminiAutoUpdate);
+        fnSetAgentAutoUpdate("opencode", dictConfig.bOpenCodeAutoUpdate);
+        fnSetAgentAutoUpdate("cline", dictConfig.bClineAutoUpdate);
+        fnSetAgentAutoUpdate("openhands", dictConfig.bOpenHandsAutoUpdate);
+        fnSetAgentAutoUpdate("pi", dictConfig.bPiAutoUpdate);
 
         if (dictConfig.listPipPackages) {
             document.getElementById("pipPackages").value =
@@ -245,6 +251,10 @@ var VaibifySetup = (function () {
             claude: "featureClaude",
             codex: "featureCodex",
             gemini: "featureGemini",
+            opencode: "featureOpenCode",
+            cline: "featureCline",
+            openhands: "featureOpenHands",
+            pi: "featurePi",
             gpu: "featureGpu",
         };
         Object.keys(dictFeatureMap).forEach(function (sKey) {
@@ -297,6 +307,10 @@ var VaibifySetup = (function () {
             bClaudeAutoUpdate: fbReadAgentAutoUpdate("claude"),
             bCodexAutoUpdate: fbReadAgentAutoUpdate("codex"),
             bGeminiAutoUpdate: fbReadAgentAutoUpdate("gemini"),
+            bOpenCodeAutoUpdate: fbReadAgentAutoUpdate("opencode"),
+            bClineAutoUpdate: fbReadAgentAutoUpdate("cline"),
+            bOpenHandsAutoUpdate: fbReadAgentAutoUpdate("openhands"),
+            bPiAutoUpdate: fbReadAgentAutoUpdate("pi"),
         };
     }
 

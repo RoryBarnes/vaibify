@@ -27,6 +27,10 @@ class MockFeatures:
         self.bClaude = kwargs.get("bClaude", False)
         self.bCodex = kwargs.get("bCodex", False)
         self.bGemini = kwargs.get("bGemini", False)
+        self.bOpenCode = kwargs.get("bOpenCode", False)
+        self.bCline = kwargs.get("bCline", False)
+        self.bOpenHands = kwargs.get("bOpenHands", False)
+        self.bPi = kwargs.get("bPi", False)
         self.bLatex = kwargs.get("bLatex", False)
 
 
@@ -62,6 +66,10 @@ def test_flistDetermineOverlays_all_features():
         bClaude=True,
         bCodex=True,
         bGemini=True,
+        bOpenCode=True,
+        bCline=True,
+        bOpenHands=True,
+        bPi=True,
     )
     configMock = MockConfig(features=featuresAll)
 
@@ -69,7 +77,8 @@ def test_flistDetermineOverlays_all_features():
 
     listExpected = [
         "gpu", "jupyter", "rlang", "julia",
-        "database", "dvc", "claude", "codex", "gemini",
+        "database", "dvc", "node", "uv", "claude", "codex", "gemini",
+        "opencode", "cline", "openhands", "pi",
     ]
     assert listOverlays == listExpected
     assert listOverlays == _LIST_OVERLAY_ORDER

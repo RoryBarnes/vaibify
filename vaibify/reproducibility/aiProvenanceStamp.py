@@ -166,7 +166,10 @@ def _fbStampShapeIntact(dictStamp):
     if not isinstance(dictVersions, dict):
         return False
     if any(
-        sAgent not in {"claude", "codex", "gemini"}
+        sAgent not in {
+            "claude", "codex", "gemini", "opencode", "cline",
+            "openhands", "pi",
+        }
         or not isinstance(sVersion, str)
         or len(sVersion) > 200
         for sAgent, sVersion in dictVersions.items()

@@ -176,6 +176,10 @@ def _fConfigMinimal():
         bGpu=False, bClaude=False, bClaudeAutoUpdate=True,
         bCodex=False, bCodexAutoUpdate=True,
         bGemini=False, bGeminiAutoUpdate=True,
+        bOpenCode=False, bOpenCodeAutoUpdate=True,
+        bCline=False, bClineAutoUpdate=True,
+        bOpenHands=False, bOpenHandsAutoUpdate=True,
+        bPi=False, bPiAutoUpdate=True,
     )
     return SimpleNamespace(
         sProjectName="testproj",
@@ -277,14 +281,24 @@ def test_flistBuildRunArgs_claude_auto_update_false(mockX11):
     "vaibify.docker.containerManager.flistConfigureX11Args",
     return_value=[],
 )
-@pytest.mark.parametrize("sAgent", ["Codex", "Gemini"])
+@pytest.mark.parametrize(
+    "sAgent,sEnabledField,sAutoUpdateField",
+    [
+        ("Codex", "bCodex", "bCodexAutoUpdate"),
+        ("Gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("OpenCode", "bOpenCode", "bOpenCodeAutoUpdate"),
+        ("Cline", "bCline", "bClineAutoUpdate"),
+        ("OpenHands", "bOpenHands", "bOpenHandsAutoUpdate"),
+        ("Pi", "bPi", "bPiAutoUpdate"),
+    ],
+)
 def test_flistBuildRunArgs_agent_auto_update_is_provider_specific(
-    mockX11, sAgent,
+    mockX11, sAgent, sEnabledField, sAutoUpdateField,
 ):
     """Codex and Gemini use their own env keys, never Claude's key."""
     config = _fConfigMinimal()
-    setattr(config.features, "b" + sAgent, True)
-    setattr(config.features, "b" + sAgent + "AutoUpdate", False)
+    setattr(config.features, sEnabledField, True)
+    setattr(config.features, sAutoUpdateField, False)
     saArgs = flistBuildRunArgs(config)
     assert "VAIBIFY_" + sAgent.upper() + "_AUTO_UPDATE=false" in saArgs
     assert not any(
@@ -384,7 +398,10 @@ def test_fnAddAgentHostBridge_appends_when_agent_enabled():
     ]
 
 
-@pytest.mark.parametrize("sAgent", ["bCodex", "bGemini"])
+@pytest.mark.parametrize(
+    "sAgent", ["bCodex", "bGemini", "bOpenCode", "bCline",
+                "bOpenHands", "bPi"],
+)
 def test_fnAddAgentHostBridge_supports_every_provider(sAgent):
     """A non-Claude provider still gets the vaibify-do host bridge."""
     from vaibify.docker.containerManager import _fnAddAgentHostBridge

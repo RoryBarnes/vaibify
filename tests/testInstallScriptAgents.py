@@ -22,23 +22,24 @@ def _fsRunInstallerFunction(tmp_path, sFunctionCall):
     return resultProcess.stdout
 
 
-def test_agent_argument_accepts_case_insensitive_codex(tmp_path):
+def test_agent_argument_accepts_case_insensitive_opencode(tmp_path):
     sOutput = _fsRunInstallerFunction(
         tmp_path,
-        "fnParseArguments --agent=Codex; "
-        'printf "%s,%s,%s" "${bInstallClaude}" "${bInstallCodex}" "${bInstallGemini}"',
+        "fnParseArguments --agent=OpenCode; "
+        'printf "%s,%s" "${bInstallOpenCode}" "${bInstallCline}"',
     )
-    assert sOutput == "false,true,false"
+    assert sOutput == "true,false"
 
 
 def test_install_flags_persist_all_selected_init_defaults(tmp_path):
     _fsRunInstallerFunction(
         tmp_path,
-        "fnParseArguments --install-claude --install-codex --install-gemini; "
+        "fnParseArguments --install-claude --install-codex --install-gemini "
+        "--install-opencode --install-cline --install-openhands --install-pi; "
         "fnEnableAgentDefaults",
     )
     assert (tmp_path / ".vaibify" / "agent-defaults").read_text().splitlines() == [
-        "claude", "codex", "gemini",
+        "claude", "codex", "gemini", "opencode", "cline", "openhands", "pi",
     ]
 
 
@@ -48,10 +49,11 @@ def test_init_applies_only_known_installer_agent_defaults(tmp_path, monkeypatch)
 
     pathDefaults = tmp_path / ".vaibify" / "agent-defaults"
     pathDefaults.parent.mkdir()
-    pathDefaults.write_text("codex\nunexpected\n")
+    pathDefaults.write_text("opencode\nopenhands\nunexpected\n")
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
     config = ProjectConfig()
     _fnApplyInstallerAgentDefaults(config)
-    assert config.features.bCodex is True
+    assert config.features.bOpenCode is True
+    assert config.features.bOpenHands is True
     assert config.features.bClaude is False
     assert config.features.bGemini is False

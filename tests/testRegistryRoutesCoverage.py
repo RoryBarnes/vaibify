@@ -571,9 +571,19 @@ class TestClaudeAutoUpdateSettings:
         assert response.status_code == 409
 
 
-@pytest.mark.parametrize("sAgent", ["codex", "gemini"])
+@pytest.mark.parametrize(
+    "sAgent,sAutoUpdateField",
+    [
+        ("codex", "bCodexAutoUpdate"),
+        ("gemini", "bGeminiAutoUpdate"),
+        ("opencode", "bOpenCodeAutoUpdate"),
+        ("cline", "bClineAutoUpdate"),
+        ("openhands", "bOpenHandsAutoUpdate"),
+        ("pi", "bPiAutoUpdate"),
+    ],
+)
 def test_post_updates_each_new_agent_auto_update_setting(
-    fixtureSettingsClient, tmp_path, sAgent,
+    fixtureSettingsClient, tmp_path, sAgent, sAutoUpdateField,
 ):
     """Each provider writes only its own nested YAML preference."""
     sProjectDir = str(tmp_path / (sAgent + "-project"))
@@ -587,17 +597,16 @@ def test_post_updates_each_new_agent_auto_update_setting(
     fixtureSettingsClient.post(
         "/api/registry", json={"sDirectory": sProjectDir},
     )
-    sCapitalized = sAgent.capitalize()
     response = fixtureSettingsClient.post(
         "/api/containers/" + sAgent + "-project/settings",
-        json={"b" + sCapitalized + "AutoUpdate": False},
+        json={sAutoUpdateField: False},
     )
     assert response.status_code == 200
     assert response.json()["bRestartRequired"] is True
     response = fixtureSettingsClient.get(
         "/api/containers/" + sAgent + "-project/settings",
     )
-    assert response.json()["b" + sCapitalized + "AutoUpdate"] is False
+    assert response.json()[sAutoUpdateField] is False
 
 
 # ---------------------------------------------------------------

@@ -1004,12 +1004,15 @@ const VaibifyApp = (function () {
             return "";
         }
         var listAgents = [
-            {sKey: "claude", sLabel: "Claude Code"},
-            {sKey: "codex", sLabel: "Codex"},
-            {sKey: "gemini", sLabel: "Gemini CLI"},
+            {sKey: "claude", sLabel: "Claude Code", sField: "bClaude"},
+            {sKey: "codex", sLabel: "Codex", sField: "bCodex"},
+            {sKey: "gemini", sLabel: "Gemini CLI", sField: "bGemini"},
+            {sKey: "opencode", sLabel: "OpenCode", sField: "bOpenCode"},
+            {sKey: "cline", sLabel: "Cline", sField: "bCline"},
+            {sKey: "openhands", sLabel: "OpenHands", sField: "bOpenHands"},
+            {sKey: "pi", sLabel: "Pi", sField: "bPi"},
         ].filter(function (dictAgent) {
-            var sInstalled = "b" + dictAgent.sKey[0].toUpperCase() +
-                dictAgent.sKey.slice(1) + "Installed";
+            var sInstalled = dictAgent.sField + "Installed";
             return dictSettings[sInstalled];
         });
         if (listAgents.length === 0) return "";
@@ -1023,9 +1026,7 @@ const VaibifyApp = (function () {
     }
 
     function _fsAgentAutoUpdateRow(dictAgent) {
-        var sCapitalized = dictAgent.sKey[0].toUpperCase() +
-            dictAgent.sKey.slice(1);
-        var sSetting = "b" + sCapitalized + "AutoUpdate";
+        var sSetting = dictAgent.sField + "AutoUpdate";
         var sChecked = _dictWorkflowState.dictContainerSettings[sSetting]
             ? " checked" : "";
         return fsSettingsRowHtml(dictAgent.sLabel + " auto-update",
@@ -1115,9 +1116,8 @@ const VaibifyApp = (function () {
 
     function fnApplyAgentSaveResult(sAgent, bValue, dictResult) {
         if (_dictWorkflowState.dictContainerSettings) {
-            var sCapitalized = sAgent[0].toUpperCase() + sAgent.slice(1);
             _dictWorkflowState.dictContainerSettings[
-                "b" + sCapitalized + "AutoUpdate"
+                _fsAgentSettingsField(sAgent) + "AutoUpdate"
             ] = bValue;
         }
         _dictWorkflowState.bAgentRestartNeeded =
@@ -1129,9 +1129,8 @@ const VaibifyApp = (function () {
     async function fnSaveAgentAutoUpdate(sAgent, bValue) {
         var sId = _dictSessionState.sContainerId;
         if (!sId) return;
-        var sCapitalized = sAgent[0].toUpperCase() + sAgent.slice(1);
         var dictPayload = {};
-        dictPayload["b" + sCapitalized + "AutoUpdate"] = bValue;
+        dictPayload[_fsAgentSettingsField(sAgent) + "AutoUpdate"] = bValue;
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/containers/"
@@ -1142,6 +1141,15 @@ const VaibifyApp = (function () {
             fnShowToast(
                 "Failed to save " + sAgent + " setting", "error");
         }
+    }
+
+    function _fsAgentSettingsField(sAgent) {
+        var dictFields = {
+            claude: "bClaude", codex: "bCodex", gemini: "bGemini",
+            opencode: "bOpenCode", cline: "bCline",
+            openhands: "bOpenHands", pi: "bPi",
+        };
+        return dictFields[sAgent];
     }
 
     function fnRenderGlobalSettings() {

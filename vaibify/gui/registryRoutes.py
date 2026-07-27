@@ -28,6 +28,16 @@ _I_MAXIMUM_CPU_LIMIT = 1024
 _F_MINIMUM_MEMORY_LIMIT_GIGABYTES = 0.25
 _F_MAXIMUM_MEMORY_LIMIT_GIGABYTES = 1024.0
 
+_T_AGENT_SETTINGS = (
+    ("claude", "bClaude", "bClaudeAutoUpdate", "Claude Code"),
+    ("codex", "bCodex", "bCodexAutoUpdate", "Codex"),
+    ("gemini", "bGemini", "bGeminiAutoUpdate", "Gemini CLI"),
+    ("opencode", "bOpenCode", "bOpenCodeAutoUpdate", "OpenCode"),
+    ("cline", "bCline", "bClineAutoUpdate", "Cline"),
+    ("openhands", "bOpenHands", "bOpenHandsAutoUpdate", "OpenHands"),
+    ("pi", "bPi", "bPiAutoUpdate", "Pi"),
+)
+
 
 class AddProjectRequest(BaseModel):
     sDirectory: str
@@ -46,6 +56,10 @@ class CreateProjectRequest(BaseModel):
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
     bGeminiAutoUpdate: bool = True
+    bOpenCodeAutoUpdate: bool = True
+    bClineAutoUpdate: bool = True
+    bOpenHandsAutoUpdate: bool = True
+    bPiAutoUpdate: bool = True
     listSystemPackages: List[str] = []
     listPythonPackages: List[str] = []
     listCondaPackages: List[str] = []
@@ -63,6 +77,10 @@ class ContainerSettingsRequest(BaseModel):
     bClaudeAutoUpdate: Optional[bool] = None
     bCodexAutoUpdate: Optional[bool] = None
     bGeminiAutoUpdate: Optional[bool] = None
+    bOpenCodeAutoUpdate: Optional[bool] = None
+    bClineAutoUpdate: Optional[bool] = None
+    bOpenHandsAutoUpdate: Optional[bool] = None
+    bPiAutoUpdate: Optional[bool] = None
     iCpuLimit: Optional[int] = None
     fMemoryLimitGigabytes: Optional[float] = None
 
@@ -477,25 +495,17 @@ def _fnRegisterContainerSettings(app, dictCtx):
         )
         dictResult = {
             "bNeverSleep": configProject.bNeverSleep,
-            "bClaudeInstalled": configProject.features.bClaude,
-            "bCodexInstalled": configProject.features.bCodex,
-            "bGeminiInstalled": configProject.features.bGemini,
             "iCpuLimit": configProject.iCpuLimit,
             "fMemoryLimitGigabytes":
                 configProject.fMemoryLimitGigabytes,
         }
-        if configProject.features.bClaude:
-            dictResult["bClaudeAutoUpdate"] = (
-                configProject.features.bClaudeAutoUpdate
-            )
-        if configProject.features.bCodex:
-            dictResult["bCodexAutoUpdate"] = (
-                configProject.features.bCodexAutoUpdate
-            )
-        if configProject.features.bGemini:
-            dictResult["bGeminiAutoUpdate"] = (
-                configProject.features.bGeminiAutoUpdate
-            )
+        for _, sEnabledField, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
+            bInstalled = getattr(configProject.features, sEnabledField)
+            dictResult[f"{sEnabledField}Installed"] = bInstalled
+            if bInstalled:
+                dictResult[sAutoUpdateField] = getattr(
+                    configProject.features, sAutoUpdateField
+                )
         return dictResult
 
     @app.post("/api/containers/{sName}/settings")
@@ -512,22 +522,12 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 dictProject["sConfigPath"], "neverSleep",
                 request.bNeverSleep,
             )
-        if request.bClaudeAutoUpdate is not None:
-            bRestartRequired = _fbApplyAgentAutoUpdate(
-                dictProject["sConfigPath"],
-                "claude",
-                request.bClaudeAutoUpdate,
-            )
-        if request.bCodexAutoUpdate is not None:
-            bRestartRequired = _fbApplyAgentAutoUpdate(
-                dictProject["sConfigPath"], "codex",
-                request.bCodexAutoUpdate,
-            ) or bRestartRequired
-        if request.bGeminiAutoUpdate is not None:
-            bRestartRequired = _fbApplyAgentAutoUpdate(
-                dictProject["sConfigPath"], "gemini",
-                request.bGeminiAutoUpdate,
-            ) or bRestartRequired
+        for sAgent, _, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
+            bAutoUpdate = getattr(request, sAutoUpdateField)
+            if bAutoUpdate is not None:
+                bRestartRequired = _fbApplyAgentAutoUpdate(
+                    dictProject["sConfigPath"], sAgent, bAutoUpdate,
+                ) or bRestartRequired
         if request.iCpuLimit is not None:
             _fnUpdateYamlNumberField(
                 dictProject["sConfigPath"], "cpuLimit",
@@ -550,11 +550,7 @@ def _fbApplyAgentAutoUpdate(sConfigPath, sAgent, bNewValue):
     """Apply an installed agent's update preference; return bChanged."""
     from vaibify.config.projectConfig import fconfigLoadFromFile
     configProject = fconfigLoadFromFile(sConfigPath)
-    dictFields = {
-        "claude": ("bClaude", "bClaudeAutoUpdate", "Claude Code"),
-        "codex": ("bCodex", "bCodexAutoUpdate", "Codex"),
-        "gemini": ("bGemini", "bGeminiAutoUpdate", "Gemini CLI"),
-    }
+    dictFields = {tFields[0]: tFields[1:] for tFields in _T_AGENT_SETTINGS}
     sEnabledField, sAutoUpdateField, sDisplayName = dictFields[sAgent]
     if not getattr(configProject.features, sEnabledField):
         raise HTTPException(
@@ -1065,9 +1061,10 @@ def _fnWriteProjectConfig(request):
 def _fdictBuildYamlFromRequest(request):
     """Translate a CreateProjectRequest into a camelCase YAML dict."""
     dictFeatures = _fdictFeaturesFromList(request.listFeatures)
-    dictFeatures["claudeAutoUpdate"] = request.bClaudeAutoUpdate
-    dictFeatures["codexAutoUpdate"] = request.bCodexAutoUpdate
-    dictFeatures["geminiAutoUpdate"] = request.bGeminiAutoUpdate
+    for sAgent, _, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
+        dictFeatures[f"{sAgent}AutoUpdate"] = getattr(
+            request, sAutoUpdateField
+        )
     dictYaml = {
         "projectName": request.sProjectName,
         "containerUser": request.sContainerUser,
@@ -1110,7 +1107,8 @@ def _fnAttachOptionalPackages(dictYaml, request):
 
 _LIST_FEATURE_NAMES = [
     "jupyter", "rLanguage", "julia", "database",
-    "dvc", "latex", "claude", "codex", "gemini", "gpu",
+    "dvc", "latex", "claude", "codex", "gemini", "opencode",
+    "cline", "openhands", "pi", "gpu",
 ]
 
 

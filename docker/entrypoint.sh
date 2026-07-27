@@ -252,9 +252,16 @@ fnInstallAgentSkills() {
         return 0
     fi
     local sAgent
-    for sAgent in claude codex gemini; do
+    for sAgent in claude codex gemini opencode cline openhands pi; do
         command -v "${sAgent}" > /dev/null 2>&1 || continue
         local sTargetDir="/home/${CONTAINER_USER}/.${sAgent}/skills"
+        if [ "${sAgent}" = "opencode" ]; then
+            sTargetDir="/home/${CONTAINER_USER}/.config/opencode/skills"
+        elif [ "${sAgent}" = "cline" ]; then
+            sTargetDir="/home/${CONTAINER_USER}/.cline/data/settings/skills"
+        elif [ "${sAgent}" = "pi" ]; then
+            sTargetDir="/home/${CONTAINER_USER}/.pi/agent/skills"
+        fi
         mkdir -p "${sTargetDir}"
         cp -R "${sSourceDir}/." "${sTargetDir}/"
         echo "[vaib] ${sAgent} skills installed: " \
@@ -646,9 +653,10 @@ fnSourceBinariesInBashrc() {
 # ---------------------------------------------------------------------------
 fnPersistAgentConfig() {
     local sAgent="$1"
+    local sHomeConfig="${2:-/home/${CONTAINER_USER}/.${sAgent}}"
     local sVolumeConfig="${WORKSPACE}/.${sAgent}"
-    local sHomeConfig="/home/${CONTAINER_USER}/.${sAgent}"
     mkdir -p "${sVolumeConfig}"
+    mkdir -p "$(dirname "${sHomeConfig}")"
     if [ -d "${sHomeConfig}" ] && [ ! -L "${sHomeConfig}" ]; then
         cp -an "${sHomeConfig}/." "${sVolumeConfig}/" 2>/dev/null || true
         rm -rf "${sHomeConfig}"
@@ -664,10 +672,14 @@ fnPersistAgentConfig() {
 # ---------------------------------------------------------------------------
 fnPersistInstalledAgentConfigs() {
     local sAgent
-    for sAgent in claude codex gemini; do
-        command -v "${sAgent}" > /dev/null 2>&1 || continue
-        fnPersistAgentConfig "${sAgent}"
-    done
+    command -v claude > /dev/null 2>&1 && fnPersistAgentConfig claude
+    command -v codex > /dev/null 2>&1 && fnPersistAgentConfig codex
+    command -v gemini > /dev/null 2>&1 && fnPersistAgentConfig gemini
+    command -v opencode > /dev/null 2>&1 && fnPersistAgentConfig \
+        opencode "/home/${CONTAINER_USER}/.config/opencode"
+    command -v cline > /dev/null 2>&1 && fnPersistAgentConfig cline
+    command -v openhands > /dev/null 2>&1 && fnPersistAgentConfig openhands
+    command -v pi > /dev/null 2>&1 && fnPersistAgentConfig pi
 }
 
 # ---------------------------------------------------------------------------
@@ -738,6 +750,18 @@ fnPrintSummary() {
     fi
     if command -v gemini > /dev/null 2>&1; then
         echo "  Gemini:    $(gemini --version 2>&1)"
+    fi
+    if command -v opencode > /dev/null 2>&1; then
+        echo "  OpenCode:  $(opencode --version 2>&1)"
+    fi
+    if command -v cline > /dev/null 2>&1; then
+        echo "  Cline:     $(cline --version 2>&1)"
+    fi
+    if command -v openhands > /dev/null 2>&1; then
+        echo "  OpenHands: $(openhands --version 2>&1)"
+    fi
+    if command -v pi > /dev/null 2>&1; then
+        echo "  Pi:        $(pi --version 2>&1)"
     fi
     if command -v R > /dev/null 2>&1; then
         echo "  R:         $(R --version | head -1)"
@@ -1098,6 +1122,27 @@ PYEOF
     echo "[vaib] Gemini auto-update set to ${sFlag}."
 }
 
+fnRunAgentAutoUpdate() {
+    local sAgentName="$1"
+    local sFlag="$2"
+    shift 2
+    if [ "${sFlag}" != "true" ]; then
+        echo "[vaib] ${sAgentName} auto-update disabled."
+        return
+    fi
+    if [ "${VAIBIFY_NETWORK_ISOLATED:-false}" = "true" ]; then
+        fnAppendStartupWarning "${sAgentName}" "agent-update-deferred" \
+            "network isolation is enabled"
+        return
+    fi
+    if "$@"; then
+        echo "[vaib] ${sAgentName} auto-update completed."
+    else
+        fnAppendStartupWarning "${sAgentName}" "agent-update-failed" \
+            "update command exited non-zero"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # fnSourceBinariesInEnv: Re-establish binary PATH from root-phase profile.d
 # ---------------------------------------------------------------------------
@@ -1171,6 +1216,23 @@ fnRunWorkspacePhase() {
     fi
     if command -v gemini > /dev/null 2>&1; then
         fnConfigureGeminiAutoUpdate
+    fi
+    if command -v opencode > /dev/null 2>&1; then
+        fnRunAgentAutoUpdate "OpenCode" \
+            "${VAIBIFY_OPENCODE_AUTO_UPDATE:-true}" opencode upgrade
+    fi
+    if command -v cline > /dev/null 2>&1; then
+        fnRunAgentAutoUpdate "Cline" \
+            "${VAIBIFY_CLINE_AUTO_UPDATE:-true}" cline update
+    fi
+    if command -v openhands > /dev/null 2>&1; then
+        fnRunAgentAutoUpdate "OpenHands" \
+            "${VAIBIFY_OPENHANDS_AUTO_UPDATE:-true}" \
+            uv tool upgrade openhands
+    fi
+    if command -v pi > /dev/null 2>&1; then
+        fnRunAgentAutoUpdate "Pi" \
+            "${VAIBIFY_PI_AUTO_UPDATE:-true}" pi update --self
     fi
     fnBuildBinaries
     fnSourceBinariesInBashrc

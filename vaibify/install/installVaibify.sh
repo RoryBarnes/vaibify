@@ -7,9 +7,10 @@
 # Vaibify bin directory to the user's shell configuration.
 #
 # Usage:
-#   sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini]
+#   sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|opencode|cline|openhands|pi]
 #                         [--install-claude] [--install-codex]
-#                         [--install-gemini]
+#                         [--install-gemini] [--install-opencode]
+#                         [--install-cline] [--install-openhands] [--install-pi]
 
 set -e
 
@@ -17,6 +18,10 @@ VC_REPO="https://github.com/RoryBarnes/Vaibify.git"
 bInstallClaude=false
 bInstallCodex=false
 bInstallGemini=false
+bInstallOpenCode=false
+bInstallCline=false
+bInstallOpenHands=false
+bInstallPi=false
 bAssumeYes=false
 
 # ---------------------------------------------------------------------------
@@ -40,20 +45,32 @@ fnParseArguments() {
             --install-gemini)
                 bInstallGemini=true
                 ;;
+            --install-opencode)
+                bInstallOpenCode=true
+                ;;
+            --install-cline)
+                bInstallCline=true
+                ;;
+            --install-openhands)
+                bInstallOpenHands=true
+                ;;
+            --install-pi)
+                bInstallPi=true
+                ;;
             --agent=*)
                 fnSelectAgent "${1#--agent=}"
                 ;;
             --agent)
                 shift
                 if [ $# -eq 0 ]; then
-                    fnPrintError "--agent requires claude, codex, or gemini"
+                    fnPrintError "--agent requires a supported agent name"
                     exit 1
                 fi
                 fnSelectAgent "$1"
                 ;;
             *)
                 fnPrintError "Unknown option: $1"
-                echo "Usage: sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini] [--install-claude] [--install-codex] [--install-gemini]" >&2
+                echo "Usage: sh installVaibify.sh [-y|--yes] [--agent=claude|codex|gemini|opencode|cline|openhands|pi] [--install-claude] [--install-codex] [--install-gemini] [--install-opencode] [--install-cline] [--install-openhands] [--install-pi]" >&2
                 exit 1
                 ;;
         esac
@@ -70,8 +87,12 @@ fnSelectAgent() {
         claude) bInstallClaude=true ;;
         codex) bInstallCodex=true ;;
         gemini) bInstallGemini=true ;;
+        opencode) bInstallOpenCode=true ;;
+        cline) bInstallCline=true ;;
+        openhands) bInstallOpenHands=true ;;
+        pi) bInstallPi=true ;;
         *)
-            fnPrintError "Unknown agent: $1 (choose claude, codex, or gemini)"
+            fnPrintError "Unknown agent: $1 (choose claude, codex, gemini, opencode, cline, openhands, or pi)"
             exit 1
             ;;
     esac
@@ -364,6 +385,18 @@ fnEnableAgentDefaults() {
     if [ "${bInstallGemini}" = true ]; then
         printf '%s\n' "gemini" >> "${sDefaultsFile}"
     fi
+    if [ "${bInstallOpenCode}" = true ]; then
+        printf '%s\n' "opencode" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallCline}" = true ]; then
+        printf '%s\n' "cline" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallOpenHands}" = true ]; then
+        printf '%s\n' "openhands" >> "${sDefaultsFile}"
+    fi
+    if [ "${bInstallPi}" = true ]; then
+        printf '%s\n' "pi" >> "${sDefaultsFile}"
+    fi
     chmod 600 "${sDefaultsFile}"
     echo "[install] Selected agent defaults will be enabled by vaibify init:"
     sed 's/^/  - /' "${sDefaultsFile}"
@@ -416,7 +449,9 @@ elif [ "${sPlatform}" = "Linux" ]; then
 fi
 
 if [ "${bInstallClaude}" = true ] || [ "${bInstallCodex}" = true ] \
-    || [ "${bInstallGemini}" = true ]; then
+    || [ "${bInstallGemini}" = true ] || [ "${bInstallOpenCode}" = true ] \
+    || [ "${bInstallCline}" = true ] || [ "${bInstallOpenHands}" = true ] \
+    || [ "${bInstallPi}" = true ]; then
     fnEnableAgentDefaults
 fi
 

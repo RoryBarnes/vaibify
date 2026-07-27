@@ -51,6 +51,10 @@ example:
 claude --dangerously-skip-permissions
 codex
 gemini
+opencode
+cline
+openhands
+pi
 ```
 
 Each CLI receives the same Vaibify context, skills, and `vaibify-do`

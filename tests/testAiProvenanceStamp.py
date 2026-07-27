@@ -184,8 +184,8 @@ def test_capture_survives_unreachable_container(tmp_path, monkeypatch):
 def test_agent_version_stamp_rejects_unexpected_provider_name():
     """The provider-version record admits only known CLI identities.
 
-    Kills: remove the ``sAgent not in {\"claude\", \"codex\", \"gemini\"}``
-    check from ``_fbStampShapeIntact`` in ``aiProvenanceStamp.py``.
+    Kills: remove the known-provider check from ``_fbStampShapeIntact``
+    in ``aiProvenanceStamp.py``.
     """
     dictWorkflow = _fdictWorkflowWithOneModel()
     dictStamp = fdictBuildAiProvenanceStamp(
@@ -193,6 +193,15 @@ def test_agent_version_stamp_rejects_unexpected_provider_name():
         dictAgentCliVersions={"unexpected": "1.0"},
     )
     assert fbStampMatchesDeclaration(dictStamp, dictWorkflow) is False
+
+
+def test_agent_version_stamp_accepts_additional_provider_name():
+    """Versions captured from an installed additional agent are valid."""
+    dictWorkflow = _fdictWorkflowWithOneModel()
+    dictStamp = fdictBuildAiProvenanceStamp(
+        dictWorkflow, "/nonexistent", dictAgentCliVersions={"pi": "1.0"},
+    )
+    assert fbStampMatchesDeclaration(dictStamp, dictWorkflow) is True
 
 
 @pytest.mark.falsification

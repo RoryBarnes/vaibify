@@ -1,0 +1,16 @@
+# Vaibify — shared uv overlay for OpenHands
+
+ARG BASE_IMAGE=vaibify:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+USER ${CONTAINER_USER}
+
+RUN curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+        --connect-timeout 30 https://astral.sh/uv/install.sh \
+        -o /tmp/uv-install.sh \
+    && sh /tmp/uv-install.sh \
+    && rm -f /tmp/uv-install.sh
+
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"

@@ -1,0 +1,17 @@
+# Vaibify — OpenCode CLI overlay
+
+ARG BASE_IMAGE=vaibify:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+USER ${CONTAINER_USER}
+
+RUN (curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+        --connect-timeout 30 https://opencode.ai/install \
+        -o /tmp/opencode-install.sh \
+    && bash /tmp/opencode-install.sh \
+    && rm -f /tmp/opencode-install.sh) \
+    || { echo "vaibify build: OpenCode installation failed" >&2; exit 1; }
+
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"

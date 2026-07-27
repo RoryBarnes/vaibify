@@ -47,6 +47,10 @@ class WizardConfigRequest(BaseModel):
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
     bGeminiAutoUpdate: bool = True
+    bOpenCodeAutoUpdate: bool = True
+    bClineAutoUpdate: bool = True
+    bOpenHandsAutoUpdate: bool = True
+    bPiAutoUpdate: bool = True
 
 
 class ValidateResponse(BaseModel):
@@ -211,6 +215,10 @@ def _fdictConfigToWizardFormat(config):
         "bClaudeAutoUpdate": config.features.bClaudeAutoUpdate,
         "bCodexAutoUpdate": config.features.bCodexAutoUpdate,
         "bGeminiAutoUpdate": config.features.bGeminiAutoUpdate,
+        "bOpenCodeAutoUpdate": config.features.bOpenCodeAutoUpdate,
+        "bClineAutoUpdate": config.features.bClineAutoUpdate,
+        "bOpenHandsAutoUpdate": config.features.bOpenHandsAutoUpdate,
+        "bPiAutoUpdate": config.features.bPiAutoUpdate,
     }
 
 
@@ -226,6 +234,10 @@ def _flistEnabledFeatures(features):
         "claude": features.bClaude,
         "codex": features.bCodex,
         "gemini": features.bGemini,
+        "opencode": features.bOpenCode,
+        "cline": features.bCline,
+        "openhands": features.bOpenHands,
+        "pi": features.bPi,
         "gpu": features.bGpu,
     }
     return [s for s, b in dictMap.items() if b]
@@ -237,6 +249,10 @@ def _fdictWizardToYaml(request):
     dictFeatures["claudeAutoUpdate"] = request.bClaudeAutoUpdate
     dictFeatures["codexAutoUpdate"] = request.bCodexAutoUpdate
     dictFeatures["geminiAutoUpdate"] = request.bGeminiAutoUpdate
+    dictFeatures["opencodeAutoUpdate"] = request.bOpenCodeAutoUpdate
+    dictFeatures["clineAutoUpdate"] = request.bClineAutoUpdate
+    dictFeatures["openhandsAutoUpdate"] = request.bOpenHandsAutoUpdate
+    dictFeatures["piAutoUpdate"] = request.bPiAutoUpdate
     listRepos = _flistReposFromUrls(request.listRepositories)
     dictYaml = {
         "projectName": request.sProjectName,
@@ -264,7 +280,8 @@ def _fdictFeaturesFromList(listFeatures):
     """Convert a list of feature name strings to a bool dict."""
     listAllFeatures = [
         "jupyter", "rLanguage", "julia", "database",
-        "dvc", "latex", "claude", "codex", "gemini", "gpu",
+        "dvc", "latex", "claude", "codex", "gemini", "opencode",
+        "cline", "openhands", "pi", "gpu",
     ]
     return {s: s in listFeatures for s in listAllFeatures}
 

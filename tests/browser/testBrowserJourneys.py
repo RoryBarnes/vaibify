@@ -239,6 +239,10 @@ def testTheDockerFakeRefusesUnmodelledCalls(serverHub):
     [
         ("codex", "browser-codex", "bCodex", "bCodexAutoUpdate"),
         ("gemini", "browser-gemini", "bGemini", "bGeminiAutoUpdate"),
+        ("opencode", "browser-opencode", "bOpenCode", "bOpenCodeAutoUpdate"),
+        ("cline", "browser-cline", "bCline", "bClineAutoUpdate"),
+        ("openhands", "browser-openhands", "bOpenHands", "bOpenHandsAutoUpdate"),
+        ("pi", "browser-pi", "bPi", "bPiAutoUpdate"),
     ],
 )
 def testCreationWizardPersistsSelectedAgent(

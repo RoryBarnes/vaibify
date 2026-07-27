@@ -247,10 +247,10 @@ def testCreateProjectDisablesClaudeAutoUpdate(
     assert config.features.bClaudeAutoUpdate is False
 
 
-def testCreateProjectPersistsCodexAndGeminiSettings(
+def testCreateProjectPersistsAdditionalAgentSettings(
     fixtureClient, tmp_path, monkeypatch,
 ):
-    """Provider fields do not collapse into the legacy Claude setting."""
+    """Each provider retains its own enablement and update preference."""
     from vaibify.config.projectConfig import fconfigLoadFromFile
     _fnPrepSandboxTemplate(tmp_path, monkeypatch)
     sProjectDir = str(tmp_path / "multi-agent")
@@ -260,9 +260,14 @@ def testCreateProjectPersistsCodexAndGeminiSettings(
             "sDirectory": sProjectDir,
             "sProjectName": "multi-agent",
             "sTemplateName": "sandbox",
-            "listFeatures": ["codex", "gemini"],
+            "listFeatures": ["codex", "gemini", "opencode", "cline",
+                             "openhands", "pi"],
             "bCodexAutoUpdate": False,
             "bGeminiAutoUpdate": True,
+            "bOpenCodeAutoUpdate": False,
+            "bClineAutoUpdate": True,
+            "bOpenHandsAutoUpdate": False,
+            "bPiAutoUpdate": True,
         },
     )
     assert response.status_code == 200
@@ -271,6 +276,14 @@ def testCreateProjectPersistsCodexAndGeminiSettings(
     assert config.features.bCodexAutoUpdate is False
     assert config.features.bGemini is True
     assert config.features.bGeminiAutoUpdate is True
+    assert config.features.bOpenCode is True
+    assert config.features.bOpenCodeAutoUpdate is False
+    assert config.features.bCline is True
+    assert config.features.bClineAutoUpdate is True
+    assert config.features.bOpenHands is True
+    assert config.features.bOpenHandsAutoUpdate is False
+    assert config.features.bPi is True
+    assert config.features.bPiAutoUpdate is True
 
 
 def testCreateProjectPersistsGithubAuthSecret(

@@ -102,6 +102,10 @@ def _fnApplyInstallerAgentDefaults(config):
         "claude": "bClaude",
         "codex": "bCodex",
         "gemini": "bGemini",
+        "opencode": "bOpenCode",
+        "cline": "bCline",
+        "openhands": "bOpenHands",
+        "pi": "bPi",
     }
     for sAgent in pathDefaults.read_text(encoding="utf-8").splitlines():
         sField = dictFields.get(sAgent.strip().lower())

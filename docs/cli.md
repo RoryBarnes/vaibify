@@ -32,12 +32,12 @@ The host installer can select which in-container agent CLIs a later
 `vaibify init` enables by default:
 
 ```bash
-sh vaibify/install/installVaibify.sh --agent=Codex --install-gemini
+sh vaibify/install/installVaibify.sh --agent=OpenCode --install-pi
 ```
 
-Accepted provider names are `claude`, `codex`, and `gemini`; the long forms
-are `--install-claude`, `--install-codex`, and `--install-gemini`. These
-choices are defaults only: each new project's `vaibify.yml` remains the
+Accepted provider names are `claude`, `codex`, `gemini`, `opencode`, `cline`,
+`openhands`, and `pi`; each also has a matching `--install-<provider>` flag.
+These choices are defaults only: each new project's `vaibify.yml` remains the
 authority, and can enable or disable any provider independently.
 
 ### `vaibify init`

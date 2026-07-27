@@ -39,7 +39,7 @@ def _fsHashWorkspacePrompt(connectionDocker, sContainerId):
 def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
     """Return installed CLI versions observed inside the live container."""
     sCommand = (
-        'for sAgent in claude codex gemini; do '
+        'for sAgent in claude codex gemini opencode cline openhands pi; do '
         'if command -v "${sAgent}" >/dev/null 2>&1; then '
         'sVersion=$(timeout 5 "${sAgent}" --version 2>/dev/null | head -n 1); '
         'printf "%s\\t%s\\n" "${sAgent}" "${sVersion}"; fi; done'
@@ -56,7 +56,10 @@ def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
     dictVersions = {}
     for sLine in resultExec.sStdout.splitlines():
         sAgent, sSeparator, sVersion = sLine.partition("\t")
-        if sSeparator and sAgent in {"claude", "codex", "gemini"}:
+        if sSeparator and sAgent in {
+            "claude", "codex", "gemini", "opencode", "cline",
+            "openhands", "pi",
+        }:
             dictVersions[sAgent] = sVersion[:200]
     return dictVersions
 

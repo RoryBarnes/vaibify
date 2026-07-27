@@ -51,6 +51,14 @@ Nested under the `features` key:
 | `codexAutoUpdate` | boolean | `true` | Update Codex when the container starts |
 | `gemini`     | boolean | `false` | Install Google Gemini CLI        |
 | `geminiAutoUpdate` | boolean | `true` | Allow Gemini CLI to update itself |
+| `opencode`   | boolean | `false` | Install OpenCode CLI             |
+| `opencodeAutoUpdate` | boolean | `true` | Update OpenCode when the container starts |
+| `cline`      | boolean | `false` | Install Cline CLI                |
+| `clineAutoUpdate` | boolean | `true` | Update Cline when the container starts |
+| `openhands`  | boolean | `false` | Install OpenHands CLI            |
+| `openhandsAutoUpdate` | boolean | `true` | Update OpenHands when the container starts |
+| `pi`         | boolean | `false` | Install Pi coding agent          |
+| `piAutoUpdate` | boolean | `true` | Update Pi when the container starts |
 | `gpu`        | boolean | `false` | Enable NVIDIA GPU passthrough    |
 
 All enabled CLIs receive the same Vaibify context, skills, persistent
