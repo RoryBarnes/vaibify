@@ -205,9 +205,19 @@ RUN pip install --no-cache-dir claude-monitor
 # the shared library, so the examples are pure liability. The upstream
 # CMake already adds -std=legacy -fallow-argument-mismatch for
 # gfortran >= 10, so no compatibility flag is needed here.
-RUN git clone --depth 1 \
+#
+# Pinned to a commit, not a branch. A moving default branch makes two
+# builds of the "same" image link different numerical libraries, which
+# is precisely the drift a reproducibility tool must not ship. Bump it
+# deliberately; a shallow fetch of one SHA keeps the clone cheap.
+ARG MULTINEST_COMMIT=a06c192c5a940a71a35cf6fb8a5fbf66df4ac0b6
+RUN mkdir -p /tmp/MultiNest \
+    && git -C /tmp/MultiNest init -q \
+    && git -C /tmp/MultiNest remote add origin \
         https://github.com/JohannesBuchner/MultiNest.git \
-        /tmp/MultiNest \
+    && git -C /tmp/MultiNest fetch -q --depth 1 origin \
+        "${MULTINEST_COMMIT}" \
+    && git -C /tmp/MultiNest checkout -q FETCH_HEAD \
     && cmake -S /tmp/MultiNest -B /tmp/MultiNest/build \
     && make -C /tmp/MultiNest/build -j"$(nproc)" \
         multinest_shared multinest_static \
