@@ -303,12 +303,28 @@ def test_build_stages_the_curated_doc_set():
     assert "fnStageCuratedDocs" in sBuild[iPrepare:iNext]
 
 
-def _fsExtractLinkFunction():
-    """Return the fnLinkRepoClaudeMd bash function body from entrypoint.sh."""
-    sEntrypoint = _fsReadDockerFile("entrypoint.sh")
-    iStart = sEntrypoint.index("fnLinkRepoClaudeMd() {")
+def _fsExtractBashFunction(sEntrypoint, sName):
+    """Return one bash function's source, brace to closing brace."""
+    iStart = sEntrypoint.index(f"{sName}() {{")
     iEnd = sEntrypoint.index("\n}", iStart) + 2
     return sEntrypoint[iStart:iEnd]
+
+
+def _fsExtractLinkFunction():
+    """Return fnLinkRepoClaudeMd plus the helper it calls.
+
+    The linker delegates Cline's `.clinerules/` directory to
+    ``fnLinkClineRules``, so extracting the caller alone leaves the
+    snippet calling an undefined function and bash exits 127 -- a
+    harness failure that looks exactly like a product failure. Both
+    are pulled so this still exercises the real shell.
+    """
+    sEntrypoint = _fsReadDockerFile("entrypoint.sh")
+    return (
+        _fsExtractBashFunction(sEntrypoint, "fnLinkClineRules")
+        + "\n"
+        + _fsExtractBashFunction(sEntrypoint, "fnLinkRepoClaudeMd")
+    )
 
 
 def testLinkRepoClaudeMdCanonicalizesAgentsMd(tmp_path):
