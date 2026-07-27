@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev587 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev604 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae897711"></script>
+      <script src="_static/documentation_options.js?v=9b92ad32"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -137,8 +137,9 @@ rule are intact:</p>
 invariants, and <strong>falsification tests</strong> (kill-confirmed tests, proven to
 fail when the guard they defend is broken) — plus a standing re-kill
 harness (<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/reconfirmFalsification.py</span></code>) and a warn-only
-cosmic-ray mutation gate on pull requests. See <a class="reference internal" href="testing.html"><span class="std std-doc">Testing</span></a> for
-what each is, why falsification testing matters, and how to run them all.</p>
+cosmic-ray mutation gate that is run <strong>on demand</strong>, not per pull
+request. See <a class="reference internal" href="testing.html"><span class="std std-doc">Testing</span></a> for what each is, why falsification
+testing matters, and how to run them all.</p>
 </section>
 <section id="portability-and-ci">
 <h2>Portability and CI<a class="headerlink" href="#portability-and-ci" title="Link to this heading"></a></h2>

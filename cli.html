@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.1.dev587 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.1.dev604 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae897711"></script>
+      <script src="_static/documentation_options.js?v=9b92ad32"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -89,6 +89,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-sessions-stop"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span> <span class="pre">stop</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#dashboard-actions-from-the-host-vaibify-do">Dashboard actions from the host: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing">Publishing</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-publish-workflow-coming-soon"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> <em>(coming soon)</em></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibify-publish-archive-coming-soon"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">archive</span></code> <em>(coming soon)</em></a></li>
@@ -179,8 +180,8 @@ directory. Projects are registered automatically when you run
 <h2>Project Setup<a class="headerlink" href="#project-setup" title="Link to this heading"></a></h2>
 <section id="vaibify-init">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code><a class="headerlink" href="#vaibify-init" title="Link to this heading"></a></h3>
-<p>Create a new project from a template.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span><span class="o">[</span>--template<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+<p>Create a new project, from a template or from nothing.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span><span class="o">[</span>--template<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--minimal<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -193,13 +194,25 @@ directory. Projects are registered automatically when you run
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--template</span></code></p></td>
 <td><p>Template name: <code class="docutils literal notranslate"><span class="pre">sandbox</span></code> or <code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--name</span></code></p></td>
+<td><p>Project name; scaffolds without a template when given alone</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--minimal</span></code></p></td>
+<td><p>Smallest config that still builds: no optional features, no extra packages</p></td>
+</tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--force</span></code></p></td>
 <td><p>Overwrite existing configuration files</p></td>
 </tr>
 </tbody>
 </table>
-<p>Creates <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> in the current
-directory.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">--template</span></code>, this copies the template’s files and creates
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> in the current directory. With <code class="docutils literal notranslate"><span class="pre">--name</span></code> alone it writes
+only <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, which is what a script wants:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>myProject<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>myProject
+vaibify<span class="w"> </span>init<span class="w"> </span>--name<span class="w"> </span>myProject<span class="w"> </span>--minimal
+</pre></div>
+</div>
+<p>Run with neither option, it lists the available templates and exits.</p>
 </section>
 <section id="vaibify-register">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">register</span></code><a class="headerlink" href="#vaibify-register" title="Link to this heading"></a></h3>
@@ -267,8 +280,10 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 </section>
 <section id="vaibify-start">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code><a class="headerlink" href="#vaibify-start" title="Link to this heading"></a></h3>
-<p>Start the container in the background.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>--gui<span class="o">]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<p>Start the container. By default it attaches a terminal and holds the
+shell; <code class="docutils literal notranslate"><span class="pre">--detach</span></code> leaves it running in the background instead, which is
+what a script or a CI job needs.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>--detach/-d<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gui<span class="o">]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -278,17 +293,23 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--gui</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--detach</span></code>, <code class="docutils literal notranslate"><span class="pre">-d</span></code></p></td>
+<td><p>Start in the background and return</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--gui</span></code></p></td>
 <td><p>Launch the pipeline viewer after starting</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--jupyter</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--jupyter</span></code></p></td>
 <td><p>Start JupyterLab inside the container</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
 <td><p>Target project name (optional if only one exists)</p></td>
 </tr>
 </tbody>
 </table>
+<p>A detached container runs idle so you can <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code> into it; a
+COMMAND argument is refused with <code class="docutils literal notranslate"><span class="pre">--detach</span></code> rather than silently
+dropped.</p>
 </section>
 <section id="vaibify-stop">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code><a class="headerlink" href="#vaibify-stop" title="Link to this heading"></a></h3>
@@ -321,10 +342,40 @@ vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="
 </section>
 <section id="vaibify-status">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">status</span></code><a class="headerlink" href="#vaibify-status" title="Link to this heading"></a></h3>
-<p>Report the state of the container, image, and workspace volume.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<p>Report the state of the container, image, and workspace volume — and,
+on request, the project’s AICS level and everything blocking the next
+one.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--aics<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--aics</span></code></p></td>
+<td><p>Also print the AICS level and its blockers</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
+<td><p>Emit environment and AICS status as one JSON object</p></td>
+</tr>
+</tbody>
+</table>
+<p>The level and the blockers come from the same gates the dashboard
+renders, read straight from the container, so no browser and no running
+hub is needed:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;import json,sys; print(json.load(sys.stdin)[&#39;dictAics&#39;][&#39;iAICSLevel&#39;])&quot;</span>
+</pre></div>
+</div>
+<p>One criterion is honestly absent. The dashboard polls file modification
+times and therefore also evaluates <code class="docutils literal notranslate"><span class="pre">script-stale</span></code>; a single read of the
+container has no mtime history, so that criterion is not evaluated here.
+The payload says which criteria were skipped in
+<code class="docutils literal notranslate"><span class="pre">listUnevaluatedCriteria</span></code> rather than letting the silence read as a
+pass.</p>
 </section>
 </section>
 <section id="working-with-the-container">
@@ -630,13 +681,78 @@ session</strong>, so it can never signal an unrelated process, and <code class="
 <strong>excludes the current session</strong> so a session never stops itself.</p>
 </section>
 </section>
+<section id="dashboard-actions-from-the-host-vaibify-do">
+<h2>Dashboard actions from the host: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code><a class="headerlink" href="#dashboard-actions-from-the-host-vaibify-do" title="Link to this heading"></a></h2>
+<p>Everything a researcher can do from the dashboard has a name in the
+agent-action catalog (<code class="docutils literal notranslate"><span class="pre">vaibify/gui/actionCatalog.py</span></code>), and every one of
+those names is a <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> subcommand, generated from the catalog
+itself. The CLI therefore cannot drift from the dashboard: a new
+dashboard action is a new CLI command, and an action the CLI could not
+dispatch fails CI
+(<code class="docutils literal notranslate"><span class="pre">testArchitecturalInvariants.py::testEveryCatalogActionHasCliCommand</span></code>).</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span><span class="k">do</span><span class="w">                       </span><span class="c1"># list every action, grouped by category</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>&lt;action&gt;<span class="w"> </span>--help<span class="w">       </span><span class="c1"># one action&#39;s arguments</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>A09<span class="w">          </span><span class="c1"># run one step through the dashboard&#39;s own path</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>push-to-github<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="nv">listFilePaths</span><span class="o">=</span><span class="s1">&#39;[&quot;Step/out.csv&quot;]&#39;</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>check-l2-readiness<span class="w"> </span>--json
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<td><p>Target project name (optional if only one exists)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--port</span></code></p></td>
+<td><p>Port of the vaibify session to drive (required when several are live)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--workflow</span></code></p></td>
+<td><p>Container path of the <code class="docutils literal notranslate"><span class="pre">project.json</span></code> to connect</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
+<td><p>Emit one JSON object per line</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--dry-run</span></code></p></td>
+<td><p>Print the call that would be made; send nothing</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--timeout</span></code></p></td>
+<td><p>Seconds to wait on the hub (0 disables the limit)</p></td>
+</tr>
+</tbody>
+</table>
+<p>Path parameters become positional arguments (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">run-test-category</span> <span class="pre">A09</span> <span class="pre">sCategory=integrity</span></code>); request-body fields are
+<code class="docutils literal notranslate"><span class="pre">key=value</span></code> pairs, coerced to numbers, booleans, and JSON by shape. A
+whole JSON object also works: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">declare-ai-model</span> <span class="pre">'{&quot;sVendor&quot;:</span> <span class="pre">&quot;...&quot;,</span> <span class="pre">&quot;sModelId&quot;:</span> <span class="pre">&quot;...&quot;}'</span></code>.</p>
+<p><strong>A hub must be running.</strong> These commands drive the same backend the
+browser drives, so the dashboard sees every one of them; they are not a
+second, parallel way to change a project. Start one with <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> in
+another terminal.</p>
+<p><strong>One session per container still holds.</strong> The CLI claims the container’s
+lease for the duration of one command and releases it afterwards, so a
+container currently open in a dashboard tab answers with <em>“In use in
+another browser session”</em> rather than being taken over.</p>
+<p><strong>The CLI is the researcher lane.</strong> It authenticates with the hub’s
+shared session token exactly as the browser does. The <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> flag
+in the catalog governs what a compromised <em>in-container agent</em> may
+invoke; it does not restrict the person at their own terminal, so
+user-only actions like <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code> are available here and are marked
+in <code class="docutils literal notranslate"><span class="pre">--help</span></code>.</p>
+</section>
 <section id="publishing">
 <h2>Publishing<a class="headerlink" href="#publishing" title="Link to this heading"></a></h2>
-<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code> subcommands are <strong>coming soon</strong>. The publishing
-machinery (Zenodo archive, GitHub Actions workflow generation) is
-already available through the GUI’s Settings → Publish pane; the
-CLI counterparts will land in a future release. Until then, both
-subcommands print <code class="docutils literal notranslate"><span class="pre">Not</span> <span class="pre">yet</span> <span class="pre">implemented.</span></code> and exit.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code> subcommands are <strong>not implemented</strong>. Both print
+<code class="docutils literal notranslate"><span class="pre">Not</span> <span class="pre">yet</span> <span class="pre">implemented.</span></code> and exit.</p>
+<p>There is no Settings → Publish pane. This section previously said the
+publishing machinery was “already available” through one; it never
+existed, and <code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/githubWorkflow.py</span></code> — the GitHub
+Actions generator behind that claim — has no caller anywhere in the
+product. Zenodo archiving is real and reachable, but through the AICS
+Level 2 workflow in the dashboard, not a publish pane.</p>
 <section id="vaibify-publish-workflow-coming-soon">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> <em>(coming soon)</em><a class="headerlink" href="#vaibify-publish-workflow-coming-soon" title="Link to this heading"></a></h3>
 <p>Generate a GitHub Actions workflow from <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.

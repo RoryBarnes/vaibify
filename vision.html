@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vision &mdash; Vaibify 0.0.1.dev587 documentation</title>
+  <title>Vision &mdash; Vaibify 0.0.1.dev604 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae897711"></script>
+      <script src="_static/documentation_options.js?v=9b92ad32"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -234,10 +234,17 @@ scientifically wrong.</p></li>
 </section>
 <section id="where-vaibify-sits">
 <h2>Where vaibify sits<a class="headerlink" href="#where-vaibify-sits" title="Link to this heading"></a></h2>
-<p>At time of writing, vaibify targets <strong>L1 working, L2 as the
-near-term goal, L3 as a stretch goal for a companion demonstration</strong>
-(the GJ 1132 XUV paper appendix). L4 and L5 are described here for
-completeness; the 2026 development effort does not attempt them.</p>
+<p>Vaibify implements <strong>L1, L2, and L3</strong>, and stops there by design.
+All three have working enforcement in
+<code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/levelGates.py</span></code>: <code class="docutils literal notranslate"><span class="pre">fbAtLeastLevel1</span></code>,
+<code class="docutils literal notranslate"><span class="pre">_fbComputeLevel2</span></code>’s seven conjuncts, and <code class="docutils literal notranslate"><span class="pre">fbAtLeastLevel3</span></code> (L2 plus
+seven readiness verifiers plus a current attestation), each with a
+blocker list that tells the researcher exactly what is missing.</p>
+<p>L4 and L5 are described here for completeness and are <strong>not
+implemented</strong>: they depend on institutional archiving and third-party
+attestation that sit outside a local-first tool. See
+<a class="reference internal" href="reproducibility.html"><span class="std std-doc">reproducibility.md</span></a>, which is the normative
+statement of the L3 ceiling.</p>
 <p>Two deliberate design choices shape the implementation.</p>
 <p><strong>Local-first.</strong> The workspace is a directory on the scientist’s
 own machine, mounted into a container; artifacts stay on the

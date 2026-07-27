@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev587 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev604 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae897711"></script>
+      <script src="_static/documentation_options.js?v=9b92ad32"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -68,6 +68,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#falsification-testing-vs-the-mutation-gate-two-different-jobs">Falsification testing vs. the mutation gate — two different jobs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-the-suites-locally">Running the suites locally</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-three-execution-lanes">The three execution lanes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#background">Background</a></li>
 </ul>
 </li>
@@ -110,27 +111,34 @@ question each one answers.</p>
 <tr class="row-odd"><th class="head"><p>Kind</p></th>
 <th class="head"><p>Question it answers</p></th>
 <th class="head"><p>Where</p></th>
-<th class="head"><p>Count</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><strong>Unit / behavior tests</strong></p></td>
 <td><p>Does input <em>X</em> produce output <em>Y</em>?</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">tests/</span></code></p></td>
-<td><p>~6,500</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Architectural invariants</strong></p></td>
 <td><p>Is the codebase wired together the way it must be?</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code></p></td>
-<td><p>~52</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Falsification tests</strong></p></td>
 <td><p>If a safety guard broke, would any test <em>notice</em>?</p></td>
 <td><p>marked <code class="docutils literal notranslate"><span class="pre">&#64;pytest.mark.falsification</span></code> across <code class="docutils literal notranslate"><span class="pre">tests/</span></code></p></td>
-<td><p>~146</p></td>
 </tr>
 </tbody>
 </table>
+<p>Counts are deliberately not written here. They were, and they went
+stale: this table claimed ~146 falsification tests long after the real
+number passed 290, which is the same prose-drifts-from-code failure the
+falsification tests themselves exist to catch. The live numbers are on
+the README badges, refreshed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> on every push to <code class="docutils literal notranslate"><span class="pre">main</span></code>.
+To count them yourself:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;not docker and not docker_live&quot;</span><span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;::&quot;</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/testArchitecturalInvariants.py<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;::&quot;</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>falsification<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;::&quot;</span>
+</pre></div>
+</div>
 <p>The first two are conventional. The third is the one that needs
 explaining.</p>
 <section id="why-falsification-tests-exist">
@@ -216,50 +224,52 @@ runs them as two separate workflows:</p>
 <tbody>
 <tr class="row-even"><td><p>What it mutates</p></td>
 <td><p>the guards our <em>existing</em> falsification tests already defend</p></td>
-<td><p>the <em>newly changed</em> code in a pull request</p></td>
+<td><p>the code a branch changed against a chosen base</p></td>
 </tr>
 <tr class="row-odd"><td><p>What it answers</p></td>
 <td><p>“do our existing guard-tests still catch their known breaks?”</p></td>
-<td><p>“did this PR add a guard with <strong>no</strong> defending test?”</p></td>
+<td><p>“did this branch add a guard with <strong>no</strong> defending test?”</p></td>
 </tr>
 <tr class="row-even"><td><p>Direction</p></td>
 <td><p>backward-looking — maintains the committed suite</p></td>
 <td><p>forward-looking — discovers new gaps</p></td>
 </tr>
-<tr class="row-odd"><td><p>On failure</p></td>
+<tr class="row-odd"><td><p>When it runs</p></td>
+<td><p>automatically, on every pull request</p></td>
+<td><p><strong>manually only</strong> — see below</p></td>
+</tr>
+<tr class="row-even"><td><p>On failure</p></td>
 <td><p><strong>fails the job</strong> (a guard lost its test)</p></td>
 <td><p><strong>warns only</strong> — never fails the build</p></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Why warn-only, and how you are alerted.</strong> The mutation gate never puts
-a red ✗ on a pull request. Mutation testing inevitably produces
-<em>equivalent mutants</em> — code changes with no observable effect (e.g.
-reordering a commutative comparison) — that <em>no</em> test could ever catch,
-so failing the build on every survivor would cry wolf and train everyone
-to ignore it. Instead the gate reports each surviving mutant three ways, on
-the pull request itself:</p>
-<ul class="simple">
-<li><p>a <strong>sticky PR comment</strong> — a single comment the gate updates in place on
-every run (never a new one each time), listing every surviving mutant;
-it is the hardest signal to miss and reflects the latest run, including
-a clean “all killed” state,</p></li>
-<li><p>an inline <strong><code class="docutils literal notranslate"><span class="pre">::warning::</span></code> annotation</strong> on the exact changed line, shown
-in the PR’s <em>Files changed</em> tab, and</p></li>
-<li><p>a <strong>job-summary table</strong> on the workflow run (module, line, operator,
-function).</p></li>
-</ul>
-<p>So the signal is “here are the newly changed lines a test would not have
-caught if they were wrong” — a review prompt, not a pass/fail verdict.
-Read it on any PR that changes Python under <code class="docutils literal notranslate"><span class="pre">vaibify/</span></code>; a clean run says
-so explicitly (“All N mutant(s) on the changed lines were killed”). The
-comment is best-effort: a pull request from a fork gets a read-only token
-and cannot be commented on, in which case the annotations and job summary
-still appear.</p>
+<p><strong>The mutation gate is manual, and that is a real gap.</strong> It triggers on
+<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> only. It used to run per-PR, but mutation-testing a
+large feature-branch diff exceeded the 60-minute ceiling and was
+cancelled before it could post any signal — an advisory gate that dies
+on the PRs that matter most is pure friction. So it was made on-demand
+(commit <code class="docutils literal notranslate"><span class="pre">94abe35</span></code>), which means <strong>Python can merge with no mutation
+feedback at all</strong>. Falsification and the architectural invariants are
+still graded for real on every PR; the mutation gate is not.</p>
+<p>Run it deliberately from the Actions tab or with
+<code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">workflow</span> <span class="pre">run</span> <span class="pre">mutation.yml</span></code>, choosing <code class="docutils literal notranslate"><span class="pre">base_ref</span></code> (default <code class="docutils literal notranslate"><span class="pre">main</span></code>) and
+<code class="docutils literal notranslate"><span class="pre">max_mutants</span></code> (default 300, <code class="docutils literal notranslate"><span class="pre">0</span></code> = uncapped). Any mutants dropped by the
+cap are reported, never silently discarded.</p>
+<p><strong>Why warn-only.</strong> Mutation testing inevitably produces <em>equivalent
+mutants</em> — code changes with no observable effect (e.g. reordering a
+commutative comparison) — that <em>no</em> test could ever catch, so failing
+the build on every survivor would cry wolf and train everyone to ignore
+it. Surviving mutants are surfaced as <code class="docutils literal notranslate"><span class="pre">::warning::</span></code> annotations on the
+changed lines and as a job-summary table (module, line, operator,
+function). The sticky-PR-comment step is still in the workflow but is
+inert while the trigger is manual: it is guarded on
+<code class="docutils literal notranslate"><span class="pre">event_name</span> <span class="pre">==</span> <span class="pre">pull_request</span></code>, kept only so re-enabling the per-PR mode
+is a one-line change.</p>
 <p><strong>Do the two gates overlap?</strong> Barely, and by design. They mutate
 <em>different</em> sets of lines: falsification re-checks only lines that already
 carry a committed falsification test, while the mutation gate touches only
-lines a pull request <em>changed</em>. The two intersect just when a PR edits an
+lines a branch <em>changed</em>. The two intersect just when a branch edits an
 already-guarded line — where the double coverage is harmless. Otherwise
 they are complementary: falsification stops old guarantees from decaying,
 the mutation gate flags new code that arrived without a guarantee.</p>
@@ -305,15 +315,61 @@ cosmic-ray<span class="w"> </span>init<span class="w"> </span>cosmic-ray.toml<sp
 <td><p>a representative subset (Ubuntu + macOS × Python 3.9 &amp; 3.14)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mutation.yml</span></code></p></td>
-<td><p>the cosmic-ray gate on a PR’s changed lines (warn-only)</p></td>
-<td><p>on pull requests</p></td>
+<td><p>the cosmic-ray gate on a branch’s changed lines (warn-only)</p></td>
+<td><p>manual (<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">badges.yml</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">browser.yml</span></code></p></td>
+<td><p>the dashboard in real Chromium against a real uvicorn hub</p></td>
+<td><p>on pull requests (one Linux/Python/Chromium cell)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code></p></td>
+<td><p>the modelled container commands, against a real container</p></td>
+<td><p>nightly + manual</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code></p></td>
+<td><p>a full image build from scratch, then acceptance</p></td>
+<td><p>weekly, manual, and on <code class="docutils literal notranslate"><span class="pre">docker/**</span></code> pull requests</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">badges.yml</span></code></p></td>
 <td><p>recomputes the live test / falsification / invariant counts</p></td>
 <td><p>on push to <code class="docutils literal notranslate"><span class="pre">main</span></code></p></td>
 </tr>
 </tbody>
 </table>
+</section>
+<section id="the-three-execution-lanes">
+<h2>The three execution lanes<a class="headerlink" href="#the-three-execution-lanes" title="Link to this heading"></a></h2>
+<p>Most of this suite runs in one process with the Docker daemon and the
+browser both absent. Three lanes exist because that leaves two real
+boundaries unexercised, and both have shipped bugs a green suite could
+not see.</p>
+<p><strong>The browser lane (<code class="docutils literal notranslate"><span class="pre">browser.yml</span></code>)</strong> loads the real dashboard in real Chromium
+against a real uvicorn hub and fails on any console error, uncaught
+promise rejection, or failed asset. It runs on one cell — a browser
+journey does not become more trustworthy by running 24 times across
+the OS/Python matrix. Its Docker adapter is a <strong>fail-closed fake</strong>:
+every command it answers is declared in <code class="docutils literal notranslate"><span class="pre">LIST_MODELLED_COMMANDS</span></code>, and
+anything else raises rather than returning a default. That rule exists
+because this suite already carries ~20 permissive Docker mocks, one of
+which answers success to any command it does not recognise.</p>
+<p><strong>The container-acceptance lane (<code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code>)</strong> puts each of those modelled
+commands to a real container, so a fake that drifts from the daemon is
+caught rather than believed. Every entry in the fake’s contract names
+an assertion in <code class="docutils literal notranslate"><span class="pre">tests/testContainerAcceptance.py</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">testEveryNamedLaneTwoAssertionExists</span></code> fails if one of those names is
+fiction. It runs nightly, which means <strong>drift is caught up to a day
+late</strong>: the browser lane failing blocks merge, container acceptance blocks the next
+release, not retroactively.</p>
+<p><strong>The fresh-image lane (<code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code>)</strong> builds the image from scratch. Lane
+2 reuses a cached image keyed by <code class="docutils literal notranslate"><span class="pre">tools/computeBuildInputHash.py</span></code> —
+which hashes every build input, including the entrypoint, the agent
+CLI, the overlays, the skills, the staged-doc <em>sources</em>, and the
+generator itself — so it says nothing about whether the image still
+builds.</p>
+<p>None of the three may skip itself green. <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_DOCKER_DAEMON</span></code>
+and <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_BROWSER</span></code> turn each lane’s convenience skip into a
+failure in CI, because the guard they replaced (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span> <span class="pre">||</span> <span class="pre">exit</span> <span class="pre">0</span></code>)
+reported success for having run nothing.</p>
 <p>The harness runs on a <em>subset</em> because whether a test catches its
 mutation is deterministic and OS/Python-independent; the full-matrix
 coverage of the tests themselves already comes from the unit-test
