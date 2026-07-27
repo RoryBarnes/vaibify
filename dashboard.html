@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev604 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev612 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9b92ad32"></script>
+      <script src="_static/documentation_options.js?v=90ac69a2"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -175,16 +175,24 @@ at any corner of the screen tells you where the project stands.</p>
 container. The terminal runs in your browser over WebSocket and behaves
 like a standard terminal emulator. Multiple sessions can run
 concurrently — open as many as you like.</p>
-<p>If Claude Code is enabled for the project, run</p>
+<p>If an agent CLI is enabled for the project, start it from a terminal. For
+example:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>claude<span class="w"> </span>--dangerously-skip-permissions
+codex
+gemini
+opencode
+cline
+openhands
+pi
 </pre></div>
 </div>
-<p>from a terminal session to start an in-container coding agent. The
-option’s name sounds alarming, but inside a vaibify container it is
-the intended mode: the container is an isolated sandbox, the agent
-runs as an unprivileged user with no sudo, and everything it edits is
-tracked in git and hash-pinned in the project manifest. Your
-protection comes from verifying results, not from approving each
+<p>Each CLI receives the same Vaibify context, skills, and <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>
+dashboard bridge. Claude’s option skips its per-command prompts; use an
+equivalent unattended mode for another provider only when you explicitly
+intend it. The container is an isolated sandbox, the agent runs as an
+unprivileged user with no sudo, and everything it edits is tracked in git
+and hash-pinned in the project manifest. Your protection comes from
+verifying results, not from approving each
 command — see the <strong>Using AI</strong> section of the <a class="reference internal" href="#the-help-panel"><span class="xref myst">Help panel</span></a>
 and the <a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a>. The agent can in turn ask the
 dashboard to run steps, generate tests, push to GitHub, and so on —
@@ -534,7 +542,8 @@ the endpoint to probe files on your computer.</p></li>
 <strong>Adopt repo-root context file</strong> when no project context file
 exists yet. The context file (<code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code>) is the
 standing instructions the in-container agent reads; the entrypoint
-symlinks it to both root names (<code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> and <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>) so
+symlinks it to provider-recognized root names (<code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code>) so
 any agent tooling finds it. Once it exists, click its file row to
 view and edit it in place (saves go through a dedicated,
 path-fixed route; the generic editor still refuses <code class="docutils literal notranslate"><span class="pre">.vaibify/</span></code>
@@ -737,7 +746,7 @@ contains:</p>
 <ul class="simple">
 <li><p>A link to the full online documentation.</p></li>
 <li><p><strong>Using AI</strong> — how to start the in-container coding agent
-(<code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--dangerously-skip-permissions</span></code>) and why skipping
+(Claude Code, Codex, or Gemini) and why skipping
 per-command permission prompts is the intended, safe mode inside the
 sandbox: the container isolates the agent from your host, every
 edit is tracked in git and hash-pinned, and a full rebuild
@@ -887,9 +896,8 @@ what is actually on disk, not what a tool merely touched.</p>
 </section>
 <section id="agent-actions">
 <h2>Agent actions<a class="headerlink" href="#agent-actions" title="Link to this heading"></a></h2>
-<p>When an AI coding agent is running inside the container (typically
-Claude Code, started by typing <code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--dangerously-skip-permissions</span></code>
-in the terminal), it can ask the dashboard to perform named operations
+<p>When an AI coding agent is running inside the container (Claude Code,
+Codex, or Gemini), it can ask the dashboard to perform named operations
 on the user’s behalf. These <em>agent actions</em> are the bridge between the
 agent’s text-only world and the dashboard’s verified state. This
 scheme enforces deterministic behavior.</p>

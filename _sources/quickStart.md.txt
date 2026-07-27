@@ -42,7 +42,7 @@ explains what the field controls.
 | 3. Project Name | The container name. Lowercase letters, digits, and hyphens. | folder name |
 | 4. Python Version | Vaibify supports 3.9 through 3.14. | 3.12 |
 | 5. Repositories | Git URLs to clone into the container at startup. Skip if you have none yet. | — |
-| 6. Features & Authentication | Toggle Jupyter, R, Julia, LaTeX, Claude Code, and GitHub authentication. | LaTeX on |
+| 6. Features & Authentication | Toggle Jupyter, R, Julia, LaTeX, Claude Code, Codex, Gemini, and GitHub authentication. | LaTeX on |
 | 7. Packages | Extra apt or pip packages on top of the template. | — |
 | 8. Summary | Review the choices and create! | — |
 
