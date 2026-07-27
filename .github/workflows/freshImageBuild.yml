@@ -99,10 +99,30 @@ jobs:
           python -m pytest tests/testContainerAcceptance.py -m docker \
             --tb=short -v
 
-      - name: Confirm the container user is unprivileged
+      # A bare `docker exec` is NOT the right probe here, and asserting
+      # on one was wrong the first time this ran. The container is
+      # started with `--user 0` so the entrypoint's root phase can
+      # write system paths before dropping via gosu, and `--user 0`
+      # overrides the image's USER for every later bare exec --
+      # confirmed by experiment, not inference. The backend never
+      # issues a bare exec: DockerConnection resolves the image's
+      # Config.User and passes it explicitly, so GUI and CLI commands
+      # do land unprivileged.
+      #
+      # So assert the property the backend actually relies on: the
+      # image declares a non-root default user, and an exec as that
+      # user is UID 1000 (the uid the keyring volume and every
+      # host->container write are pinned to).
+      - name: Confirm the image's default user is unprivileged
         run: |
-          sUid=$(docker exec fresh-build-project id -u)
-          echo "container uid: ${sUid}"
+          sUser=$(docker image inspect fresh-build-project:latest \
+            --format '{{.Config.User}}')
+          echo "image Config.User: '${sUser}'"
+          test -n "${sUser}"
+          test "${sUser}" != "root"
+          test "${sUser}" != "0"
+          sUid=$(docker exec --user "${sUser}" fresh-build-project id -u)
+          echo "uid as the image's declared user: ${sUid}"
           test "${sUid}" = "1000"
 
       - name: Stop the container
