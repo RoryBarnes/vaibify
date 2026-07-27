@@ -1,8 +1,8 @@
 name: container-acceptance
 
-# Lane 2 -- the host/Docker/container boundary, nightly.
+# The host/Docker/container boundary, exercised nightly.
 #
-# Lane 1 drives a fail-closed FAKE Docker adapter. That fake models
+# The browser lane drives a fail-closed FAKE Docker adapter. That fake models
 # three container commands, and this lane is what proves a real
 # container answers them the same way: every entry in the fake's
 # LIST_MODELLED_COMMANDS names an assertion in
@@ -18,10 +18,10 @@ name: container-acceptance
 #
 # Timing, stated plainly: this runs nightly, so fake-vs-reality drift
 # is caught up to a day late and pull requests merge in between.
-# Lane 1 failing blocks merge; this failing blocks the next release,
+# The browser lane failing blocks merge; this failing blocks the next release,
 # not retroactively.
 #
-# NOT YET DONE: driving the Lane 1 browser journeys against this
+# NOT YET DONE: driving the browser journeys against this
 # container. That needs a second server fixture bound to a real
 # adapter, and is the next increment -- do not read a green run here
 # as "the dashboard works against a real container".
@@ -33,7 +33,7 @@ on:
 
 jobs:
   acceptance:
-    name: 'lane 2 (real container)'
+    name: 'container acceptance'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 

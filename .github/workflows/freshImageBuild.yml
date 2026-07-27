@@ -1,8 +1,8 @@
 name: fresh-image-build
 
-# Lane 3 -- a full image build from scratch, then the acceptance run.
+# A full image build from scratch, then the acceptance run.
 #
-# Lane 2 reuses a cached image keyed by the build-input hash, which is
+# The container-acceptance lane reuses a cached image keyed by the build-input hash, which is
 # the right trade for a nightly regression check but says nothing about
 # whether the image still BUILDS. Base images move, apt archives rotate,
 # and a pinned third-party source can vanish. This lane is where that
@@ -47,7 +47,7 @@ on:
 
 jobs:
   freshbuild:
-    name: 'lane 3 (build from scratch)'
+    name: 'image build from scratch'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 

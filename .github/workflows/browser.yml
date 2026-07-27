@@ -1,6 +1,6 @@
 name: browser
 
-# Lane 1 -- the frontend, executed.
+# The frontend, executed in a real browser.
 #
 # Until this job existed, ~30,000 lines of JavaScript were verified by
 # nothing: no runner, no linter, no type check, and no CI workflow that
@@ -15,8 +15,8 @@ name: browser
 #
 # This lane does NOT speak for the Docker boundary. It drives a
 # fail-closed fake adapter, and the container acceptance lane is what
-# proves a real container answers the same way. Lane 1 failing blocks
-# merge; Lane 2 failing blocks the next release.
+# proves a real container answers the same way. This lane failing
+# blocks merge; container acceptance blocks the next release.
 
 on:
   push:
@@ -27,7 +27,7 @@ on:
 
 jobs:
   browser:
-    name: 'lane 1 (chromium)'
+    name: 'frontend (chromium)'
     runs-on: ubuntu-24.04
 
     steps:

@@ -154,13 +154,21 @@ RUN apt-get update \
 # with ``meson executable "meson" not found``. A current pip resolves
 # the build-env script path correctly, so every from-source install
 # works regardless of the base image's pip vintage.
+#
+# ``--ignore-installed`` is load-bearing, not belt-and-braces. Without
+# it, pip tries to UNINSTALL the distro pip first and dies with
+# "Cannot uninstall pip 24.0, RECORD file not found. Hint: the package
+# was installed by debian" -- a Debian-packaged pip carries no RECORD,
+# so pip cannot remove it. Installing over the top instead is the
+# supported route. This surfaced the first time the image was ever
+# built from scratch in CI; every earlier build reused a cached layer.
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && apt-get update \
     && apt-get install -y --no-install-recommends python3-pip \
     && rm -f /usr/lib/python*/EXTERNALLY-MANAGED \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade pip setuptools
+    && pip install --no-cache-dir --upgrade --ignore-installed pip setuptools
 
 # Keyring backend for in-container credential storage.
 # keyrings.alt provides a file-based PlaintextKeyring that works in
