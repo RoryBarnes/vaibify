@@ -10,11 +10,18 @@ runner at all, where a single ReferenceError kills the module that
 threw it and every module below it in load order. A branch once merged
 fully green with the frontend entirely unexecuted.
 
-**The denominator is derived, never hardcoded.** The views come from
-the live DOM, so adding a panel to `index.html` automatically puts it
-under test. A hardcoded list would rot the moment someone added the
-42nd view, and rot silently, which is the failure mode this whole
-effort exists to remove.
+**One test per view, not one test over all views.** The first version
+looped inside a single test, so the first broken view aborted the loop
+and hid every one after it -- you learned about one bad panel per run.
+Parametrising means a run reports all of them at once and names each
+in its own test id.
+
+**The roster is derived, never hardcoded.** It is parsed from
+`index.html` at collection time, so adding a panel puts it under test
+automatically. `testLiveDomMatchesTheParsedRoster` then checks the
+parsed set against what the browser actually has, so the two cannot
+drift apart -- a view that only exists in the file, or only at
+runtime, is itself a finding.
 
 **What this does NOT prove.** Revealing a view is not the same as
 driving the app into the state that populates it. A panel can render
@@ -24,26 +31,44 @@ reachable without exploding. Do not read a green baseline as "the
 dashboard works".
 """
 
+import pathlib
+import re
+
 import pytest
 
 
 pytestmark = pytest.mark.browser
 
 
-_S_COLLECT_VIEWS = """() => {
-    const out = {panels: [], tabs: [], modals: []};
-    document.querySelectorAll('[id]').forEach(el => {
-        const sId = el.id;
-        if (/^modal[A-Z]/.test(sId)) out.modals.push(sId);
-        else if (/^panel[A-Z]/.test(sId)) out.panels.push(sId);
-        else if (/^tab[A-Z]/.test(sId)) out.tabs.push(sId);
-    });
-    return out;
-}"""
+_PATH_INDEX = (
+    pathlib.Path(__file__).resolve().parent.parent.parent
+    / "vaibify" / "gui" / "static" / "index.html"
+)
 
-# Reveal one element and report what it contains. Kept as one
-# round-trip per view so a throw is attributed to the view that caused
-# it rather than to a batch.
+_RE_VIEW_ID = re.compile(
+    r'id="((?:panel|tab|modal)[A-Z][A-Za-z0-9_-]*)"'
+)
+
+# Minimum the dashboard is known to declare. Guards against the
+# selectors silently stopping matching -- a naming-convention change
+# or template rewrite would otherwise leave every test below passing
+# vacuously over an empty roster.
+_I_MINIMUM_VIEWS = 30
+
+
+def _flistParseViewRoster():
+    """Return every view id index.html declares, sorted and unique."""
+    return sorted(set(_RE_VIEW_ID.findall(_PATH_INDEX.read_text())))
+
+
+def _fsViewKind(sId):
+    """Return 'modal', 'panel' or 'tab' from the id's prefix."""
+    return re.match(r"[a-z]+", sId).group(0)
+
+
+LIST_VIEW_IDS = _flistParseViewRoster()
+
+
 _S_REVEAL_VIEW = """(sId) => {
     const el = document.getElementById(sId);
     if (!el) return {found: false};
@@ -58,78 +83,84 @@ _S_REVEAL_VIEW = """(sId) => {
     };
 }"""
 
+_S_COLLECT_LIVE_VIEWS = """() => Array.from(
+    document.querySelectorAll('[id]')
+).map(el => el.id).filter(
+    sId => /^(panel|tab|modal)[A-Z]/.test(sId)
+).sort()"""
 
-@pytest.fixture
-def dictViews(pageDashboard, serverHub):
-    """Load the dashboard once and enumerate its declared views."""
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
-    return pageDashboard.evaluate(_S_COLLECT_VIEWS)
 
-
-def testTheDashboardDeclaresViewsToTest(dictViews):
-    """A baseline over an empty set would be a green lie.
-
-    If the selectors ever stop matching -- a naming convention
-    change, a template rewrite -- every other test in this file
-    passes vacuously. This is the guard against that.
-    """
-    iTotal = sum(len(listIds) for listIds in dictViews.values())
-    assert iTotal >= 30, (
-        f"Only {iTotal} views matched the panel/tab/modal naming "
-        f"convention: {dictViews}. Either the dashboard shrank "
+def testTheRosterIsNotEmpty():
+    """A baseline over an empty set would be a green lie."""
+    assert len(LIST_VIEW_IDS) >= _I_MINIMUM_VIEWS, (
+        f"Only {len(LIST_VIEW_IDS)} views matched the panel/tab/modal "
+        "naming convention in index.html. Either the dashboard shrank "
         "drastically or the convention changed and this baseline is "
         "now measuring almost nothing."
     )
-    assert dictViews["modals"], "no modals found"
-    assert dictViews["panels"] or dictViews["tabs"], "no panels found"
 
 
-def testEveryDeclaredViewRevealsWithoutThrowing(
-    pageDashboard, dictViews,
-):
-    """Revealing any view must not raise or log an error.
+def testLiveDomMatchesTheParsedRoster(pageDashboard, serverHub):
+    """What the browser has must match what the file declares.
 
-    One round trip per view, so the failure message names the view
-    that broke rather than the batch it was in.
+    The parametrised tests below are collected from index.html, so a
+    view present at runtime but absent from the file would never be
+    tested, and one in the file but missing at runtime would fail
+    every reveal for a reason that has nothing to do with rendering.
+    Either direction is worth knowing about explicitly.
     """
-    listOffenders = []
-    for sKind, listIds in sorted(dictViews.items()):
-        for sId in listIds:
-            iErrorsBefore = len(pageDashboard.listConsoleErrors)
-            iThrowsBefore = len(pageDashboard.listPageErrors)
-            dictResult = pageDashboard.evaluate(_S_REVEAL_VIEW, sId)
-            if not dictResult["found"]:
-                listOffenders.append(f"{sKind}/{sId}: vanished from DOM")
-                continue
-            listNewErrors = (
-                pageDashboard.listConsoleErrors[iErrorsBefore:]
-                + pageDashboard.listPageErrors[iThrowsBefore:]
-            )
-            if listNewErrors:
-                listOffenders.append(
-                    f"{sKind}/{sId}: {'; '.join(listNewErrors)}"
-                )
-    assert not listOffenders, (
-        "Revealing these views produced JavaScript errors:\n  "
-        + "\n  ".join(listOffenders)
+    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    listLive = pageDashboard.evaluate(_S_COLLECT_LIVE_VIEWS)
+    setOnlyInFile = set(LIST_VIEW_IDS) - set(listLive)
+    setOnlyInDom = set(listLive) - set(LIST_VIEW_IDS)
+    assert not setOnlyInFile, (
+        f"Declared in index.html but absent from the live DOM: "
+        f"{sorted(setOnlyInFile)}"
+    )
+    assert not setOnlyInDom, (
+        "Present at runtime but not declared in index.html, so the "
+        f"parametrised baseline never covers it: {sorted(setOnlyInDom)}"
     )
 
 
-def testEveryPanelAndTabHasContentAtLoad(pageDashboard, dictViews):
+@pytest.mark.parametrize("sViewId", LIST_VIEW_IDS)
+def testViewRevealsWithoutThrowing(pageDashboard, serverHub, sViewId):
+    """Revealing this view must not raise or log an error."""
+    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    iErrorsBefore = len(pageDashboard.listConsoleErrors)
+    iThrowsBefore = len(pageDashboard.listPageErrors)
+
+    dictResult = pageDashboard.evaluate(_S_REVEAL_VIEW, sViewId)
+
+    assert dictResult["found"], (
+        f"{sViewId} is declared in index.html but not in the DOM."
+    )
+    listNewErrors = (
+        pageDashboard.listConsoleErrors[iErrorsBefore:]
+        + pageDashboard.listPageErrors[iThrowsBefore:]
+    )
+    assert not listNewErrors, (
+        f"Revealing {sViewId} produced JavaScript errors: "
+        + "; ".join(listNewErrors)
+    )
+
+
+@pytest.mark.parametrize(
+    "sViewId",
+    [s for s in LIST_VIEW_IDS if _fsViewKind(s) != "modal"],
+)
+def testPanelOrTabHasContentAtLoad(pageDashboard, serverHub, sViewId):
     """A panel present but empty is a rendering failure, not a state.
 
     Modals are excluded on purpose: an unopened modal legitimately
     holds no content until something populates it. A panel or tab is
     part of the page's own structure and should carry its markup from
-    the start, so an empty one means its template did not render.
+    the start, so an empty one means its template never rendered.
     """
-    listEmpty = []
-    for sKind in ("panels", "tabs"):
-        for sId in dictViews[sKind]:
-            dictResult = pageDashboard.evaluate(_S_REVEAL_VIEW, sId)
-            if dictResult["found"] and dictResult["iChildren"] == 0:
-                listEmpty.append(f"{sKind}/{sId}")
-    assert not listEmpty, (
-        "These panels/tabs rendered with no child elements at all, "
-        "which means their markup never arrived: " + ", ".join(listEmpty)
+    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    dictResult = pageDashboard.evaluate(_S_REVEAL_VIEW, sViewId)
+    assert dictResult["found"], f"{sViewId} missing from the DOM."
+    assert dictResult["iChildren"] > 0, (
+        f"{sViewId} rendered with no child elements at all, which "
+        "means its markup never arrived."
     )
