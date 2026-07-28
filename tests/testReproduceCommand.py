@@ -98,6 +98,8 @@ def _fnWriteL3EnvelopeExtras(pathRepo):
     dictWorkflow = {
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }
     (pathWorkflows / "workflow.json").write_text(
         json.dumps(dictWorkflow)

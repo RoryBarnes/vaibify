@@ -58,6 +58,10 @@ from vaibify.reproducibility.levelGates import (
     fbVerifyEnvironmentSnapshot,
     fbVerifyManifestComplete,
     fbVerifyReproduceScript,
+    fbWorkflowDeclaresBinaries,
+)
+from vaibify.reproducibility.environmentSnapshot import (
+    _fsExtractImageDigest,
 )
 from vaibify.reproducibility.manifestWriter import flistVerifyManifest
 from vaibify.reproducibility.repoFiles import ContainerRepoFiles
@@ -329,10 +333,19 @@ def fbVerifyTier3(sProjectRepo):
 
 
 def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
-    """Return the ``sImageDigest`` recorded in environment.json or exit 2."""
+    """Return the image digest recorded in environment.json or exit 2.
+
+    Reads through ``environmentSnapshot._fsExtractImageDigest``, which
+    accepts both supported layouts: the nested
+    ``dictContainer.sImageDigest`` and the flat top-level key. This
+    loader used to read only the flat form while its two sibling
+    readers honoured both, so a snapshot written in the nested layout
+    aborted the whole reproduce run with exit 2 and a "missing" message
+    while the digest sat in the file.
+    """
     with open(pathEnvironment, "r", encoding="utf-8") as fileHandle:
         dictEnvironment = json.load(fileHandle)
-    sImageDigest = dictEnvironment.get("sImageDigest")
+    sImageDigest = _fsExtractImageDigest(dictEnvironment)
     if not sImageDigest:
         click.echo(
             "Error: 'sImageDigest' is missing from "
@@ -350,17 +363,17 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 
 
 def fbVerifyTier4(sProjectRepo):
-    """Verify six of the seven AICS L3 readiness checks.
+    """Verify all seven AICS L3 readiness checks.
 
     Reuses the host-side ``levelGates`` verifiers so the CLI and the
-    dashboard apply the same rule to each check they share. They do
-    not cover the same set: ``fbWorkflowDeclaresBinaries`` reads
-    workflow-root fields (``bNoStandaloneBinaries``,
-    ``listDeclaredBinaries``) that ``_fdictAggregateAllWorkflows``
-    does not union across project.json files, so the CLI cannot
-    evaluate it and does not pretend to. A repo can therefore clear
-    Tier 4 and still fail the dashboard's ``fbL3ReadinessOK``.
-    Returns True iff every verifier it does run passes; on failure
+    dashboard apply the same rule to every check, and now cover the
+    same set. ``fbWorkflowDeclaresBinaries`` reads workflow-root fields
+    (``bNoStandaloneBinaries``, ``listDeclaredBinaries``) that the
+    synthetic aggregate cannot represent, so it is evaluated per
+    project.json instead — see ``_fbEveryWorkflowDeclaresBinaries``.
+    Until 2026-07-27 it was skipped entirely, and a repo could clear
+    this tier while the dashboard's ``fbL3ReadinessOK`` still blocked
+    it. Returns True iff every verifier passes; on failure
     prints a per-verifier checklist so the user sees which artefacts
     need regenerating.
     """
@@ -388,8 +401,45 @@ def fbVerifyTier4(sProjectRepo):
     return False
 
 
+def _fbEveryWorkflowDeclaresBinaries(sProjectRepo):
+    """Return True iff every project.json answers the binary question.
+
+    Evaluated per workflow rather than against the synthetic aggregate.
+    ``fbWorkflowDeclaresBinaries`` tests the *coherence* of one
+    workflow's answer — waiver with an empty list, or no waiver with a
+    well-formed list — and a union has no honest reading when two
+    workflows answer differently. Worse, a union would let a clean
+    workflow mask a sibling that answered nothing, which is the
+    permissive gap this verifier exists to close.
+
+    A repo with no workflow files passes vacuously: it cannot reach L1,
+    so failing here would only add a confusing second diagnosis.
+    """
+    pathWorkflows = Path(sProjectRepo) / ".vaibify" / "workflows"
+    if not pathWorkflows.is_dir():
+        return True
+    listWorkflows = [
+        dictWorkflow for dictWorkflow in (
+            _fdictLoadWorkflowFile(pathFile)
+            for pathFile in sorted(pathWorkflows.glob("*.json"))
+        )
+        if dictWorkflow is not None
+    ]
+    return all(
+        fbWorkflowDeclaresBinaries(dictWorkflow)
+        for dictWorkflow in listWorkflows
+    )
+
+
 def _flistRunReadinessVerifiers(sProjectRepo, dictWorkflow):
-    """Return ``[(label, bool)]`` for each L3 readiness verifier in order."""
+    """Return ``[(label, bool)]`` for each L3 readiness verifier in order.
+
+    All seven of ``fbL3ReadinessOK``'s verifiers, so the CLI grades a
+    repo exactly as the dashboard does. The binaries check ran nowhere
+    here until 2026-07-27 because the aggregate carried no declaration
+    state, which let a repo clear this tier and still be blocked by the
+    dashboard.
+    """
     return [
         ("Manifest complete",
          fbVerifyManifestComplete(sProjectRepo, dictWorkflow)),
@@ -403,6 +453,8 @@ def _flistRunReadinessVerifiers(sProjectRepo, dictWorkflow):
          fbVerifyReproduceScript(sProjectRepo, dictWorkflow)),
         ("Determinism declared",
          fbVerifyDeterminismDeclared(sProjectRepo, dictWorkflow)),
+        ("Binaries declared or waived",
+         _fbEveryWorkflowDeclaresBinaries(sProjectRepo)),
     ]
 
 

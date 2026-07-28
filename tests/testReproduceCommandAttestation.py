@@ -88,6 +88,8 @@ def fixtureRepo(tmp_path):
     (pathWorkflows / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }))
     return tmp_path
 
@@ -444,6 +446,8 @@ def test_aggregate_returns_workflow_with_determinism_only(tmp_path):
     (pathDir / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }))
     dictResult = commandReproduce._fdictAggregateAllWorkflows(str(tmp_path))
     assert dictResult is not None

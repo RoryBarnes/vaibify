@@ -140,6 +140,8 @@ def _fnSeedEnvelope(pathRepo):
     (pathWorkflows / "project.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }))
     return pathRepo
 
@@ -175,6 +177,8 @@ def _fdictWorkflowFor(pathRepo, sName):
         "sProjectRepoPath": str(pathRepo),
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
         "dictRemotes": {},
