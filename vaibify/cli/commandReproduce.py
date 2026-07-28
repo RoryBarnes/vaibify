@@ -39,6 +39,10 @@ from pathlib import Path
 
 import click
 
+from vaibify.gui.workflowManager import (
+    VAIBIFY_PROJECTS_DIR,
+    VAIBIFY_WORKFLOWS_DIR,
+)
 from vaibify.reproducibility import manifestWriter
 from vaibify.reproducibility.aiProvenanceStamp import (
     fdictBuildAiProvenanceStamp,
@@ -161,7 +165,8 @@ def fbVerifyTier1(sProjectRepo):
 def _fnReportIncompleteCoverage(sProjectRepo):
     """Print an advisory line when any workflow declares paths the manifest omits.
 
-    Aggregates across every project.json under ``.vaibify/workflows/``
+    Aggregates across every project.json in the repo's Project
+    directories
     so multi-workflow projects are not silently skipped. The manifest
     is one file pinning artefacts across the whole project repo, so
     the completeness check is project-wide.
@@ -180,6 +185,24 @@ def _fnReportIncompleteCoverage(sProjectRepo):
         )
 
 
+def _flistProjectFilesInRepo(sProjectRepo):
+    """Return every Project file in a repo, canonical directory first.
+
+    Projects live in ``.vaibify/projects``; ``.vaibify/workflows`` is
+    the legacy directory that discovery still reads. Scanning only the
+    legacy one — which both callers below did — made every command here
+    silently vacuous for a project created by ``vaibify init``:
+    aggregation returned None and the binary-declaration verifier passed
+    for having checked nothing.
+    """
+    listFiles = []
+    for sDirectory in (VAIBIFY_PROJECTS_DIR, VAIBIFY_WORKFLOWS_DIR):
+        pathDirectory = Path(sProjectRepo) / sDirectory
+        if pathDirectory.is_dir():
+            listFiles.extend(sorted(pathDirectory.glob("*.json")))
+    return listFiles
+
+
 def _fdictAggregateAllWorkflows(sProjectRepo):
     """Return a synthetic workflow whose listSteps unions every workflow's steps.
 
@@ -189,13 +212,10 @@ def _fdictAggregateAllWorkflows(sProjectRepo):
     project.json files exist so the coverage check is skipped rather
     than reported as empty.
     """
-    pathWorkflows = Path(sProjectRepo) / ".vaibify" / "workflows"
-    if not pathWorkflows.is_dir():
-        return None
     listAllSteps = []
     dictDeterminismMerged = {}
     dictAiProvenanceMerged = {}
-    for pathFile in sorted(pathWorkflows.glob("*.json")):
+    for pathFile in _flistProjectFilesInRepo(sProjectRepo):
         dictWorkflow = _fdictLoadWorkflowFile(pathFile)
         if dictWorkflow is None:
             continue
@@ -415,13 +435,10 @@ def _fbEveryWorkflowDeclaresBinaries(sProjectRepo):
     A repo with no workflow files passes vacuously: it cannot reach L1,
     so failing here would only add a confusing second diagnosis.
     """
-    pathWorkflows = Path(sProjectRepo) / ".vaibify" / "workflows"
-    if not pathWorkflows.is_dir():
-        return True
     listWorkflows = [
         dictWorkflow for dictWorkflow in (
             _fdictLoadWorkflowFile(pathFile)
-            for pathFile in sorted(pathWorkflows.glob("*.json"))
+            for pathFile in _flistProjectFilesInRepo(sProjectRepo)
         )
         if dictWorkflow is not None
     ]
