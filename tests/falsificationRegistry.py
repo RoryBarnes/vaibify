@@ -45,6 +45,13 @@ class Falsification:
 LIST_FALSIFICATIONS = [
 
     Falsification(
+        nodeid='tests/testArchitecturalInvariants.py::testScienceTermScanMatchesSeparatedSpellings',
+        source='tests/testArchitecturalInvariants.py',
+        old='    regexTerm = re.compile(\n        r"\\b" + _S_TERM_SEPARATOR_PATTERN.join(\n            re.escape(sCharacter) for sCharacter in sTerm\n        ),\n        re.IGNORECASE,\n    )',
+        new='    regexTerm = re.compile(r"\\b" + re.escape(sTerm), re.IGNORECASE)',
+    ),
+
+    Falsification(
         nodeid='tests/testContainerOwnership.py::test_agent_token_with_empty_container_id_fails_closed',
         source='vaibify/gui/containerOwnership.py',
         old='if not sPresentedToken or not sContainerId:',
@@ -713,6 +720,39 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/l3Attestation.py',
         old='''"iOutputHashesMatched": int(iOutputHashesMatched),''',
         new='''"iOutputHashesMatched": int(iOutputHashesTotal),''',
+    ),
+    # The builder guard above cannot see a CALLER performing the same
+    # substitution one frame up; the CLI lane did exactly that. These
+    # four sit at the shared derivation and at each lane's call site.
+    Falsification(
+        nodeid='tests/testRerunHashCompareMutationCoverage.py::test_shared_hash_compare_excludes_mismatches_from_matched',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='''        "iOutputHashesMatched": max(
+            len(listEntries) - len(listMismatches), 0,
+        ),''',
+        new='''        "iOutputHashesMatched": len(listEntries),''',
+    ),
+    Falsification(
+        nodeid='tests/testRerunHashCompareMutationCoverage.py::test_zero_exit_rerun_with_changed_bytes_does_not_pass',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='''        "bPassed": (
+            bool(bRerunSucceeded)
+            and not listMismatches
+            and not bManifestMoved
+        ),''',
+        new='''        "bPassed": bool(bRerunSucceeded),''',
+    ),
+    Falsification(
+        nodeid='tests/testRerunHashCompareMutationCoverage.py::test_cli_attestation_matched_count_comes_from_the_rehash',
+        source='vaibify/cli/commandReproduce.py',
+        old='''        iOutputHashesMatched=dictOutcome["iOutputHashesMatched"],''',
+        new='''        iOutputHashesMatched=dictOutcome["iOutputHashesTotal"],''',
+    ),
+    Falsification(
+        nodeid='tests/testRerunHashCompareMutationCoverage.py::test_route_attestation_matched_count_comes_from_the_rehash',
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='''        iOutputHashesMatched=dictResult["iOutputHashesMatched"],''',
+        new='''        iOutputHashesMatched=dictResult["iOutputHashesTotal"],''',
     ),
     Falsification(
         nodeid='tests/testL3AttestationMutationCoverage.py::test_non_dict_payload_reads_none_and_not_current',

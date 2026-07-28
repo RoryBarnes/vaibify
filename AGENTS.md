@@ -271,8 +271,8 @@ commands use labels (users speak labels); internal code paths keep
 
 **A step's directory basename is a function of its name.** The slug
 contract (2026-07-18): split the name on whitespace, uppercase each
-word's first letter, preserve the rest, concatenate ("GJ 1132 XUV" →
-`GJ1132XUV`; hyphens pass through). Names allow only letters, digits,
+word's first letter, preserve the rest, concatenate ("MCMC 512 Chains"
+→ `MCMC512Chains`; hyphens pass through). Names allow only letters, digits,
 spaces, and hyphens; slugs are unique per project case-insensitively;
 parent path components are free. The single implementation is
 `fsSlugFromStepName` / `fsValidateStepName` /

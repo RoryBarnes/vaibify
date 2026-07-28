@@ -98,6 +98,8 @@ def _fnWriteL3EnvelopeExtras(pathRepo):
     dictWorkflow = {
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }
     (pathWorkflows / "workflow.json").write_text(
         json.dumps(dictWorkflow)
@@ -422,7 +424,7 @@ def test_rerun_resolves_project_from_repo_not_cwd(fixtureRepo, tmp_path):
             "vaibify.cli.configLoader.fconfigResolveProject",
             side_effect=_fnRecordCwd,
         ):
-            commandReproduce.fbRerunWorkflow(str(fixtureRepo))
+            commandReproduce.fdictRerunAndVerify(str(fixtureRepo))
     finally:
         os.chdir(sOriginalCwd)
 
@@ -449,7 +451,7 @@ def test_rerun_restores_cwd_after_failure(fixtureRepo, tmp_path):
             "vaibify.cli.configLoader.fconfigResolveProject",
             side_effect=_fnRaise,
         ):
-            commandReproduce.fbRerunWorkflow(str(fixtureRepo))
+            commandReproduce.fdictRerunAndVerify(str(fixtureRepo))
         assert os.getcwd() == sCwdBeforeCall
     finally:
         os.chdir(sOriginalCwd)
@@ -466,8 +468,9 @@ def test_rerun_handles_unregistered_project_gracefully(fixtureRepo):
         "vaibify.cli.configLoader.fconfigResolveProject",
         side_effect=_fnRaiseSystemExit,
     ), _fnPatchAllSubprocessesSucceeding():
-        bResult = commandReproduce.fbRerunWorkflow(str(fixtureRepo))
-    assert bResult is False
+        dictOutcome = commandReproduce.fdictRerunAndVerify(str(fixtureRepo))
+    assert dictOutcome["bPassed"] is False
+    assert dictOutcome["iOutputHashesTotal"] == 0
 
     with patch(
         "vaibify.cli.configLoader.fconfigResolveProject",
@@ -535,8 +538,8 @@ def test_rerun_rejects_repo_that_is_not_directory(tmp_path):
     pathRegularFile = tmp_path / "not_a_dir.txt"
     pathRegularFile.write_text("hello\n")
     sOriginalCwd = os.getcwd()
-    bResult = commandReproduce.fbRerunWorkflow(str(pathRegularFile))
-    assert bResult is False
+    dictOutcome = commandReproduce.fdictRerunAndVerify(str(pathRegularFile))
+    assert dictOutcome["bPassed"] is False
     assert os.getcwd() == sOriginalCwd
 
 

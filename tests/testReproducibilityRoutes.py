@@ -22,10 +22,12 @@ from vaibify.gui.routes.reproducibilityRoutes import (
     _DICT_VERIFY_TASKS,
     _fdictBuildAttestationResponse,
     _fdictRunReproductionSync,
-    _fiManifestEntryCount,
     _fnPersistAttestation,
     _fsResolveImageDigest,
     fnRegisterAll,
+)
+from vaibify.reproducibility.rerunVerification import (
+    fiCountManifestEntriesOrZero,
 )
 from vaibify.reproducibility.l3Attestation import (
     S_STATUS_PASSED,
@@ -77,6 +79,10 @@ def fixtureClient(fixtureWorkflow):
     app.state.listLifespanStartup = []
     app.state.listLifespanShutdown = []
     dictWorkflows = {S_CONTAINER_ID: fixtureWorkflow}
+    sWorkflowPath = (
+        fixtureWorkflow["sProjectRepoPath"]
+        + "/.vaibify/workflows/project.json"
+    )
 
     def _fnSave(sId, dictWf):
         pass
@@ -84,7 +90,7 @@ def fixtureClient(fixtureWorkflow):
     dictCtx = {
         "docker": None,
         "workflows": dictWorkflows,
-        "paths": {},
+        "paths": {S_CONTAINER_ID: sWorkflowPath},
         "pipelineTasks": {},
         "sourceCodeDeps": {},
         "setAllowedContainers": {S_CONTAINER_ID},
@@ -276,11 +282,14 @@ def test_l3_verify_returns_202_with_handle_when_ready(
     _fnSeedReadyL3Repo(fixtureWorkflow["sProjectRepoPath"])
     # Patch the heavy work to a no-op that just sets a passing result.
     with patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
-        return_value=True,
-    ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
-        return_value=[],
+        "vaibify.gui.routes.reproducibilityRoutes."
+        "fdictRerunAndVerifyWorkflow",
+        return_value={
+            "bPassed": True,
+            "iOutputHashesMatched": 2,
+            "iOutputHashesTotal": 2,
+            "listDivergedHashes": [],
+        },
     ):
         response = fixtureClient.post(
             f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
@@ -319,21 +328,37 @@ def test_l3_verify_refuses_when_already_in_flight(
 # ============================================================================
 
 
+S_WORKFLOW_PATH_SUFFIX = "/.vaibify/workflows/project.json"
+
+
+def _fdictRunSyncWithOutcome(fixtureProjectRepo, dictOutcome):
+    """Drive _fdictRunReproductionSync with a canned shared-lane outcome.
+
+    The shared entry point is patched, not the manifest primitives, so
+    these tests stay about what the route does with an outcome —
+    threading it out with the image digest — rather than re-testing the
+    derivation that ``testRerunHashCompareMutationCoverage`` owns.
+    """
+    with patch(
+        "vaibify.gui.routes.reproducibilityRoutes."
+        "fdictRerunAndVerifyWorkflow",
+        return_value=dictOutcome,
+    ):
+        return _fdictRunReproductionSync(
+            None, S_CONTAINER_ID, {"listSteps": []},
+            fixtureProjectRepo + S_WORKFLOW_PATH_SUFFIX,
+            fixtureProjectRepo,
+        )
+
+
 def test_run_reproduction_sync_reports_mismatches(fixtureProjectRepo):
     """_fdictRunReproductionSync surfaces manifest mismatches in listDiverged."""
-    with patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
-        return_value=True,
-    ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
-        return_value=[
-            {"sPath": "a.txt", "sExpected": "x", "sActual": "y"},
-        ],
-    ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fiManifestEntryCount",
-        return_value=5,
-    ):
-        dictResult = _fdictRunReproductionSync(fixtureProjectRepo, {})
+    dictResult = _fdictRunSyncWithOutcome(fixtureProjectRepo, {
+        "bPassed": False,
+        "iOutputHashesMatched": 4,
+        "iOutputHashesTotal": 5,
+        "listDivergedHashes": ["a.txt"],
+    })
     assert dictResult["bPassed"] is False  # mismatches block pass
     assert "a.txt" in dictResult["listDivergedHashes"]
     assert dictResult["iOutputHashesMatched"] == 4
@@ -342,108 +367,141 @@ def test_run_reproduction_sync_reports_mismatches(fixtureProjectRepo):
 
 def test_run_reproduction_sync_reports_pipeline_failure(fixtureProjectRepo):
     """A rerun failure prepends "pipeline rerun exited non-zero" to listDiverged."""
-    with patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
-        return_value=False,
-    ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
-        return_value=[],
-    ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fiManifestEntryCount",
-        return_value=2,
-    ):
-        dictResult = _fdictRunReproductionSync(fixtureProjectRepo, {})
+    dictResult = _fdictRunSyncWithOutcome(fixtureProjectRepo, {
+        "bPassed": False,
+        "iOutputHashesMatched": 2,
+        "iOutputHashesTotal": 2,
+        "listDivergedHashes": ["pipeline rerun exited non-zero"],
+    })
     assert dictResult["bPassed"] is False
     assert dictResult["listDivergedHashes"][0] == "pipeline rerun exited non-zero"
 
 
 def test_run_reproduction_sync_passes_when_clean(fixtureProjectRepo):
     """A successful rerun + clean manifest yields bPassed=True."""
-    with patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
-        return_value=True,
-    ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
-        return_value=[],
-    ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fiManifestEntryCount",
-        return_value=3,
-    ):
-        dictResult = _fdictRunReproductionSync(fixtureProjectRepo, {})
+    dictResult = _fdictRunSyncWithOutcome(fixtureProjectRepo, {
+        "bPassed": True,
+        "iOutputHashesMatched": 3,
+        "iOutputHashesTotal": 3,
+        "listDivergedHashes": [],
+    })
     assert dictResult["bPassed"] is True
     assert dictResult["iOutputHashesMatched"] == 3
 
 
-def test_invoke_rerun_workflow_swallows_import_error(fixtureProjectRepo):
-    """An ImportError during the CLI import returns False."""
+def test_run_reproduction_sync_passes_the_active_workflow_through(
+    fixtureProjectRepo,
+):
+    """The route's own workflow and path must reach the shared lane.
+
+    Rediscovering a workflow below this point is how a container hosting
+    two project repos ends up re-running one and attesting the other.
+    """
+    dictWorkflow = {"sWorkflowName": "Active", "listSteps": []}
+    sWorkflowPath = fixtureProjectRepo + S_WORKFLOW_PATH_SUFFIX
+    listSeen = []
+
+    def _fdictRecord(
+        connectionDocker, sContainerId, dictRunWorkflow, sRunWorkflowPath,
+        filesRepo, fnStatusCallback=None,
+    ):
+        listSeen.append((sContainerId, dictRunWorkflow, sRunWorkflowPath))
+        return {
+            "bPassed": True, "iOutputHashesMatched": 0,
+            "iOutputHashesTotal": 0, "listDivergedHashes": [],
+        }
+
+    with patch(
+        "vaibify.gui.routes.reproducibilityRoutes."
+        "fdictRerunAndVerifyWorkflow",
+        side_effect=_fdictRecord,
+    ):
+        _fdictRunReproductionSync(
+            None, S_CONTAINER_ID, dictWorkflow, sWorkflowPath,
+            fixtureProjectRepo,
+        )
+    assert listSeen == [(S_CONTAINER_ID, dictWorkflow, sWorkflowPath)]
+
+
+# ----------------------------------------------------------------------
+# The verify worker must never leave a task hanging. These four cases
+# were previously asserted one frame lower, against a CLI helper the
+# dashboard no longer calls (it resolved a *host* path, which a
+# container project repo can never be). The guarantee is unchanged and
+# is now asserted where it actually lives: whatever the rerun raises,
+# the worker records a verdict.
+# ----------------------------------------------------------------------
+
+
+def _fnRunWorkerWith(fixtureProjectRepo, **kwargsPatch):
+    """Run the verify worker once and return the resulting phase."""
     from vaibify.gui.routes import reproducibilityRoutes
-    with patch.dict(
-        "sys.modules",
-        {"vaibify.cli.commandReproduce": None},
-    ):
-        # Patch the inner import to raise.
-        with patch(
-            "builtins.__import__",
-            side_effect=ImportError("not installed"),
-        ):
-            try:
-                bResult = reproducibilityRoutes._fbInvokeRerunWorkflow(
-                    fixtureProjectRepo,
-                )
-            except ImportError:
-                # If builtins import patching trips test infra, skip.
-                pytest.skip("import-patching disrupts test infrastructure")
-                return
-    assert bResult is False
 
-
-def test_invoke_rerun_workflow_swallows_runtime_exception(fixtureProjectRepo):
-    """An Exception inside fbRerunWorkflow returns False, not raised."""
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "starting"},
+    }
     with patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        side_effect=RuntimeError("boom"),
+        "vaibify.gui.routes.reproducibilityRoutes."
+        "_fdictRunReproductionSync",
+        **kwargsPatch,
     ):
-        from vaibify.gui.routes import reproducibilityRoutes
-        bResult = reproducibilityRoutes._fbInvokeRerunWorkflow(
-            fixtureProjectRepo,
-        )
-    assert bResult is False
+        asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
+            S_CONTAINER_ID, fixtureProjectRepo, "sha256:m",
+            {"listSteps": []}, None,
+            fixtureProjectRepo + S_WORKFLOW_PATH_SUFFIX,
+        ))
+    return _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]["sPhase"]
 
 
-def test_invoke_rerun_workflow_swallows_system_exit(fixtureProjectRepo):
-    """A SystemExit from fbRerunWorkflow returns False."""
-    with patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        side_effect=SystemExit(1),
-    ):
-        from vaibify.gui.routes import reproducibilityRoutes
-        bResult = reproducibilityRoutes._fbInvokeRerunWorkflow(
-            fixtureProjectRepo,
-        )
-    assert bResult is False
+def test_verify_worker_records_failure_on_import_error(fixtureProjectRepo):
+    """An ImportError beneath the rerun becomes a failed verdict."""
+    assert _fnRunWorkerWith(
+        fixtureProjectRepo, side_effect=ImportError("not installed"),
+    ) == "failed"
 
 
-def test_invoke_rerun_workflow_success_path(fixtureProjectRepo):
-    """A successful fbRerunWorkflow returns True."""
-    with patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        return_value=True,
-    ):
-        from vaibify.gui.routes import reproducibilityRoutes
-        bResult = reproducibilityRoutes._fbInvokeRerunWorkflow(
-            fixtureProjectRepo,
-        )
-    assert bResult is True
+def test_verify_worker_records_failure_on_runtime_exception(
+    fixtureProjectRepo,
+):
+    """An Exception inside the rerun is swallowed into a failed verdict."""
+    assert _fnRunWorkerWith(
+        fixtureProjectRepo, side_effect=RuntimeError("boom"),
+    ) == "failed"
+
+
+def test_verify_worker_records_failure_on_system_exit(fixtureProjectRepo):
+    """A SystemExit must not leave the phase stuck on "running".
+
+    SystemExit is not an Exception, so an ``except Exception`` alone
+    lets the task die done-with-exception: no attestation, no phase
+    change, and a dashboard that spins forever.
+    """
+    assert _fnRunWorkerWith(
+        fixtureProjectRepo, side_effect=SystemExit(1),
+    ) == "failed"
+
+
+def test_verify_worker_records_success_path(fixtureProjectRepo):
+    """A clean reproduction ends on the passed phase."""
+    assert _fnRunWorkerWith(fixtureProjectRepo, return_value={
+        "bPassed": True,
+        "iOutputHashesMatched": 1,
+        "iOutputHashesTotal": 1,
+        "listDivergedHashes": [],
+        "sImageDigest": "",
+        "sRunLogPath": "",
+    }) == "passed"
 
 
 # ============================================================================
-# _fiManifestEntryCount, _fsResolveImageDigest
+# manifest entry count, _fsResolveImageDigest
 # ============================================================================
 
 
 def test_manifest_entry_count_handles_missing_manifest(fixtureProjectRepo):
     """A missing manifest yields 0, not an exception."""
-    assert _fiManifestEntryCount(fixtureProjectRepo) == 0
+    assert fiCountManifestEntriesOrZero(fixtureProjectRepo) == 0
 
 
 def test_resolve_image_digest_handles_missing_environment(fixtureProjectRepo):
@@ -651,6 +709,7 @@ def test_verification_worker_persists_passed_attestation(fixtureProjectRepo):
         asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
             S_CONTAINER_ID, fixtureProjectRepo,
             "sha256:m", {"listSteps": []}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
     assert dictStatus["sPhase"] == "passed"
@@ -671,6 +730,7 @@ def test_verification_worker_marks_failed_on_exception(fixtureProjectRepo):
         asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
             S_CONTAINER_ID, fixtureProjectRepo,
             "sha256:m", {"listSteps": []}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
     assert dictStatus["sPhase"] == "failed"
@@ -698,6 +758,7 @@ def test_verification_worker_marks_failed_on_diverged(fixtureProjectRepo):
         asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
             S_CONTAINER_ID, fixtureProjectRepo,
             "sha256:m", {"listSteps": []}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
         ))
     dictStatus = _DICT_VERIFY_TASKS[S_CONTAINER_ID]["dictStatus"]
     assert dictStatus["sPhase"] == "failed"

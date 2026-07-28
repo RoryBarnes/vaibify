@@ -1133,11 +1133,12 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
 def fbAtLeastLevel3(dictWorkflow, filesRepo):
     """Return True iff the workflow meets the L3 Reproducibility gate.
 
-    L3 requires L2 plus a green readiness check (six orthogonal
-    verifiers) plus a non-stale, ``passed`` L3 attestation on file.
-    The expensive rebuild that produces the attestation is the
-    only L3 criterion that touches a multi-hour operation; the
-    other five are cheap and re-evaluated on every level recompute.
+    L3 requires L2 plus a green readiness check (the seven orthogonal
+    verifiers composed by ``fbL3ReadinessOK``) plus a non-stale,
+    ``passed`` L3 attestation on file. The expensive rebuild that
+    produces the attestation is the only L3 criterion that touches a
+    multi-hour operation; the other seven are cheap and re-evaluated on
+    every level recompute.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel2(dictWorkflow, filesRepo):

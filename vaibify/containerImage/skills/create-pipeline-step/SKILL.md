@@ -49,11 +49,11 @@ contract. Own-step files may be hardcoded; the boundary is the step.
 Worked example — producer declares, consumer tokenizes:
 
 ```json
-{"iIndex": 2, "sName": "KeplerFfd",
- "saDataCommands": ["python dataKeplerFfd.py"],
- "saOutputDataFiles": ["flare_samples.npy"]}
-{"iIndex": 3, "sName": "FfdAgeComparison",
- "saPlotCommands": ["python plotFfd.py --flare-samples {Step02.flare_samples} {sPlotDirectory}/ffd.{sFigureType}"]}
+{"iIndex": 2, "sName": "PosteriorSamples",
+ "saDataCommands": ["python dataPosteriorSamples.py"],
+ "saOutputDataFiles": ["posterior_samples.npy"]}
+{"iIndex": 3, "sName": "PosteriorCorner",
+ "saPlotCommands": ["python plotCorner.py --posterior-samples {Step02.posterior_samples} {sPlotDirectory}/corner.{sFigureType}"]}
 ```
 
 ## Phase 4: Scripts and the project entry

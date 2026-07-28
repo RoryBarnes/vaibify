@@ -17,6 +17,12 @@ import pytest
 from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
+from vaibify.reproducibility.rerunVerification import (
+    S_DIVERGENCE_PIPELINE_FAILED,
+    fbRunWorkflowInContainer,
+    fdictVerifyRerunOutputs,
+    fiCountManifestEntriesOrZero,
+)
 
 
 def _fcompletedProcess(iReturnCode, sStdout="", sStderr=""):
@@ -82,6 +88,8 @@ def fixtureRepo(tmp_path):
     (pathWorkflows / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }))
     return tmp_path
 
@@ -201,42 +209,43 @@ def test_recorded_image_digest_handles_non_dict_container(tmp_path):
 
 
 # ============================================================================
-# _fiManifestEntryCount — lines 515-516
+# fiCountManifestEntriesOrZero — the defensive count both lanes share
 # ============================================================================
 
 
 def test_manifest_entry_count_returns_zero_on_oserror(tmp_path):
-    """Lines 515-516: an OSError from the parser maps to zero."""
+    """An OSError from the parser maps to zero."""
     with patch(
-        "vaibify.cli.commandReproduce.manifestWriter.fiCountManifestEntries",
+        "vaibify.reproducibility.rerunVerification.fiCountManifestEntries",
         side_effect=OSError("io"),
     ):
-        assert commandReproduce._fiManifestEntryCount(str(tmp_path)) == 0
+        assert fiCountManifestEntriesOrZero(str(tmp_path)) == 0
 
 
 def test_manifest_entry_count_returns_zero_on_filenotfounderror(tmp_path):
-    """Lines 515-516: a FileNotFoundError maps to zero."""
-    assert commandReproduce._fiManifestEntryCount(str(tmp_path)) == 0
+    """A FileNotFoundError maps to zero."""
+    assert fiCountManifestEntriesOrZero(str(tmp_path)) == 0
 
 
 def test_manifest_entry_count_returns_zero_on_valueerror(tmp_path):
-    """Lines 515-516: a ValueError from the parser maps to zero."""
+    """A ValueError from the parser maps to zero."""
     with patch(
-        "vaibify.cli.commandReproduce.manifestWriter.fiCountManifestEntries",
+        "vaibify.reproducibility.rerunVerification.fiCountManifestEntries",
         side_effect=ValueError("corrupt"),
     ):
-        assert commandReproduce._fiManifestEntryCount(str(tmp_path)) == 0
+        assert fiCountManifestEntriesOrZero(str(tmp_path)) == 0
 
 
 # ============================================================================
-# _fbWriteAttestationFromRun — lines 451-452, 489-491
+# _fbWriteAttestationFromRun
 # ============================================================================
 
 
 def test_write_attestation_from_run_writes_passed_record(fixtureRepo):
-    """A passing rerun writes a passed attestation file."""
+    """A passing rerun over unchanged artefacts writes a passed record."""
+    dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), True)
     bWritten = commandReproduce._fbWriteAttestationFromRun(
-        str(fixtureRepo), bRerunPassed=True, fDuration=2.5,
+        str(fixtureRepo), dictOutcome, 2.5,
     )
     assert bWritten is True
     pathAttestation = (
@@ -246,12 +255,20 @@ def test_write_attestation_from_run_writes_passed_record(fixtureRepo):
     assert dictPayload["sStatus"] == "passed"
     assert dictPayload["listDivergedHashes"] == []
     assert dictPayload["fDurationSeconds"] == 2.5
+    assert dictPayload["iOutputHashesMatched"] == 3
+    assert dictPayload["iOutputHashesTotal"] == 3
 
 
 def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
-    """A failing rerun writes a failed attestation with diverged-hash line."""
+    """A non-zero pipeline exit is named in listDivergedHashes.
+
+    The artefacts on disk are untouched here, so the re-hash honestly
+    reports 3 of 3 matching; the rerun itself is what failed, and that
+    fact is the first diverged entry rather than a zeroed count.
+    """
+    dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), False)
     bWritten = commandReproduce._fbWriteAttestationFromRun(
-        str(fixtureRepo), bRerunPassed=False, fDuration=1.0,
+        str(fixtureRepo), dictOutcome, 1.0,
     )
     assert bWritten is True
     pathAttestation = (
@@ -260,19 +277,20 @@ def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
     dictPayload = json.loads(pathAttestation.read_text())
     assert dictPayload["sStatus"] == "failed"
     assert dictPayload["listDivergedHashes"] == [
-        "rerun pipeline exited non-zero"
+        S_DIVERGENCE_PIPELINE_FAILED
     ]
-    assert dictPayload["iOutputHashesMatched"] == 0
+    assert dictPayload["iOutputHashesMatched"] == 3
 
 
 def test_write_attestation_from_run_handles_oserror(fixtureRepo):
-    """Lines 489-491: an OSError during write surfaces as False and a warning."""
+    """An OSError during write surfaces as False and a warning."""
+    dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), True)
     with patch(
         "vaibify.cli.commandReproduce.fnWriteAttestation",
         side_effect=OSError("disk full"),
     ):
         bWritten = commandReproduce._fbWriteAttestationFromRun(
-            str(fixtureRepo), bRerunPassed=True, fDuration=1.0,
+            str(fixtureRepo), dictOutcome, 1.0,
         )
     assert bWritten is False
 
@@ -285,8 +303,8 @@ def test_write_attestation_from_run_handles_oserror(fixtureRepo):
 def test_reproduce_rerun_passes_emits_confirmed_line(fixtureRepo):
     """Line 451: a clean rerun emits ``L3 reproduction confirmed and attested.``"""
     with _fnPatchAllSubprocessesSucceeding(), patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        return_value=True,
+        "vaibify.cli.commandReproduce.fdictRerunAndVerify",
+        return_value=fdictVerifyRerunOutputs(str(fixtureRepo), True),
     ):
         result = CliRunner().invoke(
             commandReproduce.reproduce,
@@ -299,8 +317,8 @@ def test_reproduce_rerun_passes_emits_confirmed_line(fixtureRepo):
 def test_reproduce_rerun_failure_emits_failed_line(fixtureRepo):
     """Line 459: a failed rerun emits ``L3 reproduction failed; ...``"""
     with _fnPatchAllSubprocessesSucceeding(), patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        return_value=False,
+        "vaibify.cli.commandReproduce.fdictRerunAndVerify",
+        return_value=fdictVerifyRerunOutputs(str(fixtureRepo), False),
     ):
         result = CliRunner().invoke(
             commandReproduce.reproduce,
@@ -333,50 +351,41 @@ def test_tier4_failure_emits_per_verifier_status(fixtureRepo, tmp_path):
 
 
 # ============================================================================
-# _fbInvokePipelineRunner — lines 393-402 (success + nonzero exit branches)
+# fbRunWorkflowInContainer — the "did it run again" half of tier 5.
+#
+# Previously asserted against the CLI's _fbInvokePipelineRunner, which
+# resolved the container from a host working directory. The exit-code
+# mapping it checked is unchanged; it now lives in the shared lane both
+# the CLI and the dashboard enter through.
 # ============================================================================
 
 
-def test_invoke_pipeline_runner_success_path(fixtureRepo):
-    """Lines 393-402: a zero-exit pipeline returns True with success line."""
-    with patch(
-        "vaibify.cli.configLoader.fconfigResolveProject",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fconnectionRequireDocker",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fsRequireRunningContainer",
-        return_value="ctr",
-    ), patch(
-        "vaibify.cli.commandRun._fiRunPipeline",
-        return_value=0,
-    ):
-        bResult = commandReproduce._fbInvokePipelineRunner(
-            str(fixtureRepo),
-        )
-    assert bResult is True
+def _fnPatchRunAllStepsWithExit(iExitCode):
+    """Patch the pipeline runner to report a fixed exit code."""
+    async def _fiRunAllSteps(*args, **kwargs):
+        return iExitCode
+    return patch(
+        "vaibify.gui.pipelineRunner.fnRunAllSteps",
+        side_effect=_fiRunAllSteps,
+    )
 
 
-def test_invoke_pipeline_runner_nonzero_exit_returns_false(fixtureRepo):
-    """Lines 398-400: a non-zero pipeline exit returns False."""
-    with patch(
-        "vaibify.cli.configLoader.fconfigResolveProject",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fconnectionRequireDocker",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fsRequireRunningContainer",
-        return_value="ctr",
-    ), patch(
-        "vaibify.cli.commandRun._fiRunPipeline",
-        return_value=2,
-    ):
-        bResult = commandReproduce._fbInvokePipelineRunner(
-            str(fixtureRepo),
-        )
-    assert bResult is False
+def test_run_workflow_in_container_zero_exit_returns_true():
+    """A zero-exit pipeline means the workflow did run again."""
+    with _fnPatchRunAllStepsWithExit(0):
+        assert fbRunWorkflowInContainer(
+            None, "ctr", {"listSteps": []}, "/workspace/Repo/wf.json",
+            "/workspace/Repo",
+        ) is True
+
+
+def test_run_workflow_in_container_nonzero_exit_returns_false():
+    """A non-zero pipeline exit means the rerun did not complete."""
+    with _fnPatchRunAllStepsWithExit(2):
+        assert fbRunWorkflowInContainer(
+            None, "ctr", {"listSteps": []}, "/workspace/Repo/wf.json",
+            "/workspace/Repo",
+        ) is False
 
 
 # ============================================================================
@@ -437,6 +446,8 @@ def test_aggregate_returns_workflow_with_determinism_only(tmp_path):
     (pathDir / "wf.json").write_text(json.dumps({
         "listSteps": [],
         "dictDeterminism": {"bAcceptBlasVariance": True},
+        "bNoStandaloneBinaries": True,
+        "listDeclaredBinaries": [],
     }))
     dictResult = commandReproduce._fdictAggregateAllWorkflows(str(tmp_path))
     assert dictResult is not None

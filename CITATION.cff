@@ -1,0 +1,39 @@
+# Citation metadata for vaibify (Citation File Format 1.2.0).
+# https://citation-file-format.github.io
+#
+# `version`, `doi`, and `date-released` are deliberately absent: no
+# release has been tagged and no DOI has been minted. Add all three at
+# the first tagged release, alongside the DOI Zenodo returns for it.
+cff-version: 1.2.0
+message: >-
+  If you use vaibify in your research, please cite it using the
+  metadata in this file.
+title: vaibify
+abstract: >-
+  Vaibify creates secure, containerized environments for AI-assisted
+  data analysis that are driven from a web dashboard, so that coding
+  agents can build an analysis pipeline without reaching the
+  researcher's host machine. It decomposes a project into pipeline
+  steps, runs each step inside an isolated Docker container, tracks
+  automated and manual verification of every step and its downstream
+  dependencies, and connects the result to GitHub, Overleaf, and
+  Zenodo for development, writing, and archiving.
+type: software
+authors:
+  - family-names: Barnes
+    given-names: Rory
+    email: rory@astro.washington.edu
+license: MIT
+repository-code: "https://github.com/RoryBarnes/Vaibify"
+url: "https://RoryBarnes.github.io/vaibify"
+keywords:
+  - reproducibility
+  - reproducible research
+  - scientific workflows
+  - containers
+  - Docker
+  - artificial intelligence
+  - coding agents
+  - verification
+  - provenance
+  - data science

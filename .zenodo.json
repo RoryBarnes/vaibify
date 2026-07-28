@@ -1,0 +1,36 @@
+{
+    "title": "vaibify: secure, verified containers for AI-assisted science",
+    "description": "Vaibify creates secure, containerized environments for AI-assisted data analysis that are driven from a web dashboard, so that coding agents can build an analysis pipeline without reaching the researcher's host machine. It decomposes a project into pipeline steps, runs each step inside an isolated Docker container, tracks automated and manual verification of every step and its downstream dependencies, and connects the result to GitHub, Overleaf, and Zenodo for development, writing, and archiving.",
+    "upload_type": "software",
+    "access_right": "open",
+    "license": "MIT",
+    "creators": [
+        {
+            "name": "Barnes, Rory"
+        }
+    ],
+    "keywords": [
+        "reproducibility",
+        "reproducible research",
+        "scientific workflows",
+        "containers",
+        "Docker",
+        "artificial intelligence",
+        "coding agents",
+        "verification",
+        "provenance",
+        "data science"
+    ],
+    "related_identifiers": [
+        {
+            "identifier": "https://github.com/RoryBarnes/Vaibify",
+            "relation": "isSupplementTo",
+            "scheme": "url"
+        },
+        {
+            "identifier": "https://RoryBarnes.github.io/vaibify",
+            "relation": "isDocumentedBy",
+            "scheme": "url"
+        }
+    ]
+}
