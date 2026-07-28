@@ -358,12 +358,20 @@ def testStaleSocketCloseDoesNotOrphanTheLiveSocket(
                 wsSecond.readyState = WebSocketFake.OPEN;
                 wsSecond.onopen();
 
-                /* The first socket's close arrives only now. */
+                /* A frame buffered by the superseded socket, and only
+                 * then its close, both arriving after the replacement
+                 * is live. */
+                let iStaleDelivered = 0;
+                VaibifyWebSocket.fnOnEvent(
+                    'staleProbe', () => { iStaleDelivered++; });
+                wsFirst.onmessage(
+                    {data: JSON.stringify({sType: 'staleProbe'})});
                 wsFirst.readyState = WebSocketFake.CLOSED;
                 wsFirst.onclose({code: 1000});
 
                 return {
                     iCreated: listCreated.length,
+                    iStaleDelivered: iStaleDelivered,
                     iReadyState: VaibifyWebSocket.fiGetReadyState(),
                     bIsOpen: !!VaibifyWebSocket.fbIsOpen(),
                     bSecondStillHeld:
@@ -382,3 +390,8 @@ def testStaleSocketCloseDoesNotOrphanTheLiveSocket(
         "every later send silently queues and the reconnect is 4409'd"
     )
     assert dictResult["bIsOpen"], dictResult
+    assert dictResult["iStaleDelivered"] == 0, (
+        "a frame from the superseded socket was dispatched into the "
+        "current view, so one container's run output can be rendered "
+        "as another's"
+    )

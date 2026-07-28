@@ -77,6 +77,12 @@ var VaibifyWebSocket = (function () {
             _fnFlushPendingActions();
         };
         wsNew.onmessage = function (event) {
+            /* Same fence as onclose: a superseded socket may still have
+             * frames buffered, and dispatching them writes another
+             * container's run output into the current view. */
+            if (_wsPipeline !== wsNew) {
+                return;
+            }
             console.log(
                 "[WS] message:", event.data.substring(0, 200));
             _fnDispatchEvent(JSON.parse(event.data));
