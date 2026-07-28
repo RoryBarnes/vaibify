@@ -35,7 +35,10 @@ from .determinismGate import (
     fbWorkflowDeclaresDeterminism,
     flistAuditWorkflow,
 )
-from .environmentSnapshot import fbEnvironmentDigestPinned
+from .environmentSnapshot import (
+    fbEnvironmentDigestPinned,
+    fbImageDigestPullable,
+)
 from .l3Attestation import (
     fbL3AttestationCurrent,
     fsCurrentManifestDigest,
@@ -1243,6 +1246,11 @@ def fbVerifyEnvironmentSnapshot(filesRepo):
     return fbEnvironmentDigestPinned(filesRepo)
 
 
+def fbVerifyImagePublished(filesRepo):
+    """Return True iff the recorded image digest is pullable on a fresh host."""
+    return fbImageDigestPullable(filesRepo)
+
+
 def fbVerifyDockerfilePinned(filesRepo):
     """Return True iff the Dockerfile passes the L3 pin lint."""
     listIssues = flistLintDockerfile(filesRepo)
@@ -2192,6 +2200,7 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         "environment-snapshot-missing": fbVerifyEnvironmentSnapshot(
             filesRepo,
         ),
+        "image-not-published": fbVerifyImagePublished(filesRepo),
         "reproduce-script-missing": fbVerifyReproduceScript(
             filesRepo, dictWorkflow,
         ),
@@ -2211,6 +2220,12 @@ _DICT_L3_REMEDIATION_HINTS = {
     "environment-snapshot-missing":
         "Capture the container image digest into "
         ".vaibify/environment.json.",
+    "image-not-published":
+        "The container image exists only on this machine, so "
+        "reproduce.sh's 'docker pull' would fail on a fresh host. "
+        "Push the image to a registry (or 'docker save' it and "
+        "archive the tarball with the deposit), then re-capture the "
+        "environment snapshot.",
     "reproduce-script-missing":
         "Generate reproduce.sh and pin it in MANIFEST.sha256.",
     "l3-attestation-stale":

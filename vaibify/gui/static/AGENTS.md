@@ -167,11 +167,11 @@ pattern wholesale.
   (populated from `listLevel3Blockers`). Per-step criteria:
   `missing-from-manifest`, `script-not-pinned`,
   `nondeterminism-undeclared`, `binary-not-declared`,
-  `binary-not-captured`. Workflow-scope criteria mirror the existing
-  `fbL3ReadinessOK` conjuncts: `dockerfile-not-pinned`,
+  `binary-not-captured`. Workflow-scope criteria mirror the backend's
+  `_fdictL3WorkflowChecks` dict: `dockerfile-not-pinned`,
   `dependency-lock-missing`, `environment-snapshot-missing`,
-  `reproduce-script-missing`, `l3-attestation-stale`,
-  `binaries-not-declared-or-waived`.
+  `image-not-published`, `reproduce-script-missing`,
+  `l3-attestation-stale`, `binaries-not-declared-or-waived`.
 - Every blocker entry carries `iLevel`, `iStepIndex`, `sStepLabel`,
   `sScope`, `sCriterion`, `listOffendingFiles`,
   `listOffendingUpstreamSteps`, `sRemediationHint`. Per-step L3

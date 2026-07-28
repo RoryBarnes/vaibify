@@ -5,8 +5,9 @@ The L3 blocker list pins both the per-step criteria
 ``nondeterminism-undeclared``, ``binary-not-declared``,
 ``binary-not-captured``) and the workflow-scope criteria
 (``dockerfile-not-pinned``, ``dependency-lock-missing``,
-``environment-snapshot-missing``, ``reproduce-script-missing``,
-``l3-attestation-stale``, ``binaries-not-declared-or-waived``).
+``environment-snapshot-missing``, ``image-not-published``,
+``reproduce-script-missing``, ``l3-attestation-stale``,
+``binaries-not-declared-or-waived``).
 """
 
 import hashlib
@@ -32,11 +33,16 @@ def _fnWriteRequirementsLock(pathDir):
     (pathDir / "requirements.lock").write_text(sBody)
 
 
-def _fnWriteEnvironment(pathDir, sDigest="img@sha256:" + "a" * 64):
+def _fnWriteEnvironment(
+    pathDir, sDigest="img@sha256:" + "a" * 64, bLocalImageOnly=None,
+):
     pathVaib = pathDir / ".vaibify"
     pathVaib.mkdir(parents=True, exist_ok=True)
+    dictContainer = {"sImageDigest": sDigest}
+    if bLocalImageOnly is not None:
+        dictContainer["bLocalImageOnly"] = bLocalImageOnly
     dictPayload = {
-        "dictContainer": {"sImageDigest": sDigest},
+        "dictContainer": dictContainer,
         "sSchemaVersion": "1",
     }
     (pathVaib / "environment.json").write_text(json.dumps(dictPayload))
@@ -304,6 +310,74 @@ def testDockerfileNotPinnedFiresAsWorkflowScope(fixtureL3Repo):
     assert listPinned[0]["sStepLabel"] == "(workflow)"
     assert listPinned[0]["sScope"] == "workflow"
     assert listPinned[0]["sRemediationHint"]
+
+
+def testImageNotPublishedFiresForLocalOnlyEnvelope(fixtureL3Repo):
+    """A capture stamped ``bLocalImageOnly`` blocks the reproduction claim.
+
+    The digest is an honest content pin, so ``environment-snapshot-
+    missing`` stays quiet — but ``reproduce.sh``'s ``docker pull``
+    would fail on any fresh host, and the dashboard must say so
+    instead of presenting a green L3 story.
+    """
+    _fnWriteEnvironment(
+        fixtureL3Repo, sDigest="sha256:" + "c" * 64, bLocalImageOnly=True,
+    )
+    listBlockers = flistLevel3Blockers(
+        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+    )
+    listImage = _flistFindByCriterion(listBlockers, "image-not-published")
+    assert len(listImage) == 1
+    assert listImage[0]["sScope"] == "workflow"
+    assert "docker pull" in listImage[0]["sRemediationHint"]
+    assert _flistFindByCriterion(
+        listBlockers, "environment-snapshot-missing",
+    ) == []
+
+
+def testImageNotPublishedFiresOnBareImageIdWithoutFlag(fixtureL3Repo):
+    """A legacy envelope is judged by its digest's shape.
+
+    Envelopes captured before ``bLocalImageOnly`` existed carry only
+    the digest; a bare image ID (``sha256:<hex>`` with no repository
+    prefix) is pullable from nowhere, so the blocker must fire on the
+    evidence itself, not only on the newer stamp.
+    """
+    _fnWriteEnvironment(fixtureL3Repo, sDigest="sha256:" + "c" * 64)
+    listBlockers = flistLevel3Blockers(
+        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+    )
+    assert len(_flistFindByCriterion(
+        listBlockers, "image-not-published",
+    )) == 1
+
+
+def testRegistryDigestDoesNotFireImageNotPublished(fixtureL3Repo):
+    """The fixture's ``repo@sha256:`` digest is pullable: no blocker."""
+    listBlockers = flistLevel3Blockers(
+        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+    )
+    assert _flistFindByCriterion(
+        listBlockers, "image-not-published",
+    ) == []
+
+
+def testMissingEnvelopeIsOwnedBySnapshotCriterionAlone(fixtureL3Repo):
+    """No envelope at all is the snapshot criterion's gap, not this one.
+
+    Firing both blockers for one missing file would tell the
+    researcher to publish an image that was never even captured.
+    """
+    (fixtureL3Repo / ".vaibify" / "environment.json").unlink()
+    listBlockers = flistLevel3Blockers(
+        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+    )
+    assert len(_flistFindByCriterion(
+        listBlockers, "environment-snapshot-missing",
+    )) == 1
+    assert _flistFindByCriterion(
+        listBlockers, "image-not-published",
+    ) == []
 
 
 def testDependencyLockMissingHintNamesInstallableTools(fixtureL3Repo):
