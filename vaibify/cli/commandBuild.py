@@ -6,8 +6,10 @@ import os
 import pathlib
 import platform
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 import click
 
@@ -29,32 +31,59 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache):
 
     ``sDockerDir`` is the read-only context shipped with the package.
     The generated part of the context (container.conf, the package
-    lists, the staged scripts and docs) is written into a per-project
+    lists, the staged scripts and docs) is written into a private
     staging copy instead, which is what the daemon is handed.
+
+    The staging copy is discarded on success and kept on failure, with
+    its path printed, because a failed image build is exactly when
+    someone wants to read the context that produced it.
     """
     fnBuildImage = _fImportBuildOrExit()
     sStagedDir = fsStageBuildContext(config, sDockerDir)
-    fnPrepareBuildContext(config, sStagedDir)
-    bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
-    fnWarnIfBaseImageFloating(config)
-    fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
+    try:
+        fnPrepareBuildContext(config, sStagedDir)
+        bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
+        fnWarnIfBaseImageFloating(config)
+        fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
+    except BaseException:
+        click.echo(f"[vaib] Build context retained at {sStagedDir}")
+        raise
+    fnDiscardBuildContext(sStagedDir)
     fnRecordBaseImageDigestIfFloating(config)
     fnRecordBuildArgHash(config)
     fnPruneDanglingImages()
 
 
 def fsStageBuildContext(config, sDockerDir):
-    """Return a freshly populated writable copy of the build context.
+    """Return a private writable copy of the shipped build context.
 
-    Each build starts from the shipped tree rather than from whatever
-    the previous build left behind, so a file removed upstream cannot
-    linger in the context and end up in the image unnoticed.
+    Each build gets its own directory rather than a per-project one.
+    A shared path is unsafe here: the GUI starts builds in worker
+    threads with no serialization, so two dashboard clicks — or a
+    dashboard build and a CLI build — race. Refreshing a shared
+    directory begins by removing it, which would delete the context out
+    from under a ``docker build`` that is still archiving it. Private
+    directories remove the shared state instead of arbitrating access
+    to it, so no lock is needed and no build can disturb another.
+
+    Starting from the shipped tree every time also means a file removed
+    upstream cannot linger in a context and reach the image unnoticed.
     """
-    pathStaged = pathlib.Path(
-        _S_BUILD_STAGING_DIRECTORY,
-    ) / config.sProjectName
+    pathRoot = pathlib.Path(_S_BUILD_STAGING_DIRECTORY)
+    pathRoot.mkdir(parents=True, exist_ok=True)
+    sStagedDir = tempfile.mkdtemp(
+        prefix=f"{config.sProjectName}-", dir=str(pathRoot),
+    )
+    pathStaged = pathlib.Path(sStagedDir)
+    # mkdtemp created the directory; copytree needs it absent.
+    pathStaged.rmdir()
     fnCopyPackagedTree(pathlib.Path(sDockerDir), pathStaged)
-    return str(pathStaged)
+    return sStagedDir
+
+
+def fnDiscardBuildContext(sStagedDir):
+    """Remove a staging directory, tolerating an already-gone path."""
+    shutil.rmtree(sStagedDir, ignore_errors=True)
 
 
 def fbBaseImageIsFloating(config):
@@ -390,14 +419,23 @@ def fnCopyContainerScripts(sDockerDir):
 # Curated docs the in-container agent may need to consult. Staged into
 # the build context and COPYed to /usr/share/vaibify/docs so the
 # vaibify-doc-map skill can point at real files that cost zero context
-# until read. Each entry is (source-relative-to-repo-root, dest-name).
-# When adding one, also extend the vaibify-doc-map skill's table.
+# until read. When adding one, also extend the vaibify-doc-map skill's
+# table.
+#
+# Every source lives under ``vaibify/docs/``, which is package data, so
+# these resolve identically from a checkout and from an installed
+# wheel. Five of them used to be named at the repository's top-level
+# ``docs/``, which a wheel does not contain: a wheel-built image got
+# one of the six documents while the shipped skill told the agent all
+# six were there. In the repository those five are symlinks onto the
+# Sphinx sources, so there is still exactly one copy to edit; both
+# builders dereference them into real files in the distribution.
 T_STAGED_DOCS = (
-    ("docs/dashboard.md", "dashboard.md"),
-    ("docs/reproducibility.md", "reproducibility.md"),
-    ("docs/vision.md", "vision.md"),
-    ("docs/pipelines.md", "pipelines.md"),
-    ("docs/testFormats.md", "testFormats.md"),
+    ("vaibify/docs/dashboard.md", "dashboard.md"),
+    ("vaibify/docs/reproducibility.md", "reproducibility.md"),
+    ("vaibify/docs/vision.md", "vision.md"),
+    ("vaibify/docs/pipelines.md", "pipelines.md"),
+    ("vaibify/docs/testFormats.md", "testFormats.md"),
     ("vaibify/docs/scriptAuthoring.md", "scriptAuthoring.md"),
 )
 
@@ -412,11 +450,8 @@ def fnStageCuratedDocs(sDockerDir):
 
     Sources are resolved against the directory holding the ``vaibify``
     package, which is the repository root in a checkout and
-    site-packages in a wheel. Entries under ``vaibify/`` therefore
-    resolve in both; the entries under the repository's top-level
-    ``docs/`` resolve only in a checkout, and a wheel build stages
-    those as absent. That is a known gap, and the warning names it so
-    a degraded image is never mistaken for a complete one.
+    site-packages in a wheel. Every entry in ``T_STAGED_DOCS`` lives
+    under ``vaibify/``, so all of them resolve in both.
     """
     import shutil
     import pathlib

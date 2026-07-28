@@ -647,22 +647,52 @@ place that names the trees, and `importlib.resources` resolves them
 identically from a checkout, an editable install, and a wheel. Never
 reintroduce a `parents[N]` walk to reach package data.
 
-**Treat them as read-only.** A wheel may be installed where the user
-cannot write, and `site-packages` is shared by every project on the
-machine. `vaibify build` copies the context into
-`~/.vaibify/build/<project>/` and writes the generated part there
-(`commandBuild.fsStageBuildContext`). A build must never write into
-the packaged tree — and note that generated context files sat
-untracked *and* unignored in the old `docker/` directory for months,
-then rode a `git mv` into a wheel;
-`tests/testPackagedResources.py` now fails if either happens again.
+**Treat them as read-only, and give every build its own copy.** A
+wheel may be installed where the user cannot write, and `site-packages`
+is shared by every project on the machine, so `vaibify build` never
+writes into the packaged tree: `commandBuild.fsStageBuildContext`
+mkdtemps a private context under `~/.vaibify/build/`, and it is
+discarded on success and kept on failure with its path printed. The
+staging directory is per *build*, not per project — the GUI starts
+builds in worker threads with no serialization, so two dashboard
+clicks race, and refreshing a shared directory begins with `rmtree`,
+which would delete a context out from under a running `docker build`.
+Note also that generated context files sat untracked *and* unignored
+in the old `docker/` directory for months, then rode a `git mv` into a
+wheel. `tests/testPackagedResources.py` fails if any of this
+regresses.
+
+**Anything the image needs must live under `vaibify/`.** Two
+resources were reached from the repository root and therefore missing
+from every distribution: the five curated agent docs staged into
+`/usr/share/vaibify/docs`, and the shell completions. The docs case
+was the worse one, because the bundled `vaibify-doc-map` skill told
+the in-container agent all six documents were present — a wheel-built
+image did not merely lack docs, it misdirected the agent, and it
+differed materially from a checkout-built image. Those five now live
+at `vaibify/docs/` as **symlinks onto the Sphinx sources**, so there
+is exactly one file to edit and both builders dereference them into
+real files in the distribution. Never replace one with a real file;
+that is the shadowing trap, and
+`testCuratedDocsRemainSymlinksOntoTheSphinxSources` fails if you do.
+When adding a curated doc, add the symlink, extend `T_STAGED_DOCS`,
+extend the doc-map skill's table, and add the *Sphinx source* path to
+`freshImageBuild.yml`'s triggers — an edit lands on the target, never
+on the symlink blob.
 
 **Prove the distribution, not the import.** `pip-install.yml` runs
 `tools/checkInstalledDistribution.py` against an installed sdist and
-an installed wheel: it resolves both trees, runs `vaibify init`, and
-executes the shipped example workflow to a figure. The release
-workflow previously tested a distribution with `import vaibify`, which
-is why a wheel missing every template shipped without comment.
+an installed wheel: it resolves every tree, runs `vaibify init`,
+executes the shipped example workflow to a figure, *assembles a real
+build context* and checks that no curated doc and no Dockerfile `COPY`
+source is missing. The release workflow previously tested a
+distribution with `import vaibify`, which is why a wheel missing every
+template shipped without comment — and the first version of this
+script spot-checked three files, which is why it passed a
+distribution whose assembled context was missing five of six agent
+documents. Checking a shipped file is not the same as checking the
+artifact built from it. The job runs on pull requests too, at the
+corners of the support matrix; a release runs the full matrix.
 
 ## Known technical debt
 
@@ -761,6 +791,19 @@ correct approach.
   that existed nowhere in the repository. Every new project from it
   opened red and could not run. Three template tests existed; all
   three checked token syntax, none loaded or ran the thing.
+- Fixing the instance is not fixing the class. The packaging fix
+  repointed the templates and the build context, added a locator, and
+  shipped a distribution check — and missed the shell completions,
+  which had the identical bug two directories away
+  (`dirname(dirname(__file__)) + "completions"`, resolving to a path
+  present in no install *and no checkout*). Completion had never
+  worked for anyone, and first-run setup wrote a permanent marker
+  saying it had. After fixing a resolution bug, grep for every other
+  way the codebase reaches outside the package, not just the spelling
+  that bit you.
+- A marker that records "setup done" must not be written after a step
+  that silently did nothing. It is checked forever, so one bad write
+  makes the defect permanent for that machine.
 - A CI step that reports success for having run nothing is worse than
   no step. The live-Docker job was guarded by `docker info || exit 0`,
   so an unreachable daemon turned it green; `pytest -m docker` was

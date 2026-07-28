@@ -80,8 +80,13 @@ files.
 ```
 vaibify/
   cli/                Command-line interface (Click)
+  completions/        Bash and zsh tab-completion scripts
   config/             Configuration dataclasses and parsers
+  containerImage/     Docker build context (Dockerfiles, entrypoint,
+                      overlays, in-container skills and CLI)
   docker/             Container lifecycle management
+  docs/               Docs that ship into the image; the five curated
+                      ones are symlinks onto the Sphinx sources
   gui/                FastAPI web application and pipeline runner
     routes/           Route modules (one per endpoint group)
     static/           JavaScript IIFE modules + CSS + HTML
@@ -89,7 +94,7 @@ vaibify/
     static/AGENTS.md  Frontend subtree rules for coding agents
   install/            Setup wizard and shell installer
   reproducibility/    Zenodo, Overleaf, and LaTeX integration
-templates/            Project templates (sandbox, workflow, toolkit)
+  templates/          Project templates (sandbox, workflow, toolkit)
 tests/                Pytest test suite, including
                       testArchitecturalInvariants.py
 tools/                On-demand helper scripts (listModules.py,

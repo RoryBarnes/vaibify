@@ -1,9 +1,20 @@
 name: pip-install
 
+# The artifact checks used to run only on `release: published`, which
+# is after the release exists: they could block the PyPI upload but not
+# the release, and never a pull request. A wheel that cannot run
+# `vaibify init` is a defect like any other and belongs on the PR gate,
+# so build+test now run on pushes and pull requests too. Only
+# upload_pypi remains release-gated.
 on:
   release:
     types:
       - published
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
 
@@ -34,11 +45,21 @@ jobs:
     name: 'Test py${{ matrix.python }} on ${{ matrix.os }}'
     needs: [build]
     runs-on: ${{ matrix.os }}
+    # A release checks the full support matrix. A pull request checks
+    # the corners — oldest and newest supported Python, one Linux and
+    # one macOS — because 24 jobs per PR to catch a packaging mistake
+    # that is almost never platform-specific is the wrong trade. The
+    # failure this gate exists for (a wheel with no package data) is
+    # identical on every row.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26, ubuntu-22.04, ubuntu-24.04]
-        python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+        os: ${{ github.event_name == 'release'
+          && fromJSON('["macos-15","macos-26","ubuntu-22.04","ubuntu-24.04"]')
+          || fromJSON('["ubuntu-24.04","macos-26"]') }}
+        python: ${{ github.event_name == 'release'
+          && fromJSON('["3.9","3.10","3.11","3.12","3.13","3.14"]')
+          || fromJSON('["3.9","3.14"]') }}
     steps:
       - uses: actions/checkout@v5
 

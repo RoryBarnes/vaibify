@@ -73,6 +73,105 @@ def fnCheckContainerContextIsUsable():
     print(f"  container context: {pathContext}")
 
 
+def fnCheckPreparedContextIsComplete(pathScratch):
+    """Assemble a real build context and check nothing staged is absent.
+
+    Spot-checking three files in the shipped tree is not enough: the
+    context the daemon receives is *assembled*, and the first version
+    of this script passed a distribution whose assembled context was
+    missing five of six agent documents. The only way to see that is
+    to run the assembly.
+
+    Every source that ``COPY`` names in a Dockerfile must exist in the
+    result, and every curated doc must have been staged rather than
+    skipped with a warning.
+    """
+    from vaibify.cli import commandBuild
+    from vaibify.cli.configLoader import fsDockerDir
+    from vaibify.config.projectConfig import ProjectConfig
+
+    commandBuild._S_BUILD_STAGING_DIRECTORY = str(pathScratch / "build")
+    configProject = ProjectConfig(sProjectName="distributionCheck")
+    sStagedDir = commandBuild.fsStageBuildContext(
+        configProject, fsDockerDir(),
+    )
+    commandBuild.fnPrepareBuildContext(configProject, sStagedDir)
+    pathStaged = pathlib.Path(sStagedDir)
+
+    listMissingDocs = [
+        sDestName for _sSource, sDestName in commandBuild.T_STAGED_DOCS
+        if not (pathStaged / "docs-staged" / sDestName).is_file()
+    ]
+    if listMissingDocs:
+        fnFailWith(
+            f"the assembled build context is missing curated docs "
+            f"{listMissingDocs}; a container built from this "
+            f"distribution would ship a doc-map skill pointing at "
+            f"files that are not there"
+        )
+
+    listMissingCopy = sorted({
+        sSource
+        for pathDockerfile in sorted(pathStaged.glob("Dockerfile*"))
+        for sSource in _flistCopySources(pathDockerfile.read_text())
+        if not (pathStaged / sSource).exists()
+    })
+    if listMissingCopy:
+        fnFailWith(
+            f"Dockerfile COPY sources absent from the assembled "
+            f"context: {listMissingCopy}"
+        )
+    print(
+        f"  build context assembles: "
+        f"{len(commandBuild.T_STAGED_DOCS)} curated docs, every COPY "
+        f"source present"
+    )
+
+
+def _flistCopySources(sDockerfile):
+    """Return the literal COPY source paths named in a Dockerfile."""
+    import re
+
+    listSources = []
+    for sLine in sDockerfile.splitlines():
+        matchCopy = re.match(r"\s*COPY\s+(?!--from)(.*)", sLine)
+        if not matchCopy:
+            continue
+        saTokens = [
+            sToken for sToken in matchCopy.group(1).split()
+            if not sToken.startswith("--")
+        ]
+        listSources.extend(
+            sToken for sToken in saTokens[:-1]
+            if "*" not in sToken and "$" not in sToken
+        )
+    return listSources
+
+
+def fnCheckShellCompletionsResolve():
+    """Tab completion must find its scripts in the installation.
+
+    ``_fsCompletionsDirectory`` reads ``<package>/completions``. The
+    scripts sat at the repository root instead, so this returned a
+    path that existed in no installation *and no checkout* — shell
+    completion had never worked for anyone, and first-run setup wrote
+    a permanent marker saying it had.
+    """
+    from vaibify.install.shellSetup import (
+        _fsCompletionPathForShell, _fsCompletionsDirectory,
+    )
+    sDirectory = _fsCompletionsDirectory()
+    if not pathlib.Path(sDirectory).is_dir():
+        fnFailWith(f"completions directory missing: {sDirectory}")
+    for sShellName in ("bash", "zsh"):
+        if not _fsCompletionPathForShell(sShellName):
+            fnFailWith(
+                f"no completion script resolved for {sShellName} in "
+                f"{sDirectory}"
+            )
+    print(f"  shell completions: {sDirectory}")
+
+
 def fnCheckDashboardAssetsArePresent():
     """The GUI cannot render without its static assets."""
     from importlib import resources
@@ -213,13 +312,21 @@ def main():
     fnCheckTemplatesAreUsable()
     fnCheckContainerContextIsUsable()
     fnCheckDashboardAssetsArePresent()
+    fnCheckShellCompletionsResolve()
     fnCheckConsoleScriptRuns()
     with tempfile.TemporaryDirectory() as sScratch:
         pathScratch = pathlib.Path(sScratch)
         fnCheckInitScaffoldsAProject(pathScratch)
         fnCheckNoBytecodeLeaksIntoNewProjects(pathScratch)
         fnCheckWorkflowTemplateRuns(pathScratch)
-    print("OK: the installed distribution ships everything it needs.")
+        fnCheckPreparedContextIsComplete(pathScratch)
+    print(
+        "OK: every checked first-run path works in this "
+        "distribution.\n"
+        "    Not checked here: a real `docker build` against a live "
+        "daemon.\n"
+        "    That is the container-acceptance lane's job."
+    )
 
 
 if __name__ == "__main__":

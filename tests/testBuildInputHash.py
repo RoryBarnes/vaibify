@@ -111,7 +111,7 @@ def testInputsBeyondTheDockerfileAreKeyed():
         "vaibify/containerImage/vaibifyDo.py",
         "vaibify/cli/commandBuild.py",
         "vaibify/docker/imageBuilder.py",
-        "docs/vision.md",
+        "vaibify/docs/vision.md",
     ):
         assert sRequired in listInputs, (
             f"{sRequired} can change the image but is not keyed."
@@ -132,6 +132,13 @@ def testFreshBuildTriggerCoversEveryHashInput():
     fresh build while the hash said the image had changed.
 
     Mutation: drop a path from the workflow's pull_request paths.
+
+    Symlinked inputs are compared on the path an *edit* lands on, not
+    the path the hash names. Five curated docs are hashed as
+    ``vaibify/docs/<name>.md`` but are symlinks onto ``docs/<name>.md``
+    -- editing one produces a diff against the Sphinx source, and the
+    symlink blob never changes, so a trigger listing only the package
+    path would never fire.
     """
     import fnmatch
     import yaml
@@ -153,9 +160,18 @@ def testFreshBuildTriggerCoversEveryHashInput():
                 return True
         return False
 
+    def fsEditablePath(sInput):
+        """Return the path a change to sInput actually appears at."""
+        pathInput = _PATH_REPO / sInput
+        if not pathInput.is_symlink():
+            return sInput
+        return pathInput.resolve().relative_to(
+            _PATH_REPO.resolve(),
+        ).as_posix()
+
     listUncovered = [
         sInput for sInput in flistBuildInputPaths()
-        if not fbCovered(sInput)
+        if not fbCovered(fsEditablePath(sInput))
     ]
     assert not listUncovered, (
         "These files are hashed into the image key but no "

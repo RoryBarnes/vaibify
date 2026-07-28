@@ -300,7 +300,7 @@ vaibify publish workflow
 ```
 
 This reads `project.json` and `vaibify.yml`, renders the Jinja2
-template at `templates/workflow.yml.j2`, and writes the result to
+template at `vaibify/templates/workflow.yml.j2`, and writes the result to
 `.github/workflows/vaibify.yml`.
 
 The generated workflow:

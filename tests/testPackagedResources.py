@@ -20,6 +20,7 @@ run here as "the declaration is right", not as "the artifact is right".
 
 import pathlib
 import subprocess
+import tempfile
 
 import pytest
 
@@ -150,6 +151,152 @@ def testNoGeneratedBuildArtifactSitsInThePackagedContext():
         f"generated build artifacts are sitting in the packaged "
         f"context and will ship in the wheel: {listPresent}"
     )
+
+
+def testEveryCuratedDocResolvesInsideThePackage():
+    """The docs staged into the image must be reachable from a wheel.
+
+    Five of the six were named at the repository's top-level ``docs/``,
+    which no distribution contains, so a wheel-built image shipped one
+    document while the bundled ``vaibify-doc-map`` skill told the agent
+    all six were at ``/usr/share/vaibify/docs/``. The image did not
+    merely lack docs; it misdirected the agent, and an image built from
+    a checkout differed materially from one built from a release.
+    """
+    from vaibify.cli.commandBuild import T_STAGED_DOCS
+
+    listOutside = [
+        sSource for sSource, _sDest in T_STAGED_DOCS
+        if not sSource.startswith("vaibify/")
+    ]
+    assert listOutside == [], (
+        f"these staged docs live outside the package and cannot ship "
+        f"in a distribution: {listOutside}"
+    )
+    listMissing = [
+        sSource for sSource, _sDest in T_STAGED_DOCS
+        if not (_PATH_REPO / sSource).is_file()
+    ]
+    assert listMissing == [], (
+        f"staged doc sources that do not resolve: {listMissing}"
+    )
+
+
+def testCuratedDocsRemainSymlinksOntoTheSphinxSources():
+    """The package copies must stay links, never second real files.
+
+    ``vaibify/docs/`` holds the container's copy of five documents that
+    Sphinx owns under ``docs/``. They are symlinks so there is exactly
+    one file to edit; both builders dereference them into real files in
+    the distribution. Replacing one with a real file reintroduces the
+    shadowing trap: two copies with nothing forcing them to agree, and
+    the container silently serving the stale one.
+    """
+    pathPackageDocs = _PATH_REPO / "vaibify" / "docs"
+    listBroken = [
+        pathDoc.name for pathDoc in sorted(pathPackageDocs.iterdir())
+        if pathDoc.is_symlink() and not pathDoc.is_file()
+    ]
+    assert listBroken == [], (
+        f"dangling symlinks in vaibify/docs/: {listBroken}"
+    )
+    listShadowed = [
+        pathDoc.name for pathDoc in sorted(pathPackageDocs.iterdir())
+        if not pathDoc.is_symlink()
+        and (_PATH_REPO / "docs" / pathDoc.name).is_file()
+    ]
+    assert listShadowed == [], (
+        f"these are real files in vaibify/docs/ while docs/ also has "
+        f"a copy; make them symlinks so there is one source: "
+        f"{listShadowed}"
+    )
+
+
+def testShellCompletionsShipInsideThePackage():
+    """Tab completion must find its scripts in an installation.
+
+    ``_fsCompletionsDirectory`` reads ``<package>/completions`` while
+    the scripts sat at the repository root, so the lookup resolved to a
+    path present in no installation *and no checkout*. Completion had
+    never worked, and first-run setup recorded a permanent marker
+    saying it had.
+    """
+    from vaibify.install.shellSetup import (
+        _fsCompletionPathForShell, _fsCompletionsDirectory,
+    )
+    pathCompletions = pathlib.Path(_fsCompletionsDirectory())
+    assert pathCompletions.parent.name == "vaibify", (
+        f"completions resolved to '{pathCompletions}', outside the "
+        f"package; no wheel will contain it"
+    )
+    for sShellName in ("bash", "zsh"):
+        assert _fsCompletionPathForShell(sShellName), (
+            f"no completion script resolves for {sShellName}"
+        )
+
+
+def testFirstRunMarkerIsWithheldWhenCompletionsAreMissing():
+    """A broken install must not be recorded as finished setup.
+
+    The marker is written once and checked forever, so writing it after
+    a step that silently did nothing makes the failure permanent for
+    that machine.
+    """
+    from unittest.mock import patch
+
+    from vaibify.install import shellSetup
+
+    with tempfile.TemporaryDirectory() as sScratch:
+        sMarker = str(pathlib.Path(sScratch) / ".setup_done")
+        with patch.object(shellSetup, "_MARKER_DIR", sScratch), \
+                patch.object(shellSetup, "_MARKER_PATH", sMarker), \
+                patch.object(shellSetup, "fnConfigureCompletions"), \
+                patch.object(shellSetup, "fnConfigureHelperCommands"), \
+                patch.object(shellSetup, "fnLinkColimaSocket"), \
+                patch.object(
+                    shellSetup, "fbCompletionsArePresent",
+                    return_value=False,
+                ):
+            shellSetup.fnRunFirstTimeSetup()
+        assert not pathlib.Path(sMarker).exists(), (
+            "setup wrote its completion marker despite the "
+            "completions being absent, so it will never retry"
+        )
+
+
+def testConcurrentBuildsGetPrivateStagingDirectories():
+    """Two builds of one project must not share a context directory.
+
+    The GUI starts builds in worker threads with no serialization, so
+    two dashboard clicks — or a dashboard build and a CLI build — run
+    at once. A per-project staging path made them share one directory
+    whose refresh begins with ``rmtree``, so one build could delete the
+    context out from under another that was still archiving it.
+    """
+    from vaibify.cli import commandBuild
+    from vaibify.cli.configLoader import fsDockerDir
+    from vaibify.config.projectConfig import ProjectConfig
+
+    configProject = ProjectConfig(sProjectName="raceCheck")
+    with tempfile.TemporaryDirectory() as sScratch:
+        commandBuild._S_BUILD_STAGING_DIRECTORY = sScratch
+        sFirst = commandBuild.fsStageBuildContext(
+            configProject, fsDockerDir(),
+        )
+        sSecond = commandBuild.fsStageBuildContext(
+            configProject, fsDockerDir(),
+        )
+        assert sFirst != sSecond, (
+            "two concurrent builds of the same project were handed the "
+            "same staging directory"
+        )
+        # The second staging must not have disturbed the first.
+        assert (pathlib.Path(sFirst) / "Dockerfile").is_file()
+        assert (pathlib.Path(sSecond) / "Dockerfile").is_file()
+        commandBuild.fnDiscardBuildContext(sSecond)
+        assert (pathlib.Path(sFirst) / "Dockerfile").is_file(), (
+            "discarding one build's context destroyed another's"
+        )
 
 
 def testGeneratedContextArtifactsCannotBeCommitted():

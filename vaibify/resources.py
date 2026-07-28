@@ -19,7 +19,7 @@ identically from a checkout, an editable install, and a wheel.
 The trees are read-only: a wheel may be installed into a directory the
 user cannot write, and writing into ``site-packages`` would leak one
 project's build into the next one's. Callers that need to modify a
-copy stage it elsewhere first -- see ``fpathStageBuildContext`` in
+copy stage it elsewhere first -- see ``fsStageBuildContext`` in
 ``vaibify.cli.commandBuild``.
 """
 

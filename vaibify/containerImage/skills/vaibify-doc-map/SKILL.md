@@ -26,7 +26,7 @@ All paths are under `/usr/share/vaibify/docs/`.
 | Project size limits, core allocation | pipelines.md | `### Project size limits`, `## Core Allocation` |
 | Test file formats and detection | testFormats.md | `## Format Table`, `## How Format Detection Works` |
 | The data access-path syntax for tests | testFormats.md | `## Access Path Syntax` |
-| The cross-step `{StepNN.varname}` contract | scriptAuthoring.md | (whole file; the token convention + colliding basenames) |
+| The cross-step `{step:<id>.<stem>}` contract | scriptAuthoring.md | (whole file; the token convention + colliding basenames) |
 
 ## Caveats
 
