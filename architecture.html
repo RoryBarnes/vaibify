@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev615 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev620 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5b25f96f"></script>
+      <script src="_static/documentation_options.js?v=ae7c171d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
@@ -190,7 +191,7 @@ container status, project state, and verification state are surfaced
 together. This is a rule, not an aesthetic. Nothing in vaibify may lie
 to the dashboard: no optimistic status, no cached-past-lifetime state,
 no quietly swallowed errors. If the truth is slow or ugly, the
-dashboard shows it slow and ugly. The <span class="xref myst">AGENTS.md</span> trap
+dashboard shows it slow and ugly. The <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> trap
 list treats dashboard honesty as a hard invariant.</p>
 </section>
 <section id="the-happy-path">
@@ -307,7 +308,7 @@ The cache layer has been removed: every poll stats the polled paths
 directly. This still costs exactly one <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> per poll
 (the dominant wire cost) and trades a small per-poll byte increase
 on the path-list for the dashboard’s honesty contract — the same
-contract the <span class="xref myst">AGENTS.md</span> “do not suppress or
+contract the <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> “do not suppress or
 misrepresent state” trap enforces for every other surface.</p>
 <p>Four module-level booleans in <code class="docutils literal notranslate"><span class="pre">scriptPolling.js</span></code> — one each for
 pipeline, file-status, repos, and discovery — short-circuit a poll
@@ -316,7 +317,7 @@ duplicate-request suppressors, not state caches. They do not cache
 server responses, do not extend mtime values, and do not affect what
 the next successful poll sees. Do not extend them into result
 caching: that would re-introduce the stale-dashboard failure mode
-the <span class="xref myst">AGENTS.md</span> “do not suppress or misrepresent
+the <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> “do not suppress or misrepresent
 state” trap warns about.</p>
 </section>
 <section id="the-poll-s-freshness-stamp-and-why-it-ships-no-store">
@@ -374,7 +375,7 @@ originates from an HTTP request body, a <code class="docutils literal notranslat
 config file must be validated against its intended root before the
 backend opens it. <code class="docutils literal notranslate"><span class="pre">fnValidatePathWithinRoot(sAbsPath,</span> <span class="pre">WORKSPACE_ROOT)</span></code>
 in <code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code> is the canonical guard; the trap list in
-<span class="xref myst">AGENTS.md</span> flags this explicitly.</p>
+<a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> flags this explicitly.</p>
 <p><strong>Docker containers, not Python-level sandboxing.</strong> Vaibify does not
 try to sandbox the agent with a virtualenv, a restricted subprocess
 environment, or a library like <code class="docutils literal notranslate"><span class="pre">RestrictedPython</span></code>. Language-level
@@ -417,7 +418,7 @@ system. <code class="docutils literal notranslate"><span class="pre">director</s
 separator. Unifying them would either mangle Windows host paths or
 mangle container paths on any host, and the failure would be silent
 until a cross-platform user hit it. The divergence is load-bearing;
-the <span class="xref myst">AGENTS.md</span> trap list and
+the <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> trap list and
 <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> both guard it.</p>
 </section>
 <section id="project-git-repo">
@@ -682,7 +683,7 @@ in the request path; a request that names no container fails closed.</p>
 <p>Authorizing the agent lane answers <em>which container</em> an agent may act
 on. It does not answer <em>what it may do there</em>, and for a long time
 nothing did. <code class="docutils literal notranslate"><span class="pre">fnAgentAction</span></code> attaches a name to a handler and changes
-no behaviour; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was consumed only by <code class="docutils literal notranslate"><span class="pre">docker/vaibifyDo.py</span></code>
+no behaviour; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was consumed only by <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/vaibifyDo.py</span></code>
 <strong>inside</strong> the container, which an agent bypasses with <code class="docutils literal notranslate"><span class="pre">curl</span></code>. Every
 route the catalog marked researcher-only — <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>,
 <code class="docutils literal notranslate"><span class="pre">delete-step</span></code>, <code class="docutils literal notranslate"><span class="pre">declare-determinism</span></code>, <code class="docutils literal notranslate"><span class="pre">supervision/configure</span></code>,
@@ -986,7 +987,7 @@ results.</p></li>
 </ul>
 <p>This state machine is load-bearing for the dashboard’s honesty
 guarantee: the GUI must always reflect the true state of the project.
-See the relevant trap in <span class="xref myst">../AGENTS.md</span>.</p>
+See the relevant trap in <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">../AGENTS.md</a>.</p>
 </section>
 <section id="two-aics-level-truth-systems">
 <h2>Two AICS-level truth systems<a class="headerlink" href="#two-aics-level-truth-systems" title="Link to this heading"></a></h2>

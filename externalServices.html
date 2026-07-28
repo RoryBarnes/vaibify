@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>External-service integrations: Overleaf, GitHub, Zenodo &mdash; Vaibify 0.0.1.dev615 documentation</title>
+  <title>External-service integrations: Overleaf, GitHub, Zenodo &mdash; Vaibify 0.0.1.dev620 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5b25f96f"></script>
+      <script src="_static/documentation_options.js?v=ae7c171d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
@@ -425,7 +426,7 @@ imported by <code class="docutils literal notranslate"><span class="pre">gui.git
 <code class="docutils literal notranslate"><span class="pre">gui.syncDispatcher</span></code>. <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code> keeps a local copy because
 it ships into the container standalone.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">ZenodoClient</span></code></strong> — the host-side Zenodo API wrapper is also
-<a class="reference internal" href="#ship-the-host-client-dont-reimplement"><span class="xref myst">shipped into the container</span></a>
+<a class="reference internal" href="#ship-the-host-client-don-t-reimplement">shipped into the container</a>
 at <code class="docutils literal notranslate"><span class="pre">/usr/share/vaibify/zenodoClient.py</span></code>. The in-container archive
 script imports it flat and calls methods instead of
 reimplementing the HTTP surface. One bearer-token path for both
@@ -468,7 +469,7 @@ cross-cutting concern summarized below.</p>
 container script needs the same API, <strong>ship the host module into
 the container</strong> (the <code class="docutils literal notranslate"><span class="pre">overleafSync.py</span></code> flat-file pattern) instead
 of reimplementing the HTTP calls inline. The cost is one line in
-<code class="docutils literal notranslate"><span class="pre">docker/Dockerfile</span></code> and one entry in
+<code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/Dockerfile</span></code> and one entry in
 <a class="reference download internal" download="" href="_downloads/9ea80d7618361d0ca2a5866ac7b69ee6/commandBuild.py"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">fnCopyContainerScripts</span></code></span></a>; the win
 is a single source of truth for:</p>
 <ul class="simple">
@@ -550,7 +551,7 @@ narrowly to use valid input that still exercises the same behavior.</p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">vaibify/gui/routes/syncRoutes.py</span></a></p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/6db00b295236147ad59b28dd68c00960/pipelineServer.py"><span class="xref download myst">vaibify/gui/pipelineServer.py</span></a> (pydantic models, host-header middleware)</p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/580a2d297ab6b43f2a5f0ae25d3fc4c3/workflowManager.py"><span class="xref download myst">vaibify/gui/workflowManager.py</span></a> (sync-status persistence)</p></li>
-<li><p><a class="reference download internal" download="" href="_downloads/9c6d2dd30e172995ff9466799d6f77ed/Dockerfile"><span class="xref download myst">docker/Dockerfile</span></a> (ships the container CLIs)</p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/0229797c3e5df4afe7a13ba7557cb565/Dockerfile"><span class="xref download myst">vaibify/containerImage/Dockerfile</span></a> (ships the container CLIs)</p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/9ea80d7618361d0ca2a5866ac7b69ee6/commandBuild.py"><span class="xref download myst">vaibify/cli/commandBuild.py::fnCopyContainerScripts</span></a> (stages ship-ins)</p></li>
 </ul>
 <p>Overleaf:</p>
@@ -580,7 +581,7 @@ narrowly to use valid input that still exercises the same behavior.</p></li>
 </ul>
 <p>Tests:</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="#../tests/testOverleafAuth.py"><span class="xref myst">tests/testOverleafAuth.py</span></a></p></li>
+<li><p><a class="reference download internal" download="" href="_downloads/9b82805d3df028c1866109c76660de6a/testOverleafSync.py"><span class="xref download myst">tests/testOverleafSync.py</span></a></p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/3405b5846375450e67875d28d8ab9cae/testOverleafMirror.py"><span class="xref download myst">tests/testOverleafMirror.py</span></a></p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/c96bc5ff6b3d91d83518369915e75795/testOverleafBehavior.py"><span class="xref download myst">tests/testOverleafBehavior.py</span></a></p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/9b82805d3df028c1866109c76660de6a/testOverleafSync.py"><span class="xref download myst">tests/testOverleafSync.py</span></a></p></li>

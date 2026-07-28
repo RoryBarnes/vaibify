@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev615 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev620 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5b25f96f"></script>
+      <script src="_static/documentation_options.js?v=ae7c171d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
@@ -110,7 +111,7 @@ development standards: camelCase with Hungarian prefixes for variables,
 camelCase without Hungarian prefixes, functions under 20 lines, no
 abbreviations for words shorter than 8 characters, and clear naming in
 preference to inline comments. If you are developing with an AI coding
-agent, read <span class="xref myst"><code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code></span> at the repo root for the rules,
+agent, read <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md"><code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code></a> at the repo root for the rules,
 traps, and discovery commands the agent should follow.</p>
 </section>
 <section id="running-tests">
@@ -169,8 +170,13 @@ of the change.</p></li>
 <h2>Project Layout<a class="headerlink" href="#project-layout" title="Link to this heading"></a></h2>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vaibify</span><span class="o">/</span>
   <span class="n">cli</span><span class="o">/</span>                <span class="n">Command</span><span class="o">-</span><span class="n">line</span> <span class="n">interface</span> <span class="p">(</span><span class="n">Click</span><span class="p">)</span>
+  <span class="n">completions</span><span class="o">/</span>        <span class="n">Bash</span> <span class="ow">and</span> <span class="n">zsh</span> <span class="n">tab</span><span class="o">-</span><span class="n">completion</span> <span class="n">scripts</span>
   <span class="n">config</span><span class="o">/</span>             <span class="n">Configuration</span> <span class="n">dataclasses</span> <span class="ow">and</span> <span class="n">parsers</span>
+  <span class="n">containerImage</span><span class="o">/</span>     <span class="n">Docker</span> <span class="n">build</span> <span class="n">context</span> <span class="p">(</span><span class="n">Dockerfiles</span><span class="p">,</span> <span class="n">entrypoint</span><span class="p">,</span>
+                      <span class="n">overlays</span><span class="p">,</span> <span class="ow">in</span><span class="o">-</span><span class="n">container</span> <span class="n">skills</span> <span class="ow">and</span> <span class="n">CLI</span><span class="p">)</span>
   <span class="n">docker</span><span class="o">/</span>             <span class="n">Container</span> <span class="n">lifecycle</span> <span class="n">management</span>
+  <span class="n">docs</span><span class="o">/</span>               <span class="n">Docs</span> <span class="n">that</span> <span class="n">ship</span> <span class="n">into</span> <span class="n">the</span> <span class="n">image</span><span class="p">;</span> <span class="n">the</span> <span class="n">five</span> <span class="n">curated</span>
+                      <span class="n">ones</span> <span class="n">are</span> <span class="n">symlinks</span> <span class="n">onto</span> <span class="n">the</span> <span class="n">Sphinx</span> <span class="n">sources</span>
   <span class="n">gui</span><span class="o">/</span>                <span class="n">FastAPI</span> <span class="n">web</span> <span class="n">application</span> <span class="ow">and</span> <span class="n">pipeline</span> <span class="n">runner</span>
     <span class="n">routes</span><span class="o">/</span>           <span class="n">Route</span> <span class="n">modules</span> <span class="p">(</span><span class="n">one</span> <span class="n">per</span> <span class="n">endpoint</span> <span class="n">group</span><span class="p">)</span>
     <span class="n">static</span><span class="o">/</span>           <span class="n">JavaScript</span> <span class="n">IIFE</span> <span class="n">modules</span> <span class="o">+</span> <span class="n">CSS</span> <span class="o">+</span> <span class="n">HTML</span>
@@ -178,7 +184,7 @@ of the change.</p></li>
     <span class="n">static</span><span class="o">/</span><span class="n">AGENTS</span><span class="o">.</span><span class="n">md</span>  <span class="n">Frontend</span> <span class="n">subtree</span> <span class="n">rules</span> <span class="k">for</span> <span class="n">coding</span> <span class="n">agents</span>
   <span class="n">install</span><span class="o">/</span>            <span class="n">Setup</span> <span class="n">wizard</span> <span class="ow">and</span> <span class="n">shell</span> <span class="n">installer</span>
   <span class="n">reproducibility</span><span class="o">/</span>    <span class="n">Zenodo</span><span class="p">,</span> <span class="n">Overleaf</span><span class="p">,</span> <span class="ow">and</span> <span class="n">LaTeX</span> <span class="n">integration</span>
-<span class="n">templates</span><span class="o">/</span>            <span class="n">Project</span> <span class="n">templates</span> <span class="p">(</span><span class="n">sandbox</span><span class="p">,</span> <span class="n">workflow</span><span class="p">,</span> <span class="n">toolkit</span><span class="p">)</span>
+  <span class="n">templates</span><span class="o">/</span>          <span class="n">Project</span> <span class="n">templates</span> <span class="p">(</span><span class="n">sandbox</span><span class="p">,</span> <span class="n">workflow</span><span class="p">,</span> <span class="n">toolkit</span><span class="p">)</span>
 <span class="n">tests</span><span class="o">/</span>                <span class="n">Pytest</span> <span class="n">test</span> <span class="n">suite</span><span class="p">,</span> <span class="n">including</span>
                       <span class="n">testArchitecturalInvariants</span><span class="o">.</span><span class="n">py</span>
 <span class="n">tools</span><span class="o">/</span>                <span class="n">On</span><span class="o">-</span><span class="n">demand</span> <span class="n">helper</span> <span class="n">scripts</span> <span class="p">(</span><span class="n">listModules</span><span class="o">.</span><span class="n">py</span><span class="p">,</span>

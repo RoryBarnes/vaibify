@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev615 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev620 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5b25f96f"></script>
+      <script src="_static/documentation_options.js?v=ae7c171d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Installing Vaibify</a><ul>
@@ -138,8 +139,9 @@ manage containers.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>vaibify
 </pre></div>
 </div>
-<p>This installs everything: the CLI, Docker SDK, keyring integration, and all
-data format libraries.</p>
+<p>This installs the CLI, the Docker SDK, keyring integration, and the
+common data format libraries. A few specialist format readers live in
+an extra — see <a class="reference internal" href="#data-format-libraries">Data Format Libraries</a> below.</p>
 <p>After installation, confirm the CLI is available:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>--version
 </pre></div>
@@ -162,11 +164,17 @@ own internal test suite.</p>
 </section>
 <section id="data-format-libraries">
 <h2>Data Format Libraries<a class="headerlink" href="#data-format-libraries" title="Link to this heading"></a></h2>
-<p>All data format libraries (h5py, openpyxl, Pillow, pyarrow, astropy,
-scipy, pyvista, pysam, pyreadstat, pyreadr, safetensors, tfrecord, scapy)
-are included by default when you install Vaibify. No additional extras are
-required. See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the complete
-list.</p>
+<p>The common formats work out of the box: h5py, openpyxl, Pillow, pyarrow,
+astropy and scipy are ordinary dependencies, so <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">vaibify</span></code>
+brings them.</p>
+<p>The specialist readers are not. pyvista, pysam, pyreadstat, pyreadr,
+safetensors, tfrecord and scapy live in the <code class="docutils literal notranslate"><span class="pre">formats</span></code> extra, because
+several of them need system libraries that a plain <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> cannot
+provide. Ask for them explicitly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;vaibify[formats]&#39;</span>
+</pre></div>
+</div>
+<p>See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the complete list.</p>
 <p>Run the tests to verify the installation:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/
 </pre></div>

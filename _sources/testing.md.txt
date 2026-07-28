@@ -177,7 +177,7 @@ cosmic-ray init cosmic-ray.toml session.sqlite && cosmic-ray exec cosmic-ray.tom
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
 | `containerAcceptance.yml` | the modelled container commands, against a real container | nightly + manual |
-| `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `docker/**` pull requests |
+| `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
 | `badges.yml` | recomputes the live test / falsification / invariant counts | on push to `main` |
 
 ## The three execution lanes

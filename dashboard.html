@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev615 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev620 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5b25f96f"></script>
+      <script src="_static/documentation_options.js?v=ae7c171d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
@@ -193,10 +194,10 @@ intend it. The container is an isolated sandbox, the agent runs as an
 unprivileged user with no sudo, and everything it edits is tracked in git
 and hash-pinned in the project manifest. Your protection comes from
 verifying results, not from approving each
-command — see the <strong>Using AI</strong> section of the <a class="reference internal" href="#the-help-panel"><span class="xref myst">Help panel</span></a>
+command — see the <strong>Using AI</strong> section of the <a class="reference internal" href="#the-help-panel">Help panel</a>
 and the <a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a>. The agent can in turn ask the
 dashboard to run steps, generate tests, push to GitHub, and so on —
-see <a class="reference internal" href="#agent-actions"><span class="xref myst">Agent actions</span></a> below.</p>
+see <a class="reference internal" href="#agent-actions">Agent actions</a> below.</p>
 </section>
 <section id="viewing-window">
 <h2>Viewing Window<a class="headerlink" href="#viewing-window" title="Link to this heading"></a></h2>
@@ -371,7 +372,7 @@ are exactly its self-consistency surface. It ends with the <strong>Run
 Step</strong> button and, just below it, the <strong>Last run</strong> line (outcome,
 finish time, wall-clock and CPU durations). File rows carry the
 per-file marks and remote badges described under
-<a class="reference internal" href="#status-lights-and-colours"><span class="xref myst">Status lights and colours</span></a>, and
+<a class="reference internal" href="#status-lights-and-colours">Status lights and colours</a>, and
 clicking a file opens it in a Viewing Window.</p>
 <p><strong>Levels 2 and 3 are requirement sections</strong>, one row per applicable
 criterion with a met mark, the offending files when unmet, and either
@@ -443,7 +444,7 @@ applicable</strong>, never green. The record is digest-keyed to the script
 and its standards, so any edit invalidates it. Runs are on-demand
 only — cost is roughly mutants × step runtime.</p>
 <p>The <strong>Unit Tests</strong> row expands to the three test categories, with
-buttons to generate and run them — see <a class="reference internal" href="#verification"><span class="xref myst">Verification</span></a>.</p>
+buttons to generate and run them — see <a class="reference internal" href="#verification">Verification</a>.</p>
 </section>
 </section>
 <section id="the-project-block">
@@ -814,7 +815,7 @@ at request time. They are never written into the container or into
 <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>. See <a class="reference internal" href="externalServices.html"><span class="std std-doc">External services</span></a> for the
 per-service integration architecture.</p>
 <p>Per-file sync state is always visible as the
-<a class="reference internal" href="#per-file-remote-badges"><span class="xref myst">remote badges</span></a> on file rows, and each remote
+<a class="reference internal" href="#per-file-remote-badges">remote badges</a> on file rows, and each remote
 has a requirement row under <strong>Published copies</strong> in the Project block.
 Every one of those rows carries a <strong>Verify now</strong> button that runs the
 authoritative remote comparison in place, and a successful Overleaf
@@ -1006,7 +1007,7 @@ out of its own container.</p>
 <p>An abandoned session does not hold a container forever. A hub or
 viewer left with no connected tab and nothing running self-retires
 after an idle timeout (see
-<a class="reference internal" href="configuration.html#vaibify_hub_idle_timeout_seconds"><span class="std std-ref">Configuration</span></a>),
+<a class="reference internal" href="configuration.html#vaibify-hub-idle-timeout-seconds"><span class="std std-ref">Configuration</span></a>),
 freeing its container. Ownership is also released the moment the owning
 tab closes (a <code class="docutils literal notranslate"><span class="pre">pagehide</span></code> signal) or a brief disconnect’s grace window
 expires with no reconnect — never while a pipeline is still running.

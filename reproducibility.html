@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev615 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev620 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5b25f96f"></script>
+      <script src="_static/documentation_options.js?v=ae7c171d"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -44,6 +44,7 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
 <li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
@@ -200,8 +201,8 @@ the artefacts they hold are byte-for-byte identical to the artefacts
 the original project produced. Level 3 is a claim about <em>file-byte
 identity</em>, not numerical re-derivation. Re-running the project on a
 different machine may produce slightly different bytes for the same
-inputs (CPU/BLAS variance, see <a class="reference internal" href="#known-limitations"><span class="xref myst">Known
-limitations</span></a>); the hashes recorded in
+inputs (CPU/BLAS variance, see <a class="reference internal" href="#known-limitations">Known
+limitations</a>); the hashes recorded in
 <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> describe the bytes the original run produced, and
 those bytes can be redistributed and verified anywhere coreutils is
 installed.</p>
@@ -306,8 +307,8 @@ L3 reproduction confirmed.
 directory).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code> — also run step 4, the full project
 re-execution. Off by default; opt-in because projects can be
-expensive and Tier 4 is best-effort (see <a class="reference internal" href="#known-limitations"><span class="xref myst">Known
-limitations</span></a>). When enabled, vaibify dispatches
+expensive and Tier 4 is best-effort (see <a class="reference internal" href="#known-limitations">Known
+limitations</a>). When enabled, vaibify dispatches
 to the same pipeline runner that <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code> uses, against a
 running container resolved from the repository.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span> <span class="pre">1|2|3</span></code> — skip a tier; may be repeated. Useful when a
@@ -393,7 +394,7 @@ verifier can fall back to plain coreutils.</p>
 </pre></div>
 </div>
 <p>This reads <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, renders the Jinja2
-template at <code class="docutils literal notranslate"><span class="pre">templates/workflow.yml.j2</span></code>, and writes the result to
+template at <code class="docutils literal notranslate"><span class="pre">vaibify/templates/workflow.yml.j2</span></code>, and writes the result to
 <code class="docutils literal notranslate"><span class="pre">.github/workflows/vaibify.yml</span></code>.</p>
 <p>The generated workflow:</p>
 <ol class="arabic simple">
