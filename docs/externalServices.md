@@ -302,7 +302,7 @@ When a host module wraps an external REST API cleanly and a
 container script needs the same API, **ship the host module into
 the container** (the `overleafSync.py` flat-file pattern) instead
 of reimplementing the HTTP calls inline. The cost is one line in
-`docker/Dockerfile` and one entry in
+`vaibify/containerImage/Dockerfile` and one entry in
 [`fnCopyContainerScripts`](../vaibify/cli/commandBuild.py); the win
 is a single source of truth for:
 
@@ -381,7 +381,7 @@ Shared infrastructure:
 - [vaibify/gui/routes/syncRoutes.py](../vaibify/gui/routes/syncRoutes.py)
 - [vaibify/gui/pipelineServer.py](../vaibify/gui/pipelineServer.py) (pydantic models, host-header middleware)
 - [vaibify/gui/workflowManager.py](../vaibify/gui/workflowManager.py) (sync-status persistence)
-- [docker/Dockerfile](../docker/Dockerfile) (ships the container CLIs)
+- [vaibify/containerImage/Dockerfile](../vaibify/containerImage/Dockerfile) (ships the container CLIs)
 - [vaibify/cli/commandBuild.py::fnCopyContainerScripts](../vaibify/cli/commandBuild.py) (stages ship-ins)
 
 Overleaf:
@@ -406,7 +406,7 @@ Frontend:
 - [vaibify/gui/static/scriptModals.js](../vaibify/gui/static/scriptModals.js)
 
 Tests:
-- [tests/testOverleafAuth.py](../tests/testOverleafAuth.py)
+- [tests/testOverleafSync.py](../tests/testOverleafSync.py)
 - [tests/testOverleafMirror.py](../tests/testOverleafMirror.py)
 - [tests/testOverleafBehavior.py](../tests/testOverleafBehavior.py)
 - [tests/testOverleafSync.py](../tests/testOverleafSync.py)

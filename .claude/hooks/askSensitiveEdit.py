@@ -17,7 +17,12 @@ __all__ = ["fnMain", "fsExtractTargetPath", "ftDecision"]
 
 LIST_SENSITIVE_PATTERNS = [
     (
-        r"/docker/",
+        # The build context moved from /docker/ to
+        # /vaibify/containerImage/ on 2026-07-27 so it would ship in
+        # the wheel. The old pattern would have kept matching
+        # /vaibify/docker/ -- the Python SDK wrapper -- while silently
+        # releasing every Dockerfile it existed to guard.
+        r"/vaibify/containerImage/",
         "Docker files govern container isolation. A weak edit "
         "(--privileged, removing --cap-drop, disabling gosu, broadening "
         "bind mounts) can enable container escape. Pausing to confirm.",

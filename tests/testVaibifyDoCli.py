@@ -1,4 +1,4 @@
-"""Tests for docker/vaibifyDo.py, the in-container bridge CLI.
+"""Tests for vaibify/containerImage/vaibifyDo.py, the in-container bridge CLI.
 
 The CLI is a standalone script shipped into the container image, so
 the vaibify package does not import it. We load it via
@@ -22,13 +22,14 @@ import urllib.error
 
 
 _S_VAIBIFY_DO_PATH = (
-    Path(__file__).resolve().parent.parent / "docker" / "vaibifyDo.py"
+    Path(__file__).resolve().parent.parent
+    / "vaibify" / "containerImage" / "vaibifyDo.py"
 )
 
 
 @pytest.fixture
 def modCli():
-    """Return a fresh import of docker/vaibifyDo.py."""
+    """Return a fresh import of vaibify/containerImage/vaibifyDo.py."""
     spec = importlib.util.spec_from_file_location(
         "vaibifyDoCli", _S_VAIBIFY_DO_PATH,
     )

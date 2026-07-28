@@ -1,5 +1,5 @@
 """Tests for the readiness-marker and structured-warning helpers in
-docker/entrypoint.sh.
+vaibify/containerImage/entrypoint.sh.
 
 These tests exercise the bash helpers by sourcing the script in a
 subshell with WORKSPACE pointed at a temporary directory, so the
@@ -15,7 +15,8 @@ import pytest
 
 _S_ENTRYPOINT = os.path.abspath(
     os.path.join(
-        os.path.dirname(__file__), "..", "docker", "entrypoint.sh",
+        os.path.dirname(__file__), "..", "vaibify",
+        "containerImage", "entrypoint.sh",
     )
 )
 

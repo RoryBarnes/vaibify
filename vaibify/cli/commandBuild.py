@@ -14,18 +14,47 @@ import click
 from .configLoader import fconfigResolveProject, fsDockerDir
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
 from .preflightResult import PreflightResult, fnPrintPreflightReport
+from vaibify.resources import fnCopyPackagedTree
+
+
+# Where a build assembles its context. The shipped context lives inside
+# the installed package, which may sit in a directory the user cannot
+# write and is shared by every project on the machine, so a build never
+# writes there.
+_S_BUILD_STAGING_DIRECTORY = os.path.expanduser("~/.vaibify/build")
 
 
 def fnBuildFromConfig(config, sDockerDir, bNoCache):
-    """Invoke the Docker image builder with the loaded configuration."""
+    """Invoke the Docker image builder with the loaded configuration.
+
+    ``sDockerDir`` is the read-only context shipped with the package.
+    The generated part of the context (container.conf, the package
+    lists, the staged scripts and docs) is written into a per-project
+    staging copy instead, which is what the daemon is handed.
+    """
     fnBuildImage = _fImportBuildOrExit()
-    fnPrepareBuildContext(config, sDockerDir)
+    sStagedDir = fsStageBuildContext(config, sDockerDir)
+    fnPrepareBuildContext(config, sStagedDir)
     bEffectiveNoCache = _fbResolveNoCache(config, bNoCache)
     fnWarnIfBaseImageFloating(config)
-    fnBuildImage(config, sDockerDir, bNoCache=bEffectiveNoCache)
+    fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
     fnRecordBaseImageDigestIfFloating(config)
     fnRecordBuildArgHash(config)
     fnPruneDanglingImages()
+
+
+def fsStageBuildContext(config, sDockerDir):
+    """Return a freshly populated writable copy of the build context.
+
+    Each build starts from the shipped tree rather than from whatever
+    the previous build left behind, so a file removed upstream cannot
+    linger in the context and end up in the image unnoticed.
+    """
+    pathStaged = pathlib.Path(
+        _S_BUILD_STAGING_DIRECTORY,
+    ) / config.sProjectName
+    fnCopyPackagedTree(pathlib.Path(sDockerDir), pathStaged)
+    return str(pathStaged)
 
 
 def fbBaseImageIsFloating(config):
@@ -344,7 +373,7 @@ def fnCopyContainerScripts(sDockerDir):
     Each of these runs inside the container at /usr/share/vaibify/
     without a vaibify package install; they import from each other
     as flat top-level names. Add new ship-ins to the tuple below
-    and to the ``COPY`` block in ``docker/Dockerfile``.
+    and to the ``COPY`` block in ``vaibify/containerImage/Dockerfile``.
     """
     import shutil
     import pathlib
@@ -380,6 +409,14 @@ def fnStageCuratedDocs(sDockerDir):
     the build — a doc the agent cannot read is a degraded skill, not
     a broken image. The Dockerfile COPYs the whole directory to
     /usr/share/vaibify/docs.
+
+    Sources are resolved against the directory holding the ``vaibify``
+    package, which is the repository root in a checkout and
+    site-packages in a wheel. Entries under ``vaibify/`` therefore
+    resolve in both; the entries under the repository's top-level
+    ``docs/`` resolve only in a checkout, and a wheel build stages
+    those as absent. That is a known gap, and the warning names it so
+    a degraded image is never mistaken for a complete one.
     """
     import shutil
     import pathlib
@@ -391,7 +428,8 @@ def fnStageCuratedDocs(sDockerDir):
         if not pathSource.is_file():
             print(
                 f"[vaibify] warning: staged doc missing, skipped: "
-                f"{sRelSource}"
+                f"{sRelSource} (expected at '{pathSource}'); the "
+                f"in-container agent will not be able to consult it"
             )
             continue
         shutil.copy2(str(pathSource), os.path.join(sStagedDir, sDestName))

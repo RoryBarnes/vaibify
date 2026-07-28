@@ -165,7 +165,7 @@ VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS=60 vaibify
 Self-shutdown only fires when **no browser tab is connected** and **no
 pipeline is running** in any container the server holds; an open
 dashboard keeps the server alive indefinitely. See the
-[Session & container-lock lifecycle](architecture.md#session--container-lock-lifecycle)
+[Session & container-lock lifecycle](architecture.md#single-browser-session-per-container)
 section for the full rationale.
 
 ## Security

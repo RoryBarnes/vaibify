@@ -31,7 +31,7 @@ on:
     # image had changed. testFreshBuildTriggerCoversEveryHashInput
     # fails if these drift apart again.
     paths:
-      - 'docker/**'
+      - 'vaibify/containerImage/**'
       - 'vaibify/cli/commandBuild.py'
       - 'vaibify/docker/imageBuilder.py'
       - 'vaibify/gui/director.py'

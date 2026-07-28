@@ -25,7 +25,21 @@ docker/zenodoClient.py
 docker/requirements.txt
 docker/system-packages.txt
 docker/workflows/
-docker/docs-staged/
+# Build contexts are staged under ~/.vaibify/build/ since 2026-07-27,
+# so nothing generated should land in the packaged context any more.
+# Kept as a backstop: these names were untracked-and-unignored for
+# months and rode a `git mv` straight into a wheel, where a stale
+# requirements.txt would have silently changed the image.
+vaibify/containerImage/docs-staged/
+vaibify/containerImage/director.py
+vaibify/containerImage/overleafSync.py
+vaibify/containerImage/latexConnector.py
+vaibify/containerImage/zenodoClient.py
+vaibify/containerImage/container.conf
+vaibify/containerImage/requirements.txt
+vaibify/containerImage/system-packages.txt
+vaibify/containerImage/pip-flags.txt
+vaibify/containerImage/binaries.env
 
 # Runtime state written by vaibify itself when run from this checkout
 /.vaibify/

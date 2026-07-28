@@ -196,9 +196,14 @@ def fconfigLoadFromPath(sPath):
 
 
 def fsDockerDir():
-    """Return the path to the docker/ directory in the package root."""
-    sPackageRoot = str(pathlib.Path(__file__).resolve().parents[2])
-    return str(pathlib.Path(sPackageRoot) / "docker")
+    """Return the path to the Docker build context inside the package.
+
+    This tree is read-only. ``vaibify build`` copies it into a
+    per-project staging directory before writing the generated part of
+    the context; see ``commandBuild.fsStageBuildContext``.
+    """
+    from vaibify.resources import fpathContainerImageRoot
+    return str(fpathContainerImageRoot())
 
 
 def fbDockerAvailable():

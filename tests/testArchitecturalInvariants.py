@@ -41,6 +41,8 @@ __all__ = [
     "testHashCheckRunsRegardlessOfMtime",
     "testMarkerCoversAllDeclaredOutputs",
     "testTemplateCommandsUseStepTokens",
+    "testTemplateStepDirectoriesHonorTheSlugContract",
+    "testTemplateCommandsNameScriptsThatExist",
     "testStepCountCapEnforcedOnAddRoutes",
     "testClaimRejectsForeignLease",
     "testReleaseRejectsNonOwner",
@@ -975,7 +977,7 @@ def testNoRootUserInDispatcherCalls():
     """Docker-exec dispatcher calls must not opt into root via sUser=.
 
     Container exec defaults to the image's unprivileged ``USER``
-    directive (pinned in ``docker/Dockerfile``); the dispatcher
+    directive (pinned in ``vaibify/containerImage/Dockerfile``); the dispatcher
     methods on ``DockerConnection`` respect that default when ``sUser``
     is ``None``. Passing ``sUser="root"`` (or ``"0"``) re-elevates a
     single call and creates root-owned files in the workspace volume —
@@ -1075,7 +1077,9 @@ def testDockerfileDisablesAptSandboxBeforeFirstUpdate():
     test guards against the line being removed or relocated below the
     first apt-get update, which would silently regress the fix.
     """
-    sDockerfile = fsReadSource(REPO_ROOT / "docker" / "Dockerfile")
+    sDockerfile = fsReadSource(
+        REPO_ROOT / "vaibify" / "containerImage" / "Dockerfile",
+    )
     matchSandbox = re.search(
         r'APT::Sandbox::User\s+"root"', sDockerfile
     )
@@ -1641,7 +1645,9 @@ def testContainerUserUidIsOneThousand():
     user would silently lose stored Overleaf and Zenodo tokens.
     Defense-in-depth for audit finding F-R-07.
     """
-    sDockerfile = fsReadSource(REPO_ROOT / "docker" / "Dockerfile")
+    sDockerfile = fsReadSource(
+        REPO_ROOT / "vaibify" / "containerImage" / "Dockerfile",
+    )
     matchUseradd = re.search(
         r"useradd\s+-m\s+-s\s+/bin/bash\s+-u\s+1000\s+\$\{CONTAINER_USER\}",
         sDockerfile,
@@ -2302,7 +2308,7 @@ def testMarkerCoversAllDeclaredOutputs(tmp_path):
         )
 
 
-_TEMPLATES_DIR = REPO_ROOT / "templates"
+_TEMPLATES_DIR = REPO_ROOT / "vaibify" / "templates"
 
 # Extensions that signal a token is a file path argument.
 _T_PATH_EXTENSIONS = (
@@ -2389,6 +2395,89 @@ def testTemplateCommandsUseStepTokens():
             in listAllViolations
         )
     )
+
+
+def testTemplateStepDirectoriesHonorTheSlugContract():
+    """A shipped template must satisfy the rule it teaches.
+
+    The ``workflow`` template declared ``GenerateSamples`` in a
+    directory named ``Sampler`` and ``PlotHistogram`` in ``Plot``,
+    both of which the slug contract forbids. Nothing checked the
+    templates against it, so every new project from that template
+    opened with red ⚠ directory-mismatch errors on both steps --
+    a first-run experience that says the tool is broken.
+    """
+    import json as jsonModule
+
+    from vaibify.gui.pipelineUtils import (
+        fbStepDirectoryConforms, fsSlugFromStepName,
+    )
+
+    listViolations = []
+    for pathWorkflow in _flistCollectTemplateWorkflows():
+        dictWorkflow = jsonModule.loads(pathWorkflow.read_text())
+        for dictStep in dictWorkflow.get("listSteps", []):
+            if fbStepDirectoryConforms(dictStep):
+                continue
+            listViolations.append((
+                pathWorkflow.relative_to(REPO_ROOT),
+                dictStep.get("sName", ""),
+                dictStep.get("sDirectory", ""),
+                fsSlugFromStepName(dictStep.get("sName") or ""),
+            ))
+    assert listViolations == [], (
+        "Shipped templates violate the step-name/directory contract:\n"
+        + "\n".join(
+            f"  {pathWorkflow} step '{sName}' lives in '{sDirectory}' "
+            f"but the contract requires '{sSlug}'"
+            for pathWorkflow, sName, sDirectory, sSlug in listViolations
+        )
+    )
+
+
+def testTemplateCommandsNameScriptsThatExist():
+    """Every script a template's commands invoke must ship with it.
+
+    The ``workflow`` template invoked ``dataGenerateSamples.py`` and
+    ``plotHistogram.py``, neither of which existed anywhere in the
+    repository. A new project therefore could not run, and no test
+    noticed because nothing ever executed a template.
+    """
+    import json as jsonModule
+
+    listMissing = []
+    for pathWorkflow in _flistCollectTemplateWorkflows():
+        dictWorkflow = jsonModule.loads(pathWorkflow.read_text())
+        for dictStep in dictWorkflow.get("listSteps", []):
+            pathStepDirectory = (
+                pathWorkflow.parent / dictStep.get("sDirectory", "")
+            )
+            for sField in ("saDataCommands", "saPlotCommands",
+                           "saTestCommands"):
+                for sCommand in dictStep.get(sField, []):
+                    for sScript in _flistScriptsInCommand(sCommand):
+                        if (pathStepDirectory / sScript).is_file():
+                            continue
+                        listMissing.append((
+                            pathWorkflow.relative_to(REPO_ROOT),
+                            dictStep.get("sName", ""), sScript,
+                        ))
+    assert listMissing == [], (
+        "Template commands invoke scripts the template does not "
+        "ship:\n" + "\n".join(
+            f"  {pathWorkflow} step '{sName}': {sScript}"
+            for pathWorkflow, sName, sScript in listMissing
+        )
+    )
+
+
+def _flistScriptsInCommand(sCommand):
+    """Return the .py arguments a command invokes, ignoring options."""
+    return [
+        sToken for sToken in sCommand.split()
+        if sToken.endswith(".py") and not sToken.startswith("-")
+        and "{" not in sToken
+    ]
 
 
 def testTemplateCommandsUseSymbolicNotPositionalTokens():

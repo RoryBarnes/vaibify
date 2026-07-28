@@ -1,6 +1,7 @@
 """Static Dockerfile checks that enforce container-isolation invariants.
 
-These tests parse the on-disk ``docker/Dockerfile`` (and overlays) and
+These tests parse the on-disk
+``vaibify/containerImage/Dockerfile`` (and overlays) and
 assert hardening properties that audit findings C1, C2, H1, and M5
 require to hold for every build.
 """
@@ -9,11 +10,15 @@ import os
 
 
 _S_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_S_DOCKERFILE = os.path.join(_S_REPO_ROOT, "docker", "Dockerfile")
-_S_DOCKERFILE_JUPYTER = os.path.join(
-    _S_REPO_ROOT, "docker", "Dockerfile.jupyter",
+_S_DOCKERFILE = os.path.join(
+    _S_REPO_ROOT, "vaibify", "containerImage", "Dockerfile",
 )
-_S_ENTRYPOINT = os.path.join(_S_REPO_ROOT, "docker", "entrypoint.sh")
+_S_DOCKERFILE_JUPYTER = os.path.join(
+    _S_REPO_ROOT, "vaibify", "containerImage", "Dockerfile.jupyter",
+)
+_S_ENTRYPOINT = os.path.join(
+    _S_REPO_ROOT, "vaibify", "containerImage", "entrypoint.sh",
+)
 
 
 def _fsReadDockerfile():

@@ -23,7 +23,7 @@ from vaibify.reproducibility import githubWorkflow
 
 
 _PATH_REPO = pathlib.Path(__file__).resolve().parent.parent
-_T_PRODUCT_ROOTS = ("vaibify", "docker", "bin")
+_T_PRODUCT_ROOTS = ("vaibify", "bin")
 
 
 def _flistProductImporters():

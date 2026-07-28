@@ -40,7 +40,9 @@ _S_HOOK_DIRECTORY = os.path.join(_S_REPO_ROOT, ".claude", "hooks")
 # Absolute paths, because Claude Code hands the hook an absolute
 # ``file_path``. Each entry is one documented sensitive category.
 _DICT_DOCUMENTED_SENSITIVE_PATHS = {
-    "docker directory": "/home/user/vaibify/docker/entrypoint.sh",
+    "build context": (
+        "/home/user/vaibify/vaibify/containerImage/entrypoint.sh"
+    ),
     "container manager": (
         "/home/user/vaibify/vaibify/docker/containerManager.py"
     ),
@@ -129,7 +131,11 @@ def testSensitiveEditHookReadsTheNotebookPathField():
     """
     dictOutput = _fdictRunHookMain(
         "askSensitiveEdit.py",
-        {"notebook_path": "/home/user/vaibify/docker/analysis.ipynb"},
+        {
+            "notebook_path": (
+                "/home/user/vaibify/vaibify/containerImage/analysis.ipynb"
+            ),
+        },
     )
     dictSpecific = dictOutput.get("hookSpecificOutput", {})
     assert dictSpecific.get("permissionDecision") == "ask", (

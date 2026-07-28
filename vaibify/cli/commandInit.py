@@ -9,33 +9,43 @@ import click
 from .configLoader import fsConfigPath
 
 from vaibify.config.registryManager import fnAddProject
-
-_sTemplatesDir = "templates"
+from vaibify.resources import S_TEMPLATES_TREE, fpathPackagedTree
 
 
 def flistAvailableTemplates():
     """Return a list of template directory names shipped with the package."""
-    sPackageRoot = str(pathlib.Path(__file__).resolve().parents[2])
-    sTemplatesPath = pathlib.Path(sPackageRoot) / _sTemplatesDir
-    if not sTemplatesPath.is_dir():
+    pathTemplates = fpathPackagedTree(S_TEMPLATES_TREE)
+    if not pathTemplates.is_dir():
         return []
     return sorted(
-        d.name for d in sTemplatesPath.iterdir() if d.is_dir()
+        d.name for d in pathTemplates.iterdir() if d.is_dir()
     )
 
 
 def fsTemplatePath(sTemplateName):
     """Return the absolute path to a named template directory."""
-    sPackageRoot = str(pathlib.Path(__file__).resolve().parents[2])
-    return str(pathlib.Path(sPackageRoot) / _sTemplatesDir / sTemplateName)
+    return str(fpathPackagedTree(S_TEMPLATES_TREE) / sTemplateName)
 
 
 def fnPrintAvailableTemplates():
-    """Print available template names to stdout."""
+    """Print available template names, or exit non-zero if there are none.
+
+    An installation with no templates is broken, not empty: every
+    vaibify wheel ships them. Reporting that on stdout and returning 0
+    made a packaging failure look like a successful run of ``vaibify
+    init``, which is how the missing package data survived a release
+    workflow that only imported the module.
+    """
     listTemplates = flistAvailableTemplates()
     if not listTemplates:
-        click.echo("No templates found.")
-        return
+        click.echo(
+            "Error: no project templates are installed. The vaibify "
+            "package was built without its data files; reinstall from "
+            "a release wheel, or from a source checkout with "
+            "'pip install -e .'.",
+            err=True,
+        )
+        sys.exit(1)
     click.echo("Available templates:")
     for sName in listTemplates:
         click.echo(f"  - {sName}")
@@ -56,12 +66,23 @@ def fnCopyTemplate(sTemplateName):
 
 
 def fnCopyDirectoryContents(sSourceDir, sDestDir):
-    """Copy all files from sSourceDir into sDestDir."""
+    """Copy all files from sSourceDir into sDestDir.
+
+    ``__pycache__`` is skipped: pip byte-compiles the shipped template
+    scripts at install time, so copying the tree verbatim seeds every
+    new project with stale ``.pyc`` files compiled against
+    site-packages paths.
+    """
     sSource = pathlib.Path(sSourceDir)
     for sItem in sSource.iterdir():
+        if sItem.name == "__pycache__":
+            continue
         sDest = pathlib.Path(sDestDir) / sItem.name
         if sItem.is_dir():
-            shutil.copytree(str(sItem), str(sDest), dirs_exist_ok=True)
+            shutil.copytree(
+                str(sItem), str(sDest), dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("__pycache__"),
+            )
         else:
             shutil.copy2(str(sItem), str(sDest))
 

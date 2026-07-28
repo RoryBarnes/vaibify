@@ -6,9 +6,14 @@ from pathlib import Path
 from vaibify.config.containerConfig import (
     flistParseContainerConf,
 )
+from vaibify.resources import (
+    S_TEMPLATES_TREE,
+    fnRequirePackagedTree,
+    fpathPackagedTree,
+)
 
 
-_PATH_TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
+_PATH_TEMPLATES = fpathPackagedTree(S_TEMPLATES_TREE)
 
 
 def flistAvailableTemplates():
@@ -22,10 +27,7 @@ def flistAvailableTemplates():
     list of str
         Template names (directory basenames).
     """
-    if not _PATH_TEMPLATES.is_dir():
-        raise FileNotFoundError(
-            f"Templates directory not found: '{_PATH_TEMPLATES}'"
-        )
+    fnRequirePackagedTree(_PATH_TEMPLATES, S_TEMPLATES_TREE)
     return _flistScanTemplateDirectories()
 
 
@@ -81,11 +83,22 @@ def _fpathResolveTemplate(sTemplateName):
 
 
 def _fnCopyDirectoryContents(pathSource, pathDestination):
-    """Copy all items from source to destination directory."""
+    """Copy all items from source to destination directory.
+
+    ``__pycache__`` is skipped: pip byte-compiles the shipped template
+    scripts at install time, so copying the tree verbatim seeds every
+    new project with stale ``.pyc`` files compiled against
+    site-packages paths.
+    """
     for pathItem in pathSource.iterdir():
+        if pathItem.name == "__pycache__":
+            continue
         sDestItem = str(pathDestination / pathItem.name)
         if pathItem.is_dir():
-            shutil.copytree(str(pathItem), sDestItem)
+            shutil.copytree(
+                str(pathItem), sDestItem,
+                ignore=shutil.ignore_patterns("__pycache__"),
+            )
         else:
             shutil.copy2(str(pathItem), sDestItem)
 

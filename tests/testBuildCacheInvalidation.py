@@ -104,6 +104,9 @@ def test_build_from_config_forces_no_cache_on_drift(tmp_path):
         # Seed a different prior hash.
         fnRecordBuildArgHash(_fConfigArgs(sPython="3.12"))
         with patch(
+            "vaibify.cli.commandBuild.fsStageBuildContext",
+            return_value="/dk",
+        ), patch(
             "vaibify.cli.commandBuild.fnPrepareBuildContext",
         ), patch(
             "vaibify.cli.commandBuild.fnPruneDanglingImages",
@@ -126,6 +129,9 @@ def test_build_from_config_does_not_force_when_first_build(tmp_path):
         commandBuild, "_S_BUILD_HASH_DIRECTORY", str(tmp_path),
     ):
         with patch(
+            "vaibify.cli.commandBuild.fsStageBuildContext",
+            return_value="/dk",
+        ), patch(
             "vaibify.cli.commandBuild.fnPrepareBuildContext",
         ), patch(
             "vaibify.cli.commandBuild.fnPruneDanglingImages",

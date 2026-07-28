@@ -16,6 +16,7 @@ pipeline can benefit from containerized reproducibility.
    :maxdepth: 1
 
    conduct
+   vision
    philosophy
    quickStart
    install

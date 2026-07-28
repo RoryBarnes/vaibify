@@ -99,7 +99,37 @@ git_describe_command = ["git", "describe", "--tags", "--long", "--match", "v*"]
 include = ["vaibify*"]
 
 [tool.setuptools.package-data]
-"vaibify.gui" = ["static/*"]
+# Vaibify is unusable without these trees: `vaibify init` copies the
+# templates and `vaibify build` sends containerImage/ to the daemon.
+# They lived at the repository root until 2026-07-27, which meant no
+# wheel ever contained them -- `vaibify init` printed "No templates
+# found" on a fresh `pip install vaibify`. tests/testPackagedResources.py
+# fails if a build drops one again.
+"vaibify" = [
+    "templates/**/*",
+    "containerImage/**/*",
+    "docs/*.md",
+]
+"vaibify.gui" = ["static/*", "static/vendor/*"]
+
+[tool.setuptools.exclude-package-data]
+# A developer's `vaibify build` used to leave its generated context
+# files inside the source tree. They are staged elsewhere now, but a
+# stale copy reaching a wheel would change the image without changing
+# the build-input hash, so exclude them by name as well.
+"vaibify" = [
+    "**/__pycache__/*",
+    "containerImage/docs-staged/*",
+    "containerImage/director.py",
+    "containerImage/overleafSync.py",
+    "containerImage/latexConnector.py",
+    "containerImage/zenodoClient.py",
+    "containerImage/container.conf",
+    "containerImage/requirements.txt",
+    "containerImage/system-packages.txt",
+    "containerImage/pip-flags.txt",
+    "containerImage/binaries.env",
+]
 
 [tool.black]
 line-length = 79

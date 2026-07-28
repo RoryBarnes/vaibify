@@ -153,10 +153,11 @@ def _fsRenderTemplate(sTemplate, dictContext):
 
 def _fpathLocateTemplateFile():
     """Locate the on-disk template file, or return None."""
+    from vaibify.resources import (
+        S_TEMPLATES_TREE, fpathPackagedTree,
+    )
     pathCandidate = (
-        Path(__file__).resolve().parents[2]
-        / "templates"
-        / "workflow.yml.j2"
+        fpathPackagedTree(S_TEMPLATES_TREE) / "workflow.yml.j2"
     )
     if pathCandidate.is_file():
         return pathCandidate

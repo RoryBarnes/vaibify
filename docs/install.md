@@ -21,8 +21,9 @@ Install the latest release from PyPI:
 pip install vaibify
 ```
 
-This installs everything: the CLI, Docker SDK, keyring integration, and all
-data format libraries.
+This installs the CLI, the Docker SDK, keyring integration, and the
+common data format libraries. A few specialist format readers live in
+an extra — see [Data Format Libraries](#data-format-libraries) below.
 
 After installation, confirm the CLI is available:
 
@@ -50,11 +51,20 @@ own internal test suite.
 
 ## Data Format Libraries
 
-All data format libraries (h5py, openpyxl, Pillow, pyarrow, astropy,
-scipy, pyvista, pysam, pyreadstat, pyreadr, safetensors, tfrecord, scapy)
-are included by default when you install Vaibify. No additional extras are
-required. See [Supported Data Formats](testFormats.md) for the complete
-list.
+The common formats work out of the box: h5py, openpyxl, Pillow, pyarrow,
+astropy and scipy are ordinary dependencies, so `pip install vaibify`
+brings them.
+
+The specialist readers are not. pyvista, pysam, pyreadstat, pyreadr,
+safetensors, tfrecord and scapy live in the `formats` extra, because
+several of them need system libraries that a plain `pip install` cannot
+provide. Ask for them explicitly:
+
+```bash
+pip install 'vaibify[formats]'
+```
+
+See [Supported Data Formats](testFormats.md) for the complete list.
 
 Run the tests to verify the installation:
 

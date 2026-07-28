@@ -13,7 +13,7 @@ development standards: camelCase with Hungarian prefixes for variables,
 camelCase without Hungarian prefixes, functions under 20 lines, no
 abbreviations for words shorter than 8 characters, and clear naming in
 preference to inline comments. If you are developing with an AI coding
-agent, read [`AGENTS.md`](../AGENTS.md) at the repo root for the rules,
+agent, read [`AGENTS.md`](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) at the repo root for the rules,
 traps, and discovery commands the agent should follow.
 
 ## Running Tests

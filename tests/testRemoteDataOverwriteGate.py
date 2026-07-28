@@ -265,7 +265,7 @@ async def test_gated_run_is_refused_and_never_dispatched():
 def _fmodLoadVaibifyDo():
     sPath = str(
         Path(__file__).resolve().parent.parent
-        / "docker" / "vaibifyDo.py"
+        / "vaibify" / "containerImage" / "vaibifyDo.py"
     )
     spec = importlib.util.spec_from_file_location("vaibifyDoGate", sPath)
     module = importlib.util.module_from_spec(spec)

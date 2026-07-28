@@ -1,4 +1,6 @@
-"""Tests for fnMigrateWorkspaceOwnership in docker/entrypoint.sh.
+"""Tests for fnMigrateWorkspaceOwnership in the container entrypoint.
+
+Source: ``vaibify/containerImage/entrypoint.sh``.
 
 The migration is the safety net for legacy workspace volumes that
 carry root-owned files (created before the two-phase entrypoint
@@ -19,7 +21,8 @@ import subprocess
 
 _S_ENTRYPOINT = os.path.abspath(
     os.path.join(
-        os.path.dirname(__file__), "..", "docker", "entrypoint.sh",
+        os.path.dirname(__file__), "..", "vaibify",
+        "containerImage", "entrypoint.sh",
     )
 )
 

@@ -310,6 +310,24 @@ pattern wholesale.
 - Run the full backend test suite if the change could affect backend
   contracts (e.g., a new API call or WebSocket message shape):
   `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`.
-- Exercise the feature in a running GUI against a real container.
-  There is no automated browser testing — visual confirmation is
-  required for UI changes.
+  A green Python suite says nothing about the frontend; it does not
+  execute this directory at all.
+- Run the browser lane. It loads the real dashboard in real Chromium
+  against a real uvicorn hub and fails on any console error, uncaught
+  rejection, or failed asset, so pushing a branch is a genuine
+  verification path:
+
+  ```bash
+  pip install -e '.[browser]' && python -m playwright install chromium
+  python -m pytest tests/browser -m browser
+  ```
+
+  It drives a fail-closed fake Docker adapter, so it says nothing
+  about container launch, file ownership, terminal content, figure
+  rendering, or the sync panel. Those belong to the nightly container
+  acceptance lane.
+- Exercise the feature in a running GUI for anything the lane does not
+  assert — layout, wording, a specific interaction — and against a
+  real container for anything touching the lease, the WebSockets, or
+  the file-status poll. See the root `AGENTS.md`, "Required after JS
+  changes", for the full procedure.
