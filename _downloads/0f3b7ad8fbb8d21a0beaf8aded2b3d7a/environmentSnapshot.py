@@ -23,6 +23,7 @@ from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 __all__ = [
     "fbBinaryCaptured",
     "fbEnvironmentDigestPinned",
+    "fbImageDigestPullable",
     "fdictCaptureContainerImageDigest",
     "fdictCaptureHostBinaryHashes",
     "fdictCaptureSingleBinary",
@@ -450,6 +451,34 @@ def fbEnvironmentDigestPinned(filesRepo):
     if not sDigest:
         return False
     return "@sha256:" in sDigest or _fbIsImageIdDigest(sDigest)
+
+
+def fbImageDigestPullable(filesRepo):
+    """Return True iff the recorded image digest is pullable on a fresh host.
+
+    ``reproduce.sh``'s first act is ``docker pull`` of the recorded
+    reference, which succeeds only for the registry form
+    (``repo@sha256:<hex>``). A locally built image records its bare
+    image ID (``sha256:<hex>``) — an honest content pin that satisfies
+    ``fbEnvironmentDigestPinned`` but exists in no registry, so a
+    fresh-host reproduction dies at step one. The verdict is derived
+    from the digest's shape (so legacy envelopes without the flag are
+    judged too), with the explicit ``bLocalImageOnly: true`` capture
+    stamp honored as authoritative. A missing envelope or missing
+    digest passes here: those gaps are owned by the
+    ``environment-snapshot-missing`` criterion.
+    """
+    dictPayload = fdictReadEnvironmentJson(filesRepo)
+    if dictPayload is None:
+        return True
+    dictContainer = dictPayload.get("dictContainer")
+    if isinstance(dictContainer, dict):
+        if dictContainer.get("bLocalImageOnly") is True:
+            return False
+    sDigest = _fsExtractImageDigest(dictPayload)
+    if not sDigest:
+        return True
+    return not _fbIsImageIdDigest(sDigest)
 
 
 def _fsExtractImageDigest(dictPayload):
