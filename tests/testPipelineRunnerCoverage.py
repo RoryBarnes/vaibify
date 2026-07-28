@@ -177,16 +177,20 @@ class TestFlistResolveTestCommands:
         dictStep = {}
         assert _flistResolveTestCommands(dictStep) == []
 
-    def test_structured_overrides_legacy(self):
+    def test_structured_runs_first_without_dropping_extra_commands(self):
+        """saTestCommands is also where hand-added commands land.
+
+        Having generated tests must not silence a command the
+        researcher added, so both run; the structured ones go first.
+        """
         dictStep = {
-            "saTestCommands": ["old command"],
+            "saTestCommands": ["added command"],
             "dictTests": {
                 "dictIntegrity": {"saCommands": ["new cmd"]},
             },
         }
         listResult = _flistResolveTestCommands(dictStep)
-        assert "old command" not in listResult
-        assert "new cmd" in listResult
+        assert listResult == ["new cmd", "added command"]
 
 
 class TestFlistCollectCategoryLogs:

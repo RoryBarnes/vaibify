@@ -9,7 +9,10 @@ import click
 from .configLoader import fsConfigPath
 
 from vaibify.config.registryManager import fnAddProject
+from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
 from vaibify.resources import S_TEMPLATES_TREE, fpathPackagedTree
+
+S_PROJECT_FILE_NAME = "project.json"
 
 
 def flistAvailableTemplates():
@@ -62,7 +65,54 @@ def fnCopyTemplate(sTemplateName):
     if not pathlib.Path(sSourcePath).is_dir():
         click.echo(f"Error: Template '{sTemplateName}' not found.")
         sys.exit(1)
-    fnCopyDirectoryContents(sSourcePath, str(pathlib.Path.cwd()))
+    pathDestination = pathlib.Path.cwd()
+    fnRefuseIfProjectFileExists(pathDestination)
+    fnCopyDirectoryContents(sSourcePath, str(pathDestination))
+    fnMoveProjectFileWhereDiscoveryLooks(pathDestination)
+
+
+def fnRefuseIfProjectFileExists(pathDestination):
+    """Exit before copying anything if the Project file is already there.
+
+    Every check that can fail runs before the first write, so a refused
+    init leaves the directory exactly as it found it. Checking after the
+    copy left a root project.json, container.conf and the step
+    directories behind on the way out — debris the researcher then has
+    to identify and remove by hand, in a directory the command has just
+    said it refused to touch.
+    """
+    pathTarget = (
+        pathDestination / VAIBIFY_PROJECTS_DIR / S_PROJECT_FILE_NAME
+    )
+    if not pathTarget.exists():
+        return
+    click.echo(
+        f"Error: {pathTarget.relative_to(pathDestination)} already "
+        f"exists. Move or delete it before scaffolding over it. "
+        f"Nothing was written.",
+        err=True,
+    )
+    sys.exit(1)
+
+
+def fnMoveProjectFileWhereDiscoveryLooks(pathDestination):
+    """Relocate a scaffolded project.json into the discovered directory.
+
+    Templates keep their Project file at the tree root, where it is the
+    first thing a reader opens. Discovery scans only
+    ``.vaibify/projects`` and the legacy ``.vaibify/workflows``, so a
+    Project left at the root is one the dashboard cannot list and
+    ``vaibify run`` cannot resolve: ``vaibify init --template`` scaffolded
+    a project that nothing could open, and said it had succeeded.
+    """
+    pathSource = pathDestination / S_PROJECT_FILE_NAME
+    if not pathSource.is_file():
+        return
+    pathTarget = (
+        pathDestination / VAIBIFY_PROJECTS_DIR / S_PROJECT_FILE_NAME
+    )
+    pathTarget.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(pathSource), str(pathTarget))
 
 
 def fnCopyDirectoryContents(sSourceDir, sDestDir):

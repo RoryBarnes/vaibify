@@ -81,7 +81,7 @@ _DICT_FORMAT_MAP = {
     ".dta": "stata",
     ".sas7bdat": "sas",
     ".rds": "rdata",
-    ".RData": "rdata",
+    ".rdata": "rdata",  # lower-cased lookup; ".RData" would never hit
     ".rda": "rdata",
     ".vot": "votable",
     ".ipac": "ipac",

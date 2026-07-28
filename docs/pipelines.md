@@ -6,8 +6,13 @@ commands in order and produces output files such as figures or data products.
 
 ## Project File
 
-Pipelines are defined in `project.json` at the repository root. The file has
-four top-level fields:
+Pipelines are defined in a `project.json` under `.vaibify/projects/` in
+the project repository. That is where the dashboard and `vaibify run`
+look for it; `vaibify init --template` writes it there. (`.vaibify/
+workflows/` is the legacy location and is still read, so existing
+repositories keep working.)
+
+The file has four top-level fields:
 
 | Field              | Type    | Description                              |
 |--------------------|---------|------------------------------------------|
@@ -120,10 +125,13 @@ does not exist.
 
 ## Integration with GitHub Actions
 
-Use `vaibify publish workflow` to generate a GitHub Actions workflow
-from `project.json`. The generated workflow builds the Docker image and
-runs each step inside the container. See [Reproducibility](reproducibility.md)
-for details.
+```{warning}
+Not implemented. `vaibify publish workflow` — which would generate a
+GitHub Actions workflow from `project.json` — is not registered on the
+CLI, and the generator behind it has no caller anywhere in the product.
+Write the workflow by hand for now. See the Publishing section of the
+[CLI reference](cli.md) for what exists today.
+```
 
 ## Multi-Container Projects
 

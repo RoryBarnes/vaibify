@@ -60,51 +60,42 @@ class TestFdictRunTestsByCategory:
         assert mockRunOne.call_count == 2
 
     @patch(
-        "vaibify.gui.pipelineTestRunner._fdictRunLegacyTestCommands",
+        "vaibify.gui.pipelineTestRunner._fdictRunOneCategoryCommands",
         new_callable=AsyncMock,
     )
-    def test_falls_back_to_legacy_when_no_structured(self, mockLegacy):
-        """When no category has commands, falls through to legacy path."""
+    def test_falls_back_to_legacy_when_no_structured(self, mockRunOne):
+        """When no category has commands, the legacy list still runs."""
         from vaibify.gui.pipelineTestRunner import _fdictRunTestsByCategory
 
-        mockLegacy.return_value = {"legacy": {"iExitCode": 0, "sOutput": ""}}
-        dictStep = {"dictTests": {}}
+        mockRunOne.return_value = {"iExitCode": 0, "sOutput": ""}
+        dictStep = {
+            "dictTests": {},
+            "saTestCommands": ["pytest test_old.py"],
+        }
         dictResults = _fnRunAsync(
             _fdictRunTestsByCategory(
                 MagicMock(), "ctr1", dictStep, "/ws", {}, AsyncMock(),
             )
         )
         assert "legacy" in dictResults
-        mockLegacy.assert_awaited_once()
+        assert mockRunOne.await_args[0][2] == ["pytest test_old.py"]
 
+    @patch(
+        "vaibify.gui.pipelineTestRunner._fdictRunOneCategoryCommands",
+        new_callable=AsyncMock,
+    )
+    def test_runs_nothing_when_step_has_no_commands(self, mockRunOne):
+        """No commands anywhere yields no groups and no execution."""
+        from vaibify.gui.pipelineTestRunner import _fdictRunTestsByCategory
 
-# ---------------------------------------------------------------------------
-# _fdictRunLegacyTestCommands — line 104 (empty saTestCommands)
-# ---------------------------------------------------------------------------
-
-class TestFdictRunLegacyTestCommands:
-    """Cover the empty-command early return (line 104)."""
-
-    def test_returns_empty_dict_when_no_commands(self):
-        from vaibify.gui.pipelineTestRunner import _fdictRunLegacyTestCommands
-
-        dictStep = {"saTestCommands": []}
-        dictResult = _fnRunAsync(
-            _fdictRunLegacyTestCommands(
-                MagicMock(), "ctr1", dictStep, "/ws", {}, AsyncMock(),
+        for dictStep in ({"saTestCommands": []}, {"dictTests": {}}, {}):
+            dictResults = _fnRunAsync(
+                _fdictRunTestsByCategory(
+                    MagicMock(), "ctr1", dictStep, "/ws", {}, AsyncMock(),
+                )
             )
-        )
-        assert dictResult == {}
-
-    def test_returns_empty_dict_when_key_missing(self):
-        from vaibify.gui.pipelineTestRunner import _fdictRunLegacyTestCommands
-
-        dictResult = _fnRunAsync(
-            _fdictRunLegacyTestCommands(
-                MagicMock(), "ctr1", {}, "/ws", {}, AsyncMock(),
-            )
-        )
-        assert dictResult == {}
+            assert dictResults == {}
+        mockRunOne.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

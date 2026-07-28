@@ -564,3 +564,71 @@ def test_pip_install_failure_without_hash_in_stderr_no_uv_fallback(fixtureRepo):
     assert result.exit_code == 1
     # stderr should have been echoed (the "ImportError" line).
     assert "importerror" in result.output.lower() or "not a hash issue" in result.output.lower()
+
+
+# ============================================================================
+# init -> reproduce: the canonical Project directory must be scanned
+# ============================================================================
+
+
+def _fnScaffoldProjectWithInit(pathRepo):
+    """Run the real ``vaibify init --template`` inside pathRepo."""
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from vaibify.cli.commandInit import init
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=str(pathRepo)) as sCwd:
+        # The global registry path resolves at import from ~/.vaibify,
+        # so it cannot be redirected by an environment variable.
+        with patch("vaibify.cli.commandInit.fnAddProject"):
+            resultInit = runner.invoke(
+                init, ["--template", "workflow"],
+                catch_exceptions=False,
+            )
+        assert resultInit.exit_code == 0, resultInit.output
+        return sCwd
+
+
+def test_aggregation_sees_a_project_created_by_init(tmp_path):
+    """Reproduce must read the directory init actually writes to.
+
+    Both helpers scanned only the legacy ``.vaibify/workflows``. Once
+    init started writing the canonical ``.vaibify/projects``, every
+    project a researcher created was invisible here: aggregation
+    returned None, so the coverage check was skipped, and the binary
+    declaration verifier passed for having checked nothing. Neither
+    reported that it had seen no project.
+    """
+    sRepo = _fnScaffoldProjectWithInit(tmp_path)
+
+    dictAggregate = commandReproduce._fdictAggregateAllWorkflows(sRepo)
+
+    assert dictAggregate is not None, (
+        "aggregation found no Project in a repo that vaibify init just "
+        "scaffolded; the coverage check silently does nothing"
+    )
+    assert dictAggregate["listSteps"], dictAggregate
+
+
+def test_binary_declaration_is_not_vacuous_after_init(tmp_path):
+    """The verifier must evaluate the scaffolded Project, not skip it."""
+    sRepo = _fnScaffoldProjectWithInit(tmp_path)
+    listSeen = []
+
+    def fbRecordAndAccept(dictWorkflow):
+        listSeen.append(dictWorkflow)
+        return True
+
+    with patch.object(
+        commandReproduce, "fbWorkflowDeclaresBinaries", fbRecordAndAccept,
+    ):
+        bResult = commandReproduce._fbEveryWorkflowDeclaresBinaries(sRepo)
+
+    assert bResult is True
+    assert listSeen, (
+        "no Project was evaluated, so a True here means 'nothing was "
+        "checked', not 'every Project declares its binaries'"
+    )

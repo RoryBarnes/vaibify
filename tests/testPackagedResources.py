@@ -318,3 +318,127 @@ def testGeneratedContextArtifactsCannotBeCommitted():
         f"these generated build artifacts are not gitignored: "
         f"{listUnignored}"
     )
+
+
+def _fsCaptureDiscoveryFindCommand(sSearchRoot):
+    """Return the exact find expression Project discovery runs."""
+    from vaibify.gui.workflowManager import _flistDiscoverCandidatePaths
+
+    listCaptured = []
+
+    class _ConnectionRecording:
+        def ftResultExecuteCommand(self, sContainerId, sCommand):
+            listCaptured.append(sCommand)
+            return (0, "")
+
+    _flistDiscoverCandidatePaths(
+        _ConnectionRecording(), "cid", sSearchRoot,
+    )
+    return listCaptured[0]
+
+
+def testInitScaffoldsAProjectThatDiscoveryActuallyFinds():
+    """``vaibify init --template`` must produce a discoverable Project.
+
+    The template's project.json used to land at the repository root
+    while discovery scanned only ``.vaibify/projects`` and the legacy
+    ``.vaibify/workflows``. Every scaffolded project was therefore
+    invisible to the dashboard and to ``vaibify run``, and init exited
+    0 saying it had succeeded.
+
+    This runs init for real and then runs discovery's own find
+    expression over the result, so the two halves are checked against
+    each other rather than against a restatement of either.
+    """
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from vaibify.cli.commandInit import init
+
+    with tempfile.TemporaryDirectory() as sTempDir:
+        pathRoot = pathlib.Path(sTempDir)
+        pathRepo = pathRoot / "scaffold"
+        pathRepo.mkdir()
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=str(pathRepo)) as sCwd:
+            # The global project registry lives at ~/.vaibify and its
+            # path is resolved at import, so it cannot be redirected by
+            # an environment variable: without this the test rewrites
+            # the developer's own registry entry for any project that
+            # happens to share the template's name.
+            with patch("vaibify.cli.commandInit.fnAddProject"):
+                resultInit = runner.invoke(
+                    init, ["--template", "workflow"],
+                    catch_exceptions=False,
+                )
+            assert resultInit.exit_code == 0, resultInit.output
+            # Search from the repo's parent, which is what /workspace is
+            # to a project repo cloned directly inside it.
+            sCommand = _fsCaptureDiscoveryFindCommand(
+                str(pathlib.Path(sCwd).parent),
+            )
+            resultFind = subprocess.run(
+                sCommand, shell=True, capture_output=True, text=True,
+            )
+            listFound = [
+                sLine for sLine in resultFind.stdout.splitlines()
+                if sLine.strip()
+            ]
+            listWritten = sorted(
+                pathItem.name
+                for pathItem in pathlib.Path(sCwd).iterdir()
+            )
+            assert listFound, (
+                "discovery found no Project under the scaffolded "
+                f"tree; init wrote {listWritten}"
+            )
+            assert all(
+                pathlib.Path(sPath).is_file() for sPath in listFound
+            )
+
+
+def testInitRefusedByAnExistingProjectWritesNothing():
+    """A refused init must leave the directory exactly as it found it.
+
+    The conflict check used to run after the template had been copied,
+    so a refusal exited 1 having already written a root project.json,
+    container.conf and the step directories -- debris in a directory the
+    command had just said it would not scaffold over.
+    """
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from vaibify.cli.commandInit import init
+    from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
+
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as sTempDir:
+        with runner.isolated_filesystem(temp_dir=sTempDir) as sCwd:
+            pathExisting = (
+                pathlib.Path(sCwd) / VAIBIFY_PROJECTS_DIR / "project.json"
+            )
+            pathExisting.parent.mkdir(parents=True)
+            pathExisting.write_text('{"sMine": true}')
+            listBefore = sorted(
+                str(pathItem.relative_to(sCwd))
+                for pathItem in pathlib.Path(sCwd).rglob("*")
+            )
+
+            with patch("vaibify.cli.commandInit.fnAddProject"):
+                resultInit = runner.invoke(
+                    init, ["--template", "workflow"],
+                    catch_exceptions=False,
+                )
+
+            assert resultInit.exit_code == 1, resultInit.output
+            listAfter = sorted(
+                str(pathItem.relative_to(sCwd))
+                for pathItem in pathlib.Path(sCwd).rglob("*")
+            )
+            assert listAfter == listBefore, (
+                "a refused init left files behind: "
+                f"{sorted(set(listAfter) - set(listBefore))}"
+            )
+            assert pathExisting.read_text() == '{"sMine": true}'

@@ -53,22 +53,12 @@ async def _fdictRunTestsByCategory(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
 ):
-    """Run each test category separately, return {sCategory: dict}."""
-    dictTests = dictStep.get("dictTests", {})
+    """Run each test group separately, return {sGroupKey: dict}."""
     dictResults = {}
-    for sCatKey in ("dictIntegrity", "dictQualitative",
-                    "dictQuantitative"):
-        dictCat = dictTests.get(sCatKey, {})
-        listCmds = dictCat.get("saCommands", [])
-        if not listCmds:
-            continue
-        dictResults[sCatKey] = await _fdictRunOneCategoryCommands(
-            connectionDocker, sContainerId, listCmds,
-            sStepDirectory, dictVariables, fnStatusCallback,
-        )
-    if not dictResults:
-        dictResults = await _fdictRunLegacyTestCommands(
-            connectionDocker, sContainerId, dictStep,
+    dictGroups = workflowManager.fdictResolveTestCommandGroups(dictStep)
+    for sGroupKey, listCommands in dictGroups.items():
+        dictResults[sGroupKey] = await _fdictRunOneCategoryCommands(
+            connectionDocker, sContainerId, listCommands,
             sStepDirectory, dictVariables, fnStatusCallback,
         )
     return dictResults
@@ -92,21 +82,6 @@ async def _fdictRunOneCategoryCommands(
         "iExitCode": iExitCode,
         "sOutput": "\n".join(listLog),
     }
-
-
-async def _fdictRunLegacyTestCommands(
-    connectionDocker, sContainerId, dictStep,
-    sStepDirectory, dictVariables, fnStatusCallback,
-):
-    """Fallback for steps using saTestCommands without dictTests."""
-    listCommands = dictStep.get("saTestCommands", [])
-    if not listCommands:
-        return {}
-    dictResult = await _fdictRunOneCategoryCommands(
-        connectionDocker, sContainerId, listCommands,
-        sStepDirectory, dictVariables, fnStatusCallback,
-    )
-    return {"legacy": dictResult}
 
 
 async def _fnEmitPerCategoryResults(

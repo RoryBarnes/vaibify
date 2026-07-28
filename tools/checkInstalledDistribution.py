@@ -239,10 +239,36 @@ def fnCheckWorkflowTemplateRuns(pathScratch):
             f"'vaibify init --template workflow' exited "
             f"{resultProcess.returncode}: {resultProcess.stderr}"
         )
-    dictWorkflow = json.loads(
-        (pathProject / "project.json").read_text()
-    )
+    pathProjectFile = fpathRequireDiscoverableProjectFile(pathProject)
+    dictWorkflow = json.loads(pathProjectFile.read_text())
     fnRunEveryStep(pathProject, dictWorkflow)
+
+
+def fpathRequireDiscoverableProjectFile(pathProject):
+    """Return the scaffolded Project file, or fail if nothing can open it.
+
+    Reading the file init wrote proves only that init wrote a file.
+    Discovery scans ``.vaibify/projects`` (and the legacy
+    ``.vaibify/workflows``); a Project anywhere else is one the
+    dashboard cannot list and ``vaibify run`` cannot resolve, which is
+    exactly what every scaffold was until 2026-07-28.
+    """
+    listCandidates = sorted(
+        list((pathProject / ".vaibify" / "projects").glob("*.json"))
+        + list((pathProject / ".vaibify" / "workflows").glob("*.json"))
+    )
+    if not listCandidates:
+        listWritten = sorted(
+            str(pathItem.relative_to(pathProject))
+            for pathItem in pathProject.rglob("*.json")
+        )
+        fnFailWith(
+            "'vaibify init --template workflow' scaffolded no Project "
+            "where discovery looks (.vaibify/projects/*.json); it "
+            f"wrote: {listWritten or 'no JSON at all'}"
+        )
+    print("  scaffolded Project is where discovery looks")
+    return listCandidates[0]
 
 
 def fnRunEveryStep(pathProject, dictWorkflow):
