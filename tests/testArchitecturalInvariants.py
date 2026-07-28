@@ -69,28 +69,41 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
     "proxima",
 ]
 
-# PENDING (2026-07-26): this scan covers *.py/*.html/*.js/*.css under
+# PENDING (2026-07-27): this scan covers *.py/*.html/*.js/*.css under
 # vaibify/ only. Markdown is not scanned and repo-root docs/ is
-# outside the scanned tree, so these known occurrences of the terms
-# above are NOT enforced today:
+# outside the scanned tree, so occurrences there are not enforced.
 #
-#   docs/architecture.md:304,323,324,327   worked path examples
-#   docs/dashboard.md:161,166              slug-rule examples
-#   vaibify/docs/scriptAuthoring.md:37,41  ships inside the package
-#   docs/vision.md:153                     cites a real paper appendix
+# CLEARED (2026-07-27): the documentation occurrences recorded here on
+# 2026-07-26 have been genericised into one running example -- the
+# projects ParameterSweep and SurveyCatalog, with steps
+# PosteriorSamples and PosteriorCorner -- across
+# docs/architecture.md, docs/dashboard.md, and
+# vaibify/docs/scriptAuthoring.md. The docs/vision.md citation is gone
+# too, but by attrition: the "Where vaibify sits" section was rewritten
+# upstream and no longer names the paper, so the allow-list carve-out
+# that entry called for is not needed.
 #
-# The first three are illustrative and should be replaced with the
-# forthcoming general example project (AI waste heat -> moist
-# greenhouse), which exists to give vaibify a science-agnostic worked
-# example of its own. The vision.md line is a citation of real
-# provenance, not a leak, and needs an explicit carve-out rather than
-# genericising -- rewriting it would make the document less true.
+# STILL NOT ENFORCED -- two real occurrences remain, both outside the
+# markdown this pass was scoped to:
 #
-# When that example lands: swap the illustrative names, add "*.md" to
-# _TUPLE_SCIENCE_SCAN_GLOBS, extend the scan root to repo-root docs/,
-# and add the vision.md citation to an explicit allow-list. Only then
-# does the AGENTS.md rule ("must not appear in vaibify source,
-# templates, tests-of-record, or docs") hold everywhere it claims to.
+#   vaibify/gui/static/index.html:925      project-name placeholder
+#   vaibify/containerImage/skills/
+#       create-pipeline-step/SKILL.md:52   example step name
+#
+# The index.html one is the more interesting failure: it IS inside the
+# scanned tree and IS a scanned glob, yet passes, because the string is
+# spaced ("GJ 1132 b ...") and the term is written "gj1132". A term
+# list of bare identifiers cannot match the spaced form of the same
+# name, so the scan is blind to exactly the way a human types it.
+# Tightening that is a change to the pattern, not to the docs, and was
+# deliberately left out of the documentation pass.
+#
+# To finish the job: fix those two occurrences, teach the term matcher
+# about separators, add "*.md" to _TUPLE_SCIENCE_SCAN_GLOBS, and extend
+# the scan root to repo-root docs/ (which will also pick up AGENTS.md).
+# Only then does the AGENTS.md rule ("must not appear in vaibify
+# source, templates, tests-of-record, or docs") hold everywhere it
+# claims to.
 
 # Directories excluded from source scans (virtualenvs, build artifacts, caches).
 SET_EXCLUDED_SCAN_DIRECTORY_FRAGMENTS = (

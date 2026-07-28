@@ -28,17 +28,17 @@ it via a `{StepNN.varname}` token.**
 
 ## Why hardcoded cross-step paths break vaibify
 
-Suppose step A02 produces `flare_samples.npy` and step A03 needs to
+Suppose step A02 produces `posterior_samples.npy` and step A03 needs to
 read it. The "wrong" pattern looks like this:
 
 ```python
-# A03/plotFfd.py
+# A03/plotCorner.py
 import numpy as np
-samples = np.load("../KeplerFfd/flare_samples.npy")  # hardcoded
+samples = np.load("../PosteriorSamples/posterior_samples.npy")  # hardcoded
 ```
 
 vaibify's parser cannot introspect arbitrary Python source. The
-`"../KeplerFfd/flare_samples.npy"` literal is invisible. So the A02 →
+`"../PosteriorSamples/posterior_samples.npy"` literal is invisible. So the A02 →
 A03 edge does not exist in the dependency graph. The consequences:
 
 - The dashboard's `Update Dependencies` button never finds the edge.
@@ -46,7 +46,7 @@ A03 edge does not exist in the dependency graph. The consequences:
   the dashboard thinks A03 is still consistent with A02 even though it
   isn't.
 - A03 can show as Level 1 verified while its plot is based on a stale
-  flare-samples file.
+  posterior-samples file.
 - The project can therefore claim Self-Consistent (L1) status when it
   is not, in fact, self-consistent.
 
@@ -60,41 +60,41 @@ The right pattern lifts the cross-step reference into a CLI argument
 and a JSON token:
 
 ```python
-# A03/plotFfd.py
+# A03/plotCorner.py
 import argparse
 import numpy as np
 
 def fdictParseArguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--flare-samples", required=True)
+    parser.add_argument("--posterior-samples", required=True)
     parser.add_argument("sPlotPath")
     return vars(parser.parse_args())
 
 dictArgs = fdictParseArguments()
-samples = np.load(dictArgs["flare_samples"])
+samples = np.load(dictArgs["posterior_samples"])
 ```
 
 ```json
 {
   "iIndex": 3,
-  "sName": "FfdAgeComparison",
+  "sName": "PosteriorCorner",
   "saPlotCommands": [
-    "python plotFfd.py --flare-samples {Step02.flare_samples} {sPlotDirectory}/ffd.{sFigureType}"
+    "python plotCorner.py --posterior-samples {Step02.posterior_samples} {sPlotDirectory}/corner.{sFigureType}"
   ]
 }
 ```
 
 Three conventions matter:
 
-- **CLI arguments are kebab-case** (`--flare-samples`).
-- **The token variable name is snake_case** (`{Step02.flare_samples}`)
+- **CLI arguments are kebab-case** (`--posterior-samples`).
+- **The token variable name is snake_case** (`{Step02.posterior_samples}`)
   — it matches the basename (without extension) of the producer step's
-  `saOutputDataFiles` entry. So `flare_samples.npy` in `saOutputDataFiles` becomes
-  `{Step02.flare_samples}` in any consumer's command.
+  `saOutputDataFiles` entry. So `posterior_samples.npy` in `saOutputDataFiles` becomes
+  `{Step02.posterior_samples}` in any consumer's command.
 - **Use `argparse`, not raw `sys.argv` indexing.** The CLI is part of
   the project contract; argparse makes it explicit and self-documenting.
 
-The director substitutes `{Step02.flare_samples}` at runtime with the
+The director substitutes `{Step02.posterior_samples}` at runtime with the
 actual repo-relative path to the producer's output. Your script never
 needs to know where A02 lives.
 
@@ -115,7 +115,7 @@ register the edge:
   "iIndex": 4,
   "sName": "AggregatePlots",
   "saPlotCommands": ["python plotAggregate.py {sPlotDirectory}/agg.{sFigureType}"],
-  "saDependencies": ["{Step02.flare_samples}", "{Step03.age_samples}"]
+  "saDependencies": ["{Step02.posterior_samples}", "{Step03.age_samples}"]
 }
 ```
 

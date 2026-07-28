@@ -166,12 +166,13 @@ From Here**, insertion, and deletion.
 A step's directory is not a free choice: its final component is
 derived from the step name by an obvious formula — remove the
 spaces, uppercase each word's first letter, keep the rest as typed.
-"Step Name" becomes `StepName`; "GJ 1132 XUV" becomes `GJ1132XUV`;
-hyphens pass through ("TOI-540 XUV" → `TOI-540XUV`). Names may
+"Step Name" becomes `StepName`; "MCMC 512 Chains" becomes
+`MCMC512Chains`; hyphens pass through ("Grid-Search Sweep" →
+`Grid-SearchSweep`). Names may
 contain only letters, digits, spaces, and hyphens, and two steps may
 not map to the same directory (compared case-insensitively, because
 macOS clones sit on case-insensitive filesystems). Parent folders
-are free — `systems/GJ1132XUV` is fine; only the last component is
+are free — `analyses/MCMC512Chains` is fine; only the last component is
 governed.
 
 Creating a step derives the directory automatically; renaming one

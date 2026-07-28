@@ -64,6 +64,43 @@ no quietly swallowed errors. If the truth is slow or ugly, the
 dashboard shows it slow and ugly. The [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) trap
 list treats dashboard honesty as a hard invariant.
 
+**Every action reachable from the command line.** The authority is the
+backend action contract: every state-mutating action a researcher can
+invoke is registered in one catalog,
+[actionCatalog.py](../vaibify/gui/actionCatalog.py). The dashboard and
+both command lines are three clients of that one contract — they call
+the same routes. What sets the command lines apart is that they are
+*generated* from the catalog rather than hand-written against it:
+`vaibify do` on the host
+([actionCommands.py](../vaibify/cli/actionCommands.py)) and
+`vaibify-do` inside the container
+([vaibifyDo.py](../vaibify/containerImage/vaibifyDo.py)). An action
+added to the catalog appears in both without anyone maintaining a
+parallel list, so neither CLI can drift from the contract.
+
+The design commitment is that every action in the contract is
+reachable from the command line. This is philosophical, not
+convenient. A data scientist works at the command line, and a project
+that can only be driven by clicking is not reproducible: Level 3 means
+someone else re-runs the work headlessly — on CI, on a cluster, in a
+batch job, with no browser present. A GUI-only action would be an
+action that cannot appear in a reproduction script, so it would be a
+hole in the ladder rather than a missing convenience.
+
+The commitment is enforced by accounting, not by coverage. Where a
+route is deliberately not CLI-invokable it is a written exception in
+`SET_INTENTIONALLY_EXCLUDED_PATHS` with its rationale recorded beside
+it, and `testAgentActionRegistered` fails CI — failing *closed* — for
+any state-mutating route with no decision recorded either way. The
+guarantee is therefore not that every route is on the command line; it
+is that no route can quietly fail to be.
+
+Read this together with the entry above, since both concern where
+truth lives and they mean different things. The dashboard is where
+truth is *displayed*, and it may never lie about what it displays. The
+action contract is where capability is *defined*, and the command line
+is its most direct expression.
+
 ## The happy path
 
 The most concrete way to understand how vaibify verifies a project is to watch what happens
@@ -329,7 +366,7 @@ is the *discovery root* — the search origin for project.json files —
 but not a git target. Inside a container, `/workspace` contains N
 repository subdirectories (each a standalone git clone) plus some
 shared configuration. A single container can therefore host multiple
-projects: GJ1132_XUV's paper pipeline today, XUVCatalog's
+projects: ParameterSweep's paper pipeline today, SurveyCatalog's
 cross-system analysis tomorrow, both reusing the same heavy dependency
 clones without needing a rebuild.
 
@@ -348,11 +385,11 @@ must be repo-relative and must stay inside the repository. Absolute
 paths and `..`-escaping paths are rejected by
 `flistValidateOutputFilePaths` on save. Step directories (`sDirectory`
 on each step) are held to the same rule by `flistValidateStepDirectories`
-— a value like `/workspace/GJ1132_XUV/KeplerFfdCorner` is rejected; the
-repo-relative form `KeplerFfdCorner` is required. Input references
+— a value like `/workspace/ParameterSweep/PosteriorCorner` is rejected; the
+repo-relative form `PosteriorCorner` is required. Input references
 inside `saCommands` / `saPlotCommands` / `saDataCommands` are
 deliberately *not* validated — a step may legitimately read an
-absolute `/workspace/GJ1132_XUV/Plot/foo.pdf` produced by a sibling
+absolute `/workspace/SurveyCatalog/Plot/foo.pdf` produced by a sibling
 project. Badges are emitted only for the producing project; a
 consumer project sees the file as a read path, not as a tracked
 artifact.
