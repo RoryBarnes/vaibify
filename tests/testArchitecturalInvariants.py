@@ -5,6 +5,8 @@ import importlib
 import re
 from pathlib import Path
 
+import pytest
+
 
 __all__ = [
     "testLeafModuleHasNoIntraPackageImports",
@@ -707,6 +709,7 @@ TUPLE_SEPARATED_TERM_SPELLINGS = (
 S_TERM_LOOKALIKE_TEXT = "an approximation of the posterior"
 
 
+@pytest.mark.falsification
 def testScienceTermScanMatchesSeparatedSpellings(tmp_path):
     """The scan finds a term however its parts are separated.
 

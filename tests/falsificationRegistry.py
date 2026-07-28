@@ -45,6 +45,13 @@ class Falsification:
 LIST_FALSIFICATIONS = [
 
     Falsification(
+        nodeid='tests/testArchitecturalInvariants.py::testScienceTermScanMatchesSeparatedSpellings',
+        source='tests/testArchitecturalInvariants.py',
+        old='    regexTerm = re.compile(\n        r"\\b" + _S_TERM_SEPARATOR_PATTERN.join(\n            re.escape(sCharacter) for sCharacter in sTerm\n        ),\n        re.IGNORECASE,\n    )',
+        new='    regexTerm = re.compile(r"\\b" + re.escape(sTerm), re.IGNORECASE)',
+    ),
+
+    Falsification(
         nodeid='tests/testContainerOwnership.py::test_agent_token_with_empty_container_id_fails_closed',
         source='vaibify/gui/containerOwnership.py',
         old='if not sPresentedToken or not sContainerId:',
