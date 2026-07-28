@@ -19,6 +19,7 @@ from click.testing import CliRunner
 from vaibify.cli import commandReproduce
 from vaibify.reproducibility.rerunVerification import (
     S_DIVERGENCE_PIPELINE_FAILED,
+    fbRunWorkflowInContainer,
     fdictVerifyRerunOutputs,
     fiCountManifestEntriesOrZero,
 )
@@ -300,8 +301,8 @@ def test_write_attestation_from_run_handles_oserror(fixtureRepo):
 def test_reproduce_rerun_passes_emits_confirmed_line(fixtureRepo):
     """Line 451: a clean rerun emits ``L3 reproduction confirmed and attested.``"""
     with _fnPatchAllSubprocessesSucceeding(), patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        return_value=True,
+        "vaibify.cli.commandReproduce.fdictRerunAndVerify",
+        return_value=fdictVerifyRerunOutputs(str(fixtureRepo), True),
     ):
         result = CliRunner().invoke(
             commandReproduce.reproduce,
@@ -314,8 +315,8 @@ def test_reproduce_rerun_passes_emits_confirmed_line(fixtureRepo):
 def test_reproduce_rerun_failure_emits_failed_line(fixtureRepo):
     """Line 459: a failed rerun emits ``L3 reproduction failed; ...``"""
     with _fnPatchAllSubprocessesSucceeding(), patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        return_value=False,
+        "vaibify.cli.commandReproduce.fdictRerunAndVerify",
+        return_value=fdictVerifyRerunOutputs(str(fixtureRepo), False),
     ):
         result = CliRunner().invoke(
             commandReproduce.reproduce,
@@ -348,50 +349,41 @@ def test_tier4_failure_emits_per_verifier_status(fixtureRepo, tmp_path):
 
 
 # ============================================================================
-# _fbInvokePipelineRunner — lines 393-402 (success + nonzero exit branches)
+# fbRunWorkflowInContainer — the "did it run again" half of tier 5.
+#
+# Previously asserted against the CLI's _fbInvokePipelineRunner, which
+# resolved the container from a host working directory. The exit-code
+# mapping it checked is unchanged; it now lives in the shared lane both
+# the CLI and the dashboard enter through.
 # ============================================================================
 
 
-def test_invoke_pipeline_runner_success_path(fixtureRepo):
-    """Lines 393-402: a zero-exit pipeline returns True with success line."""
-    with patch(
-        "vaibify.cli.configLoader.fconfigResolveProject",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fconnectionRequireDocker",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fsRequireRunningContainer",
-        return_value="ctr",
-    ), patch(
-        "vaibify.cli.commandRun._fiRunPipeline",
-        return_value=0,
-    ):
-        bResult = commandReproduce._fbInvokePipelineRunner(
-            str(fixtureRepo),
-        )
-    assert bResult is True
+def _fnPatchRunAllStepsWithExit(iExitCode):
+    """Patch the pipeline runner to report a fixed exit code."""
+    async def _fiRunAllSteps(*args, **kwargs):
+        return iExitCode
+    return patch(
+        "vaibify.gui.pipelineRunner.fnRunAllSteps",
+        side_effect=_fiRunAllSteps,
+    )
 
 
-def test_invoke_pipeline_runner_nonzero_exit_returns_false(fixtureRepo):
-    """Lines 398-400: a non-zero pipeline exit returns False."""
-    with patch(
-        "vaibify.cli.configLoader.fconfigResolveProject",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fconnectionRequireDocker",
-        return_value=None,
-    ), patch(
-        "vaibify.cli.commandUtilsDocker.fsRequireRunningContainer",
-        return_value="ctr",
-    ), patch(
-        "vaibify.cli.commandRun._fiRunPipeline",
-        return_value=2,
-    ):
-        bResult = commandReproduce._fbInvokePipelineRunner(
-            str(fixtureRepo),
-        )
-    assert bResult is False
+def test_run_workflow_in_container_zero_exit_returns_true():
+    """A zero-exit pipeline means the workflow did run again."""
+    with _fnPatchRunAllStepsWithExit(0):
+        assert fbRunWorkflowInContainer(
+            None, "ctr", {"listSteps": []}, "/workspace/Repo/wf.json",
+            "/workspace/Repo",
+        ) is True
+
+
+def test_run_workflow_in_container_nonzero_exit_returns_false():
+    """A non-zero pipeline exit means the rerun did not complete."""
+    with _fnPatchRunAllStepsWithExit(2):
+        assert fbRunWorkflowInContainer(
+            None, "ctr", {"listSteps": []}, "/workspace/Repo/wf.json",
+            "/workspace/Repo",
+        ) is False
 
 
 # ============================================================================

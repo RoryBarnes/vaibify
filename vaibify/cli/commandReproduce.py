@@ -12,11 +12,15 @@ inside a project repository. Walks five tiers in sequence:
   ``levelGates.fbL3ReadinessOK`` composes; see :func:`fbVerifyTier4`
   for the one it cannot evaluate and why.
 * Tier 5 — opt-in rebuild and hash compare via ``--rerun``. The
-  workflow is re-run, then every ``MANIFEST.sha256`` entry is
-  re-hashed against what the rerun produced; the tier passes only
-  when both the rerun exits zero and every hash still matches.
-  Writes ``.vaibify/l3_attestation.json`` on completion (pass or
-  fail) and archives a copy to ``.vaibify/l3_attestations/``.
+  workflow is re-run inside its container, then every
+  ``MANIFEST.sha256`` entry is re-hashed *in that container*, against
+  what the rerun produced; the tier passes only when the rerun exits
+  zero, every hash still matches, and the manifest itself did not move
+  during the run. Writes ``.vaibify/l3_attestation.json`` on completion
+  (pass or fail) and archives a copy to ``.vaibify/l3_attestations/``.
+  Tiers 1-4 read the host repo named by ``--repo``; tier 5 reads the
+  container's project repo, because ``/workspace`` is a Docker-managed
+  named volume and the two are different filesystems.
 
 Tiers 1-4 are read-only over the project repo. Tier 5 is not: the
 rerun executes the workflow, so it rewrites whatever the workflow's
@@ -56,8 +60,11 @@ from vaibify.reproducibility.levelGates import (
     fbVerifyReproduceScript,
 )
 from vaibify.reproducibility.manifestWriter import flistVerifyManifest
+from vaibify.reproducibility.repoFiles import ContainerRepoFiles
 from vaibify.reproducibility.rerunVerification import (
-    fdictVerifyRerunOutputs,
+    S_DIVERGENCE_PIPELINE_FAILED,
+    fdictRerunAndVerifyWorkflow,
+    fdictUnrunOutcome,
 )
 
 
@@ -67,7 +74,7 @@ __all__ = [
     "fbVerifyTier2",
     "fbVerifyTier3",
     "fbVerifyTier4",
-    "fbRerunWorkflow",
+    "fdictRerunAndVerify",
     "fbIsValidImageDigest",
 ]
 
@@ -399,56 +406,151 @@ def _flistRunReadinessVerifiers(sProjectRepo, dictWorkflow):
     ]
 
 
-def fbRerunWorkflow(sProjectRepo):
-    """Re-run the workflow end to end against a running container.
+def fdictRerunAndVerify(sProjectRepo, sWorkflowName=None):
+    """Tier 5: re-run the workflow in its container and hash what it wrote.
 
-    The project is resolved from ``sProjectRepo`` (the value of
-    ``--repo`` or the current working directory when the flag is
-    absent), requires a running container, and invokes the same
-    pipeline runner that ``vaibify run`` uses. Returns True on
-    success, False on any failure (configuration, missing container,
-    non-zero pipeline exit). Both ``Exception`` and ``SystemExit``
-    are caught so a registry miss inside ``fconfigResolveProject``
-    (which calls ``sys.exit(1)``) does not short-circuit the
-    surrounding ``vaibify reproduce`` exit-code logic.
+    ``sProjectRepo`` (the value of ``--repo``, or the working
+    directory) resolves the *project configuration* and therefore the
+    container to drive. The artefact comparison is then rooted on that
+    container's project repo, never on ``sProjectRepo``: ``/workspace``
+    is a Docker-managed named volume, so re-hashing the host clone
+    would grade a tree the rerun never touched and pass unconditionally.
 
-    This answers "did the workflow run again", nothing more. Whether
-    it *reproduced* is a separate question that only the post-rerun
-    re-hash can answer; ``_ftRunRerunTier`` asks it. Do not treat this
-    return value as the Tier 5 verdict.
+    Returns the four-field outcome dict, fail-closed when the container
+    or the workflow could not be resolved. Both ``Exception`` and
+    ``SystemExit`` are caught so a registry miss inside
+    ``fconfigResolveProject`` (which calls ``sys.exit(1)``) does not
+    short-circuit the surrounding ``vaibify reproduce`` exit-code logic.
     """
     _fnPrintHeader(
         f"5/{_S_TIER_DENOMINATOR}",
         "Re-running workflow",
     )
     try:
-        return _fbInvokePipelineRunner(sProjectRepo)
+        return _fdictRerunInResolvedContainer(sProjectRepo, sWorkflowName)
     except (Exception, SystemExit) as error:
         click.echo(f"... failed to invoke pipeline runner: {error}")
-        return False
+        # Only the exception's type reaches the attestation. The record
+        # is a repo artefact that gets committed and published, and the
+        # message can carry a host path from the project resolver; the
+        # full text goes to the researcher's console instead.
+        return fdictUnrunOutcome(
+            f"rerun not attempted ({type(error).__name__}); "
+            "see the reproduce output"
+        )
 
 
-def _fbInvokePipelineRunner(sProjectRepo):
-    """Invoke commandRun's pipeline machinery against the resolved project."""
+def _fdictRerunInResolvedContainer(sProjectRepo, sWorkflowName):
+    """Resolve the container-side rerun target and drive the shared lane."""
+    tTarget = _ftResolveRerunTarget(sProjectRepo, sWorkflowName)
+    connectionDocker, sContainerName, dictWorkflow, sWorkflowPath = tTarget
+    filesRepo = ContainerRepoFiles(
+        connectionDocker, sContainerName,
+        dictWorkflow.get("sProjectRepoPath", ""),
+    )
+    dictOutcome = fdictRerunAndVerifyWorkflow(
+        connectionDocker, sContainerName, dictWorkflow, sWorkflowPath,
+        filesRepo,
+    )
+    _fnReportRerunExecution(dictOutcome)
+    return dictOutcome
+
+
+def _fnReportRerunExecution(dictOutcome):
+    """Print whether the pipeline itself ran, before the hash verdict."""
+    if S_DIVERGENCE_PIPELINE_FAILED in dictOutcome["listDivergedHashes"]:
+        click.echo("... pipeline runner exited non-zero")
+        return
+    click.echo("... workflow re-ran successfully ✓")
+
+
+def _ftResolveRerunTarget(sProjectRepo, sWorkflowName):
+    """Return ``(connection, container, workflow, workflowPath)`` to re-run.
+
+    The workflow is named explicitly rather than rediscovered, because a
+    container may host several project repos and attesting one while
+    running another produces a record that looks complete and describes
+    a run that never happened.
+    """
     from .configLoader import fconfigResolveProject
     from .commandUtilsDocker import (
         fconnectionRequireDocker,
         fsRequireRunningContainer,
     )
-    from .commandRun import _fiRunPipeline
+    from vaibify.gui.workflowManager import (
+        fdictLoadWorkflowFromContainer,
+        flistFindWorkflowsInContainer,
+    )
     configProject = _fconfigResolveProjectAtRepo(
         sProjectRepo, fconfigResolveProject,
     )
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
-    iExitCode = _fiRunPipeline(
-        connectionDocker, sContainerName, None, None,
+    dictEntry = _fdictSelectWorkflowEntry(
+        flistFindWorkflowsInContainer(connectionDocker, sContainerName),
+        sWorkflowName,
     )
-    if iExitCode != 0:
-        click.echo(f"... pipeline runner exited with code {iExitCode}")
-        return False
-    click.echo("... workflow re-ran successfully ✓")
-    return True
+    dictWorkflow = fdictLoadWorkflowFromContainer(
+        connectionDocker, sContainerName, dictEntry["sPath"],
+    )
+    dictWorkflow["sProjectRepoPath"] = (
+        dictEntry.get("sProjectRepoPath")
+        or dictWorkflow.get("sProjectRepoPath", "")
+    )
+    return (
+        connectionDocker, sContainerName, dictWorkflow, dictEntry["sPath"],
+    )
+
+
+def _fdictSelectWorkflowEntry(listWorkflows, sWorkflowName):
+    """Return the one discovered workflow to re-run, or raise ValueError.
+
+    Ambiguity is refused rather than resolved by sort order: picking a
+    workflow here would attest an envelope the rerun did not produce.
+    """
+    if not listWorkflows:
+        raise ValueError(
+            "no vaibify workflow found in the running container"
+        )
+    if sWorkflowName:
+        return _fdictMatchWorkflowByName(listWorkflows, sWorkflowName)
+    if len(listWorkflows) > 1:
+        raise ValueError(
+            f"the running container hosts {len(listWorkflows)} "
+            "workflows ("
+            + ", ".join(sorted(
+                dictEntry.get("sName", "") for dictEntry in listWorkflows
+            ))
+            + "); name the one to re-run with --workflow, because "
+            "attesting a workflow other than the one that ran would "
+            "certify a run that never happened"
+        )
+    return listWorkflows[0]
+
+
+def _fdictMatchWorkflowByName(listWorkflows, sWorkflowName):
+    """Return the single discovered workflow matching a researcher's name."""
+    listMatches = [
+        dictEntry for dictEntry in listWorkflows
+        if sWorkflowName in (
+            dictEntry.get("sName", ""), dictEntry.get("sPath", ""),
+        )
+    ]
+    if not listMatches:
+        raise ValueError(
+            f"no workflow named '{sWorkflowName}' in the running "
+            "container; --workflow accepts "
+            + ", ".join(sorted(
+                dictEntry.get("sName", "") for dictEntry in listWorkflows
+            ))
+        )
+    if len(listMatches) > 1:
+        raise ValueError(
+            f"'{sWorkflowName}' matches more than one workflow in the "
+            "running container; pass the full container path to "
+            "--workflow instead"
+        )
+    return listMatches[0]
 
 
 def _fconfigResolveProjectAtRepo(sProjectRepo, fconfigResolveProject):
@@ -484,7 +586,7 @@ _LIST_TIERS = (
     ("2", "lockfile parity",          fbVerifyTier2, False),
     ("3", "image digest pinned",      fbVerifyTier3, False),
     ("4", "L3 artifact coherence",    fbVerifyTier4, False),
-    ("5", "byte-identical rerun",     fbRerunWorkflow, True),
+    ("5", "byte-identical rerun",     fdictRerunAndVerify, True),
 )
 _T_TIER_CHOICES = tuple(
     sLabel for sLabel, _sDescription, _fnVerify, bRequiresRerun in _LIST_TIERS
@@ -532,12 +634,21 @@ def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
     :func:`~vaibify.reproducibility.rerunVerification.fdictVerifyRerunOutputs`.
     Nothing here may be inferred from the pipeline's exit code: that is
     the substitution that once let a byte-changing rerun attest N of N.
+
+    ``sManifestDigest`` likewise comes from the outcome when the rerun
+    produced one, because that is the manifest the comparison was made
+    against — the container's, which need not be byte-identical to the
+    host clone ``--repo`` names. Falling back to the host digest is for
+    the tiers-only path, where no container comparison happened.
     """
     return fdictBuildAttestation(
         sStatus=(
             S_STATUS_PASSED if dictOutcome["bPassed"] else S_STATUS_FAILED
         ),
-        sManifestDigest=fsCurrentManifestDigest(sProjectRepo),
+        sManifestDigest=(
+            dictOutcome.get("sManifestDigest")
+            or fsCurrentManifestDigest(sProjectRepo)
+        ),
         sImageDigest=_fsRecordedImageDigest(sProjectRepo),
         fDurationSeconds=fDuration,
         iOutputHashesMatched=dictOutcome["iOutputHashesMatched"],
@@ -616,7 +727,7 @@ def _fnReportHashCompare(dictOutcome):
         click.echo(f"  diverged: {sDiverged}")
 
 
-def _ftRunRerunTier(sProjectRepo):
+def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     """Re-run, re-hash, attest; return ``(bPassed, bAttestationWritten)``.
 
     ``bPassed`` is the hash-compare verdict, not the pipeline's exit
@@ -624,8 +735,7 @@ def _ftRunRerunTier(sProjectRepo):
     reproduced anything, and Tier 5 must say so.
     """
     fStarted = time.monotonic()
-    bRerunSucceeded = fbRerunWorkflow(sProjectRepo)
-    dictOutcome = fdictVerifyRerunOutputs(sProjectRepo, bRerunSucceeded)
+    dictOutcome = fdictRerunAndVerify(sProjectRepo, sWorkflowName)
     _fnReportHashCompare(dictOutcome)
     bAttestationWritten = _fbWriteAttestationFromRun(
         sProjectRepo, dictOutcome,
@@ -647,11 +757,17 @@ def _ftRunRerunTier(sProjectRepo):
          "Off by default.",
 )
 @click.option(
+    "--workflow", "sWorkflowName", default=None,
+    help="Name (or container path) of the workflow to re-run. Required "
+         "when the running container hosts more than one, so the "
+         "attestation can never describe a workflow that did not run.",
+)
+@click.option(
     "--skip-tier", "saSkipTier", multiple=True,
     type=click.Choice(_T_TIER_CHOICES),
     help="Skip the given tier (1, 2, 3, or 4). May be repeated.",
 )
-def reproduce(sRepo, bRerun, saSkipTier):
+def reproduce(sRepo, bRerun, sWorkflowName, saSkipTier):
     """Verify a project's AICS L3 reproducibility envelope."""
     sProjectRepo = sRepo or str(Path.cwd())
     setSkipTiers = set(saSkipTier)
@@ -661,7 +777,9 @@ def reproduce(sRepo, bRerun, saSkipTier):
             bAllPassed = False
     bAttestationWritten = False
     if bRerun:
-        bRerunPassed, bAttestationWritten = _ftRunRerunTier(sProjectRepo)
+        bRerunPassed, bAttestationWritten = _ftRunRerunTier(
+            sProjectRepo, sWorkflowName,
+        )
         if not bRerunPassed:
             bAllPassed = False
     else:

@@ -721,14 +721,18 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_shared_hash_compare_excludes_mismatches_from_matched',
         source='vaibify/reproducibility/rerunVerification.py',
         old='''        "iOutputHashesMatched": max(
-            iTotalEntries - len(listMismatches), 0,
+            len(listEntries) - len(listMismatches), 0,
         ),''',
-        new='''        "iOutputHashesMatched": iTotalEntries,''',
+        new='''        "iOutputHashesMatched": len(listEntries),''',
     ),
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_zero_exit_rerun_with_changed_bytes_does_not_pass',
         source='vaibify/reproducibility/rerunVerification.py',
-        old='''        "bPassed": bool(bRerunSucceeded) and not listMismatches,''',
+        old='''        "bPassed": (
+            bool(bRerunSucceeded)
+            and not listMismatches
+            and not bManifestMoved
+        ),''',
         new='''        "bPassed": bool(bRerunSucceeded),''',
     ),
     Falsification(

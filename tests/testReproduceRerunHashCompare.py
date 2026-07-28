@@ -11,6 +11,13 @@ This module drives exactly that case end-to-end through the click
 command and asserts on the persisted attestation, because the
 attestation is the artifact a third party reads when deciding whether
 to believe the L3 claim.
+
+Scope note: the fake rerun below writes into the same tree the check
+reads, so this module says nothing about *which* filesystem gets
+hashed. That is a separate false-pass — the rerun happens in a
+container volume while ``--repo`` names a host clone — and it is
+``tests/testRerunVerifiesWhatItRan.py`` that keeps two distinct roots
+and can therefore see it.
 """
 
 import hashlib
@@ -22,6 +29,9 @@ import pytest
 from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
+from vaibify.reproducibility.rerunVerification import (
+    fdictVerifyRerunOutputs,
+)
 
 
 S_OUTPUT_FILENAME = "result.txt"
@@ -79,16 +89,16 @@ def _fdictInvokeRerunWithDivergentStep(pathRepo, sNewContent):
     a faithful reproduction.
     """
 
-    def fbRerunMutatingOutput(sProjectRepo):
+    def fdictRerunMutatingOutput(sProjectRepo, sWorkflowName=None):
         (pathRepo / S_OUTPUT_FILENAME).write_text(sNewContent)
-        return True
+        return fdictVerifyRerunOutputs(str(pathRepo), True)
 
     with patch(
         "vaibify.cli.commandReproduce.subprocess.run",
         return_value=_fcompletedProcess(0),
     ), patch(
-        "vaibify.cli.commandReproduce.fbRerunWorkflow",
-        side_effect=fbRerunMutatingOutput,
+        "vaibify.cli.commandReproduce.fdictRerunAndVerify",
+        side_effect=fdictRerunMutatingOutput,
     ):
         resultClick = CliRunner().invoke(
             commandReproduce.reproduce,

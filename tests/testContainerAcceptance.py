@@ -269,3 +269,173 @@ def testRealContainerRunsPython3OverStdin():
     )
     assert iCode == 0, f"exit {iCode}: {sOutput!r}"
     assert json.loads(sOutput.strip()) == {"ok": True}
+
+
+# ----------------------------------------------------------------------
+# L3 tier 5: the rerun's hash compare, against a real container
+#
+# The host-side suite (tests/testRerunVerifiesWhatItRan.py) drives these
+# same four conditions through a shell stand-in. What it cannot speak
+# for is the real transport: ContainerRepoFiles hashes by shipping a
+# base64-embedded python3 script over docker exec and parsing one JSON
+# blob back. If that round trip returns nothing, every hash reads None,
+# every entry "diverges", and tier 5 becomes an unconditional FAIL that
+# looks like diligence. These assertions are what make the stand-in's
+# answers a contract rather than a hope.
+# ----------------------------------------------------------------------
+
+
+S_RERUN_ACCEPTANCE_ROOT = "/tmp/vaibifyRerunAcceptance"
+
+
+def _fnRunInContainer(connection, sContainer, sCommand):
+    """Run one shell command in the container, failing loudly on non-zero."""
+    iCode, sOutput = connection.ftResultExecuteCommand(sContainer, sCommand)
+    assert iCode == 0, f"setup command failed ({iCode}): {sCommand}\n{sOutput}"
+    return sOutput
+
+
+def _fnSeedRerunRepo(connection, sContainer, sRepo, sWorkflowName):
+    """Create a git repo with one pinned artefact and one workflow file."""
+    _fnRunInContainer(
+        connection, sContainer,
+        f"rm -rf {sRepo} && mkdir -p {sRepo}/.vaibify/workflows "
+        f"&& cd {sRepo} && git init -q . "
+        f"&& printf 'answer = 42\\n' > result.txt "
+        f"&& sha256sum result.txt | "
+        f"awk '{{print $1\"  \"$2}}' > MANIFEST.sha256 "
+        f"&& printf '{{\"sWorkflowName\": \"{sWorkflowName}\", "
+        f"\"listSteps\": []}}' > .vaibify/workflows/project.json",
+    )
+
+
+def _ffilesForContainerRepo(connection, sContainer, sRepo):
+    """Return a ContainerRepoFiles rooted at a container-side repo."""
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    return ContainerRepoFiles(connection, sContainer, sRepo)
+
+
+def testRealContainerRerunSeesUnchangedArtefactsAsMatching():
+    """The control: an untouched container repo must hash clean.
+
+    Without this, the three failure assertions below would be satisfied
+    by a transport that returns nothing at all -- a tier 5 that fails
+    everything is no more honest than one that passes everything.
+    """
+    from vaibify.reproducibility.rerunVerification import (
+        fdictSnapshotExpectedManifest, fdictVerifyRerunOutputs,
+    )
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    sRepo = f"{S_RERUN_ACCEPTANCE_ROOT}/Clean"
+    _fnSeedRerunRepo(connection, sContainer, sRepo, "Clean")
+    filesRepo = _ffilesForContainerRepo(connection, sContainer, sRepo)
+    dictExpected = fdictSnapshotExpectedManifest(filesRepo)
+    assert dictExpected["bReadable"], (
+        "MANIFEST.sha256 could not be read back over docker exec"
+    )
+    assert len(dictExpected["listEntries"]) == 1
+    dictOutcome = fdictVerifyRerunOutputs(filesRepo, True, dictExpected)
+    assert dictOutcome["bPassed"] is True, dictOutcome["listDivergedHashes"]
+    assert dictOutcome["iOutputHashesMatched"] == 1
+    _fnRunInContainer(connection, sContainer, f"rm -rf {sRepo}")
+
+
+def testRealContainerRerunDetectsAContainerSideByteChange():
+    """A zero-exit step that rewrites one byte must diverge.
+
+    The change happens only inside the container volume. Any
+    verification rooted anywhere else -- notably the host clone
+    ``--repo`` names -- re-hashes bytes the run never touched and
+    certifies a reproduction nobody observed.
+    """
+    from vaibify.reproducibility.rerunVerification import (
+        fdictSnapshotExpectedManifest, fdictVerifyRerunOutputs,
+    )
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    sRepo = f"{S_RERUN_ACCEPTANCE_ROOT}/Changed"
+    _fnSeedRerunRepo(connection, sContainer, sRepo, "Changed")
+    filesRepo = _ffilesForContainerRepo(connection, sContainer, sRepo)
+    dictExpected = fdictSnapshotExpectedManifest(filesRepo)
+    _fnRunInContainer(
+        connection, sContainer,
+        f"printf 'answer = 43\\n' > {sRepo}/result.txt",
+    )
+    dictOutcome = fdictVerifyRerunOutputs(filesRepo, True, dictExpected)
+    assert dictOutcome["bPassed"] is False, (
+        "a container-side byte change was certified as a reproduction"
+    )
+    assert "result.txt" in dictOutcome["listDivergedHashes"]
+    assert dictOutcome["iOutputHashesMatched"] == 0
+    _fnRunInContainer(connection, sContainer, f"rm -rf {sRepo}")
+
+
+def testRealContainerRerunDetectsAManifestRewrittenMidRun():
+    """Re-pinning the manifest during the run must not bless the change.
+
+    After the re-pin the tree is perfectly self-consistent, so the
+    entry-by-entry compare has nothing left to report. Only the
+    manifest's own digest, taken before the run, still disagrees.
+    """
+    from vaibify.reproducibility.rerunVerification import (
+        S_DIVERGENCE_MANIFEST_MUTATED,
+        fdictSnapshotExpectedManifest, fdictVerifyRerunOutputs,
+    )
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    sRepo = f"{S_RERUN_ACCEPTANCE_ROOT}/Repinned"
+    _fnSeedRerunRepo(connection, sContainer, sRepo, "Repinned")
+    filesRepo = _ffilesForContainerRepo(connection, sContainer, sRepo)
+    dictExpected = fdictSnapshotExpectedManifest(filesRepo)
+    _fnRunInContainer(
+        connection, sContainer,
+        f"cd {sRepo} && printf 'answer = 43\\n' > result.txt "
+        f"&& sha256sum result.txt | "
+        f"awk '{{print $1\"  \"$2}}' > MANIFEST.sha256",
+    )
+    dictOutcome = fdictVerifyRerunOutputs(filesRepo, True, dictExpected)
+    assert dictOutcome["bPassed"] is False, (
+        "a step re-pinned the manifest over its own changed output and "
+        "the run was still certified"
+    )
+    assert S_DIVERGENCE_MANIFEST_MUTATED in dictOutcome["listDivergedHashes"]
+    _fnRunInContainer(connection, sContainer, f"rm -rf {sRepo}")
+
+
+def testRealContainerRefusesToGuessAmongTwoWorkflows():
+    """Discovery over a real container must not silently pick one repo.
+
+    Attesting workflow Alpha for a run of workflow Beta produces a
+    record that reads as complete and describes something that did not
+    happen, so ambiguity is refused and ``--workflow`` decides.
+    """
+    from vaibify.cli.commandReproduce import _fdictSelectWorkflowEntry
+    from vaibify.gui.workflowManager import flistFindWorkflowsInContainer
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    _fnSeedRerunRepo(
+        connection, sContainer, f"{S_RERUN_ACCEPTANCE_ROOT}/Alpha", "Alpha",
+    )
+    _fnSeedRerunRepo(
+        connection, sContainer, f"{S_RERUN_ACCEPTANCE_ROOT}/Beta", "Beta",
+    )
+    listWorkflows = flistFindWorkflowsInContainer(
+        connection, sContainer, sSearchRoot=S_RERUN_ACCEPTANCE_ROOT,
+    )
+    listNames = sorted(dictEntry["sName"] for dictEntry in listWorkflows)
+    assert listNames == ["Alpha", "Beta"], (
+        f"real workflow discovery returned {listNames!r}; the ambiguity "
+        "this test exists to exercise was never set up"
+    )
+    with pytest.raises(ValueError) as excInfo:
+        _fdictSelectWorkflowEntry(listWorkflows, None)
+    assert "--workflow" in str(excInfo.value)
+    dictChosen = _fdictSelectWorkflowEntry(listWorkflows, "Beta")
+    assert dictChosen["sName"] == "Beta"
+    assert dictChosen["sPath"].startswith(
+        f"{S_RERUN_ACCEPTANCE_ROOT}/Beta/",
+    )
+    _fnRunInContainer(
+        connection, sContainer, f"rm -rf {S_RERUN_ACCEPTANCE_ROOT}",
+    )

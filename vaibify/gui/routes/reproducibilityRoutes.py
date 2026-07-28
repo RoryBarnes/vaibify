@@ -6,12 +6,13 @@ Three endpoints back the AICS tab's L3 sections:
   shape for the readiness checklist card.
 * ``POST .../level3/verify`` — user-only; kicks off the expensive
   rebuild as a background task and returns a 202 with the in-flight
-  status handle. The worker invokes ``commandReproduce.fbRerunWorkflow``
-  inside ``asyncio.to_thread`` so the existing pipeline runner (the
-  same machinery ``vaibify run`` uses) actually executes the workflow
-  inside the container. After the rerun, the manifest is re-verified
-  against the freshly produced outputs and the attestation is written
-  with the real matched/diverged counts.
+  status handle. The worker calls
+  ``rerunVerification.fdictRerunAndVerifyWorkflow`` inside
+  ``asyncio.to_thread``, passing the active workflow, its container
+  path, and the container repo-file adapter explicitly, so the
+  pipeline runner executes *that* workflow and the post-rerun re-hash
+  reads the same container filesystem it wrote to. The attestation is
+  then written with the real matched/diverged counts.
 * ``GET .../level3/attestation`` — returns the most-recent
   attestation plus the archived history.
 
@@ -60,7 +61,9 @@ from ...reproducibility.levelGates import (
     fdictL3ReadinessGaps,
     fiAICSLevel,
 )
-from ...reproducibility.rerunVerification import fdictVerifyRerunOutputs
+from ...reproducibility.rerunVerification import (
+    fdictRerunAndVerifyWorkflow,
+)
 from ...reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
     fnGenerateReproduceScript,
@@ -159,6 +162,7 @@ def _fnRegisterVerify(app, dictCtx):
         )
         _fsRequireProjectRepo(dictWorkflow)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        sWorkflowPath = _fsRequireWorkflowPath(dictCtx, sContainerId)
         _fnRefuseIfTaskInFlight(sContainerId)
         if not fbL3ReadinessOK(dictWorkflow, filesRepo):
             raise HTTPException(
@@ -168,7 +172,26 @@ def _fnRegisterVerify(app, dictCtx):
             )
         return _fdictKickOffVerification(
             sContainerId, filesRepo, dictWorkflow, dictCtx["docker"],
+            sWorkflowPath,
         )
+
+
+def _fsRequireWorkflowPath(dictCtx, sContainerId):
+    """Return the active workflow's container path or raise HTTP 409.
+
+    The rerun must target the workflow the researcher is looking at.
+    Without its container path the runner would have to rediscover one,
+    and in a container hosting several project repos that means running
+    workflow A while the attestation names workflow B.
+    """
+    sWorkflowPath = (dictCtx.get("paths") or {}).get(sContainerId) or ""
+    if not sWorkflowPath:
+        raise HTTPException(
+            409,
+            "No active workflow path for this container; reconnect "
+            "before running L3 verification.",
+        )
+    return sWorkflowPath
 
 
 def _fnRefuseIfTaskInFlight(sContainerId):
@@ -186,6 +209,7 @@ def _fnRefuseIfTaskInFlight(sContainerId):
 
 def _fdictKickOffVerification(
     sContainerId, filesRepo, dictWorkflow, connectionDocker,
+    sWorkflowPath,
 ):
     """Snapshot manifest, schedule the worker, and return the handle."""
     sManifestDigest = fsCurrentManifestDigest(filesRepo)
@@ -196,7 +220,7 @@ def _fdictKickOffVerification(
     }
     coroutineWorker = _fnRunVerificationWorker(
         sContainerId, filesRepo, sManifestDigest, dictWorkflow,
-        connectionDocker,
+        connectionDocker, sWorkflowPath,
     )
     taskWorker = asyncio.create_task(coroutineWorker)
     _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus)
@@ -229,14 +253,14 @@ def _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus):
 
 async def _fnRunVerificationWorker(
     sContainerId, filesRepo, sManifestDigest, dictWorkflow,
-    connectionDocker,
+    connectionDocker, sWorkflowPath,
 ):
     """Run the rebuild in a worker thread and persist the attestation.
 
-    The actual reproducibility work (docker pull, pip install, step
-    execution, output hash compare) is delegated to a sync helper that
-    invokes ``commandReproduce.fbRerunWorkflow`` so the existing
-    pipeline runner does the container work. Offloaded to
+    The actual reproducibility work (step execution inside the
+    container, then the output hash compare against that same
+    container) is delegated to a sync helper that calls the shared
+    ``rerunVerification`` entry point. Offloaded to
     ``asyncio.to_thread`` so the rerun does not block the FastAPI event
     loop. Exceptions are converted into a failed attestation so the
     UI never sees a silent hang.
@@ -246,9 +270,15 @@ async def _fnRunVerificationWorker(
     fStarted = time.monotonic()
     try:
         dictResult = await asyncio.to_thread(
-            _fdictRunReproductionSync, filesRepo, dictWorkflow,
+            _fdictRunReproductionSync, connectionDocker, sContainerId,
+            dictWorkflow, sWorkflowPath, filesRepo,
         )
-    except Exception as exc:  # noqa: BLE001 — surface as failed attestation
+    except (Exception, SystemExit) as exc:  # noqa: BLE001
+        # SystemExit is caught too: it is not an Exception, so an
+        # sys.exit() anywhere beneath the rerun would leave the task
+        # done-with-exception, the phase stuck on "running", and no
+        # attestation written — a silent hang, which is the one
+        # outcome this worker must never produce.
         logger.exception("L3 verification crashed: %s", exc)
         dictResult = {
             "bPassed": False,
@@ -290,53 +320,39 @@ async def _fdictCaptureProvenanceOrNone(
         return None
 
 
-def _fdictRunReproductionSync(filesRepo, dictWorkflow):
+def _fdictRunReproductionSync(
+    connectionDocker, sContainerId, dictWorkflow, sWorkflowPath, filesRepo,
+):
     """Run the expensive L3 reproduction synchronously.
 
-    Delegates to ``commandReproduce.fbRerunWorkflow`` which resolves the
-    project's docker connection, requires a running container, and
-    invokes the same pipeline runner that ``vaibify run`` uses. After
-    the rerun completes, the manifest is re-verified against the freshly
-    produced outputs so the attestation records what actually matched on
-    disk. That comparison is
-    ``rerunVerification.fdictVerifyRerunOutputs``, shared with the
-    ``vaibify reproduce --rerun`` lane — do not inline it here again, as
-    the two derivations previously drifted until the CLI stopped
-    comparing anything. The locked-in plan decision is that the L3 badge
-    only lights after this expensive rebuild succeeds; a manifest
-    re-hash alone is the cheap readiness gateway exposed separately at
-    ``/level3/readiness``.
+    Delegates to ``rerunVerification.fdictRerunAndVerifyWorkflow``, the
+    single entry point the ``vaibify reproduce --rerun`` lane also uses
+    — do not inline either half here again, as the two derivations
+    previously drifted until the CLI stopped comparing anything.
+
+    Every input is passed explicitly. The route already holds the active
+    workflow and its container path, and passing them on is what keeps a
+    container that hosts several project repos from re-running one
+    workflow while the attestation names another. ``filesRepo`` is the
+    container adapter rooted at ``sProjectRepoPath``, so the re-hash
+    reads the filesystem the rerun actually wrote to; routing this
+    through the host CLI resolver could not work at all, because
+    ``sProjectRepoPath`` is a container path with no host counterpart.
+
+    The locked-in plan decision is that the L3 badge only lights after
+    this expensive rebuild succeeds; a manifest re-hash alone is the
+    cheap readiness gateway exposed separately at ``/level3/readiness``.
     """
-    del dictWorkflow  # workflow state is loaded from the container
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    bRerunSucceeded = _fbInvokeRerunWorkflow(fsRepoRootOf(filesRepo))
-    dictOutcome = fdictVerifyRerunOutputs(filesRepo, bRerunSucceeded)
+    dictOutcome = fdictRerunAndVerifyWorkflow(
+        connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
+        filesRepo,
+    )
     return {
         **dictOutcome,
         "sImageDigest": _fsResolveImageDigest(filesRepo),
         "sRunLogPath": "",
     }
-
-
-def _fbInvokeRerunWorkflow(sProjectRepo):
-    """Invoke the CLI rerun helper inside the worker thread.
-
-    The import lives inside the function so the FastAPI app boot does
-    not pull the CLI machinery into the route module's import graph.
-    Exceptions are swallowed and surfaced as a failed rerun so the
-    worker can still write a "failed" attestation rather than crashing
-    silently inside the background task.
-    """
-    try:
-        from ...cli.commandReproduce import fbRerunWorkflow
-    except ImportError as exc:
-        logger.error("Could not import fbRerunWorkflow: %s", exc)
-        return False
-    try:
-        return bool(fbRerunWorkflow(sProjectRepo))
-    except (Exception, SystemExit) as exc:  # noqa: BLE001
-        logger.exception("fbRerunWorkflow raised: %s", exc)
-        return False
 
 
 def _fsResolveImageDigest(filesRepo):
