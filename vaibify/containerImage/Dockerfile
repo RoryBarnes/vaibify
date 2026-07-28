@@ -3,7 +3,16 @@
 # Build ARGs allow projects to customize the image without editing this file.
 # Application-specific packages belong in a config-generated requirements.txt.
 
-ARG BASE_IMAGE=ubuntu:24.04
+# The base image is pinned by multi-arch manifest-list digest so a
+# rebuild months later cannot change underneath an unchanged recipe.
+# This is build STABILITY, not result reproducibility: reproduce.sh
+# never rebuilds this file -- it pulls the exact image digest recorded
+# in the envelope (.vaibify/environment.json) at capture time. Bump the
+# digest deliberately when rebuilding for new features so the image
+# picks up upstream security fixes; refresh the digest for a tag with:
+#   docker pull ubuntu:24.04 \
+#     && docker image inspect --format '{{index .RepoDigests 0}}' ubuntu:24.04
+ARG BASE_IMAGE=ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 FROM ${BASE_IMAGE}
 
 ARG PYTHON_VERSION=3.12
@@ -159,13 +168,19 @@ RUN apt-get update \
 # so pip cannot remove it. Installing over the top instead is the
 # supported route. This surfaced the first time the image was ever
 # built from scratch in CI; every earlier build reused a cached layer.
+#
+# pip and setuptools are pinned to versions verified importable in a
+# built image (commit 47a8b460) so "latest from PyPI" cannot break a
+# rebuild of an unchanged recipe. Bump them alongside the BASE_IMAGE
+# digest above.
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && apt-get update \
     && apt-get install -y --no-install-recommends python3-pip \
     && rm -f /usr/lib/python*/EXTERNALLY-MANAGED \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade --ignore-installed pip setuptools
+    && pip install --no-cache-dir --ignore-installed \
+        'pip==26.1.2' 'setuptools==83.0.0'
 
 # Keyring backend for in-container credential storage.
 # keyrings.alt provides a file-based PlaintextKeyring that works in
