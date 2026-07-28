@@ -350,6 +350,8 @@ def testInitScaffoldsAProjectThatDiscoveryActuallyFinds():
     expression over the result, so the two halves are checked against
     each other rather than against a restatement of either.
     """
+    from unittest.mock import patch
+
     from click.testing import CliRunner
 
     from vaibify.cli.commandInit import init
@@ -360,10 +362,16 @@ def testInitScaffoldsAProjectThatDiscoveryActuallyFinds():
         pathRepo.mkdir()
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=str(pathRepo)) as sCwd:
-            resultInit = runner.invoke(
-                init, ["--template", "workflow"],
-                catch_exceptions=False,
-            )
+            # The global project registry lives at ~/.vaibify and its
+            # path is resolved at import, so it cannot be redirected by
+            # an environment variable: without this the test rewrites
+            # the developer's own registry entry for any project that
+            # happens to share the template's name.
+            with patch("vaibify.cli.commandInit.fnAddProject"):
+                resultInit = runner.invoke(
+                    init, ["--template", "workflow"],
+                    catch_exceptions=False,
+                )
             assert resultInit.exit_code == 0, resultInit.output
             # Search from the repo's parent, which is what /workspace is
             # to a project repo cloned directly inside it.
