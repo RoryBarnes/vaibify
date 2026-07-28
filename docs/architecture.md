@@ -61,7 +61,7 @@ container status, project state, and verification state are surfaced
 together. This is a rule, not an aesthetic. Nothing in vaibify may lie
 to the dashboard: no optimistic status, no cached-past-lifetime state,
 no quietly swallowed errors. If the truth is slow or ugly, the
-dashboard shows it slow and ugly. The [AGENTS.md](../AGENTS.md) trap
+dashboard shows it slow and ugly. The [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) trap
 list treats dashboard honesty as a hard invariant.
 
 ## The happy path
@@ -192,7 +192,7 @@ The cache layer has been removed: every poll stats the polled paths
 directly. This still costs exactly one `docker exec` per poll
 (the dominant wire cost) and trades a small per-poll byte increase
 on the path-list for the dashboard's honesty contract — the same
-contract the [AGENTS.md](../AGENTS.md) "do not suppress or
+contract the [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) "do not suppress or
 misrepresent state" trap enforces for every other surface.
 
 Four module-level booleans in `scriptPolling.js` — one each for
@@ -202,7 +202,7 @@ duplicate-request suppressors, not state caches. They do not cache
 server responses, do not extend mtime values, and do not affect what
 the next successful poll sees. Do not extend them into result
 caching: that would re-introduce the stale-dashboard failure mode
-the [AGENTS.md](../AGENTS.md) "do not suppress or misrepresent
+the [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) "do not suppress or misrepresent
 state" trap warns about.
 
 ### The poll's freshness stamp, and why it ships `no-store`
@@ -262,7 +262,7 @@ originates from an HTTP request body, a `project.json` field, or a
 config file must be validated against its intended root before the
 backend opens it. `fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)`
 in `pipelineServer.py` is the canonical guard; the trap list in
-[AGENTS.md](../AGENTS.md) flags this explicitly.
+[AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) flags this explicitly.
 
 **Docker containers, not Python-level sandboxing.** Vaibify does not
 try to sandbox the agent with a virtualenv, a restricted subprocess
@@ -309,7 +309,7 @@ system. `director` manipulates host paths, which use the host's native
 separator. Unifying them would either mangle Windows host paths or
 mangle container paths on any host, and the failure would be silent
 until a cross-platform user hit it. The divergence is load-bearing;
-the [AGENTS.md](../AGENTS.md) trap list and
+the [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) trap list and
 `tests/testArchitecturalInvariants.py` both guard it.
 
 ## Project = git repo
@@ -559,7 +559,7 @@ in the request path; a request that names no container fails closed.
 Authorizing the agent lane answers *which container* an agent may act
 on. It does not answer *what it may do there*, and for a long time
 nothing did. `fnAgentAction` attaches a name to a handler and changes
-no behaviour; `bAgentSafe` was consumed only by `docker/vaibifyDo.py`
+no behaviour; `bAgentSafe` was consumed only by `vaibify/containerImage/vaibifyDo.py`
 **inside** the container, which an agent bypasses with `curl`. Every
 route the catalog marked researcher-only — `clean-outputs`,
 `delete-step`, `declare-determinism`, `supervision/configure`,
@@ -863,7 +863,7 @@ State transitions:
 
 This state machine is load-bearing for the dashboard's honesty
 guarantee: the GUI must always reflect the true state of the project.
-See the relevant trap in [../AGENTS.md](../AGENTS.md).
+See the relevant trap in [../AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md).
 
 ## Two AICS-level truth systems
 

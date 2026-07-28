@@ -53,12 +53,21 @@ def test_config_import_aborted(tmp_path):
 
 
 def test_fnPrintAvailableTemplates_no_templates():
+    """An installation with no templates must exit non-zero.
+
+    Every vaibify distribution ships templates, so finding none means
+    the package was built without its data files. Reporting that on
+    stdout and returning 0 is how the missing package data survived a
+    release workflow that only ran ``import vaibify``.
+    """
     from vaibify.cli.commandInit import fnPrintAvailableTemplates
     with patch(
         "vaibify.cli.commandInit.flistAvailableTemplates",
         return_value=[],
     ):
-        fnPrintAvailableTemplates()
+        with pytest.raises(SystemExit) as excinfo:
+            fnPrintAvailableTemplates()
+    assert excinfo.value.code != 0
 
 
 def test_fnCopyDirectoryContents_creates_files(tmp_path):

@@ -31,19 +31,23 @@ on:
     # image had changed. testFreshBuildTriggerCoversEveryHashInput
     # fails if these drift apart again.
     paths:
-      - 'docker/**'
+      - 'vaibify/containerImage/**'
       - 'vaibify/cli/commandBuild.py'
       - 'vaibify/docker/imageBuilder.py'
       - 'vaibify/gui/director.py'
       - 'vaibify/reproducibility/overleafSync.py'
       - 'vaibify/reproducibility/latexConnector.py'
       - 'vaibify/reproducibility/zenodoClient.py'
+      # The curated docs are hashed as vaibify/docs/<name>.md but are
+      # symlinks onto these Sphinx sources, so an edit produces a diff
+      # here and never touches the symlink blob. Trigger on the path
+      # the change actually lands on.
       - 'docs/dashboard.md'
       - 'docs/pipelines.md'
       - 'docs/reproducibility.md'
       - 'docs/testFormats.md'
       - 'docs/vision.md'
-      - 'vaibify/docs/scriptAuthoring.md'
+      - 'vaibify/docs/**'
 
 jobs:
   freshbuild:

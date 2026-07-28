@@ -29,11 +29,17 @@ jobs:
           python -m pip install -e .
           python -m pip install sphinx sphinx-rtd-theme myst-parser
 
+      # -W turns warnings into errors. Without it this step published a
+      # site with 28 broken cross-references and reported success: myst
+      # generated no heading anchors at all, so every
+      # `[text](page.md#heading)` link in the docs resolved to nothing,
+      # and several links pointed at files that had been renamed away.
+      # A docs build that cannot fail is not a check.
       - name: Build
         id: build
         run: |
           cd docs
-          sphinx-build -b html . _build/html
+          sphinx-build -b html -W --keep-going . _build/html
           touch _build/html/.nojekyll
 
       - name: Publish

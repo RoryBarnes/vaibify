@@ -184,7 +184,7 @@ def _fsReadDockerfileClaude():
     import os
     sPath = os.path.abspath(
         os.path.join(
-            os.path.dirname(__file__), "..", "docker",
+            os.path.dirname(__file__), "..", "vaibify", "containerImage",
             "Dockerfile.claude",
         )
     )

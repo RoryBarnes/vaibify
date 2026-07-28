@@ -1,4 +1,4 @@
-"""Tests for fnBuildSingleBinary in docker/entrypoint.sh.
+"""Tests for fnBuildSingleBinary in vaibify/containerImage/entrypoint.sh.
 
 Regression coverage for the vplanet-private case: a fork whose
 Makefile produces a binary under a different name than the repo
@@ -18,7 +18,8 @@ import subprocess
 
 _S_ENTRYPOINT = os.path.abspath(
     os.path.join(
-        os.path.dirname(__file__), "..", "docker", "entrypoint.sh",
+        os.path.dirname(__file__), "..", "vaibify",
+        "containerImage", "entrypoint.sh",
     )
 )
 

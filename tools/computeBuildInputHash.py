@@ -9,14 +9,14 @@ image after an entrypoint or shipped-CLI change.
 Two rules make the key honest.
 
 **Hash the sources, never the generated copies.** ``vaibify build``
-writes ``docker/director.py``, ``docker/overleafSync.py``,
-``docker/docs-staged/*`` and friends into the build context, and those
-copies are gitignored. They can be absent on a fresh clone and stale on
-a developer machine -- ``docker/director.py`` in this checkout is
-already missing a prose rename its source carries. Hashing an artifact
-that may not have been regenerated reintroduces exactly the staleness
-the key exists to prevent, so the generator's *inputs* are hashed
-instead.
+writes ``director.py``, ``overleafSync.py``, ``docs-staged/*`` and
+friends into the build context. Since 2026-07-27 those land in a
+per-project staging copy under ``~/.vaibify/build/``, not in the
+repository, so they are not reachable from here at all -- and even
+before that they were gitignored, absent on a fresh clone and stale on
+a developer machine. Hashing an artifact that may not have been
+regenerated reintroduces exactly the staleness the key exists to
+prevent, so the generator's *inputs* are hashed instead.
 
 **Read the input list from the generator.** ``T_STAGED_DOCS`` and
 ``T_CONTAINER_SCRIPT_SOURCES`` are imported from ``commandBuild``
@@ -45,12 +45,12 @@ from vaibify.cli.commandBuild import (  # noqa: E402
 # Tracked files in the build context. Globs, resolved at run time, so a
 # new overlay or skill file is picked up without editing this list.
 T_BUILD_CONTEXT_GLOBS = (
-    "docker/Dockerfile*",
-    "docker/entrypoint.sh",
-    "docker/checkIsolation.sh",
-    "docker/vaibifyDo.py",
-    "docker/overlays/**/*",
-    "docker/skills/**/*",
+    "vaibify/containerImage/Dockerfile*",
+    "vaibify/containerImage/entrypoint.sh",
+    "vaibify/containerImage/checkIsolation.sh",
+    "vaibify/containerImage/vaibifyDo.py",
+    "vaibify/containerImage/overlays/**/*",
+    "vaibify/containerImage/skills/**/*",
 )
 
 # The code that assembles the build context. A change here can change

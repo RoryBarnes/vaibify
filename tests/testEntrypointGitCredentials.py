@@ -1,4 +1,6 @@
-"""Tests for the git-credential helper installed by docker/entrypoint.sh.
+"""Tests for the git-credential helper installed by the entrypoint.
+
+Source: ``vaibify/containerImage/entrypoint.sh``.
 
 Audit finding C3: the historical entrypoint wrote the raw GitHub
 token to ``~/.git-credentials`` (mode 600) at container startup. The
@@ -13,7 +15,8 @@ import subprocess
 
 _S_ENTRYPOINT = os.path.abspath(
     os.path.join(
-        os.path.dirname(__file__), "..", "docker", "entrypoint.sh",
+        os.path.dirname(__file__), "..", "vaibify",
+        "containerImage", "entrypoint.sh",
     )
 )
 

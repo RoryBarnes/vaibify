@@ -31,7 +31,7 @@ def test_fsConfigPath_override():
 
 def test_fsDockerDir_exists():
     sDockerDir = fsDockerDir()
-    assert sDockerDir.endswith("docker")
+    assert sDockerDir.endswith("containerImage")
     assert os.path.isabs(sDockerDir)
 
 

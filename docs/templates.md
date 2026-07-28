@@ -60,7 +60,8 @@ to `project.json`:
 
 ## Creating Custom Templates
 
-Templates are stored in the `templates/` directory of the Vaibify package.
+Templates are stored in the `vaibify/templates/` directory of the
+Vaibify package, so they ship inside the installed distribution.
 Each template is a subdirectory containing `vaibify.yml`,
 `container.conf`, and `project.json`. To create a custom template, add a
 new subdirectory with these three files and reinstall the package.

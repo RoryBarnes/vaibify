@@ -22,12 +22,36 @@ def fbIsSetupComplete():
 
 
 def fnRunFirstTimeSetup():
-    """Orchestrate all first-run setup steps, then write the marker."""
+    """Orchestrate all first-run setup steps, then write the marker.
+
+    The marker is withheld when the completion scripts are missing from
+    the installation, because that is an installation defect rather
+    than a finished setup. Recording it as done made the defect
+    permanent per machine: the completions shipped outside the package
+    for the whole of vaibify's history, so this step configured nothing
+    and then guaranteed it would never try again.
+
+    A shell with no completion script of its own (fish, sh) is not a
+    defect and does not withhold the marker.
+    """
     os.makedirs(_MARKER_DIR, exist_ok=True)
     fnConfigureCompletions()
     fnConfigureHelperCommands()
     fnLinkColimaSocket()
+    if not fbCompletionsArePresent():
+        logger.warning(
+            "Vaibify's shell completions are missing from this "
+            "installation (expected in '%s'). Setup will run again "
+            "on the next command.",
+            _fsCompletionsDirectory(),
+        )
+        return
     _fnWriteMarkerFile()
+
+
+def fbCompletionsArePresent():
+    """Return True when the installation carries its completion scripts."""
+    return os.path.isdir(_fsCompletionsDirectory())
 
 
 def _fsDetectShellName():

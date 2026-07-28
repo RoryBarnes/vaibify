@@ -2203,8 +2203,8 @@ def _fdictEntry(sRel):
         # which is exactly what the harness reported the first time.
         nodeid='tests/testBuildInputHash.py::testGeneratedBuildContextCopiesAreNotKeyed',
         source='tools/computeBuildInputHash.py',
-        old='    "docker/vaibifyDo.py",',
-        new='    "docker/vaibifyDo.py",\n    "docker/director.py",',
+        old='    "vaibify/containerImage/vaibifyDo.py",',
+        new='    "vaibify/containerImage/vaibifyDo.py",\n    "vaibify/containerImage/director.py",',
     ),
     Falsification(
         # Turns the browser lane's fail-closed adapter into the
@@ -2270,7 +2270,7 @@ def _fdictEntry(sRel):
         # project's guidance starts with no instructions at all --
         # silently. Exactly how Cline shipped.
         nodeid='tests/testEntrypointAgentDocLinks.py::testEveryAgentWithSkillsAlsoHasADocPath',
-        source='docker/entrypoint.sh',
+        source='vaibify/containerImage/entrypoint.sh',
         old='    for sAgent in claude codex gemini opencode cline openhands pi; do',
         new='    for sAgent in claude codex gemini opencode cline openhands pi newagent; do',
     ),

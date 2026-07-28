@@ -1,4 +1,7 @@
-"""Tests for the Claude-settings bash helpers in docker/entrypoint.sh."""
+"""Claude-settings bash helpers in the container entrypoint.
+
+Source: ``vaibify/containerImage/entrypoint.sh``.
+"""
 
 import json
 import os
@@ -9,7 +12,8 @@ import pytest
 
 _S_ENTRYPOINT = os.path.abspath(
     os.path.join(
-        os.path.dirname(__file__), "..", "docker", "entrypoint.sh",
+        os.path.dirname(__file__), "..", "vaibify",
+        "containerImage", "entrypoint.sh",
     )
 )
 

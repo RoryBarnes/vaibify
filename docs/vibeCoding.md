@@ -347,10 +347,10 @@ repository. Do the items in order.
 The patterns in this document are visible in vaibify's own repository.
 Cross-references so you can see how they look in practice:
 
-- [AGENTS.md](../AGENTS.md): the Layer 1 semantic doc at the
+- [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md): the Layer 1 semantic doc at the
   repository root.
-- [vaibify/gui/AGENTS.md](../vaibify/gui/AGENTS.md) and
-  [vaibify/gui/static/AGENTS.md](../vaibify/gui/static/AGENTS.md):
+- [vaibify/gui/AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/vaibify/gui/AGENTS.md) and
+  [vaibify/gui/static/AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/vaibify/gui/static/AGENTS.md):
   nested subtree docs that state conventions specific to the
   FastAPI backend and the JavaScript frontend.
 - [tests/testArchitecturalInvariants.py](../tests/testArchitecturalInvariants.py):
@@ -358,7 +358,7 @@ Cross-references so you can see how they look in practice:
 - [tools/listModules.py](../tools/listModules.py): the Layer 3
   discovery script. Run it when you need a module map; do not paste
   its output anywhere.
-- [.claude/skills/](../.claude/skills/): Layer 4 recipes for
+- [.claude/skills/](https://github.com/RoryBarnes/Vaibify/blob/main/.claude/skills): Layer 4 recipes for
   recurring multi-step tasks.
 
 Some of these files are being checked in alongside this document, so

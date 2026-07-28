@@ -1,6 +1,7 @@
 """Tests for the vaibify-shipped agent skills and their delivery chain.
 
-Skills live in ``docker/skills/<name>/SKILL.md``, are baked into the
+Skills live in ``vaibify/containerImage/skills/<name>/SKILL.md``,
+are baked into the
 image at ``/usr/share/vaibify/skills``, and are copied into the
 container user's Claude Code skills directory on every container
 start. These are structural tests: they pin the shipping chain and
@@ -13,7 +14,7 @@ import re
 
 _S_DOCKER_DIR = os.path.abspath(
     os.path.join(
-        os.path.dirname(__file__), "..", "docker",
+        os.path.dirname(__file__), "..", "vaibify", "containerImage",
     )
 )
 _S_SKILLS_DIR = os.path.join(_S_DOCKER_DIR, "skills")

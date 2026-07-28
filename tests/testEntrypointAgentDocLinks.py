@@ -28,7 +28,8 @@ import pytest
 
 
 _S_ENTRYPOINT = os.path.join(
-    os.path.dirname(__file__), "..", "docker", "entrypoint.sh",
+    os.path.dirname(__file__), "..", "vaibify",
+    "containerImage", "entrypoint.sh",
 )
 
 

@@ -1,9 +1,20 @@
 name: pip-install
 
+# The artifact checks used to run only on `release: published`, which
+# is after the release exists: they could block the PyPI upload but not
+# the release, and never a pull request. A wheel that cannot run
+# `vaibify init` is a defect like any other and belongs on the PR gate,
+# so build+test now run on pushes and pull requests too. Only
+# upload_pypi remains release-gated.
 on:
   release:
     types:
       - published
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
 
@@ -34,12 +45,24 @@ jobs:
     name: 'Test py${{ matrix.python }} on ${{ matrix.os }}'
     needs: [build]
     runs-on: ${{ matrix.os }}
+    # A release checks the full support matrix. A pull request checks
+    # the corners — oldest and newest supported Python, one Linux and
+    # one macOS — because 24 jobs per PR to catch a packaging mistake
+    # that is almost never platform-specific is the wrong trade. The
+    # failure this gate exists for (a wheel with no package data) is
+    # identical on every row.
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26, ubuntu-22.04, ubuntu-24.04]
-        python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
+        os: ${{ github.event_name == 'release'
+          && fromJSON('["macos-15","macos-26","ubuntu-22.04","ubuntu-24.04"]')
+          || fromJSON('["ubuntu-24.04","macos-26"]') }}
+        python: ${{ github.event_name == 'release'
+          && fromJSON('["3.9","3.10","3.11","3.12","3.13","3.14"]')
+          || fromJSON('["3.9","3.14"]') }}
     steps:
+      - uses: actions/checkout@v5
+
       - uses: actions/download-artifact@v4
         with:
           name: dist
@@ -51,17 +74,32 @@ jobs:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
+      # An import is not a smoke test. Until 2026-07-27 these two steps
+      # ran `import vaibify` and nothing else, so every release passed
+      # while shipping a wheel with no templates and no Docker build
+      # context -- `vaibify init` printed "No templates found" and
+      # exited 0. checkInstalledDistribution.py drives the first-run
+      # paths instead. It runs from a scratch directory so the checkout
+      # (needed only for the script itself) cannot stand in for the
+      # installed package; the script refuses that case explicitly.
+
       - name: Test the sdist
         run: |
           python -m venv venv-sdist
           venv-sdist/bin/python -m pip install dist/vaibify*.tar.gz
-          venv-sdist/bin/python -c "import vaibify; print(vaibify.__version__)"
+          mkdir -p "${RUNNER_TEMP}/sdist-check" && cd "${RUNNER_TEMP}/sdist-check"
+          PATH="${GITHUB_WORKSPACE}/venv-sdist/bin:${PATH}" \
+            "${GITHUB_WORKSPACE}/venv-sdist/bin/python" \
+            "${GITHUB_WORKSPACE}/tools/checkInstalledDistribution.py"
 
       - name: Test the wheel
         run: |
           python -m venv venv-wheel
           venv-wheel/bin/python -m pip install dist/vaibify*.whl
-          venv-wheel/bin/python -c "import vaibify; print(vaibify.__version__)"
+          mkdir -p "${RUNNER_TEMP}/wheel-check" && cd "${RUNNER_TEMP}/wheel-check"
+          PATH="${GITHUB_WORKSPACE}/venv-wheel/bin:${PATH}" \
+            "${GITHUB_WORKSPACE}/venv-wheel/bin/python" \
+            "${GITHUB_WORKSPACE}/tools/checkInstalledDistribution.py"
 
   upload_pypi:
     needs: [build, test]

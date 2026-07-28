@@ -41,7 +41,7 @@ TESTS_ROOT = REPO_ROOT / "tests"
 
 # Directories whose Python source constitutes the symbol corpus: a symbol
 # referenced by a skill must occur somewhere in these trees.
-LIST_SYMBOL_CORPUS_DIRECTORIES = ["vaibify", "docker", "tools"]
+LIST_SYMBOL_CORPUS_DIRECTORIES = ["vaibify", "tools"]
 
 # Hungarian-notation function or constant identifiers, the only backticked
 # spans treated as symbol references. Anything else in backticks (variable

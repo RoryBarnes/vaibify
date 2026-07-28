@@ -26,7 +26,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DOCKER_DIR = REPO_ROOT / "docker"
+DOCKER_DIR = REPO_ROOT / "vaibify" / "containerImage"
 
 
 def fsReadDockerfile(sName):
