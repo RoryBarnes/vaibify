@@ -17,6 +17,7 @@ from ..routeContext import ffilesForWorkflow
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import (
     fbDeriveUnnecessaryVerification,
+    fdictResolveTestCommandGroups,
     fsResolveStepWorkdir,
 )
 from .. import pipelineServer as _pipelineServer
@@ -147,23 +148,23 @@ def _fsPrefixWithWorkflowEnv(sCommand, sWorkflowSlug):
 async def _fdictRunAllTestCategories(
     dictCtx, sContainerId, dictStep, sRepoRoot="", sWorkflowSlug="",
 ):
-    """Run each test category and return {category: result}."""
+    """Run every resolved test group and return {group: result}."""
     sDir = _fsAbsoluteStepWorkdir(dictStep, sRepoRoot)
     dictVerification = dictStep.setdefault(
         "dictVerification", {})
     dictTests = dictStep.get("dictTests", {})
+    dictVerificationKeys = dict(_LIST_TEST_CATEGORIES)
     from .. import truthDerivation
     dictCategoryResults = {}
-    for sCategory, sVerifKey in _LIST_TEST_CATEGORIES:
+    dictGroups = fdictResolveTestCommandGroups(dictStep)
+    for sCategory, listCommands in dictGroups.items():
         dictResult = await _fdictRunOneTestCategory(
-            dictCtx, sContainerId, dictStep, sDir, sCategory,
-            sWorkflowSlug,
+            dictCtx, sContainerId, sDir, listCommands, sWorkflowSlug,
         )
-        if dictResult is None:
-            continue
         iExitCode = 0 if dictResult["bPassed"] else 1
-        dictVerification[sVerifKey] = (
-            truthDerivation.fsResolveUnitTestFromExitCode(iExitCode))
+        if sCategory in dictVerificationKeys:
+            dictVerification[dictVerificationKeys[sCategory]] = (
+                truthDerivation.fsResolveUnitTestFromExitCode(iExitCode))
         sCatOutput = dictResult.get("sOutput", "")
         if sCatOutput and sCategory in dictTests:
             dictTests[sCategory]["sLastOutput"] = sCatOutput
@@ -172,16 +173,11 @@ async def _fdictRunAllTestCategories(
 
 
 async def _fdictRunOneTestCategory(
-    dictCtx, sContainerId, dictStep, sDirectory, sCategory,
-    sWorkflowSlug="",
+    dictCtx, sContainerId, sDirectory, listCommands, sWorkflowSlug="",
 ):
-    """Execute one test category and return result dict, or None."""
-    dictCat = dictStep.get("dictTests", {}).get(sCategory, {})
-    listCatCmds = dictCat.get("saCommands", [])
-    if not listCatCmds:
-        return None
+    """Execute one group's commands and return its result dict."""
     sCatCmd = " && ".join(
-        [f"cd {fsShellQuote(sDirectory)}"] + listCatCmds)
+        [f"cd {fsShellQuote(sDirectory)}"] + list(listCommands))
     sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
     resultExec = await asyncio.to_thread(
         dictCtx["docker"].texecRunInContainerStreamed,
@@ -514,6 +510,14 @@ def _fnRegisterTestRun(app, dictCtx):
             sWorkflowSlug=fsWorkflowSlugFromPath(
                 dictWorkflow.get("sPath", "")),
         )
+        if not dictCategoryResults:
+            raise HTTPException(
+                500,
+                "Test run executed no commands; refusing to record a "
+                "result. The step resolved test commands but no test "
+                "group ran, which is a bug — report it rather than "
+                "trusting this step's verification state.",
+            )
         bAllPassed = all(
             d["bPassed"] for d in dictCategoryResults.values()
         )

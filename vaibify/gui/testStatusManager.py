@@ -17,11 +17,7 @@ def _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath):
     return posixpath.join(sProjectRepoPath, sStepDirectory)
 
 
-_LIST_TEST_CATEGORIES = (
-    ("dictIntegrity", "sIntegrity"),
-    ("dictQualitative", "sQualitative"),
-    ("dictQuantitative", "sQuantitative"),
-)
+_LIST_TEST_CATEGORIES = workflowManager.T_STRUCTURED_TEST_GROUPS
 
 
 def _fsBuildPytestCommand(sDirectory, sFilePath):
@@ -51,8 +47,7 @@ def _fnRegisterTestCommand(dictStep, bPassed, sFilePath):
 
 def _flistResolveTestCommands(dictStep):
     """Return test commands from structured tests or legacy list."""
-    from .workflowManager import flistResolveTestCommands
-    return flistResolveTestCommands(dictStep)
+    return workflowManager.flistResolveTestCommands(dictStep)
 
 
 def _fdictBuildTestResponse(bAllPassed, dictCategoryResults):

@@ -980,30 +980,20 @@ class TestFdictRunAllTestCategories:
 # -------------------------------------------------------------------
 
 class TestFdictRunOneTestCategory:
-    @pytest.mark.asyncio
-    async def test_returns_none_for_empty_commands(self):
-        dictCtx = _fdictBuildContext()
-        dictStep = {
-            "dictTests": {"dictIntegrity": {"saCommands": []}},
-        }
-        dictResult = await _fdictRunOneTestCategory(
-            dictCtx, "cid-1", dictStep, "/ws", "dictIntegrity")
-        assert dictResult is None
+    """The runner executes the commands it is handed.
+
+    Which groups exist is the resolver's job — an empty or absent
+    category never reaches here, because it produces no group. That
+    boundary is asserted in ``TestResolveTestCommandGroups``.
+    """
 
     @pytest.mark.asyncio
     async def test_returns_result_dict(self):
         dictCtx = _fdictBuildContext()
         _fnSetExecResult(
             dictCtx["docker"], 0, "ok", "")
-        dictStep = {
-            "dictTests": {
-                "dictIntegrity": {
-                    "saCommands": ["pytest test.py"],
-                },
-            },
-        }
         dictResult = await _fdictRunOneTestCategory(
-            dictCtx, "cid-1", dictStep, "/ws", "dictIntegrity")
+            dictCtx, "cid-1", "/ws", ["pytest test.py"])
         assert dictResult["bPassed"] is True
         assert dictResult["sOutput"] == "ok"
         assert dictResult["iExitCode"] == 0
@@ -1013,25 +1003,22 @@ class TestFdictRunOneTestCategory:
         dictCtx = _fdictBuildContext()
         _fnSetExecResult(
             dictCtx["docker"], 2, "error", "")
-        dictStep = {
-            "dictTests": {
-                "dictIntegrity": {
-                    "saCommands": ["pytest test.py"],
-                },
-            },
-        }
         dictResult = await _fdictRunOneTestCategory(
-            dictCtx, "cid-1", dictStep, "/ws", "dictIntegrity")
+            dictCtx, "cid-1", "/ws", ["pytest test.py"])
         assert dictResult["bPassed"] is False
         assert dictResult["iExitCode"] == 2
 
     @pytest.mark.asyncio
-    async def test_missing_category_returns_none(self):
+    async def test_chains_every_command_after_the_directory_change(self):
         dictCtx = _fdictBuildContext()
-        dictStep = {"dictTests": {}}
-        dictResult = await _fdictRunOneTestCategory(
-            dictCtx, "cid-1", dictStep, "/ws", "dictIntegrity")
-        assert dictResult is None
+        _fnSetExecResult(dictCtx["docker"], 0, "ok", "")
+        await _fdictRunOneTestCategory(
+            dictCtx, "cid-1", "/ws", ["pytest a.py", "pytest b.py"])
+        sCommand = (
+            dictCtx["docker"]
+            .texecRunInContainerStreamed.call_args[0][1]
+        )
+        assert sCommand == "cd '/ws' && pytest a.py && pytest b.py"
 
 
 # -------------------------------------------------------------------
@@ -1248,3 +1235,122 @@ class TestSaveAndRunTestResolvesRepoRoot:
             .texecRunInContainerStreamed.call_args[0][1]
         )
         assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
+
+
+# -------------------------------------------------------------------
+# Falsification: a run that executes nothing must never record a pass
+# -------------------------------------------------------------------
+
+class TestRunTestsNeverReportsUnexecutedAsPassed:
+    """Drive the real category runner, not a stub of it.
+
+    The route's gate accepted a legacy step while its runner iterated
+    only the structured ``dictTests`` categories, so nothing ran,
+    ``all([])`` was ``True``, and a green unit-test state was persisted
+    without Docker ever being called. Every other test of this route
+    patches ``_fdictRunAllTestCategories``, which is precisely why the
+    suite stayed green — so these drive it for real and assert against
+    the Docker stub's call record.
+    """
+
+    def _fnRegisterAndCapture(self, dictCtx):
+        from vaibify.gui.routes import testRoutes
+
+        app = MagicMock()
+        listHandlers = {}
+
+        def fnCapturePost(sPath):
+            def fnDecorator(fnHandler):
+                listHandlers[sPath] = fnHandler
+                return fnHandler
+            return fnDecorator
+
+        app.post = fnCapturePost
+        testRoutes._fnRegisterTestRun(app, dictCtx)
+        return listHandlers
+
+    async def _ftRunLegacyStep(self, dictCtx, dictStep):
+        """Invoke the run-tests handler for a single legacy-only step."""
+        listHandlers = self._fnRegisterAndCapture(dictCtx)
+        fnHandler = listHandlers[
+            "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
+        ]
+        dictWorkflow = {
+            "listSteps": [dictStep], "sProjectRepoPath": "/workspace/repo",
+        }
+        with patch(
+            "vaibify.gui.routes.testRoutes.fdictRequireWorkflow",
+            return_value=dictWorkflow,
+        ), patch(
+            "vaibify.gui.routes.testRoutes.fiAICSLevel", return_value=1,
+        ), patch(
+            "vaibify.gui.routes.testRoutes.ffilesForWorkflow",
+            return_value=[],
+        ), patch(
+            "vaibify.gui.routes.testRoutes.fnMaybeAutoArchive",
+            new_callable=AsyncMock,
+        ):
+            return await fnHandler("cid-1", 0)
+
+    @pytest.mark.asyncio
+    async def test_legacy_step_actually_executes_its_commands(self):
+        dictCtx = _fdictBuildContext()
+        _fnSetExecResult(dictCtx["docker"], 0, "2 passed", "")
+        dictStep = {
+            "sName": "Legacy", "sDirectory": "Analysis",
+            "saTestCommands": ["python -m pytest tests/ -v"],
+            "dictVerification": {},
+        }
+
+        dictResult = await self._ftRunLegacyStep(dictCtx, dictStep)
+
+        sCommand = (
+            dictCtx["docker"]
+            .texecRunInContainerStreamed.call_args[0][1]
+        )
+        assert "python -m pytest tests/ -v" in sCommand
+        assert dictResult["bPassed"] is True
+        assert dictStep["dictVerification"]["sUnitTest"] == "passed"
+
+    @pytest.mark.asyncio
+    async def test_failing_legacy_step_is_recorded_as_failed(self):
+        dictCtx = _fdictBuildContext()
+        _fnSetExecResult(dictCtx["docker"], 1, "", "1 failed")
+        dictStep = {
+            "sName": "Legacy", "sDirectory": "Analysis",
+            "saTestCommands": ["python -m pytest tests/ -v"],
+            "dictVerification": {},
+        }
+
+        dictResult = await self._ftRunLegacyStep(dictCtx, dictStep)
+
+        assert dictResult["bPassed"] is False
+        assert dictStep["dictVerification"]["sUnitTest"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_run_executing_nothing_refuses_to_record_a_result(self):
+        """A gate that admits a step whose runner finds no group 500s.
+
+        This is the fail-closed backstop: if the gate and the runner
+        ever disagree again, the route must refuse rather than persist
+        an unearned pass.
+        """
+        dictCtx = _fdictBuildContext()
+        dictStep = {
+            "sName": "Legacy", "sDirectory": "Analysis",
+            "saTestCommands": ["python -m pytest tests/ -v"],
+            "dictVerification": {},
+        }
+        from fastapi import HTTPException
+
+        with patch(
+            "vaibify.gui.routes.testRoutes.fdictResolveTestCommandGroups",
+            return_value={},
+        ):
+            with pytest.raises(HTTPException) as excInfo:
+                await self._ftRunLegacyStep(dictCtx, dictStep)
+
+        assert excInfo.value.status_code == 500
+        dictCtx["docker"].texecRunInContainerStreamed.assert_not_called()
+        assert "sUnitTest" not in dictStep["dictVerification"]
+        dictCtx["save"].assert_not_called()

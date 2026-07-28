@@ -3575,7 +3575,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +30 (2026-07-18): flistDirectoryContractWarnings — the slug
     # contract's backend warnings channel beside the other workflow
     # validators, so a manual project.json edit is never GUI-only.
-    "workflowManager.py": 2292,
+    # +45 (2026-07-28): fdictResolveTestCommandGroups plus the group
+    # table it iterates — the single answer to "what would running this
+    # step's tests execute", which both execution lanes now resolve
+    # through. The two lanes had each written their own answer and
+    # disagreed: the HTTP route's gate admitted a legacy step its
+    # runner then skipped, so nothing ran and a pass was recorded. This
+    # is the step-test schema, which is what the sibling
+    # flistBuildTestCommands / flistResolveTestCommands already are.
+    "workflowManager.py": 2337,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with

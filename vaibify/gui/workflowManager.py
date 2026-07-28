@@ -68,6 +68,7 @@ __all__ = [
     "fdictGetSyncStatus",
     "fdictGetZenodoMetadata",
     "fdictInitializeZenodoMetadata",
+    "fdictResolveTestCommandGroups",
     "fdictLoadWorkflowFromContainer",
     "fdictLookupSyncEntry",
     "fdictMigrateTestFormat",
@@ -131,6 +132,18 @@ VAIBIFY_LOGS_DIR = ".vaibify/logs"
 
 T_REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
 T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
+
+# The structured test categories, paired with the dictVerification key
+# each one resolves, in the order both execution lanes run them.
+T_STRUCTURED_TEST_GROUPS = (
+    ("dictIntegrity", "sIntegrity"),
+    ("dictQualitative", "sQualitative"),
+    ("dictQuantitative", "sQuantitative"),
+)
+# Group key for a step whose commands live in the pre-dictTests
+# saTestCommands list. It resolves no per-category verification key —
+# only the aggregate sUnitTest state.
+S_LEGACY_TEST_GROUP = "legacy"
 
 
 def _flistDiscoverCandidatePaths(
@@ -2278,11 +2291,43 @@ def flistBuildTestCommands(dictStep):
     return listCommands
 
 
+def fdictResolveTestCommandGroups(dictStep):
+    """Return ``{group key: commands}`` for every non-empty test group.
+
+    This is the single answer to "what would running this step's tests
+    actually execute", and both execution lanes — the HTTP run-tests
+    route and the pipeline WebSocket runner — must resolve their work
+    through it. They diverged once: the route's gate accepted a legacy
+    step while its runner iterated only the structured categories, so
+    nothing ran, ``all([])`` was ``True``, and a green unit-test state
+    was persisted without Docker ever being called.
+
+    The structured ``dictTests`` categories take precedence. A step
+    that predates them, or one whose only command was registered by
+    save-and-run-test, contributes its ``saTestCommands`` under
+    ``S_LEGACY_TEST_GROUP``. Keys are ordered as the lanes execute
+    them, so callers may iterate the mapping directly.
+    """
+    dictTests = dictStep.get("dictTests", {})
+    dictGroups = {}
+    for sKey, _sVerificationKey in T_STRUCTURED_TEST_GROUPS:
+        listCommands = dictTests.get(sKey, {}).get("saCommands", [])
+        if listCommands:
+            dictGroups[sKey] = list(listCommands)
+    if dictGroups:
+        return dictGroups
+    listLegacy = dictStep.get("saTestCommands", [])
+    if listLegacy:
+        return {S_LEGACY_TEST_GROUP: list(listLegacy)}
+    return {}
+
+
 def flistResolveTestCommands(dictStep):
-    """Return test commands from structured tests or legacy list."""
-    if "dictTests" in dictStep:
-        return flistBuildTestCommands(dictStep)
-    return dictStep.get("saTestCommands", [])
+    """Return every test command a step would run, structured or legacy."""
+    listCommands = []
+    for listGroup in fdictResolveTestCommandGroups(dictStep).values():
+        listCommands.extend(listGroup)
+    return listCommands
 
 
 def fsTestsDirectory(sStepDirectory):

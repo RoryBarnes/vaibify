@@ -745,6 +745,112 @@ def test_flistBuildTestCommands_empty():
     assert flistBuildTestCommands(dictStep) == []
 
 
+class TestResolveTestCommandGroups:
+    """The single answer to what running a step's tests would execute.
+
+    Both execution lanes iterate this mapping, so a group omitted here
+    is a group neither lane runs — and a group present here that a lane
+    skips is the false-green defect this function exists to prevent.
+    """
+
+    def test_omits_empty_and_absent_categories(self):
+        from vaibify.gui.workflowManager import (
+            fdictResolveTestCommandGroups,
+        )
+        dictStep = {"dictTests": {
+            "dictIntegrity": {"saCommands": ["pytest -k integrity"]},
+            "dictQualitative": {"saCommands": []},
+        }}
+        assert fdictResolveTestCommandGroups(dictStep) == {
+            "dictIntegrity": ["pytest -k integrity"],
+        }
+
+    def test_orders_groups_as_the_lanes_execute_them(self):
+        from vaibify.gui.workflowManager import (
+            fdictResolveTestCommandGroups,
+        )
+        dictStep = {"dictTests": {
+            "dictQuantitative": {"saCommands": ["pytest -k quant"]},
+            "dictQualitative": {"saCommands": ["pytest -k qual"]},
+            "dictIntegrity": {"saCommands": ["pytest -k integrity"]},
+        }}
+        assert list(fdictResolveTestCommandGroups(dictStep)) == [
+            "dictIntegrity", "dictQualitative", "dictQuantitative",
+        ]
+
+    def test_legacy_commands_resolve_when_no_category_has_any(self):
+        from vaibify.gui.workflowManager import (
+            S_LEGACY_TEST_GROUP,
+            fdictResolveTestCommandGroups,
+        )
+        dictStep = {
+            "dictTests": {"dictIntegrity": {"saCommands": []}},
+            "saTestCommands": ["pytest test_old.py"],
+        }
+        assert fdictResolveTestCommandGroups(dictStep) == {
+            S_LEGACY_TEST_GROUP: ["pytest test_old.py"],
+        }
+
+    def test_legacy_commands_resolve_with_no_dictTests_key_at_all(self):
+        from vaibify.gui.workflowManager import (
+            S_LEGACY_TEST_GROUP,
+            fdictResolveTestCommandGroups,
+        )
+        dictStep = {"saTestCommands": ["pytest test_old.py"]}
+        assert fdictResolveTestCommandGroups(dictStep) == {
+            S_LEGACY_TEST_GROUP: ["pytest test_old.py"],
+        }
+
+    def test_structured_categories_take_precedence_over_legacy(self):
+        from vaibify.gui.workflowManager import (
+            fdictResolveTestCommandGroups,
+        )
+        dictStep = {
+            "dictTests": {
+                "dictIntegrity": {"saCommands": ["pytest new.py"]},
+            },
+            "saTestCommands": ["pytest old.py"],
+        }
+        assert fdictResolveTestCommandGroups(dictStep) == {
+            "dictIntegrity": ["pytest new.py"],
+        }
+
+    def test_step_without_any_commands_resolves_no_groups(self):
+        from vaibify.gui.workflowManager import (
+            fdictResolveTestCommandGroups,
+        )
+        for dictStep in ({}, {"dictTests": {}}, {"saTestCommands": []}):
+            assert fdictResolveTestCommandGroups(dictStep) == {}
+
+    def test_gate_and_runner_never_disagree(self):
+        """Commands resolve iff groups do — the divergence that shipped.
+
+        ``flistResolveTestCommands`` is the gate; the groups are what
+        runs. If one is non-empty while the other is empty, a run
+        executes nothing and records a pass.
+        """
+        from vaibify.gui.workflowManager import (
+            fdictResolveTestCommandGroups,
+            flistResolveTestCommands,
+        )
+        listCases = [
+            {},
+            {"dictTests": {}},
+            {"saTestCommands": []},
+            {"saTestCommands": ["pytest old.py"]},
+            {"dictTests": {}, "saTestCommands": ["pytest old.py"]},
+            {"dictTests": {"dictIntegrity": {"saCommands": []}},
+             "saTestCommands": ["pytest old.py"]},
+            {"dictTests": {
+                "dictIntegrity": {"saCommands": ["pytest new.py"]}}},
+        ]
+        for dictStep in listCases:
+            bGateHasWork = bool(flistResolveTestCommands(dictStep))
+            bRunnerHasWork = bool(
+                fdictResolveTestCommandGroups(dictStep))
+            assert bGateHasWork == bRunnerHasWork, dictStep
+
+
 def test_fsTestsDirectory():
     from vaibify.gui.workflowManager import fsTestsDirectory
     assert fsTestsDirectory("/work/step01") == "/work/step01/tests"
