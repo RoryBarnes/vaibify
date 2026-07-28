@@ -2253,6 +2253,15 @@ const VaibifyApp = (function () {
                 "from the Artifacts section",
             sClass: "step-blocker-glyph-l3-workflow-env",
         },
+        "image-not-published": {
+            sIcon: "⚠",
+            sLabel: "Container image exists only on this machine — " +
+                "reproduce.sh cannot docker-pull it on a fresh " +
+                "host. Push the image to a registry (or docker save " +
+                "+ archive it), then re-capture the environment " +
+                "snapshot",
+            sClass: "step-blocker-glyph-l3-workflow-image",
+        },
         "reproduce-script-missing": {
             sIcon: "⚠",
             sLabel: "reproduce.sh missing or not pinned in the " +
