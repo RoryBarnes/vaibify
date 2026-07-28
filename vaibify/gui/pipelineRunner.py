@@ -101,6 +101,17 @@ from .interactiveSteps import (  # noqa: F401
     fnSetInteractiveResponse,
 )
 
+from .determinismEnvironment import (  # noqa: F401
+    S_ENV_PREFIX_KEY,
+    S_DETERMINISM_APPLIED_KEY,
+    S_MATPLOTLIB_CONFIG_DIR,
+    _fiQueryHeadCommitEpoch,
+    _fsBuildMatplotlibSaltPrefix,
+    _fsBuildDeterminismEnvPrefix,
+    _fnInjectDeterminismEnvPrefix,
+    _fnAnnounceDegradedDeterminism,
+)
+
 # ---------------------------------------------------------------------------
 # Preflight validation (kept here for mockability via module namespace).
 # ---------------------------------------------------------------------------
@@ -171,79 +182,6 @@ def _fdictBuildVariables(dictWorkflow, sWorkdir):
 
 
 # ---------------------------------------------------------------------------
-# Determinism: SOURCE_DATE_EPOCH injection (matplotlib + reproducible builds)
-# ---------------------------------------------------------------------------
-
-S_ENV_PREFIX_KEY = "__sEnvPrefix"
-
-
-async def _fiQueryHeadCommitEpoch(
-    connectionDocker, sContainerId, sProjectRepoPath,
-):
-    """Return HEAD commit epoch as int, or 0 if unavailable."""
-    if not sProjectRepoPath:
-        return 0
-    sCommand = (
-        f"git -C {fsShellQuote(sProjectRepoPath)} "
-        f"log -1 --format=%ct HEAD 2>/dev/null"
-    )
-    iExitCode, sOutput = await asyncio.to_thread(
-        connectionDocker.ftResultExecuteCommand,
-        sContainerId, sCommand,
-    )
-    if iExitCode != 0:
-        return 0
-    try:
-        return int(sOutput.strip())
-    except ValueError:
-        return 0
-
-
-async def _fsBuildDeterminismEnvPrefix(
-    connectionDocker, sContainerId, sProjectRepoPath,
-):
-    """Return shell prefix that exports SOURCE_DATE_EPOCH for the run.
-
-    The value is the project-repo HEAD commit epoch, so identical
-    source produces byte-stable matplotlib PDFs across reruns.
-    Returns empty string if the epoch cannot be determined; callers
-    must not block step execution on the result.
-    """
-    iEpoch = await _fiQueryHeadCommitEpoch(
-        connectionDocker, sContainerId, sProjectRepoPath,
-    )
-    if iEpoch <= 0:
-        return ""
-    return f"export SOURCE_DATE_EPOCH={iEpoch} && "
-
-
-async def _fnInjectDeterminismEnvPrefix(
-    connectionDocker, sContainerId, dictWorkflow, dictVariables,
-):
-    """Compute the env prefix once and stash it in dictVariables.
-
-    Bundles the determinism prefix with a
-    ``VAIBIFY_ACTIVE_WORKFLOW_SLUG`` export so the marker conftest
-    namespaces writes under the active workflow when commands flow
-    through ``_ftRunCommandList`` (e.g. the runAllTests path).
-    """
-    from .fileStatusManager import fsWorkflowSlugFromPath
-    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    sEnvPrefix = await _fsBuildDeterminismEnvPrefix(
-        connectionDocker, sContainerId, sProjectRepoPath,
-    )
-    sWorkflowSlug = fsWorkflowSlugFromPath(
-        dictWorkflow.get("sPath", ""),
-    )
-    if sWorkflowSlug:
-        sEnvPrefix += (
-            "export VAIBIFY_ACTIVE_WORKFLOW_SLUG="
-            + fsShellQuote(sWorkflowSlug) + " && "
-        )
-    dictVariables[S_ENV_PREFIX_KEY] = sEnvPrefix
-
-
-# ---------------------------------------------------------------------------
 # Core command execution
 # ---------------------------------------------------------------------------
 
@@ -284,11 +222,18 @@ async def _ftRunSingleCommand(
     command produces them, so the in-container ``vaibify-do`` WebSocket
     sees traffic throughout the run without paying per-line frame
     overhead on chatty runs.
+
+    ``sEnvPrefix`` goes OUTSIDE the ``/usr/bin/time`` wrapper. Inside
+    it, the wrapper composes ``/usr/bin/time -f ... export FOO=1 &&
+    cmd``, so GNU time tries to exec ``export``, exits 127, and the
+    ``&&`` never reaches the real command. That path is dormant only
+    because the base image ships no ``/usr/bin/time``; a project that
+    adds it via ``systemPackages`` would fail every step.
     """
     await _fnEmitCommandHeader(
         fnStatusCallback, sOriginal, sResolved
     )
-    sTimedCmd = _fsWrapWithTime(sEnvPrefix + sResolved)
+    sTimedCmd = sEnvPrefix + _fsWrapWithTime(sResolved)
     loopMain = asyncio.get_running_loop()
     dictAccum = {"fCpu": 0.0}
     fnEmitChunk, faDrainPending = _ftBuildBatchingEmitter(
@@ -1081,7 +1026,10 @@ async def _fiExecuteAndRecord(
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber, sRunMode=sRunMode,
     )
-    _fnRecordRunStats(dictStep, fStartTime, fCpuTime, iExitCode=iExitCode)
+    _fnRecordRunStats(
+        dictStep, fStartTime, fCpuTime, iExitCode=iExitCode,
+        bDeterminismApplied=dictVariables.get(S_DETERMINISM_APPLIED_KEY),
+    )
     await fnStatusCallback({
         "sType": "stepStats", "iStepNumber": iStepNumber,
         "dictRunStats": dictStep["dictRunStats"],
@@ -1364,6 +1312,7 @@ async def _ftPrepareLogAndVariables(
     await _fnInjectDeterminismEnvPrefix(
         connectionDocker, sContainerId, dictWorkflow, dictVariables,
     )
+    await _fnAnnounceDegradedDeterminism(fnLogging, dictVariables)
     fnClearOutputModifiedFlags(dictWorkflow)
     return sLogPath, listLogLines, fnLogging, dictVariables
 

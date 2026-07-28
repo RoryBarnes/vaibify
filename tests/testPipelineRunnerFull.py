@@ -855,11 +855,24 @@ def test_fiQueryHeadCommitEpoch_returns_zero_on_unparseable_output():
 
 
 def test_fsBuildDeterminismEnvPrefix_with_valid_epoch():
+    """The prefix pins both the build epoch and matplotlib's SVG salt.
+
+    The exact string is asserted so a silent change to what the run
+    guarantees cannot slip through. Salt coverage itself is asserted
+    in ``testDeterminismEnvHonesty.py``.
+    """
     mockDocker = _fMockDocker(0, "1745798400\n")
     sPrefix = _fnRunAsync(_fsBuildDeterminismEnvPrefix(
         mockDocker, "cid", "/workspace/repo",
     ))
-    assert sPrefix == "export SOURCE_DATE_EPOCH=1745798400 && "
+    assert sPrefix == (
+        "export SOURCE_DATE_EPOCH=1745798400 && "
+        "export MPLCONFIGDIR='/tmp/vaibifyMatplotlib' && "
+        "{ mkdir -p '/tmp/vaibifyMatplotlib' && "
+        "printf '%s\\n' 'svg.hashsalt: 1745798400' "
+        "> '/tmp/vaibifyMatplotlib/matplotlibrc' || "
+        "echo 'vaibify: matplotlib svg.hashsalt not pinned' >&2; } && "
+    )
 
 
 def test_fsBuildDeterminismEnvPrefix_empty_when_unavailable():
