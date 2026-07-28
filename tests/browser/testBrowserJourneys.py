@@ -307,3 +307,78 @@ def testCreationWizardPersistsSelectedAgent(
     configProject = fconfigLoadFromFile(sConfigPath)
     assert getattr(configProject.features, sFeatureField) is True
     assert getattr(configProject.features, sAutoUpdateField) is True
+
+
+# ---------------------------------------------------------------------
+# Journey 8 -- a superseded socket must not orphan its replacement
+# ---------------------------------------------------------------------
+
+
+def testStaleSocketCloseDoesNotOrphanTheLiveSocket(
+    pageDashboard, serverHub,
+):
+    """A dying socket may only clear the slot it still holds.
+
+    ``onclose`` fires asynchronously, so the socket ``fnConnect`` tore
+    down lands *after* its replacement is stored. Clearing the shared
+    reference unconditionally left ``fiGetReadyState()`` at -1 with a
+    perfectly healthy socket open, and the reconnect that followed was
+    answered 4409 as a duplicate session.
+
+    The race is driven here with a substituted WebSocket constructor so
+    the ordering is deterministic rather than hoped for, but the module
+    under test is the real one, evaluated by the real browser.
+    """
+    pageDashboard.goto(serverHub.sBaseUrl, wait_until="load")
+    dictResult = pageDashboard.evaluate(
+        """() => {
+            const listCreated = [];
+            const wsReal = window.WebSocket;
+            function WebSocketFake(sUrl) {
+                this.readyState = WebSocketFake.CONNECTING;
+                this.url = sUrl;
+                this.close = () => { this.readyState = 2; };
+                listCreated.push(this);
+            }
+            WebSocketFake.CONNECTING = 0;
+            WebSocketFake.OPEN = 1;
+            WebSocketFake.CLOSING = 2;
+            WebSocketFake.CLOSED = 3;
+            window.WebSocket = WebSocketFake;
+            try {
+                VaibifyWebSocket.fnConnect('container-a', 'token');
+                const wsFirst = listCreated[0];
+                wsFirst.readyState = WebSocketFake.OPEN;
+                wsFirst.onopen();
+
+                /* Force a replacement the way a workflow switch does. */
+                VaibifyWebSocket.fnDisconnect();
+                VaibifyWebSocket.fnConnect('container-b', 'token');
+                const wsSecond = listCreated[1];
+                wsSecond.readyState = WebSocketFake.OPEN;
+                wsSecond.onopen();
+
+                /* The first socket's close arrives only now. */
+                wsFirst.readyState = WebSocketFake.CLOSED;
+                wsFirst.onclose({code: 1000});
+
+                return {
+                    iCreated: listCreated.length,
+                    iReadyState: VaibifyWebSocket.fiGetReadyState(),
+                    bIsOpen: !!VaibifyWebSocket.fbIsOpen(),
+                    bSecondStillHeld:
+                        VaibifyWebSocket.fiGetReadyState() ===
+                        WebSocketFake.OPEN,
+                };
+            } finally {
+                window.WebSocket = wsReal;
+                VaibifyWebSocket.fnDisconnect();
+            }
+        }"""
+    )
+    assert dictResult["iCreated"] == 2, dictResult
+    assert dictResult["iReadyState"] != -1, (
+        "the live socket was orphaned by a superseded socket's close; "
+        "every later send silently queues and the reconnect is 4409'd"
+    )
+    assert dictResult["bIsOpen"], dictResult

@@ -83,6 +83,15 @@ var VaibifyWebSocket = (function () {
         };
         wsNew.onclose = function (event) {
             console.log("[WS] close, code:", event.code);
+            /* Only the socket still holding the slot may clear it. A
+             * close fires asynchronously, so a socket torn down by
+             * fnConnect lands after its replacement is already stored;
+             * clearing unconditionally orphaned the live socket, left
+             * fiGetReadyState() at -1, and drove a reconnect that the
+             * server answered 4409 as a duplicate session. */
+            if (_wsPipeline !== wsNew) {
+                return;
+            }
             _wsPipeline = null;
             _fnHandleSocketClose(event);
         };
@@ -194,7 +203,9 @@ var VaibifyWebSocket = (function () {
              */
             try { _wsPipeline.close(1000, "client disconnect"); }
             catch (e) { /* ignore */ }
-            _wsPipeline = null;
+            /* The slot is cleared by this socket's own onclose, which
+             * is what tells that handler the close belongs to the
+             * live socket rather than to a superseded one. */
         }
         _listPendingActions.length = 0;
     }
