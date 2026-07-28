@@ -99,6 +99,28 @@ def test_inferFormat_unknown_returns_none():
     assert dataLoaders._fsInferFormat("file.xyz") is None
 
 
+def test_every_advertised_extension_actually_resolves():
+    """No key may be unreachable through the real lookup.
+
+    Lookups lower-case the suffix, so a mixed-case key can never match
+    anything: ``.RData`` sat in this map advertising R support that no
+    ``.RData`` file could ever reach. Asserting the map contains a key
+    cannot catch that — only running the inference can.
+    """
+    listUnreachable = [
+        sExtension for sExtension in DICT_FORMAT_MAP
+        if dataLoaders._fsInferFormat("data" + sExtension) is None
+    ]
+    assert not listUnreachable, (
+        f"format map keys no file can reach: {listUnreachable}"
+    )
+
+
+def test_inferFormat_ignores_extension_case():
+    for sName in ("data.RData", "data.rdata", "data.RDATA"):
+        assert dataLoaders._fsInferFormat(sName) == "rdata"
+
+
 def test_dict_format_map_exposed():
     assert DICT_FORMAT_MAP[".npy"] == "npy"
     assert DICT_FORMAT_MAP[".csv"] == "csv"

@@ -763,7 +763,7 @@ def test_all_new_formats_in_format_map():
         (".sam", "sam"), (".log", "syslog"), (".cef", "cef"),
         (".bam", "bam"), (".unf", "fortran"),
         (".sav", "spss"), (".dta", "stata"), (".sas7bdat", "sas"),
-        (".rds", "rdata"), (".RData", "rdata"), (".rda", "rdata"),
+        (".rds", "rdata"), (".rdata", "rdata"), (".rda", "rdata"),
         (".vot", "votable"), (".ipac", "ipac"),
         (".pcap", "pcap"), (".pcapng", "pcap"),
         (".vtk", "vtk"), (".vtu", "vtk"),
