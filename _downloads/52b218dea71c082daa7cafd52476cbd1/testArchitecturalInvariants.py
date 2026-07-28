@@ -71,6 +71,13 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
     "kepler",
     "trappist",
     "proxima",
+    # A step-directory name from a user's own project, which reached a
+    # source comment through a live-incident postmortem rather than
+    # through an example. The seed list catches mission names; nothing
+    # was watching for the project vocabulary a debugging session drags
+    # in, which is the likelier route now that incidents get written up
+    # where they were diagnosed.
+    "xuvevolution",
 ]
 
 # PENDING (2026-07-27): this scan covers *.py/*.html/*.js/*.css under
