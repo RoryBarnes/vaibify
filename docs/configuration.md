@@ -44,6 +44,7 @@ Nested under the `features` key:
 | `julia`      | boolean | `false` | Install Julia                    |
 | `database`   | boolean | `false` | Install PostgreSQL client        |
 | `dvc`        | boolean | `false` | Install DVC for data versioning  |
+| `nestedSampling` | boolean | `false` | Install MultiNest, pymultinest and ultranest (adds a Fortran/LAPACK toolchain and a from-source build) |
 | `latex`      | boolean | `true`  | Install TeX Live                 |
 | `claude`     | boolean | `false` | Install Claude Code CLI          |
 | `claudeAutoUpdate` | boolean | `true` | Allow Claude Code to update itself |

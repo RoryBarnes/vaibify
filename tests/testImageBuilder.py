@@ -23,6 +23,7 @@ class MockFeatures:
         self.bJulia = kwargs.get("bJulia", False)
         self.bDatabase = kwargs.get("bDatabase", False)
         self.bDvc = kwargs.get("bDvc", False)
+        self.bNestedSampling = kwargs.get("bNestedSampling", False)
         self.bGpu = kwargs.get("bGpu", False)
         self.bClaude = kwargs.get("bClaude", False)
         self.bCodex = kwargs.get("bCodex", False)
@@ -63,6 +64,7 @@ def test_flistDetermineOverlays_all_features():
         bJulia=True,
         bDatabase=True,
         bDvc=True,
+        bNestedSampling=True,
         bClaude=True,
         bCodex=True,
         bGemini=True,
@@ -77,7 +79,8 @@ def test_flistDetermineOverlays_all_features():
 
     listExpected = [
         "gpu", "jupyter", "rlang", "julia",
-        "database", "dvc", "node", "uv", "claude", "codex", "gemini",
+        "database", "dvc", "nestedSampling", "node", "uv",
+        "claude", "codex", "gemini",
         "opencode", "cline", "openhands", "pi",
     ]
     assert listOverlays == listExpected
@@ -284,3 +287,39 @@ def test_fnBuildImage_prune_failure_is_swallowed(monkeypatch):
     monkeypatch.setattr(imageBuilder.subprocess, "run", _fnRaiseTimeout)
 
     imageBuilder.fnBuildImage(MockConfig(), "/dockerdir", bNoCache=False)
+
+
+def testBaseImageOmitsDomainSpecificNumericalStack():
+    """The base Dockerfile installs no nested-sampling stack or its toolchain.
+
+    MultiNest, its Fortran/LAPACK build toolchain, and pymultinest sat
+    in the base image until 2026-07-27, so every vaibify image paid for
+    a from-source numerical build whether or not the project used
+    nested sampling. It is a domain-specific dependency and belongs in
+    ``overlays/nestedSampling.dockerfile`` behind ``bNestedSampling``.
+
+    This guards the general rule, not just the one package: anything
+    needed by a single feature belongs in that feature's overlay. Only
+    the base is checked -- the overlay is expected to contain all of it.
+    """
+    from pathlib import Path
+    pathBase = (
+        Path(__file__).resolve().parent.parent
+        / "vaibify" / "containerImage" / "Dockerfile"
+    )
+    sBase = pathBase.read_text(encoding="utf-8")
+    listOffenders = [
+        sToken for sToken in (
+            "MULTINEST_COMMIT", "pymultinest", "ultranest",
+            "gfortran", "liblapack-dev", "libblas-dev",
+        )
+        # Prose mentioning where the stack went is fine; installs are not.
+        if any(
+            sToken in sLine and not sLine.lstrip().startswith("#")
+            for sLine in sBase.splitlines()
+        )
+    ]
+    assert listOffenders == [], (
+        "Base Dockerfile carries nested-sampling build inputs that belong "
+        "in overlays/nestedSampling.dockerfile: " + ", ".join(listOffenders)
+    )

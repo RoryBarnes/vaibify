@@ -21,6 +21,7 @@ class FeaturesConfig:
     bJulia: bool = False
     bDatabase: bool = False
     bDvc: bool = False
+    bNestedSampling: bool = False
     bLatex: bool = True
     bClaude: bool = False
     bClaudeAutoUpdate: bool = True
@@ -135,6 +136,7 @@ _FEATURES_YAML_TO_HUNGARIAN = {
     "julia": "bJulia",
     "database": "bDatabase",
     "dvc": "bDvc",
+    "nestedSampling": "bNestedSampling",
     "latex": "bLatex",
     "claude": "bClaude",
     "claudeAutoUpdate": "bClaudeAutoUpdate",
@@ -519,6 +521,7 @@ def _fdictFeaturesToYaml(features):
         "julia": features.bJulia,
         "database": features.bDatabase,
         "dvc": features.bDvc,
+        "nestedSampling": features.bNestedSampling,
         "latex": features.bLatex,
         "claude": features.bClaude,
         "claudeAutoUpdate": features.bClaudeAutoUpdate,
