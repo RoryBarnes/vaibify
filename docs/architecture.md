@@ -78,16 +78,19 @@ the same routes. What sets the command lines apart is that they are
 added to the catalog appears in both without anyone maintaining a
 parallel list, so neither CLI can drift from the contract.
 
-The design commitment is that every action in the contract is
-reachable from the command line. This is philosophical, not
-convenient. A data scientist works at the command line, and a project
-that can only be driven by clicking is not reproducible: Level 3 means
-someone else re-runs the work headlessly — on CI, on a cluster, in a
-batch job, with no browser present. A GUI-only action would be an
+Command-line reachability is the *default*, and departing from it
+requires a recorded decision. This is philosophical, not convenient. A
+data scientist works at the command line, and a project that can only
+be driven by clicking is not reproducible: Level 3 means someone else
+re-runs the work headlessly — on CI, on a cluster, in a batch job,
+with no browser present. An accidentally GUI-only action would be an
 action that cannot appear in a reproduction script, so it would be a
-hole in the ladder rather than a missing convenience.
+hole in the ladder rather than a missing convenience. A deliberately
+GUI-only one is a considered trade-off, and the difference between the
+two is the whole point of what follows.
 
-The commitment is enforced by accounting, not by coverage. Where a
+The default is therefore enforced by accounting, not by coverage.
+Where a
 route is deliberately not CLI-invokable it is a written exception in
 `SET_INTENTIONALLY_EXCLUDED_PATHS` with its rationale recorded beside
 it, and `testAgentActionRegistered` fails CI — failing *closed* — for
