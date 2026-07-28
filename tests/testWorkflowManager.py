@@ -801,19 +801,53 @@ class TestResolveTestCommandGroups:
             S_LEGACY_TEST_GROUP: ["pytest test_old.py"],
         }
 
-    def test_structured_categories_take_precedence_over_legacy(self):
+    def test_extra_commands_run_alongside_structured_categories(self):
+        """A hand-added command is not dropped by having generated tests.
+
+        saTestCommands is where the dashboard's "add test command"
+        writes and where a passing save-and-run-test records its rerun
+        command. Treating it as a fallback meant a failing test the
+        researcher added by hand was absent from a green result.
+        """
         from vaibify.gui.workflowManager import (
+            S_LEGACY_TEST_GROUP,
             fdictResolveTestCommandGroups,
         )
         dictStep = {
             "dictTests": {
                 "dictIntegrity": {"saCommands": ["pytest new.py"]},
             },
-            "saTestCommands": ["pytest old.py"],
+            "saTestCommands": ["pytest added_by_hand.py"],
         }
         assert fdictResolveTestCommandGroups(dictStep) == {
             "dictIntegrity": ["pytest new.py"],
+            S_LEGACY_TEST_GROUP: ["pytest added_by_hand.py"],
         }
+
+    def test_the_flat_mirror_does_not_double_generated_commands(self):
+        """Generating tests rewrites saTestCommands as a flat mirror.
+
+        Every command in it is then already a structured command, so
+        including the list wholesale would run each generated test
+        twice.
+        """
+        from vaibify.gui.workflowManager import (
+            fdictResolveTestCommandGroups,
+            flistBuildTestCommands,
+        )
+        dictStep = {
+            "dictTests": {
+                "dictIntegrity": {"saCommands": ["pytest integrity.py"]},
+                "dictQualitative": {"saCommands": ["pytest qual.py"]},
+            },
+        }
+        dictStep["saTestCommands"] = flistBuildTestCommands(dictStep)
+        dictGroups = fdictResolveTestCommandGroups(dictStep)
+        listAll = [s for listGroup in dictGroups.values()
+                   for s in listGroup]
+        assert sorted(listAll) == [
+            "pytest integrity.py", "pytest qual.py",
+        ]
 
     def test_step_without_any_commands_resolves_no_groups(self):
         from vaibify.gui.workflowManager import (

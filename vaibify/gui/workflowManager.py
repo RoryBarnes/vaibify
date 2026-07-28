@@ -2302,24 +2302,34 @@ def fdictResolveTestCommandGroups(dictStep):
     nothing ran, ``all([])`` was ``True``, and a green unit-test state
     was persisted without Docker ever being called.
 
-    The structured ``dictTests`` categories take precedence. A step
-    that predates them, or one whose only command was registered by
-    save-and-run-test, contributes its ``saTestCommands`` under
-    ``S_LEGACY_TEST_GROUP``. Keys are ordered as the lanes execute
-    them, so callers may iterate the mapping directly.
+    The structured ``dictTests`` categories come first; whatever is left
+    in ``saTestCommands`` runs after them under ``S_LEGACY_TEST_GROUP``.
+    That list is not only the pre-schema format — it is where the
+    dashboard's "add test command" writes and where a passing
+    save-and-run-test records its rerun command — so treating it as a
+    fallback dropped a hand-added failing test from every green run of a
+    step that also had generated tests. Commands a category already
+    carries are excluded, because generating tests rewrites the list as
+    a flat mirror of them, which would otherwise double every one.
+
+    Keys are ordered as the lanes execute them, so callers may iterate
+    the mapping directly.
     """
     dictTests = dictStep.get("dictTests", {})
     dictGroups = {}
+    setStructured = set()
     for sKey, _sVerificationKey in T_STRUCTURED_TEST_GROUPS:
         listCommands = dictTests.get(sKey, {}).get("saCommands", [])
         if listCommands:
             dictGroups[sKey] = list(listCommands)
-    if dictGroups:
-        return dictGroups
-    listLegacy = dictStep.get("saTestCommands", [])
-    if listLegacy:
-        return {S_LEGACY_TEST_GROUP: list(listLegacy)}
-    return {}
+            setStructured.update(listCommands)
+    listExtra = [
+        sCommand for sCommand in dictStep.get("saTestCommands", [])
+        if sCommand not in setStructured
+    ]
+    if listExtra:
+        dictGroups[S_LEGACY_TEST_GROUP] = listExtra
+    return dictGroups
 
 
 def flistResolveTestCommands(dictStep):

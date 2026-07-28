@@ -607,18 +607,32 @@ def test_flistResolveTestCommandsRunner_no_tests_at_all():
     assert listResult == []
 
 
-def test_flistResolveTestCommandsRunner_dictTests_takes_precedence():
+def test_flistResolveTestCommandsRunner_includes_extra_commands():
+    """Structured tests do not suppress a separately-added command."""
     dictStep = {
         "dictTests": {
             "dictIntegrity": {
                 "saCommands": ["pytest test_new.py"],
             },
         },
-        "saTestCommands": ["pytest test_old.py"],
+        "saTestCommands": ["pytest test_added.py"],
+    }
+    listResult = flistResolveTestCommandsRunner(dictStep)
+    assert listResult == ["pytest test_new.py", "pytest test_added.py"]
+
+
+def test_flistResolveTestCommandsRunner_does_not_double_the_mirror():
+    """A saTestCommands entry duplicating a category runs once."""
+    dictStep = {
+        "dictTests": {
+            "dictIntegrity": {
+                "saCommands": ["pytest test_new.py"],
+            },
+        },
+        "saTestCommands": ["pytest test_new.py"],
     }
     listResult = flistResolveTestCommandsRunner(dictStep)
     assert listResult == ["pytest test_new.py"]
-    assert "pytest test_old.py" not in listResult
 
 
 # ---- _flistResolveTestCommands (pipelineServer) ----
