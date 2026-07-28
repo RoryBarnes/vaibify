@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Security Model &mdash; Vaibify 0.0.1.dev635 documentation</title>
+  <title>Security Model &mdash; Vaibify 0.0.1.dev647 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=92ba59e7"></script>
+      <script src="_static/documentation_options.js?v=e4246009"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -117,7 +117,7 @@ restrictions:</p>
 <td><p>The Docker socket is never mounted inside the container. Code in the container cannot create, inspect, or control other containers.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Unprivileged user</p></td>
-<td><p>The container runs as a non-root user via <code class="docutils literal notranslate"><span class="pre">gosu</span></code>. The root user is used only during image build.</p></td>
+<td><p>Your code runs as a non-root user. The entrypoint starts as root to configure system paths, then <code class="docutils literal notranslate"><span class="pre">exec</span></code>s itself through <code class="docutils literal notranslate"><span class="pre">gosu</span></code> as the unprivileged user for workspace setup and everything after — so root exists at container start, not only at image build, but nothing you run inherits it. <code class="docutils literal notranslate"><span class="pre">sudo</span></code> is absent from the image.</p></td>
 </tr>
 <tr class="row-even"><td><p>No host filesystem</p></td>
 <td><p>The host filesystem is not bind-mounted by default. Files enter and leave the container through <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code>.</p></td>
@@ -138,17 +138,33 @@ restrictions:</p>
 <h2>Secrets Management<a class="headerlink" href="#secrets-management" title="Link to this heading"></a></h2>
 <p>Vaibify never stores credentials in environment variables, shell history,
 Git configuration, or committed files. Instead:</p>
-<ol class="arabic simple">
+<ol class="arabic">
 <li><p><strong>Resolution at build time</strong> – the <code class="docutils literal notranslate"><span class="pre">secrets</span></code> field in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>
 lists secret <em>names</em>, not values. At build or run time, Vaibify
 delegates to the host’s credential manager (<code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code>, OS keychain) to
 resolve the actual values.</p></li>
-<li><p><strong>Ephemeral mounting</strong> – resolved secrets are written to temporary
-files with mode 600 under <code class="docutils literal notranslate"><span class="pre">/run/secrets/</span></code> inside the container. These
-files are cleaned up when the container stops.</p></li>
+<li><p><strong>Ephemeral mounting</strong> – resolved secrets are written to host files
+with mode 600 under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp/</span></code> (mode 0700) and bind-mounted to
+<code class="docutils literal notranslate"><span class="pre">/run/secrets/</span></code> inside the container.</p>
+<p>These host files deliberately <strong>outlive the container</strong>. Deleting
+them at stop time breaks later operations, because the daemon
+re-resolves bind-mount sources lazily and a missing source fails the
+mount. They are overwritten on the next container start, and a stale
+file is not evidence that nothing needs it — check what the daemon
+still mounts before removing anything under <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code>.</p>
+</li>
 <li><p><strong>Token hygiene</strong> – Zenodo requests use <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span></code> headers
 (never URL parameters). Overleaf uses Git credential helpers (never
 URL-embedded tokens).</p></li>
+<li><p><strong>Credentials a container agent stores are persistent, not
+ephemeral.</strong> Logins performed by an agent inside the container (its
+provider session, and anything written to the container keyring) are
+held in a Docker named credential volume so they survive container
+recreation. The container keyring is a <code class="docutils literal notranslate"><span class="pre">PlaintextKeyring</span></code>. That
+volume is not removed by <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code>; remove it explicitly with
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">volume</span> <span class="pre">rm</span></code> when decommissioning a project. All configured
+agents run as the same container user and share that store, so a
+compromise of one agent exposes every configured provider’s session.</p></li>
 </ol>
 </section>
 <section id="security-audit">
@@ -157,17 +173,31 @@ URL-embedded tokens).</p></li>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>verify
 </pre></div>
 </div>
-<p>The audit script (<code class="docutils literal notranslate"><span class="pre">checkIsolation.sh</span></code>) runs inside the container and checks
-for:</p>
+<p>The audit script (<code class="docutils literal notranslate"><span class="pre">checkIsolation.sh</span></code>) runs inside the container and
+performs exactly four checks:</p>
 <ul class="simple">
-<li><p>Docker socket accessibility.</p></li>
-<li><p>Privilege escalation paths (<code class="docutils literal notranslate"><span class="pre">sudo</span></code>, <code class="docutils literal notranslate"><span class="pre">setuid</span></code> binaries).</p></li>
-<li><p>Exposed ports beyond those declared in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p></li>
-<li><p>Secrets leaking into environment variables or process listings.</p></li>
-<li><p>Bind mounts that expose host directories.</p></li>
+<li><p><strong>Bind mounts</strong> — every mount is classified, and anything that is not
+a Docker named volume, an overlay/tmpfs, or a recognized secret mount
+is reported as a possible host bind mount. This check can fail.</p></li>
+<li><p><strong>Docker socket accessibility.</strong> This check can fail.</p></li>
+<li><p><strong>Privileged mode.</strong> This check can fail.</p></li>
+<li><p><strong>Listening ports</strong> — reported for information only. The script cannot
+tell from inside the container whether a listening port is published
+to the host; it prints the <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">port</span></code> command that can.</p></li>
 </ul>
-<p>The audit prints a pass/fail report. Any failure indicates a configuration
-issue that should be resolved before running untrusted code.</p>
+<p>The audit prints a pass/fail report covering those checks and nothing
+else. Read “All checks passed” as “no host bind mount, no Docker socket,
+not privileged” — not as a general statement about the container’s
+security posture.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Three things it does <strong>not</strong> check, despite being natural things to
+expect from a security audit: privilege-escalation paths (<code class="docutils literal notranslate"><span class="pre">sudo</span></code>,
+<code class="docutils literal notranslate"><span class="pre">setuid</span></code> binaries), whether listening ports are actually exposed to the
+host, and secrets leaking into environment variables or process
+listings. This page previously claimed all three. They are absent from
+the script, so a passing audit has never been evidence about them.</p>
+</div>
 </section>
 <section id="threat-model">
 <h2>Threat Model<a class="headerlink" href="#threat-model" title="Link to this heading"></a></h2>
@@ -176,8 +206,11 @@ The defenses are designed to contain:</p>
 <ul class="simple">
 <li><p><strong>Filesystem escape</strong> – no host mounts, no Docker socket.</p></li>
 <li><p><strong>Network exfiltration</strong> – optional network isolation blocks all traffic.</p></li>
-<li><p><strong>Credential theft</strong> – secrets exist only as ephemeral files with
-restrictive permissions.</p></li>
+<li><p><strong>Credential theft</strong> – partially. Secrets resolved from the host’s
+credential manager are mode-600 files, but they outlive the container
+and an agent’s own logins persist in a plaintext keyring volume (see
+Secrets Management above). Treat “an agent was compromised” as “every
+configured provider’s session was exposed”.</p></li>
 <li><p><strong>Privilege escalation</strong> – the container runs as an unprivileged user
 with no <code class="docutils literal notranslate"><span class="pre">sudo</span></code> access.</p></li>
 </ul>

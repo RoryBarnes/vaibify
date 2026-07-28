@@ -147,16 +147,28 @@ vaibify stop [--project/-p NAME]
 
 ### `vaibify destroy`
 
-Remove the container and optionally delete the workspace volume.
+Delete the project's workspace volume, after confirming, and then offer
+to remove the image as well.
+
+```{warning}
+This deletes the workspace volume — every file the container holds that
+is not committed and pushed. The volume is the only copy: `/workspace`
+is Docker-managed storage, not a directory on your machine. There is no
+`--volumes` flag to opt in; deleting the volume is what the command
+does, and the prompt is the only guard.
+```
 
 ```bash
-vaibify destroy [--volumes] [--project/-p NAME]
+vaibify destroy [--project/-p NAME]
 ```
 
 | Option             | Description                                  |
 |--------------------|----------------------------------------------|
-| `--volumes`        | Also remove the workspace volume             |
 | `--project`, `-p`  | Target project name (optional if only one exists) |
+
+Two things it does **not** remove: the container itself (stop it with
+`vaibify stop`), and the credential volume, which persists until you
+remove it with `docker volume rm`.
 
 ### `vaibify status`
 
@@ -466,8 +478,10 @@ in `--help`.
 
 ## Publishing
 
-The `vaibify publish` subcommands are **not implemented**. Both print
-`Not yet implemented.` and exit.
+The `vaibify publish` subcommands are **not implemented**, and the
+`publish` group is not registered on the CLI at all — `vaibify publish`
+is an unknown command, not a command that reports its own absence. The
+sections below describe intended behaviour only.
 
 There is no Settings → Publish pane. This section previously said the
 publishing machinery was "already available" through one; it never

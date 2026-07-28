@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev635 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev647 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=92ba59e7"></script>
+      <script src="_static/documentation_options.js?v=e4246009"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -400,14 +400,18 @@ verifier can fall back to plain coreutils.</p>
 </section>
 <section id="publishing-a-workflow">
 <h2>Publishing a Workflow<a class="headerlink" href="#publishing-a-workflow" title="Link to this heading"></a></h2>
-<p>Generate a GitHub Actions workflow that automates the entire pipeline:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>publish<span class="w"> </span>workflow
-</pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Not implemented — this section describes an intended feature. The
+<code class="docutils literal notranslate"><span class="pre">publish</span></code> command group is not registered on the CLI, so
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> is an unknown command, and
+<code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/githubWorkflow.py</span></code> (the generator described
+below) has no caller in the product. Nothing here runs today.</p>
 </div>
-<p>This reads <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, renders the Jinja2
-template at <code class="docutils literal notranslate"><span class="pre">vaibify/templates/workflow.yml.j2</span></code>, and writes the result to
-<code class="docutils literal notranslate"><span class="pre">.github/workflows/vaibify.yml</span></code>.</p>
-<p>The generated workflow:</p>
+<p>The intent is to read <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, render the
+Jinja2 template at <code class="docutils literal notranslate"><span class="pre">vaibify/templates/workflow.yml.j2</span></code>, and write the
+result to <code class="docutils literal notranslate"><span class="pre">.github/workflows/vaibify.yml</span></code>.</p>
+<p>The generated workflow would:</p>
 <ol class="arabic simple">
 <li><p>Checks out the repository.</p></li>
 <li><p>Installs Vaibify.</p></li>
@@ -418,13 +422,17 @@ template at <code class="docutils literal notranslate"><span class="pre">vaibify
 </section>
 <section id="archiving-to-zenodo">
 <h2>Archiving to Zenodo<a class="headerlink" href="#archiving-to-zenodo" title="Link to this heading"></a></h2>
-<p>Create a Zenodo deposit for long-term archival:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>publish<span class="w"> </span>archive
-</pre></div>
+<p>Zenodo archiving is real and reachable — through the AICS Level 2
+workflow in the dashboard, not through the CLI.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">archive</span></code> is not implemented and not registered on the
+CLI. Use the dashboard’s archive action instead.</p>
 </div>
-<p>This packages the Docker image, configuration files, and pipeline outputs
-into a tarball, uploads it to Zenodo (or the Zenodo sandbox, depending on
-the <code class="docutils literal notranslate"><span class="pre">reproducibility.zenodoService</span></code> setting), and returns a DOI.</p>
+<p>The intended CLI form would package the Docker image, configuration
+files, and pipeline outputs into a tarball, upload it to Zenodo (or the
+Zenodo sandbox, depending on the <code class="docutils literal notranslate"><span class="pre">reproducibility.zenodoService</span></code>
+setting), and return a DOI.</p>
 <p>Authentication with Zenodo is handled through the host’s credential
 manager. Vaibify never stores tokens in configuration files or
 environment variables.</p>
@@ -451,13 +459,14 @@ are captured in the image.</p>
 <h2>Sharing Results<a class="headerlink" href="#sharing-results" title="Link to this heading"></a></h2>
 <p>The recommended workflow for sharing reproducible results:</p>
 <ol class="arabic simple">
-<li><p>Commit <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> to
-your repository.</p></li>
-<li><p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> to add CI automation.</p></li>
+<li><p>Commit <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">.vaibify/projects/project.json</span></code> to your repository.</p></li>
 <li><p>Tag a release when results are final.</p></li>
-<li><p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">archive</span></code> to create a Zenodo DOI.</p></li>
+<li><p>Create a Zenodo DOI through the dashboard’s archive action.</p></li>
 <li><p>Reference the DOI in your manuscript.</p></li>
 </ol>
+<p>(CI automation would be step 2 once <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> exists;
+until then, add the GitHub Actions workflow by hand.)</p>
 <p>A collaborator can then reproduce your results by cloning the repository
 and running:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build

@@ -68,6 +68,7 @@ __all__ = [
     "fdictGetSyncStatus",
     "fdictGetZenodoMetadata",
     "fdictInitializeZenodoMetadata",
+    "fdictResolveTestCommandGroups",
     "fdictLoadWorkflowFromContainer",
     "fdictLookupSyncEntry",
     "fdictMigrateTestFormat",
@@ -131,6 +132,18 @@ VAIBIFY_LOGS_DIR = ".vaibify/logs"
 
 T_REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
 T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
+
+# The structured test categories, paired with the dictVerification key
+# each one resolves, in the order both execution lanes run them.
+T_STRUCTURED_TEST_GROUPS = (
+    ("dictIntegrity", "sIntegrity"),
+    ("dictQualitative", "sQualitative"),
+    ("dictQuantitative", "sQuantitative"),
+)
+# Group key for a step whose commands live in the pre-dictTests
+# saTestCommands list. It resolves no per-category verification key —
+# only the aggregate sUnitTest state.
+S_LEGACY_TEST_GROUP = "legacy"
 
 
 def _flistDiscoverCandidatePaths(
@@ -2278,11 +2291,53 @@ def flistBuildTestCommands(dictStep):
     return listCommands
 
 
+def fdictResolveTestCommandGroups(dictStep):
+    """Return ``{group key: commands}`` for every non-empty test group.
+
+    This is the single answer to "what would running this step's tests
+    actually execute", and both execution lanes — the HTTP run-tests
+    route and the pipeline WebSocket runner — must resolve their work
+    through it. They diverged once: the route's gate accepted a legacy
+    step while its runner iterated only the structured categories, so
+    nothing ran, ``all([])`` was ``True``, and a green unit-test state
+    was persisted without Docker ever being called.
+
+    The structured ``dictTests`` categories come first; whatever is left
+    in ``saTestCommands`` runs after them under ``S_LEGACY_TEST_GROUP``.
+    That list is not only the pre-schema format — it is where the
+    dashboard's "add test command" writes and where a passing
+    save-and-run-test records its rerun command — so treating it as a
+    fallback dropped a hand-added failing test from every green run of a
+    step that also had generated tests. Commands a category already
+    carries are excluded, because generating tests rewrites the list as
+    a flat mirror of them, which would otherwise double every one.
+
+    Keys are ordered as the lanes execute them, so callers may iterate
+    the mapping directly.
+    """
+    dictTests = dictStep.get("dictTests", {})
+    dictGroups = {}
+    setStructured = set()
+    for sKey, _sVerificationKey in T_STRUCTURED_TEST_GROUPS:
+        listCommands = dictTests.get(sKey, {}).get("saCommands", [])
+        if listCommands:
+            dictGroups[sKey] = list(listCommands)
+            setStructured.update(listCommands)
+    listExtra = [
+        sCommand for sCommand in dictStep.get("saTestCommands", [])
+        if sCommand not in setStructured
+    ]
+    if listExtra:
+        dictGroups[S_LEGACY_TEST_GROUP] = listExtra
+    return dictGroups
+
+
 def flistResolveTestCommands(dictStep):
-    """Return test commands from structured tests or legacy list."""
-    if "dictTests" in dictStep:
-        return flistBuildTestCommands(dictStep)
-    return dictStep.get("saTestCommands", [])
+    """Return every test command a step would run, structured or legacy."""
+    listCommands = []
+    for listGroup in fdictResolveTestCommandGroups(dictStep).values():
+        listCommands.extend(listGroup)
+    return listCommands
 
 
 def fsTestsDirectory(sStepDirectory):

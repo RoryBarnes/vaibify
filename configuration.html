@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev635 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev647 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=92ba59e7"></script>
+      <script src="_static/documentation_options.js?v=e4246009"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -195,7 +195,7 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">condaPackages</span></code></p></td>
 <td><p>string</p></td>
-<td><p>conda/mamba packages to install</p></td>
+<td><p><strong>Refused at validation</strong> — see below</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">binaries</span></code></p></td>
 <td><p>dict</p></td>
@@ -215,6 +215,16 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">condaPackages</span></code> is refused, not installed.</strong> A non-empty value fails
+validation. The image installs Miniforge, but there is no
+<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">install</span></code> step and no build argument carries the list, so
+accepting the field would produce a container without the requested
+packages and say nothing. Refusing is the honest interim until the
+install step is wired; install what you need with <code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code>, or
+add a <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">install</span></code> line to <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>.</p>
+</div>
 </section>
 <section id="features-block">
 <h3>Features Block<a class="headerlink" href="#features-block" title="Link to this heading"></a></h3>

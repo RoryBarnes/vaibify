@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.1.dev635 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.1.dev647 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=92ba59e7"></script>
+      <script src="_static/documentation_options.js?v=e4246009"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -334,8 +334,17 @@ dropped.</p>
 </section>
 <section id="vaibify-destroy">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code><a class="headerlink" href="#vaibify-destroy" title="Link to this heading"></a></h3>
-<p>Remove the container and optionally delete the workspace volume.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>destroy<span class="w"> </span><span class="o">[</span>--volumes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<p>Delete the project’s workspace volume, after confirming, and then offer
+to remove the image as well.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This deletes the workspace volume — every file the container holds that
+is not committed and pushed. The volume is the only copy: <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>
+is Docker-managed storage, not a directory on your machine. There is no
+<code class="docutils literal notranslate"><span class="pre">--volumes</span></code> flag to opt in; deleting the volume is what the command
+does, and the prompt is the only guard.</p>
+</div>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>destroy<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -345,14 +354,14 @@ dropped.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--volumes</span></code></p></td>
-<td><p>Also remove the workspace volume</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
 <td><p>Target project name (optional if only one exists)</p></td>
 </tr>
 </tbody>
 </table>
+<p>Two things it does <strong>not</strong> remove: the container itself (stop it with
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code>), and the credential volume, which persists until you
+remove it with <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">volume</span> <span class="pre">rm</span></code>.</p>
 </section>
 <section id="vaibify-status">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">status</span></code><a class="headerlink" href="#vaibify-status" title="Link to this heading"></a></h3>
@@ -759,8 +768,10 @@ in <code class="docutils literal notranslate"><span class="pre">--help</span></c
 </section>
 <section id="publishing">
 <h2>Publishing<a class="headerlink" href="#publishing" title="Link to this heading"></a></h2>
-<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code> subcommands are <strong>not implemented</strong>. Both print
-<code class="docutils literal notranslate"><span class="pre">Not</span> <span class="pre">yet</span> <span class="pre">implemented.</span></code> and exit.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code> subcommands are <strong>not implemented</strong>, and the
+<code class="docutils literal notranslate"><span class="pre">publish</span></code> group is not registered on the CLI at all — <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code>
+is an unknown command, not a command that reports its own absence. The
+sections below describe intended behaviour only.</p>
 <p>There is no Settings → Publish pane. This section previously said the
 publishing machinery was “already available” through one; it never
 existed, and <code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/githubWorkflow.py</span></code> — the GitHub
