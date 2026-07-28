@@ -396,3 +396,49 @@ def testInitScaffoldsAProjectThatDiscoveryActuallyFinds():
             assert all(
                 pathlib.Path(sPath).is_file() for sPath in listFound
             )
+
+
+def testInitRefusedByAnExistingProjectWritesNothing():
+    """A refused init must leave the directory exactly as it found it.
+
+    The conflict check used to run after the template had been copied,
+    so a refusal exited 1 having already written a root project.json,
+    container.conf and the step directories -- debris in a directory the
+    command had just said it would not scaffold over.
+    """
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from vaibify.cli.commandInit import init
+    from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
+
+    runner = CliRunner()
+    with tempfile.TemporaryDirectory() as sTempDir:
+        with runner.isolated_filesystem(temp_dir=sTempDir) as sCwd:
+            pathExisting = (
+                pathlib.Path(sCwd) / VAIBIFY_PROJECTS_DIR / "project.json"
+            )
+            pathExisting.parent.mkdir(parents=True)
+            pathExisting.write_text('{"sMine": true}')
+            listBefore = sorted(
+                str(pathItem.relative_to(sCwd))
+                for pathItem in pathlib.Path(sCwd).rglob("*")
+            )
+
+            with patch("vaibify.cli.commandInit.fnAddProject"):
+                resultInit = runner.invoke(
+                    init, ["--template", "workflow"],
+                    catch_exceptions=False,
+                )
+
+            assert resultInit.exit_code == 1, resultInit.output
+            listAfter = sorted(
+                str(pathItem.relative_to(sCwd))
+                for pathItem in pathlib.Path(sCwd).rglob("*")
+            )
+            assert listAfter == listBefore, (
+                "a refused init left files behind: "
+                f"{sorted(set(listAfter) - set(listBefore))}"
+            )
+            assert pathExisting.read_text() == '{"sMine": true}'

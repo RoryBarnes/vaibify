@@ -66,8 +66,33 @@ def fnCopyTemplate(sTemplateName):
         click.echo(f"Error: Template '{sTemplateName}' not found.")
         sys.exit(1)
     pathDestination = pathlib.Path.cwd()
+    fnRefuseIfProjectFileExists(pathDestination)
     fnCopyDirectoryContents(sSourcePath, str(pathDestination))
     fnMoveProjectFileWhereDiscoveryLooks(pathDestination)
+
+
+def fnRefuseIfProjectFileExists(pathDestination):
+    """Exit before copying anything if the Project file is already there.
+
+    Every check that can fail runs before the first write, so a refused
+    init leaves the directory exactly as it found it. Checking after the
+    copy left a root project.json, container.conf and the step
+    directories behind on the way out — debris the researcher then has
+    to identify and remove by hand, in a directory the command has just
+    said it refused to touch.
+    """
+    pathTarget = (
+        pathDestination / VAIBIFY_PROJECTS_DIR / S_PROJECT_FILE_NAME
+    )
+    if not pathTarget.exists():
+        return
+    click.echo(
+        f"Error: {pathTarget.relative_to(pathDestination)} already "
+        f"exists. Move or delete it before scaffolding over it. "
+        f"Nothing was written.",
+        err=True,
+    )
+    sys.exit(1)
 
 
 def fnMoveProjectFileWhereDiscoveryLooks(pathDestination):
@@ -86,13 +111,6 @@ def fnMoveProjectFileWhereDiscoveryLooks(pathDestination):
     pathTarget = (
         pathDestination / VAIBIFY_PROJECTS_DIR / S_PROJECT_FILE_NAME
     )
-    if pathTarget.exists():
-        click.echo(
-            f"Error: {pathTarget.relative_to(pathDestination)} already "
-            f"exists. Move or delete it before scaffolding over it.",
-            err=True,
-        )
-        sys.exit(1)
     pathTarget.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(pathSource), str(pathTarget))
 
