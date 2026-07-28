@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev620 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev632 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae7c171d"></script>
+      <script src="_static/documentation_options.js?v=5933c92a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -193,6 +193,42 @@ to the dashboard: no optimistic status, no cached-past-lifetime state,
 no quietly swallowed errors. If the truth is slow or ugly, the
 dashboard shows it slow and ugly. The <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> trap
 list treats dashboard honesty as a hard invariant.</p>
+<p><strong>Every action reachable from the command line.</strong> The authority is the
+backend action contract: every state-mutating action a researcher can
+invoke is registered in one catalog,
+<a class="reference download internal" download="" href="_downloads/01e7f8a4f410da1e99fddf3ce6c1f837/actionCatalog.py"><span class="xref download myst">actionCatalog.py</span></a>. The dashboard and
+both command lines are three clients of that one contract — they call
+the same routes. What sets the command lines apart is that they are
+<em>generated</em> from the catalog rather than hand-written against it:
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> on the host
+(<a class="reference download internal" download="" href="_downloads/71048a98f8c474090471b4241407c5c3/actionCommands.py"><span class="xref download myst">actionCommands.py</span></a>) and
+<code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> inside the container
+(<a class="reference download internal" download="" href="_downloads/392f19456c2e37510e51be4f93aa16c1/vaibifyDo.py"><span class="xref download myst">vaibifyDo.py</span></a>). An action
+added to the catalog appears in both without anyone maintaining a
+parallel list, so neither CLI can drift from the contract.</p>
+<p>Command-line reachability is the <em>default</em>, and departing from it
+requires a recorded decision. This is philosophical, not convenient. A
+data scientist works at the command line, and a project that can only
+be driven by clicking is not reproducible: Level 3 means someone else
+re-runs the work headlessly — on CI, on a cluster, in a batch job,
+with no browser present. An accidentally GUI-only action would be an
+action that cannot appear in a reproduction script, so it would be a
+hole in the ladder rather than a missing convenience. A deliberately
+GUI-only one is a considered trade-off, and the difference between the
+two is the whole point of what follows.</p>
+<p>The default is therefore enforced by accounting, not by coverage.
+Where a
+route is deliberately not CLI-invokable it is a written exception in
+<code class="docutils literal notranslate"><span class="pre">SET_INTENTIONALLY_EXCLUDED_PATHS</span></code> with its rationale recorded beside
+it, and <code class="docutils literal notranslate"><span class="pre">testAgentActionRegistered</span></code> fails CI — failing <em>closed</em> — for
+any state-mutating route with no decision recorded either way. The
+guarantee is therefore not that every route is on the command line; it
+is that no route can quietly fail to be.</p>
+<p>Read this together with the entry above, since both concern where
+truth lives and they mean different things. The dashboard is where
+truth is <em>displayed</em>, and it may never lie about what it displays. The
+action contract is where capability is <em>defined</em>, and the command line
+is its most direct expression.</p>
 </section>
 <section id="the-happy-path">
 <h2>The happy path<a class="headerlink" href="#the-happy-path" title="Link to this heading"></a></h2>
@@ -437,7 +473,7 @@ is the <em>discovery root</em> — the search origin for project.json files —
 but not a git target. Inside a container, <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> contains N
 repository subdirectories (each a standalone git clone) plus some
 shared configuration. A single container can therefore host multiple
-projects: GJ1132_XUV’s paper pipeline today, XUVCatalog’s
+projects: ParameterSweep’s paper pipeline today, SurveyCatalog’s
 cross-system analysis tomorrow, both reusing the same heavy dependency
 clones without needing a rebuild.</p>
 <p>The <strong>active project determines the badge scope</strong>. At connect time,
@@ -454,11 +490,11 @@ must be repo-relative and must stay inside the repository. Absolute
 paths and <code class="docutils literal notranslate"><span class="pre">..</span></code>-escaping paths are rejected by
 <code class="docutils literal notranslate"><span class="pre">flistValidateOutputFilePaths</span></code> on save. Step directories (<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>
 on each step) are held to the same rule by <code class="docutils literal notranslate"><span class="pre">flistValidateStepDirectories</span></code>
-— a value like <code class="docutils literal notranslate"><span class="pre">/workspace/GJ1132_XUV/KeplerFfdCorner</span></code> is rejected; the
-repo-relative form <code class="docutils literal notranslate"><span class="pre">KeplerFfdCorner</span></code> is required. Input references
+— a value like <code class="docutils literal notranslate"><span class="pre">/workspace/ParameterSweep/PosteriorCorner</span></code> is rejected; the
+repo-relative form <code class="docutils literal notranslate"><span class="pre">PosteriorCorner</span></code> is required. Input references
 inside <code class="docutils literal notranslate"><span class="pre">saCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code> are
 deliberately <em>not</em> validated — a step may legitimately read an
-absolute <code class="docutils literal notranslate"><span class="pre">/workspace/GJ1132_XUV/Plot/foo.pdf</span></code> produced by a sibling
+absolute <code class="docutils literal notranslate"><span class="pre">/workspace/SurveyCatalog/Plot/foo.pdf</span></code> produced by a sibling
 project. Badges are emitted only for the producing project; a
 consumer project sees the file as a read path, not as a tracked
 artifact.</p>

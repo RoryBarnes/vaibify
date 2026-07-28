@@ -205,13 +205,24 @@ Flags:
 
 - `--repo <path>` — path to the repository (defaults to the current
   directory).
-- `--rerun` / `--no-rerun` — also run step 4, the full project
+- `--rerun` / `--no-rerun` — also run the last step, the full project
   re-execution. Off by default; opt-in because projects can be
-  expensive and Tier 4 is best-effort (see [Known
+  expensive and the re-run tier is best-effort (see [Known
   limitations](#known-limitations)). When enabled, vaibify dispatches
   to the same pipeline runner that `vaibify run` uses, against a
-  running container resolved from the repository.
-- `--skip-tier 1|2|3` — skip a tier; may be repeated. Useful when a
+  running container resolved from the repository — and then re-hashes
+  every `MANIFEST.sha256` entry **inside that container**. Note the
+  asymmetry: the earlier tiers read the host repo `--repo` names,
+  while the re-run tier reads the container's project repo, because
+  `/workspace` is a Docker-managed named volume and the two are
+  different filesystems. The expected hashes are frozen before the run
+  starts, so a step that re-pins the manifest over its own changed
+  output is reported as a divergence rather than blessed.
+- `--workflow <name>` — which workflow to re-run, when the container
+  hosts more than one. Without it an ambiguous container is refused:
+  attesting one workflow for a run of another produces a record that
+  reads as complete and describes something that did not happen.
+- `--skip-tier 1|2|3|4` — skip a tier; may be repeated. Useful when a
   verifier only wants to confirm artefact identity without installing
   Python packages.
 

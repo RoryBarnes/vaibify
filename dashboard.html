@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev620 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev632 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae7c171d"></script>
+      <script src="_static/documentation_options.js?v=5933c92a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -290,12 +290,13 @@ From Here</strong>, insertion, and deletion.</p>
 <p>A step’s directory is not a free choice: its final component is
 derived from the step name by an obvious formula — remove the
 spaces, uppercase each word’s first letter, keep the rest as typed.
-“Step Name” becomes <code class="docutils literal notranslate"><span class="pre">StepName</span></code>; “GJ 1132 XUV” becomes <code class="docutils literal notranslate"><span class="pre">GJ1132XUV</span></code>;
-hyphens pass through (“TOI-540 XUV” → <code class="docutils literal notranslate"><span class="pre">TOI-540XUV</span></code>). Names may
+“Step Name” becomes <code class="docutils literal notranslate"><span class="pre">StepName</span></code>; “MCMC 512 Chains” becomes
+<code class="docutils literal notranslate"><span class="pre">MCMC512Chains</span></code>; hyphens pass through (“Grid-Search Sweep” →
+<code class="docutils literal notranslate"><span class="pre">Grid-SearchSweep</span></code>). Names may
 contain only letters, digits, spaces, and hyphens, and two steps may
 not map to the same directory (compared case-insensitively, because
 macOS clones sit on case-insensitive filesystems). Parent folders
-are free — <code class="docutils literal notranslate"><span class="pre">systems/GJ1132XUV</span></code> is fine; only the last component is
+are free — <code class="docutils literal notranslate"><span class="pre">analyses/MCMC512Chains</span></code> is fine; only the last component is
 governed.</p>
 <p>Creating a step derives the directory automatically; renaming one
 moves it (with the full cascade); the generic edit path refuses name

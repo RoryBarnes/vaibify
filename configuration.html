@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev620 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev632 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae7c171d"></script>
+      <script src="_static/documentation_options.js?v=5933c92a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -253,82 +253,87 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install DVC for data versioning</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">latex</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">nestedSampling</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Install MultiNest, pymultinest and ultranest (adds a Fortran/LAPACK toolchain and a from-source build)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">latex</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Install TeX Live</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">claude</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">claude</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install Claude Code CLI</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">claudeAutoUpdate</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">claudeAutoUpdate</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Allow Claude Code to update itself</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">codex</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">codex</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install OpenAI Codex CLI</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">codexAutoUpdate</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">codexAutoUpdate</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Update Codex when the container starts</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gemini</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gemini</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install Google Gemini CLI</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">geminiAutoUpdate</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">geminiAutoUpdate</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Allow Gemini CLI to update itself</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opencode</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opencode</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install OpenCode CLI</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opencodeAutoUpdate</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opencodeAutoUpdate</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Update OpenCode when the container starts</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cline</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cline</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install Cline CLI</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">clineAutoUpdate</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">clineAutoUpdate</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Update Cline when the container starts</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">openhands</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">openhands</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install OpenHands CLI</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">openhandsAutoUpdate</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">openhandsAutoUpdate</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Update OpenHands when the container starts</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pi</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pi</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Install Pi coding agent</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">piAutoUpdate</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">piAutoUpdate</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Update Pi when the container starts</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gpu</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gpu</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Enable NVIDIA GPU passthrough</p></td>

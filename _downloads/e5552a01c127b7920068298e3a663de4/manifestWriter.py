@@ -83,6 +83,7 @@ __all__ = [
     "fnWriteManifest",
     "fbRewriteManifestPathPrefix",
     "flistVerifyManifest",
+    "flistVerifyManifestEntries",
     "flistParseManifestLines",
     "flistDeclaredButMissingFromManifest",
     "fiCountManifestEntries",
@@ -242,13 +243,34 @@ def flistVerifyManifest(filesRepo):
     recorded file matches its stored hash. In-root symlinked entries
     verify against their resolved target's content.
 
+    Reads the manifest and compares against it in one call, which is
+    what every read-only caller wants. A caller that must pin the
+    expected side *before* something mutates the tree — the L3 rerun —
+    parses once with ``flistParseManifestLines`` and compares against
+    those frozen entries via ``flistVerifyManifestEntries``.
+
     Manifest-completeness (workflow declares paths the manifest does
     not cover) is surfaced via the explicit
     ``flistDeclaredButMissingFromManifest`` query, which both the
     dashboard route and the reproduce CLI consume.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    listEntries = flistParseManifestLines(filesRepo)
+    return flistVerifyManifestEntries(
+        filesRepo, flistParseManifestLines(filesRepo),
+    )
+
+
+def flistVerifyManifestEntries(filesRepo, listEntries):
+    """Re-hash a caller-supplied entry list and report mismatches.
+
+    ``listEntries`` is the parsed-manifest shape
+    (``{'sPath', 'sExpected'}``). Separating it from the parse is what
+    lets the L3 rerun freeze the expected hashes before execution: a
+    step that rewrites ``MANIFEST.sha256`` over its own changed output
+    leaves a self-consistent tree, so a comparison that re-reads the
+    manifest afterwards has nothing left to notice.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictHashed = _fdictHashCheckedPaths(
         filesRepo, [dictEntry["sPath"] for dictEntry in listEntries],
     )

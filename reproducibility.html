@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev620 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev632 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ae7c171d"></script>
+      <script src="_static/documentation_options.js?v=5933c92a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -305,13 +305,24 @@ L3 reproduction confirmed.
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">&lt;path&gt;</span></code> — path to the repository (defaults to the current
 directory).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code> — also run step 4, the full project
+<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code> — also run the last step, the full project
 re-execution. Off by default; opt-in because projects can be
-expensive and Tier 4 is best-effort (see <a class="reference internal" href="#known-limitations">Known
+expensive and the re-run tier is best-effort (see <a class="reference internal" href="#known-limitations">Known
 limitations</a>). When enabled, vaibify dispatches
 to the same pipeline runner that <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code> uses, against a
-running container resolved from the repository.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span> <span class="pre">1|2|3</span></code> — skip a tier; may be repeated. Useful when a
+running container resolved from the repository — and then re-hashes
+every <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> entry <strong>inside that container</strong>. Note the
+asymmetry: the earlier tiers read the host repo <code class="docutils literal notranslate"><span class="pre">--repo</span></code> names,
+while the re-run tier reads the container’s project repo, because
+<code class="docutils literal notranslate"><span class="pre">/workspace</span></code> is a Docker-managed named volume and the two are
+different filesystems. The expected hashes are frozen before the run
+starts, so a step that re-pins the manifest over its own changed
+output is reported as a divergence rather than blessed.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--workflow</span> <span class="pre">&lt;name&gt;</span></code> — which workflow to re-run, when the container
+hosts more than one. Without it an ambiguous container is refused:
+attesting one workflow for a run of another produces a record that
+reads as complete and describes something that did not happen.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span> <span class="pre">1|2|3|4</span></code> — skip a tier; may be repeated. Useful when a
 verifier only wants to confirm artefact identity without installing
 Python packages.</p></li>
 </ul>

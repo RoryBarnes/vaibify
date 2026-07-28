@@ -28,18 +28,15 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # isolation here.
 RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
 
-# Generic build tools required by the base image. gfortran, cmake,
-# and LAPACK/BLAS are baseline (not per-project system-packages.txt
-# entries, which is a gitignored user config) because the Dockerfile
-# itself needs them unconditionally to build the MultiNest native
-# library below.
+# Generic build tools required by the base image. Kept deliberately
+# small: anything needed by only one feature belongs in that feature's
+# overlay, not here. gfortran, cmake and LAPACK/BLAS used to sit in
+# this list to serve a MultiNest build that every image ran whether or
+# not the project used nested sampling; they moved to
+# overlays/nestedSampling.dockerfile on 2026-07-27 along with it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
-    gfortran \
-    cmake \
-    liblapack-dev \
-    libblas-dev \
     make \
     git \
     openssh-client \
@@ -197,42 +194,11 @@ RUN pip install --no-cache-dir cosmic-ray
 # runtime, no network service.
 RUN pip install --no-cache-dir claude-monitor
 
-# Nested-sampling Bayesian inference stack. ultranest is pure pip;
-# pymultinest is only a ctypes wrapper around the native MultiNest
-# library, so MultiNest is built from source here (gfortran, cmake,
-# and LAPACK/BLAS all from the baseline toolchain above — never from
-# the user-configurable system-packages.txt) and its shared libraries
-# installed where the loader finds them — a bare "pip install
-# pymultinest" imports fine and then fails at first use with
-# "libmultinest.so not found".
-#
-# Build ONLY the library targets (multinest_shared / multinest_static)
-# — a bare "make" also compiles the bundled example executables, and a
-# single example's compile failure aborts the whole build (exit 2)
-# even though libmultinest.so built cleanly. pymultinest needs only
-# the shared library, so the examples are pure liability. The upstream
-# CMake already adds -std=legacy -fallow-argument-mismatch for
-# gfortran >= 10, so no compatibility flag is needed here.
-#
-# Pinned to a commit, not a branch. A moving default branch makes two
-# builds of the "same" image link different numerical libraries, which
-# is precisely the drift a reproducibility tool must not ship. Bump it
-# deliberately; a shallow fetch of one SHA keeps the clone cheap.
-ARG MULTINEST_COMMIT=a06c192c5a940a71a35cf6fb8a5fbf66df4ac0b6
-RUN mkdir -p /tmp/MultiNest \
-    && git -C /tmp/MultiNest init -q \
-    && git -C /tmp/MultiNest remote add origin \
-        https://github.com/JohannesBuchner/MultiNest.git \
-    && git -C /tmp/MultiNest fetch -q --depth 1 origin \
-        "${MULTINEST_COMMIT}" \
-    && git -C /tmp/MultiNest checkout -q FETCH_HEAD \
-    && cmake -S /tmp/MultiNest -B /tmp/MultiNest/build \
-    && make -C /tmp/MultiNest/build -j"$(nproc)" \
-        multinest_shared multinest_static \
-    && cp -a /tmp/MultiNest/lib/. /usr/local/lib/ \
-    && ldconfig \
-    && rm -rf /tmp/MultiNest
-RUN pip install --no-cache-dir ultranest pymultinest
+# Nested sampling (MultiNest, ultranest, pymultinest) is NOT installed
+# here. It is a domain-specific dependency and lives in
+# overlays/nestedSampling.dockerfile behind the bNestedSampling feature
+# flag, together with the gfortran/cmake/LAPACK/BLAS toolchain that
+# exists only to build it.
 
 # Conditional conda/mamba install for non-pip package managers.
 # Wrap the network call so a TLS or routing failure to GitHub /
