@@ -7,14 +7,14 @@ different rule set; the union is exercised here so a regression in
 any one caller still surfaces a failing test.
 """
 
-import time
-
 import pytest
 
 from vaibify.reproducibility.credentialRedactor import (
     fsRedactCredentials,
     fsRedactUrlCredentials,
 )
+
+from tests.timingSupport import ffMeasureFastestRun
 
 
 # ── URL-embedded credentials ────────────────────────────────────
@@ -162,10 +162,14 @@ def test_pathological_colon_input_is_linear_time():
     """
     sLong = ":" * 50_000 + "X"
     sInput = "Authorization: " + sLong
-    fStart = time.perf_counter()
     sResult = fsRedactCredentials(sInput)
-    fElapsed = time.perf_counter() - fStart
     # 1.0s is generous; linear regex runs in milliseconds even at 50k.
+    # Fastest of several samples, so a loaded runner cannot report a
+    # ReDoS that is not there. The regexes are stateless, so repetition
+    # measures the same work each time.
+    fElapsed = ffMeasureFastestRun(
+        lambda: fsRedactCredentials(sInput),
+    )
     assert fElapsed < 1.0, (
         f"redactor took {fElapsed:.3f}s on a 50k-char input — "
         "possible ReDoS regression"
@@ -177,9 +181,9 @@ def test_pathological_colon_input_is_linear_time():
 def test_pathological_at_sign_input_is_linear_time():
     """Repeating ``@``s in URL position must not blow up the URL regex."""
     sInput = "https://" + "a:b@" * 5_000 + "host.example/"
-    fStart = time.perf_counter()
-    fsRedactCredentials(sInput)
-    fElapsed = time.perf_counter() - fStart
+    fElapsed = ffMeasureFastestRun(
+        lambda: fsRedactCredentials(sInput),
+    )
     assert fElapsed < 1.0
 
 

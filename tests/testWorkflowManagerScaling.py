@@ -17,8 +17,6 @@ Items 2 and 3 share a workflow-content-hash-keyed LRU cache so a
 repeat call on identical input never reruns the graph build.
 """
 
-import time
-
 from vaibify.gui import workflowManager
 from vaibify.gui.workflowManager import (
     _fdictStripComputedFields,
@@ -27,6 +25,8 @@ from vaibify.gui.workflowManager import (
     fdictBuildImplicitDependencies,
     fnClearDepGraphCache,
 )
+
+from tests.timingSupport import ffMeasureFastestRun
 
 
 def _fdictLinearChainWorkflow(iSteps):
@@ -78,10 +78,15 @@ class TestFdictBuildImplicitDependenciesScaling:
         fnClearDepGraphCache()
 
     def test_500_step_nested_completes_quickly(self):
-        dictWorkflow = _fdictNestedDirectoryWorkflow(500)
-        fStart = time.perf_counter()
-        fdictBuildImplicitDependencies(dictWorkflow)
-        fElapsed = time.perf_counter() - fStart
+        # This builder is not currently cached, so the reset is
+        # belt-and-braces here rather than load-bearing; it keeps the
+        # measurement correct if the builder ever joins the dep cache
+        # its two siblings already use.
+        fElapsed = ffMeasureFastestRun(
+            lambda: fdictBuildImplicitDependencies(
+                _fdictNestedDirectoryWorkflow(500)),
+            fnResetBetweenSamples=fnClearDepGraphCache,
+        )
         assert fElapsed < 1.0
 
     def test_correctness_small_nested(self):
@@ -138,10 +143,15 @@ class TestFdictBuildDownstreamMapScaling:
         assert dictDownstream[499] == set()
 
     def test_chain_completes_quickly_500_steps(self):
-        dictWorkflow = _fdictLinearChainWorkflow(500)
-        fStart = time.perf_counter()
-        fdictBuildDownstreamMap(dictWorkflow)
-        fElapsed = time.perf_counter() - fStart
+        # The reset IS load-bearing here: this builder caches its
+        # closure, and without clearing between samples the measurement
+        # drops ~5x because it times a hash and a dict lookup instead of
+        # the reverse-topological pass this test exists to bound.
+        fElapsed = ffMeasureFastestRun(
+            lambda: fdictBuildDownstreamMap(
+                _fdictLinearChainWorkflow(500)),
+            fnResetBetweenSamples=fnClearDepGraphCache,
+        )
         assert fElapsed < 1.0
 
     def test_matches_legacy_bfs_for_50_step_dag(self):
@@ -263,7 +273,10 @@ class TestFdictStripComputedFieldsShallow:
         for dictStep in dictWorkflow["listSteps"]:
             dictStep["saStepScripts"] = ["a.py", "b.py"]
             dictStep["saTestStandards"] = ["s1", "s2"]
-        fStart = time.perf_counter()
-        _fdictStripComputedFields(dictWorkflow)
-        fElapsed = time.perf_counter() - fStart
+        # No reset hook: the strip is memoization-free and does not
+        # mutate its argument (pinned by the two tests above), so every
+        # sample does the same full traversal.
+        fElapsed = ffMeasureFastestRun(
+            lambda: _fdictStripComputedFields(dictWorkflow),
+        )
         assert fElapsed < 0.5
