@@ -17,6 +17,11 @@ import pytest
 from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
+from vaibify.reproducibility.rerunVerification import (
+    S_DIVERGENCE_PIPELINE_FAILED,
+    fdictVerifyRerunOutputs,
+    fiCountManifestEntriesOrZero,
+)
 
 
 def _fcompletedProcess(iReturnCode, sStdout="", sStderr=""):
@@ -201,42 +206,43 @@ def test_recorded_image_digest_handles_non_dict_container(tmp_path):
 
 
 # ============================================================================
-# _fiManifestEntryCount — lines 515-516
+# fiCountManifestEntriesOrZero — the defensive count both lanes share
 # ============================================================================
 
 
 def test_manifest_entry_count_returns_zero_on_oserror(tmp_path):
-    """Lines 515-516: an OSError from the parser maps to zero."""
+    """An OSError from the parser maps to zero."""
     with patch(
-        "vaibify.cli.commandReproduce.manifestWriter.fiCountManifestEntries",
+        "vaibify.reproducibility.rerunVerification.fiCountManifestEntries",
         side_effect=OSError("io"),
     ):
-        assert commandReproduce._fiManifestEntryCount(str(tmp_path)) == 0
+        assert fiCountManifestEntriesOrZero(str(tmp_path)) == 0
 
 
 def test_manifest_entry_count_returns_zero_on_filenotfounderror(tmp_path):
-    """Lines 515-516: a FileNotFoundError maps to zero."""
-    assert commandReproduce._fiManifestEntryCount(str(tmp_path)) == 0
+    """A FileNotFoundError maps to zero."""
+    assert fiCountManifestEntriesOrZero(str(tmp_path)) == 0
 
 
 def test_manifest_entry_count_returns_zero_on_valueerror(tmp_path):
-    """Lines 515-516: a ValueError from the parser maps to zero."""
+    """A ValueError from the parser maps to zero."""
     with patch(
-        "vaibify.cli.commandReproduce.manifestWriter.fiCountManifestEntries",
+        "vaibify.reproducibility.rerunVerification.fiCountManifestEntries",
         side_effect=ValueError("corrupt"),
     ):
-        assert commandReproduce._fiManifestEntryCount(str(tmp_path)) == 0
+        assert fiCountManifestEntriesOrZero(str(tmp_path)) == 0
 
 
 # ============================================================================
-# _fbWriteAttestationFromRun — lines 451-452, 489-491
+# _fbWriteAttestationFromRun
 # ============================================================================
 
 
 def test_write_attestation_from_run_writes_passed_record(fixtureRepo):
-    """A passing rerun writes a passed attestation file."""
+    """A passing rerun over unchanged artefacts writes a passed record."""
+    dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), True)
     bWritten = commandReproduce._fbWriteAttestationFromRun(
-        str(fixtureRepo), bRerunPassed=True, fDuration=2.5,
+        str(fixtureRepo), dictOutcome, 2.5,
     )
     assert bWritten is True
     pathAttestation = (
@@ -246,12 +252,20 @@ def test_write_attestation_from_run_writes_passed_record(fixtureRepo):
     assert dictPayload["sStatus"] == "passed"
     assert dictPayload["listDivergedHashes"] == []
     assert dictPayload["fDurationSeconds"] == 2.5
+    assert dictPayload["iOutputHashesMatched"] == 3
+    assert dictPayload["iOutputHashesTotal"] == 3
 
 
 def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
-    """A failing rerun writes a failed attestation with diverged-hash line."""
+    """A non-zero pipeline exit is named in listDivergedHashes.
+
+    The artefacts on disk are untouched here, so the re-hash honestly
+    reports 3 of 3 matching; the rerun itself is what failed, and that
+    fact is the first diverged entry rather than a zeroed count.
+    """
+    dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), False)
     bWritten = commandReproduce._fbWriteAttestationFromRun(
-        str(fixtureRepo), bRerunPassed=False, fDuration=1.0,
+        str(fixtureRepo), dictOutcome, 1.0,
     )
     assert bWritten is True
     pathAttestation = (
@@ -260,19 +274,20 @@ def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
     dictPayload = json.loads(pathAttestation.read_text())
     assert dictPayload["sStatus"] == "failed"
     assert dictPayload["listDivergedHashes"] == [
-        "rerun pipeline exited non-zero"
+        S_DIVERGENCE_PIPELINE_FAILED
     ]
-    assert dictPayload["iOutputHashesMatched"] == 0
+    assert dictPayload["iOutputHashesMatched"] == 3
 
 
 def test_write_attestation_from_run_handles_oserror(fixtureRepo):
-    """Lines 489-491: an OSError during write surfaces as False and a warning."""
+    """An OSError during write surfaces as False and a warning."""
+    dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), True)
     with patch(
         "vaibify.cli.commandReproduce.fnWriteAttestation",
         side_effect=OSError("disk full"),
     ):
         bWritten = commandReproduce._fbWriteAttestationFromRun(
-            str(fixtureRepo), bRerunPassed=True, fDuration=1.0,
+            str(fixtureRepo), dictOutcome, 1.0,
         )
     assert bWritten is False
 

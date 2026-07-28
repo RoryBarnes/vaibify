@@ -22,10 +22,12 @@ from vaibify.gui.routes.reproducibilityRoutes import (
     _DICT_VERIFY_TASKS,
     _fdictBuildAttestationResponse,
     _fdictRunReproductionSync,
-    _fiManifestEntryCount,
     _fnPersistAttestation,
     _fsResolveImageDigest,
     fnRegisterAll,
+)
+from vaibify.reproducibility.rerunVerification import (
+    fiCountManifestEntriesOrZero,
 )
 from vaibify.reproducibility.l3Attestation import (
     S_STATUS_PASSED,
@@ -279,7 +281,7 @@ def test_l3_verify_returns_202_with_handle_when_ready(
         "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
         return_value=True,
     ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
+        "vaibify.reproducibility.rerunVerification.flistVerifyManifest",
         return_value=[],
     ):
         response = fixtureClient.post(
@@ -325,12 +327,12 @@ def test_run_reproduction_sync_reports_mismatches(fixtureProjectRepo):
         "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
         return_value=True,
     ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
+        "vaibify.reproducibility.rerunVerification.flistVerifyManifest",
         return_value=[
             {"sPath": "a.txt", "sExpected": "x", "sActual": "y"},
         ],
     ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fiManifestEntryCount",
+        "vaibify.reproducibility.rerunVerification.fiCountManifestEntries",
         return_value=5,
     ):
         dictResult = _fdictRunReproductionSync(fixtureProjectRepo, {})
@@ -346,10 +348,10 @@ def test_run_reproduction_sync_reports_pipeline_failure(fixtureProjectRepo):
         "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
         return_value=False,
     ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
+        "vaibify.reproducibility.rerunVerification.flistVerifyManifest",
         return_value=[],
     ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fiManifestEntryCount",
+        "vaibify.reproducibility.rerunVerification.fiCountManifestEntries",
         return_value=2,
     ):
         dictResult = _fdictRunReproductionSync(fixtureProjectRepo, {})
@@ -363,10 +365,10 @@ def test_run_reproduction_sync_passes_when_clean(fixtureProjectRepo):
         "vaibify.gui.routes.reproducibilityRoutes._fbInvokeRerunWorkflow",
         return_value=True,
     ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes.flistVerifyManifest",
+        "vaibify.reproducibility.rerunVerification.flistVerifyManifest",
         return_value=[],
     ), patch(
-        "vaibify.gui.routes.reproducibilityRoutes._fiManifestEntryCount",
+        "vaibify.reproducibility.rerunVerification.fiCountManifestEntries",
         return_value=3,
     ):
         dictResult = _fdictRunReproductionSync(fixtureProjectRepo, {})
@@ -437,13 +439,13 @@ def test_invoke_rerun_workflow_success_path(fixtureProjectRepo):
 
 
 # ============================================================================
-# _fiManifestEntryCount, _fsResolveImageDigest
+# manifest entry count, _fsResolveImageDigest
 # ============================================================================
 
 
 def test_manifest_entry_count_handles_missing_manifest(fixtureProjectRepo):
     """A missing manifest yields 0, not an exception."""
-    assert _fiManifestEntryCount(fixtureProjectRepo) == 0
+    assert fiCountManifestEntriesOrZero(fixtureProjectRepo) == 0
 
 
 def test_resolve_image_digest_handles_missing_environment(fixtureProjectRepo):

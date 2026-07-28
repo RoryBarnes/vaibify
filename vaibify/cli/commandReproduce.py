@@ -8,14 +8,20 @@ inside a project repository. Walks five tiers in sequence:
   ``requirements.lock``.
 * Tier 3 — container image digest pull via
   ``.vaibify/environment.json``.
-* Tier 4 — L3 artifact coherence (six readiness verifiers).
-* Tier 5 — opt-in rebuild and hash compare via ``--rerun``. Writes
-  ``.vaibify/l3_attestation.json`` on completion (pass or fail) and
-  archives a copy to ``.vaibify/l3_attestations/``.
+* Tier 4 — L3 artifact coherence. Runs six of the seven verifiers
+  ``levelGates.fbL3ReadinessOK`` composes; see :func:`fbVerifyTier4`
+  for the one it cannot evaluate and why.
+* Tier 5 — opt-in rebuild and hash compare via ``--rerun``. The
+  workflow is re-run, then every ``MANIFEST.sha256`` entry is
+  re-hashed against what the rerun produced; the tier passes only
+  when both the rerun exits zero and every hash still matches.
+  Writes ``.vaibify/l3_attestation.json`` on completion (pass or
+  fail) and archives a copy to ``.vaibify/l3_attestations/``.
 
-The command never modifies files inside the project repo except for
-the attestation files (Tier 5) and ``pip install`` updating the
-user's Python environment (Tier 2).
+Tiers 1-4 are read-only over the project repo. Tier 5 is not: the
+rerun executes the workflow, so it rewrites whatever the workflow's
+steps produce, and the command then writes the attestation files.
+Tier 2's ``pip install`` updates the user's Python environment.
 """
 
 import json
@@ -50,6 +56,9 @@ from vaibify.reproducibility.levelGates import (
     fbVerifyReproduceScript,
 )
 from vaibify.reproducibility.manifestWriter import flistVerifyManifest
+from vaibify.reproducibility.rerunVerification import (
+    fdictVerifyRerunOutputs,
+)
 
 
 __all__ = [
@@ -219,8 +228,8 @@ def fbVerifyTier2(sProjectRepo):
     """Install hash-pinned dependencies from ``requirements.lock``.
 
     Runs ``<python> -m pip install --require-hashes -r
-    requirements.lock`` via subprocess and streams the output to the
-    user. When ``pip`` exits with a hash-related error and ``uv`` is
+    requirements.lock`` via subprocess and writes the captured stdout
+    once it exits. When ``pip`` exits with a hash-related error and ``uv`` is
     on PATH, retries via ``uv pip install --require-hashes`` so users
     on uv-only environments are not stranded. Returns ``True`` only
     when an install command exits zero. Exits with code 2 when the
@@ -282,10 +291,14 @@ def _fbRunUvFallback(pathLock):
 def fbVerifyTier3(sProjectRepo):
     """Pull the pinned container image recorded in ``environment.json``.
 
-    Reads ``.vaibify/environment.json``, extracts ``sImageDigest``,
-    and runs ``docker pull <image_digest>``. Returns ``True`` when
-    the pull succeeds. Exits with code 2 when ``environment.json``
-    is missing or the digest field is unset.
+    Reads ``.vaibify/environment.json``, extracts the *top-level*
+    ``sImageDigest``, and runs ``docker pull <image_digest>``.
+    Returns ``True`` when the pull succeeds. Exits with code 2 when
+    ``environment.json`` is missing, when the top-level digest field
+    is unset, or when it fails ``fbIsValidImageDigest``. Note the
+    narrower read than ``_fsRecordedImageDigest``, which also honours
+    the nested ``dictContainer.sImageDigest`` layout: a snapshot
+    carrying only the nested form exits 2 here.
     """
     pathEnvironment = Path(sProjectRepo) / _S_ENVIRONMENT_RELATIVE
     if not pathEnvironment.is_file():
@@ -330,12 +343,19 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 
 
 def fbVerifyTier4(sProjectRepo):
-    """Verify the six AICS L3 readiness checks against the envelope.
+    """Verify six of the seven AICS L3 readiness checks.
 
-    Reuses the host-side ``levelGates`` verifiers so the dashboard
-    and the CLI agree on what "L3-ready" means. Returns True iff every
-    verifier passes; on failure prints a per-verifier checklist so
-    the user sees which artefacts need regenerating.
+    Reuses the host-side ``levelGates`` verifiers so the CLI and the
+    dashboard apply the same rule to each check they share. They do
+    not cover the same set: ``fbWorkflowDeclaresBinaries`` reads
+    workflow-root fields (``bNoStandaloneBinaries``,
+    ``listDeclaredBinaries``) that ``_fdictAggregateAllWorkflows``
+    does not union across project.json files, so the CLI cannot
+    evaluate it and does not pretend to. A repo can therefore clear
+    Tier 4 and still fail the dashboard's ``fbL3ReadinessOK``.
+    Returns True iff every verifier it does run passes; on failure
+    prints a per-verifier checklist so the user sees which artefacts
+    need regenerating.
     """
     dictWorkflow = _fdictAggregateAllWorkflows(sProjectRepo) or {
         "listSteps": [],
@@ -391,6 +411,11 @@ def fbRerunWorkflow(sProjectRepo):
     are caught so a registry miss inside ``fconfigResolveProject``
     (which calls ``sys.exit(1)``) does not short-circuit the
     surrounding ``vaibify reproduce`` exit-code logic.
+
+    This answers "did the workflow run again", nothing more. Whether
+    it *reproduced* is a separate question that only the post-rerun
+    re-hash can answer; ``_ftRunRerunTier`` asks it. Do not treat this
+    return value as the Tier 5 verdict.
     """
     _fnPrintHeader(
         f"5/{_S_TIER_DENOMINATOR}",
@@ -499,19 +524,25 @@ def _fnEmitFinalSummary(bAllPassed, bRerun, bAttestationWritten):
     click.echo("L3 reproduction failed; see tier output above.")
 
 
-def _fdictBuildRerunAttestation(sProjectRepo, bRerunPassed, fDuration):
-    """Return the attestation dict describing a rerun outcome."""
-    iTotalEntries = _fiManifestEntryCount(sProjectRepo)
+def _fdictBuildRerunAttestation(sProjectRepo, dictOutcome, fDuration):
+    """Return the attestation dict describing a rerun + hash-compare outcome.
+
+    Every count and every diverged path comes from ``dictOutcome``, the
+    post-rerun re-hash produced by
+    :func:`~vaibify.reproducibility.rerunVerification.fdictVerifyRerunOutputs`.
+    Nothing here may be inferred from the pipeline's exit code: that is
+    the substitution that once let a byte-changing rerun attest N of N.
+    """
     return fdictBuildAttestation(
-        sStatus=S_STATUS_PASSED if bRerunPassed else S_STATUS_FAILED,
+        sStatus=(
+            S_STATUS_PASSED if dictOutcome["bPassed"] else S_STATUS_FAILED
+        ),
         sManifestDigest=fsCurrentManifestDigest(sProjectRepo),
         sImageDigest=_fsRecordedImageDigest(sProjectRepo),
         fDurationSeconds=fDuration,
-        iOutputHashesMatched=iTotalEntries if bRerunPassed else 0,
-        iOutputHashesTotal=iTotalEntries,
-        listDivergedHashes=[] if bRerunPassed else [
-            "rerun pipeline exited non-zero"
-        ],
+        iOutputHashesMatched=dictOutcome["iOutputHashesMatched"],
+        iOutputHashesTotal=dictOutcome["iOutputHashesTotal"],
+        listDivergedHashes=dictOutcome["listDivergedHashes"],
         sRunLogPath="",
         dictAiProvenance=_fdictBuildCliProvenanceStamp(sProjectRepo),
     )
@@ -534,7 +565,7 @@ def _fdictBuildCliProvenanceStamp(sProjectRepo):
     )
 
 
-def _fbWriteAttestationFromRun(sProjectRepo, bRerunPassed, fDuration):
+def _fbWriteAttestationFromRun(sProjectRepo, dictOutcome, fDuration):
     """Persist an L3 attestation reflecting the rerun outcome.
 
     Called only when ``--rerun`` ran end-to-end so the attestation
@@ -543,7 +574,7 @@ def _fbWriteAttestationFromRun(sProjectRepo, bRerunPassed, fDuration):
     history table can show "last rebuild failed".
     """
     dictAttestation = _fdictBuildRerunAttestation(
-        sProjectRepo, bRerunPassed, fDuration,
+        sProjectRepo, dictOutcome, fDuration,
     )
     try:
         fnWriteAttestation(sProjectRepo, dictAttestation)
@@ -571,23 +602,36 @@ def _fsRecordedImageDigest(sProjectRepo):
     return dictPayload.get("sImageDigest") or ""
 
 
-def _fiManifestEntryCount(sProjectRepo):
-    """Return the manifest entry count, treating absence as zero."""
-    try:
-        return manifestWriter.fiCountManifestEntries(sProjectRepo)
-    except (FileNotFoundError, OSError, ValueError):
-        return 0
+def _fnReportHashCompare(dictOutcome):
+    """Print the post-rerun hash compare, naming every diverged artefact."""
+    sCounts = (
+        f"{dictOutcome['iOutputHashesMatched']}/"
+        f"{dictOutcome['iOutputHashesTotal']}"
+    )
+    if dictOutcome["bPassed"]:
+        click.echo(f"... hashes match {sCounts} OK")
+        return
+    click.echo(f"... hashes match {sCounts} FAIL")
+    for sDiverged in dictOutcome["listDivergedHashes"]:
+        click.echo(f"  diverged: {sDiverged}")
 
 
 def _ftRunRerunTier(sProjectRepo):
-    """Execute tier 5 (rerun) and return ``(bPassed, bAttestationWritten)``."""
+    """Re-run, re-hash, attest; return ``(bPassed, bAttestationWritten)``.
+
+    ``bPassed`` is the hash-compare verdict, not the pipeline's exit
+    code: a step that exits zero having changed an output byte has not
+    reproduced anything, and Tier 5 must say so.
+    """
     fStarted = time.monotonic()
-    bRerunPassed = fbRerunWorkflow(sProjectRepo)
+    bRerunSucceeded = fbRerunWorkflow(sProjectRepo)
+    dictOutcome = fdictVerifyRerunOutputs(sProjectRepo, bRerunSucceeded)
+    _fnReportHashCompare(dictOutcome)
     bAttestationWritten = _fbWriteAttestationFromRun(
-        sProjectRepo, bRerunPassed,
+        sProjectRepo, dictOutcome,
         time.monotonic() - fStarted,
     )
-    return bRerunPassed, bAttestationWritten
+    return dictOutcome["bPassed"], bAttestationWritten
 
 
 @click.command("reproduce")
@@ -598,8 +642,9 @@ def _ftRunRerunTier(sProjectRepo):
 )
 @click.option(
     "--rerun/--no-rerun", "bRerun", default=False,
-    help="Also re-run the workflow (step 5) and write an L3 "
-         "attestation. Off by default.",
+    help="Also re-run the workflow (step 5), re-hash its outputs "
+         "against MANIFEST.sha256, and write an L3 attestation. "
+         "Off by default.",
 )
 @click.option(
     "--skip-tier", "saSkipTier", multiple=True,

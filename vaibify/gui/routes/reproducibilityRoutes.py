@@ -60,7 +60,7 @@ from ...reproducibility.levelGates import (
     fdictL3ReadinessGaps,
     fiAICSLevel,
 )
-from ...reproducibility.manifestWriter import flistVerifyManifest
+from ...reproducibility.rerunVerification import fdictVerifyRerunOutputs
 from ...reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
     fnGenerateReproduceScript,
@@ -298,31 +298,22 @@ def _fdictRunReproductionSync(filesRepo, dictWorkflow):
     invokes the same pipeline runner that ``vaibify run`` uses. After
     the rerun completes, the manifest is re-verified against the freshly
     produced outputs so the attestation records what actually matched on
-    disk. The locked-in plan decision is that the L3 badge only lights
-    after this expensive rebuild succeeds; a manifest re-hash alone is
-    the cheap readiness gateway exposed separately at
+    disk. That comparison is
+    ``rerunVerification.fdictVerifyRerunOutputs``, shared with the
+    ``vaibify reproduce --rerun`` lane — do not inline it here again, as
+    the two derivations previously drifted until the CLI stopped
+    comparing anything. The locked-in plan decision is that the L3 badge
+    only lights after this expensive rebuild succeeds; a manifest
+    re-hash alone is the cheap readiness gateway exposed separately at
     ``/level3/readiness``.
     """
     del dictWorkflow  # workflow state is loaded from the container
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     bRerunSucceeded = _fbInvokeRerunWorkflow(fsRepoRootOf(filesRepo))
-    listMismatches = flistVerifyManifest(filesRepo)
-    iTotalEntries = _fiManifestEntryCount(filesRepo)
-    iMatching = max(iTotalEntries - len(listMismatches), 0)
-    listDiverged = [
-        dictMismatch["sPath"] for dictMismatch in listMismatches
-    ]
-    if not bRerunSucceeded:
-        listDiverged = (
-            ["pipeline rerun exited non-zero"] + listDiverged
-        )
-    sImageDigest = _fsResolveImageDigest(filesRepo)
+    dictOutcome = fdictVerifyRerunOutputs(filesRepo, bRerunSucceeded)
     return {
-        "bPassed": bRerunSucceeded and not listMismatches,
-        "iOutputHashesMatched": iMatching,
-        "iOutputHashesTotal": iTotalEntries,
-        "listDivergedHashes": listDiverged,
-        "sImageDigest": sImageDigest,
+        **dictOutcome,
+        "sImageDigest": _fsResolveImageDigest(filesRepo),
         "sRunLogPath": "",
     }
 
@@ -346,17 +337,6 @@ def _fbInvokeRerunWorkflow(sProjectRepo):
     except (Exception, SystemExit) as exc:  # noqa: BLE001
         logger.exception("fbRerunWorkflow raised: %s", exc)
         return False
-
-
-def _fiManifestEntryCount(filesRepo):
-    """Return the manifest entry count, treating absence as zero."""
-    from ...reproducibility.manifestWriter import (
-        fiCountManifestEntries,
-    )
-    try:
-        return fiCountManifestEntries(filesRepo)
-    except (FileNotFoundError, OSError, ValueError):
-        return 0
 
 
 def _fsResolveImageDigest(filesRepo):
