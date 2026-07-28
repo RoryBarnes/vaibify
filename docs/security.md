@@ -13,7 +13,7 @@ restrictions:
 | Control                | Implementation                              |
 |------------------------|---------------------------------------------|
 | No Docker socket       | The Docker socket is never mounted inside the container. Code in the container cannot create, inspect, or control other containers. |
-| Unprivileged user      | The container runs as a non-root user via `gosu`. The root user is used only during image build. |
+| Unprivileged user      | Your code runs as a non-root user. The entrypoint starts as root to configure system paths, then `exec`s itself through `gosu` as the unprivileged user for workspace setup and everything after — so root exists at container start, not only at image build, but nothing you run inherits it. `sudo` is absent from the image. |
 | No host filesystem     | The host filesystem is not bind-mounted by default. Files enter and leave the container through `vaibify push` and `vaibify pull`. |
 | Workspace volume       | A Docker volume provides persistent storage at the configured `workspaceRoot`. Volumes are isolated from the host directory tree. |
 | Network isolation      | Set `networkIsolation: true` in `vaibify.yml` to start the container with `--network none`, blocking all outbound traffic. |
@@ -95,8 +95,11 @@ The defenses are designed to contain:
 
 - **Filesystem escape** -- no host mounts, no Docker socket.
 - **Network exfiltration** -- optional network isolation blocks all traffic.
-- **Credential theft** -- secrets exist only as ephemeral files with
-  restrictive permissions.
+- **Credential theft** -- partially. Secrets resolved from the host's
+  credential manager are mode-600 files, but they outlive the container
+  and an agent's own logins persist in a plaintext keyring volume (see
+  Secrets Management above). Treat "an agent was compromised" as "every
+  configured provider's session was exposed".
 - **Privilege escalation** -- the container runs as an unprivileged user
   with no `sudo` access.
 

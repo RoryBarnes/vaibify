@@ -6,8 +6,13 @@ commands in order and produces output files such as figures or data products.
 
 ## Project File
 
-Pipelines are defined in `project.json` at the repository root. The file has
-four top-level fields:
+Pipelines are defined in a `project.json` under `.vaibify/projects/` in
+the project repository. That is where the dashboard and `vaibify run`
+look for it; `vaibify init --template` writes it there. (`.vaibify/
+workflows/` is the legacy location and is still read, so existing
+repositories keep working.)
+
+The file has four top-level fields:
 
 | Field              | Type    | Description                              |
 |--------------------|---------|------------------------------------------|

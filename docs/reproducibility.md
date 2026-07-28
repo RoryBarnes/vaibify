@@ -367,8 +367,8 @@ are captured in the image.
 
 The recommended workflow for sharing reproducible results:
 
-1. Commit `vaibify.yml`, `container.conf`, and `project.json` to
-   your repository.
+1. Commit `vaibify.yml`, `container.conf`, and
+   `.vaibify/projects/project.json` to your repository.
 2. Tag a release when results are final.
 3. Create a Zenodo DOI through the dashboard's archive action.
 4. Reference the DOI in your manuscript.
