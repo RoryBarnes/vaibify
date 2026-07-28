@@ -304,17 +304,19 @@ verifier can fall back to plain coreutils.
 
 ## Publishing a Workflow
 
-Generate a GitHub Actions workflow that automates the entire pipeline:
-
-```bash
-vaibify publish workflow
+```{warning}
+Not implemented — this section describes an intended feature. The
+`publish` command group is not registered on the CLI, so
+`vaibify publish workflow` is an unknown command, and
+`vaibify/reproducibility/githubWorkflow.py` (the generator described
+below) has no caller in the product. Nothing here runs today.
 ```
 
-This reads `project.json` and `vaibify.yml`, renders the Jinja2
-template at `vaibify/templates/workflow.yml.j2`, and writes the result to
-`.github/workflows/vaibify.yml`.
+The intent is to read `project.json` and `vaibify.yml`, render the
+Jinja2 template at `vaibify/templates/workflow.yml.j2`, and write the
+result to `.github/workflows/vaibify.yml`.
 
-The generated workflow:
+The generated workflow would:
 
 1. Checks out the repository.
 2. Installs Vaibify.
@@ -324,15 +326,18 @@ The generated workflow:
 
 ## Archiving to Zenodo
 
-Create a Zenodo deposit for long-term archival:
+Zenodo archiving is real and reachable — through the AICS Level 2
+workflow in the dashboard, not through the CLI.
 
-```bash
-vaibify publish archive
+```{warning}
+`vaibify publish archive` is not implemented and not registered on the
+CLI. Use the dashboard's archive action instead.
 ```
 
-This packages the Docker image, configuration files, and pipeline outputs
-into a tarball, uploads it to Zenodo (or the Zenodo sandbox, depending on
-the `reproducibility.zenodoService` setting), and returns a DOI.
+The intended CLI form would package the Docker image, configuration
+files, and pipeline outputs into a tarball, upload it to Zenodo (or the
+Zenodo sandbox, depending on the `reproducibility.zenodoService`
+setting), and return a DOI.
 
 Authentication with Zenodo is handled through the host's credential
 manager. Vaibify never stores tokens in configuration files or
@@ -364,10 +369,12 @@ The recommended workflow for sharing reproducible results:
 
 1. Commit `vaibify.yml`, `container.conf`, and `project.json` to
    your repository.
-2. Run `vaibify publish workflow` to add CI automation.
-3. Tag a release when results are final.
-4. Run `vaibify publish archive` to create a Zenodo DOI.
-5. Reference the DOI in your manuscript.
+2. Tag a release when results are final.
+3. Create a Zenodo DOI through the dashboard's archive action.
+4. Reference the DOI in your manuscript.
+
+(CI automation would be step 2 once `vaibify publish workflow` exists;
+until then, add the GitHub Actions workflow by hand.)
 
 A collaborator can then reproduce your results by cloning the repository
 and running:

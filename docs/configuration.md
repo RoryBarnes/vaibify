@@ -27,11 +27,21 @@ file; the Python dataclass uses Hungarian notation internally.
 | `repositories`    | dict        | Repository definitions (see below)     |
 | `systemPackages`  | string      | APT packages to install                |
 | `pythonPackages`  | string      | pip packages to install                |
-| `condaPackages`   | string      | conda/mamba packages to install        |
+| `condaPackages`   | string      | **Refused at validation** — see below  |
 | `binaries`        | dict        | Pre-built binaries to download         |
 | `ports`           | dict        | Ports to expose from the container     |
 | `bindMounts`      | dict        | Host directories to mount              |
 | `secrets`         | dict        | Secret references (see Security below) |
+
+```{note}
+**`condaPackages` is refused, not installed.** A non-empty value fails
+validation. The image installs Miniforge, but there is no
+`conda install` step and no build argument carries the list, so
+accepting the field would produce a container without the requested
+packages and say nothing. Refusing is the honest interim until the
+install step is wired; install what you need with `pythonPackages`, or
+add a `conda install` line to `container.conf`.
+```
 
 ### Features Block
 
