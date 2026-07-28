@@ -52,9 +52,15 @@ pygments_style = "sphinx"
 
 html_theme = "sphinx_rtd_theme"
 
+# sphinx-rtd-theme 3.0 removed ``display_version`` (its replacement,
+# ``version_selector``, drives the Read the Docs flyout, which this
+# site does not use — it publishes to GitHub Pages). The option had
+# been silently unsupported on CI ever since the unpinned install
+# started resolving 3.x; adding -W to the docs build is what turned
+# that long-standing warning into a failure. Every remaining option
+# here is checked against the theme's own [options] table.
 html_theme_options = {
     "logo_only": False,
-    "display_version": True,
 }
 
 html_static_path = ["_static"]

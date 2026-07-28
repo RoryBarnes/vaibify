@@ -81,6 +81,23 @@ mutation = [
 replay = [
     "detect-secrets>=1.4",
 ]
+docs = [
+    # Bounded, because the docs job publishes the public site and used
+    # to install these unpinned: `pip install sphinx sphinx-rtd-theme
+    # myst-parser` resolved differently on every runner and every
+    # developer machine, so a clean local build proved nothing about
+    # CI. sphinx-rtd-theme 3.0 dropped a theme option conf.py was
+    # still passing, and the resulting warning went unnoticed until
+    # the build started treating warnings as errors.
+    #
+    # Upper bounds are majors, so patch and minor fixes still arrive.
+    # Verified against sphinx 9.1, sphinx-rtd-theme 3.1, myst-parser
+    # 5.1 on Python 3.13, and sphinx 7.4 / theme 2.0 / myst 3.0 on
+    # Python 3.9.
+    "sphinx>=7.4,<10",
+    "sphinx-rtd-theme>=2.0,<4",
+    "myst-parser>=3.0,<6",
+]
 
 [project.scripts]
 vaibify = "vaibify.cli.main:main"
