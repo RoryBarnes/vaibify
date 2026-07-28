@@ -14,6 +14,8 @@ __all__ = [
     "testWorkflowManagerUsesPosixPath",
     "testDirectorUsesOsPath",
     "testNoScienceSpecificIdentifiersInSource",
+    "testScienceTermScanMatchesSeparatedSpellings",
+    "testScienceTermScanKeepsItsLeadingWordBoundary",
     "testRouteModulesDoNotImportSiblings",
     "testNoRawFetchInFeatureModules",
     "testNoRawOnMessageInFeatureModules",
@@ -83,27 +85,38 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
 # upstream and no longer names the paper, so the allow-list carve-out
 # that entry called for is not needed.
 #
-# STILL NOT ENFORCED -- two real occurrences remain, both outside the
-# markdown this pass was scoped to:
+# CLEARED (2026-07-27): the matcher now tolerates separators between a
+# term's characters, and the two occurrences that motivated it are
+# gone. The index.html placeholder was the interesting one: it WAS
+# inside the scanned tree and WAS a scanned glob, yet passed for
+# months, because the string is spaced ("GJ 1132 b ...") while the term
+# is written "gj1132" -- a term list of bare identifiers could not
+# match the spaced form of the same name, so the scan was blind to
+# exactly the way a human types it. That was the second structural
+# blindness in this one check, after the trailing \b. Both are now
+# pinned by tests, not by prose:
+# testScienceTermScanMatchesSeparatedSpellings and
+# testScienceTermScanKeepsItsLeadingWordBoundary.
 #
-#   vaibify/gui/static/index.html:925      project-name placeholder
-#   vaibify/containerImage/skills/
-#       create-pipeline-step/SKILL.md:52   example step name
+# Also genericised: the TOI-540 example in vaibify/gui/pipelineUtils.py
+# (a real catalogue designation used to illustrate the slug contract's
+# hyphen rule, which the rule can state without naming an object).
 #
-# The index.html one is the more interesting failure: it IS inside the
-# scanned tree and IS a scanned glob, yet passes, because the string is
-# spaced ("GJ 1132 b ...") and the term is written "gj1132". A term
-# list of bare identifiers cannot match the spaced form of the same
-# name, so the scan is blind to exactly the way a human types it.
-# Tightening that is a change to the pattern, not to the docs, and was
-# deliberately left out of the documentation pass.
+# STILL NOT ENFORCED:
 #
-# To finish the job: fix those two occurrences, teach the term matcher
-# about separators, add "*.md" to _TUPLE_SCIENCE_SCAN_GLOBS, and extend
-# the scan root to repo-root docs/ (which will also pick up AGENTS.md).
-# Only then does the AGENTS.md rule ("must not appear in vaibify
-# source, templates, tests-of-record, or docs") hold everywhere it
-# claims to.
+#   *.md is not a scanned glob, so
+#   vaibify/containerImage/skills/create-pipeline-step/SKILL.md:52
+#   (example step name) is invisible to this scan.
+#
+#   tests/ is an excluded directory, and the fixtures there use real
+#   object names freely (testStepSlugContract, testSyncRoutesCoverage,
+#   testLatexAnnotation and others).
+#
+# To finish the job: add "*.md" to _TUPLE_SCIENCE_SCAN_GLOBS, extend the
+# scan root to repo-root docs/ (which will also pick up AGENTS.md), and
+# decide whether tests-of-record stay exempt. Only then does the
+# AGENTS.md rule ("must not appear in vaibify source, templates,
+# tests-of-record, or docs") hold everywhere it claims to.
 
 # Directories excluded from source scans (virtualenvs, build artifacts, caches).
 SET_EXCLUDED_SCAN_DIRECTORY_FRAGMENTS = (
@@ -606,6 +619,12 @@ def _fbIsExcludedScanPath(pathFile):
 
 _TUPLE_SCIENCE_SCAN_GLOBS = ("*.py", "*.html", "*.js", "*.css")
 
+# A forbidden term is listed as a run-together identifier ("gj1132"),
+# but the same name is written with a separator between its parts
+# wherever a human types it ("GJ 1132", "GJ-1132", "gj_1132"). Any run
+# of separators may therefore sit between any two characters of a term.
+_S_TERM_SEPARATOR_PATTERN = r"[\s\-_]*"
+
 
 def _flistScanForTerm(pathRoot, sTerm):
     """Return (pathFile, iLineNo, sLine, sMatchedToken) matches for sTerm.
@@ -616,12 +635,29 @@ def _flistScanForTerm(pathRoot, sTerm):
     inline labels are the most likely vehicle for a project-specific
     name to leak into a release build.
     """
-    # Anchored on a LEADING boundary only. The trailing \b was the
-    # bug: "_" and letters are word characters, so \bgj1132\b never
-    # matched GJ1132_XUV, GJ1132XUV, or KeplerFfdCorner -- i.e. every
-    # form the identifier actually takes in this repository. A leading
-    # boundary still prevents matching inside an unrelated word.
-    regexTerm = re.compile(r"\b" + re.escape(sTerm), re.IGNORECASE)
+    # Anchored on a LEADING boundary only, and tolerant of separators
+    # between characters. Two separate blindnesses produced that shape:
+    #
+    #   The trailing \b was the first: "_" and letters are word
+    #   characters, so \bgj1132\b never matched GJ1132_XUV, GJ1132XUV,
+    #   or KeplerFfdCorner -- i.e. every form the identifier actually
+    #   takes in this repository.
+    #
+    #   Separator intolerance was the second: the term list holds
+    #   run-together identifiers while a human types the spaced form,
+    #   so a shipped placeholder reading "GJ 1132 b ..." sat inside the
+    #   scanned tree, inside a scanned glob, and passed for months --
+    #   exactly the leak this docstring says the scan exists to catch.
+    #
+    # The leading boundary stays: without it "proxima" matches inside
+    # "approximation". Absence of a trailing boundary is equally
+    # deliberate -- a suffixed form is still the same identifier.
+    regexTerm = re.compile(
+        r"\b" + _S_TERM_SEPARATOR_PATTERN.join(
+            re.escape(sCharacter) for sCharacter in sTerm
+        ),
+        re.IGNORECASE,
+    )
     listHits = []
     for sGlob in _TUPLE_SCIENCE_SCAN_GLOBS:
         for pathFile in pathRoot.rglob(sGlob):
@@ -659,6 +695,54 @@ def testNoScienceSpecificIdentifiersInSource():
             for sTerm, p, iLine, sText, sToken in listViolations
         )
     )
+
+
+# Spellings of one listed term that the scan must catch, and text it
+# must leave alone. Without the separator-tolerant matcher only the
+# run-together spelling is found, so the scan reports clean on the
+# spaced form a human actually types.
+TUPLE_SEPARATED_TERM_SPELLINGS = (
+    "GJ1132XUV", "GJ 1132 b flux", "GJ-1132", "gj_1132_run",
+)
+S_TERM_LOOKALIKE_TEXT = "an approximation of the posterior"
+
+
+def testScienceTermScanMatchesSeparatedSpellings(tmp_path):
+    """The scan finds a term however its parts are separated.
+
+    Kills: reverting _flistScanForTerm to a separator-intolerant
+    ``re.escape(sTerm)`` pattern, which reports clean on every spelling
+    a human types.
+    """
+    for iIndex, sSpelling in enumerate(TUPLE_SEPARATED_TERM_SPELLINGS):
+        pathSample = tmp_path / f"sample{iIndex}.html"
+        pathSample.write_text(
+            f'<input placeholder="e.g. {sSpelling}">', encoding="utf-8",
+        )
+    listHits = _flistScanForTerm(tmp_path, "gj1132")
+    assert len(listHits) == len(TUPLE_SEPARATED_TERM_SPELLINGS), (
+        "Separated spellings the scan failed to match: "
+        + repr([
+            sSpelling
+            for sSpelling in TUPLE_SEPARATED_TERM_SPELLINGS
+            if not any(
+                sSpelling.lower().startswith(sToken.lower())
+                for _, _, _, sToken in listHits
+            )
+        ])
+    )
+
+
+def testScienceTermScanKeepsItsLeadingWordBoundary(tmp_path):
+    """Separator tolerance does not let a term match inside a word.
+
+    Kills: dropping the leading ``\\b`` anchor, after which "proxima"
+    matches inside "approximation" and the scan cries wolf.
+    """
+    (tmp_path / "sample.py").write_text(
+        f'S_NOTE = "{S_TERM_LOOKALIKE_TEXT}"\n', encoding="utf-8",
+    )
+    assert _flistScanForTerm(tmp_path, "proxima") == []
 
 
 # containerGit helpers that accept sWorkspace (all except the
@@ -3858,4 +3942,51 @@ def testFalsificationMarkedTestsAreRegistered():
     assert not listOffenders, (
         "Falsification-marked tests must each carry a 'Kills:' docstring and "
         "exactly one registry entry:\n  " + "\n  ".join(listOffenders)
+    )
+
+
+# Vendored third-party bundles carry their authors' contact details;
+# only first-party frontend source is governed.
+SET_EMAIL_SCAN_EXEMPT_DIRECTORIES = {"vendor"}
+
+
+def testShippedFrontendCarriesNoPersonalContactDetails():
+    """No email address appears in first-party frontend source.
+
+    Placeholder attributes in ``index.html`` shipped the maintainer's
+    real name and university email to every user, alongside their
+    research area, until 2026-07-27. The science-identifier scan cannot
+    catch that class: a personal name is not a mission designation, and
+    ``testNoScienceSpecificIdentifiersInSource`` only knows the terms in
+    its list.
+
+    An address-shaped string is the tractable half of that problem --
+    names cannot be enumerated, but a contact address in shipped UI is
+    almost always someone's real one leaking out of an example. Use a
+    reserved-example domain in placeholders instead (RFC 2606).
+
+    Kills: replace the placeholder on #inputGitIdentityEmail with a
+    real-looking address such as "e.g. someone@university.edu".
+    """
+    regexEmail = re.compile(
+        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+    )
+    listOffenders = []
+    for sGlob in ("**/*.html", "**/*.js", "**/*.css"):
+        for pathFile in STATIC_DIR.rglob(sGlob):
+            if SET_EMAIL_SCAN_EXEMPT_DIRECTORIES & set(pathFile.parts):
+                continue
+            for iLine, sLine in enumerate(
+                pathFile.read_text(encoding="utf-8").splitlines(), 1
+            ):
+                for sMatch in regexEmail.findall(sLine):
+                    # example.org / .com / .net are reserved for docs.
+                    if sMatch.split("@")[-1].startswith("example."):
+                        continue
+                    listOffenders.append(
+                        f"{pathFile.relative_to(REPO_ROOT)}:{iLine}: {sMatch}"
+                    )
+    assert listOffenders == [], (
+        "Personal contact details in shipped frontend source:\n  "
+        + "\n  ".join(listOffenders)
     )

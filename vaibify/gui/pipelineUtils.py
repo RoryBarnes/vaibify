@@ -34,8 +34,8 @@ __all__ = [
 # A step's directory basename IS a pure function of its name:
 # split the name on whitespace, uppercase each word's first letter,
 # preserve the rest of the word as typed, concatenate. Hyphens pass
-# through verbatim (astronomical designators like TOI-540 depend on
-# them). "Step Name" -> "StepName"; "Spectral Line Fit" ->
+# through verbatim (catalogue designators and hyphenated compounds
+# depend on them). "Step Name" -> "StepName"; "Spectral Line Fit" ->
 # "SpectralLineFit". Parent path
 # components are free; only the final component is governed.
 # ---------------------------------------------------------------------------
@@ -329,12 +329,22 @@ def fnAttachStepLabels(dictWorkflow):
         dictStep["sLabel"] = listLabels[iIndex]
 
 
-def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0, iExitCode=None):
+def _fnRecordRunStats(
+    dictStep, fStartTime, fCpuTime=0.0, iExitCode=None,
+    bDeterminismApplied=None,
+):
     """Store timing, finish stamp, and outcome in the step's run stats.
 
     ``iExitCode`` is optional so callers without an outcome (and stats
     recorded before outcomes were kept) stay valid; the dashboard's
     Last-run line omits the outcome when it was never recorded.
+
+    ``bDeterminismApplied`` records whether the step ran with the
+    ``SOURCE_DATE_EPOCH`` / matplotlib-salt prefix. It is written only
+    when the caller actually knows, because a later reproduction
+    mismatch must be able to distinguish "ran deterministically",
+    "ran without the guarantee", and "nobody recorded it" — an absent
+    key is *unknown*, never clean.
     """
     dictRunStats = {
         "fWallClock": round(time.time() - fStartTime, 1),
@@ -345,6 +355,8 @@ def _fnRecordRunStats(dictStep, fStartTime, fCpuTime=0.0, iExitCode=None):
     }
     if iExitCode is not None:
         dictRunStats["iExitCode"] = int(iExitCode)
+    if bDeterminismApplied is not None:
+        dictRunStats["bDeterminismEnvApplied"] = bool(bDeterminismApplied)
     dictStep["dictRunStats"] = dictRunStats
 
 
