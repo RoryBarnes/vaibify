@@ -637,3 +637,88 @@ def test_prompt_record_disables_when_supervision_is_off(fixtureHarness):
     )
     assert dictResponse.status_code == 200
     assert dictResponse.json()["dictPromptRecord"]["bEnabled"] is False
+
+
+# --- prompt-record configure (workflow-dict + patchable sanitizer) ---
+
+def test_prompt_record_configure_enables_with_sanitizer(fixtureHarness):
+    from unittest.mock import patch
+    clientTest, _dictWorkflow, dictSaved = fixtureHarness
+    with patch("vaibify.gui.transcriptSanitizer.fbSanitizerAvailable",
+               return_value=True):
+        response = clientTest.post(
+            "/api/workflow/" + S_CONTAINER_ID + "/prompt-record/configure",
+            json={"bEnabled": True})
+    assert response.status_code == 200
+    dictRecord = response.json()["dictPromptRecord"]
+    assert dictRecord["bEnabled"] is True
+    assert dictRecord["sEnabledAtUtc"]
+    assert S_CONTAINER_ID in dictSaved
+
+
+def test_prompt_record_enable_without_sanitizer_is_409(fixtureHarness):
+    from unittest.mock import patch
+    clientTest = fixtureHarness[0]
+    with patch("vaibify.gui.transcriptSanitizer.fbSanitizerAvailable",
+               return_value=False):
+        response = clientTest.post(
+            "/api/workflow/" + S_CONTAINER_ID + "/prompt-record/configure",
+            json={"bEnabled": True})
+    assert response.status_code == 409
+
+
+def test_prompt_record_configure_can_disable(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/prompt-record/configure",
+        json={"bEnabled": False})
+    assert response.status_code == 200
+    assert response.json()["dictPromptRecord"]["bEnabled"] is False
+
+
+# --- supervision configure (requires enabled+reviewed prompt record) ---
+
+def test_supervision_enable_without_prereqs_is_409(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/supervision/configure",
+        json={"bEnabled": True})
+    assert response.status_code == 409
+
+
+def test_supervision_enable_with_prereqs_succeeds(fixtureHarness):
+    clientTest, dictWorkflow, _dictSaved = fixtureHarness
+    dictWorkflow["dictAiProvenance"] = {"dictPromptRecord": {
+        "bEnabled": True, "bFirstCaptureReviewed": True,
+    }}
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/supervision/configure",
+        json={"bEnabled": True})
+    assert response.status_code == 200, response.text
+    assert response.json()["dictSupervision"]["bEnabled"] is True
+
+
+# --- declare personal layer ---
+
+def test_declare_personal_layer_accepts_a_valid_status(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/personal-layer/declare",
+        json={"sStatus": "declared-private"})
+    assert response.status_code == 200, response.text
+
+
+def test_declare_personal_layer_rejects_a_bad_status(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/personal-layer/declare",
+        json={"sStatus": "bogus"})
+    assert response.status_code == 400
+
+
+def test_hash_commitment_only_with_declared_private(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/personal-layer/declare",
+        json={"sStatus": "none", "dictHashCommitment": {"x": "y"}})
+    assert response.status_code == 400
