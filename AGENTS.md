@@ -208,12 +208,14 @@ above. Start Docker, open a project, and exercise the specific path.
 
 #### If you are a delegated agent and cannot do this
 
-**Push the branch and let the browser lane run it.** That is now the
-answer, and it is why the lane exists: the old rule asked delegated
-agents to load a page they had no browser for, so five of them once
-changed JavaScript in one session, none could follow the rule, and the
-merged branch was green with the frontend entirely unexecuted. A rule
-nobody can follow is not a control.
+**Push the branch and open a pull request, then let the browser lane
+run it.** The lane is `pull_request`-triggered, so a pushed branch with
+no PR runs nothing — do not read a quiet Actions tab as a pass. That is
+now the answer, and it is why the lane exists: the old rule asked
+delegated agents to load a page they had no browser for, so five of
+them once changed JavaScript in one session, none could follow the
+rule, and the merged branch was green with the frontend entirely
+unexecuted. A rule nobody can follow is not a control.
 
 If you also cannot push, say so explicitly and name the exact surface
 you did not verify — "the three JS call sites in
@@ -691,8 +693,17 @@ template shipped without comment — and the first version of this
 script spot-checked three files, which is why it passed a
 distribution whose assembled context was missing five of six agent
 documents. Checking a shipped file is not the same as checking the
-artifact built from it. The job runs on pull requests too, at the
-corners of the support matrix; a release runs the full matrix.
+artifact built from it. The job is **release-only** by decision
+(2026-07-28), matching `vspace`, `bigplanet` and `multi-planet`: a
+release runs the full support matrix, a manual run the corners. So a
+packaging regression can sit on `main` until the next version is cut.
+`upload_pypi` needs `build` and `test`, so it is caught while cutting
+the release and nothing broken is published — but the diagnosis arrives
+during a release rather than beside the change that caused it. After
+touching `vaibify/resources.py`, the packaged trees, or the Dockerfile
+`COPY` set, run `pip-install` by hand (`workflow_dispatch`) instead of
+waiting for release day. Never make it a required status check: it
+cannot report on a pull request, so every PR would wait on it forever.
 
 ## Known technical debt
 

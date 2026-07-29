@@ -1,19 +1,26 @@
 name: pip-install
 
-# The artifact checks used to run only on `release: published`, which
-# is after the release exists: they could block the PyPI upload but not
-# the release, and never a pull request. A wheel that cannot run
-# `vaibify init` is a defect like any other and belongs on the PR gate,
-# so build+test now run on pushes and pull requests too. Only
-# upload_pypi remains release-gated.
+# Release-only by decision (2026-07-28), matching vspace, bigplanet and
+# multi-planet: distributions are built when a version is cut, not on
+# every merge and not on every pull request.
+#
+# Know what that costs, because this file has been all three ways. The
+# checks were moved onto the PR gate after a wheel containing no
+# templates shipped and `import vaibify` could not see it. Running only
+# on a release means a packaging regression can sit on `main`
+# undetected until the next version is cut -- possibly for weeks.
+#
+# What makes that acceptable is that `upload_pypi` needs `build` and
+# `test`, so the break is caught while cutting the release and blocks
+# the PyPI upload. Nothing broken is published; the cost is that the
+# diagnosis lands during a release rather than next to the change that
+# caused it. `workflow_dispatch` is the escape hatch: run this by hand
+# against `main` after touching packaging, resources, or the Dockerfile
+# COPY set, rather than discovering it at release time.
 on:
   release:
     types:
       - published
-  push:
-    branches:
-      - main
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -45,10 +52,10 @@ jobs:
     name: 'Test py${{ matrix.python }} on ${{ matrix.os }}'
     needs: [build]
     runs-on: ${{ matrix.os }}
-    # A release checks the full support matrix. A pull request checks
-    # the corners — oldest and newest supported Python, one Linux and
-    # one macOS — because 24 jobs per PR to catch a packaging mistake
-    # that is almost never platform-specific is the wrong trade. The
+    # A release checks the full support matrix. A manual run checks the
+    # corners — oldest and newest supported Python, one Linux and one
+    # macOS — because 24 jobs to confirm a packaging fix, for a mistake
+    # that is almost never platform-specific, is the wrong trade. The
     # failure this gate exists for (a wheel with no package data) is
     # identical on every row.
     strategy:
