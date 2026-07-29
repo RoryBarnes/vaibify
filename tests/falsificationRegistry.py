@@ -860,6 +860,15 @@ LIST_FALSIFICATIONS = [
         new="""    if dictContainerOwners.get(sName) is None:
         return""",
     ),
+    # Without base-uri, an injected <base> tag (from a hostile filename
+    # rendered into innerHTML) re-homes the dashboard's root-relative
+    # API calls; base-uri does not fall back to default-src.
+    Falsification(
+        nodeid='tests/testContentSecurityPolicy.py::test_base_uri_is_locked_to_none',
+        source='vaibify/gui/serverMiddleware.py',
+        old='            "base-uri \'none\'; "\n            "form-action \'self\'; "',
+        new='            "form-action \'self\'; "',
+    ),
     # The build-progress record is read by every later build click (the
     # 409 duplicate refusal) and by re-attached tabs; these guard that a
     # dead build always closes its record and that no unredacted line

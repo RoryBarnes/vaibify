@@ -248,18 +248,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://cdnjs.cloudflare.com "
-            "https://cdn.jsdelivr.net; "
+            "script-src 'self' https://cdnjs.cloudflare.com; "
             "worker-src 'self' blob: "
             "https://cdnjs.cloudflare.com; "
             "style-src 'self' 'unsafe-inline' "
-            "https://cdn.jsdelivr.net "
             "https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: blob:; "
             "connect-src 'self' "
             "ws://127.0.0.1:* wss://127.0.0.1:* "
             "ws://localhost:* wss://localhost:*; "
+            # base-uri 'none' stops an injected <base> tag from
+            # re-homing the dashboard's root-relative API calls to an
+            # attacker origin (there is no fallback to default-src for
+            # base-uri or form-action). form-action 'self' likewise
+            # confines any injected form. Both close the escalation a
+            # hostile filename in the file browser could otherwise reach
+            # even under the script-src restriction. jsdelivr was removed
+            # from script-src/style-src: nothing loads from it (xterm is
+            # vendored locally), so it was pure attack surface.
+            "base-uri 'none'; "
+            "form-action 'self'; "
             "frame-ancestors 'none'"
         )
         return response

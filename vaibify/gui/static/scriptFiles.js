@@ -32,8 +32,13 @@ var VaibifyFiles = (function () {
             sBuiltPath += "/" + sPart;
             var sPathCopy = sBuiltPath;
             if (iIndex > 0) sHtml += " / ";
+            // Path components come from container filenames, which may
+            // contain HTML metacharacters (a hostile filename in a
+            // cloned repo or extracted archive). Escape before it enters
+            // innerHTML — the sibling directory browser does the same.
             sHtml += '<span class="crumb" data-path="' +
-                sPathCopy + '">' + sPart + "</span>";
+                VaibifyUtilities.fnEscapeHtml(sPathCopy) + '">' +
+                VaibifyUtilities.fnEscapeHtml(sPart) + "</span>";
         });
         elBreadcrumb.innerHTML = sHtml;
         elBreadcrumb.querySelectorAll(".crumb").forEach(function (el) {
@@ -65,13 +70,19 @@ var VaibifyFiles = (function () {
                 sLower.endsWith(".jpg") || sLower.endsWith(".svg")) {
                 sIconClass = "figure";
             }
+            // entry.sName and entry.sPath are raw container filenames;
+            // escape both before they enter innerHTML so a hostile
+            // filename cannot inject markup (e.g. a <base> tag that
+            // reroutes the dashboard's API calls).
             return (
-                '<div class="file-item" data-path="' + entry.sPath +
-                '" data-is-dir="' + entry.bIsDirectory +
+                '<div class="file-item" data-path="' +
+                VaibifyUtilities.fnEscapeHtml(entry.sPath) +
+                '" data-is-dir="' + (entry.bIsDirectory ? "true" : "false") +
                 '" draggable="true">' +
                 '<span class="file-icon ' + sIconClass + '">' +
                 sIcon + "</span>" +
-                '<span class="file-name">' + entry.sName + "</span>" +
+                '<span class="file-name">' +
+                VaibifyUtilities.fnEscapeHtml(entry.sName) + "</span>" +
                 "</div>"
             );
         }).join("");
