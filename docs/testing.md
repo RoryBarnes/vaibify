@@ -234,6 +234,32 @@ branch ruleset and blocked an otherwise fully green pull request.
 `tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back
 into running on both sides of the merge.
 
+### What the README badges mean
+
+Two different mechanisms, which fail in different ways:
+
+**Count badges** (`unit tests`, `falsification tests`, `architectural
+invariants`, `browser tests`) are computed by `badges.yml` after every
+merge, by *collecting* the suite rather than running it. They say how
+much test there is, never whether it passed. A count that collected
+zero fails the workflow instead of publishing, because zero is never a
+true answer here — it means a marker was renamed or a directory moved,
+and the badge would otherwise state that absence as fact.
+
+**Status badges** are GitHub's own, and they show the most recent run of
+that workflow on **any** branch — not on `main`. That is what keeps the
+pull-request-gated lanes live now that they no longer run on `main`
+(verified: `?branch=main` on a PR-only workflow renders *no status*,
+while the unqualified badge renders the latest PR run). The corollary
+is that a contributor's failing pull request reddens the README until
+something newer runs, and that a green badge is not a statement about
+`main` specifically.
+
+The two scheduled lanes are on the README for a different reason:
+nobody watches a nightly or weekly run, so for `containerAcceptance`
+and `freshImageBuild` the badge is realistically the only place a
+failure becomes visible.
+
 ## The three execution lanes
 
 Most of this suite runs in one process with the Docker daemon and the

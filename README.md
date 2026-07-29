@@ -20,7 +20,12 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/tests.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/falsification.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/invariants.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/browser.json">
   <br>
+  <!-- Workflow status badges show the most recent run of that workflow on
+       ANY branch, so the pull-request-gated lanes below stay live even
+       though they no longer run on main. The corollary is that a failing
+       pull request reddens these until the next run. -->
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-linux.yml/badge.svg">
   <img src="https://img.shields.io/badge/Ubuntu%2022--24-Python%203.9--3.14-7d93c7.svg">
   <br>
@@ -28,6 +33,12 @@
   <img src="https://img.shields.io/badge/macOS%2015--26-Python%203.9--3.14-7d93c7.svg">
   <br>
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/falsification.yml/badge.svg">
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/browser.yml/badge.svg">
+  <br>
+  <!-- The scheduled lanes. Nobody is watching a nightly or weekly run, so
+       these are the badges most likely to be the only sign of a failure. -->
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/containerAcceptance.yml/badge.svg">
+  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/freshImageBuild.yml/badge.svg">
   <a href="https://codecov.io/gh/RoryBarnes/vaibify">
   <img src="https://codecov.io/gh/RoryBarnes/vaibify/branch/main/graph/badge.svg">
 </a>

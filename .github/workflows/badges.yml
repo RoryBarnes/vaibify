@@ -2,7 +2,7 @@ name: badges
 
 # Dynamic, secret-free count badges.
 #
-# Computes three test counts by collecting the run-selection of the suite
+# Computes four test counts by collecting the run-selection of the suite
 # (the same tests the unit-test workflows actually execute), writes
 # one shields.io ENDPOINT json per count, and publishes them to a dedicated
 # orphan `badges` branch using the built-in GITHUB_TOKEN. The README points
@@ -52,21 +52,40 @@ jobs:
           iTotal=$(python -m pytest tests/ -m "not docker and not docker_live" --collect-only -q -p no:cacheprovider | grep -c "::")
           iFalsification=$(python -m pytest -m falsification --collect-only -q -p no:cacheprovider | grep -c "::")
           iInvariants=$(python -m pytest tests/testArchitecturalInvariants.py --collect-only -q -p no:cacheprovider | grep -c "::")
+          # The browser lane's tests skip at fixture time when Playwright
+          # is absent, so they still COLLECT here without the browser
+          # extra installed — the count is the lane's real size.
+          iBrowser=$(python -m pytest tests/browser -m browser --collect-only -q -p no:cacheprovider | grep -c "::")
+          # A count of zero is never a true answer for this repo: it
+          # means the selection stopped matching (a renamed marker, a
+          # moved directory) and the badge would publish "0 tests" as
+          # fact. Fail loudly instead of shipping a confident lie.
+          for sPair in "total:$iTotal" "falsification:$iFalsification" \
+                       "invariants:$iInvariants" "browser:$iBrowser"; do
+            if [ "${sPair#*:}" -eq 0 ]; then
+              echo "::error::${sPair%%:*} collected 0 tests; refusing to publish a badge that would misstate it"
+              exit 1
+            fi
+          done
           echo "iTotal=$iTotal" >> "$GITHUB_OUTPUT"
           echo "iFalsification=$iFalsification" >> "$GITHUB_OUTPUT"
           echo "iInvariants=$iInvariants" >> "$GITHUB_OUTPUT"
-          echo "collected total=$iTotal falsification=$iFalsification invariants=$iInvariants"
+          echo "iBrowser=$iBrowser" >> "$GITHUB_OUTPUT"
+          echo "collected total=$iTotal falsification=$iFalsification invariants=$iInvariants browser=$iBrowser"
 
       - name: Write shields.io endpoint json
         run: |
           mkdir -p badgeOutput
           python - "${{ steps.counts.outputs.iTotal }}" \
                    "${{ steps.counts.outputs.iFalsification }}" \
-                   "${{ steps.counts.outputs.iInvariants }}" <<'PY'
+                   "${{ steps.counts.outputs.iInvariants }}" \
+                   "${{ steps.counts.outputs.iBrowser }}" <<'PY'
           import json
           import sys
 
-          iTotal, iFalsification, iInvariants = (int(sValue) for sValue in sys.argv[1:4])
+          iTotal, iFalsification, iInvariants, iBrowser = (
+              int(sValue) for sValue in sys.argv[1:5]
+          )
 
           def fnWriteEndpoint(sFileName, sLabel, iCount, sColor):
               dictEndpoint = {
@@ -82,6 +101,7 @@ jobs:
           fnWriteEndpoint("tests.json", "unit tests", iTotal, "darkblue")
           fnWriteEndpoint("falsification.json", "falsification tests", iFalsification, "brightgreen")
           fnWriteEndpoint("invariants.json", "architectural invariants", iInvariants, "blueviolet")
+          fnWriteEndpoint("browser.json", "browser tests", iBrowser, "teal")
           PY
           cat badgeOutput/*.json
 
@@ -105,8 +125,9 @@ jobs:
             git checkout --orphan badges
             git rm -rf . >/dev/null 2>&1 || true
           fi
-          cp badgeOutput/tests.json badgeOutput/falsification.json badgeOutput/invariants.json .
-          git add tests.json falsification.json invariants.json
+          cp badgeOutput/tests.json badgeOutput/falsification.json \
+             badgeOutput/invariants.json badgeOutput/browser.json .
+          git add tests.json falsification.json invariants.json browser.json
           if git diff --cached --quiet; then
             echo "badge json unchanged - nothing to publish"
             exit 0
