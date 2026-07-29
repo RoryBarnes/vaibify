@@ -126,3 +126,67 @@ def test_resolve_multiple_projects_exits(
     }
     with pytest.raises(SystemExit):
         fconfigResolveProject(None)
+
+
+# --- fsResolveProjectConfigPath (mirrors fconfigResolveProject) ---
+
+@patch("vaibify.config.registryManager.fdictLoadRegistry")
+def test_resolve_config_path_by_name_found(mockRegistry):
+    from vaibify.cli.configLoader import fsResolveProjectConfigPath
+    mockRegistry.return_value = {"listProjects": [
+        {"sName": "proj", "sConfigPath": "/p/proj/vaibify.yml"},
+    ]}
+    assert fsResolveProjectConfigPath("proj") == "/p/proj/vaibify.yml"
+
+
+@patch("vaibify.config.registryManager.fdictLoadRegistry")
+def test_resolve_config_path_by_name_missing_exits(mockRegistry):
+    from vaibify.cli.configLoader import fsResolveProjectConfigPath
+    mockRegistry.return_value = {"listProjects": [
+        {"sName": "other", "sConfigPath": "/p/other/vaibify.yml"},
+    ]}
+    with pytest.raises(SystemExit):
+        fsResolveProjectConfigPath("ghost")
+
+
+def test_resolve_config_path_prefers_local_file(tmp_path, monkeypatch):
+    from vaibify.cli.configLoader import fsResolveProjectConfigPath
+    (tmp_path / "vaibify.yml").write_text("projectName: local\n")
+    monkeypatch.chdir(tmp_path)
+    sPath = fsResolveProjectConfigPath()
+    assert sPath.endswith("vaibify.yml")
+    assert str(tmp_path) in sPath
+
+
+@patch("vaibify.config.registryManager.fdictLoadRegistry")
+def test_resolve_config_path_single_project(mockRegistry, tmp_path,
+                                            monkeypatch):
+    from vaibify.cli.configLoader import fsResolveProjectConfigPath
+    monkeypatch.chdir(tmp_path)  # no local vaibify.yml
+    mockRegistry.return_value = {"listProjects": [
+        {"sName": "only", "sConfigPath": "/p/only/vaibify.yml"},
+    ]}
+    assert fsResolveProjectConfigPath() == "/p/only/vaibify.yml"
+
+
+@patch("vaibify.config.registryManager.fdictLoadRegistry")
+def test_resolve_config_path_zero_projects_exits(mockRegistry, tmp_path,
+                                                 monkeypatch):
+    from vaibify.cli.configLoader import fsResolveProjectConfigPath
+    monkeypatch.chdir(tmp_path)
+    mockRegistry.return_value = {"listProjects": []}
+    with pytest.raises(SystemExit):
+        fsResolveProjectConfigPath()
+
+
+@patch("vaibify.config.registryManager.fdictLoadRegistry")
+def test_resolve_config_path_multiple_projects_exits(mockRegistry,
+                                                     tmp_path, monkeypatch):
+    from vaibify.cli.configLoader import fsResolveProjectConfigPath
+    monkeypatch.chdir(tmp_path)
+    mockRegistry.return_value = {"listProjects": [
+        {"sName": "a", "sConfigPath": "/p/a/vaibify.yml"},
+        {"sName": "b", "sConfigPath": "/p/b/vaibify.yml"},
+    ]}
+    with pytest.raises(SystemExit):
+        fsResolveProjectConfigPath()
