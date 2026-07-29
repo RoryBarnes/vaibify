@@ -809,3 +809,45 @@ def test_register_verify_task_old_callback_does_not_evict_new_entry():
         return _DICT_VERIFY_TASKS.get(S_CONTAINER_ID, {}).get("task")
     objectTaskInSlot = asyncio.run(fnRunOnce())
     assert objectTaskInSlot is not None
+
+
+# --- delete-determinism / verify-dependency-lock / regenerate-envelope ---
+
+def test_delete_determinism_clears_the_declaration(
+    fixtureClient, fixtureWorkflow,
+):
+    fixtureWorkflow["dictDeterminism"] = {"iOmpNumThreads": 4}
+    response = fixtureClient.delete(
+        f"/api/workflow/{S_CONTAINER_ID}/determinism")
+    assert response.status_code == 200
+    assert response.json()["dictDeterminism"] == {}
+    assert fixtureWorkflow["dictDeterminism"] == {}
+
+
+def test_verify_dependency_lock_reports_problems(fixtureClient):
+    from unittest.mock import patch
+    with patch(
+        "vaibify.reproducibility.dependencyPinning."
+        "flistVerifyRequirementsLock",
+        return_value=["numpy is unpinned"],
+    ):
+        response = fixtureClient.post(
+            f"/api/workflow/{S_CONTAINER_ID}/dependencies/verify")
+    assert response.status_code == 200
+    assert response.json()["listProblems"] == ["numpy is unpinned"]
+
+
+def test_regenerate_envelope_runs_and_returns_readiness(fixtureClient):
+    from unittest.mock import patch
+    with patch(
+        "vaibify.reproducibility.dataArchiver."
+        "fnGenerateReproducibilityEnvelope",
+    ) as mockGenerate, patch(
+        "vaibify.gui.routes.reproducibilityRoutes.fdictL3ReadinessGaps",
+        return_value={"bManifest": True},
+    ):
+        response = fixtureClient.post(
+            f"/api/workflow/{S_CONTAINER_ID}/level3/envelope")
+    assert response.status_code == 200
+    assert "dictL3ReadinessGaps" in response.json()
+    mockGenerate.assert_called_once()
