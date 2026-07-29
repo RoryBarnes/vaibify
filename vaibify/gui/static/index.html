@@ -146,7 +146,7 @@
 
 <!-- Build Progress Overlay -->
 <div class="modal-overlay" id="modalBuildProgress" style="display: none;">
-    <div class="modal modal-small">
+    <div class="modal">
         <h2 style="color: var(--color-pale-blue);">Building Container</h2>
         <p id="buildProgressMessage" style="font-size: 13px;
            color: var(--text-secondary); text-align: center;">
@@ -154,10 +154,19 @@
         </p>
         <p style="font-size: 12px; color: var(--text-secondary);
            text-align: center; margin-top: 8px; opacity: 0.8;">
-            This typically takes 5&ndash;15 minutes depending on
-            enabled features and network speed.
+            A minimal image takes 5&ndash;15 minutes; large feature
+            sets (LaTeX, GPU) can take an hour or more. Live output
+            appears below.
         </p>
         <div class="build-spinner"></div>
+        <pre id="buildProgressTail" style="max-height: 240px;
+            overflow: auto; padding: 10px; font-size: 11px;
+            background: var(--bg-elevated, #1a1a1a);
+            color: var(--text-primary, #e0e0e0);
+            border: 1px solid var(--border-default, #333);
+            border-radius: 4px; white-space: pre-wrap;
+            word-break: break-word; margin-top: 8px;
+            display: none;"></pre>
     </div>
 </div>
 

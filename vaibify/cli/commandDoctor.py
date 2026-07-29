@@ -73,10 +73,17 @@ def _flistSharedChecks():
 
 
 def flistRunDoctorChecks(config, bBuildScope, bStartScope):
-    """Return the full ordered list of PreflightResult for the chosen scope."""
+    """Return the full ordered list of PreflightResult for the chosen scope.
+
+    ``config`` may be None — no project configured yet — in which case
+    only the environment checks run. The project-scoped checks need a
+    config to know what to check; the environment does not.
+    """
     listResults = _flistSharedChecks()
     if any(r.sLevel == "fail" and r.sName == "docker-daemon"
            for r in listResults):
+        return listResults
+    if config is None:
         return listResults
     bBoth = (not bBuildScope and not bStartScope)
     if bBuildScope or bBoth:
@@ -126,9 +133,35 @@ def _fnPrintDoctorSummary(listResults):
 )
 def doctor(sProjectName, bQuiet, bBuildScope, bStartScope):
     """Run pre-flight checks and print a status report."""
-    config = fconfigResolveProject(sProjectName)
+    config = _fconfigResolveProjectOrNone(sProjectName)
+    if config is None:
+        click.echo(
+            "No project configured yet; running the environment "
+            "checks only. Project-scoped checks (image, ports, "
+            "mounts) run once a project exists."
+        )
     listResults = flistRunDoctorChecks(config, bBuildScope, bStartScope)
     fnPrintPreflightReport(_flistFilterQuiet(listResults, bQuiet))
     _fnPrintDoctorSummary(listResults)
     if any(r.sLevel == "fail" for r in listResults):
         sys.exit(1)
+
+
+def _fconfigResolveProjectOrNone(sProjectName):
+    """Resolve the project config, or None when no project exists yet.
+
+    Doctor is most valuable *before* ``vaibify init`` has ever run —
+    a Docker problem is the usual reason a first build fails — so an
+    empty registry must not lock the environment checks away. The
+    resolver prints its own guidance (run init, or pick a project)
+    before exiting; catching the exit lets that guidance appear and
+    the environment report still run. An explicit ``--project`` that
+    does not resolve stays a hard error: asking for a project that
+    does not exist is a mistake, not an absence.
+    """
+    if sProjectName:
+        return fconfigResolveProject(sProjectName)
+    try:
+        return fconfigResolveProject(None)
+    except SystemExit:
+        return None

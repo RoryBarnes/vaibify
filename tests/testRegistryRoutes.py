@@ -377,8 +377,8 @@ def testBuildContainerSuccess(fixtureClient, tmp_path, monkeypatch):
         json={"sDirectory": sProjectDir},
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject, bNoCache=False: None,
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
+        lambda dictProject, bNoCache=False, dictProgress=None: None,
     )
     response = fixtureClient.post(
         "/api/containers/build-proj/build",
@@ -395,8 +395,8 @@ def testBuildContainerFailure(fixtureClient, tmp_path, monkeypatch):
         json={"sDirectory": sProjectDir},
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject, bNoCache=False: (_ for _ in ()).throw(
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
+        lambda dictProject, bNoCache=False, dictProgress=None: (_ for _ in ()).throw(
             RuntimeError("build error")
         ),
     )
@@ -419,7 +419,7 @@ def testBuildFailureSurfacesStderrTail(
         json={"sDirectory": sProjectDir},
     )
 
-    def _fnRaiseWithTail(dictProject, bNoCache=False):
+    def _fnRaiseWithTail(dictProject, bNoCache=False, dictProgress=None):
         errorBuild = RuntimeError("Docker command failed (exit 1)")
         errorBuild.sStderrTail = (
             "E: You don't have enough free space in "
@@ -428,7 +428,7 @@ def testBuildFailureSurfacesStderrTail(
         raise errorBuild
 
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
         _fnRaiseWithTail,
     )
     response = fixtureClient.post(
@@ -453,8 +453,8 @@ def testBuildFailureWithoutTailStillStructured(
         json={"sDirectory": sProjectDir},
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject, bNoCache=False: (_ for _ in ()).throw(
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
+        lambda dictProject, bNoCache=False, dictProgress=None: (_ for _ in ()).throw(
             RuntimeError("config not found")
         ),
     )
@@ -483,11 +483,11 @@ def testBuildRunsOffEventLoopThread(
     )
     listExecutorThreads = []
 
-    def _fnRecordThread(dictProject, bNoCache=False):
+    def _fnRecordThread(dictProject, bNoCache=False, dictProgress=None):
         listExecutorThreads.append(threading.get_ident())
 
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
         _fnRecordThread,
     )
     response = fixtureClient.post(

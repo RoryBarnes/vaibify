@@ -20,6 +20,8 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
+from vaibify.gui import buildRoutes
+
 logger = logging.getLogger("vaibify")
 
 _RE_FOLDER_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\- ]*$")
@@ -95,7 +97,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterGetRegistry(app, dictCtx)
     _fnRegisterAddProject(app, dictCtx)
     _fnRegisterRemoveProject(app, dictCtx)
-    _fnRegisterBuildContainer(app, dictCtx)
+    buildRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStartContainer(app, dictCtx)
     _fnRegisterStopContainer(app, dictCtx)
     _fnRegisterContainerSettings(app, dictCtx)
@@ -312,59 +314,6 @@ def _fnRegisterRemoveProject(app, dictCtx):
         except KeyError as error:
             raise HTTPException(404, str(error))
         return {"bSuccess": True}
-
-
-def _fnRegisterBuildContainer(app, dictCtx):
-    """Register POST /api/containers/{sName}/build."""
-
-    @app.post("/api/containers/{sName}/build")
-    async def fnBuildContainer(
-        sName: str, bNoCache: bool = False,
-    ):
-        dictCtx["require"]()
-        dictProject = _fdictRequireProject(sName)
-        try:
-            await asyncio.to_thread(
-                _fnExecuteBuild, dictProject, bNoCache,
-            )
-        except Exception as error:
-            sTail = getattr(error, "sStderrTail", "") or ""
-            logger.error(
-                "Build failed for %s: %s%s",
-                sName, error,
-                "\nstderr tail:\n" + sTail if sTail else "",
-            )
-            raise HTTPException(
-                500, detail=_fdictBuildFailureDetail(error, sTail),
-            )
-        return {"bSuccess": True, "sMessage": "Build complete"}
-
-
-def _fnExecuteBuild(dictProject, bNoCache=False):
-    """Load config and run the Docker image build."""
-    from vaibify.cli.configLoader import (
-        fconfigLoadFromPath, fsDockerDir,
-    )
-    from vaibify.cli.commandBuild import fnBuildFromConfig
-    configProject = fconfigLoadFromPath(
-        dictProject["sConfigPath"],
-    )
-    sDockerDir = fsDockerDir()
-    fnBuildFromConfig(configProject, sDockerDir, bNoCache=bNoCache)
-
-
-def _fdictBuildFailureDetail(error, sStderrTail):
-    """Format the FastAPI detail payload for a build failure.
-
-    The tail has already been credential-redacted by imageBuilder's
-    ``fsRedactBuildOutputCredentials`` before it lands on the
-    exception, so it is safe to surface to the GUI.
-    """
-    return {
-        "sMessage": "Build failed",
-        "sError": str(error),
-        "sStderrTail": sStderrTail,
-    }
 
 
 def _fnRegisterStartContainer(app, dictCtx):

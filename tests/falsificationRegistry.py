@@ -793,6 +793,26 @@ LIST_FALSIFICATIONS = [
         old='        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),',
         new='        iSourceDateEpochOverride=0,',
     ),
+    # The build-progress record is read by every later build click (the
+    # 409 duplicate refusal) and by re-attached tabs; these guard that a
+    # dead build always closes its record and that no unredacted line
+    # can reach the dashboard tail.
+    Falsification(
+        nodeid='tests/testBuildProgressRoutes.py::test_failed_build_closes_the_record_as_failed',
+        source='vaibify/gui/buildRoutes.py',
+        old="""    except BaseException:
+        if dictProgress is not None:
+            _fnCloseBuildProgress(dictProgress, "failed")
+        raise""",
+        new="""    except BaseException:
+        raise""",
+    ),
+    Falsification(
+        nodeid='tests/testBuildProgressRoutes.py::test_sink_lines_pass_credential_redaction',
+        source='vaibify/docker/imageBuilder.py',
+        old='        fnLineSink(fsRedactBuildOutputCredentials(sLine))',
+        new='        fnLineSink(sLine)',
+    ),
     Falsification(
         nodeid='tests/testL3AttestationMutationCoverage.py::test_non_dict_payload_reads_none_and_not_current',
         source='vaibify/reproducibility/l3Attestation.py',

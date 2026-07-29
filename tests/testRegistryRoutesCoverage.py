@@ -6,11 +6,11 @@ import subprocess
 import pytest
 from unittest.mock import MagicMock, patch
 
+from vaibify.gui.buildRoutes import _fnExecuteBuild
 from vaibify.gui.registryRoutes import (
     _fbDockerContainerExists,
     _fdictRequireProject,
     _fnDockerStopCommand,
-    _fnExecuteBuild,
     _fnExecuteStop,
     _fnRegisterNewProject,
     _fnRejectDuplicateProjectName,

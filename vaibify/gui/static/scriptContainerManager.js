@@ -496,9 +496,56 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    var _iBuildProgressTimer = null;
+
+    function _fnRenderBuildProgress(dictProgress) {
+        var elTail = document.getElementById("buildProgressTail");
+        if (!elTail) return;
+        var saLines = dictProgress.saTailLines || [];
+        if (!saLines.length) return;
+        elTail.style.display = "block";
+        elTail.textContent = saLines.join("\n");
+        elTail.scrollTop = elTail.scrollHeight;
+    }
+
+    function _fnStartBuildProgressPoll(sName) {
+        _fnStopBuildProgressPoll();
+        _iBuildProgressTimer = setInterval(async function () {
+            try {
+                _fnRenderBuildProgress(await _fdictFetchBuildProgress(
+                    sName));
+            } catch (error) {
+                // A transient poll failure must not disturb the build;
+                // the blocking POST owns success/failure reporting.
+            }
+        }, 1500);
+    }
+
+    function _fnStopBuildProgressPoll() {
+        if (_iBuildProgressTimer !== null) {
+            clearInterval(_iBuildProgressTimer);
+            _iBuildProgressTimer = null;
+        }
+    }
+
+    function _fdictFetchBuildProgress(sName) {
+        return VaibifyApi.fdictGet(
+            "/api/containers/" + encodeURIComponent(sName)
+            + "/build/progress");
+    }
+
+    function _fnResetBuildProgressTail() {
+        var elTail = document.getElementById("buildProgressTail");
+        if (!elTail) return;
+        elTail.textContent = "";
+        elTail.style.display = "none";
+    }
+
     async function fnBuildContainer(sName, bNoCache) {
         var elOverlay = document.getElementById("modalBuildProgress");
+        _fnResetBuildProgressTail();
         elOverlay.style.display = "flex";
+        _fnStartBuildProgressPoll(sName);
         try {
             var sUrl = "/api/containers/" +
                 encodeURIComponent(sName) + "/build";
@@ -507,11 +554,50 @@ var VaibifyContainerManager = (function () {
             VaibifyApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
         } catch (error) {
-            _fnReportBuildFailure(error);
+            if (error.iStatus === 409) {
+                await _fnWatchRunningBuild(sName);
+            } else {
+                _fnReportBuildFailure(error);
+            }
         } finally {
+            _fnStopBuildProgressPoll();
             elOverlay.style.display = "none";
             fnLoadContainers();
         }
+    }
+
+    async function _fnWatchRunningBuild(sName) {
+        // The 409 means a build for this project is already running —
+        // typically started by a tab that has since closed. The docker
+        // build outlives the request that started it, so watch that
+        // build to completion instead of reporting a failure.
+        VaibifyApp.fnShowToast(
+            "A build for this project is already running; " +
+            "attaching to its progress.", "info");
+        var dictProgress;
+        while (true) {
+            try {
+                dictProgress = await _fdictFetchBuildProgress(sName);
+            } catch (error) {
+                VaibifyApp.fnShowToast(
+                    "Lost contact with the running build; refresh " +
+                    "to check its status.", "error");
+                return;
+            }
+            _fnRenderBuildProgress(dictProgress);
+            if (!dictProgress.bLive) break;
+            await new Promise(function (fnResolve) {
+                setTimeout(fnResolve, 1500);
+            });
+        }
+        if (dictProgress.sOutcome === "succeeded") {
+            VaibifyApp.fnShowToast("Build complete", "success");
+            await fnStartContainer(sName);
+            return;
+        }
+        VaibifyApp.fnShowToast(
+            "The running build failed; see the hub log for the " +
+            "full output.", "error");
     }
 
     function _fnReportBuildFailure(error) {

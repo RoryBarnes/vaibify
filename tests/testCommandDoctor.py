@@ -427,3 +427,39 @@ def test_doctor_shared_checks_includes_hostagent_warn():
     ):
         listResults = _flistSharedChecks()
     assert any(r.sName == "colima-hostagent-log" for r in listResults)
+
+
+def test_doctor_runs_environment_checks_without_any_project():
+    """A pre-init user gets the environment report, not a refusal.
+
+    Doctor is most valuable before `vaibify init` has ever run — a
+    Docker problem is the usual reason a first build fails — so an
+    empty registry must not lock the environment checks away.
+    """
+    from vaibify.cli import commandDoctor
+
+    def _fnExitLikeEmptyRegistry(sProjectName=None):
+        raise SystemExit(1)
+
+    with patch(
+        "vaibify.cli.commandDoctor.fconfigResolveProject",
+        side_effect=_fnExitLikeEmptyRegistry,
+    ), patch.object(
+        commandDoctor, "_flistSharedChecks",
+        return_value=[_fresultOk("docker-daemon")],
+    ):
+        result = CliRunner().invoke(doctor, [])
+    assert result.exit_code == 0, result.output
+    assert "environment checks only" in result.output
+    assert "1 ok / 0 warn / 0 fail" in result.output
+
+
+def test_doctor_explicit_project_lookup_still_fails_loudly():
+    """--project naming a missing project is a mistake, not an absence."""
+    with patch(
+        "vaibify.cli.commandDoctor.fconfigResolveProject",
+        side_effect=SystemExit(1),
+    ) as mockResolve:
+        result = CliRunner().invoke(doctor, ["--project", "ghost"])
+    assert result.exit_code == 1
+    mockResolve.assert_called_once_with("ghost")
