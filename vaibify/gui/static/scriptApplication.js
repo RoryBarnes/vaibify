@@ -3571,7 +3571,11 @@ const VaibifyApp = (function () {
     var fnShowInputModal = VaibifyModals.fnShowInputModal;
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
-        await fnPutStepEdit(iStep, dictUpdate);
+        // The canonical single-step save. Funnels through fnPutStepEdit
+        // so every caller gets the compare-and-swap fingerprint and the
+        // re-sync-on-failure. Returns the response dict (null on
+        // failure) so callers can gate their own UI on the outcome.
+        return await fnPutStepEdit(iStep, dictUpdate);
     }
 
     async function fnCycleUserVerification(iStep) {

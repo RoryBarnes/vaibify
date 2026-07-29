@@ -801,12 +801,17 @@ var VaibifyDependencyScanner = (function () {
     }
 
     async function fnSaveDependencies(iStep, saDependencies) {
-        var sContainerId = VaibifyApp.fsGetContainerId();
+        // Through the shared save so the write carries the step
+        // fingerprint (a bare fdictPut here bypassed the compare-and-swap
+        // and could overwrite a concurrent agent edit). fnSaveStepUpdate
+        // handles the error toast and re-sync; a null result means it
+        // did not land.
         try {
-            await VaibifyApi.fdictPut(
-                "/api/steps/" + sContainerId + "/" + iStep,
-                {saDependencies: saDependencies});
-            VaibifyApp.fnRenderStepList();
+            var dictResult = await VaibifyApp.fnSaveStepUpdate(
+                iStep, {saDependencies: saDependencies});
+            if (dictResult) {
+                VaibifyApp.fnRenderStepList();
+            }
         } catch (error) {
             VaibifyApp.fnShowToast(
                 "Failed to save dependencies", "error");

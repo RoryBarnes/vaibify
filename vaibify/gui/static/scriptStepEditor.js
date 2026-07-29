@@ -144,29 +144,25 @@ const VaibifyStepEditor = (function () {
 
         try {
             if (sMode === "edit") {
-                const response = await fetch(
-                    "/api/steps/" +
-                        sContainerId +
-                        "/" +
-                        iEditIndex,
-                    {
-                        method: "PUT",
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify(dictData),
-                    }
-                );
-                if (response.ok) {
-                    const dictUpdated = await response.json();
-                    dictWorkflow.listSteps[iEditIndex] = dictUpdated;
-                    VaibifyApp.fnShowToast(
-                        "Step updated",
-                        "success"
-                    );
-                } else {
-                    throw new Error("Update failed");
+                // Route through the shared save so the edit carries the
+                // compare-and-swap fingerprint. The old raw fetch sent
+                // none, and the backend treats a missing fingerprint as
+                // a legacy unconditional overwrite — so a researcher
+                // silently clobbered an in-container agent edit that
+                // landed while the modal was open. fnSaveStepUpdate also
+                // refreshes the tracked fingerprint and, on a 409 or any
+                // failure, re-syncs and toasts; a null result means the
+                // save did not land, so leave the modal open to retry.
+                const dictResult = await VaibifyApp.fnSaveStepUpdate(
+                    iEditIndex, dictData);
+                if (!dictResult) {
+                    return;
                 }
+                dictWorkflow.listSteps[iEditIndex] = dictResult;
+                VaibifyApp.fnShowToast(
+                    "Step updated",
+                    "success"
+                );
             } else if (sMode === "insert") {
                 if ((dictWorkflow.listSteps || []).length >= _I_STEP_COUNT_MAX) {
                     VaibifyModals.fnShowInfoModal(
