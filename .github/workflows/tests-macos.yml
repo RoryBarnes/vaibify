@@ -7,7 +7,7 @@ on:
 
 jobs:
   tests:
-    name: '${{ matrix.os }}:python-${{ matrix.python-version }}'
+    name: 'unit:${{ matrix.os }}:python-${{ matrix.python-version }}'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

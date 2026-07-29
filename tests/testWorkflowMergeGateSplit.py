@@ -21,7 +21,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-_PATH_WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+_PATH_REPO = Path(__file__).resolve().parent.parent
+_PATH_WORKFLOWS = _PATH_REPO / ".github" / "workflows"
 
 # Runs before a merge: these decide whether a change may land.
 T_PRE_MERGE_WORKFLOWS = (
@@ -243,3 +244,94 @@ def testTheMergeStatusDumpIsWrittenOutsideTheCheckout():
             "gateRuns.json is read or written without RUNNER_TEMP, so "
             "it lands in the checkout where a glob can publish it."
         )
+
+
+# A job's name IS its status-check name, which is the string a human
+# searches for when adding a required check and the string a ruleset
+# matches on. Two lanes shipped names that broke both uses: `browser`'s
+# job was called "frontend (chromium)", invisible to anyone searching
+# "browser", and `falsification` reused the tests matrix template, so
+# `ubuntu-24.04:python-3.14` was emitted by two workflows and could not
+# be required independently. Both stayed out of the required set while
+# appearing to gate every pull request.
+_T_MATRIX_TOKENS = (
+    ("${{ matrix.os }}", "os"),
+    ("${{ matrix.python-version }}", "python-version"),
+)
+
+
+def _flistExpandJobNames(sWorkflowName):
+    """Return the concrete check names a workflow's jobs produce."""
+    dictWorkflow = yaml.safe_load(
+        (_PATH_WORKFLOWS / sWorkflowName).read_text()
+    )
+    listNames = []
+    for dictJob in dictWorkflow.get("jobs", {}).values():
+        sName = dictJob.get("name")
+        if not sName:
+            continue
+        dictMatrix = (dictJob.get("strategy") or {}).get("matrix") or {}
+        listExpanded = [sName]
+        for sToken, sKey in _T_MATRIX_TOKENS:
+            listValues = dictMatrix.get(sKey)
+            if not isinstance(listValues, list):
+                continue
+            listExpanded = [
+                sCandidate.replace(sToken, str(sValue))
+                for sCandidate in listExpanded
+                for sValue in listValues
+            ]
+        listNames.extend(listExpanded)
+    return listNames
+
+
+def testNoTwoMergeGateLanesProduceTheSameCheckName():
+    """A required check must name exactly one lane.
+
+    When two workflows emit the same check name, requiring it is
+    satisfied by whichever one reports, so the other is not actually
+    gating anything — and the ruleset gives no hint that this is so.
+    """
+    dictOwners = {}
+    for sWorkflow in T_PRE_MERGE_WORKFLOWS:
+        for sCheck in _flistExpandJobNames(sWorkflow):
+            dictOwners.setdefault(sCheck, []).append(sWorkflow)
+    dictCollisions = {
+        sCheck: listOwners
+        for sCheck, listOwners in dictOwners.items()
+        if len(listOwners) > 1
+    }
+    assert dictCollisions == {}, (
+        f"these check names are produced by more than one merge-gate "
+        f"workflow, so requiring them cannot gate both: {dictCollisions}"
+    )
+
+
+def testTheRequiredCheckToolAgreesWithThisSuite():
+    """``tools/syncRequiredChecks.py`` must gate the same lanes as this file.
+
+    The tool writes the ruleset; this suite decides which lanes are
+    merge gates. Two independent lists of the same thing is how a lane
+    ends up enforced in one place and forgotten in the other, so they
+    are compared rather than trusted to stay in step.
+    """
+    import importlib.util
+
+    pathTool = _PATH_REPO / "tools" / "syncRequiredChecks.py"
+    specTool = importlib.util.spec_from_file_location(
+        "syncRequiredChecks", pathTool,
+    )
+    moduleTool = importlib.util.module_from_spec(specTool)
+    specTool.loader.exec_module(moduleTool)
+
+    assert set(moduleTool.T_GATE_WORKFLOWS) == set(T_PRE_MERGE_WORKFLOWS), (
+        "syncRequiredChecks.py and this suite disagree about which "
+        "workflows gate a merge."
+    )
+    setFromSuite = set()
+    for sWorkflow in T_PRE_MERGE_WORKFLOWS:
+        setFromSuite.update(_flistExpandJobNames(sWorkflow))
+    assert set(moduleTool.flistRequiredContexts()) == setFromSuite, (
+        "the tool and this suite expand the gate workflows to different "
+        "check names; the ruleset would be written from the wrong set."
+    )

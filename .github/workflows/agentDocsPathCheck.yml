@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   path-check:
-    name: "Check AGENTS.md path references"
+    name: 'agent-docs'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
