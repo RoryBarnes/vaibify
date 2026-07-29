@@ -156,6 +156,8 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
             fdictCaptureContainerImageDigest(sContainerName),
         "dictSystemTools": environmentSnapshot.
             fdictCaptureSystemTools(filesRepo),
+        "iSourceDateEpoch": environmentSnapshot.
+            fiCaptureSourceDateEpoch(filesRepo),
     }
     if listHostBinaries:
         dictPayload["dictHostBinaries"] = environmentSnapshot.\

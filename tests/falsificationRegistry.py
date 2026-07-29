@@ -754,6 +754,45 @@ LIST_FALSIFICATIONS = [
         old='''        iOutputHashesMatched=dictResult["iOutputHashesMatched"],''',
         new='''        iOutputHashesMatched=dictResult["iOutputHashesTotal"],''',
     ),
+    # A rerun that silently skips steps (interactive, disabled, or a
+    # step-less workflow) leaves pinned outputs untouched, so every hash
+    # trivially matches and the attestation certifies a run that ran
+    # nothing. These two guard the refusal scanner and the empty-manifest
+    # fail-close; the tests patch the runner to fail loudly if invoked.
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_interactive_step_refuses_rerun_before_any_execution',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    return listReasons',
+        new='    return []',
+    ),
+    Falsification(
+        nodeid='tests/testRerunRefusesUnexecutedSteps.py::test_manifest_pinning_no_files_fails_closed',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='    if not listEntries:',
+        new='    if False and not listEntries:',
+    ),
+    # The publishing commit moves HEAD, so a rerun that re-derives the
+    # epoch salts its figures differently from the pinned artefacts.
+    # These two guard the override short-circuit and the rerun lane's
+    # hand-off of the recorded epoch.
+    Falsification(
+        nodeid='tests/testRecordedEpochReplay.py::test_override_bypasses_the_head_derivation',
+        source='vaibify/gui/determinismEnvironment.py',
+        old="""    iEpoch = iSourceDateEpochOverride
+    if iEpoch <= 0:
+        iEpoch = await _fiQueryHeadCommitEpoch(
+            connectionDocker, sContainerId, sProjectRepoPath,
+        )""",
+        new="""    iEpoch = await _fiQueryHeadCommitEpoch(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )""",
+    ),
+    Falsification(
+        nodeid='tests/testRecordedEpochReplay.py::test_rerun_lane_passes_the_recorded_epoch_to_the_runner',
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),',
+        new='        iSourceDateEpochOverride=0,',
+    ),
     Falsification(
         nodeid='tests/testL3AttestationMutationCoverage.py::test_non_dict_payload_reads_none_and_not_current',
         source='vaibify/reproducibility/l3Attestation.py',

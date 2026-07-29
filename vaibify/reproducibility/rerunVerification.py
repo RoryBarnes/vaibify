@@ -41,6 +41,10 @@ quietly disagree with the other about what "reproduced" means.
 
 import asyncio
 
+from vaibify.gui.pipelineUtils import fbStepIsInteractive
+from vaibify.reproducibility.environmentSnapshot import (
+    fiRecordedSourceDateEpoch,
+)
 from vaibify.reproducibility.l3Attestation import fsCurrentManifestDigest
 from vaibify.reproducibility.manifestWriter import (
     fiCountManifestEntries,
@@ -54,6 +58,7 @@ from vaibify.reproducibility.repoFiles import (
 
 
 __all__ = [
+    "S_DIVERGENCE_MANIFEST_EMPTY",
     "S_DIVERGENCE_MANIFEST_MUTATED",
     "S_DIVERGENCE_MANIFEST_UNREADABLE",
     "S_DIVERGENCE_PIPELINE_FAILED",
@@ -63,6 +68,7 @@ __all__ = [
     "fdictUnrunOutcome",
     "fdictVerifyRerunOutputs",
     "fiCountManifestEntriesOrZero",
+    "flistNameUnexecutableSteps",
 ]
 
 
@@ -73,6 +79,7 @@ __all__ = [
 S_DIVERGENCE_PIPELINE_FAILED = "pipeline rerun exited non-zero"
 S_DIVERGENCE_MANIFEST_UNREADABLE = "MANIFEST.sha256 missing or unreadable"
 S_DIVERGENCE_MANIFEST_MUTATED = "MANIFEST.sha256 changed during the rerun"
+S_DIVERGENCE_MANIFEST_EMPTY = "MANIFEST.sha256 pins no files"
 
 
 def fdictRerunAndVerifyWorkflow(
@@ -97,12 +104,31 @@ def fdictRerunAndVerifyWorkflow(
     comparison was actually made against. An attestation that labelled
     itself with some other envelope's digest — the host clone's, say —
     would be naming a thing it did not check.
+
+    A workflow containing steps the unattended runner would silently
+    skip — interactive steps, or steps disabled in the dashboard — is
+    refused before any step executes (``bRerunAttempted`` False, one
+    divergence line per unexecutable step). A skipped step leaves its
+    pinned outputs untouched, so every hash would trivially match and
+    the attestation would certify a rerun that ran nothing.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictExpectedManifest = fdictSnapshotExpectedManifest(filesRepo)
+    listUnexecutable = flistNameUnexecutableSteps(dictWorkflow)
+    if listUnexecutable:
+        dictOutcome = {
+            "bPassed": False,
+            "bRerunAttempted": False,
+            "iOutputHashesMatched": 0,
+            "iOutputHashesTotal": 0,
+            "listDivergedHashes": listUnexecutable,
+        }
+        dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
+        return dictOutcome
     bRerunSucceeded = fbRunWorkflowInContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         fsRepoRootOf(filesRepo), fnStatusCallback,
+        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),
     )
     dictOutcome = fdictVerifyRerunOutputs(
         filesRepo, bRerunSucceeded, dictExpectedManifest,
@@ -111,22 +137,58 @@ def fdictRerunAndVerifyWorkflow(
     return dictOutcome
 
 
+def flistNameUnexecutableSteps(dictWorkflow):
+    """Name every step an unattended rerun cannot or would not execute.
+
+    A tier 5 rerun runs with no researcher present, so an interactive
+    step can never execute — the runner's unattended path returns
+    success without running anything, which is precisely the outcome an
+    attestation must never absorb silently. A step disabled in the
+    dashboard is skipped the same way. In both cases the step's pinned
+    outputs sit untouched on disk, every hash trivially matches, and a
+    "byte-identical rerun" would be certified with nothing rerun. The
+    honest verdict is a refusal that names each step, before any compute
+    is spent: the researcher either enables the step, removes it, or
+    accepts that this workflow cannot attest at tier 5.
+    """
+    listSteps = dictWorkflow.get("listSteps", [])
+    if not listSteps:
+        return ["workflow contains no steps to execute"]
+    listReasons = []
+    for dictStep in listSteps:
+        sStepName = dictStep.get("sName", "")
+        if fbStepIsInteractive(dictStep):
+            listReasons.append(
+                f"step '{sStepName}' is interactive and cannot execute "
+                f"unattended"
+            )
+        elif not dictStep.get("bRunEnabled", True):
+            listReasons.append(
+                f"step '{sStepName}' is disabled and would not execute"
+            )
+    return listReasons
+
+
 def fbRunWorkflowInContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
-    sWorkdir, fnStatusCallback=None,
+    sWorkdir, fnStatusCallback=None, iSourceDateEpochOverride=0,
 ):
     """Run every enabled step of one workflow; True iff the pipeline exits 0.
 
     This answers "did the workflow run again", nothing more. Whether it
     *reproduced* is a separate question that only the post-rerun re-hash
-    can answer. The runner is imported lazily so importing this module
-    does not pull the GUI pipeline machinery into the CLI's import
-    graph.
+    can answer. ``iSourceDateEpochOverride`` carries the envelope's
+    recorded epoch so the rerun salts its figures the way the pinned
+    artefacts were salted, instead of re-deriving from a HEAD the
+    publishing commit has since moved. The runner is imported lazily so
+    importing this module does not pull the GUI pipeline machinery into
+    the CLI's import graph.
     """
     from vaibify.gui.pipelineRunner import fnRunAllSteps
     iExitCode = asyncio.run(fnRunAllSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         sWorkdir, fnStatusCallback or _fnDiscardStatusEvent,
+        iSourceDateEpochOverride=iSourceDateEpochOverride,
     ))
     return iExitCode == 0
 
@@ -184,11 +246,19 @@ def fdictVerifyRerunOutputs(
     if dictExpectedManifest is None:
         dictExpectedManifest = fdictSnapshotExpectedManifest(filesRepo)
     if not dictExpectedManifest["bReadable"]:
-        return _fdictUnreadableManifestOutcome(bRerunSucceeded)
+        return _fdictNoComparisonOutcome(
+            S_DIVERGENCE_MANIFEST_UNREADABLE, bRerunSucceeded,
+        )
     listEntries = dictExpectedManifest["listEntries"]
+    if not listEntries:
+        return _fdictNoComparisonOutcome(
+            S_DIVERGENCE_MANIFEST_EMPTY, bRerunSucceeded,
+        )
     listMismatches = _flistVerifyEntriesOrNone(filesRepo, listEntries)
     if listMismatches is None:
-        return _fdictUnreadableManifestOutcome(bRerunSucceeded)
+        return _fdictNoComparisonOutcome(
+            S_DIVERGENCE_MANIFEST_UNREADABLE, bRerunSucceeded,
+        )
     bManifestMoved = _fbManifestMovedDuringRerun(
         filesRepo, dictExpectedManifest,
     )
@@ -239,24 +309,33 @@ def fdictUnrunOutcome(sReason):
 
     A tier 5 that could not reach a container, or could not tell which
     workflow to run, has performed no comparison. It reports zero of
-    zero and names why, never a pass.
+    zero and names why, never a pass. ``bRerunAttempted`` is False so
+    reporters can say "the rerun never started" instead of describing
+    the exit status of a run that did not happen.
     """
     return {
         "bPassed": False,
+        "bRerunAttempted": False,
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
         "listDivergedHashes": [sReason],
     }
 
 
-def _fdictUnreadableManifestOutcome(bRerunSucceeded):
-    """Return the fail-closed outcome for a manifest that cannot be read."""
+def _fdictNoComparisonOutcome(sDivergence, bRerunSucceeded):
+    """Return the fail-closed outcome when no comparison was possible.
+
+    An unreadable manifest and a manifest that pins no files fail the
+    same way: a comparison against nothing must never be recorded as
+    one that passed — zero of zero is a vacuous match, not a
+    reproduction.
+    """
     return {
         "bPassed": False,
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
         "listDivergedHashes": _flistOrderDivergences(
-            [S_DIVERGENCE_MANIFEST_UNREADABLE], bRerunSucceeded, False,
+            [sDivergence], bRerunSucceeded, False,
         ),
     }
 

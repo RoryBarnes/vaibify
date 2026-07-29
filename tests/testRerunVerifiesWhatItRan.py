@@ -138,7 +138,11 @@ def _fnSeedEnvelope(pathRepo):
     pathWorkflows = pathVaibify / "workflows"
     pathWorkflows.mkdir(parents=True, exist_ok=True)
     (pathWorkflows / "project.json").write_text(json.dumps({
-        "listSteps": [],
+        "listSteps": [{
+            "sName": "GenerateSamples",
+            "bRunEnabled": True,
+            "saCommands": ["true"],
+        }],
         "dictDeterminism": {"bAcceptBlasVariance": True},
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
@@ -175,7 +179,11 @@ def _fdictWorkflowFor(pathRepo, sName):
     return {
         "sWorkflowName": sName,
         "sProjectRepoPath": str(pathRepo),
-        "listSteps": [],
+        "listSteps": [{
+            "sName": "GenerateSamples",
+            "bRunEnabled": True,
+            "saCommands": ["true"],
+        }],
         "dictDeterminism": {"bAcceptBlasVariance": True},
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
