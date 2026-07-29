@@ -383,3 +383,77 @@ def testRenameRoutePersistsAnUnrecoverableSplit(monkeypatch):
         "the split state must be persisted before the error surfaces"
     )
     assert dictWorkflow["listSteps"][0]["sDirectory"] == "NewStep"
+
+
+# ---------------------------------------------------------------------------
+# Rename / align refuse while a pipeline action is live; rename dry-run.
+# ---------------------------------------------------------------------------
+
+
+class _LiveTask:
+    """A pipeline task that reports itself still running."""
+
+    def done(self):
+        return False
+
+
+def _tupleRenameClient(dictWorkflow, dictPipelineTasks):
+    """Build a client whose ctx carries docker + pipelineTasks + paths."""
+    listSaves = []
+    dictCtx = _fdictBuildContext(dictWorkflow, listSaves)
+    dictCtx["docker"] = _FakeAlignDocker()
+    dictCtx["pipelineTasks"] = dictPipelineTasks
+    dictCtx["paths"] = {
+        S_CONTAINER_ID: "/workspace/repo/.vaibify/workflows/study.json",
+    }
+    app = FastAPI()
+    stepRoutes.fnRegisterAll(app, dictCtx)
+    return TestClient(app)
+
+
+def _dictRenameWorkflow():
+    return {
+        "sWorkflowName": "W",
+        "sProjectRepoPath": "/workspace/repo",
+        "listSteps": [{
+            "sName": "Old Step", "sDirectory": "OldStep", "sLabel": "A01",
+            "saOutputDataFiles": [], "saPlotCommands": [], "saPlotFiles": [],
+        }],
+    }
+
+
+def test_rename_refused_while_pipeline_task_live():
+    client = _tupleRenameClient(
+        _dictRenameWorkflow(), {S_CONTAINER_ID: _LiveTask()})
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/rename",
+        json={"sNewName": "New Step", "bDryRun": True})
+    assert response.status_code == 409
+    assert "pipeline action is running" in response.json()["detail"]
+
+
+def test_align_refused_while_pipeline_task_live():
+    client = _tupleRenameClient(
+        _dictRenameWorkflow(), {S_CONTAINER_ID: _LiveTask()})
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/align-directories")
+    assert response.status_code == 409
+    assert "pipeline action is running" in response.json()["detail"]
+
+
+def test_rename_dry_run_returns_a_plan_without_applying():
+    client = _tupleRenameClient(_dictRenameWorkflow(), {})
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/rename",
+        json={"sNewName": "New Step", "bDryRun": True})
+    assert response.status_code == 200, response.text
+    dictPlan = response.json()
+    assert "listScriptWarnings" in dictPlan
+
+
+def test_rename_bad_index_is_404():
+    client = _tupleRenameClient(_dictRenameWorkflow(), {})
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/99/rename",
+        json={"sNewName": "New Step", "bDryRun": True})
+    assert response.status_code == 404
