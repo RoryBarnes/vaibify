@@ -72,6 +72,64 @@ def test_validate_missing_project_name(clientHttp):
     assert bFoundNameError
 
 
+def test_wizard_does_not_offer_the_rejected_uv_manager():
+    """uv was listed in the wizard but rejected by the backend.
+
+    The offered options must match what _flistCollectErrors accepts
+    (pip/conda/mamba); offering uv produced a config the same server
+    then refused to save.
+    """
+    import os
+    sHtml = open(
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "vaibify", "gui", "static", "setupWizard.html",
+        ),
+        encoding="utf-8",
+    ).read()
+    iSelect = sHtml.find('id="packageManager"')
+    sSelect = sHtml[iSelect:sHtml.find("</select>", iSelect)]
+    assert '"uv"' not in sSelect, "uv is not an accepted package manager"
+    for sManager in ("pip", "conda", "mamba"):
+        assert f'"{sManager}"' in sSelect
+
+
+def test_validate_still_rejects_uv_if_posted_directly():
+    """Belt: even a hand-crafted uv POST is refused, not silently saved."""
+    from vaibify.install.setupServer import fappCreateSetupWizard
+    from fastapi.testclient import TestClient
+    client = TestClient(fappCreateSetupWizard(sOutputDirectory="/tmp"))
+    responseHttp = client.post("/api/setup/validate", json={
+        "sProjectName": "p", "sPackageManager": "uv",
+    })
+    dictResult = responseHttp.json()
+    assert dictResult["bValid"] is False
+    assert any("packageManager" in s for s in dictResult["listErrors"])
+
+
+def test_wizard_no_longer_collects_a_discarded_zenodo_id():
+    """The Zenodo deposition ID is a per-workflow field, not build config.
+
+    It was collected into vaibify.yml, which has no home for it, and
+    silently dropped. The wizard no longer collects it (it is set per
+    workflow in project.json).
+    """
+    import os
+    sBase = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "vaibify", "gui", "static",
+    )
+    sHtml = open(
+        os.path.join(sBase, "setupWizard.html"), encoding="utf-8",
+    ).read()
+    sJs = open(
+        os.path.join(sBase, "scriptSetupWizard.js"), encoding="utf-8",
+    ).read()
+    assert "zenodoDepositionId" not in sHtml
+    assert "zenodoDepositionId" not in sJs
+    assert "sZenodoDepositionId" not in sJs
+
+
 def test_save_writes_yaml_file(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
     clientHttp = TestClient(app)

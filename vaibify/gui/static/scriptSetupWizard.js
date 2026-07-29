@@ -191,9 +191,6 @@ var VaibifySetup = (function () {
         fnSetInputValue(
             "overleafProjectId", dictConfig.sOverleafProjectId
         );
-        fnSetInputValue(
-            "zenodoDepositionId", dictConfig.sZenodoDepositionId
-        );
         document.getElementById("neverSleep").checked = Boolean(
             dictConfig.bNeverSleep
         );
@@ -298,9 +295,6 @@ var VaibifySetup = (function () {
             sOverleafProjectId: document.getElementById(
                 "overleafProjectId"
             ).value.trim(),
-            sZenodoDepositionId: document.getElementById(
-                "zenodoDepositionId"
-            ).value.trim(),
             bNeverSleep: document.getElementById(
                 "neverSleep"
             ).checked,
@@ -377,8 +371,11 @@ var VaibifySetup = (function () {
         var dictConfig = fdictBuildConfigFromForm();
         var elButton = document.getElementById("btnBuildContainer");
         elButton.disabled = true;
-        elButton.textContent = "Building...";
+        elButton.textContent = "Saving...";
 
+        // This writes vaibify.yml; it does NOT build the image. The
+        // button and toast say so honestly — the earlier "Building..."
+        // wording implied a build that never ran here.
         try {
             var response = await fetch("/api/setup/build", {
                 method: "POST",
@@ -388,20 +385,23 @@ var VaibifySetup = (function () {
             if (!response.ok) {
                 var dictError = await response.json();
                 throw new Error(
-                    dictError.detail || "Build failed"
+                    dictError.detail || "Could not save configuration"
                 );
             }
             var dictResult = await response.json();
             fnShowToast(
-                dictResult.sMessage || "Build started", "success"
+                dictResult.sMessage
+                    || "Configuration saved. Run 'vaibify build' next.",
+                "success"
             );
         } catch (error) {
             fnShowToast(
-                "Build failed: " + error.message, "error"
+                "Could not save configuration: " + error.message,
+                "error"
             );
         } finally {
             elButton.disabled = false;
-            elButton.textContent = "Build Container";
+            elButton.textContent = "Save Configuration";
         }
     }
 
