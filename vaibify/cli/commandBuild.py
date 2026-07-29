@@ -135,8 +135,9 @@ def _fImportBuildOrExit():
         from vaibify.docker.imageBuilder import fnBuildImage
     except ImportError:
         click.echo(
-            "Error: Docker support is not installed. "
-            "Install with: pip install vaibify[docker]"
+            "Error: the docker Python package is missing. It installs "
+            "with vaibify itself, so this vaibify installation is "
+            "broken. Repair it with: pip install --force-reinstall vaibify"
         )
         sys.exit(1)
     return fnBuildImage

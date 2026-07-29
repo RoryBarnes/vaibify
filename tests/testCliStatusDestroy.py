@@ -154,7 +154,8 @@ def test_status_no_docker(mockAvail):
     runner = CliRunner()
     result = runner.invoke(status, [])
     assert result.exit_code != 0
-    assert "Docker" in result.output
+    assert "docker Python package is missing" in result.output
+    assert "pip install --force-reinstall vaibify" in result.output
 
 
 @patch("vaibify.cli.commandStatus.fnShowContainerStatus")

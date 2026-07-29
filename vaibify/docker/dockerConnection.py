@@ -208,8 +208,9 @@ def _fmoduleGetDocker():
         return docker
     except ImportError:
         raise ImportError(
-            "docker package required for GUI features. "
-            "Install with: pip install vaibify[docker]"
+            "The docker Python package is missing. It installs with "
+            "vaibify itself, so this vaibify installation is broken. "
+            "Repair it with: pip install --force-reinstall vaibify"
         )
 
 

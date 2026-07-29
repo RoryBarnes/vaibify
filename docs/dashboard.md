@@ -14,13 +14,11 @@ The dashboard has a fixed layout:
 
 - **Top toolbar** — container name, active project, the three AICS
   level badges, the **?** Help button, and the Run, Sync, View, and
-  Admin menus. A pulsing **compute indicator** appears beside the
-  container name whenever the container's CPU is busy: theme-tinted
-  when a vaibify step owns the compute, amber when the compute is
-  happening outside the dashboard (an in-container agent or a
-  terminal session running simulations directly — no step blinks in
-  that case, because no step is running). The indicator hides when
-  no reading is available; it never claims the container is idle.
+  Admin menus. **View → Resource Monitor** opens a small on-demand
+  panel with live CPU and memory sparklines and the container's disk
+  usage (with a warning banner when the disk is nearly full); when a
+  reading is unavailable — Docker unreachable, container stopped —
+  the panel says so rather than showing a stale number.
 - **Left panel** — a tabbed panel. For projects with a `project.json`
   the tabs are **Main**, **AICS**, **Files**, and **Logs**; for sandbox
   and toolkit projects (no `project.json`) they are **Files**, **Repos**,
@@ -42,7 +40,9 @@ at any corner of the screen tells you where the project stands.
 Click in a terminal section to access a shell session inside the
 container. The terminal runs in your browser over WebSocket and behaves
 like a standard terminal emulator. Multiple sessions can run
-concurrently — open as many as you like.
+concurrently: the terminal strip holds up to **five** side-by-side
+panes, and each pane can hold any number of tabs, each tab its own
+shell session.
 
 If an agent CLI is enabled for the project, start it from a terminal. For
 example:
@@ -568,12 +568,13 @@ The **?** button beside the project name opens the Help panel. It
 contains:
 
 - A link to the full online documentation.
-- **Using AI** — how to start the in-container coding agent
-  (Claude Code, Codex, or Gemini) and why skipping
-  per-command permission prompts is the intended, safe mode inside the
-  sandbox: the container isolates the agent from your host, every
-  edit is tracked in git and hash-pinned, and a full rebuild
-  ultimately checks the analysis — the AICS Level 3 posture.
+- **Using AI** — how to start the AI coding assistant from a
+  container terminal (`claude --dangerously-skip-permissions`) and
+  why skipping per-command permission prompts is the intended, safe
+  mode inside the sandbox: the container isolates the agent from
+  your host, every edit is tracked in git and hash-pinned, and a
+  full rebuild ultimately checks the analysis — the AICS Level 3
+  posture.
 - The **Legend** — the symbol key, in four divisions matching the
   dashboard's surfaces: **Steps** (run checkbox, run light, warning
   column, per-file marks), **Project** (requirement-row marks and the
@@ -761,6 +762,14 @@ image rebuild refreshes them):
 - **read-manuscript** — pull the project's own Overleaf manuscript
   (via the `pull-manuscript` action) into a git-ignored scratch copy
   and read it, rather than answering from memory.
+- **reproducible-analysis** — answer any quantitative or statistical
+  question by writing a *saved* script — never a throwaway
+  one-liner, heredoc, or REPL session — structured so it can become
+  a pipeline step and its number can be regenerated.
+- **running-steps** — run pipeline steps through `vaibify-do`, never
+  by launching a step's script directly in a shell: a direct launch
+  is invisible to the dashboard, which can only show runs it is told
+  about.
 
 Moving the ladder and step-authoring walkthroughs into on-demand
 skills also slims the always-loaded container `CLAUDE.md` from ~470 to

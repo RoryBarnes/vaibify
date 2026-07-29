@@ -40,8 +40,9 @@ def fnRequireDocker():
     """Exit with an error if the Docker Python SDK is not installed."""
     if not fbDockerAvailable():
         click.echo(
-            "Error: Docker support is not installed. "
-            "Install with: pip install vaibify[docker]"
+            "Error: the docker Python package is missing. It installs "
+            "with vaibify itself, so this vaibify installation is "
+            "broken. Repair it with: pip install --force-reinstall vaibify"
         )
         sys.exit(1)
 

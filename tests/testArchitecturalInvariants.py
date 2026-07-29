@@ -16,6 +16,7 @@ __all__ = [
     "testWorkflowManagerUsesPosixPath",
     "testDirectorUsesOsPath",
     "testNoScienceSpecificIdentifiersInSource",
+    "testNoScienceSpecificIdentifiersInShippedTemplates",
     "testScienceTermScanMatchesSeparatedSpellings",
     "testScienceTermScanKeepsItsLeadingWordBoundary",
     "testRouteModulesDoNotImportSiblings",
@@ -78,7 +79,26 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
     # in, which is the likelier route now that incidents get written up
     # where they were diagnosed.
     "xuvevolution",
+    # The maintainer's own tool names, which shipped in the toolkit
+    # template README (caught 2026-07-29). Their one deliberate home,
+    # levelGates.TUPLE_COMMON_SCIENTIFIC_BINARIES, is scoped below in
+    # SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES.
+    "vplanet",
+    "vspace",
+    "multiplanet",
 ]
+
+# (sTerm, repo-relative path) pairs the source scan tolerates. Each
+# entry scopes ONE term to ONE file with a stated reason; the scan
+# stays strict everywhere else. levelGates.py names the tool terms on
+# purpose: its command-scan heuristic recognizes common scientific
+# binaries to defend against false L3 waivers, and renaming them
+# would change behavior.
+SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES = {
+    ("vplanet", "vaibify/reproducibility/levelGates.py"),
+    ("vspace", "vaibify/reproducibility/levelGates.py"),
+    ("multiplanet", "vaibify/reproducibility/levelGates.py"),
+}
 
 # PENDING (2026-07-27): this scan covers *.py/*.html/*.js/*.css under
 # vaibify/ only. Markdown is not scanned and repo-root docs/ is
@@ -120,6 +140,11 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
 #   tests/ is an excluded directory, and the fixtures there use real
 #   object names freely (testStepSlugContract, testSyncRoutesCoverage,
 #   testLatexAnnotation and others).
+#
+# CLEARED (2026-07-29): shipped templates are now enforced by their
+# own lane, testNoScienceSpecificIdentifiersInShippedTemplates, which
+# scans every file (markdown included) under vaibify/templates/ and
+# exempts only the one shipped example workflow.
 #
 # To finish the job: add "*.md" to _TUPLE_SCIENCE_SCAN_GLOBS, extend the
 # scan root to repo-root docs/ (which will also pick up AGENTS.md), and
@@ -635,7 +660,8 @@ _TUPLE_SCIENCE_SCAN_GLOBS = ("*.py", "*.html", "*.js", "*.css")
 _S_TERM_SEPARATOR_PATTERN = r"[\s\-_]*"
 
 
-def _flistScanForTerm(pathRoot, sTerm):
+def _flistScanForTerm(pathRoot, sTerm, tupleGlobs=_TUPLE_SCIENCE_SCAN_GLOBS,
+                      bSkipExcludedDirectories=True):
     """Return (pathFile, iLineNo, sLine, sMatchedToken) matches for sTerm.
 
     Scans user-facing source files (Python, HTML, JS, CSS) for the
@@ -668,9 +694,9 @@ def _flistScanForTerm(pathRoot, sTerm):
         re.IGNORECASE,
     )
     listHits = []
-    for sGlob in _TUPLE_SCIENCE_SCAN_GLOBS:
+    for sGlob in tupleGlobs:
         for pathFile in pathRoot.rglob(sGlob):
-            if _fbIsExcludedScanPath(pathFile):
+            if bSkipExcludedDirectories and _fbIsExcludedScanPath(pathFile):
                 continue
             try:
                 sSource = fsReadSource(pathFile)
@@ -696,9 +722,47 @@ def testNoScienceSpecificIdentifiersInSource():
         listViolations.extend(
             (sTerm, p, iLine, sText, sToken)
             for p, iLine, sText, sToken in _flistScanForTerm(pathRoot, sTerm)
+            if (sTerm, p.relative_to(REPO_ROOT).as_posix())
+            not in SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES
         )
     assert listViolations == [], (
         "Science-specific identifiers found in vaibify source:\n"
+        + "\n".join(
+            f"  [{sTerm} -> {sToken}] {p}:{iLine}: {sText}"
+            for sTerm, p, iLine, sText, sToken in listViolations
+        )
+    )
+
+
+# The ONE shipped example workflow may carry science overlap by
+# explicit ruling (2026-07-27): it is an allow-path, never a weakened
+# pattern. Every other shipped template stays strict.
+_PATH_ALLOWED_EXAMPLE_TEMPLATE = (
+    REPO_ROOT / "vaibify" / "templates" / "workflow"
+)
+
+
+def testNoScienceSpecificIdentifiersInShippedTemplates():
+    """Shipped template text carries no science or project-tool names.
+
+    The source-wide scan excludes ``/templates/`` and never globs
+    markdown, which is how the maintainer's own tool names shipped in
+    the toolkit template README. This lane scans every file of every
+    template, exempting only the one shipped example workflow.
+    """
+    pathTemplatesRoot = REPO_ROOT / "vaibify" / "templates"
+    listViolations = []
+    for sTerm in LIST_FORBIDDEN_SCIENCE_TERMS:
+        listViolations.extend(
+            (sTerm, p, iLine, sText, sToken)
+            for p, iLine, sText, sToken in _flistScanForTerm(
+                pathTemplatesRoot, sTerm, tupleGlobs=("*",),
+                bSkipExcludedDirectories=False,
+            )
+            if _PATH_ALLOWED_EXAMPLE_TEMPLATE not in p.parents
+        )
+    assert listViolations == [], (
+        "Science-specific identifiers found in shipped templates:\n"
         + "\n".join(
             f"  [{sTerm} -> {sToken}] {p}:{iLine}: {sText}"
             for sTerm, p, iLine, sText, sToken in listViolations

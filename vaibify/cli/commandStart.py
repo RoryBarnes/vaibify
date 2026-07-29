@@ -29,8 +29,9 @@ def _fnStartContainer(config, sDockerDir, sCommand):
         )
     except ImportError:
         click.echo(
-            "Error: Docker support is not installed. "
-            "Install with: pip install vaibify[docker]"
+            "Error: the docker Python package is missing. It installs "
+            "with vaibify itself, so this vaibify installation is "
+            "broken. Repair it with: pip install --force-reinstall vaibify"
         )
         sys.exit(1)
     saCommand = [sCommand] if sCommand else None
@@ -53,8 +54,9 @@ def _fnStartContainerDetached(config, sDockerDir):
         )
     except ImportError:
         click.echo(
-            "Error: Docker support is not installed. "
-            "Install with: pip install vaibify[docker]"
+            "Error: the docker Python package is missing. It installs "
+            "with vaibify itself, so this vaibify installation is "
+            "broken. Repair it with: pip install --force-reinstall vaibify"
         )
         sys.exit(1)
     try:
@@ -255,7 +257,7 @@ def _fpreflightRemovedStaleContainer(sProjectName):
 def _fpreflightRunningContainer(sProjectName):
     """Build a fail-level PreflightResult for an already-running container."""
     sRemediation = (
-        f"Use `vaibify stop` first, or attach with `vaibify exec`."
+        "Use `vaibify stop` first, or attach with `vaibify connect`."
     )
     return PreflightResult(
         sName="container-name", sLevel="fail",

@@ -449,7 +449,7 @@ var VaibifyWorkflowManager = (function () {
         'is <code>~/src/</code>.</p>',
 
         '<p>A starter set of files that determines the initial shape ' +
-        'of your project. Two templates ship with vaibify:</p>' +
+        'of your project. Three templates ship with vaibify:</p>' +
         '<p><strong>sandbox</strong> &mdash; a blank workspace for ' +
         'ad-hoc exploration. Use this when you have one project ' +
         'repository or just want a clean environment to work in.</p>' +
@@ -458,6 +458,13 @@ var VaibifyWorkflowManager = (function () {
         'you are actively editing multiple libraries that depend on ' +
         'each other and want each one to appear in the Repos panel ' +
         'with its own git status and push controls.</p>' +
+        '<p><strong>workflow</strong> &mdash; vaibify&rsquo;s flagship ' +
+        'reproducibility template: a runnable two-step example ' +
+        'pipeline (generate samples, then plot a histogram of them) ' +
+        'wired with cross-step tokens. Use this when you want the ' +
+        'full pipeline machinery &mdash; steps, dependency tracking, ' +
+        'and per-step verification &mdash; and replace the example ' +
+        'steps with your own.</p>' +
         '<p>Pick <strong>sandbox</strong> if you are not sure. You can ' +
         'restructure later by editing <code>vaibify.yml</code>.</p>',
 
