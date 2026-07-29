@@ -3800,7 +3800,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # push-to-github description that now names it. One catalog
     # entry per researcher-invokable action is this module's whole
     # job; the growth is the job being done.
-    "actionCatalog.py": 931,
+    # +1 (2026-07-29): the run-all / force-run-all descriptions now
+    # state that disabled steps are skipped, correcting agent-facing
+    # text alongside the Run All disabled-step fix.
+    "actionCatalog.py": 932,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

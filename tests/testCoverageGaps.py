@@ -238,13 +238,16 @@ def test_fnWriteDefaultConfig_calls_save(mockPath, mockSave):
     mockSave.assert_called_once()
 
 
+@patch("vaibify.cli.commandInit.fnAddProject")
 @patch("vaibify.cli.commandInit.fnWriteDefaultConfig")
 @patch("vaibify.cli.commandInit.fnCopyTemplate")
 @patch("vaibify.cli.commandInit.fbConfigExists",
        return_value=False)
 def test_init_with_template_no_config(
-    mockExists, mockCopy, mockWrite,
+    mockExists, mockCopy, mockWrite, mockAdd,
 ):
+    # Config-writing is mocked, so registration is mocked too; otherwise
+    # init correctly refuses to register a nonexistent config.
     from vaibify.cli.commandInit import init
     runner = CliRunner()
     result = runner.invoke(init, ["--template", "sandbox"])

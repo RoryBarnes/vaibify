@@ -262,12 +262,16 @@ def test_init_existing_config_no_force_exits(
     assert result.exit_code != 0
 
 
+@patch("vaibify.cli.commandInit.fnAddProject")
 @patch("vaibify.cli.commandInit.fnCopyTemplate")
 @patch("vaibify.cli.commandInit.fnWriteDefaultConfig")
 @patch("vaibify.cli.commandInit.fbConfigExists", return_value=True)
 def test_init_existing_config_force_succeeds(
-    mockExists, mockWrite, mockCopy,
+    mockExists, mockWrite, mockCopy, mockAdd,
 ):
+    # fnWriteDefaultConfig is mocked, so no config lands on disk;
+    # registration must be mocked too, else init correctly fails to
+    # register a project whose config does not exist.
     runner = CliRunner()
     result = runner.invoke(
         init, ["--template", "sandbox", "--force"])
