@@ -170,15 +170,48 @@ cosmic-ray init cosmic-ray.toml session.sqlite && cosmic-ray exec cosmic-ray.tom
 
 ## Continuous integration
 
+Every workflow runs **either** before a merge or after it, never both.
+The test suites gate the merge; documentation, badges and distributions
+are built from `main` once the merge has happened. Until 2026-07-28 six
+workflows did both, so the whole suite ran a second time on the merge
+commit, where its answer could no longer change anything.
+
+Branch protection is what makes the pre-merge half sufficient. It is the
+reason the test workflows no longer need a `push: [main]` trigger, and
+it is why `main` is not left unverified by their absence.
+
+**Before a merge — these decide whether a change may land:**
+
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14 |
 | `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14) |
-| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
+| `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` resolves | one Linux cell |
+
+**After a merge — these publish or package what `main` now is:**
+
+| Workflow | Runs | Matrix |
+|---|---|---|
+| `docs.yml` | the Sphinx build (`-W`), published to `gh-pages` | one Linux cell |
+| `badges.yml` | recomputes the live test / falsification / invariant counts | one Linux cell |
+| `pip-install.yml` | builds the sdist and wheel, then runs `tools/checkInstalledDistribution.py` against each | corners of the support matrix on push to `main`; the full matrix on a release |
+
+A packaging regression therefore reaches `main` before it is caught: it
+is held out of a *release* rather than out of the branch. A red
+`pip-install` on `main` means `main` currently produces a broken
+distribution and needs a fix commit — it is not flaky CI.
+
+**On their own schedule — neither gate nor publisher:**
+
+| Workflow | Runs | Matrix |
+|---|---|---|
+| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `containerAcceptance.yml` | the modelled container commands, against a real container | nightly + manual |
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
-| `badges.yml` | recomputes the live test / falsification / invariant counts | on push to `main` |
+
+`tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back
+into running on both sides of the merge.
 
 ## The three execution lanes
 

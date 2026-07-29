@@ -208,12 +208,14 @@ above. Start Docker, open a project, and exercise the specific path.
 
 #### If you are a delegated agent and cannot do this
 
-**Push the branch and let the browser lane run it.** That is now the
-answer, and it is why the lane exists: the old rule asked delegated
-agents to load a page they had no browser for, so five of them once
-changed JavaScript in one session, none could follow the rule, and the
-merged branch was green with the frontend entirely unexecuted. A rule
-nobody can follow is not a control.
+**Push the branch and open a pull request, then let the browser lane
+run it.** The lane is `pull_request`-triggered, so a pushed branch with
+no PR runs nothing — do not read a quiet Actions tab as a pass. That is
+now the answer, and it is why the lane exists: the old rule asked
+delegated agents to load a page they had no browser for, so five of
+them once changed JavaScript in one session, none could follow the
+rule, and the merged branch was green with the frontend entirely
+unexecuted. A rule nobody can follow is not a control.
 
 If you also cannot push, say so explicitly and name the exact surface
 you did not verify — "the three JS call sites in
@@ -691,8 +693,13 @@ template shipped without comment — and the first version of this
 script spot-checked three files, which is why it passed a
 distribution whose assembled context was missing five of six agent
 documents. Checking a shipped file is not the same as checking the
-artifact built from it. The job runs on pull requests too, at the
-corners of the support matrix; a release runs the full matrix.
+artifact built from it. The job runs **after** a merge, at the corners
+of the support matrix; a release runs the full matrix. It is a
+post-merge lane by decision (2026-07-28), so a packaging regression
+lands on `main` and is caught on the push rather than held out by the
+merge gate — held out of a *release*, not out of the branch. Treat a
+red `pip-install` on `main` as "main currently builds a broken
+distribution", never as flaky CI.
 
 ## Known technical debt
 

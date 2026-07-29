@@ -1,11 +1,20 @@
 name: pip-install
 
-# The artifact checks used to run only on `release: published`, which
-# is after the release exists: they could block the PyPI upload but not
-# the release, and never a pull request. A wheel that cannot run
-# `vaibify init` is a defect like any other and belongs on the PR gate,
-# so build+test now run on pushes and pull requests too. Only
-# upload_pypi remains release-gated.
+# Post-merge by decision (2026-07-28): the pre-merge gate is the test
+# suites, and distributions are built after a merge rather than on every
+# pull request.
+#
+# Know what that costs. The artifact checks originally ran only on
+# `release: published` -- after the release existed -- and were moved
+# onto the PR gate because a wheel containing no templates had shipped
+# and `import vaibify` could not see it. Running here means a packaging
+# regression reaches `main` and is caught on the push, not held out by
+# the merge gate: the signal arrives minutes later and on the shared
+# branch instead of the contributor's. It is still caught before a
+# release, which is what upload_pypi depends on.
+#
+# So a red pip-install on `main` is not "flaky CI" -- it means `main`
+# currently produces a broken distribution and needs a fix commit.
 on:
   release:
     types:
@@ -13,7 +22,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -45,9 +53,9 @@ jobs:
     name: 'Test py${{ matrix.python }} on ${{ matrix.os }}'
     needs: [build]
     runs-on: ${{ matrix.os }}
-    # A release checks the full support matrix. A pull request checks
+    # A release checks the full support matrix. A push to main checks
     # the corners — oldest and newest supported Python, one Linux and
-    # one macOS — because 24 jobs per PR to catch a packaging mistake
+    # one macOS — because 24 jobs per merge to catch a packaging mistake
     # that is almost never platform-specific is the wrong trade. The
     # failure this gate exists for (a wheel with no package data) is
     # identical on every row.
