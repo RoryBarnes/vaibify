@@ -3421,10 +3421,18 @@ const VaibifyApp = (function () {
         // local optimistic edit is stale, so we re-sync from the server
         // rather than trust it. Returns the response dict on success,
         // null on any failure (the caller shows nothing extra).
-        var dictBody = Object.assign({}, dictUpdate, {
-            sBaseFingerprint:
-                _dictWorkflowState.sWorkflowFingerprint || null,
-        });
+        //
+        // A caller-supplied sBaseFingerprint WINS over the current
+        // tracked one: a long-lived form (the step-edit modal) captures
+        // the fingerprint when it opens and must submit THAT, so an
+        // out-of-band reload that advanced the tracked fingerprint
+        // cannot let the modal's stale fields pass the CAS check. The
+        // default (tracked) applies to the transient toggles that read
+        // and write in the same tick.
+        var dictBody = Object.assign(
+            {sBaseFingerprint:
+                _dictWorkflowState.sWorkflowFingerprint || null},
+            dictUpdate);
         try {
             var dictResult = await VaibifyApi.fdictPut(
                 "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
@@ -4607,6 +4615,12 @@ const VaibifyApp = (function () {
         },
         fsGetWorkflowPath: function () {
             return _dictWorkflowState.sWorkflowPath;
+        },
+        fsGetWorkflowFingerprint: function () {
+            // The current tracked compare-and-swap baseline. A modal
+            // captures this at open so it can submit the exact version
+            // it was populated from, not whatever the poll advanced to.
+            return _dictWorkflowState.sWorkflowFingerprint || null;
         },
         fiGetSelectedStepIndex: function () {
             return _dictUiState.iSelectedStepIndex;

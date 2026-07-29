@@ -9,6 +9,12 @@ const VaibifyStepEditor = (function () {
     let sMode = "create";  /* "create", "edit", or "insert" */
     let iEditIndex = -1;
     let iInsertPosition = -1;
+    // The workflow fingerprint captured when the EDIT modal opened. The
+    // save submits this exact value so a concurrent agent edit (which
+    // the background poll may have already loaded, advancing the tracked
+    // fingerprint) cannot let the modal's stale fields pass the backend
+    // compare-and-swap.
+    let sEditBaseFingerprint = null;
 
     function fnOpenCreateModal() {
         sMode = "create";
@@ -33,6 +39,11 @@ const VaibifyStepEditor = (function () {
         sMode = "edit";
         iEditIndex = iIndex;
         iInsertPosition = -1;
+        // Snapshot the base version this form is populated from. If the
+        // step changes out from under the modal, the save carries this
+        // stale fingerprint and the backend refuses it (409) instead of
+        // overwriting the concurrent edit.
+        sEditBaseFingerprint = VaibifyApp.fsGetWorkflowFingerprint();
 
         const dictWorkflow = VaibifyApp.fdictGetWorkflow();
         const dictStep = dictWorkflow.listSteps[iIndex];
@@ -149,10 +160,15 @@ const VaibifyStepEditor = (function () {
                 // none, and the backend treats a missing fingerprint as
                 // a legacy unconditional overwrite — so a researcher
                 // silently clobbered an in-container agent edit that
-                // landed while the modal was open. fnSaveStepUpdate also
-                // refreshes the tracked fingerprint and, on a 409 or any
-                // failure, re-syncs and toasts; a null result means the
-                // save did not land, so leave the modal open to retry.
+                // landed while the modal was open. Submit the fingerprint
+                // captured AT OPEN (not the current tracked one, which an
+                // out-of-band reload may have advanced to the agent's new
+                // version): that is what makes the backend refuse a stale
+                // save instead of accepting it under the new fingerprint.
+                // On a 409 or any failure fnSaveStepUpdate re-syncs and
+                // toasts; a null result means the save did not land, so
+                // leave the modal open to retry.
+                dictData.sBaseFingerprint = sEditBaseFingerprint;
                 const dictResult = await VaibifyApp.fnSaveStepUpdate(
                     iEditIndex, dictData);
                 if (!dictResult) {
