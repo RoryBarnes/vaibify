@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev656 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev659 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=24933454"></script>
+      <script src="_static/documentation_options.js?v=cc899796"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -69,6 +69,8 @@
 <li class="toctree-l2"><a class="reference internal" href="#falsification-testing-vs-the-mutation-gate-two-different-jobs">Falsification testing vs. the mutation gate — two different jobs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-the-suites-locally">Running the suites locally</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#check-names">Check names</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#required-status-checks">Required status checks</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#what-the-readme-badges-mean">What the README badges mean</a></li>
 </ul>
 </li>
@@ -390,6 +392,75 @@ the split landed: two <code class="docutils literal notranslate"><span class="pr
 (<code class="docutils literal notranslate"><span class="pre">Test</span> <span class="pre">py3.9</span> <span class="pre">on</span> <span class="pre">macos-26</span></code>, <code class="docutils literal notranslate"><span class="pre">Test</span> <span class="pre">py3.14</span> <span class="pre">on</span> <span class="pre">macos-26</span></code>) were left in the
 branch ruleset and blocked an otherwise fully green pull request.</p>
 </div>
+<section id="check-names">
+<h3>Check names<a class="headerlink" href="#check-names" title="Link to this heading"></a></h3>
+<p>A ruleset matches checks by <strong>job name</strong>, and the required-checks picker
+searches those names — not workflow names. So the name is not cosmetic:
+an unfindable name is an unprotected lane.</p>
+<p>The scheme is <code class="docutils literal notranslate"><span class="pre">&lt;test-type&gt;:&lt;os&gt;:python-&lt;version&gt;</span></code> for anything that
+varies across the matrix, and a bare noun for anything that does not:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Check</p></th>
+<th class="head"><p>Lane</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unit:ubuntu-22.04:python-3.9</span></code> … <code class="docutils literal notranslate"><span class="pre">unit:macos-26:python-3.14</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests-linux</span></code>, <code class="docutils literal notranslate"><span class="pre">tests-macos</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">falsification:ubuntu-24.04:python-3.9</span></code> …</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">falsification</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">results:&lt;os&gt;:python-&lt;version&gt;</span></code></p></td>
+<td><p>the test-results report published by <code class="docutils literal notranslate"><span class="pre">tests-linux</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">browser</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">browser</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">invariants</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests-linux</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">docker-smoke</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests-linux</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">agent-docs</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">agentDocsPathCheck</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>Two failures forced this, both invisible in the workflow file. <code class="docutils literal notranslate"><span class="pre">browser</span></code>’s
+job was called <code class="docutils literal notranslate"><span class="pre">frontend</span> <span class="pre">(chromium)</span></code>, so searching “browser” returned
+nothing and the entire lane sat unprotected while appearing to gate
+every pull request. And <code class="docutils literal notranslate"><span class="pre">falsification</span></code> reused the tests matrix
+template, so <code class="docutils literal notranslate"><span class="pre">ubuntu-24.04:python-3.14</span></code> was emitted by two workflows —
+requiring it is satisfied by whichever reports, gating neither.
+<code class="docutils literal notranslate"><span class="pre">testNoTwoMergeGateLanesProduceTheSameCheckName</span></code> now fails if any name
+has two owners.</p>
+<p><code class="docutils literal notranslate"><span class="pre">invariants</span></code> exists purely to give the architectural invariants a name.
+They already run inside every matrix leg; the separate job adds about
+ten seconds and a check a reviewer can actually see.</p>
+</section>
+<section id="required-status-checks">
+<h3>Required status checks<a class="headerlink" href="#required-status-checks" title="Link to this heading"></a></h3>
+<p><strong>Requiring only some checks lets a pull request merge while the rest
+are still running</strong> — GitHub blocks on required checks alone. Derive the
+full set from the workflows rather than picking names by hand:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/syncRequiredChecks.py<span class="w">           </span><span class="c1"># print, change nothing</span>
+python<span class="w"> </span>tools/syncRequiredChecks.py<span class="w"> </span>--apply<span class="w">   </span><span class="c1"># write the ruleset</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Renaming a job invalidates the ruleset entry that named it: the old name
+stops being reported and every pull request waits forever on a check
+that no longer exists. Run <code class="docutils literal notranslate"><span class="pre">syncRequiredChecks.py</span> <span class="pre">--apply</span></code> <strong>before</strong>
+merging a rename, not after — otherwise the renaming pull request is
+itself blocked by the names it is replacing.</p>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">results:*</span></code> is deliberately excluded from the required set: it reports
+the same run the matching <code class="docutils literal notranslate"><span class="pre">unit:</span></code> job already gates, so requiring both
+doubles the wait for no extra signal.</p>
 <p><strong>On their own schedule — neither gate nor publisher:</strong></p>
 <table class="docutils align-default">
 <thead>
@@ -415,6 +486,7 @@ branch ruleset and blocked an otherwise fully green pull request.</p>
 </table>
 <p><code class="docutils literal notranslate"><span class="pre">tests/testWorkflowMergeGateSplit.py</span></code> fails if any workflow drifts back
 into running on both sides of the merge.</p>
+</section>
 <section id="what-the-readme-badges-mean">
 <h3>What the README badges mean<a class="headerlink" href="#what-the-readme-badges-mean" title="Link to this heading"></a></h3>
 <p>Two different mechanisms, which fail in different ways:</p>
