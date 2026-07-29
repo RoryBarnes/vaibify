@@ -26,7 +26,13 @@ on:
 
 jobs:
   falsification:
-    name: '${{ matrix.os }}:python-${{ matrix.python-version }}'
+    # Named exactly like the tests-linux / tests-macos matrix legs, this
+    # lane produced check names such as `ubuntu-24.04:python-3.14` that
+    # a second workflow also produced. Requiring that name is then
+    # satisfied by whichever lane reports it, so the two are not
+    # independently requireable — and searching "falsification" in the
+    # required-checks picker returns nothing at all.
+    name: 'falsification:${{ matrix.os }}:py${{ matrix.python-version }}'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -25,7 +25,12 @@ on:
 
 jobs:
   browser:
-    name: 'frontend (chromium)'
+    # The job name IS the status-check name, and the status-check name is
+    # what you search for when adding a required check. Called "frontend
+    # (chromium)", this lane was unfindable by anyone typing "browser" —
+    # so it silently stayed out of the required set while appearing to
+    # gate every pull request.
+    name: 'browser'
     runs-on: ubuntu-24.04
 
     steps:

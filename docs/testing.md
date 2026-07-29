@@ -223,6 +223,35 @@ the split landed: two `pip-install` job names
 branch ruleset and blocked an otherwise fully green pull request.
 ```
 
+### Required status checks
+
+A ruleset matches checks by **job name**, and the required-checks picker
+searches those names — not workflow names. Two consequences bit us on
+the first day of branch protection:
+
+- A lane whose job name never mentions it is one nobody will find.
+  `browser`'s job was called `frontend (chromium)`, so searching
+  "browser" returned nothing and the whole lane stayed unprotected while
+  appearing to gate every pull request. It is now simply `browser`.
+- A name emitted by two workflows cannot gate either one independently:
+  requiring it is satisfied by whichever reports. `falsification` used
+  the same matrix template as the tests lanes, so
+  `ubuntu-24.04:python-3.14` meant two different things. Its jobs are
+  now `falsification:<os>:py<version>`.
+
+`testNoTwoMergeGateLanesProduceTheSameCheckName` expands each gate
+workflow's matrix and fails if any name has two owners.
+
+**Requiring only some checks lets a pull request merge while the rest
+are still running** — GitHub blocks on required checks alone. To list
+every name that should be required:
+
+```bash
+gh pr view <number> --json statusCheckRollup \
+  -q '.statusCheckRollup[] | select(.workflowName != null)
+      | "\(.workflowName)\t\(.name)"' | sort -u
+```
+
 **On their own schedule — neither gate nor publisher:**
 
 | Workflow | Runs | Matrix |
