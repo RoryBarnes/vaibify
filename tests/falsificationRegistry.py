@@ -818,15 +818,11 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_destination_colliding_with_bind_mount_is_rejected',
         source='vaibify/config/projectConfig.py',
-        old="""    sWorkspace = posixpath.normpath(
-        dictConfig.get("workspaceRoot") or "/workspace"
-    )
-    setTargets = set()""",
-        new="""    sWorkspace = posixpath.normpath(
-        dictConfig.get("workspaceRoot") or "/workspace"
-    )
-    return set()
-    setTargets = set()""",
+        old="""    listTargets = []
+    for dictMount in dictConfig.get("bindMounts") or []:""",
+        new="""    listTargets = []
+    return listTargets
+    for dictMount in dictConfig.get("bindMounts") or []:""",
     ),
     # repr() is Python escaping, not shell escaping; embedded in a
     # double-quoted bash -c string, a crafted container path executes on

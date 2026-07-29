@@ -107,6 +107,36 @@ def test_repo_destination_colliding_with_bind_mount_is_rejected():
     assert fbValidateConfig(dictConfig) is False
 
 
+@pytest.mark.falsification
+def test_repo_destination_under_a_workspace_root_mount_is_rejected():
+    """A mount at the workspace ROOT is an ancestor of every destination.
+
+    The earlier collector expressed bind targets workspace-relative and
+    dropped the root mount (empty relative string), so /workspace mounted
+    + destination 'data' validated True and rm -rf /workspace/data hit
+    the mount. The absolute-path overlap check must catch it.
+
+    Kills: In projectConfig._flistAbsoluteBindTargets, return [] before
+    collecting any target so no collision is ever detected.
+    """
+    dictConfig = _fdictConfigWithRepos(
+        [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
+        [{"host": "~/Documents", "container": "/workspace"}],
+    )
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_destination_under_ancestor_of_custom_workspace_is_rejected():
+    """A mount that is an ancestor of a customized workspace still collides."""
+    dictConfig = _fdictConfigWithRepos(
+        [{"name": "r", "url": "https://x/r.git", "destination": "out"}],
+        [{"host": "~/Documents", "container": "/data"}],
+    )
+    dictConfig["workspaceRoot"] = "/data/workspace"
+    # rm -rf /data/workspace/out lives under the /data mount.
+    assert fbValidateConfig(dictConfig) is False
+
+
 def test_repo_destination_nested_under_bind_mount_is_rejected():
     """A destination inside a mounted directory still deletes into it."""
     dictConfig = _fdictConfigWithRepos(

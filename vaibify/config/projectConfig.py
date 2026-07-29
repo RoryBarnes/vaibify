@@ -266,7 +266,10 @@ def _fbValidateRepositoryDestinations(dictConfig):
     written into ``container.conf`` — defence at the validation layer, not
     inside the container that would execute the delete.
     """
-    setBindTargets = _fsetWorkspaceRelativeBindTargets(dictConfig)
+    sWorkspace = posixpath.normpath(
+        dictConfig.get("workspaceRoot") or "/workspace"
+    )
+    listBindTargets = _flistAbsoluteBindTargets(dictConfig)
     for dictRepo in dictConfig.get("repositories") or []:
         if not isinstance(dictRepo, dict):
             continue
@@ -275,17 +278,29 @@ def _fbValidateRepositoryDestinations(dictConfig):
             continue
         if posixpath.isabs(sDestination) or ".." in sDestination.split("/"):
             return False
-        sDestRel = posixpath.normpath(sDestination).strip("/")
+        # Resolve to the ABSOLUTE container path the entrypoint rm -rf's,
+        # then compare against every bind target in absolute space. The
+        # earlier workspace-relative form dropped a mount at the workspace
+        # root itself (empty relative string), so ``/workspace`` mounted +
+        # destination ``data`` slipped through and rm -rf'd the mount.
+        sDestAbs = posixpath.normpath(
+            posixpath.join(sWorkspace, sDestination)
+        )
         if any(
-            _fbRelativePathsOverlap(sDestRel, sBindRel)
-            for sBindRel in setBindTargets
+            _fbContainerPathsOverlap(sDestAbs, sBind)
+            for sBind in listBindTargets
         ):
             return False
     return True
 
 
-def _fbRelativePathsOverlap(sFirst, sSecond):
-    """True when two workspace-relative paths are equal or nest either way."""
+def _fbContainerPathsOverlap(sFirst, sSecond):
+    """True when two absolute paths are equal or nest in either direction.
+
+    Deleting ``sDestAbs`` harms a bind mount whether the mount IS that
+    path, sits under it (recursively deleted), or contains it (its
+    contents deleted) — so overlap is checked in both directions.
+    """
     if sFirst == sSecond:
         return True
     return (
@@ -294,31 +309,22 @@ def _fbRelativePathsOverlap(sFirst, sSecond):
     )
 
 
-def _fsetWorkspaceRelativeBindTargets(dictConfig):
-    """Return bind-mount targets under the workspace root, workspace-relative.
+def _flistAbsoluteBindTargets(dictConfig):
+    """Return every bind mount's container-side target as an absolute path.
 
-    A repo destination collides with a bind mount only when the mount's
-    container-side target lands inside the workspace, so only those targets
-    can be deleted by the relocation and only they are collected here.
+    Unlike the earlier workspace-relative collector, this keeps a mount
+    at the workspace root (and any target that is an ancestor of a
+    customized workspace), so the overlap check can catch a relocation
+    that would delete into it.
     """
-    sWorkspace = posixpath.normpath(
-        dictConfig.get("workspaceRoot") or "/workspace"
-    )
-    setTargets = set()
+    listTargets = []
     for dictMount in dictConfig.get("bindMounts") or []:
         if not isinstance(dictMount, dict):
             continue
         sTarget = dictMount.get("container") or ""
-        if not sTarget:
-            continue
-        sTargetNorm = posixpath.normpath(sTarget)
-        if sTargetNorm == sWorkspace or sTargetNorm.startswith(
-            sWorkspace + "/"
-        ):
-            sRelative = sTargetNorm[len(sWorkspace):].strip("/")
-            if sRelative:
-                setTargets.add(sRelative)
-    return setTargets
+        if sTarget:
+            listTargets.append(posixpath.normpath(sTarget))
+    return listTargets
 
 
 def _fdictReadYaml(sFilePath):
