@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev649 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev654 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a84647d2"></script>
+      <script src="_static/documentation_options.js?v=b7133a27"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -68,7 +68,10 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#falsification-testing-vs-the-mutation-gate-two-different-jobs">Falsification testing vs. the mutation gate — two different jobs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-the-suites-locally">Running the suites locally</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-readme-badges-mean">What the README badges mean</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#the-three-execution-lanes">The three execution lanes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#background">Background</a></li>
 </ul>
@@ -299,6 +302,15 @@ cosmic-ray<span class="w"> </span>init<span class="w"> </span>cosmic-ray.toml<sp
 </section>
 <section id="continuous-integration">
 <h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
+<p>Every workflow runs <strong>either</strong> before a merge or after it, never both.
+The test suites gate the merge; documentation, badges and distributions
+are built from <code class="docutils literal notranslate"><span class="pre">main</span></code> once the merge has happened. Until 2026-07-28 six
+workflows did both, so the whole suite ran a second time on the merge
+commit, where its answer could no longer change anything.</p>
+<p>Branch protection is what makes the pre-merge half sufficient. It is the
+reason the test workflows no longer need a <code class="docutils literal notranslate"><span class="pre">push:</span> <span class="pre">[main]</span></code> trigger, and
+it is why <code class="docutils literal notranslate"><span class="pre">main</span></code> is not left unverified by their absence.</p>
+<p><strong>Before a merge — these decide whether a change may land:</strong></p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Workflow</p></th>
@@ -315,28 +327,132 @@ cosmic-ray<span class="w"> </span>init<span class="w"> </span>cosmic-ray.toml<sp
 <td><p>the invariants, the falsification tests, and the re-kill harness</p></td>
 <td><p>a representative subset (Ubuntu + macOS × Python 3.9 &amp; 3.14)</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser.yml</span></code></p></td>
+<td><p>the dashboard in real Chromium against a real uvicorn hub</p></td>
+<td><p>on pull requests (one Linux/Python/Chromium cell)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">agentDocsPathCheck.yml</span></code></p></td>
+<td><p>that every path referenced in an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> resolves</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>After a merge — these publish what <code class="docutils literal notranslate"><span class="pre">main</span></code> now is:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Workflow</p></th>
+<th class="head"><p>Runs</p></th>
+<th class="head"><p>Matrix</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docs.yml</span></code></p></td>
+<td><p>the Sphinx build (<code class="docutils literal notranslate"><span class="pre">-W</span></code>), published to <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code></p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">badges.yml</span></code></p></td>
+<td><p>recomputes the live test / falsification / invariant counts</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>When a version is cut:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Workflow</p></th>
+<th class="head"><p>Runs</p></th>
+<th class="head"><p>Matrix</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pip-install.yml</span></code></p></td>
+<td><p>builds the sdist and wheel, runs <code class="docutils literal notranslate"><span class="pre">tools/checkInstalledDistribution.py</span></code> against each, then uploads to PyPI</p></td>
+<td><p>the full support matrix on a release; the corners on a manual run</p></td>
+</tr>
+</tbody>
+</table>
+<p>This matches <code class="docutils literal notranslate"><span class="pre">vspace</span></code>, <code class="docutils literal notranslate"><span class="pre">bigplanet</span></code> and <code class="docutils literal notranslate"><span class="pre">multi-planet</span></code>, whose
+<code class="docutils literal notranslate"><span class="pre">pip-install.yml</span></code> is likewise <code class="docutils literal notranslate"><span class="pre">release</span></code>-only.</p>
+<p>The cost is that a packaging regression can sit on <code class="docutils literal notranslate"><span class="pre">main</span></code> until the
+next version is cut. What makes that acceptable is that <code class="docutils literal notranslate"><span class="pre">upload_pypi</span></code>
+needs <code class="docutils literal notranslate"><span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">test</span></code>, so the break is caught while cutting the
+release and blocks the upload — nothing broken is published, but the
+diagnosis lands during a release rather than beside the change that
+caused it. After touching packaging, <code class="docutils literal notranslate"><span class="pre">vaibify/resources.py</span></code>, the
+template tree or the Dockerfile <code class="docutils literal notranslate"><span class="pre">COPY</span></code> set, run <code class="docutils literal notranslate"><span class="pre">pip-install</span></code> by hand
+(<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>) rather than waiting for release day.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Never add <code class="docutils literal notranslate"><span class="pre">pip-install</span></code> to the required status checks for <code class="docutils literal notranslate"><span class="pre">main</span></code>. It
+does not run on pull requests, so a required check by that name can
+never report and every PR waits on it forever. This happened the day
+the split landed: two <code class="docutils literal notranslate"><span class="pre">pip-install</span></code> job names
+(<code class="docutils literal notranslate"><span class="pre">Test</span> <span class="pre">py3.9</span> <span class="pre">on</span> <span class="pre">macos-26</span></code>, <code class="docutils literal notranslate"><span class="pre">Test</span> <span class="pre">py3.14</span> <span class="pre">on</span> <span class="pre">macos-26</span></code>) were left in the
+branch ruleset and blocked an otherwise fully green pull request.</p>
+</div>
+<p><strong>On their own schedule — neither gate nor publisher:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Workflow</p></th>
+<th class="head"><p>Runs</p></th>
+<th class="head"><p>Matrix</p></th>
+</tr>
+</thead>
+<tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mutation.yml</span></code></p></td>
 <td><p>the cosmic-ray gate on a branch’s changed lines (warn-only)</p></td>
 <td><p>manual (<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">browser.yml</span></code></p></td>
-<td><p>the dashboard in real Chromium against a real uvicorn hub</p></td>
-<td><p>on pull requests (one Linux/Python/Chromium cell)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code></p></td>
 <td><p>the modelled container commands, against a real container</p></td>
 <td><p>nightly + manual</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code></p></td>
 <td><p>a full image build from scratch, then acceptance</p></td>
 <td><p>weekly, manual, and on <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/**</span></code> pull requests</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">badges.yml</span></code></p></td>
-<td><p>recomputes the live test / falsification / invariant counts</p></td>
-<td><p>on push to <code class="docutils literal notranslate"><span class="pre">main</span></code></p></td>
-</tr>
 </tbody>
 </table>
+<p><code class="docutils literal notranslate"><span class="pre">tests/testWorkflowMergeGateSplit.py</span></code> fails if any workflow drifts back
+into running on both sides of the merge.</p>
+<section id="what-the-readme-badges-mean">
+<h3>What the README badges mean<a class="headerlink" href="#what-the-readme-badges-mean" title="Link to this heading"></a></h3>
+<p>Two different mechanisms, which fail in different ways:</p>
+<p><strong>Count badges</strong> (<code class="docutils literal notranslate"><span class="pre">unit</span> <span class="pre">tests</span></code>, <code class="docutils literal notranslate"><span class="pre">falsification</span> <span class="pre">tests</span></code>, <code class="docutils literal notranslate"><span class="pre">architectural</span> <span class="pre">invariants</span></code>, <code class="docutils literal notranslate"><span class="pre">browser</span> <span class="pre">tests</span></code>) are computed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> after every
+merge, by <em>collecting</em> the suite rather than running it. They say how
+much test there is, never whether it passed. A count that collected
+zero fails the workflow instead of publishing, because zero is never a
+true answer here — it means a marker was renamed or a directory moved,
+and the badge would otherwise state that absence as fact.</p>
+<p><strong>Merge-gate status badges</strong> (<code class="docutils literal notranslate"><span class="pre">tests-linux</span></code>, <code class="docutils literal notranslate"><span class="pre">tests-macos</span></code>,
+<code class="docutils literal notranslate"><span class="pre">falsification</span></code>, <code class="docutils literal notranslate"><span class="pre">browser</span></code>, <code class="docutils literal notranslate"><span class="pre">agent-docs-path-check</span></code>) report the checks
+that gated <strong>the last merge into <code class="docutils literal notranslate"><span class="pre">main</span></code></strong>. <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> resolves them
+after each merge: the merge commit names the pull request it came from,
+that pull request’s head commit carries the runs that decided the merge
+was allowed, and their conclusions become the badges. Nothing is
+re-run — the merge gate already ran them, and re-running post-merge is
+the duplication this split removed.</p>
+<p>GitHub’s own workflow badges are deliberately <em>not</em> used for these
+lanes. They show the newest run of a workflow on <strong>any</strong> branch, so a
+contributor’s failing pull request would redden the README while <code class="docutils literal notranslate"><span class="pre">main</span></code>
+is perfectly healthy. (That is genuinely how they behave, and it is not
+what the docs imply: on a workflow with only pull-request runs,
+<code class="docutils literal notranslate"><span class="pre">?branch=main</span></code> renders <em>no status</em> while the unqualified badge renders
+the latest PR run.)</p>
+<p>A lane with no run against the merged pull request renders <strong>did not
+run</strong> in grey, never green. That is the case worth having: it is what a
+bypassed merge, a skipped lane, or a workflow that silently stopped
+triggering looks like.</p>
+<p>On a direct push to <code class="docutils literal notranslate"><span class="pre">main</span></code> — no pull request to resolve — the status
+badges are left exactly as they were, because an absence of information
+is not a change of state. They continue to describe the last real
+merge.</p>
+<p>The two <strong>scheduled</strong> lanes keep GitHub’s own badges, because they
+really do run on <code class="docutils literal notranslate"><span class="pre">main</span></code> on a timer, so “the latest run” is <code class="docutils literal notranslate"><span class="pre">main</span></code>’s
+state. They are on the README because nobody watches a nightly or
+weekly run: for <code class="docutils literal notranslate"><span class="pre">containerAcceptance</span></code> and <code class="docutils literal notranslate"><span class="pre">freshImageBuild</span></code> the badge
+is realistically the only place a failure becomes visible.</p>
+</section>
 </section>
 <section id="the-three-execution-lanes">
 <h2>The three execution lanes<a class="headerlink" href="#the-three-execution-lanes" title="Link to this heading"></a></h2>

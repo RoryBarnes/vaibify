@@ -170,15 +170,114 @@ cosmic-ray init cosmic-ray.toml session.sqlite && cosmic-ray exec cosmic-ray.tom
 
 ## Continuous integration
 
+Every workflow runs **either** before a merge or after it, never both.
+The test suites gate the merge; documentation, badges and distributions
+are built from `main` once the merge has happened. Until 2026-07-28 six
+workflows did both, so the whole suite ran a second time on the merge
+commit, where its answer could no longer change anything.
+
+Branch protection is what makes the pre-merge half sufficient. It is the
+reason the test workflows no longer need a `push: [main]` trigger, and
+it is why `main` is not left unverified by their absence.
+
+**Before a merge — these decide whether a change may land:**
+
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14 |
 | `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14) |
-| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
+| `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` resolves | one Linux cell |
+
+**After a merge — these publish what `main` now is:**
+
+| Workflow | Runs | Matrix |
+|---|---|---|
+| `docs.yml` | the Sphinx build (`-W`), published to `gh-pages` | one Linux cell |
+| `badges.yml` | recomputes the live test / falsification / invariant counts | one Linux cell |
+
+**When a version is cut:**
+
+| Workflow | Runs | Matrix |
+|---|---|---|
+| `pip-install.yml` | builds the sdist and wheel, runs `tools/checkInstalledDistribution.py` against each, then uploads to PyPI | the full support matrix on a release; the corners on a manual run |
+
+This matches `vspace`, `bigplanet` and `multi-planet`, whose
+`pip-install.yml` is likewise `release`-only.
+
+The cost is that a packaging regression can sit on `main` until the
+next version is cut. What makes that acceptable is that `upload_pypi`
+needs `build` and `test`, so the break is caught while cutting the
+release and blocks the upload — nothing broken is published, but the
+diagnosis lands during a release rather than beside the change that
+caused it. After touching packaging, `vaibify/resources.py`, the
+template tree or the Dockerfile `COPY` set, run `pip-install` by hand
+(`workflow_dispatch`) rather than waiting for release day.
+
+```{warning}
+Never add `pip-install` to the required status checks for `main`. It
+does not run on pull requests, so a required check by that name can
+never report and every PR waits on it forever. This happened the day
+the split landed: two `pip-install` job names
+(`Test py3.9 on macos-26`, `Test py3.14 on macos-26`) were left in the
+branch ruleset and blocked an otherwise fully green pull request.
+```
+
+**On their own schedule — neither gate nor publisher:**
+
+| Workflow | Runs | Matrix |
+|---|---|---|
+| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `containerAcceptance.yml` | the modelled container commands, against a real container | nightly + manual |
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
-| `badges.yml` | recomputes the live test / falsification / invariant counts | on push to `main` |
+
+`tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back
+into running on both sides of the merge.
+
+### What the README badges mean
+
+Two different mechanisms, which fail in different ways:
+
+**Count badges** (`unit tests`, `falsification tests`, `architectural
+invariants`, `browser tests`) are computed by `badges.yml` after every
+merge, by *collecting* the suite rather than running it. They say how
+much test there is, never whether it passed. A count that collected
+zero fails the workflow instead of publishing, because zero is never a
+true answer here — it means a marker was renamed or a directory moved,
+and the badge would otherwise state that absence as fact.
+
+**Merge-gate status badges** (`tests-linux`, `tests-macos`,
+`falsification`, `browser`, `agent-docs-path-check`) report the checks
+that gated **the last merge into `main`**. `badges.yml` resolves them
+after each merge: the merge commit names the pull request it came from,
+that pull request's head commit carries the runs that decided the merge
+was allowed, and their conclusions become the badges. Nothing is
+re-run — the merge gate already ran them, and re-running post-merge is
+the duplication this split removed.
+
+GitHub's own workflow badges are deliberately *not* used for these
+lanes. They show the newest run of a workflow on **any** branch, so a
+contributor's failing pull request would redden the README while `main`
+is perfectly healthy. (That is genuinely how they behave, and it is not
+what the docs imply: on a workflow with only pull-request runs,
+`?branch=main` renders *no status* while the unqualified badge renders
+the latest PR run.)
+
+A lane with no run against the merged pull request renders **did not
+run** in grey, never green. That is the case worth having: it is what a
+bypassed merge, a skipped lane, or a workflow that silently stopped
+triggering looks like.
+
+On a direct push to `main` — no pull request to resolve — the status
+badges are left exactly as they were, because an absence of information
+is not a change of state. They continue to describe the last real
+merge.
+
+The two **scheduled** lanes keep GitHub's own badges, because they
+really do run on `main` on a timer, so "the latest run" is `main`'s
+state. They are on the README because nobody watches a nightly or
+weekly run: for `containerAcceptance` and `freshImageBuild` the badge
+is realistically the only place a failure becomes visible.
 
 ## The three execution lanes
 
