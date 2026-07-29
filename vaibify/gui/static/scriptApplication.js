@@ -3441,15 +3441,23 @@ const VaibifyApp = (function () {
                     + "reloaded to stay in sync so your edit didn't "
                     + "overwrite it. Re-apply it if you still want it.",
                     "warning");
-                // Reload the CURRENT workflow in place (refreshes the
-                // fingerprint baseline and re-renders the dashboard).
-                // The old path called fnConnectToContainer, which shows
-                // the workflow picker — a 409 on a routine step edit
-                // must never eject the researcher from their dashboard.
-                VaibifyWorkflowManager.fnRefreshWorkflow();
             } else {
-                fnShowToast("Save failed", "error");
+                fnShowToast(
+                    "Save failed — reloaded to match the server so the "
+                    + "dashboard doesn't show an unsaved change.",
+                    "error");
             }
+            // ANY failed save leaves the caller's optimistic local edit
+            // diverged from the server. Callers across every module
+            // mutate local state before this PUT for UI stickiness and
+            // do not roll back individually, so the single honest fix is
+            // here: re-sync the CURRENT workflow in place (refreshes the
+            // fingerprint baseline and re-renders) so the dashboard never
+            // shows an un-persisted edit as if it were saved. This is the
+            // dashboard-ground-truth contract. Reload in place, never via
+            // fnConnectToContainer, which would eject the researcher to
+            // the workflow picker on a routine failed edit.
+            VaibifyWorkflowManager.fnRefreshWorkflow();
             return null;
         }
     }
@@ -3826,6 +3834,12 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey] = [];
         }
         _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey].push(sValue);
+        // Persist BEFORE claiming success. On failure fnPutStepEdit has
+        // re-synced the workflow (dropping this optimistic push) and
+        // toasted the error; showing "Item added" too would contradict
+        // it. Record undo only for a change that actually landed.
+        var dictResult = await fnSaveStepArray(iStep, sArrayKey, true);
+        if (!dictResult) return;
         fnPushUndo({
             sAction: "add",
             iStep: iStep,
@@ -3833,7 +3847,6 @@ const VaibifyApp = (function () {
             iIdx: _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey].length - 1,
             sValue: sValue,
         });
-        await fnSaveStepArray(iStep, sArrayKey, true);
         fnRenderStepList();
         fnShowToast("Item added", "success");
     }
@@ -3854,11 +3867,18 @@ const VaibifyApp = (function () {
         if (dictAction.sAction === "add") {
             _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 1);
-            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
         } else if (dictAction.sAction === "delete") {
             _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, dictAction.sValue);
-            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
+        }
+        var dictResult = await fnSaveStepArray(
+            dictAction.iStep, dictAction.sArray);
+        if (!dictResult) {
+            // The undo did not persist; fnPutStepEdit re-synced and
+            // toasted. Put the action back so it can be retried, and do
+            // not claim "Undone".
+            _dictWorkflowState.listUndoStack.push(dictAction);
+            return;
         }
         fnRenderStepList();
         fnShowToast("Undone", "success");
@@ -3867,10 +3887,11 @@ const VaibifyApp = (function () {
     async function fnSaveStepArray(iStep, sArray, bScanDeps) {
         var dictUpdate = {};
         dictUpdate[sArray] = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray];
-        await fnPutStepEdit(iStep, dictUpdate);
-        if (sArray === "saDataCommands" && bScanDeps) {
+        var dictResult = await fnPutStepEdit(iStep, dictUpdate);
+        if (dictResult && sArray === "saDataCommands" && bScanDeps) {
             VaibifyDependencyScanner.fnScanDependencies(iStep);
         }
+        return dictResult;
     }
 
     /* --- Step Expand/Collapse --- */
