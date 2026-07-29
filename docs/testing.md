@@ -246,19 +246,38 @@ zero fails the workflow instead of publishing, because zero is never a
 true answer here — it means a marker was renamed or a directory moved,
 and the badge would otherwise state that absence as fact.
 
-**Status badges** are GitHub's own, and they show the most recent run of
-that workflow on **any** branch — not on `main`. That is what keeps the
-pull-request-gated lanes live now that they no longer run on `main`
-(verified: `?branch=main` on a PR-only workflow renders *no status*,
-while the unqualified badge renders the latest PR run). The corollary
-is that a contributor's failing pull request reddens the README until
-something newer runs, and that a green badge is not a statement about
-`main` specifically.
+**Merge-gate status badges** (`tests-linux`, `tests-macos`,
+`falsification`, `browser`, `agent-docs-path-check`) report the checks
+that gated **the last merge into `main`**. `badges.yml` resolves them
+after each merge: the merge commit names the pull request it came from,
+that pull request's head commit carries the runs that decided the merge
+was allowed, and their conclusions become the badges. Nothing is
+re-run — the merge gate already ran them, and re-running post-merge is
+the duplication this split removed.
 
-The two scheduled lanes are on the README for a different reason:
-nobody watches a nightly or weekly run, so for `containerAcceptance`
-and `freshImageBuild` the badge is realistically the only place a
-failure becomes visible.
+GitHub's own workflow badges are deliberately *not* used for these
+lanes. They show the newest run of a workflow on **any** branch, so a
+contributor's failing pull request would redden the README while `main`
+is perfectly healthy. (That is genuinely how they behave, and it is not
+what the docs imply: on a workflow with only pull-request runs,
+`?branch=main` renders *no status* while the unqualified badge renders
+the latest PR run.)
+
+A lane with no run against the merged pull request renders **did not
+run** in grey, never green. That is the case worth having: it is what a
+bypassed merge, a skipped lane, or a workflow that silently stopped
+triggering looks like.
+
+On a direct push to `main` — no pull request to resolve — the status
+badges are left exactly as they were, because an absence of information
+is not a change of state. They continue to describe the last real
+merge.
+
+The two **scheduled** lanes keep GitHub's own badges, because they
+really do run on `main` on a timer, so "the latest run" is `main`'s
+state. They are on the README because nobody watches a nightly or
+weekly run: for `containerAcceptance` and `freshImageBuild` the badge
+is realistically the only place a failure becomes visible.
 
 ## The three execution lanes
 

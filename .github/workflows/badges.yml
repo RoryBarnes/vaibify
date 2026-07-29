@@ -19,6 +19,10 @@ on:
 
 permissions:
   contents: write
+  # Read-only, and only to resolve which checks gated the merge that
+  # produced this commit: the PR behind it, and that PR's workflow runs.
+  actions: read
+  pull-requests: read
 
 jobs:
   publish-badges:
@@ -105,6 +109,96 @@ jobs:
           PY
           cat badgeOutput/*.json
 
+      - name: Resolve the checks that gated this merge
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A status badge should describe main, not whatever ran most
+          # recently on somebody's branch — GitHub's own workflow badges
+          # show the latest run on ANY branch, so a contributor's failing
+          # pull request reddens them while main is fine.
+          #
+          # The merge-gate lanes no longer run on main at all, so there is
+          # nothing on this commit to read. What there IS: the pull request
+          # this merge commit came from, whose checks are exactly the ones
+          # that decided the merge was allowed. Resolve those instead of
+          # re-running anything.
+          sPrHead=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                    -q '.[0].head.sha // empty')
+          if [ -z "$sPrHead" ]; then
+            # A direct push, not a merge. Leave the existing badges alone:
+            # they still correctly describe the last *merge*, and blanking
+            # them would report an absence of information as a change of
+            # state.
+            echo "no pull request produced ${GITHUB_SHA}; keeping the previous merge-status badges"
+            echo "bResolved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${sPrHead}&per_page=100" \
+            > gateRuns.json
+          echo "bResolved=true" >> "$GITHUB_OUTPUT"
+          echo "resolved gating checks from PR head ${sPrHead}"
+
+      - name: Write merge-status endpoint json
+        if: steps.gate.outputs.bResolved == 'true'
+        run: |
+          python - <<'PY'
+          import json
+
+          # Workflow name as GitHub reports it -> badge file. Only the
+          # lanes that gate a merge belong here; docs, badges and
+          # pip-install run on main or on a release, so their built-in
+          # GitHub badges already describe the right thing.
+          DICT_MERGE_GATE_LANES = {
+              "tests-linux": "statusTestsLinux.json",
+              "tests-macos": "statusTestsMacos.json",
+              "falsification": "statusFalsification.json",
+              "browser": "statusBrowser.json",
+              "agent-docs-path-check": "statusAgentDocs.json",
+          }
+
+          # A lane with no run against the merged pull request did not
+          # gate it. That is not a pass and must never render as one.
+          DICT_CONCLUSION_STYLE = {
+              "success": ("passing", "brightgreen"),
+              "failure": ("failing", "red"),
+              "timed_out": ("timed out", "red"),
+              "cancelled": ("cancelled", "lightgrey"),
+              "skipped": ("skipped", "lightgrey"),
+              "": ("did not run", "lightgrey"),
+          }
+
+          with open("gateRuns.json", encoding="utf-8") as fileHandle:
+              listRuns = json.load(fileHandle).get("workflow_runs", [])
+
+          dictLatestByName = {}
+          for dictRun in listRuns:
+              sName = dictRun.get("name", "")
+              dictPrevious = dictLatestByName.get(sName)
+              if (dictPrevious is None
+                      or dictRun.get("created_at", "")
+                      > dictPrevious.get("created_at", "")):
+                  dictLatestByName[sName] = dictRun
+
+          for sWorkflow, sFileName in DICT_MERGE_GATE_LANES.items():
+              dictRun = dictLatestByName.get(sWorkflow) or {}
+              sConclusion = dictRun.get("conclusion") or ""
+              sMessage, sColor = DICT_CONCLUSION_STYLE.get(
+                  sConclusion, (sConclusion, "lightgrey"),
+              )
+              with open(f"badgeOutput/{sFileName}", "w",
+                        encoding="utf-8") as fileHandle:
+                  json.dump({
+                      "schemaVersion": 1,
+                      "label": sWorkflow,
+                      "message": sMessage,
+                      "color": sColor,
+                  }, fileHandle)
+                  fileHandle.write("\n")
+              print(f"{sWorkflow}: {sMessage}")
+          PY
+
       - name: Publish to orphan badges branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,9 +219,10 @@ jobs:
             git checkout --orphan badges
             git rm -rf . >/dev/null 2>&1 || true
           fi
-          cp badgeOutput/tests.json badgeOutput/falsification.json \
-             badgeOutput/invariants.json badgeOutput/browser.json .
-          git add tests.json falsification.json invariants.json browser.json
+          # Status files are absent on a direct push (see the gate step),
+          # so copy whatever was produced and leave the rest as they are.
+          cp badgeOutput/*.json .
+          git add ./*.json
           if git diff --cached --quiet; then
             echo "badge json unchanged - nothing to publish"
             exit 0

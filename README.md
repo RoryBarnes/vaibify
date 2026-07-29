@@ -22,21 +22,25 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/invariants.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/browser.json">
   <br>
-  <!-- Workflow status badges show the most recent run of that workflow on
-       ANY branch, so the pull-request-gated lanes below stay live even
-       though they no longer run on main. The corollary is that a failing
-       pull request reddens these until the next run. -->
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-linux.yml/badge.svg">
+  <!-- Merge-gate status. These report the checks that gated the LAST MERGE
+       into main, resolved by badges.yml from the merge commit's pull
+       request. GitHub's own workflow badges are deliberately not used
+       here: they show the newest run on ANY branch, so a contributor's
+       failing pull request would redden the README while main is fine. -->
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusTestsLinux.json">
   <img src="https://img.shields.io/badge/Ubuntu%2022--24-Python%203.9--3.14-7d93c7.svg">
   <br>
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/tests-macos.yml/badge.svg">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusTestsMacos.json">
   <img src="https://img.shields.io/badge/macOS%2015--26-Python%203.9--3.14-7d93c7.svg">
   <br>
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/falsification.yml/badge.svg">
-  <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/browser.yml/badge.svg">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusFalsification.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusBrowser.json">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
   <br>
-  <!-- The scheduled lanes. Nobody is watching a nightly or weekly run, so
-       these are the badges most likely to be the only sign of a failure. -->
+  <!-- The scheduled lanes keep GitHub's own badges: they really do run on
+       main, on a timer, so "the latest run" IS main's state. Nobody
+       watches a nightly or weekly run, so these are the badges most
+       likely to be the only sign of a failure. -->
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/containerAcceptance.yml/badge.svg">
   <img src="https://github.com/RoryBarnes/vaibify/actions/workflows/freshImageBuild.yml/badge.svg">
   <a href="https://codecov.io/gh/RoryBarnes/vaibify">

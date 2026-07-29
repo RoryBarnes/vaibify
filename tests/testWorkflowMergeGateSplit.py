@@ -123,6 +123,28 @@ def testReleaseOnlyWorkflowsRunOnNeitherSideOfAMerge(sWorkflow):
     )
 
 
+@pytest.mark.parametrize("sWorkflow", T_PRE_MERGE_WORKFLOWS)
+def testReadmeDoesNotUseGitHubStatusBadgesForMergeGates(sWorkflow):
+    """A merge-gate badge must describe main, not the newest branch run.
+
+    GitHub's workflow badge shows the latest run on ANY branch, which
+    for a pull-request-gated lane means a contributor's failing PR
+    reddens the README while main is fine. Verified behaviour, not
+    theory: on a workflow with only pull-request runs, `?branch=main`
+    renders "no status" while the unqualified badge renders the PR run.
+
+    These lanes therefore read from the endpoint json badges.yml
+    computes from the merge commit's pull request.
+    """
+    sReadme = (_PATH_WORKFLOWS.parent.parent / "README.md").read_text()
+    sBuiltInBadge = f"actions/workflows/{sWorkflow}/badge.svg"
+    assert sBuiltInBadge not in sReadme, (
+        f"README uses GitHub's built-in status badge for {sWorkflow}, "
+        f"which reports the newest run on any branch. Merge-gate lanes "
+        f"must use the badges/status*.json endpoints instead."
+    )
+
+
 def testEveryWorkflowIsClassifiedOrDeliberatelyScheduled():
     """No workflow may quietly sit outside the split.
 
