@@ -36,6 +36,12 @@ T_PRE_MERGE_WORKFLOWS = (
 T_POST_MERGE_WORKFLOWS = (
     "docs.yml",
     "badges.yml",
+)
+
+# Runs when a version is cut, matching vspace / bigplanet /
+# multi-planet. Not a merge gate and not a per-merge publisher: the
+# distribution is built for the release that will carry it.
+T_RELEASE_ONLY_WORKFLOWS = (
     "pip-install.yml",
 )
 
@@ -92,6 +98,31 @@ def testPostMergeWorkflowsDoNotRunOnPullRequests(sWorkflow):
     )
 
 
+@pytest.mark.parametrize("sWorkflow", T_RELEASE_ONLY_WORKFLOWS)
+def testReleaseOnlyWorkflowsRunOnNeitherSideOfAMerge(sWorkflow):
+    """A release build must not become a per-merge or per-PR job.
+
+    Requiring one of these as a merge check is the specific failure to
+    avoid: it cannot report on a pull request, so the PR waits on a
+    status that will never arrive. That happened the day this split
+    landed — two `pip-install` job names were left in the branch
+    ruleset and blocked an otherwise fully green PR.
+    """
+    dictOn = _fdictTriggers(sWorkflow)
+    assert "release" in dictOn, (
+        f"{sWorkflow} is the release build but does not trigger on a "
+        f"release."
+    )
+    assert "pull_request" not in dictOn, (
+        f"{sWorkflow} triggers on pull_request; a release build is not "
+        f"a merge gate."
+    )
+    assert not _fbPushesToMain(dictOn), (
+        f"{sWorkflow} triggers on a push to main; distributions are "
+        f"built when a version is cut, not on every merge."
+    )
+
+
 def testEveryWorkflowIsClassifiedOrDeliberatelyScheduled():
     """No workflow may quietly sit outside the split.
 
@@ -101,7 +132,11 @@ def testEveryWorkflowIsClassifiedOrDeliberatelyScheduled():
     must be schedule- or dispatch-driven (the container lanes and the
     mutation gate), never event-driven on main.
     """
-    setClassified = set(T_PRE_MERGE_WORKFLOWS) | set(T_POST_MERGE_WORKFLOWS)
+    setClassified = (
+        set(T_PRE_MERGE_WORKFLOWS)
+        | set(T_POST_MERGE_WORKFLOWS)
+        | set(T_RELEASE_ONLY_WORKFLOWS)
+    )
     listUnclassified = sorted(
         pathFile.name for pathFile in _PATH_WORKFLOWS.glob("*.yml")
         if pathFile.name not in setClassified

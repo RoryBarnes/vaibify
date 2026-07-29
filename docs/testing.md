@@ -189,18 +189,39 @@ it is why `main` is not left unverified by their absence.
 | `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
 | `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` resolves | one Linux cell |
 
-**After a merge — these publish or package what `main` now is:**
+**After a merge — these publish what `main` now is:**
 
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `docs.yml` | the Sphinx build (`-W`), published to `gh-pages` | one Linux cell |
 | `badges.yml` | recomputes the live test / falsification / invariant counts | one Linux cell |
-| `pip-install.yml` | builds the sdist and wheel, then runs `tools/checkInstalledDistribution.py` against each | corners of the support matrix on push to `main`; the full matrix on a release |
 
-A packaging regression therefore reaches `main` before it is caught: it
-is held out of a *release* rather than out of the branch. A red
-`pip-install` on `main` means `main` currently produces a broken
-distribution and needs a fix commit — it is not flaky CI.
+**When a version is cut:**
+
+| Workflow | Runs | Matrix |
+|---|---|---|
+| `pip-install.yml` | builds the sdist and wheel, runs `tools/checkInstalledDistribution.py` against each, then uploads to PyPI | the full support matrix on a release; the corners on a manual run |
+
+This matches `vspace`, `bigplanet` and `multi-planet`, whose
+`pip-install.yml` is likewise `release`-only.
+
+The cost is that a packaging regression can sit on `main` until the
+next version is cut. What makes that acceptable is that `upload_pypi`
+needs `build` and `test`, so the break is caught while cutting the
+release and blocks the upload — nothing broken is published, but the
+diagnosis lands during a release rather than beside the change that
+caused it. After touching packaging, `vaibify/resources.py`, the
+template tree or the Dockerfile `COPY` set, run `pip-install` by hand
+(`workflow_dispatch`) rather than waiting for release day.
+
+```{warning}
+Never add `pip-install` to the required status checks for `main`. It
+does not run on pull requests, so a required check by that name can
+never report and every PR waits on it forever. This happened the day
+the split landed: two `pip-install` job names
+(`Test py3.9 on macos-26`, `Test py3.14 on macos-26`) were left in the
+branch ruleset and blocked an otherwise fully green pull request.
+```
 
 **On their own schedule — neither gate nor publisher:**
 

@@ -1,27 +1,26 @@
 name: pip-install
 
-# Post-merge by decision (2026-07-28): the pre-merge gate is the test
-# suites, and distributions are built after a merge rather than on every
-# pull request.
+# Release-only by decision (2026-07-28), matching vspace, bigplanet and
+# multi-planet: distributions are built when a version is cut, not on
+# every merge and not on every pull request.
 #
-# Know what that costs. The artifact checks originally ran only on
-# `release: published` -- after the release existed -- and were moved
-# onto the PR gate because a wheel containing no templates had shipped
-# and `import vaibify` could not see it. Running here means a packaging
-# regression reaches `main` and is caught on the push, not held out by
-# the merge gate: the signal arrives minutes later and on the shared
-# branch instead of the contributor's. It is still caught before a
-# release, which is what upload_pypi depends on.
+# Know what that costs, because this file has been all three ways. The
+# checks were moved onto the PR gate after a wheel containing no
+# templates shipped and `import vaibify` could not see it. Running only
+# on a release means a packaging regression can sit on `main`
+# undetected until the next version is cut -- possibly for weeks.
 #
-# So a red pip-install on `main` is not "flaky CI" -- it means `main`
-# currently produces a broken distribution and needs a fix commit.
+# What makes that acceptable is that `upload_pypi` needs `build` and
+# `test`, so the break is caught while cutting the release and blocks
+# the PyPI upload. Nothing broken is published; the cost is that the
+# diagnosis lands during a release rather than next to the change that
+# caused it. `workflow_dispatch` is the escape hatch: run this by hand
+# against `main` after touching packaging, resources, or the Dockerfile
+# COPY set, rather than discovering it at release time.
 on:
   release:
     types:
       - published
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
@@ -53,10 +52,10 @@ jobs:
     name: 'Test py${{ matrix.python }} on ${{ matrix.os }}'
     needs: [build]
     runs-on: ${{ matrix.os }}
-    # A release checks the full support matrix. A push to main checks
-    # the corners — oldest and newest supported Python, one Linux and
-    # one macOS — because 24 jobs per merge to catch a packaging mistake
-    # that is almost never platform-specific is the wrong trade. The
+    # A release checks the full support matrix. A manual run checks the
+    # corners — oldest and newest supported Python, one Linux and one
+    # macOS — because 24 jobs to confirm a packaging fix, for a mistake
+    # that is almost never platform-specific, is the wrong trade. The
     # failure this gate exists for (a wheel with no package data) is
     # identical on every row.
     strategy:

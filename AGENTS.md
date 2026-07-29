@@ -693,13 +693,17 @@ template shipped without comment — and the first version of this
 script spot-checked three files, which is why it passed a
 distribution whose assembled context was missing five of six agent
 documents. Checking a shipped file is not the same as checking the
-artifact built from it. The job runs **after** a merge, at the corners
-of the support matrix; a release runs the full matrix. It is a
-post-merge lane by decision (2026-07-28), so a packaging regression
-lands on `main` and is caught on the push rather than held out by the
-merge gate — held out of a *release*, not out of the branch. Treat a
-red `pip-install` on `main` as "main currently builds a broken
-distribution", never as flaky CI.
+artifact built from it. The job is **release-only** by decision
+(2026-07-28), matching `vspace`, `bigplanet` and `multi-planet`: a
+release runs the full support matrix, a manual run the corners. So a
+packaging regression can sit on `main` until the next version is cut.
+`upload_pypi` needs `build` and `test`, so it is caught while cutting
+the release and nothing broken is published — but the diagnosis arrives
+during a release rather than beside the change that caused it. After
+touching `vaibify/resources.py`, the packaged trees, or the Dockerfile
+`COPY` set, run `pip-install` by hand (`workflow_dispatch`) instead of
+waiting for release day. Never make it a required status check: it
+cannot report on a pull request, so every PR would wait on it forever.
 
 ## Known technical debt
 
