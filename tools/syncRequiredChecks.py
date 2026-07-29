@@ -65,16 +65,35 @@ T_READ_ONLY_FIELDS = (
 
 
 def flistExpandJobNames(sWorkflowName):
-    """Return the concrete check names one workflow's jobs produce."""
+    """Return the concrete check names one workflow's jobs produce.
+
+    Refuses rather than guesses on the two shapes it cannot expand. A
+    job without a ``name:`` would be reported to GitHub under its job
+    key, so skipping it silently drops that lane from the required set
+    — the lane runs, fails, and blocks nothing. A matrix carrying
+    ``include``/``exclude`` expands to a different cell set than the
+    plain product computed here, so the derived names would require
+    checks that never report (blocking every merge) or miss cells that
+    do.
+    """
     dictWorkflow = yaml.safe_load(
         (_PATH_WORKFLOWS / sWorkflowName).read_text(encoding="utf-8")
     )
     listNames = []
-    for dictJob in dictWorkflow.get("jobs", {}).values():
+    for sJobKey, dictJob in dictWorkflow.get("jobs", {}).items():
         sName = dictJob.get("name")
         if not sName:
-            continue
+            raise SystemExit(
+                f"{sWorkflowName}: job {sJobKey!r} has no `name:`; give "
+                f"it one so its check name is explicit, then re-run."
+            )
         dictMatrix = (dictJob.get("strategy") or {}).get("matrix") or {}
+        if "include" in dictMatrix or "exclude" in dictMatrix:
+            raise SystemExit(
+                f"{sWorkflowName}: job {sJobKey!r} uses matrix "
+                f"include/exclude, which this tool cannot expand; "
+                f"extend flistExpandJobNames before re-running."
+            )
         listExpanded = [sName]
         for sToken, sKey in T_MATRIX_TOKENS:
             listValues = dictMatrix.get(sKey)
@@ -115,6 +134,14 @@ def fdictBuildRulesetPayload(listContexts):
         dictRule["parameters"]["required_status_checks"] = [
             {"context": sContext} for sContext in listContexts
         ]
+        # The split removed every push-to-main test trigger, so branch
+        # protection is the ONLY thing standing between a stale-green
+        # pull request and an untested merge commit. Without the strict
+        # up-to-date requirement, two individually-green pull requests
+        # that conflict semantically can both merge and break main with
+        # zero CI runs anywhere to notice. Re-assert it on every apply
+        # so a UI change cannot silently reopen that window.
+        dictRule["parameters"]["strict_required_status_checks_policy"] = True
         bFound = True
     if not bFound:
         raise SystemExit(
