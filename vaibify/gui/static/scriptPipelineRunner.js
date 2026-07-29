@@ -895,26 +895,26 @@ var VaibifyPipelineRunner = (function () {
         }
         sMessage += sSleepWarn;
         VaibifyApp.fnShowConfirmModal(
-            "Run All", sMessage, async function () {
-                var dictWorkflow = VaibifyApp.fdictGetWorkflow();
-                var listEnablePromises = [];
-                dictWorkflow.listSteps.forEach(
-                    function (step, iIndex) {
-                        if (step.bRunEnabled === false) {
-                            listEnablePromises.push(
-                                VaibifyApp.fnToggleStepEnabled(
-                                    iIndex, true)
-                            );
-                        }
-                        VaibifyApp.fnSetStepStatus(
-                            iIndex, "queued");
-                    });
-                if (listEnablePromises.length > 0) {
-                    await Promise.all(listEnablePromises);
-                }
+            "Run All", sMessage, function () {
+                // Queue only the steps that will actually run. The
+                // backend honors bRunEnabled and skips disabled steps,
+                // so the frontend must NOT re-enable them: doing so
+                // contradicts the "enabled steps" prompt, persists a
+                // bRunEnabled flip to project.json, and silently clears
+                // the Tier 5 reproduce refusal that names disabled steps.
+                _fnQueueEnabledSteps();
                 VaibifyApp.fnRenderStepList();
                 fnSendPipelineAction({ sAction: "runAll" });
             });
+    }
+
+    function _fnQueueEnabledSteps() {
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
+        dictWorkflow.listSteps.forEach(function (step, iIndex) {
+            if (step.bRunEnabled !== false) {
+                VaibifyApp.fnSetStepStatus(iIndex, "queued");
+            }
+        });
     }
 
     async function fnForceRunAll() {
@@ -991,19 +991,10 @@ var VaibifyPipelineRunner = (function () {
                 "error");
             return;
         }
-        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
-        var listEnablePromises = [];
-        dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            if (step.bRunEnabled === false) {
-                listEnablePromises.push(
-                    VaibifyApp.fnToggleStepEnabled(iIndex, true)
-                );
-            }
-            VaibifyApp.fnSetStepStatus(iIndex, "queued");
-        });
-        if (listEnablePromises.length > 0) {
-            await Promise.all(listEnablePromises);
-        }
+        // Same rule as Run All: queue only enabled steps and never
+        // re-enable a disabled one. The backend skips disabled steps
+        // for forceRunAll too.
+        _fnQueueEnabledSteps();
         VaibifyApp.fnClearFileExistenceCache();
         VaibifyApp.fnRenderStepList();
         fnSendPipelineAction({ sAction: "forceRunAll" });

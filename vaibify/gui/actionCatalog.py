@@ -78,7 +78,8 @@ LIST_AGENT_ACTIONS = [
     {"sName": "run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step in the active workflow in order. "
+     "sDescription": "Run every enabled step in the active workflow in "
+                     "order; disabled steps are skipped, not run. "
                      "Refused with sReason=remoteDataOverwrite when a "
                      "covered step would re-pull remote data over the "
                      "canonical copy — ask the researcher, then retry "
@@ -86,9 +87,9 @@ LIST_AGENT_ACTIONS = [
     {"sName": "force-run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "forceRunAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step unconditionally, ignoring cache. "
-                     "Subject to the same remote-data overwrite gate "
-                     "as run-all."},
+     "sDescription": "Run every enabled step unconditionally, ignoring "
+                     "cache; disabled steps are still skipped. Subject "
+                     "to the same remote-data overwrite gate as run-all."},
     {"sName": "run-from-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runFrom",
      "bAgentSafe": True,
