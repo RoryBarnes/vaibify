@@ -869,6 +869,23 @@ LIST_FALSIFICATIONS = [
         old='            "base-uri \'none\'; "\n            "form-action \'self\'; "',
         new='            "form-action \'self\'; "',
     ),
+    # init swallowed the duplicate-name error and reported success, so a
+    # second project reusing a name was scaffolded but unregistered and
+    # --project resolved to the other directory. The outcome must
+    # distinguish same-dir re-init from a cross-directory name conflict.
+    Falsification(
+        nodeid='tests/testInitRegistrationOutcome.py::test_name_conflict_with_a_different_dir_fails_loudly',
+        source='vaibify/cli/commandInit.py',
+        old="""    except ValueError:
+        dictExisting = fdictGetProject(sName)
+        sExistingDir = (dictExisting or {}).get("sDirectory", "")
+        if sExistingDir and os.path.abspath(sExistingDir) == \\
+                os.path.abspath(sCwd):
+            return "already-registered"
+        return "name-conflict\"""",
+        new="""    except ValueError:
+        return "registered\"""",
+    ),
     # The build-progress record is read by every later build click (the
     # 409 duplicate refusal) and by re-attached tabs; these guard that a
     # dead build always closes its record and that no unredacted line

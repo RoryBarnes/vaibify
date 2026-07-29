@@ -8,7 +8,9 @@ import click
 
 from .configLoader import fsConfigPath
 
-from vaibify.config.registryManager import fnAddProject
+import os
+
+from vaibify.config.registryManager import fdictGetProject, fnAddProject
 from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
 from vaibify.resources import S_TEMPLATES_TREE, fpathPackagedTree
 
@@ -184,12 +186,32 @@ def _fnApplyInstallerAgentDefaults(config):
             setattr(config.features, sField, True)
 
 
-def fnRegisterProject():
-    """Register the current directory in the global project registry."""
+def fsRegisterProject(sName):
+    """Register the current directory; return an outcome code.
+
+    Returns ``"registered"`` on success, ``"already-registered"`` when
+    this same directory is already registered under ``sName``
+    (idempotent re-init), ``"name-conflict"`` when the name is taken by
+    a DIFFERENT directory, or ``"config-missing"`` when the config the
+    caller just wrote cannot be found. Swallowing the duplicate-name
+    error and reporting success — as the old code did — hid a real
+    failure: a second project sharing a name resolves ``--project
+    <name>`` to the OTHER directory forever, so the researcher's new
+    project was scaffolded but silently unregistered.
+    """
+    sCwd = str(pathlib.Path.cwd())
     try:
-        fnAddProject(str(pathlib.Path.cwd()))
-    except (ValueError, FileNotFoundError):
-        pass
+        fnAddProject(sCwd)
+        return "registered"
+    except ValueError:
+        dictExisting = fdictGetProject(sName)
+        sExistingDir = (dictExisting or {}).get("sDirectory", "")
+        if sExistingDir and os.path.abspath(sExistingDir) == \
+                os.path.abspath(sCwd):
+            return "already-registered"
+        return "name-conflict"
+    except FileNotFoundError:
+        return "config-missing"
 
 
 @click.command("init")
@@ -230,11 +252,24 @@ def init(sTemplateName, sProjectName, bMinimal, bForce):
             "Use --force to overwrite."
         )
         sys.exit(1)
+    sName = sProjectName or sTemplateName
     if sTemplateName is not None:
         fnCopyTemplate(sTemplateName)
-    fnWriteDefaultConfig(sProjectName or sTemplateName, bMinimal)
-    fnRegisterProject()
-    click.echo(
-        f"Initialized Vaibify project "
-        f"'{sProjectName or sTemplateName}'."
-    )
+    fnWriteDefaultConfig(sName, bMinimal)
+    sOutcome = fsRegisterProject(sName)
+    if sOutcome == "name-conflict":
+        click.echo(
+            f"Error: '{sName}' was scaffolded here, but that name is "
+            f"already registered to a different directory, so this "
+            f"project was NOT registered — 'vaibify --project {sName}' "
+            f"would resolve to the other one. Re-run with a different "
+            f"--name, or remove the other project from the registry."
+        )
+        sys.exit(1)
+    if sOutcome == "config-missing":
+        click.echo(
+            f"Error: '{sName}' was scaffolded but its config could not "
+            f"be found for registration. Check the directory and re-run."
+        )
+        sys.exit(1)
+    click.echo(f"Initialized Vaibify project '{sName}'.")
