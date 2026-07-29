@@ -172,3 +172,74 @@ def testEveryWorkflowIsClassifiedOrDeliberatelyScheduled():
         f"these workflows run both before and after a merge and belong "
         f"in one of the two lists above: {listOffenders}"
     )
+
+
+# The badges branch is machine-generated and its whole contract is that
+# it holds nothing but badge json. The first run of the merge-status
+# step broke that: the step wrote its API response into the checkout and
+# the publish step added `./*.json`, so a 70 kB dump of workflow-run
+# metadata was committed as if it were a badge.
+T_PUBLISHED_BADGES = (
+    "tests.json",
+    "falsification.json",
+    "invariants.json",
+    "browser.json",
+    "statusTestsLinux.json",
+    "statusTestsMacos.json",
+    "statusFalsification.json",
+    "statusBrowser.json",
+    "statusAgentDocs.json",
+)
+
+
+def _fsBadgesPublishStep():
+    """Return the shell body of badges.yml's publish step."""
+    dictWorkflow = yaml.safe_load(
+        (_PATH_WORKFLOWS / "badges.yml").read_text()
+    )
+    for dictStep in dictWorkflow["jobs"]["publish-badges"]["steps"]:
+        if "orphan badges branch" in (dictStep.get("name") or ""):
+            return dictStep.get("run", "")
+    raise AssertionError("badges.yml has no publish step")
+
+
+def testBadgesArePublishedByNameNotByGlob():
+    """Only named badge files may reach the badges branch.
+
+    A glob cannot distinguish a badge from whatever else a previous step
+    happened to leave in the working directory, and the failure is
+    invisible in review — `git add ./*.json` looks like housekeeping.
+    """
+    sStep = _fsBadgesPublishStep()
+    for sGlob in ("./*.json", "*.json ."):
+        assert sGlob not in sStep, (
+            f"badges.yml publishes with the glob {sGlob!r}; publish by "
+            f"name so only badges can ever land on the branch."
+        )
+    for sBadge in T_PUBLISHED_BADGES:
+        assert sBadge in sStep, (
+            f"{sBadge} is written by badges.yml but never published."
+        )
+
+
+def testTheMergeStatusDumpIsWrittenOutsideTheCheckout():
+    """The resolved API response must not sit in the worktree.
+
+    Keeping it in RUNNER_TEMP means no future glob, however careless,
+    can publish it.
+    """
+    dictWorkflow = yaml.safe_load(
+        (_PATH_WORKFLOWS / "badges.yml").read_text()
+    )
+    listSteps = dictWorkflow["jobs"]["publish-badges"]["steps"]
+    listWriters = [
+        dictStep.get("run", "") for dictStep in listSteps
+        if "gateRuns.json" in (dictStep.get("run") or "")
+        and "git rm" not in (dictStep.get("run") or "")
+    ]
+    assert listWriters, "no step references the merge-status dump"
+    for sRun in listWriters:
+        assert "RUNNER_TEMP" in sRun, (
+            "gateRuns.json is read or written without RUNNER_TEMP, so "
+            "it lands in the checkout where a glob can publish it."
+        )

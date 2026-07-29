@@ -135,8 +135,12 @@ jobs:
             echo "bResolved=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Deliberately outside the checkout. Written into the worktree
+          # it is one glob away from being published: the first run of
+          # this step put a 70 kB API dump on the badges branch, which
+          # is supposed to hold only the generated json.
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${sPrHead}&per_page=100" \
-            > gateRuns.json
+            > "${RUNNER_TEMP}/gateRuns.json"
           echo "bResolved=true" >> "$GITHUB_OUTPUT"
           echo "resolved gating checks from PR head ${sPrHead}"
 
@@ -169,7 +173,10 @@ jobs:
               "": ("did not run", "lightgrey"),
           }
 
-          with open("gateRuns.json", encoding="utf-8") as fileHandle:
+          import os
+
+          sRunsPath = os.path.join(os.environ["RUNNER_TEMP"], "gateRuns.json")
+          with open(sRunsPath, encoding="utf-8") as fileHandle:
               listRuns = json.load(fileHandle).get("workflow_runs", [])
 
           dictLatestByName = {}
@@ -219,10 +226,23 @@ jobs:
             git checkout --orphan badges
             git rm -rf . >/dev/null 2>&1 || true
           fi
-          # Status files are absent on a direct push (see the gate step),
-          # so copy whatever was produced and leave the rest as they are.
-          cp badgeOutput/*.json .
-          git add ./*.json
+          # Publish by NAME, never by glob. A glob here is what put a raw
+          # API dump on this branch; an explicit list can only ever
+          # publish a badge. Status files are absent on a direct push
+          # (see the gate step), so each is copied only if it exists and
+          # the previous one is left in place.
+          for sBadge in tests.json falsification.json invariants.json \
+                        browser.json statusTestsLinux.json \
+                        statusTestsMacos.json statusFalsification.json \
+                        statusBrowser.json statusAgentDocs.json; do
+            if [ -f "badgeOutput/$sBadge" ]; then
+              cp "badgeOutput/$sBadge" .
+              git add "$sBadge"
+            fi
+          done
+          # Self-heal the branch: remove anything a previous run stranded
+          # here that is not a badge.
+          git rm -q --ignore-unmatch gateRuns.json
           if git diff --cached --quiet; then
             echo "badge json unchanged - nothing to publish"
             exit 0
