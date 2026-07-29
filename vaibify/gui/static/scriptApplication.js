@@ -2640,10 +2640,14 @@ const VaibifyApp = (function () {
             .addEventListener("click", fnRepaintCard);
         document.getElementById("btnDescriptionSave")
             .addEventListener("click", async function () {
+                // Success-only: commit the description to the step and
+                // repaint only if the save landed, so a failed save
+                // does not leave an un-persisted description on the card.
                 var sText = elInput.value.trim();
-                step.sDescription = sText;
-                await fnPutStepEdit(
+                var dictResult = await fnPutStepEdit(
                     iStepIndex, {sDescription: sText});
+                if (!dictResult) return;
+                step.sDescription = sText;
                 fnRepaintCard();
             });
     }
@@ -3471,24 +3475,37 @@ const VaibifyApp = (function () {
     }
 
     async function fnSetStepBudget(iStep, fBudget) {
-        // The wall-clock budget in seconds (0 = inherit the workflow
-        // default). Mirror it into local state before the PUT so the
-        // input stays sticky across re-renders, exactly as the
-        // plot-only toggle does.
+        // Success-only: persist FIRST, mutate the workflow dict only if
+        // the save landed. Mutating before the PUT (for input
+        // stickiness) meant a failed save left the un-persisted value on
+        // screen — and if the failure was a network outage, the re-sync
+        // that would correct it also fails, so the stale value stayed
+        // forever. The native input already reflects the typed value;
+        // the workflow-dict change waits for the server.
+        var dictResult = await fnPutStepEdit(
+            iStep, {fWallClockBudgetSeconds: fBudget});
+        if (!dictResult) return;
         _dictWorkflowState.dictWorkflow.listSteps[iStep]
             .fWallClockBudgetSeconds = fBudget;
-        await fnPutStepEdit(iStep, {fWallClockBudgetSeconds: fBudget});
     }
 
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
-        _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
-        await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
+        var dictResult = await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
+        if (!dictResult) {
+            fnRenderStepList();  // reset the checkbox to server truth
+            return;
+        }
+        _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly =
+            bPlotOnly;
     }
 
     async function fnToggleNoInputData(iStep, bNoInputData) {
-        _dictWorkflowState.dictWorkflow.listSteps[iStep].bNoInputData =
-            bNoInputData;
-        await fnPutStepEdit(iStep, {bNoInputData: bNoInputData});
+        var dictResult = await fnPutStepEdit(
+            iStep, {bNoInputData: bNoInputData});
+        if (dictResult) {
+            _dictWorkflowState.dictWorkflow.listSteps[iStep].bNoInputData =
+                bNoInputData;
+        }
         fnRenderStepList();
     }
 
@@ -3557,12 +3574,16 @@ const VaibifyApp = (function () {
     async function fnAddDiscoveredOutput(
         iStep, sFile, sTargetArray
     ) {
+        // Success-only: build the proposed array and persist it before
+        // mutating local state, so a failed save leaves neither the
+        // added output nor the removed discovery-chip behind.
         var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
-        if (!dictStep[sTargetArray]) dictStep[sTargetArray] = [];
-        dictStep[sTargetArray].push(sFile);
+        var listProposed = (dictStep[sTargetArray] || []).concat([sFile]);
         var dictUpdate = {};
-        dictUpdate[sTargetArray] = dictStep[sTargetArray];
-        await fnSaveStepUpdate(iStep, dictUpdate);
+        dictUpdate[sTargetArray] = listProposed;
+        var dictResult = await fnSaveStepUpdate(iStep, dictUpdate);
+        if (!dictResult) return;
+        dictStep[sTargetArray] = listProposed;
         var dictDisc = _dictWorkflowState.dictDiscoveredOutputs[iStep] ||
             {listDiscovered: [], iTotalDiscovered: 0};
         var listFiltered = (dictDisc.listDiscovered || []).filter(
@@ -3587,24 +3608,31 @@ const VaibifyApp = (function () {
     }
 
     async function fnCycleUserVerification(iStep) {
+        // Success-only: build the NEXT verification as a fresh dict,
+        // persist it, and commit to the step only if the save landed.
+        // The old code mutated the step's verification in place before
+        // the PUT, so a failed save (a network outage, where the
+        // re-sync also fails) left a "passed" badge on screen that the
+        // server never recorded — the sharpest ground-truth breach.
         var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(dictStep);
         var listStates = [
             "untested", "passed", "failed", "error"
         ];
-        var iCurrent = listStates.indexOf(
-            dictVerify.sUser || "untested"
-        );
-        var iNext = (iCurrent + 1) % listStates.length;
-        dictVerify.sUser = listStates[iNext];
-        dictVerify.sLastUserUpdate = fsFormatUtcTimestamp();
+        var iNext = (listStates.indexOf(dictVerify.sUser || "untested")
+            + 1) % listStates.length;
+        var dictNext = Object.assign({}, dictVerify);
+        dictNext.sUser = listStates[iNext];
+        dictNext.sLastUserUpdate = fsFormatUtcTimestamp();
         if (listStates[iNext] === "passed") {
-            delete dictVerify.listModifiedFiles;
-            delete dictVerify.bOutputModified;
+            delete dictNext.listModifiedFiles;
+            delete dictNext.bOutputModified;
         }
-        dictStep.dictVerification = dictVerify;
+        var dictResult = await fnPutStepEdit(
+            iStep, {dictVerification: dictNext});
+        if (!dictResult) return;
+        dictStep.dictVerification = dictNext;
         _dictWorkflowState.dictUserVerifiedAt[iStep] = Date.now();
-        await fnPutStepEdit(iStep, {dictVerification: dictVerify});
         fnRenderStepList();
         fnUpdateHighlightState();
     }

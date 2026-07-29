@@ -92,3 +92,66 @@ def test_save_step_array_returns_the_result():
         _fsReadApp(), "async function fnSaveStepArray(",
     )
     assert "return dictResult" in sBlock
+
+
+# --- success-only mutation (outage-proof): mutate the workflow dict
+#     only AFTER the save lands, so a failed save (even when the re-sync
+#     also fails on a total outage) leaves no un-persisted state. ---
+
+def _fsBlock(sName):
+    sSource = _fsReadApp()
+    iStart = sSource.find(sName)
+    assert iStart != -1, sName + " missing"
+    iNext = sSource.find("\n    async function ", iStart + 1)
+    iPlain = sSource.find("\n    function ", iStart + 1)
+    iEnd = min(x for x in (iNext, iPlain, len(sSource)) if x != -1)
+    return sSource[iStart:iEnd]
+
+
+def test_set_step_budget_is_success_only():
+    sBlock = _fsBlock("async function fnSetStepBudget(")
+    iPut = sBlock.find("fnPutStepEdit(")
+    iGuard = sBlock.find("if (!dictResult) return;")
+    iMutate = sBlock.find(".fWallClockBudgetSeconds = fBudget;")
+    assert -1 < iPut < iGuard < iMutate, (
+        "budget must persist before mutating the workflow dict"
+    )
+
+
+def test_toggle_plot_only_is_success_only():
+    sBlock = _fsBlock("async function fnTogglePlotOnly(")
+    iPut = sBlock.find("fnPutStepEdit(")
+    iMutate = sBlock.find(".bPlotOnly =\n")
+    if iMutate == -1:
+        iMutate = sBlock.find(".bPlotOnly =")
+    assert -1 < iPut < iMutate
+    assert "if (!dictResult)" in sBlock
+
+
+def test_cycle_user_verification_is_success_only():
+    sBlock = _fsBlock("async function fnCycleUserVerification(")
+    iPut = sBlock.find("fnPutStepEdit(")
+    iGuard = sBlock.find("if (!dictResult) return;")
+    iMutate = sBlock.find("dictStep.dictVerification = dictNext;")
+    assert -1 < iPut < iGuard < iMutate, (
+        "a 'passed' badge must never be shown for a save that did not land"
+    )
+
+
+def test_add_discovered_output_is_success_only():
+    sBlock = _fsBlock("async function fnAddDiscoveredOutput(")
+    iSave = sBlock.find("fnSaveStepUpdate(")
+    iGuard = sBlock.find("if (!dictResult) return;")
+    iMutate = sBlock.find("dictStep[sTargetArray] = listProposed;")
+    assert -1 < iSave < iGuard < iMutate
+
+
+def test_description_save_is_success_only():
+    sSource = _fsReadApp()
+    # Anchor on the mutation and look back: the persist and its guard
+    # must both precede the local mutation of the description.
+    iMutate = sSource.find("step.sDescription = sText;")
+    assert iMutate != -1
+    sBefore = sSource[iMutate - 400:iMutate]
+    assert "fnPutStepEdit(" in sBefore
+    assert "if (!dictResult) return;" in sBefore
