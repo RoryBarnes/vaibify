@@ -824,6 +824,18 @@ LIST_FALSIFICATIONS = [
     return listTargets
     for dictMount in dictConfig.get("bindMounts") or []:""",
     ),
+    # A mount at the workspace root is an ANCESTOR of the destination;
+    # the destination is a descendant of the mount. Dropping the
+    # descendant direction of the overlap check lets that rm -rf through.
+    Falsification(
+        nodeid='tests/testProjectConfigExtended.py::test_repo_destination_under_a_workspace_root_mount_is_rejected',
+        source='vaibify/config/projectConfig.py',
+        old="""    return (
+        sFirst.startswith(sSecond + "/")
+        or sSecond.startswith(sFirst + "/")
+    )""",
+        new="""    return sSecond.startswith(sFirst + "/")""",
+    ),
     # repr() is Python escaping, not shell escaping; embedded in a
     # double-quoted bash -c string, a crafted container path executes on
     # preview/fetch. Shell-quoting the whole -c argument closes it.

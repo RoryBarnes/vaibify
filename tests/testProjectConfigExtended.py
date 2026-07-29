@@ -114,10 +114,14 @@ def test_repo_destination_under_a_workspace_root_mount_is_rejected():
     The earlier collector expressed bind targets workspace-relative and
     dropped the root mount (empty relative string), so /workspace mounted
     + destination 'data' validated True and rm -rf /workspace/data hit
-    the mount. The absolute-path overlap check must catch it.
+    the mount. The absolute-path overlap check must catch it — the
+    destination is a DESCENDANT of the mount, so the descendant
+    direction of the overlap check is what catches this case (the plain
+    collision test exercises the equal case instead).
 
-    Kills: In projectConfig._flistAbsoluteBindTargets, return [] before
-    collecting any target so no collision is ever detected.
+    Kills: In projectConfig._fbContainerPathsOverlap, drop the
+    ``sFirst.startswith(sSecond + "/")`` (descendant) direction, so a
+    destination nested under a mount is no longer detected.
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
