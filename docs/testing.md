@@ -223,34 +223,60 @@ the split landed: two `pip-install` job names
 branch ruleset and blocked an otherwise fully green pull request.
 ```
 
-### Required status checks
+### Check names
 
 A ruleset matches checks by **job name**, and the required-checks picker
-searches those names — not workflow names. Two consequences bit us on
-the first day of branch protection:
+searches those names — not workflow names. So the name is not cosmetic:
+an unfindable name is an unprotected lane.
 
-- A lane whose job name never mentions it is one nobody will find.
-  `browser`'s job was called `frontend (chromium)`, so searching
-  "browser" returned nothing and the whole lane stayed unprotected while
-  appearing to gate every pull request. It is now simply `browser`.
-- A name emitted by two workflows cannot gate either one independently:
-  requiring it is satisfied by whichever reports. `falsification` used
-  the same matrix template as the tests lanes, so
-  `ubuntu-24.04:python-3.14` meant two different things. Its jobs are
-  now `falsification:<os>:py<version>`.
+The scheme is `<test-type>:<os>:python-<version>` for anything that
+varies across the matrix, and a bare noun for anything that does not:
 
-`testNoTwoMergeGateLanesProduceTheSameCheckName` expands each gate
-workflow's matrix and fails if any name has two owners.
+| Check | Lane |
+|---|---|
+| `unit:ubuntu-22.04:python-3.9` … `unit:macos-26:python-3.14` | `tests-linux`, `tests-macos` |
+| `falsification:ubuntu-24.04:python-3.9` … | `falsification` |
+| `results:<os>:python-<version>` | the test-results report published by `tests-linux` |
+| `browser` | `browser` |
+| `invariants` | `tests-linux` |
+| `docker-smoke` | `tests-linux` |
+| `agent-docs` | `agentDocsPathCheck` |
+
+Two failures forced this, both invisible in the workflow file. `browser`'s
+job was called `frontend (chromium)`, so searching "browser" returned
+nothing and the entire lane sat unprotected while appearing to gate
+every pull request. And `falsification` reused the tests matrix
+template, so `ubuntu-24.04:python-3.14` was emitted by two workflows —
+requiring it is satisfied by whichever reports, gating neither.
+`testNoTwoMergeGateLanesProduceTheSameCheckName` now fails if any name
+has two owners.
+
+`invariants` exists purely to give the architectural invariants a name.
+They already run inside every matrix leg; the separate job adds about
+ten seconds and a check a reviewer can actually see.
+
+### Required status checks
 
 **Requiring only some checks lets a pull request merge while the rest
-are still running** — GitHub blocks on required checks alone. To list
-every name that should be required:
+are still running** — GitHub blocks on required checks alone. Derive the
+full set from the workflows rather than picking names by hand:
 
 ```bash
-gh pr view <number> --json statusCheckRollup \
-  -q '.statusCheckRollup[] | select(.workflowName != null)
-      | "\(.workflowName)\t\(.name)"' | sort -u
+python tools/syncRequiredChecks.py           # print, change nothing
+python tools/syncRequiredChecks.py --apply   # write the ruleset
 ```
+
+```{warning}
+Renaming a job invalidates the ruleset entry that named it: the old name
+stops being reported and every pull request waits forever on a check
+that no longer exists. Run `syncRequiredChecks.py --apply` **before**
+merging a rename, not after — otherwise the renaming pull request is
+itself blocked by the names it is replacing.
+```
+
+`results:*` is deliberately excluded from the required set: it reports
+the same run the matching `unit:` job already gates, so requiring both
+doubles the wait for no extra signal.
 
 **On their own schedule — neither gate nor publisher:**
 

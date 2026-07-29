@@ -305,3 +305,33 @@ def testNoTwoMergeGateLanesProduceTheSameCheckName():
         f"these check names are produced by more than one merge-gate "
         f"workflow, so requiring them cannot gate both: {dictCollisions}"
     )
+
+
+def testTheRequiredCheckToolAgreesWithThisSuite():
+    """``tools/syncRequiredChecks.py`` must gate the same lanes as this file.
+
+    The tool writes the ruleset; this suite decides which lanes are
+    merge gates. Two independent lists of the same thing is how a lane
+    ends up enforced in one place and forgotten in the other, so they
+    are compared rather than trusted to stay in step.
+    """
+    import importlib.util
+
+    pathTool = _PATH_REPO / "tools" / "syncRequiredChecks.py"
+    specTool = importlib.util.spec_from_file_location(
+        "syncRequiredChecks", pathTool,
+    )
+    moduleTool = importlib.util.module_from_spec(specTool)
+    specTool.loader.exec_module(moduleTool)
+
+    assert set(moduleTool.T_GATE_WORKFLOWS) == set(T_PRE_MERGE_WORKFLOWS), (
+        "syncRequiredChecks.py and this suite disagree about which "
+        "workflows gate a merge."
+    )
+    setFromSuite = set()
+    for sWorkflow in T_PRE_MERGE_WORKFLOWS:
+        setFromSuite.update(_flistExpandJobNames(sWorkflow))
+    assert set(moduleTool.flistRequiredContexts()) == setFromSuite, (
+        "the tool and this suite expand the gate workflows to different "
+        "check names; the ruleset would be written from the wrong set."
+    )
