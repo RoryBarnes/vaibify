@@ -298,3 +298,33 @@ def test_setup_wizard_persists_each_new_agent_auto_update_flag(tmp_path):
         dictSaved = yaml.safe_load(fileHandle)
     assert dictSaved["features"]["codexAutoUpdate"] is False
     assert dictSaved["features"]["geminiAutoUpdate"] is True
+
+
+def test_wizard_has_a_single_save_action_button():
+    """One save action, not two identical buttons hitting two endpoints.
+
+    An earlier pass renamed the build button to 'Save Configuration'
+    without noticing the primary save button already carried that label,
+    leaving two identical buttons that both wrote the same YAML.
+    """
+    import os
+    sBase = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "vaibify", "gui", "static",
+    )
+    sHtml = open(
+        os.path.join(sBase, "setupWizard.html"), encoding="utf-8",
+    ).read()
+    iStart = sHtml.find('class="setup-actions"')
+    sActions = sHtml[iStart:sHtml.find("</div>", iStart)]
+    assert sActions.count("<button") == 1, (
+        "the setup actions must expose exactly one save button"
+    )
+    assert "btnBuildContainer" not in sHtml
+    sJs = open(
+        os.path.join(sBase, "scriptSetupWizard.js"), encoding="utf-8",
+    ).read()
+    assert "fnBuildContainer" not in sJs
+    assert "vaibify build" in sJs, (
+        "the save toast should name the build next step"
+    )

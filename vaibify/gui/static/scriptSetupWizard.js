@@ -129,9 +129,6 @@ var VaibifySetup = (function () {
         document.getElementById("btnSaveConfig").addEventListener(
             "click", fnSaveConfig
         );
-        document.getElementById("btnBuildContainer").addEventListener(
-            "click", fnBuildContainer
-        );
     }
 
     /* --- Repository Management --- */
@@ -355,53 +352,20 @@ var VaibifySetup = (function () {
                     dictError.detail || "Save failed"
                 );
             }
-            fnShowToast("Configuration saved", "success");
-        } catch (error) {
+            // One save action, one next step. The wizard writes
+            // vaibify.yml; the image is built separately by the CLI.
+            // (An earlier pass left two identical "Save Configuration"
+            // buttons calling different endpoints that both wrote the
+            // same YAML — kept the primary one, removed the duplicate.)
             fnShowToast(
-                "Save failed: " + error.message, "error"
-            );
-        }
-    }
-
-    /* --- Build --- */
-
-    async function fnBuildContainer() {
-        if (!fbValidateForm()) return;
-
-        var dictConfig = fdictBuildConfigFromForm();
-        var elButton = document.getElementById("btnBuildContainer");
-        elButton.disabled = true;
-        elButton.textContent = "Saving...";
-
-        // This writes vaibify.yml; it does NOT build the image. The
-        // button and toast say so honestly — the earlier "Building..."
-        // wording implied a build that never ran here.
-        try {
-            var response = await fetch("/api/setup/build", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dictConfig),
-            });
-            if (!response.ok) {
-                var dictError = await response.json();
-                throw new Error(
-                    dictError.detail || "Could not save configuration"
-                );
-            }
-            var dictResult = await response.json();
-            fnShowToast(
-                dictResult.sMessage
-                    || "Configuration saved. Run 'vaibify build' next.",
+                "Configuration saved. Run 'vaibify build' to build the "
+                + "container image.",
                 "success"
             );
         } catch (error) {
             fnShowToast(
-                "Could not save configuration: " + error.message,
-                "error"
+                "Save failed: " + error.message, "error"
             );
-        } finally {
-            elButton.disabled = false;
-            elButton.textContent = "Save Configuration";
         }
     }
 
