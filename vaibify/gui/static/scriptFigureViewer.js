@@ -641,7 +641,7 @@ const VaibifyFigureViewer = (function () {
             return;
         }
         pdfjsLib.GlobalWorkerOptions.workerSrc =
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+            "/static/vendor/pdf.worker.min.js";
         pdfjsLib.getDocument({
             url: sUrl, isEvalSupported: false,
         }).promise.then(function (pdfDoc) {

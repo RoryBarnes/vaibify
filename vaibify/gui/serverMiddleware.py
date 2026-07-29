@@ -248,9 +248,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://cdnjs.cloudflare.com; "
-            "worker-src 'self' blob: "
-            "https://cdnjs.cloudflare.com; "
+            "script-src 'self'; "
+            "worker-src 'self' blob:; "
             "style-src 'self' 'unsafe-inline' "
             "https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
@@ -264,9 +263,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # base-uri or form-action). form-action 'self' likewise
             # confines any injected form. Both close the escalation a
             # hostile filename in the file browser could otherwise reach
-            # even under the script-src restriction. jsdelivr was removed
-            # from script-src/style-src: nothing loads from it (xterm is
-            # vendored locally), so it was pure attack surface.
+            # even under the script-src restriction. No CDN origin is
+            # granted script execution: pdf.js and xterm are vendored
+            # locally, so script-src and worker-src are 'self' only.
             "base-uri 'none'; "
             "form-action 'self'; "
             "frame-ancestors 'none'"

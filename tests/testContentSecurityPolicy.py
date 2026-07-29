@@ -55,12 +55,21 @@ def test_frame_ancestors_still_none(dictCsp):
     assert "frame-ancestors" in dictCsp
 
 
-def test_jsdelivr_is_not_granted_script_or_style(dictCsp):
-    """The unused CDN grant is removed from every directive."""
-    sJoined = " ".join(dictCsp.values())
-    assert "jsdelivr" not in sJoined, (
-        "nothing loads from jsdelivr; granting it is pure attack surface"
-    )
+def test_no_cdn_is_granted_script_execution(dictCsp):
+    """script-src and worker-src must be local only.
+
+    pdf.js and xterm are vendored, so no third-party origin should hold
+    script or worker execution authority on the dashboard's origin.
+    """
+    sScript = dictCsp.get("script-src", "")
+    sWorker = dictCsp.get("worker-src", "")
+    for sToken in ("cdnjs", "jsdelivr", "http://", "https://"):
+        assert sToken not in sScript, (
+            f"script-src must not grant {sToken!r}: {sScript!r}"
+        )
+        assert sToken not in sWorker, (
+            f"worker-src must not grant {sToken!r}: {sWorker!r}"
+        )
 
 
 def test_default_src_still_self(dictCsp):
