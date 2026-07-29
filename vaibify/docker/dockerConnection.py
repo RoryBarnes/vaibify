@@ -17,6 +17,7 @@ on their own schedule (audit finding F-R-01).
 """
 
 import base64
+import shlex
 import warnings
 from dataclasses import dataclass
 
@@ -507,13 +508,18 @@ class DockerConnection:
         accidentally pull a multi-GB output file into RAM via the small
         path.
         """
-        sSafePath = repr(sFilePath)
-        sCommand = (
-            "python3 -c \"import base64,sys; "
+        # Two-layer quoting: repr() makes a valid Python literal, then
+        # shlex.quote wraps the whole program as one shell argument.
+        # The old code embedded repr() into a double-quoted ``bash -c``
+        # string, where $(...) and unbalanced quotes in the path stayed
+        # live — a container-path injection triggered by a file fetch.
+        sProgram = (
+            "import base64,sys; "
             "sys.stdout.buffer.write("
             "base64.b64encode(open("
-            + sSafePath + ",'rb').read()))\""
+            + repr(sFilePath) + ",'rb').read()))"
         )
+        sCommand = "python3 -c " + shlex.quote(sProgram)
         resultExec = self.texecRunInContainerStreamed(
             sContainerId, sCommand,
         )

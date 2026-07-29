@@ -828,6 +828,21 @@ LIST_FALSIFICATIONS = [
     return set()
     setTargets = set()""",
     ),
+    # repr() is Python escaping, not shell escaping; embedded in a
+    # double-quoted bash -c string, a crafted container path executes on
+    # preview/fetch. Shell-quoting the whole -c argument closes it.
+    Falsification(
+        nodeid='tests/testDataPreviewInjection.py::test_npy_preview_quotes_the_whole_program',
+        source='vaibify/gui/dataPreview.py',
+        old='    sCommand = "python3 -c " + fsShellQuote(sProgram)\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
+        new='    sCommand = "python3 -c \\"" + sProgram + "\\""\n    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(\n        sContainerId, sCommand\n    )\n    return sOutput.strip() if iExitCode == 0 else "(unreadable)"\n\n\ndef _fsPreviewHdf5',
+    ),
+    Falsification(
+        nodeid='tests/testDataPreviewInjection.py::test_file_fetch_does_not_execute_injected_payload',
+        source='vaibify/docker/dockerConnection.py',
+        old='        sCommand = "python3 -c " + shlex.quote(sProgram)',
+        new='        sCommand = "python3 -c \\"" + sProgram + "\\""',
+    ),
     # The build-progress record is read by every later build click (the
     # 409 duplicate refusal) and by re-attached tabs; these guard that a
     # dead build always closes its record and that no unredacted line
