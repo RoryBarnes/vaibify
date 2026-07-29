@@ -53,6 +53,93 @@ def test_fbValidateConfig_missing_name():
     assert fbValidateConfig(dictConfig) is False
 
 
+def _fdictConfigWithRepos(listRepos, listMounts=None):
+    """Return a minimal valid config carrying the given repos/mounts."""
+    dictConfig = fdictLoadDefaults()
+    dictConfig["projectName"] = "testproj"
+    dictConfig["repositories"] = listRepos
+    if listMounts is not None:
+        dictConfig["bindMounts"] = listMounts
+    return dictConfig
+
+
+@pytest.mark.falsification
+def test_repo_destination_traversal_is_rejected():
+    """A '../' destination becomes rm -rf outside the workspace.
+
+    The entrypoint runs rm -rf "${WORKSPACE}/${destination}" before
+    relocating a clone, so an unvalidated '../' destination deletes
+    host data outside the workspace root. The host validator must
+    reject it before it reaches container.conf.
+
+    Kills: In projectConfig._fbValidateRepositoryDestinations, drop the
+    ``".." in sDestination.split("/")`` guard from the isabs/.. check.
+    """
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "r", "url": "https://x/r.git", "destination": "../escape"},
+    ])
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_absolute_destination_is_rejected():
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "r", "url": "https://x/r.git", "destination": "/etc"},
+    ])
+    assert fbValidateConfig(dictConfig) is False
+
+
+@pytest.mark.falsification
+def test_repo_destination_colliding_with_bind_mount_is_rejected():
+    """A destination that lands on a bind mount would rm -rf host data.
+
+    Bind mount /workspace/data and repo destination 'data' both resolve
+    to ${WORKSPACE}/data, whose rm -rf deletes the mounted host
+    directory's contents through the mount.
+
+    Kills: In projectConfig._fbValidateRepositoryDestinations, replace
+    the collision check with a constant ``if any([]):`` so no bind
+    target is ever consulted.
+    """
+    dictConfig = _fdictConfigWithRepos(
+        [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
+        [{"host": "~/Documents", "container": "/workspace/data"}],
+    )
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_destination_nested_under_bind_mount_is_rejected():
+    """A destination inside a mounted directory still deletes into it."""
+    dictConfig = _fdictConfigWithRepos(
+        [{"name": "r", "url": "https://x/r.git",
+          "destination": "data/repo"}],
+        [{"host": "~/Documents", "container": "/workspace/data"}],
+    )
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_destination_beside_bind_mount_is_allowed():
+    """A sibling destination that does not touch the mount is fine."""
+    dictConfig = _fdictConfigWithRepos(
+        [{"name": "r", "url": "https://x/r.git", "destination": "code"}],
+        [{"host": "~/Documents", "container": "/workspace/data"}],
+    )
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_repo_plain_relative_destination_is_allowed():
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "r", "url": "https://x/r.git", "destination": "libs/r"},
+    ])
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_repo_without_destination_is_allowed():
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "r", "url": "https://x/r.git"},
+    ])
+    assert fbValidateConfig(dictConfig) is True
+
+
 def test_fbValidateConfig_rejects_metacharacter_names():
     dictConfig = fdictLoadDefaults()
     for sBadName in [

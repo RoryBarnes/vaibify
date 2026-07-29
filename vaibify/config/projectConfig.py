@@ -1,6 +1,7 @@
 """YAML project configuration parser with dataclass validation."""
 
 import copy
+import posixpath
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -245,11 +246,79 @@ def fbValidateConfig(dictConfig):
         _fbValidatePackageManager,
         _fbValidateCondaPackages,
         _fbValidateListFields,
+        _fbValidateRepositoryDestinations,
         _fbValidateFeatures,
         _fbValidateDashboardPort,
         _fbValidateResourceLimits,
     ]
     return all(fnCheck(dictConfig) for fnCheck in listChecks)
+
+
+def _fbValidateRepositoryDestinations(dictConfig):
+    """Reject repository destinations that escape the workspace or collide.
+
+    A repository's ``destination`` becomes ``${WORKSPACE}/${destination}``
+    inside the container, and the entrypoint ``rm -rf``s that path before
+    relocating the clone. An unvalidated destination is therefore a
+    deletion primitive: a ``../`` value escapes the workspace, and a value
+    that lands on a bind mount deletes the mounted host directory's
+    contents. Both are refused here, at the host, before the value is ever
+    written into ``container.conf`` — defence at the validation layer, not
+    inside the container that would execute the delete.
+    """
+    setBindTargets = _fsetWorkspaceRelativeBindTargets(dictConfig)
+    for dictRepo in dictConfig.get("repositories") or []:
+        if not isinstance(dictRepo, dict):
+            continue
+        sDestination = dictRepo.get("destination") or ""
+        if not sDestination:
+            continue
+        if posixpath.isabs(sDestination) or ".." in sDestination.split("/"):
+            return False
+        sDestRel = posixpath.normpath(sDestination).strip("/")
+        if any(
+            _fbRelativePathsOverlap(sDestRel, sBindRel)
+            for sBindRel in setBindTargets
+        ):
+            return False
+    return True
+
+
+def _fbRelativePathsOverlap(sFirst, sSecond):
+    """True when two workspace-relative paths are equal or nest either way."""
+    if sFirst == sSecond:
+        return True
+    return (
+        sFirst.startswith(sSecond + "/")
+        or sSecond.startswith(sFirst + "/")
+    )
+
+
+def _fsetWorkspaceRelativeBindTargets(dictConfig):
+    """Return bind-mount targets under the workspace root, workspace-relative.
+
+    A repo destination collides with a bind mount only when the mount's
+    container-side target lands inside the workspace, so only those targets
+    can be deleted by the relocation and only they are collected here.
+    """
+    sWorkspace = posixpath.normpath(
+        dictConfig.get("workspaceRoot") or "/workspace"
+    )
+    setTargets = set()
+    for dictMount in dictConfig.get("bindMounts") or []:
+        if not isinstance(dictMount, dict):
+            continue
+        sTarget = dictMount.get("container") or ""
+        if not sTarget:
+            continue
+        sTargetNorm = posixpath.normpath(sTarget)
+        if sTargetNorm == sWorkspace or sTargetNorm.startswith(
+            sWorkspace + "/"
+        ):
+            sRelative = sTargetNorm[len(sWorkspace):].strip("/")
+            if sRelative:
+                setTargets.add(sRelative)
+    return setTargets
 
 
 def _fdictReadYaml(sFilePath):

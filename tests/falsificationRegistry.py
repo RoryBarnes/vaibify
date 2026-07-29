@@ -806,6 +806,28 @@ LIST_FALSIFICATIONS = [
     )""",
         new="""    return sFirst.startswith(sSecond + os.sep)""",
     ),
+    # A repo destination becomes rm -rf "${WORKSPACE}/${destination}" in
+    # the entrypoint; unvalidated, it deletes host data via '../' escape
+    # or a bind-mount collision. These guard the host-side validator.
+    Falsification(
+        nodeid='tests/testProjectConfigExtended.py::test_repo_destination_traversal_is_rejected',
+        source='vaibify/config/projectConfig.py',
+        old='        if posixpath.isabs(sDestination) or ".." in sDestination.split("/"):',
+        new='        if posixpath.isabs(sDestination):',
+    ),
+    Falsification(
+        nodeid='tests/testProjectConfigExtended.py::test_repo_destination_colliding_with_bind_mount_is_rejected',
+        source='vaibify/config/projectConfig.py',
+        old="""    sWorkspace = posixpath.normpath(
+        dictConfig.get("workspaceRoot") or "/workspace"
+    )
+    setTargets = set()""",
+        new="""    sWorkspace = posixpath.normpath(
+        dictConfig.get("workspaceRoot") or "/workspace"
+    )
+    return set()
+    setTargets = set()""",
+    ),
     # The build-progress record is read by every later build click (the
     # 409 duplicate refusal) and by re-attached tabs; these guard that a
     # dead build always closes its record and that no unredacted line
