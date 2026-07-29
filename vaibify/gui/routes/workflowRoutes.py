@@ -263,13 +263,27 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
     The lease check here is the shared guard's own
     ``fbCheckLeaseOwnership``, so the two lanes can never drift apart.
 
-    An unowned container is left open because that is the viewer's
-    bootstrap: the viewer has no claim route and mints its lease inside
-    the connect handler, handing it back on the response.
+    An unowned container is left open ONLY in the single-container
+    viewer, whose bootstrap that is: the viewer has no claim route and
+    mints its lease inside the connect handler, handing it back on the
+    response. The hub must NOT extend that exception. In the hub an
+    empty owner record does not mean "free to take" — it can mean
+    another hub process holds the host flock — and connect runs a write
+    path (it caches the workflow and pushes an agent session, which with
+    no local owner record writes an empty agent token that clobbers the
+    real owner's in-container credential). So a hub client must claim
+    first; the claim route is what mints the owner record this gate then
+    checks. Restricting the ownerless exception to the viewer is the fix
+    for that cross-hub exclusivity hole.
     """
     dictContainerOwners = dictCtx.get("dictContainerOwners") or {}
     sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
     if dictContainerOwners.get(sName) is None:
+        if dictCtx.get("bIsHub"):
+            raise HTTPException(
+                409,
+                "Claim this container before connecting to it.",
+            )
         return
     if fbCheckLeaseOwnership(requestHttp, dictContainerOwners, sName):
         return

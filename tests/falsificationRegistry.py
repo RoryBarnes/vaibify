@@ -843,6 +843,23 @@ LIST_FALSIFICATIONS = [
         old='        sCommand = "python3 -c " + shlex.quote(sProgram)',
         new='        sCommand = "python3 -c \\"" + sProgram + "\\""',
     ),
+    # The ownerless-connect exception is the viewer's bootstrap; extending
+    # it to the hub lets an unclaimed connect run its write path (empty
+    # agent token clobbers the owner's) against a container another hub may
+    # hold via the flock.
+    Falsification(
+        nodeid='tests/testConnectHubOwnershipGate.py::test_hub_refuses_connect_to_an_unclaimed_container',
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old="""    if dictContainerOwners.get(sName) is None:
+        if dictCtx.get("bIsHub"):
+            raise HTTPException(
+                409,
+                "Claim this container before connecting to it.",
+            )
+        return""",
+        new="""    if dictContainerOwners.get(sName) is None:
+        return""",
+    ),
     # The build-progress record is read by every later build click (the
     # 409 duplicate refusal) and by re-attached tabs; these guard that a
     # dead build always closes its record and that no unredacted line
