@@ -793,6 +793,19 @@ LIST_FALSIFICATIONS = [
         old='        iSourceDateEpochOverride=fiRecordedSourceDateEpoch(filesRepo),',
         new='        iSourceDateEpochOverride=0,',
     ),
+    # A bind-mount denylist that checks only the descendant direction is
+    # bypassed by mounting the parent of a protected directory ($HOME
+    # exposes ~/.ssh). The ancestor direction of the overlap check is
+    # what closes it.
+    Falsification(
+        nodeid='tests/testBindMountValidator.py::test_mounting_home_itself_is_rejected',
+        source='vaibify/config/bindMountValidator.py',
+        old="""    return (
+        sFirst.startswith(sSecond + os.sep)
+        or sSecond.startswith(sFirst + os.sep)
+    )""",
+        new="""    return sFirst.startswith(sSecond + os.sep)""",
+    ),
     # The build-progress record is read by every later build click (the
     # 409 duplicate refusal) and by re-attached tabs; these guard that a
     # dead build always closes its record and that no unredacted line

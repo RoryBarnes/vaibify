@@ -151,3 +151,90 @@ def test_ssh_directory_via_symlinked_home_is_rejected(
         fnValidateBindMount(
             {"host": str(sSshDir), "container": "/sshconfig"},
         )
+
+
+@pytest.mark.falsification
+def test_mounting_home_itself_is_rejected(monkeypatch, tmp_path):
+    """Mounting $HOME exposes ~/.ssh et al. and must be denied.
+
+    The denylist blocked ~/.ssh directly but allowed $HOME, whose
+    read-write mount hands the container every credential beneath it.
+    A denylist that only checks the descendant direction misses this
+    entirely.
+
+    Kills: In bindMountValidator._fbPathsOverlap, drop the
+    ``sSecond.startswith(sFirst + os.sep)`` (ancestor) direction so
+    only descendant overlaps are caught.
+    """
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    (sHome / ".ssh").mkdir()
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": str(sHome), "container": "/host"})
+
+
+def test_mounting_config_parent_of_gh_is_rejected(monkeypatch, tmp_path):
+    """~/.config is an ancestor of the denied ~/.config/gh, so denied."""
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sConfig = sHome / ".config"
+    sConfig.mkdir()
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount(
+            {"host": str(sConfig), "container": "/config"},
+        )
+
+
+def test_granular_config_sibling_is_still_allowed(monkeypatch, tmp_path):
+    """A specific ~/.config/myapp mount is fine — only the parent is denied."""
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sApp = sHome / ".config" / "myapp"
+    sApp.mkdir(parents=True)
+    fnValidateBindMount({"host": str(sApp), "container": "/app"})
+
+
+@pytest.mark.parametrize("sDenied", [".gnupg", ".docker", ".kube"])
+def test_newly_denied_credential_dirs_are_rejected(
+    monkeypatch, tmp_path, sDenied,
+):
+    """~/.gnupg, ~/.docker (registry creds), ~/.kube were never listed."""
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sDir = sHome / sDenied
+    sDir.mkdir()
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": str(sDir), "container": "/x"})
+
+
+def test_mounting_var_run_parent_of_docker_sock_is_rejected(
+    monkeypatch, tmp_path,
+):
+    """Mounting /var/run exposes the docker socket beneath it."""
+    _ftConfigureHome(monkeypatch, tmp_path)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": "/var/run", "container": "/vr"})
+
+
+def test_container_target_must_be_absolute(monkeypatch, tmp_path):
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sHostPath = str(sHome / "data")
+    os.makedirs(sHostPath)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount(
+            {"host": sHostPath, "container": "relative/path"},
+        )
+
+
+def test_container_target_rejects_traversal(monkeypatch, tmp_path):
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sHostPath = str(sHome / "data")
+    os.makedirs(sHostPath)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount(
+            {"host": sHostPath, "container": "/workspace/../etc"},
+        )
+
+
+def test_container_target_missing_is_rejected(monkeypatch, tmp_path):
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sHostPath = str(sHome / "data")
+    os.makedirs(sHostPath)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": sHostPath})
