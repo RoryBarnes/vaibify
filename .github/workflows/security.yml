@@ -70,11 +70,14 @@ jobs:
         run: |
           python -m pytest \
             tests/testAgentLaneEnforcement.py \
+            tests/testBootstrapEndpoint.py \
             tests/testClaimRoutes.py \
             tests/testConnectHubOwnershipGate.py \
             tests/testContainerOwnership.py \
             tests/testContentSecurityPolicy.py \
             tests/testGithubAuth.py \
+            tests/testLiveSessionBoundary.py \
             tests/testPipelineServerAgentAuth.py \
+            tests/testSecurityBoundaryInvariants.py \
             tests/testWebSocketAuthorization.py \
             -m "not docker and not docker_live and not browser" -v
