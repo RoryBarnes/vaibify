@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "abc123container"
@@ -138,15 +139,8 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
-
-
-@pytest.fixture
-def sSessionToken(clientHttp):
-    """Fetch the session token from the running app."""
-    responseHttp = clientHttp.get("/api/session-token")
-    return responseHttp.json()["sToken"]
 
 
 def _fnConnectToContainer(clientHttp):
@@ -159,7 +153,7 @@ def _fnConnectToContainer(clientHttp):
     return responseHttp.json()
 
 
-# ── Index and session token ────────────────────────────────────
+# ── Index and the retired session-token oracle ─────────────────
 
 
 def test_get_index_returns_html(clientHttp):
@@ -168,16 +162,17 @@ def test_get_index_returns_html(clientHttp):
     assert "text/html" in responseHttp.headers["content-type"]
 
 
-def test_get_session_token(clientHttp, sSessionToken):
-    assert isinstance(sSessionToken, str)
-    assert len(sSessionToken) > 10
+def test_session_token_endpoint_is_retired(clientHttp):
+    """The oracle is gone: even an authenticated client finds no route."""
+    responseHttp = clientHttp.get("/api/session-token")
+    assert responseHttp.status_code == 404
 
 
 # ── Security headers ──────────────────────────────────────────
 
 
 def test_security_headers_present(clientHttp):
-    responseHttp = clientHttp.get("/api/session-token")
+    responseHttp = clientHttp.get("/")
     assert responseHttp.headers["X-Content-Type-Options"] == "nosniff"
     assert responseHttp.headers["X-Frame-Options"] == "DENY"
 

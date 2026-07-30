@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from vaibify.gui import browserSession
 from vaibify.gui import containerOwnership
 from vaibify.gui.routes.pipelineRoutes import _fnRegisterPipelineWs
 from vaibify.gui.routes.terminalRoutes import _fnRegisterTerminalWs
@@ -27,6 +28,25 @@ S_PROJECT_NAME = "MyProject"
 S_TOKEN = "shared-trust-token"
 S_LEASE = "owning-lease-xyz"
 S_AGENT_TOKEN = "per-container-agent-token"
+S_CREDENTIAL = "browser-credential-xyz"
+S_SESSION_ID = "browser-session-1"
+
+
+def _fdictBrowserSessions():
+    """Return a browser-session store holding one redeemed credential.
+
+    Seeded directly (not via the capability exchange) so ``S_CREDENTIAL``
+    resolves to ``S_SESSION_ID`` deterministically -- the credential the
+    owner record below is bound to and that the WS URLs present.
+    """
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    dictStore["dictSessionsByCredential"][S_CREDENTIAL] = (
+        browserSession.BrowserSessionRecord(
+            sSessionId=S_SESSION_ID, sCredential=S_CREDENTIAL,
+            fCreatedMonotonic=0.0, fLastSeenMonotonic=0.0,
+        )
+    )
+    return dictStore
 
 
 class _FakeDocker:
@@ -47,14 +67,20 @@ def _fdictBuildContext(dictContainerOwners):
         "docker": _FakeDocker(S_CONTAINER_ID, S_PROJECT_NAME),
         "sSessionToken": S_TOKEN,
         "dictContainerOwners": dictContainerOwners,
+        "dictBrowserSessions": _fdictBrowserSessions(),
     }
 
 
 def _fdictOwnersByName(sLeaseId=S_LEASE, iLiveCount=0, iLivePipelineCount=0):
-    """Return an owner map keyed by NAME (the claim route's canonical key)."""
+    """Return an owner map keyed by NAME (the claim route's canonical key).
+
+    The record is bound to ``S_SESSION_ID`` so the browser-lane gate's
+    bound-lease check ties the lease to the credential the WS presents.
+    """
     recordOwner = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
         sAgentToken=S_AGENT_TOKEN, sContainerId=S_CONTAINER_ID,
+        sBrowserSessionId=S_SESSION_ID,
     )
     recordOwner.iLiveConnectionCount = iLiveCount
     recordOwner.iLivePipelineConnectionCount = iLivePipelineCount
@@ -68,7 +94,7 @@ def _fclientWithPipelineWs(dictCtx):
     return TestClient(app)
 
 
-def _sPipelineUrl(sLeaseId=S_LEASE, sToken=S_TOKEN):
+def _sPipelineUrl(sLeaseId=S_LEASE, sToken=S_CREDENTIAL):
     """Build a /ws/pipeline URL addressed by the docker ID, not the name."""
     return (
         f"/ws/pipeline/{S_CONTAINER_ID}"
@@ -141,7 +167,7 @@ def test_absent_lease_pipeline_ws_closes_4403_with_real_guard():
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     client = _fclientWithPipelineWs(dictCtx)
     with client.websocket_connect(
-        f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_TOKEN}",
+        f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_CREDENTIAL}",
         headers=_DICT_LOOPBACK_ORIGIN,
     ) as websocketClient:
         with pytest.raises(WebSocketDisconnect) as excInfo:
@@ -160,7 +186,7 @@ def test_absent_lease_pipeline_ws_closes_4403_with_real_guard():
 # browser blamed the network.
 
 
-def _sTerminalUrl(sLeaseId=S_LEASE, sToken=S_TOKEN):
+def _sTerminalUrl(sLeaseId=S_LEASE, sToken=S_CREDENTIAL):
     """Build a /ws/terminal URL addressed by the docker ID, not the name."""
     return (
         f"/ws/terminal/{S_CONTAINER_ID}"
@@ -328,7 +354,7 @@ def test_owner_terminal_ws_accepted_when_name_differs_from_id():
         client = TestClient(app)
         with client.websocket_connect(
             f"/ws/terminal/{S_CONTAINER_ID}"
-            f"?sToken={S_TOKEN}&sLeaseId={S_LEASE}",
+            f"?sToken={S_CREDENTIAL}&sLeaseId={S_LEASE}",
             headers=_DICT_LOOPBACK_ORIGIN,
         ):
             pass
@@ -383,11 +409,14 @@ def test_guard_reachable_only_after_id_to_name_resolution():
     class _Conn:
         def __init__(self):
             self.headers = {"origin": "http://localhost"}
-            self.query_params = {"sToken": S_TOKEN, "sLeaseId": S_LEASE}
+            self.query_params = {
+                "sToken": S_CREDENTIAL, "sLeaseId": S_LEASE,
+            }
 
     dictCtx = {
         "sSessionToken": S_TOKEN,
         "dictContainerOwners": _fdictOwnersByName(),
+        "dictBrowserSessions": _fdictBrowserSessions(),
     }
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         _Conn(), dictCtx, S_PROJECT_NAME,

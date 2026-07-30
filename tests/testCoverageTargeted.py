@@ -317,23 +317,22 @@ def test_fnValidatePathWithinRoot_partial_prefix():
 
 def _fAppWithMiddleware():
     """Build a minimal FastAPI app with SessionTokenMiddleware."""
-    import secrets
     from fastapi import FastAPI
+    from vaibify.gui import browserSession
     from vaibify.gui.pipelineServer import (
         SessionTokenMiddleware, SecurityHeadersMiddleware,
     )
     app = FastAPI()
     sToken = "test-token-abc123"
     app.state.sSessionToken = sToken
+    app.state.dictBrowserSessions = (
+        browserSession.fdictCreateBrowserSessionStore()
+    )
     # 0 is the explicit "skip the Host check" opt-out; an app that never
     # declares a value fails the check closed, so the fixture must say so.
     app.state.iExpectedPort = 0
     app.add_middleware(SessionTokenMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
-
-    @app.get("/api/session-token")
-    async def fnGetToken():
-        return {"sToken": sToken}
 
     @app.get("/api/data")
     async def fnGetData():
@@ -354,7 +353,21 @@ def test_middleware_rejects_missing_token():
     assert response.status_code == 401
 
 
-def test_middleware_accepts_valid_token():
+def test_middleware_accepts_valid_credential():
+    from starlette.testclient import TestClient
+    from tests.sessionTokenTestHelper import fsBootstrapCredential
+    app, _sToken = _fAppWithMiddleware()
+    client = TestClient(app)
+    response = client.get(
+        "/api/data",
+        headers={"x-session-token": fsBootstrapCredential(app)},
+    )
+    assert response.status_code == 200
+    assert response.json()["sValue"] == 42
+
+
+def test_middleware_rejects_the_retired_shared_token():
+    """The shared session token is no longer accepted as a credential."""
     from starlette.testclient import TestClient
     app, sToken = _fAppWithMiddleware()
     client = TestClient(app)
@@ -362,17 +375,7 @@ def test_middleware_accepts_valid_token():
         "/api/data",
         headers={"x-session-token": sToken},
     )
-    assert response.status_code == 200
-    assert response.json()["sValue"] == 42
-
-
-def test_middleware_allows_session_token_endpoint():
-    """The /api/session-token endpoint itself is exempted."""
-    from starlette.testclient import TestClient
-    app, sToken = _fAppWithMiddleware()
-    client = TestClient(app)
-    response = client.get("/api/session-token")
-    assert response.status_code == 200
+    assert response.status_code == 401
 
 
 def test_middleware_allows_non_api_routes():

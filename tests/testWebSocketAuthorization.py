@@ -1,8 +1,9 @@
 """Unit tests for the shared container-session authorization guard.
 
 Covers ``vaibify.gui.webSocketAuthorization``: the browser lane is
-authorized only when a loopback origin, the shared token, and the owning
-lease all hold; each failure yields its own close code; and the
+authorized only when a loopback origin, a valid per-browser credential
+(never the retired shared token), and the lease BOUND to that credential's
+session all hold; each failure yields its own close code; and the
 in-container agent lane is authorized only by the container's own
 per-container agent token, never the hub-wide shared token and never
 another container's token. The final pair of tests proves both WebSocket
@@ -13,7 +14,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from vaibify.gui import containerOwnership, webSocketAuthorization
+from vaibify.gui import (
+    browserSession,
+    containerOwnership,
+    webSocketAuthorization,
+)
 from vaibify.gui.actionCatalog import S_SESSION_HEADER_NAME
 
 
@@ -35,27 +40,56 @@ class _FakeConnection:
         self.query_params = dictQuery or {}
 
 
-def _fdictOwnersWithOwner(sLeaseId=S_OWNING_LEASE, sAgentToken=S_AGENT_TOKEN):
-    """Return an owner map holding one record for ``S_CONTAINER``."""
+def _tStoreWithCredential():
+    """Mint a browser-session store and one redeemed credential.
+
+    Returns ``(dictStore, sSessionId, sCredential)`` -- exactly what the
+    browser holds after redeeming its launch capability at ``/api/bootstrap``.
+    """
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    sCapability = browserSession.fsMintBootstrapCapability(dictStore)
+    sSessionId, sCredential = browserSession.ftRedeemCapability(
+        dictStore, sCapability,
+    )
+    return dictStore, sSessionId, sCredential
+
+
+def _fdictOwnersBoundTo(
+    sBrowserSessionId, sLeaseId=S_OWNING_LEASE, sAgentToken=S_AGENT_TOKEN,
+):
+    """Return an owner map with one record bound to a browser session."""
     return {
         S_CONTAINER: containerOwnership.OwnerRecord(
             sLeaseId=sLeaseId, fileHandleLock=MagicMock(),
             sAgentToken=sAgentToken, sContainerId="cid-1",
+            sBrowserSessionId=sBrowserSessionId,
         ),
     }
 
 
-def _fdictContext(dictContainerOwners):
-    """Return a dictCtx carrying the shared token and owner map."""
+def _fdictOwnersWithOwner(sLeaseId=S_OWNING_LEASE, sAgentToken=S_AGENT_TOKEN):
+    """Return an owner map holding one unbound record for ``S_CONTAINER``.
+
+    Used by the agent-lane and live-connection-counter tests, which do not
+    exercise the browser credential/session binding.
+    """
+    return _fdictOwnersBoundTo(
+        "", sLeaseId=sLeaseId, sAgentToken=sAgentToken,
+    )
+
+
+def _fdictContext(dictContainerOwners, dictBrowserSessions=None):
+    """Return a dictCtx carrying the owner map and browser-session store."""
     return {
         "sSessionToken": S_SHARED_TOKEN,
         "dictContainerOwners": dictContainerOwners,
+        "dictBrowserSessions": dictBrowserSessions or {},
     }
 
 
 def _fconnBrowser(sOrigin="http://localhost:8000",
-                  sToken=S_SHARED_TOKEN, sLeaseId=S_OWNING_LEASE):
-    """Return a loopback browser connection with token and lease query."""
+                  sToken="", sLeaseId=S_OWNING_LEASE):
+    """Return a loopback browser connection with credential and lease query."""
     return _FakeConnection(
         dictHeaders={"origin": sOrigin},
         dictQuery={"sToken": sToken, "sLeaseId": sLeaseId},
@@ -73,9 +107,10 @@ def _fconnAgent(sToken=S_AGENT_TOKEN):
 # -- browser lane ---------------------------------------------------------
 
 
-def test_authorizes_when_origin_token_and_lease_all_hold():
-    dictCtx = _fdictContext(_fdictOwnersWithOwner())
-    conn = _fconnBrowser()
+def test_authorizes_when_origin_credential_and_bound_lease_all_hold():
+    dictStore, sSessionId, sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
+    conn = _fconnBrowser(sToken=sCredential)
     assert webSocketAuthorization.fbAuthorizeContainerSession(
         conn, dictCtx, S_CONTAINER,
     ) is True
@@ -85,8 +120,11 @@ def test_authorizes_when_origin_token_and_lease_all_hold():
 
 
 def test_foreign_lease_rejected_4403():
-    dictCtx = _fdictContext(_fdictOwnersWithOwner())
-    conn = _fconnBrowser(sLeaseId="some-other-sessions-lease")
+    dictStore, sSessionId, sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
+    conn = _fconnBrowser(
+        sToken=sCredential, sLeaseId="some-other-sessions-lease",
+    )
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         conn, dictCtx, S_CONTAINER,
     ) == 4403
@@ -95,11 +133,31 @@ def test_foreign_lease_rejected_4403():
     ) is False
 
 
+def test_session_b_with_session_a_lease_rejected_4403():
+    # Session A owns the container. Session B holds a genuine, valid
+    # credential of its own but presents A's real lease value (copied from
+    # sessionStorage). The bound-lease check ties the lease to A's session,
+    # so B is refused even though both the credential and the lease value
+    # are individually valid -- the copied-lease replay the strong
+    # predicate exists to stop.
+    dictStore, sSessionIdA, _sCredentialA = _tStoreWithCredential()
+    sCapabilityB = browserSession.fsMintBootstrapCapability(dictStore)
+    _sSessionIdB, sCredentialB = browserSession.ftRedeemCapability(
+        dictStore, sCapabilityB,
+    )
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionIdA), dictStore)
+    conn = _fconnBrowser(sToken=sCredentialB, sLeaseId=S_OWNING_LEASE)
+    assert webSocketAuthorization.fiContainerSessionRejectionCode(
+        conn, dictCtx, S_CONTAINER,
+    ) == 4403
+
+
 def test_absent_lease_rejected_4403():
-    dictCtx = _fdictContext(_fdictOwnersWithOwner())
+    dictStore, sSessionId, sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
     conn = _FakeConnection(
         dictHeaders={"origin": "http://localhost:8000"},
-        dictQuery={"sToken": S_SHARED_TOKEN},
+        dictQuery={"sToken": sCredential},
     )
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         conn, dictCtx, S_CONTAINER,
@@ -107,8 +165,9 @@ def test_absent_lease_rejected_4403():
 
 
 def test_unowned_container_rejected_4403():
-    dictCtx = _fdictContext({})
-    conn = _fconnBrowser()
+    dictStore, _sSessionId, sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext({}, dictStore)
+    conn = _fconnBrowser(sToken=sCredential)
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         conn, dictCtx, S_CONTAINER,
     ) == 4403
@@ -117,9 +176,10 @@ def test_unowned_container_rejected_4403():
 def test_bad_origin_without_agent_token_rejected_4003():
     # A non-loopback origin is never a browser; with no valid agent token
     # it cannot reach the lease-exempt lane and is refused as bad origin.
-    dictCtx = _fdictContext(_fdictOwnersWithOwner())
+    dictStore, sSessionId, sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
     conn = _fconnBrowser(
-        sOrigin="http://evil.example.com", sToken="wrong-token",
+        sOrigin="http://evil.example.com", sToken=sCredential,
     )
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         conn, dictCtx, S_CONTAINER,
@@ -131,15 +191,38 @@ def test_shared_token_cannot_use_agent_lane():
     # A non-loopback connection presenting only the shared token (not the
     # container's own agent token) is refused as a bad origin, so a
     # compromised holder of the shared token cannot ride the agent lane.
-    dictCtx = _fdictContext(_fdictOwnersWithOwner())
+    dictStore, sSessionId, _sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
     conn = _fconnAgent(sToken=S_SHARED_TOKEN)
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         conn, dictCtx, S_CONTAINER,
     ) == 4003
 
 
+def test_shared_token_is_not_a_browser_credential_4401():
+    # The retired shared session token must never clear the credential
+    # gate: presented as the WS credential it is an unknown value, so the
+    # browser lane fails closed at the token stage.
+    dictStore, sSessionId, _sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
+    conn = _fconnBrowser(sToken=S_SHARED_TOKEN)
+    assert webSocketAuthorization.fiContainerSessionRejectionCode(
+        conn, dictCtx, S_CONTAINER,
+    ) == 4401
+
+
+def test_invalid_credential_rejected_4401():
+    dictStore, sSessionId, _sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
+    conn = _fconnBrowser(sToken="not-a-real-credential")
+    assert webSocketAuthorization.fiContainerSessionRejectionCode(
+        conn, dictCtx, S_CONTAINER,
+    ) == 4401
+
+
 def test_bad_token_rejected_4401():
-    dictCtx = _fdictContext(_fdictOwnersWithOwner())
+    dictStore, sSessionId, _sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
     conn = _fconnBrowser(sToken="wrong-token")
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         conn, dictCtx, S_CONTAINER,
@@ -191,11 +274,29 @@ def test_agent_lane_rejects_unowned_container():
 
 
 def test_agent_lane_rejects_wrong_token():
-    dictCtx = _fdictContext(_fdictOwnersWithOwner())
+    dictStore, sSessionId, _sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
     conn = _fconnAgent(sToken="not-this-containers-agent-token")
     assert webSocketAuthorization.fbCheckAgentToken(
         conn, dictCtx["dictContainerOwners"], S_CONTAINER,
     ) is False
+
+
+def test_present_but_invalid_agent_credential_never_falls_through():
+    # A non-loopback connection is the agent lane and must be decided there.
+    # Even when its sToken is a *valid browser credential*, a connection
+    # with no loopback origin and no matching per-container agent token is
+    # refused 4003 -- it must NEVER fall through to the browser credential
+    # check and thereby skip the bound-lease gate.
+    dictStore, sSessionId, sCredential = _tStoreWithCredential()
+    dictCtx = _fdictContext(_fdictOwnersBoundTo(sSessionId), dictStore)
+    conn = _FakeConnection(
+        dictHeaders={},
+        dictQuery={"sToken": sCredential, "sLeaseId": S_OWNING_LEASE},
+    )
+    assert webSocketAuthorization.fiContainerSessionRejectionCode(
+        conn, dictCtx, S_CONTAINER,
+    ) == 4003
 
 
 # -- both WebSocket routes delegate to the one guard ----------------------

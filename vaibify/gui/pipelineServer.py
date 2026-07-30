@@ -1803,18 +1803,6 @@ def _fnRegisterStaticFiles(app, dictCtx):
             headers={"Cache-Control": "no-cache, no-store"},
         )
 
-    @app.get("/api/session-token")
-    async def fnGetSessionToken(request: Request):
-        if request.headers.get(
-            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail="The in-container agent must not read the hub "
-                "session token.",
-            )
-        return {"sToken": dictCtx["sSessionToken"]}
-
     @app.post("/api/bootstrap")
     async def fnBootstrapSession(request: Request):
         """Exchange a launch capability for a per-browser credential.

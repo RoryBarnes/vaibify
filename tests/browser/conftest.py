@@ -140,6 +140,8 @@ def serverHub():
     from vaibify.gui import pipelineServer
     from vaibify.gui.appFactory import fappCreateHubApplication
 
+    from vaibify.gui import browserSession
+
     adapterDocker = FailClosedDockerAdapter()
     iPort = _fiFreePort()
     with _fnIsolateProjectRegistry() as sHome, patch.object(
@@ -153,11 +155,27 @@ def serverHub():
         server = uvicorn.Server(configServer)
         threadServer = threading.Thread(target=server.run, daemon=True)
         threadServer.start()
+        sBaseUrl = f"http://127.0.0.1:{iPort}"
+
+        def fsBootstrapUrl():
+            """Mint a fresh launch capability and return the bootstrap URL.
+
+            Sweep A retired the shared-token oracle, so the dashboard
+            authenticates only by redeeming a capability carried in the URL
+            fragment. Each navigation mints its own capability, exactly as
+            ``vaibify open`` launches a real browser.
+            """
+            sCapability = browserSession.fsMintBootstrapCapability(
+                app.state.dictBrowserSessions,
+            )
+            return f"{sBaseUrl}/#bootstrap={sCapability}"
+
         try:
             _fnWaitUntilServing(iPort)
             yield SimpleNamespace(
                 iPort=iPort,
-                sBaseUrl=f"http://127.0.0.1:{iPort}",
+                sBaseUrl=sBaseUrl,
+                fsBootstrapUrl=fsBootstrapUrl,
                 sHome=sHome,
                 adapterDocker=adapterDocker,
                 app=app,

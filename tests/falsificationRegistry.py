@@ -2162,7 +2162,9 @@ def _fdictEntry(sRel):
         # reaches the pipeline of a container another session owns.
         nodeid='tests/testLiveSessionBoundary.py::testPipelineWebSocketRefusesALeaseConnectNeverMinted',
         source='vaibify/gui/webSocketAuthorization.py',
-        old="""    if not fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
+        old="""    if not fbCheckBoundLeaseOwnership(
+        connection, dictContainerOwners, sName, sBrowserSessionId,
+    ):
         return I_REJECT_FOREIGN_LEASE""",
         new="""    if False:
         return I_REJECT_FOREIGN_LEASE""",

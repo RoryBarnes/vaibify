@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 
 from vaibify.gui import containerGit
 from vaibify.gui.routes import syncRoutes
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "cid"
@@ -336,7 +337,7 @@ def test_last_resort_handler_returns_sanitized_500(caplog):
 
     clientHttp = TestClient(
         app, raise_server_exceptions=False,
-        headers={"X-Session-Token": app.state.sSessionToken},
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
     with caplog.at_level(logging.ERROR, logger="vaibify"):
         responseHttp = clientHttp.get("/api/test-unhandled-boom")

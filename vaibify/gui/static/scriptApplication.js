@@ -163,7 +163,8 @@ const VaibifyApp = (function () {
     async function fnFetchSessionToken() {
         /* Prefer a fresh launch capability (exchanged once, then cleared
          * from the URL), then a stored per-tab credential (so a reload
-         * keeps working), then the transitional shared-token endpoint. */
+         * keeps working). With neither, the tab has no credential and is
+         * correctly denied -- the retired shared-token oracle is gone. */
         var sCredential = "";
         var sCapability = _fsReadBootstrapCapabilityFromFragment();
         if (sCapability) {
@@ -173,12 +174,6 @@ const VaibifyApp = (function () {
         }
         if (!sCredential) {
             sCredential = _fsRestoreStoredCredential();
-        }
-        if (!sCredential) {
-            try {
-                var data = await VaibifyApi.fdictGet("/api/session-token");
-                sCredential = data.sToken || "";
-            } catch (e) { sCredential = ""; }
         }
         _dictSessionState.sSessionToken = sCredential;
         fnInstallAuthenticatedFetch(_dictSessionState.sSessionToken);

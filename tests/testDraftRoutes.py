@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch
 
 from vaibify.gui import draftManager, pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "draftcontainer"
@@ -159,7 +160,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 

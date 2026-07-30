@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 def _fmockCreateDocker():
@@ -52,7 +53,7 @@ def test_get_docker_status_returns_cached_diagnosis():
     """GET surfaces the cached error/hint/command for the banner."""
     app = _fbuildAppWithoutDocker()
     clientHttp = TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
     response = clientHttp.get("/api/system/docker-status")
     assert response.status_code == 200
@@ -75,7 +76,7 @@ def test_get_docker_status_when_available():
             sWorkspaceRoot="/workspace",
         )
     clientHttp = TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
     response = clientHttp.get("/api/system/docker-status")
     assert response.status_code == 200
@@ -89,7 +90,7 @@ def test_retry_swaps_in_new_connection_on_success():
     """Retry replaces dictCtx['docker'] when probe succeeds."""
     app = _fbuildAppWithoutDocker()
     clientHttp = TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
     mockConnection = MagicMock()
 
@@ -114,7 +115,7 @@ def test_retry_keeps_error_when_probe_still_fails():
     """A still-failing probe leaves the holder + 503 path intact."""
     app = _fbuildAppWithoutDocker()
     clientHttp = TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
     def _fcreateStillFails():
@@ -139,7 +140,7 @@ def test_503_includes_specific_diagnosis_not_generic_message():
     """The kebab Start path's 503 must carry the actionable hint."""
     app = _fbuildAppWithoutDocker()
     clientHttp = TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
     response = clientHttp.get(
         "/api/containers/anything/ready"
@@ -155,7 +156,7 @@ def test_route_swap_visible_to_other_routes():
     """After retry success, downstream routes see the new connection."""
     app = _fbuildAppWithoutDocker()
     clientHttp = TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
     response503 = clientHttp.get("/api/containers/x/ready")

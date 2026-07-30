@@ -182,31 +182,31 @@ def _fsContainerIdFromPath(sPath):
 
 
 def _fbBrowserTokenRejected(request):
-    """Return True when a browser request to a guarded path lacks credentials.
+    """Return True when a browser request to a guarded path lacks a credential.
 
-    Accepts either a valid per-browser credential minted via the capability
-    bootstrap (``/api/bootstrap``) or, transitionally, the shared hub
-    session token. ``/api/session-token`` and ``/api/bootstrap`` are the
-    unauthenticated entry points and are exempt.
+    Accepts only a per-browser credential minted via the capability
+    bootstrap (``/api/bootstrap``); the retired shared hub session token is
+    no longer honored, closing the oracle a container-side actor on loopback
+    could once read. ``/api/bootstrap`` is the sole unauthenticated entry
+    point and is exempt.
     """
     sPath = request.url.path
     bNeedsToken = (
         sPath.startswith("/api/")
-        and sPath not in ("/api/session-token", "/api/bootstrap")
+        and sPath != "/api/bootstrap"
     )
     if not bNeedsToken:
         return False
     sPresented = _fsBrowserPresentedToken(request, sPath)
-    if sPresented and sPresented == request.app.state.sSessionToken:
-        return False
     dictBrowserSessions = getattr(
         request.app.state, "dictBrowserSessions", None,
     )
-    if dictBrowserSessions is not None and browserSession.fbValidateCredential(
-        dictBrowserSessions, sPresented,
-    ):
-        return False
-    return True
+    return not (
+        dictBrowserSessions is not None
+        and browserSession.fbValidateCredential(
+            dictBrowserSessions, sPresented,
+        )
+    )
 
 
 def _fsBrowserPresentedToken(request, sPath):

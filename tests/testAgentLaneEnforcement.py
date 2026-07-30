@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from vaibify.gui import actionCatalog
 from vaibify.gui import containerOwnership
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "abc123container"
@@ -115,7 +116,7 @@ def clientBrowser(appViewer):
     """A client authenticated as the researcher's browser."""
     return TestClient(
         appViewer,
-        headers={"X-Session-Token": appViewer.state.sSessionToken},
+        headers={"X-Session-Token": fsBootstrapCredential(appViewer)},
     )
 
 

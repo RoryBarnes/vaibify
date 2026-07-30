@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "file123container"
@@ -126,7 +127,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
@@ -414,9 +415,9 @@ def test_fnDockerCopy_raises_on_failure():
 
 
 def test_session_token_via_query_param_on_download(clientHttp):
-    """Query-param tokens only accepted for download and WebSocket."""
+    """Query-param credentials only accepted for download and WebSocket."""
     _fnConnectToContainer(clientHttp)
-    sToken = clientHttp.app.state.sSessionToken
+    sToken = fsBootstrapCredential(clientHttp.app)
     clientNoHeader = TestClient(clientHttp.app)
     responseHttp = clientNoHeader.get(
         f"/api/files/{S_CONTAINER_ID}/download/"
@@ -426,8 +427,8 @@ def test_session_token_via_query_param_on_download(clientHttp):
 
 
 def test_session_token_query_param_rejected_non_download(clientHttp):
-    """Query-param tokens rejected on regular API endpoints."""
-    sToken = clientHttp.app.state.sSessionToken
+    """Query-param credentials rejected on regular API endpoints."""
+    sToken = fsBootstrapCredential(clientHttp.app)
     clientNoHeader = TestClient(clientHttp.app)
     responseHttp = clientNoHeader.get(
         f"/api/user?sToken={sToken}",
@@ -457,10 +458,11 @@ def test_session_token_wrong_rejected(clientHttp):
     assert responseHttp.status_code == 401
 
 
-def test_session_token_endpoint_exempt(clientHttp):
+def test_session_token_endpoint_is_retired(clientHttp):
+    """The oracle is gone: an unauthenticated caller is refused, not served."""
     clientNoAuth = TestClient(clientHttp.app)
     responseHttp = clientNoAuth.get("/api/session-token")
-    assert responseHttp.status_code == 200
+    assert responseHttp.status_code == 401
 
 
 def test_agent_per_container_token_bypasses_host_for_its_container(clientHttp):
@@ -508,12 +510,18 @@ def test_hub_wide_token_in_agent_header_no_longer_bypasses(clientHttp):
     assert clientAgent.get("/api/user").status_code in (400, 401)
 
 
-def test_session_token_endpoint_refuses_the_agent(clientHttp):
-    """The in-container agent must not be able to read the hub-wide token."""
+def test_session_token_endpoint_no_longer_leaks_a_token_to_the_agent(clientHttp):
+    """The oracle is retired: the agent cannot read a hub token from it.
+
+    The endpoint used to refuse the agent with 403; now it does not exist,
+    so the agent is refused (never served a token) rather than reading one.
+    """
     clientAgent = TestClient(
         clientHttp.app, headers={"X-Vaibify-Session": "any-agent-token"},
     )
-    assert clientAgent.get("/api/session-token").status_code == 403
+    responseHttp = clientAgent.get("/api/session-token")
+    assert responseHttp.status_code in (401, 403, 404)
+    assert "sToken" not in responseHttp.text
 
 
 def test_agent_session_header_empty_does_not_bypass(clientHttp):

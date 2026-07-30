@@ -1,9 +1,10 @@
 """The /api/bootstrap capability exchange and middleware acceptance.
 
-Slice 1b of the A1 identity boundary: a launch capability is exchanged
-for a per-browser credential, and the middleware accepts that credential
-(alongside the transitional shared token) on guarded routes. The agent
-lane must never bootstrap.
+The A1 identity boundary: a launch capability is exchanged for a
+per-browser credential, and the middleware accepts ONLY that credential on
+guarded routes. Sweep A retired the shared-token oracle, so the shared hub
+token no longer authorizes a browser request. The agent lane must never
+bootstrap.
 """
 
 from unittest.mock import patch
@@ -99,11 +100,16 @@ def test_an_invalid_credential_is_rejected_on_a_guarded_route(app):
     assert response.status_code == 401
 
 
-def test_the_shared_token_still_authorizes_during_transition(app):
-    """Slice 1b keeps the shared token working so the GUI stays loadable."""
+def test_the_shared_token_is_no_longer_accepted(app):
+    """Sweep A retired the oracle: the shared hub token is not a credential.
+
+    The shared ``app.state.sSessionToken`` is no longer handed out and is
+    no longer honored on a guarded route -- only a bootstrapped per-browser
+    credential authorizes. Presenting the shared token must fail closed.
+    """
     client = TestClient(app)
     response = client.get(
         "/api/session-status",
         headers={"X-Session-Token": app.state.sSessionToken},
     )
-    assert response.status_code != 401, response.text
+    assert response.status_code == 401, response.text

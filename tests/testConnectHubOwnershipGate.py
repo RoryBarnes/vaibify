@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from vaibify.config import containerLock
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.testAgentLaneEnforcement import (
     MockDockerConnection,
     S_CONTAINER_ID,
@@ -54,7 +55,7 @@ def appHub():
 def clientBrowser(appHub):
     return TestClient(
         appHub,
-        headers={"X-Session-Token": appHub.state.sSessionToken},
+        headers={"X-Session-Token": fsBootstrapCredential(appHub)},
     )
 
 

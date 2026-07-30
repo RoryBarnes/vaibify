@@ -20,9 +20,9 @@ Two rules, both learned the hard way (see AGENTS.md "Lessons"):
   the WebSocket lane are proven to agree on one credential.
 
 Only the innermost serve function of each lane is stubbed (there is no
-container to attach to). The origin check, the shared-token check, the
-lease check, the id->name resolution and the per-container connection
-budget all run for real.
+container to attach to). The origin check, the per-browser credential
+check, the bound-lease check, the id->name resolution and the
+per-container connection budget all run for real.
 """
 
 from unittest.mock import patch
@@ -32,6 +32,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.testAgentLaneEnforcement import (
     MockDockerConnection,
     S_CONTAINER_ID,
@@ -56,11 +57,22 @@ def appServed():
 
 
 @pytest.fixture
-def clientBrowser(appServed):
-    """A client authenticated as the researcher's browser."""
+def sBrowserCredential(appServed):
+    """Mint a real per-browser credential from the served app's store."""
+    return fsBootstrapCredential(appServed)
+
+
+@pytest.fixture
+def clientBrowser(appServed, sBrowserCredential):
+    """A client authenticated as the researcher's browser.
+
+    Presents a real per-browser credential redeemed from the app's own
+    bootstrap store -- exactly what the browser holds after ``/api/bootstrap``
+    -- so ``/api/connect`` binds the viewer's ownership to this session.
+    """
     return TestClient(
         appServed,
-        headers={"X-Session-Token": appServed.state.sSessionToken},
+        headers={"X-Session-Token": sBrowserCredential},
     )
 
 
@@ -76,19 +88,19 @@ def _fsConnectAndReturnLease(clientBrowser):
     return sLeaseId
 
 
-def _fsPipelineUrl(appServed, sLeaseId):
+def _fsPipelineUrl(sCredential, sLeaseId):
     """Build the pipeline WebSocket URL, addressed by the docker ID."""
     return (
         f"/ws/pipeline/{S_CONTAINER_ID}"
-        f"?sToken={appServed.state.sSessionToken}&sLeaseId={sLeaseId}"
+        f"?sToken={sCredential}&sLeaseId={sLeaseId}"
     )
 
 
-def _fsTerminalUrl(appServed, sLeaseId):
+def _fsTerminalUrl(sCredential, sLeaseId):
     """Build the terminal WebSocket URL, addressed by the docker ID."""
     return (
         f"/ws/terminal/{S_CONTAINER_ID}"
-        f"?sToken={appServed.state.sSessionToken}&sLeaseId={sLeaseId}"
+        f"?sToken={sCredential}&sLeaseId={sLeaseId}"
     )
 
 
@@ -117,7 +129,7 @@ async def _fnBlockingTerminalSession(websocket, dictCtx, sContainerId):
 
 @pytest.mark.falsification
 def testConnectMintsTheLeaseThatOpensThePipelineWebSocket(
-    appServed, clientBrowser,
+    appServed, clientBrowser, sBrowserCredential,
 ):
     """The lease connect returns must authorize the pipeline socket.
 
@@ -149,7 +161,7 @@ def testConnectMintsTheLeaseThatOpensThePipelineWebSocket(
         _fnRecordAndServe,
     ):
         with clientBrowser.websocket_connect(
-            _fsPipelineUrl(appServed, sLeaseId),
+            _fsPipelineUrl(sBrowserCredential, sLeaseId),
             headers=_DICT_LOOPBACK_ORIGIN,
         ):
             pass
@@ -162,7 +174,7 @@ def testConnectMintsTheLeaseThatOpensThePipelineWebSocket(
 
 @pytest.mark.falsification
 def testPipelineWebSocketRefusesALeaseConnectNeverMinted(
-    appServed, clientBrowser,
+    appServed, clientBrowser, sBrowserCredential,
 ):
     """A lease the server never issued is refused 4403, after accept.
 
@@ -172,8 +184,9 @@ def testPipelineWebSocketRefusesALeaseConnectNeverMinted(
     as an opaque 1006, indistinguishable from a dead server.
 
     Kills: webSocketAuthorization.fiContainerSessionRejectionCode: the
-    lease branch `if not fbCheckLeaseOwnership(connection,
-    dictContainerOwners, sName):` neutralized to `if False:`.
+    lease branch `if not fbCheckBoundLeaseOwnership(connection,
+    dictContainerOwners, sName, sBrowserSessionId):` neutralized to
+    `if False:`.
 
     The serve function is stubbed to return immediately so that an
     admitted socket closes normally instead of blocking the suite: a
@@ -185,7 +198,7 @@ def testPipelineWebSocketRefusesALeaseConnectNeverMinted(
         _fnAcceptAndCloseNormally,
     ):
         with clientBrowser.websocket_connect(
-            _fsPipelineUrl(appServed, "a-lease-nobody-minted"),
+            _fsPipelineUrl(sBrowserCredential, "a-lease-nobody-minted"),
             headers=_DICT_LOOPBACK_ORIGIN,
         ) as websocketForeign:
             with pytest.raises(WebSocketDisconnect) as excInfo:
@@ -198,7 +211,7 @@ def testPipelineWebSocketRefusesALeaseConnectNeverMinted(
 
 @pytest.mark.falsification
 def testDuplicateTabPipelineWebSocketIsRefusedOnTheServedApplication(
-    appServed, clientBrowser,
+    appServed, clientBrowser, sBrowserCredential,
 ):
     """A copied lease opening a second pipeline socket is refused 4409.
 
@@ -234,11 +247,11 @@ def testDuplicateTabPipelineWebSocketIsRefusedOnTheServedApplication(
         _fnHoldFirstCloseRest,
     ):
         with clientBrowser.websocket_connect(
-            _fsPipelineUrl(appServed, sLeaseId),
+            _fsPipelineUrl(sBrowserCredential, sLeaseId),
             headers=_DICT_LOOPBACK_ORIGIN,
         ):
             with clientBrowser.websocket_connect(
-                _fsPipelineUrl(appServed, sLeaseId),
+                _fsPipelineUrl(sBrowserCredential, sLeaseId),
                 headers=_DICT_LOOPBACK_ORIGIN,
             ) as websocketDuplicate:
                 with pytest.raises(WebSocketDisconnect) as excInfo:
@@ -254,7 +267,7 @@ def testDuplicateTabPipelineWebSocketIsRefusedOnTheServedApplication(
 
 @pytest.mark.falsification
 def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
-    appServed, clientBrowser,
+    appServed, clientBrowser, sBrowserCredential,
 ):
     """One session holds the terminal AND the pipeline socket at once.
 
@@ -290,11 +303,11 @@ def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
         _fnRecordAndServe,
     ):
         with clientBrowser.websocket_connect(
-            _fsTerminalUrl(appServed, sLeaseId),
+            _fsTerminalUrl(sBrowserCredential, sLeaseId),
             headers=_DICT_LOOPBACK_ORIGIN,
         ):
             with clientBrowser.websocket_connect(
-                _fsPipelineUrl(appServed, sLeaseId),
+                _fsPipelineUrl(sBrowserCredential, sLeaseId),
                 headers=_DICT_LOOPBACK_ORIGIN,
             ):
                 pass
@@ -306,3 +319,42 @@ def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
     recordOwner = appServed.state.dictContainerOwners[S_CONTAINER_NAME]
     assert recordOwner.iLiveConnectionCount == 0
     assert recordOwner.iLivePipelineConnectionCount == 0
+
+
+@pytest.mark.parametrize("fsBuildUrl", [_fsPipelineUrl, _fsTerminalUrl])
+def testSecondSessionCopiedLeaseIsRefusedOnBothSockets(
+    appServed, clientBrowser, sBrowserCredential, fsBuildUrl,
+):
+    """A second browser session presenting the owner's real lease is refused.
+
+    Session A claims the container (its credential binds the owner record).
+    Session B redeems its OWN valid credential but copies A's genuine lease
+    value onto the socket URL. The credential is valid and the lease value
+    is real, yet the bound-lease gate ties the lease to A's session, so B is
+    refused 4403 on both the pipeline and the terminal socket -- the
+    copied-lease replay the strong predicate exists to stop, proven across
+    a real connection with the container NAME distinct from its ID.
+    """
+    sLeaseId = _fsConnectAndReturnLease(clientBrowser)
+    sCredentialSessionB = fsBootstrapCredential(appServed)
+    assert sCredentialSessionB != sBrowserCredential
+    clientSessionB = TestClient(
+        appServed, headers={"X-Session-Token": sCredentialSessionB},
+    )
+    with patch(
+        "vaibify.gui.routes.pipelineRoutes.fnHandlePipelineWs",
+        _fnAcceptAndCloseNormally,
+    ), patch(
+        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
+        _fnBlockingTerminalSession,
+    ):
+        with clientSessionB.websocket_connect(
+            fsBuildUrl(sCredentialSessionB, sLeaseId),
+            headers=_DICT_LOOPBACK_ORIGIN,
+        ) as websocketSessionB:
+            with pytest.raises(WebSocketDisconnect) as excInfo:
+                websocketSessionB.receive_text()
+    assert excInfo.value.code == 4403, (
+        "a second session presenting the owner's copied lease must be "
+        f"closed 4403; got {excInfo.value.code}"
+    )

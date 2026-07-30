@@ -5,13 +5,18 @@ WebSocket, and the connect handler, so the access model lives in exactly
 one place instead of being duplicated across route modules.
 
 A browser connection is authorized only when all three hold: it arrives
-from a loopback ``Origin`` (the trust boundary), it carries the shared
-session token (the CSRF / trust credential), and it presents the lease
-that currently owns the container in ``dictContainerOwners`` (the
-exclusivity principal). Separately, the in-container ``vaibify-do`` agent
-is authorized by the shared token alone for a container that already has
-a live owner -- a per-container, lease-exempt machine lane that lets the
-agent act inside a session the researcher has already claimed.
+from a loopback ``Origin`` (the trust boundary), its ``sToken`` query param
+is a valid per-browser ``BrowserSessionRecord`` credential (the retired
+shared session token is never accepted), and the lease it presents is bound
+to that browser session in ``dictContainerOwners`` (the exclusivity
+principal). Validating "some valid credential" plus "some valid lease"
+independently would let a second browser session replay a copied lease, so
+the lease is checked against the credential's own session via
+:func:`containerOwnership.fbBrowserSessionOwnsLease`. Separately, the
+in-container ``vaibify-do`` agent is authorized by the container's own
+per-container agent token for a container that already has a live owner --
+a lease-exempt machine lane that lets the agent act inside a session the
+researcher has already claimed.
 
 The lease ownership is the single authority introduced by
 :mod:`vaibify.gui.containerOwnership`; this module never consults the old
@@ -22,6 +27,8 @@ __all__ = [
     "fbCheckOrigin",
     "fbCheckSharedToken",
     "fbCheckLeaseOwnership",
+    "fsBrowserSessionIdForCredential",
+    "fbCheckBoundLeaseOwnership",
     "fbCheckAgentToken",
     "fbAuthorizeContainerSession",
     "fiContainerSessionRejectionCode",
@@ -30,6 +37,7 @@ __all__ = [
     "fnServeUnderLiveConnectionCounters",
 ]
 
+from . import browserSession
 from . import containerOwnership
 from .pipelineServer import fbHasAgentToken, fbValidateWebSocketOrigin
 
@@ -65,6 +73,39 @@ def fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
     )
 
 
+def fsBrowserSessionIdForCredential(connection, dictBrowserSessions):
+    """Return the browser-session id for the connection's credential, or ''.
+
+    Validates the ``sToken`` query param as a per-browser credential (never
+    the retired shared token), refreshing the session's last-seen stamp, and
+    returns its session id. An unknown, empty, or expired credential yields
+    ``''``, which the gate maps to a bad-token refusal.
+    """
+    sCredential = connection.query_params.get("sToken", "")
+    if not browserSession.fbValidateCredential(
+        dictBrowserSessions, sCredential,
+    ):
+        return ""
+    return browserSession.fsSessionIdForCredential(
+        dictBrowserSessions, sCredential,
+    )
+
+
+def fbCheckBoundLeaseOwnership(
+    connection, dictContainerOwners, sName, sBrowserSessionId,
+):
+    """Return True when the presented lease is bound to this browser session.
+
+    The lease is checked against the credential's OWN session, so a second
+    session presenting a copied lease is refused even though the lease value
+    is genuine.
+    """
+    sLeaseId = connection.query_params.get("sLeaseId", "")
+    return containerOwnership.fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
+    )
+
+
 def fbCheckAgentToken(connection, dictContainerOwners, sName):
     """Return True for the in-container agent on its OWN container.
 
@@ -87,21 +128,27 @@ def fiContainerSessionRejectionCode(connection, dictCtx, sName):
     """Return the WebSocket close code, or ``0`` when authorized.
 
     Origin is the lane discriminator. A loopback browser must clear the
-    full browser gate (shared token then owning lease), failing closed at
-    the first unmet condition so the client can tell a bad token from a
-    foreign lease. A non-loopback connection is never a browser, so it is
-    admitted only through the lease-exempt agent lane and otherwise
-    rejected as an untrusted origin.
+    full browser gate (a valid per-browser credential, then the lease bound
+    to that credential's session), failing closed at the first unmet
+    condition so the client can tell a bad credential from a foreign lease.
+    A non-loopback connection is never a browser, so it is admitted only
+    through the lease-exempt agent lane and otherwise rejected as an
+    untrusted origin.
     """
-    sSharedToken = dictCtx.get("sSessionToken", "")
     dictContainerOwners = dictCtx.get("dictContainerOwners", {})
+    dictBrowserSessions = dictCtx.get("dictBrowserSessions", {})
     if not fbCheckOrigin(connection):
         if fbCheckAgentToken(connection, dictContainerOwners, sName):
             return I_REJECT_AUTHORIZED
         return I_REJECT_BAD_ORIGIN
-    if not fbCheckSharedToken(connection, sSharedToken):
+    sBrowserSessionId = fsBrowserSessionIdForCredential(
+        connection, dictBrowserSessions,
+    )
+    if not sBrowserSessionId:
         return I_REJECT_BAD_TOKEN
-    if not fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
+    if not fbCheckBoundLeaseOwnership(
+        connection, dictContainerOwners, sName, sBrowserSessionId,
+    ):
         return I_REJECT_FOREIGN_LEASE
     return I_REJECT_AUTHORIZED
 

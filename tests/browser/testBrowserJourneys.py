@@ -40,14 +40,16 @@ from tests.browser.fakeDockerAdapter import (
 pytestmark = pytest.mark.browser
 
 
-def _fdictSessionToken(page, serverHub):
-    """Return the token the page itself fetched, as the browser does."""
+def _fsPageCredential(page):
+    """Return the per-browser credential the page bootstrapped, from storage.
+
+    After navigating with a ``#bootstrap=`` fragment the dashboard redeems
+    its capability and stashes the credential in ``sessionStorage``; reading
+    it back is how a journey obtains the genuine credential the retired
+    ``/api/session-token`` oracle used to hand out.
+    """
     return page.evaluate(
-        """async (sBaseUrl) => {
-            const response = await fetch(sBaseUrl + '/api/session-token');
-            return await response.json();
-        }""",
-        serverHub.sBaseUrl,
+        """() => window.sessionStorage.getItem('vaibifySessionCredential')"""
     )
 
 
@@ -63,7 +65,7 @@ def testBackendRefusalIsNotRenderedAsSuccess(pageDashboard, serverHub):
     response could be mistaken for a granted action by a caller that
     only checks for a payload.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="load")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     dictResult = pageDashboard.evaluate(
         """async (sBaseUrl) => {
             const response = await fetch(
@@ -110,7 +112,7 @@ def testDashboardLoadsWithNoConsoleErrors(pageDashboard, serverHub):
         if response.status >= 500 else None
     ))
 
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
 
     assert pageDashboard.listPageErrors == [], (
         "Uncaught page errors: " + "; ".join(pageDashboard.listPageErrors)
@@ -135,7 +137,7 @@ def testFrontendGlobalsResolveAsBareIdentifiers(pageDashboard, serverHub):
     ``undefined`` for a module that is working perfectly. AGENTS.md
     records a session lost to exactly that false alarm.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     assert pageDashboard.evaluate("typeof VaibifyApp") == "object", (
         "VaibifyApp did not evaluate; the module graph is broken."
     )
@@ -159,7 +161,7 @@ def testSeededProjectReachesTheBrowser(pageDashboard, serverHub):
     middleware correctly rejects with a 401. Riding the app's wrapper
     is both the faithful path and the working one.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     dictPayload = pageDashboard.evaluate(
         """async (sBaseUrl) => {
             const response = await fetch(sBaseUrl + '/api/registry');
@@ -196,17 +198,17 @@ def testDoubledSessionTokenHeaderIsRefused(pageDashboard, serverHub):
     direction of the failure -- a doubled credential is refused, never
     accepted by prefix or by taking the first element.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    sCredential = _fsPageCredential(pageDashboard)
+    assert sCredential, "the page must have bootstrapped a credential"
     iStatus = pageDashboard.evaluate(
-        """async (sBaseUrl) => {
-            const sToken = (await (await fetch(
-                sBaseUrl + '/api/session-token')).json()).sToken;
+        """async ([sBaseUrl, sToken]) => {
             const response = await fetch(sBaseUrl + '/api/registry', {
                 headers: {'x-session-token': sToken},
             });
             return response.status;
         }""",
-        serverHub.sBaseUrl,
+        [serverHub.sBaseUrl, sCredential],
     )
     assert iStatus == 401
 
@@ -258,7 +260,7 @@ def testCreationWizardPersistsSelectedAgent(
     """
     from vaibify.config.projectConfig import fconfigLoadFromFile
 
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     pageDashboard.locator("#btnAddContainer").click()
     pageDashboard.locator("#btnChoiceCreateNew").click()
     pageDashboard.locator("#btnWizardChooseDirectory").click()
@@ -329,7 +331,7 @@ def testStaleSocketCloseDoesNotOrphanTheLiveSocket(
     the ordering is deterministic rather than hoped for, but the module
     under test is the real one, evaluated by the real browser.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="load")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     dictResult = pageDashboard.evaluate(
         """() => {
             const listCreated = [];

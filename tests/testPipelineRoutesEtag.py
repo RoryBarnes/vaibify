@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests import testCoverageBoost as _module
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def clientEtag():
             sTerminalUserArg="testuser",
         )
     yield TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 

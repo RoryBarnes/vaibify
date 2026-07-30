@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 _S_CONTAINER_ID = "test-container-reload"
@@ -193,7 +194,7 @@ def clientHttp(fixtureMock):
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 

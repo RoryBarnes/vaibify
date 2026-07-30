@@ -18,6 +18,7 @@ import pytest
 
 from vaibify.gui import hostIncidents
 from vaibify.gui.routes import pipelineRoutes
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 # -----------------------------------------------------------------------
@@ -105,7 +106,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
