@@ -942,6 +942,46 @@ LIST_FALSIFICATIONS = [
         new="""    if dictContainerOwners.get(sName) is None:
         return""",
     ),
+    # Sweep C1: connect must consult the SESSION-BOUND lease, not the lease
+    # VALUE. Reverting the connect gate to the value-only fbSessionOwnsContainer
+    # admits a second browser session replaying the owner's copied lease.
+    Falsification(
+        nodeid='tests/testLiveSessionBoundary.py::testConnectRefusesSecondSessionPresentingACopiedLease',
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old="""    if containerOwnership.fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
+    ):
+        return""",
+        new="""    if containerOwnership.fbSessionOwnsContainer(
+        dictContainerOwners, sName, sLeaseId,
+    ):
+        return""",
+    ),
+    # Sweep C2: release must consult the SESSION-BOUND lease, not the lease
+    # VALUE. Reverting the guard to a lease-value comparison lets a second
+    # browser session drop the true owner's record with a copied lease.
+    Falsification(
+        nodeid='tests/testConnectHubOwnershipGate.py::test_release_refuses_second_session_presenting_a_copied_lease',
+        source='vaibify/gui/containerOwnership.py',
+        old="""    if not (bBoundOwner or bUnboundOwner):
+        return False""",
+        new="""    if recordOwner.sLeaseId != sLeaseId:
+        return False""",
+    ),
+    # Sweep C8: the repo-URL check must reject a leading-dash argument
+    # injection and non-vetted git transports (ext::, file://). Dropping the
+    # guard readmits those remote-code primitives, which carry no shell
+    # metacharacter and so clear the metacharacter filter.
+    Falsification(
+        nodeid='tests/testProjectConfigExtended.py::test_repo_url_argument_and_scheme_injection_is_rejected',
+        source='vaibify/config/projectConfig.py',
+        old="""    if sUrl.startswith("-"):
+        return False
+    if sUrl.startswith(_TUPLE_SAFE_URL_SCHEMES):
+        return True
+    return bool(_S_SCP_LIKE_URL.match(sUrl))""",
+        new="""    return True""",
+    ),
     # Without base-uri, an injected <base> tag (from a hostile filename
     # rendered into innerHTML) re-homes the dashboard's root-relative
     # API calls; base-uri does not fall back to default-src.

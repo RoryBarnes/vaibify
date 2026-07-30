@@ -3417,15 +3417,18 @@ def testConnectHandlerGatesOnTheOwningLease():
     )
     sGateBody = ast.unparse(nodeGate)
     iResolve = sGateBody.find("fsContainerNameForId(")
-    iLease = sGateBody.find("fbSessionOwnsContainer(")
+    iLease = sGateBody.find("fbBrowserSessionOwnsLease(")
     assert iResolve != -1 and iLease != -1, (
         "the connect gate must resolve the docker id to the container "
-        "name and then consult containerOwnership.fbSessionOwnsContainer "
-        "on the X-Vaibify-Lease header -- never an inlined membership check"
+        "name and then consult the session-bound "
+        "containerOwnership.fbBrowserSessionOwnsLease on the "
+        "X-Vaibify-Lease header -- never the value-only "
+        "fbSessionOwnsContainer and never an inlined membership check, so "
+        "a second browser session replaying a copied lease is refused"
     )
     assert iResolve < iLease, (
         "the connect gate must call fsContainerNameForId BEFORE "
-        "fbSessionOwnsContainer; the owner map is name-keyed, so an "
+        "fbBrowserSessionOwnsLease; the owner map is name-keyed, so an "
         "id-keyed lookup silently misses and refuses every real session"
     )
 

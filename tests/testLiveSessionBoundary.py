@@ -358,3 +358,59 @@ def testSecondSessionCopiedLeaseIsRefusedOnBothSockets(
         "a second session presenting the owner's copied lease must be "
         f"closed 4403; got {excInfo.value.code}"
     )
+
+
+@pytest.mark.falsification
+def testConnectRefusesSecondSessionPresentingACopiedLease(
+    appServed, clientBrowser, sBrowserCredential,
+):
+    """A second browser session with the owner's copied lease is refused 409.
+
+    The HTTP counterpart of the copied-lease WebSocket gate, on the
+    ownership-establishing ``/api/connect`` route. Session A connects and
+    binds the owner record to its browser session. Session B redeems its OWN
+    valid credential but copies A's genuine lease value onto the connect
+    request. The lease VALUE is real, yet it is bound to A's session, so B
+    must be refused 409 and must NOT rebind the owner record or overwrite the
+    workflow — the connect gate short-circuits before the write path runs. As
+    a positive control, the true owner reconnects successfully, proving the
+    gate is not blanket-deny.
+
+    Kills: in workflowRoutes._fnRequireOwningLeaseForConnect, the
+    session-bound ``fbBrowserSessionOwnsLease`` check reverted to the
+    value-only ``fbSessionOwnsContainer``, so a copied lease value alone
+    admits a foreign session and lets it take the container.
+    """
+    sLeaseId = _fsConnectAndReturnLease(clientBrowser)
+    recordOwnerBefore = appServed.state.dictContainerOwners[S_CONTAINER_NAME]
+    sBoundSessionBefore = recordOwnerBefore.sBrowserSessionId
+    assert sBoundSessionBefore, "the owner record must be bound to session A"
+
+    sCredentialSessionB = fsBootstrapCredential(appServed)
+    assert sCredentialSessionB != sBrowserCredential
+    clientSessionB = TestClient(
+        appServed, headers={"X-Session-Token": sCredentialSessionB},
+    )
+    responseSessionB = clientSessionB.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": S_WORKFLOW_PATH},
+        headers={"X-Vaibify-Lease": sLeaseId},
+    )
+    assert responseSessionB.status_code == 409, responseSessionB.text
+    recordOwnerAfter = appServed.state.dictContainerOwners[S_CONTAINER_NAME]
+    assert recordOwnerAfter.sBrowserSessionId == sBoundSessionBefore, (
+        "a refused connect must not rebind the owner record to session B"
+    )
+    assert recordOwnerAfter.sLeaseId == sLeaseId, (
+        "a refused connect must not change the owning lease"
+    )
+
+    responseOwner = clientBrowser.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": S_WORKFLOW_PATH},
+        headers={"X-Vaibify-Lease": sLeaseId},
+    )
+    assert responseOwner.status_code == 200, (
+        "the true owner must still connect with its own lease "
+        f"({responseOwner.text})"
+    )

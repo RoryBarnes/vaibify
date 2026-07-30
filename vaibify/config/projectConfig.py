@@ -273,6 +273,12 @@ _S_FORBIDDEN_FIELD_CHARS = "|\n\r\x00"
 # scp-like git form (``git@host:path``) is preserved: ``@ : / . - _ ~`` and
 # alphanumerics are allowed; command-injection characters are not.
 _S_URL_FORBIDDEN_CHARS = _S_FORBIDDEN_FIELD_CHARS + " \t;&$()<>`\"'\\*?{}[]"
+# The only transports git may be handed. ``ext::`` runs an arbitrary command
+# and ``file://`` reads an arbitrary host path, so both — and every other
+# scheme — are refused. The scp-like form (``user@host:path``) has no
+# ``://`` and is matched separately.
+_TUPLE_SAFE_URL_SCHEMES = ("https://", "http://", "git://", "ssh://")
+_S_SCP_LIKE_URL = re.compile(r"^[A-Za-z0-9._~-]+@[A-Za-z0-9._~-]+:.+$")
 
 
 def _fbHasForbiddenFieldChar(sValue):
@@ -297,10 +303,25 @@ def _fbIsSafeRepositoryName(sName):
 
 
 def _fbIsSafeRepositoryUrl(sUrl):
-    """True when a repo URL carries no shell metacharacters or whitespace."""
+    """True when a repo URL is metacharacter-free and uses a vetted transport.
+
+    Beyond the shell-metacharacter and length checks, the URL must not begin
+    with ``-`` — git would parse a leading-dash "URL" as an OPTION
+    (``--upload-pack=…``, ``-oProxyCommand=…``), a remote-code primitive — and
+    its transport must be one of ``https:// http:// git:// ssh://`` or the
+    scp-like ``user@host:path`` form. Permissive git schemes such as ``ext::``
+    (runs a command) and ``file://`` (reads an arbitrary host path) are
+    refused.
+    """
     if not sUrl or len(sUrl) > _I_MAX_REPO_FIELD_LENGTH:
         return False
-    return not any(sChar in sUrl for sChar in _S_URL_FORBIDDEN_CHARS)
+    if any(sChar in sUrl for sChar in _S_URL_FORBIDDEN_CHARS):
+        return False
+    if sUrl.startswith("-"):
+        return False
+    if sUrl.startswith(_TUPLE_SAFE_URL_SCHEMES):
+        return True
+    return bool(_S_SCP_LIKE_URL.match(sUrl))
 
 
 def _fbIsSafeGitRef(sRef):

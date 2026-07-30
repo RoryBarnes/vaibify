@@ -280,13 +280,20 @@ def _fnRegisterReleaseContainer(app, dictCtx):
 
     @app.post("/api/registry/{sName}/release")
     async def fdictReleaseContainer(request: Request, sName: str):
-        from vaibify.gui import containerOwnership
+        from vaibify.gui import containerOwnership, browserSession
         _fnRejectInvalidProjectName(sName)
         # The owning lease rides the X-Vaibify-Lease header; release only
-        # succeeds when it matches the owner record.
+        # succeeds when the presenting browser session is the one bound to
+        # that lease, so a second tab that copied the lease value cannot
+        # drop the true owner's record.
         sLeaseId = fsLeaseFromRequest(request)
+        sBrowserSessionId = browserSession.fsSessionIdForCredential(
+            getattr(app.state, "dictBrowserSessions", {}),
+            request.headers.get("x-session-token", ""),
+        )
         bReleased = containerOwnership.fnReleaseOwnership(
             app.state.dictContainerOwners, sName, sLeaseId,
+            sBrowserSessionId=sBrowserSessionId,
         )
         return {"sName": sName, "bReleased": bReleased}
 

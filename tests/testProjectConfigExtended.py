@@ -249,6 +249,45 @@ def test_repo_scp_like_url_is_allowed():
     assert fbValidateConfig(dictConfig) is True
 
 
+@pytest.mark.falsification
+def test_repo_url_argument_and_scheme_injection_is_rejected():
+    """A leading-dash or non-vetted-scheme repo URL is refused.
+
+    The metacharacter filter alone let two remote-code primitives through:
+    a "URL" beginning with ``-`` (git parses it as an option, e.g.
+    ``-oProxyCommand=…`` / ``--upload-pack=…``) and the permissive git
+    transports ``ext::`` (runs an arbitrary command) and ``file://`` (reads
+    an arbitrary host path) — none of which contains a shell metacharacter.
+    The URL check must additionally reject a leading ``-`` and restrict the
+    transport to an allowlist, while still admitting the legitimate
+    ``https://`` / ``ssh://`` and scp-like forms.
+
+    Kills: in projectConfig._fbIsSafeRepositoryUrl, the leading-dash and
+    scheme-allowlist guard replaced by an unconditional ``return True``, so
+    the argument/scheme-injection URLs pass validation again.
+    """
+    for sMalicious in [
+        "-oProxyCommand=x",
+        "--upload-pack=touch/pwned",
+        "ext::sh",
+        "file:///etc/passwd",
+        "ftp://example.com/repo.git",
+    ]:
+        dictConfig = _fdictConfigWithRepos([
+            {"name": "r", "url": sMalicious},
+        ])
+        assert fbValidateConfig(dictConfig) is False, sMalicious
+    for sLegitimate in [
+        "https://github.com/org/repo.git",
+        "git@github.com:org/repo.git",
+        "ssh://git@host/org/repo.git",
+    ]:
+        dictConfig = _fdictConfigWithRepos([
+            {"name": "r", "url": sLegitimate},
+        ])
+        assert fbValidateConfig(dictConfig) is True, sLegitimate
+
+
 def test_repo_install_method_enum_is_enforced():
     for sMethod in [
         "c_and_pip", "pip_no_deps", "pip_editable", "scripts_only",

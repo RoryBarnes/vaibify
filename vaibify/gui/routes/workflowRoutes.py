@@ -262,9 +262,17 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
     connect had no gate at all: a second browser tab could skip the
     claim route's 409 and take the workflow, the project-repo path, and
     the container's agent session out from under the owning session.
-    The lease check here reads the ``X-Vaibify-Lease`` header (the HTTP
-    lease transport) and the owner-of-record, the same principal the
-    WebSocket gates use, so the two lanes can never drift apart.
+    The check here reads the ``X-Vaibify-Lease`` header (the HTTP lease
+    transport), resolves the caller's browser session, and consults the
+    session-bound owner predicate
+    (:func:`containerOwnership.fbBrowserSessionOwnsLease`) — the same
+    strong principal the WebSocket gates and the container-owner HTTP
+    boundary use, so the lanes can never drift apart. A copied lease
+    VALUE presented by a second browser session is therefore refused, not
+    merely a forged one. A pre-binding owner record (a transitional claim
+    that recorded no session) carries ``sBrowserSessionId == ""``; there
+    the matching lease value alone admits, the same allowance the
+    claim-reclaim branch makes.
 
     An unowned container is left open ONLY in the single-container
     viewer, whose bootstrap that is: the viewer has no claim route and
@@ -288,8 +296,15 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
                 "Claim this container before connecting to it.",
             )
         return
-    if containerOwnership.fbSessionOwnsContainer(
-        dictContainerOwners, sName, fsLeaseFromRequest(requestHttp),
+    sLeaseId = fsLeaseFromRequest(requestHttp)
+    sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)
+    if containerOwnership.fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
+    ):
+        return
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner.sBrowserSessionId == "" and bool(sLeaseId) and (
+        recordOwner.sLeaseId == sLeaseId
     ):
         return
     raise HTTPException(409, "In use in another browser session")

@@ -105,3 +105,56 @@ def test_hub_refuses_connect_bearing_a_foreign_lease(
         headers={"X-Vaibify-Lease": "not-the-owning-lease"},
     )
     assert responseHttp.status_code == 409, responseHttp.text
+
+
+@pytest.mark.falsification
+def test_release_refuses_second_session_presenting_a_copied_lease(
+    appHub, clientBrowser,
+):
+    """A second browser session cannot release with the owner's copied lease.
+
+    Session A claims the container, binding the owner record to its browser
+    session. Session B redeems its OWN valid credential but copies A's genuine
+    lease value onto the release request. The lease VALUE is real, yet it is
+    bound to A's session, so B's release must return ``bReleased: False`` and
+    A's owner record must survive — dropping it would hand A's authorization
+    to a tab that never claimed the container. As a positive control, the true
+    owner releases successfully.
+
+    Kills: in containerOwnership.fnReleaseOwnership, the session-bound guard
+    ``if not (bBoundOwner or bUnboundOwner): return False`` reverted to the
+    value-only ``if recordOwner.sLeaseId != sLeaseId: return False``, so a
+    copied lease value alone releases another session's container.
+    """
+    responseClaim = clientBrowser.post(
+        f"/api/registry/{S_CONTAINER_NAME}/claim",
+    )
+    assert responseClaim.status_code == 200, responseClaim.text
+    sLeaseId = responseClaim.json()["sLeaseId"]
+
+    clientSessionB = TestClient(
+        appHub,
+        headers={"X-Session-Token": fsBootstrapCredential(appHub)},
+    )
+    responseSessionB = clientSessionB.post(
+        f"/api/registry/{S_CONTAINER_NAME}/release",
+        headers={"X-Vaibify-Lease": sLeaseId},
+    )
+    assert responseSessionB.status_code == 200, responseSessionB.text
+    assert responseSessionB.json()["bReleased"] is False, (
+        "a second session with the owner's copied lease must not release "
+        "the container"
+    )
+    assert S_CONTAINER_NAME in appHub.state.dictContainerOwners, (
+        "the true owner's record must survive a foreign release attempt"
+    )
+
+    responseOwner = clientBrowser.post(
+        f"/api/registry/{S_CONTAINER_NAME}/release",
+        headers={"X-Vaibify-Lease": sLeaseId},
+    )
+    assert responseOwner.status_code == 200, responseOwner.text
+    assert responseOwner.json()["bReleased"] is True, (
+        "the true owner presenting its own lease must release"
+    )
+    assert S_CONTAINER_NAME not in appHub.state.dictContainerOwners

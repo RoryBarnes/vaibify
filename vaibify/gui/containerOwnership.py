@@ -260,15 +260,37 @@ def _fsReadStartedIso(recordOwner):
     return dictHolder.get("sStartedIso", "")
 
 
-def fnReleaseOwnership(dictContainerOwners, sName, sLeaseId):
-    """Release ownership only when the caller proves the matching lease.
+def fnReleaseOwnership(
+    dictContainerOwners, sName, sLeaseId, sBrowserSessionId="",
+):
+    """Release ownership only when the caller proves the session-bound lease.
+
+    The lease alone is not sufficient: a second browser tab that copied the
+    owning lease VALUE must not be able to drop the true owner's record. So
+    release requires the same strong predicate the connect gate and the
+    WebSocket gates use — the presenting browser session must own the lease
+    (:func:`fbBrowserSessionOwnsLease`). A transitional owner record that
+    recorded no session binding (``sBrowserSessionId == ""``) is released on
+    the matching lease value alone, the same allowance the claim-reclaim
+    branch makes, so a pre-binding claim is never locked out.
 
     Returns ``True`` after freeing the flock, dropping the record, and
     stopping the keep-alive; ``False`` for an unknown container or a
-    non-owner, which closes the old append-only authorization leak.
+    caller that does not hold the session-bound lease, which closes both
+    the old append-only authorization leak and the copied-lease replay.
     """
     recordOwner = dictContainerOwners.get(sName)
-    if recordOwner is None or recordOwner.sLeaseId != sLeaseId:
+    if recordOwner is None:
+        return False
+    bBoundOwner = fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
+    )
+    bUnboundOwner = (
+        recordOwner.sBrowserSessionId == ""
+        and bool(sLeaseId)
+        and recordOwner.sLeaseId == sLeaseId
+    )
+    if not (bBoundOwner or bUnboundOwner):
         return False
     _fnForceReleaseOwnership(dictContainerOwners, sName)
     return True
