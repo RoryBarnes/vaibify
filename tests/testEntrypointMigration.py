@@ -245,3 +245,22 @@ def test_list_nested_mounts_fails_closed_on_malformed_line(tmp_path):
             "a buffered failure leaked the valid line before the malformed "
             f"one: {sBadLine!r} -> {resultProc.stdout!r}"
         )
+
+
+def test_list_nested_mounts_fails_closed_on_empty_table(tmp_path):
+    """A readable but zero-record mount table returns non-zero.
+
+    A running process always carries at least the workspace mount, so an
+    empty read is a failed table, not "no nested mounts". Reading it as the
+    latter would drop the prune list and let the migration chown into a
+    bind. Distinguished from the normal no-nested-mounts case, which has a
+    non-empty table and simply prints nothing with a zero return.
+    """
+    sMountInfo = tmp_path / "mountinfo"
+    sMountInfo.write_text("", encoding="utf-8")
+    sBody = (
+        'fnListNestedWorkspaceMounts "' + str(sMountInfo) + '"\n'
+        'echo "RC:$?"\n'
+    )
+    resultProc = _fsRunHelperScript("/workspace", sBody)
+    assert "RC:1" in resultProc.stdout, resultProc.stdout

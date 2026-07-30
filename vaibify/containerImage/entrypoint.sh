@@ -1235,7 +1235,12 @@ fnListNestedWorkspaceMounts() {
             }
         }
         END {
-            if (bMalformed) { exit 1 }
+            # A readable table with zero records is itself malformed: a
+            # running process always has at least the ${WORKSPACE} mount,
+            # so an empty read means the table did not come through, not
+            # that there are no nested mounts. Fail closed rather than let
+            # the caller read it as "nothing to prune".
+            if (bMalformed || NR == 0) { exit 1 }
             for (i = 1; i <= iCount; i++) { print aMountPoints[i] }
         }
     ' "${sMountInfo}"
