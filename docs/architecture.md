@@ -493,6 +493,34 @@ A running hub keeps exactly one in-process authority,
 set). Claim, connect, and both WebSocket gates all consult this map and
 nothing else.
 
+#### Which control-plane routes are lease-enforced, and which are a deliberate residual
+
+Not every state-mutating route is gated on the owning lease, and that is
+intentional. The `container-owner` HTTP routes (the `{sContainerId}`
+viewer routes) and the two routes that touch a live session's integrity —
+`POST /api/connect/{sContainerId}` and `POST /api/registry/{name}/release`
+— require the **session-bound** lease
+(`containerOwnership.fbBrowserSessionOwnsLease`): a second browser session
+replaying a *copied lease value* is refused, because connect would take
+over the workflow and the container's agent session, and release would
+drop the owner record. Connect enforces this in
+`workflowRoutes._fnRequireOwningLeaseForConnect`; release enforces it in
+`containerOwnership.fnReleaseOwnership`.
+
+The name-keyed container-lifecycle routes — `start`, `stop`, `build`,
+`settings`, and the ownership-*establishing* `claim` — are classified
+`browser-hub` in `routeScope.DICT_CONTROL_PLANE_SCOPES` and are **not**
+lease-enforced. This is a considered residual, not an oversight. The hub
+is single-user, so the lease is live-session *coordination*, not an
+authorization boundary against a hostile peer; the container picker
+operates on these routes *before and across* claims, when no lease exists
+yet; and safe owner-gating of `stop`/`settings` depends on the
+ORPHANED_SESSION takeover lifecycle (a crashed owner's container must stay
+stoppable), which is not yet built — so owner-gating them is *deferred*,
+not merely undeclared. When that lifecycle lands, these routes can adopt
+owner-gating; until then the honest posture is to enforce the two
+session-integrity routes and leave the lifecycle routes at `browser-hub`.
+
 `OwnerRecord` fields (in-process, dies with the hub process):
 
 | Field                          | Meaning                                              |

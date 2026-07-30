@@ -380,6 +380,74 @@ def testContainerScopedMutatingRoutesConsultTheLease():
             "was assigned too late, or a router was built separately):\n  "
             + "\n  ".join(f"{listM} {sPath}" for listM, sPath in listPlain)
         )
+        _fnAssertEveryMutatingRouteResolvesToItsDeclaredScope(listRoutes)
+
+
+def _fnAssertEveryMutatingRouteResolvesToItsDeclaredScope(listRoutes):
+    """Prove each mutating route's RESOLVED scope routes it to an authority.
+
+    ``isinstance(route, ContainerAwareRoute)`` proves the wrapper is
+    installed, but not that the wrapper's scope RESOLUTION sends the route
+    through the lease authority — a browser-hub control-plane route is a
+    ``ContainerAwareRoute`` too, yet bypasses the lease. So for every
+    mutating route this asserts the resolved scope is exactly what its class
+    demands:
+
+    * an explicit ``@fnRouteScope`` stamp (e.g. the owner-establishing
+      connect route) must resolve to that stamped scope;
+    * a ``{sContainerId}`` route with no stamp must resolve to
+      ``container-owner`` — the scope ``ContainerAwareRoute`` actually
+      enforces — so a mis-resolution that quietly drops it out of the
+      authority fails here;
+    * a control-plane route must resolve to the scope ENUMERATED for it in
+      ``DICT_CONTROL_PLANE_SCOPES`` — the browser-hub classification is an
+      asserted allowlist, never an implied default, so a new mutating
+      control-plane route added without classifying it fails here.
+    """
+    for route in listRoutes:
+        dictResolved = routeScope.fdictResolveRouteScope(
+            route.methods, route.path, route.endpoint,
+        )
+        assert dictResolved is not None, (
+            f"{sorted(route.methods)} {route.path} resolves to no "
+            "authorization scope; a mutating route with no scope ships "
+            "unauthorized"
+        )
+        dictExplicit = getattr(route.endpoint, "_dictRouteScope", None)
+        if dictExplicit is not None:
+            assert dictResolved["sScope"] == dictExplicit["sScope"], (
+                f"{route.path} carries an explicit scope "
+                f"{dictExplicit['sScope']} but resolved to "
+                f"{dictResolved['sScope']}"
+            )
+            continue
+        if "{sContainerId}" in route.path:
+            assert dictResolved["sScope"] == (
+                routeScope.S_SCOPE_CONTAINER_OWNER
+            ), (
+                f"{route.path} carries {{sContainerId}} but resolved to "
+                f"{dictResolved['sScope']}, not container-owner, so "
+                "ContainerAwareRoute never runs the lease authority for it"
+            )
+            continue
+        listDeclared = [
+            (sMethod, route.path) for sMethod in route.methods
+            if (sMethod, route.path) in routeScope.DICT_CONTROL_PLANE_SCOPES
+        ]
+        assert listDeclared, (
+            f"{sorted(route.methods)} {route.path} is a mutating "
+            "control-plane route absent from DICT_CONTROL_PLANE_SCOPES; "
+            "classify it there so the browser-hub scope is an asserted "
+            "allowlist, not an implied default"
+        )
+        for sMethod, sPath in listDeclared:
+            assert dictResolved["sScope"] == (
+                routeScope.DICT_CONTROL_PLANE_SCOPES[(sMethod, sPath)]
+            ), (
+                f"{sMethod} {sPath} resolved to {dictResolved['sScope']} "
+                "but is enumerated as "
+                f"{routeScope.DICT_CONTROL_PLANE_SCOPES[(sMethod, sPath)]}"
+            )
 
 
 def testUnscopedMutatingRouteFailsAppConstruction():
@@ -446,16 +514,22 @@ def testContainerAwareRouteRunsAuthorityBeforeEndpoint(monkeypatch):
 def testContainerReadScopeIsAFrozenRatchetedAllowlist():
     """No route may adopt the deferred ``container-read`` scope off-list.
 
-    The four-scope model is not complete until owned-container reads are
-    enforced; until then ``container-read`` is a frozen, empty allowlist. A
-    route that declares it without an entry here fails this check — the
-    machine tripwire that keeps the deferral honest.
+    Owned-container GETs now RESOLVE to ``container-read`` by the
+    GET/{sContainerId} convention (a declared, not-yet-enforced scope), so
+    the ratchet is checked against the resolved scope, not merely an explicit
+    stamp. Every route that resolves to ``container-read`` must be enumerated
+    in the frozen ``SET_CONTAINER_READ_ROUTES``; a NEW owned-container GET
+    fails this check until it is acknowledged there — the machine tripwire
+    that keeps the deferral honest and lets reads-enforcement adopt the whole
+    set at once.
     """
     for app in _ftBuildBothApplications():
         for route in app.routes:
             if not isinstance(route, APIRoute):
                 continue
-            dictScope = getattr(route.endpoint, "_dictRouteScope", None)
+            dictScope = routeScope.fdictResolveRouteScope(
+                route.methods, route.path, route.endpoint,
+            )
             if dictScope is None:
                 continue
             if dictScope["sScope"] != routeScope.S_SCOPE_CONTAINER_READ:
@@ -464,8 +538,10 @@ def testContainerReadScopeIsAFrozenRatchetedAllowlist():
                 assert (sMethod, route.path) in (
                     routeScope.SET_CONTAINER_READ_ROUTES
                 ), (
-                    f"{sMethod} {route.path} declares container-read but is "
-                    "not in the frozen SET_CONTAINER_READ_ROUTES allowlist."
+                    f"{sMethod} {route.path} resolves to container-read but "
+                    "is not in the frozen SET_CONTAINER_READ_ROUTES "
+                    "allowlist; add it there to acknowledge the new "
+                    "owned-container read."
                 )
 
 

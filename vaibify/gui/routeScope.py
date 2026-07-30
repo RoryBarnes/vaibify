@@ -96,6 +96,22 @@ I_REJECT_FORBIDDEN = 403
 # bootstrap itself (``bootstrap-capability``). This map is the frozen
 # allowlist: a new mutating control-plane route must be classified here or
 # fail app construction.
+#
+# DELIBERATE RESIDUAL — the name-keyed container-lifecycle routes
+# (``.../{sName}/start``, ``/stop``, ``/build``, ``/settings``, and
+# ``/release``'s sibling ``/claim``) are classified ``browser-hub``, NOT
+# lease-enforced, on purpose. The hub is single-user, so the lease is
+# live-session coordination, not an authorization boundary against a hostile
+# peer; and the picker operates on these routes BEFORE and ACROSS claims,
+# when no lease exists yet. Safe owner-gating of stop/settings additionally
+# depends on the ORPHANED_SESSION takeover lifecycle (a crashed owner's
+# container must remain stoppable), which is not yet built, so owner-gating
+# them is DEFERRED rather than declared. ``connect`` and ``release`` are the
+# exceptions that ARE session-bound (owner-establishing / the bound-lease
+# check in ``fnReleaseOwnership``), because each touches the live session's
+# integrity: connect takes over the workflow and the agent session, and
+# release drops the owner record. See docs/architecture.md, "Single browser
+# session per container".
 DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/registry"): S_SCOPE_BROWSER_HUB,
@@ -112,10 +128,62 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
 }
 
-# Owned-container GETs deliberately left unenforced this slice. Frozen empty
-# ON PURPOSE: no route may adopt ``container-read`` until reads-enforcement
-# lands, and the architectural invariant fails CI if this set grows.
-SET_CONTAINER_READ_ROUTES = frozenset()
+# Owned-container GETs resolve to ``container-read`` by the GET/{sContainerId}
+# convention (see :func:`fdictResolveRouteScope`). The scope is DECLARED, not
+# enforced: ``ContainerAwareRoute`` still gates only ``container-owner``, so
+# these reads are not lease-checked this slice. This frozen allowlist is the
+# ratchet — every route resolving to ``container-read`` must appear here, so a
+# NEW owned-container GET fails ``testContainerReadScopeIsAFrozenRatchetedAllowlist``
+# until it is acknowledged (and reads-enforcement can then adopt it wholesale).
+SET_CONTAINER_READ_ROUTES = frozenset({
+    ("GET", "/api/containers/{sContainerId}/isolation"),
+    ("GET", "/api/containers/{sContainerId}/ready"),
+    ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),
+    ("GET", "/api/drafts/{sContainerId}"),
+    ("GET", "/api/figure/{sContainerId}/{sFilePath:path}"),
+    ("HEAD", "/api/figure/{sContainerId}/{sFilePath:path}"),
+    ("GET", "/api/files/{sContainerId}/download/{sFilePath:path}"),
+    ("GET", "/api/files/{sContainerId}/{sDirectoryPath:path}"),
+    ("GET", "/api/git/{sContainerId}/badges"),
+    ("GET", "/api/git/{sContainerId}/manifest-check"),
+    ("GET", "/api/git/{sContainerId}/status"),
+    ("GET", "/api/logs/{sContainerId}"),
+    ("GET", "/api/logs/{sContainerId}/{sLogFilename}"),
+    ("GET", "/api/monitor/{sContainerId}"),
+    ("GET", "/api/overleaf/{sContainerId}/mirror/tree"),
+    ("GET", "/api/pipeline/{sContainerId}/file-status"),
+    ("GET", "/api/pipeline/{sContainerId}/host-log-tail"),
+    ("GET", "/api/pipeline/{sContainerId}/state"),
+    ("GET", "/api/pipeline/{sContainerId}/workflow-discovery"),
+    ("GET", "/api/repos/{sContainerId}/status"),
+    ("GET", "/api/repos/{sContainerId}/{sRepoName}/dirty-files"),
+    ("GET", "/api/settings/{sContainerId}"),
+    ("GET", "/api/steps/{sContainerId}"),
+    ("GET", "/api/steps/{sContainerId}/by-label/{sLabel}"),
+    ("GET", "/api/steps/{sContainerId}/resolve-commands"),
+    ("GET", "/api/steps/{sContainerId}/validate"),
+    ("GET", "/api/steps/{sContainerId}/{iStepIndex}"),
+    ("GET", "/api/steps/{sContainerId}/{iStepIndex}/falsification"),
+    ("GET", "/api/steps/{sContainerId}/{iStepIndex}/plot-standards"),
+    ("GET", "/api/sync/{sContainerId}/check/{sService}"),
+    ("GET", "/api/sync/{sContainerId}/files"),
+    ("GET", "/api/sync/{sContainerId}/has-credential/{sService}"),
+    ("GET", "/api/sync/{sContainerId}/reverify-schedule"),
+    ("GET", "/api/sync/{sContainerId}/scripts"),
+    ("GET", "/api/sync/{sContainerId}/status"),
+    ("GET", "/api/sync/{sContainerId}/{sService}/status"),
+    ("GET", "/api/workflow/{sContainerId}/dag"),
+    ("GET", "/api/workflow/{sContainerId}/dag/export"),
+    ("GET", "/api/workflow/{sContainerId}/level2/readiness"),
+    ("GET", "/api/workflow/{sContainerId}/level3/attestation"),
+    ("GET", "/api/workflow/{sContainerId}/level3/readiness"),
+    ("GET", "/api/workflow/{sContainerId}/manifest/text"),
+    ("GET", "/api/workflow/{sContainerId}/project-context"),
+    ("GET", "/api/workflow/{sContainerId}/prompt-record/status"),
+    ("GET", "/api/workflows/{sContainerId}"),
+    ("GET", "/api/zenodo/{sContainerId}/deposit"),
+    ("GET", "/api/zenodo/{sContainerId}/metadata"),
+})
 
 
 def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
@@ -171,11 +239,13 @@ def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
     """Return the scope declaration for a route, or ``None`` when unscoped.
 
     Resolution order: an explicit :func:`fnRouteScope` stamp wins; else a
-    mutating ``{sContainerId}`` path is container-owner by convention; else
-    a control-plane route named in :data:`DICT_CONTROL_PLANE_SCOPES` carries
-    its declared scope. Anything else is ``None`` — which
-    :func:`fnValidateRouteScopesOrRaise` treats as a construction error for a
-    mutating route (default-deny).
+    mutating ``{sContainerId}`` path is container-owner by convention, and a
+    non-mutating (GET/HEAD) ``{sContainerId}`` path is container-read by the
+    mirror convention (DECLARED, not enforced — ``ContainerAwareRoute`` gates
+    only container-owner); else a control-plane route named in
+    :data:`DICT_CONTROL_PLANE_SCOPES` carries its declared scope. Anything
+    else is ``None`` — which :func:`fnValidateRouteScopesOrRaise` treats as a
+    construction error for a mutating route (default-deny).
     """
     dictExplicit = getattr(fnEndpoint, "_dictRouteScope", None)
     if dictExplicit is not None:
@@ -185,6 +255,12 @@ def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
     if "{sContainerId}" in sPath and bMutating:
         return {
             "sScope": S_SCOPE_CONTAINER_OWNER,
+            "sTargetParam": "sContainerId",
+            "sIdentityKind": "id",
+        }
+    if "{sContainerId}" in sPath:
+        return {
+            "sScope": S_SCOPE_CONTAINER_READ,
             "sTargetParam": "sContainerId",
             "sIdentityKind": "id",
         }
