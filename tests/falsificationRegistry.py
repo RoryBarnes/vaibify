@@ -864,6 +864,15 @@ LIST_FALSIFICATIONS = [
         old='        iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)',
         new='        iExitCode, sStdout = (0, "ok")',
     ),
+    # fnApplyMigrations stamped the version DOWN to the current at the
+    # end, silently downgrading a future-version project.json and dropping
+    # fields this build does not understand on the next save.
+    Falsification(
+        nodeid='tests/testWorkflowSchemaForwardCompat.py::test_future_schema_version_is_refused_not_downgraded',
+        source='vaibify/gui/workflowMigrations.py',
+        old="    if iVersion > I_CURRENT_WORKFLOW_VERSION:",
+        new="    if False:",
+    ),
     # A mount at the workspace root is an ANCESTOR of the destination;
     # the destination is a descendant of the mount. Dropping the
     # descendant direction of the overlap check lets that rm -rf through.
