@@ -3551,7 +3551,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +32 (2026-07-26): _fbReconcileUserVerificationByHash, which runs
     # the pass above after the poll snapshot (the side-effect block
     # has no hashes to consult). Cohesive with the poll assembly.
-    "routes/pipelineRoutes.py": 2754,
+    # +44 (2026-07-29): host-log-tail agent-lane sanitization —
+    # _flistSanitizedIncidents and the lane branch that gives the agent
+    # an allowlisted per-container view. Cohesive with the existing
+    # host-log endpoint; no new responsibility, no seam to split.
+    "routes/pipelineRoutes.py": 2798,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -3591,7 +3595,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # existing container had bind-mounted, leaving it unstartable;
     # reachability, not age, decides now. Cohesive with the other
     # credential-lifecycle wiring this module already registers.
-    "routes/syncRoutes.py": 2461,
+    # +11 (2026-07-29): the sweep fails closed on daemon-enumeration
+    # failure (None vs empty protected set). Same credential-sweep
+    # responsibility; no seam to split.
+    "routes/syncRoutes.py": 2472,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -3803,7 +3810,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-07-29): the run-all / force-run-all descriptions now
     # state that disabled steps are skipped, correcting agent-facing
     # text alongside the Run All disabled-step fix.
-    "actionCatalog.py": 932,
+    # +18 (2026-07-29): the ten hub control-plane routes added to
+    # SET_INTENTIONALLY_EXCLUDED_PATHS so the agent lane refuses the
+    # control plane. Governing every route is the catalog's whole job.
+    "actionCatalog.py": 950,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
