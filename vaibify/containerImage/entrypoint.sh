@@ -1212,11 +1212,31 @@ fnListNestedWorkspaceMounts() {
             return s
         }
         {
+            # A /proc mountinfo line is "ID PID MAJ:MIN ROOT MOUNT OPTS
+            # [optional...] - FSTYPE SOURCE SUPEROPTS": at least ten
+            # fields, an absolute mount point in $5, and a "-" separator
+            # exactly three fields from the end. A readable-but-malformed
+            # table must fail closed, not be read as "no nested mounts" —
+            # the latter would let the caller chown into an undetected
+            # bind. So flag the line and stop; results are buffered and
+            # flushed only if EVERY line parsed, so a failure emits
+            # nothing and exits non-zero, which the caller treats as
+            # fail-closed.
+            if (NF < 10 || substr($5, 1, 1) != "/" || $(NF - 3) != "-") {
+                bMalformed = 1
+                exit
+            }
             mp = decode($5)
             # Proper descendant: under ws on a COMPONENT boundary (ws
             # followed by "/"), and not ws itself — so "/workspace-foo"
             # is not treated as under "/workspace".
-            if (mp != ws && index(mp, ws "/") == 1) { print mp }
+            if (mp != ws && index(mp, ws "/") == 1) {
+                aMountPoints[++iCount] = mp
+            }
+        }
+        END {
+            if (bMalformed) { exit 1 }
+            for (i = 1; i <= iCount; i++) { print aMountPoints[i] }
         }
     ' "${sMountInfo}"
 }

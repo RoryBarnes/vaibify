@@ -211,3 +211,37 @@ def test_list_nested_mounts_fails_closed_on_unreadable(tmp_path):
     )
     resultProc = _fsRunHelperScript("/workspace", sBody)
     assert "RC:1" in resultProc.stdout, resultProc.stdout
+
+
+def test_list_nested_mounts_fails_closed_on_malformed_line(tmp_path):
+    """A readable-but-malformed line returns non-zero and emits nothing.
+
+    The regression this pins: awk silently skipped an unparseable line and
+    still exited 0, so the caller read a truncated or garbled mount table
+    as "no nested mounts" and would chown straight into a bind whose line
+    it never saw. A short line (fewer than ten fields), a missing "-"
+    separator, and a non-absolute mount point must each fail closed — and
+    because results are buffered, the valid line that precedes the bad one
+    must NOT leak onto stdout.
+    """
+    for sBadLine in (
+        "23 28 0:21 / /workspace/data rw ext4 /dev/sda1 rw",   # no "-"
+        "truncated line",                                        # too few
+        "23 28 0:21 / relative/mount rw - ext4 /dev/sda1 rw",   # not abs
+    ):
+        sMountInfo = tmp_path / "mountinfo"
+        sMountInfo.write_text(
+            "24 23 0:22 / /workspace/good rw - ext4 /dev/sda2 rw\n"
+            + sBadLine + "\n",
+            encoding="utf-8",
+        )
+        sBody = (
+            'fnListNestedWorkspaceMounts "' + str(sMountInfo) + '"\n'
+            'echo "RC:$?"\n'
+        )
+        resultProc = _fsRunHelperScript("/workspace", sBody)
+        assert "RC:1" in resultProc.stdout, (sBadLine, resultProc.stdout)
+        assert "/workspace/good" not in resultProc.stdout, (
+            "a buffered failure leaked the valid line before the malformed "
+            f"one: {sBadLine!r} -> {resultProc.stdout!r}"
+        )
