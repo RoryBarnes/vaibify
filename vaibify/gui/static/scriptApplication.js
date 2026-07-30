@@ -4850,27 +4850,14 @@ function fnBlockUnload(event) {
     event.returnValue = "";
 }
 
-function fnReleaseActiveContainerOnUnload() {
-    if (typeof VaibifyContainerManager === "undefined") return;
-    if (typeof VaibifyApp === "undefined") return;
-    var sName = VaibifyContainerManager.fsGetSelectedContainerName();
-    var sLeaseId = VaibifyApp.fsGetLeaseId();
-    if (!sName || !sLeaseId) return;
-    try {
-        navigator.sendBeacon(
-            "/api/registry/" + encodeURIComponent(sName) +
-            "/release?sLeaseId=" + encodeURIComponent(sLeaseId),
-        );
-    } catch (error) {
-        /* best-effort: the grace reaper frees the owner if this misses */
-    }
-}
-
 window.addEventListener("beforeunload", fnBlockUnload);
 window.addEventListener("pagehide", function (event) {
+    /* pagehide fires on reload and navigation, not only a real close, so
+     * it is NOT release intent: releasing the container here would drop a
+     * running container on a mere reload. Abandonment is decided by the
+     * WebSocket closing without a reconnect and the grace reaper freeing
+     * the owner — never by an unload beacon. Just stop polling. */
     VaibifyApp.fnStopAllHubPolling();
-    if (event.persisted) return;
-    fnReleaseActiveContainerOnUnload();
 });
 
 document.addEventListener("visibilitychange", function () {
