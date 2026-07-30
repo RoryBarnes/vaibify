@@ -855,6 +855,15 @@ LIST_FALSIFICATIONS = [
         old="        if serverMiddleware.fbRequestRidesAgentLane(request):",
         new="        if False:",
     ),
+    # The browser lane's streamed exec must be as fail-closed as the
+    # blocking one; a catch-all iExitCode=0 lets a step whose real
+    # command would fail look green through the streamed path.
+    Falsification(
+        nodeid='tests/testBrowserLaneContract.py::testTheStreamedExecAlsoRaisesRatherThanInventingAnAnswer',
+        source='tests/browser/fakeDockerAdapter.py',
+        old='        iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)',
+        new='        iExitCode, sStdout = (0, "ok")',
+    ),
     # A mount at the workspace root is an ANCESTOR of the destination;
     # the destination is a descendant of the mount. Dropping the
     # descendant direction of the overlap check lets that rm -rf through.
