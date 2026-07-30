@@ -27,6 +27,13 @@ import click
 
 S_BROWSER_TOKEN_HEADER = "X-Session-Token"
 S_LEASE_HEADER = "X-Vaibify-Lease"
+# The endpoint this client acquires its browser credential from. Sweep A
+# retired the ``/api/session-token`` oracle from the hub app (it now lives
+# only on the setup app), so this path 404s on a live hub: the researcher
+# CLI lane is BROKEN until the capability re-mint slice repoints it at the
+# bootstrap flow. ``testHubCredentialEndpointIsServed`` is the CI tripwire
+# that will flip green the moment this is corrected.
+S_CREDENTIAL_ENDPOINT = "/api/session-token"
 F_DEFAULT_TIMEOUT_SECONDS = 300.0
 F_BOOTSTRAP_TIMEOUT_SECONDS = 30.0
 _T_TERMINAL_EVENT_TYPES = (
@@ -150,7 +157,7 @@ def fsFetchSessionToken(sBaseUrl):
     """Return the hub's shared session token from the loopback endpoint."""
     objBody = _fobjRequireOkResponse(
         ftSendHttpRequest(
-            sBaseUrl, "", "GET", "/api/session-token", None,
+            sBaseUrl, "", "GET", S_CREDENTIAL_ENDPOINT, None,
             F_BOOTSTRAP_TIMEOUT_SECONDS,
         ),
         "Session-token fetch",

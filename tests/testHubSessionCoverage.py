@@ -412,3 +412,49 @@ def test_stream_pipeline_action_wraps_a_socket_failure():
             hubSession.fiStreamPipelineAction(
                 _fdictSession(), {"sAction": "runAll"}, False, 5.0,
             )
+
+
+# -- CLI/hub credential-endpoint contract (real hub app, not a mock) -------
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Researcher-lane CLI is broken until the capability re-mint slice: "
+        "hubSession.fsFetchSessionToken still GETs the retired "
+        "/api/session-token (removed from the hub app in Sweep A), and "
+        "fiSendHttpAction never attaches S_LEASE_HEADER so owner-scoped "
+        "actions 403. Tracked blocker. Remove this marker (and update the "
+        "asserted endpoint) when the slice repoints the CLI at the "
+        "bootstrap flow."
+    ),
+)
+def testHubCredentialEndpointIsServed():
+    """The endpoint the CLI fetches its credential from must exist on the hub.
+
+    The rest of this file mocks ``requests`` and asserts against the mock's
+    return, so it stays green while the real transport diverges — exactly
+    the fixtures-agree-with-each-other blind spot that hid this breakage in a
+    commit body. This guard instead builds the REAL hub application and
+    checks that ``hubSession.S_CREDENTIAL_ENDPOINT`` is a route it serves. It
+    currently fails (the oracle is gone), so it is ``xfail(strict)``: the day
+    the re-mint slice makes the CLI and hub agree again it will xpass, and
+    strict mode turns that xpass into a failure that forces this marker's
+    removal — the breakage can never silently re-close.
+    """
+    from unittest.mock import MagicMock, patch
+    from vaibify.gui import pipelineServer
+
+    with patch(
+        "vaibify.gui.pipelineServer._fconnectionCreateDocker",
+        return_value=MagicMock(),
+    ):
+        appHub = pipelineServer.fappCreateHubApplication(iExpectedPort=0)
+    setServedPaths = {
+        route.path for route in appHub.routes if hasattr(route, "path")
+    }
+    assert hubSession.S_CREDENTIAL_ENDPOINT in setServedPaths, (
+        "the hub app does not serve the CLI's credential endpoint "
+        f"{hubSession.S_CREDENTIAL_ENDPOINT!r}; the researcher CLI lane "
+        "cannot authenticate against a live hub"
+    )
