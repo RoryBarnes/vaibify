@@ -16,7 +16,7 @@ import math
 import os
 import re
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -200,17 +200,26 @@ def _fnRegisterClaimContainer(app, dictCtx):
     """Register POST /api/registry/{sName}/claim."""
 
     @app.post("/api/registry/{sName}/claim")
-    async def fdictClaimContainer(sName: str, sLeaseId: str = ""):
-        from vaibify.gui import containerOwnership
+    async def fdictClaimContainer(
+        request: Request, sName: str, sLeaseId: str = "",
+    ):
+        from vaibify.gui import containerOwnership, browserSession
         _fnRejectInvalidProjectName(sName)
         iPort = getattr(app.state, "iHubPort", 0)
         sContainerId = _fsResolveContainerId(dictCtx, sName)
+        # Bind the lease to the claiming browser session. A shared-token
+        # (transitional) request resolves to '' and records no binding.
+        sBrowserSessionId = browserSession.fsSessionIdForCredential(
+            getattr(app.state, "dictBrowserSessions", {}),
+            request.headers.get("x-session-token", ""),
+        )
         iStatusCode, dictPayload = containerOwnership.ftdictClaim(
             app.state.dictContainerOwners, sName, sLeaseId, iPort,
             sContainerId=sContainerId,
             fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
                 dictCtx, sOwned,
             ),
+            sBrowserSessionId=sBrowserSessionId,
         )
         if iStatusCode != 200:
             raise HTTPException(status_code=iStatusCode, detail=dictPayload)

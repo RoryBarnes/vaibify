@@ -28,6 +28,7 @@ __all__ = [
     "fsAgentTokenForName",
     "fbAgentTokenAuthorizesContainerId",
     "ftdictClaim",
+    "fbBrowserSessionOwnsLease",
     "fnReleaseOwnership",
     "fbSessionOwnsContainer",
     "fnIncrementLiveConnection",
@@ -70,6 +71,7 @@ class OwnerRecord:
     fileHandleLock: object
     sAgentToken: str = ""
     sContainerId: str = ""
+    sBrowserSessionId: str = ""
     iLiveConnectionCount: int = 0
     iLivePipelineConnectionCount: int = 0
     fLastSeenMonotonic: float = field(default_factory=time.monotonic)
@@ -126,10 +128,12 @@ def fbAgentTokenAuthorizesContainerId(
 def ftdictClaim(
     dictContainerOwners, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, fGraceSeconds=_F_GRACE_SECONDS,
+    sBrowserSessionId="",
 ):
     """Arbitrate a claim and return ``(iStatusCode, dictPayload)``.
 
-    Unowned grants a fresh lease (200). A same-lease re-claim is
+    Unowned grants a fresh lease (200), binding the record to the claiming
+    browser session (``sBrowserSessionId``). A same-lease re-claim is
     idempotent (200) so a reloaded tab re-asserting its
     ``sessionStorage`` lease never self-locks. A foreign or absent lease
     is refused with 409 unless the current owner is reapable, in which
@@ -139,6 +143,7 @@ def ftdictClaim(
     if recordOwner is None:
         return _ftdictClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
+            sBrowserSessionId,
         )
     if sLeaseId and recordOwner.sLeaseId == sLeaseId:
         recordOwner.fLastSeenMonotonic = time.monotonic()
@@ -149,11 +154,14 @@ def ftdictClaim(
         _fnForceReleaseOwnership(dictContainerOwners, sName)
         return _ftdictClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
+            sBrowserSessionId,
         )
     return (409, _fdictClaimRefused(sName, recordOwner))
 
 
-def _ftdictClaimUnowned(dictContainerOwners, sName, iPort, sContainerId):
+def _ftdictClaimUnowned(
+    dictContainerOwners, sName, iPort, sContainerId, sBrowserSessionId="",
+):
     """Acquire the host flock for an unowned container and mint a lease."""
     try:
         fileHandleLock = fnAcquireContainerLock(sName, iPort)
@@ -161,12 +169,14 @@ def _ftdictClaimUnowned(dictContainerOwners, sName, iPort, sContainerId):
         return (409, _fdictCrossHubRefused(sName, error))
     sLeaseId = _fnRecordNewOwner(
         dictContainerOwners, sName, fileHandleLock, sContainerId,
+        sBrowserSessionId,
     )
     return (200, _fdictClaimGranted(sName, sLeaseId))
 
 
 def _fnRecordNewOwner(
     dictContainerOwners, sName, fileHandleLock, sContainerId="",
+    sBrowserSessionId="",
 ):
     """Mint a lease plus a per-container agent token and store the owner."""
     sLeaseId = fsMintLease()
@@ -175,8 +185,32 @@ def _fnRecordNewOwner(
         fileHandleLock=fileHandleLock,
         sAgentToken=fsMintAgentToken(),
         sContainerId=sContainerId,
+        sBrowserSessionId=sBrowserSessionId,
     )
     return sLeaseId
+
+
+def fbBrowserSessionOwnsLease(
+    dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
+):
+    """Return True when a browser session owns a container's lease.
+
+    The lease is bound to the session that claimed it, so authorization on
+    the browser lane requires BOTH the session id and the lease to match
+    the owner record — validating "some valid session" plus "some valid
+    lease" independently would let session B replay session A's copied
+    lease. An empty session id or lease never matches, so a request that
+    presents neither fails closed.
+    """
+    if not sBrowserSessionId or not sLeaseId:
+        return False
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is None:
+        return False
+    return (
+        recordOwner.sBrowserSessionId == sBrowserSessionId
+        and recordOwner.sLeaseId == sLeaseId
+    )
 
 
 def _fdictClaimGranted(sName, sLeaseId):

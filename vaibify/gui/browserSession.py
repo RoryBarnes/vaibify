@@ -130,7 +130,9 @@ def fbValidateCredential(dictStore, sCredential):
     if not sCredential:
         return False
     with _lockBrowserSessions:
-        recordSession = dictStore["dictSessionsByCredential"].get(sCredential)
+        recordSession = dictStore.get(
+            "dictSessionsByCredential", {},
+        ).get(sCredential)
         if recordSession is None:
             return False
         recordSession.fLastSeenMonotonic = time.monotonic()
@@ -138,7 +140,13 @@ def fbValidateCredential(dictStore, sCredential):
 
 
 def fsSessionIdForCredential(dictStore, sCredential):
-    """Return the browser-session id for a credential, or '' if unknown."""
+    """Return the browser-session id for a credential, or '' if unknown.
+
+    Tolerates an empty or malformed store (missing sub-key) by returning
+    '', so a caller that supplies a placeholder store never raises.
+    """
     with _lockBrowserSessions:
-        recordSession = dictStore["dictSessionsByCredential"].get(sCredential)
+        recordSession = dictStore.get(
+            "dictSessionsByCredential", {},
+        ).get(sCredential)
         return recordSession.sSessionId if recordSession else ""
