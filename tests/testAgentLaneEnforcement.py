@@ -535,3 +535,93 @@ def testFigureProbeValidatesTheWorkdirFallback(clientBrowser):
         params={"sWorkdir": "/etc"},
     )
     assert responseHttp.status_code == 403
+
+
+# ── F8: the host-log-tail endpoint is sanitized on the agent lane ──
+
+
+@pytest.mark.falsification
+def test_host_log_tail_agent_lane_is_sanitized(clientAgent, tmp_path):
+    """The agent lane never receives the raw host log or free-text
+    incident detail — only an allowlisted per-container view.
+
+    The raw log spans every project and carries host paths; the raw
+    incidents carry a free-text message and an exception repr, either of
+    which may hold a secret, a host path, or ANOTHER container's id. This
+    plants all three and asserts none reaches the agent.
+
+    Kills: in pipelineRoutes.fnGetHostLogTail, neutralize the
+    ``if serverMiddleware.fbRequestRidesAgentLane(request):`` branch so
+    the agent lane falls through to the raw-log response.
+    """
+    from vaibify.gui import hostIncidents
+    from vaibify.gui.routes import pipelineRoutes
+
+    hostIncidents.fnResetHostIncidents()
+    sLog = tmp_path / "vaibify.log"
+    sLog.write_text(
+        "2026-06-16 INFO vaibify: token=SECRET_abc for "
+        + S_CONTAINER_ID + "\n",
+        encoding="utf-8",
+    )
+    hostIncidents.fnRecordHostIncident(
+        S_CONTAINER_ID,
+        {
+            "sIso": "2026-06-16T01:00:00+00:00",
+            "sLevel": "ERROR",
+            "sLogger": "vaibify",
+            "sMessage": "leaking SECRET_abc via /home/researcher/.vaibify",
+            "sExceptionRepr": "RuntimeError('other-container-xyz died')",
+        },
+    )
+    try:
+        with patch.object(
+            pipelineRoutes, "_fsResolveHostLogPath", return_value=str(sLog),
+        ):
+            responseHttp = clientAgent.get(
+                "/api/pipeline/" + S_CONTAINER_ID + "/host-log-tail",
+            )
+        assert responseHttp.status_code == 200
+        dictBody = responseHttp.json()
+        sPayload = json.dumps(dictBody)
+        assert dictBody.get("bSanitized") is True
+        assert "sLogPath" not in dictBody
+        assert "listLines" not in dictBody
+        assert "SECRET_abc" not in sPayload
+        assert "other-container-xyz" not in sPayload
+        assert "/home/researcher" not in sPayload
+        for dictIncident in dictBody["listIncidents"]:
+            assert "sMessage" not in dictIncident
+            assert "sExceptionRepr" not in dictIncident
+            assert dictIncident["sLevel"] == "ERROR"
+            assert dictIncident["sContainerId"] == S_CONTAINER_ID
+    finally:
+        hostIncidents.fnResetHostIncidents()
+
+
+def test_host_log_tail_browser_lane_keeps_raw_view(clientBrowser, tmp_path):
+    """The researcher's own browser still sees the raw log and full
+    incidents — the sanitization is scoped to the agent lane only."""
+    from vaibify.gui import hostIncidents
+    from vaibify.gui.routes import pipelineRoutes
+
+    hostIncidents.fnResetHostIncidents()
+    sLog = tmp_path / "vaibify.log"
+    sLog.write_text(
+        "2026-06-16 INFO vaibify: " + S_CONTAINER_ID + " hello\n",
+        encoding="utf-8",
+    )
+    try:
+        with patch.object(
+            pipelineRoutes, "_fsResolveHostLogPath", return_value=str(sLog),
+        ):
+            responseHttp = clientBrowser.get(
+                "/api/pipeline/" + S_CONTAINER_ID + "/host-log-tail",
+            )
+        assert responseHttp.status_code == 200
+        dictBody = responseHttp.json()
+        assert "sLogPath" in dictBody
+        assert "listLines" in dictBody
+        assert len(dictBody["listLines"]) == 1
+    finally:
+        hostIncidents.fnResetHostIncidents()

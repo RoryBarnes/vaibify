@@ -260,25 +260,69 @@ def _flistTailLogLinesForContainer(sLogPath, sContainerId, iLines):
     return list(dequeMatches)
 
 
+# Levels a sanitized incident may carry. Any other value is reported as
+# "UNKNOWN" rather than passed through, so the agent-lane payload has a
+# closed, enumerable shape.
+_SET_SAFE_INCIDENT_LEVELS = frozenset(
+    {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+)
+
+
+def _flistSanitizedIncidents(sContainerId, listIncidents):
+    """Return incidents reduced to an allowlisted, non-free-text shape.
+
+    A raw incident carries ``sMessage`` (``record.getMessage()``) and
+    ``sExceptionRepr``, either of which may contain host paths, tokens,
+    command text, or ANOTHER container's identifiers. The agent lane must
+    never receive those, so it gets a stable, enumerable shape instead: a
+    timestamp, a bounded level, and its own container id — an allowlist of
+    safe fields, not a scrub of arbitrary strings (which is a blocklist
+    and leaks).
+    """
+    listSafe = []
+    for dictIncident in listIncidents:
+        sLevel = dictIncident.get("sLevel", "")
+        listSafe.append({
+            "sIso": dictIncident.get("sIso", ""),
+            "sLevel": (
+                sLevel if sLevel in _SET_SAFE_INCIDENT_LEVELS else "UNKNOWN"
+            ),
+            "sContainerId": sContainerId,
+        })
+    return listSafe
+
+
 def _fnRegisterHostLogTail(app, dictCtx):
     """Register GET /api/pipeline/{id}/host-log-tail endpoint."""
 
     @fnAgentAction("get-host-log-tail")
     @app.get("/api/pipeline/{sContainerId}/host-log-tail")
     async def fnGetHostLogTail(
+        request: Request,
         sContainerId: str,
         iLines: int = I_HOST_LOG_TAIL_DEFAULT_LINES,
     ):
-        from vaibify.gui.hostIncidents import (
-            flistIncidentsForContainer,
-        )
+        from vaibify.gui.hostIncidents import flistIncidentsForContainer
+        from vaibify.gui import serverMiddleware
         iEffectiveLines = _fiClampLineCount(iLines)
+        listIncidents = flistIncidentsForContainer(sContainerId)
+        if serverMiddleware.fbRequestRidesAgentLane(request):
+            # The raw host log spans every project/container and carries
+            # host paths; the raw incidents carry free-text message and
+            # exception repr. The agent lane receives NEITHER — only an
+            # allowlisted per-container incident view. This is the
+            # host-lane rejection the catalog cannot express on its own.
+            return {
+                "bSanitized": True,
+                "listIncidents": _flistSanitizedIncidents(
+                    sContainerId, listIncidents,
+                )[-iEffectiveLines:],
+            }
         sLogPath = _fsResolveHostLogPath()
         listLines = await asyncio.to_thread(
             _flistTailLogLinesForContainer,
             sLogPath, sContainerId, iEffectiveLines,
         )
-        listIncidents = flistIncidentsForContainer(sContainerId)
         return {
             "sLogPath": sLogPath,
             "iRequestedLines": iLines,

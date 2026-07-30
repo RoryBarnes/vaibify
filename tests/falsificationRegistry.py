@@ -846,6 +846,15 @@ LIST_FALSIFICATIONS = [
         new="""        setMounted = _fsetMountedHostPaths(dictCtx)
         if False:""",
     ),
+    # The host-log-tail endpoint returns the raw host-wide log and
+    # free-text incidents; the agent lane must receive only an
+    # allowlisted per-container view, never the raw log or free text.
+    Falsification(
+        nodeid='tests/testAgentLaneEnforcement.py::test_host_log_tail_agent_lane_is_sanitized',
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old="        if serverMiddleware.fbRequestRidesAgentLane(request):",
+        new="        if False:",
+    ),
     # A mount at the workspace root is an ANCESTOR of the destination;
     # the destination is a descendant of the mount. Dropping the
     # descendant direction of the overlap check lets that rm -rf through.
