@@ -169,8 +169,15 @@ const VaibifyApp = (function () {
         var sCapability = _fsReadBootstrapCapabilityFromFragment();
         if (sCapability) {
             sCredential = await _fsExchangeBootstrapCapability(sCapability);
-            _fnClearBootstrapFragment();
-            if (sCredential) _fnStoreCredential(sCredential);
+            /* Clear the fragment only once the exchange has SUCCEEDED. A
+             * transient failure (offline, hub restarting) must leave the
+             * capability in the URL so a reload can re-mint -- the server
+             * honours a bounded replay window -- rather than discarding the
+             * one credential-minting token on the first hiccup. */
+            if (sCredential) {
+                _fnClearBootstrapFragment();
+                _fnStoreCredential(sCredential);
+            }
         }
         if (!sCredential) {
             sCredential = _fsRestoreStoredCredential();
