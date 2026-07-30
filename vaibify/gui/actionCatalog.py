@@ -874,6 +874,24 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("POST", "/api/sync/{sContainerId}/track"),
     # Read-side Overleaf diff preparation.
     ("POST", "/api/overleaf/{sContainerId}/diff"),
+    # Hub control plane — container lifecycle, registry/lease management,
+    # and host-side project/directory creation. An in-container agent must
+    # never operate the control plane: it cannot build, start, stop, or
+    # reconfigure containers, add or remove registry projects, claim or
+    # release the exclusivity lease, or create host directories/projects.
+    # These live on the HUB application (not the workflow viewer), so the
+    # viewer-only agent-action invariant never saw them; the hub-app
+    # invariant (testHubAppStateMutatingRoutesAreGoverned) does.
+    ("POST", "/api/containers/{sName}/build"),
+    ("POST", "/api/containers/{sName}/start"),
+    ("POST", "/api/containers/{sName}/stop"),
+    ("POST", "/api/containers/{sName}/settings"),
+    ("POST", "/api/registry"),
+    ("DELETE", "/api/registry/{sName}"),
+    ("POST", "/api/registry/{sName}/claim"),
+    ("POST", "/api/registry/{sName}/release"),
+    ("POST", "/api/host-directories/create"),
+    ("POST", "/api/projects/create"),
 })
 
 
