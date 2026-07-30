@@ -423,6 +423,88 @@ def test_viewer_registration_keys_by_name_and_surfaces_lease():
     assert sLease == dictContainerOwners[S_PROJECT_NAME].sLeaseId
 
 
+def _fdictViewerContext(dictContainerOwners):
+    """A minimal viewer route context for the first-connect binding."""
+    return {
+        "bIsHub": False,
+        "docker": _FakeDocker(S_CONTAINER_ID, S_PROJECT_NAME),
+        "dictContainerOwners": dictContainerOwners,
+    }
+
+
+def test_viewer_first_connect_binds_the_browser_session():
+    """First connect mints a lease bound to the connecting session."""
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    recordOwner = dictContainerOwners[S_PROJECT_NAME]
+    assert recordOwner.sBrowserSessionId == "session-A"
+    assert dictCtx["sViewerLease"] == recordOwner.sLeaseId
+
+
+def test_viewer_same_session_retry_is_idempotent():
+    """A re-connect by the owning session reclaims the same lease."""
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    sLeaseFirst = dictCtx["sViewerLease"]
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    assert dictCtx["sViewerLease"] == sLeaseFirst
+    assert dictContainerOwners[S_PROJECT_NAME].sLeaseId == sLeaseFirst
+
+
+def test_viewer_different_session_is_refused_409():
+    """A second researcher's session cannot take the bound viewer."""
+    from fastapi import HTTPException
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    sLeaseA = dictContainerOwners[S_PROJECT_NAME].sLeaseId
+    with pytest.raises(HTTPException) as excInfo:
+        pipelineServer._fnRegisterViewerServedContainer(
+            dictCtx, S_CONTAINER_ID, "session-B",
+        )
+    assert excInfo.value.status_code == 409
+    # The owning session's lease is untouched by the refused reconnect.
+    assert dictContainerOwners[S_PROJECT_NAME].sLeaseId == sLeaseA
+    assert dictContainerOwners[S_PROJECT_NAME].sBrowserSessionId == "session-A"
+
+
+def test_viewer_unbound_owner_admits_transitional_reconnect():
+    """A shared-token (unbound) owner still admits any later connect."""
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    # First connect with no credential leaves the owner unbound ('').
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "",
+    )
+    recordOwner = dictContainerOwners[S_PROJECT_NAME]
+    assert recordOwner.sBrowserSessionId == ""
+    sLeaseFirst = recordOwner.sLeaseId
+    # A later connect (credential or not) reclaims idempotently.
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-later",
+    )
+    assert dictCtx["sViewerLease"] == sLeaseFirst
+    assert dictContainerOwners[S_PROJECT_NAME].sLeaseId == sLeaseFirst
+
+
 def test_viewer_minted_lease_authorizes_pipeline_ws():
     """A viewer WS presenting the surfaced lease is ACCEPTED end-to-end."""
     from vaibify.gui import pipelineServer

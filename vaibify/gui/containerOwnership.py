@@ -145,7 +145,16 @@ def ftdictClaim(
             dictContainerOwners, sName, iPort, sContainerId,
             sBrowserSessionId,
         )
-    if sLeaseId and recordOwner.sLeaseId == sLeaseId:
+    # The same-lease reclaim stays idempotent only when the owner is
+    # unbound (a shared-token, transitional claim carries '') OR the
+    # presented session matches the bound owner. A lease match against a
+    # bound owner by a DIFFERENT session is a copied-lease replay: it
+    # must fall through to the 409 refusal below and must NOT refresh the
+    # owner's liveness, or session B would revive session A's grace clock.
+    if sLeaseId and recordOwner.sLeaseId == sLeaseId and (
+        recordOwner.sBrowserSessionId == ""
+        or recordOwner.sBrowserSessionId == sBrowserSessionId
+    ):
         recordOwner.fLastSeenMonotonic = time.monotonic()
         return (200, _fdictClaimGranted(sName, recordOwner.sLeaseId))
     if _fbOwnerIsReapableNow(

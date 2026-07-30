@@ -1321,7 +1321,7 @@ def _fsResolveContainerUser(dictCtx, sContainerId):
     return "researcher"
 
 
-def _fnAuthorizeContainer(dictCtx, sContainerId):
+def _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId=""):
     """Cache the container's user and register the viewer's served record.
 
     Hub authorization is decided by the lease recorded at claim time, so
@@ -1330,24 +1330,38 @@ def _fnAuthorizeContainer(dictCtx, sContainerId):
     holds exactly one container for its process lifetime and has no claim
     route, so its served container is recorded in ``dictContainerOwners``
     here purely to keep the idle busy-veto honest about a mid-run viewer.
+    The browser session id is threaded through so the viewer's
+    first-connect ownership is bound to the connecting session.
     """
-    _fnRegisterViewerServedContainer(dictCtx, sContainerId)
+    _fnRegisterViewerServedContainer(
+        dictCtx, sContainerId, sBrowserSessionId,
+    )
     dictCtx["containerUsers"][sContainerId] = (
         _fsResolveContainerUser(dictCtx, sContainerId)
     )
     _fnPushAgentSession(dictCtx, sContainerId)
 
 
-def _fnRegisterViewerServedContainer(dictCtx, sContainerId):
-    """Record a viewer's served container, keyed by its canonical name.
+def _fnRegisterViewerServedContainer(
+    dictCtx, sContainerId, sBrowserSessionId="",
+):
+    """Establish a viewer's ownership of its served container (first-come).
 
-    The viewer has no claim route, so it mints its own lease here and
-    must key the record by the SAME canonical name the gate, reaper, and
-    keep-alive teardown use (per the owner-map key decision) -- keying by
-    the raw docker id would make every gate lookup miss and would stop
-    keep-alive by the wrong key on teardown. The minted lease is stashed
-    on ``dictCtx['sViewerLease']`` so the connect response can hand it to
-    the viewer's browser, which then presents it on its WebSockets.
+    The viewer has no claim route, so first connect *establishes*
+    ownership: it mints its own lease here and keys the record by the
+    SAME canonical name the gate, reaper, and keep-alive teardown use
+    (per the owner-map key decision) -- keying by the raw docker id would
+    make every gate lookup miss and would stop keep-alive by the wrong
+    key on teardown. The record is bound to the connecting browser
+    session (``sBrowserSessionId``) so a later connect can be arbitrated:
+    the same session (or an unbound, transitional owner) reclaims the
+    same lease idempotently, while a DIFFERENT non-empty session is
+    refused 409 -- a viewer serves one local researcher, first-come-wins.
+    Transitionally (shared-token era) no credential resolves, so
+    ``sBrowserSessionId`` is '' and the record is left unbound, preserving
+    the current viewer flow. The minted lease is stashed on
+    ``dictCtx['sViewerLease']`` so the connect response can hand it to the
+    viewer's browser, which then presents it on its WebSockets.
     """
     if dictCtx.get("bIsHub"):
         return
@@ -1355,16 +1369,34 @@ def _fnRegisterViewerServedContainer(dictCtx, sContainerId):
     if dictContainerOwners is None:
         return
     sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
-    if sName in dictContainerOwners:
-        dictCtx["sViewerLease"] = dictContainerOwners[sName].sLeaseId
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is not None:
+        _fnAuthorizeExistingViewerOwner(recordOwner, sBrowserSessionId)
+        dictCtx["sViewerLease"] = recordOwner.sLeaseId
         return
     sLeaseId = containerOwnership.fsMintLease()
     dictContainerOwners[sName] = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
         sAgentToken=containerOwnership.fsMintAgentToken(),
         sContainerId=sContainerId,
+        sBrowserSessionId=sBrowserSessionId,
     )
     dictCtx["sViewerLease"] = sLeaseId
+
+
+def _fnAuthorizeExistingViewerOwner(recordOwner, sBrowserSessionId):
+    """Refuse a viewer re-connect from a session that is not the owner.
+
+    An unbound owner (transitional, shared-token era) admits any
+    re-connect; a bound owner admits only its own session. A different
+    non-empty session is a second researcher racing the viewer and is
+    refused, mirroring the hub claim's copied-lease arbitration.
+    """
+    if recordOwner.sBrowserSessionId == "":
+        return
+    if recordOwner.sBrowserSessionId == sBrowserSessionId:
+        return
+    raise HTTPException(409, "In use in another browser session")
 
 
 def _fsAgentTokenForContainerId(dictCtx, sContainerId):
@@ -1394,9 +1426,9 @@ def _fnPushAgentSession(dictCtx, sContainerId):
         )
 
 
-def _fdictConnectNoWorkflow(dictCtx, sContainerId):
+def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
     """Return response for no-workflow mode."""
-    _fnAuthorizeContainer(dictCtx, sContainerId)
+    _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId)
     return {
         "sContainerId": sContainerId,
         "sWorkflowPath": None,
@@ -1510,17 +1542,21 @@ def _fnCheckSupervisedIntervalAtConnect(
         )
 
 
-async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
+async def fdictHandleConnect(
+    dictCtx, sContainerId, sWorkflowPath, sBrowserSessionId="",
+):
     """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
-        return _fdictConnectNoWorkflow(dictCtx, sContainerId)
+        return _fdictConnectNoWorkflow(
+            dictCtx, sContainerId, sBrowserSessionId,
+        )
     sWorkflowPath = _fsValidateConnectWorkflowPath(sWorkflowPath)
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["workflows"][sContainerId] = dictWorkflow
-        _fnAuthorizeContainer(dictCtx, sContainerId)
+        _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId)
         sResolved = fsResolveWorkflowPath(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )

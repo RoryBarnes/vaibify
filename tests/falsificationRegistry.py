@@ -60,11 +60,26 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_same_lease_reclaim_refreshes_grace_clock',
         source='vaibify/gui/containerOwnership.py',
-        old="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId:
+        old="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId and (
+        recordOwner.sBrowserSessionId == ""
+        or recordOwner.sBrowserSessionId == sBrowserSessionId
+    ):
         recordOwner.fLastSeenMonotonic = time.monotonic()
         return (200, _fdictClaimGranted(sName, recordOwner.sLeaseId))""",
-        new="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId:
+        new="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId and (
+        recordOwner.sBrowserSessionId == ""
+        or recordOwner.sBrowserSessionId == sBrowserSessionId
+    ):
         return (200, _fdictClaimGranted(sName, recordOwner.sLeaseId))""",
+    ),
+    Falsification(
+        nodeid='tests/testContainerOwnership.py::test_copied_lease_from_foreign_session_is_refused_without_refresh',
+        source='vaibify/gui/containerOwnership.py',
+        old="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId and (
+        recordOwner.sBrowserSessionId == ""
+        or recordOwner.sBrowserSessionId == sBrowserSessionId
+    ):""",
+        new="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId:""",
     ),
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_release_stops_keep_alive',

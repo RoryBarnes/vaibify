@@ -9,6 +9,7 @@ import re
 from fastapi import HTTPException, Request
 from typing import Optional
 
+from .. import browserSession
 from .. import workflowManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
@@ -302,8 +303,22 @@ def _fnRegisterConnect(app, dictCtx):
         dictCtx["require"]()
         _fnRequireOwningLeaseForConnect(
             dictCtx, sContainerId, requestHttp)
+        sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)
         return await fdictHandleConnect(
-            dictCtx, sContainerId, sWorkflowPath)
+            dictCtx, sContainerId, sWorkflowPath, sBrowserSessionId)
+
+
+def _fsResolveBrowserSessionId(dictCtx, requestHttp):
+    """Resolve the connecting browser session id, or '' when none.
+
+    The viewer's first connect binds ownership to this session; a
+    transitional shared-token request carries no credential and resolves
+    to '', leaving the viewer's owner record unbound.
+    """
+    return browserSession.fsSessionIdForCredential(
+        dictCtx.get("dictBrowserSessions") or {},
+        requestHttp.headers.get("x-session-token", ""),
+    )
 
 
 def fnRegisterAll(app, dictCtx):
