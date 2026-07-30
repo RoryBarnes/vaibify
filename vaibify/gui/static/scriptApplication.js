@@ -21,6 +21,7 @@ const VaibifyApp = (function () {
     };
 
     var _S_LEASE_STORAGE_KEY = "vaibifyContainerLease";
+    var _S_SESSION_CREDENTIAL_STORAGE_KEY = "vaibifySessionCredential";
 
     function _fdictDefaultWorkflowState() {
         return {
@@ -115,14 +116,72 @@ const VaibifyApp = (function () {
         bShowDagButton: false,
     };
 
-    async function fnFetchSessionToken() {
+    function _fsReadBootstrapCapabilityFromFragment() {
+        var sHash = window.location.hash || "";
+        var oMatch = sHash.match(/[#&]bootstrap=([^&]+)/);
+        return oMatch ? decodeURIComponent(oMatch[1]) : "";
+    }
+
+    function _fnClearBootstrapFragment() {
         try {
-            var data = await VaibifyApi.fdictGet("/api/session-token");
-            _dictSessionState.sSessionToken = data.sToken || "";
-            fnInstallAuthenticatedFetch(_dictSessionState.sSessionToken);
-        } catch (e) {
-            _dictSessionState.sSessionToken = "";
+            window.history.replaceState(
+                null, "",
+                window.location.pathname + window.location.search,
+            );
+        } catch (e) { /* history unavailable; leave the fragment */ }
+    }
+
+    function _fsRestoreStoredCredential() {
+        try {
+            return window.sessionStorage.getItem(
+                _S_SESSION_CREDENTIAL_STORAGE_KEY) || "";
+        } catch (e) { return ""; }
+    }
+
+    function _fnStoreCredential(sCredential) {
+        try {
+            window.sessionStorage.setItem(
+                _S_SESSION_CREDENTIAL_STORAGE_KEY, sCredential);
+        } catch (e) { /* sessionStorage unavailable; memory only */ }
+    }
+
+    async function _fsExchangeBootstrapCapability(sCapability) {
+        /* Raw fetch: the authenticated wrapper is not installed yet, and
+         * /api/bootstrap is exempt from the credential requirement. */
+        try {
+            var response = await window.fetch("/api/bootstrap", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sCapability: sCapability }),
+            });
+            if (!response.ok) return "";
+            var data = await response.json();
+            return data.sCredential || "";
+        } catch (e) { return ""; }
+    }
+
+    async function fnFetchSessionToken() {
+        /* Prefer a fresh launch capability (exchanged once, then cleared
+         * from the URL), then a stored per-tab credential (so a reload
+         * keeps working), then the transitional shared-token endpoint. */
+        var sCredential = "";
+        var sCapability = _fsReadBootstrapCapabilityFromFragment();
+        if (sCapability) {
+            sCredential = await _fsExchangeBootstrapCapability(sCapability);
+            _fnClearBootstrapFragment();
+            if (sCredential) _fnStoreCredential(sCredential);
         }
+        if (!sCredential) {
+            sCredential = _fsRestoreStoredCredential();
+        }
+        if (!sCredential) {
+            try {
+                var data = await VaibifyApi.fdictGet("/api/session-token");
+                sCredential = data.sToken || "";
+            } catch (e) { sCredential = ""; }
+        }
+        _dictSessionState.sSessionToken = sCredential;
+        fnInstallAuthenticatedFetch(_dictSessionState.sSessionToken);
     }
 
     function fnInstallAuthenticatedFetch(sToken) {
