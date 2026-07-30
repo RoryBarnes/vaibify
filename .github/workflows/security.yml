@@ -1,0 +1,80 @@
+# Named, badged check for the security-boundary suite.
+#
+# Security-class red is stop-ship; architectural-class red is clean-up.
+# They carry different obligations, so security gets its OWN searchable,
+# badgeable lane rather than hiding among the architectural ratchets in
+# tests-linux/tests-macos — a green architectural badge must never be
+# able to launder a red security one.
+#
+# What it runs today: the in-process security-boundary suite (lease and
+# ownership arbitration, the shared WebSocket/agent-lane authorization
+# guard, the connect ownership gate, per-container agent auth, the claim
+# route, and the Content-Security-Policy). These pass on the current
+# branch, so the lane is real, green, and non-empty from day one — never
+# the "reports success for having run nothing" anti-pattern.
+#
+# What joins it as the hardening work lands (see the design in
+# securityBoundaryHardeningDesign.md):
+#   - tests/testSecurityBoundaryInvariants.py, once F1/F7/F8 turn its
+#     currently-red hole-pins green;
+#   - the browser-lane security additions;
+#   - a Docker-backed real-container identity test, added in the SAME
+#     change as A1 (the capability-bootstrap + default-deny enforcement),
+#     because A1's correctness is defined by it.
+#
+# Required-status (branch protection) is switched on once the new
+# invariants are green; until then the lane runs and reports honestly.
+# README badges are owned by the Badge phase; this workflow does not
+# touch README.
+
+name: security
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  security:
+    # Named like the tests-linux / tests-macos / falsification matrix
+    # legs so the check name (e.g. `security:ubuntu-24.04:python-3.14`)
+    # is unique to this workflow and independently requireable, and so
+    # searching "security" in the required-checks picker finds it.
+    name: 'security:${{ matrix.os }}:python-${{ matrix.python-version }}'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26]
+        python-version: ["3.9", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Security-boundary suite
+        timeout-minutes: 15
+        run: |
+          python -m pytest \
+            tests/testAgentLaneEnforcement.py \
+            tests/testClaimRoutes.py \
+            tests/testConnectHubOwnershipGate.py \
+            tests/testContainerOwnership.py \
+            tests/testContentSecurityPolicy.py \
+            tests/testGithubAuth.py \
+            tests/testPipelineServerAgentAuth.py \
+            tests/testWebSocketAuthorization.py \
+            -m "not docker and not docker_live and not browser" -v

@@ -49,6 +49,7 @@ T_GATE_WORKFLOWS = (
     "tests-macos.yml",
     "browser.yml",
     "falsification.yml",
+    "security.yml",
     "agentDocsPathCheck.yml",
 )
 

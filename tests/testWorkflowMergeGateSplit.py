@@ -30,6 +30,7 @@ T_PRE_MERGE_WORKFLOWS = (
     "tests-macos.yml",
     "browser.yml",
     "falsification.yml",
+    "security.yml",
     "agentDocsPathCheck.yml",
 )
 
@@ -202,6 +203,7 @@ T_PUBLISHED_BADGES = (
     "statusTestsMacos.json",
     "statusFalsification.json",
     "statusBrowser.json",
+    "statusSecurity.json",
     "statusAgentDocs.json",
 )
 

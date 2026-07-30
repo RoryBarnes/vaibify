@@ -169,6 +169,7 @@ jobs:
               "tests-macos": "statusTestsMacos.json",
               "falsification": "statusFalsification.json",
               "browser": "statusBrowser.json",
+              "security": "statusSecurity.json",
               "agent-docs-path-check": "statusAgentDocs.json",
           }
 
@@ -244,7 +245,8 @@ jobs:
           for sBadge in tests.json falsification.json invariants.json \
                         browser.json statusTestsLinux.json \
                         statusTestsMacos.json statusFalsification.json \
-                        statusBrowser.json statusAgentDocs.json; do
+                        statusBrowser.json statusSecurity.json \
+                        statusAgentDocs.json; do
             if [ -f "badgeOutput/$sBadge" ]; then
               cp "badgeOutput/$sBadge" .
               git add "$sBadge"

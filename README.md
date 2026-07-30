@@ -37,6 +37,14 @@
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusBrowser.json">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusAgentDocs.json">
   <br>
+  <!-- The security lane runs the passing security-boundary regression
+       suite. Its companion label states the scope honestly: a green badge
+       is a regression subset, NOT a claim that the full boundary-hardening
+       invariant set is verified. The label is widened once those
+       invariants are in the lane and green. -->
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/RoryBarnes/vaibify/badges/statusSecurity.json">
+  <img src="https://img.shields.io/badge/scope-regression%20subset-lightgrey.svg">
+  <br>
   <!-- The scheduled lanes keep GitHub's own badges: they really do run on
        main, on a timer, so "the latest run" IS main's state. Nobody
        watches a nightly or weekly run, so these are the badges most
