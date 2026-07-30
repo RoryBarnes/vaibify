@@ -946,7 +946,7 @@ LIST_FALSIFICATIONS = [
     # VALUE. Reverting the connect gate to the value-only fbSessionOwnsContainer
     # admits a second browser session replaying the owner's copied lease.
     Falsification(
-        nodeid='tests/testLiveSessionBoundary.py::testConnectRefusesSecondSessionPresentingACopiedLease',
+        nodeid='tests/testConnectHubOwnershipGate.py::test_hub_connect_refuses_second_session_with_a_copied_lease',
         source='vaibify/gui/routes/workflowRoutes.py',
         old="""    if containerOwnership.fbBrowserSessionOwnsLease(
         dictContainerOwners, sName, sBrowserSessionId, sLeaseId,

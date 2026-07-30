@@ -108,6 +108,61 @@ def test_hub_refuses_connect_bearing_a_foreign_lease(
 
 
 @pytest.mark.falsification
+def test_hub_connect_refuses_second_session_with_a_copied_lease(
+    appHub, clientBrowser,
+):
+    """A second hub browser session with the owner's copied lease is refused.
+
+    On the hub the connect handler is the SOLE ownership gate — unlike the
+    viewer, ``_fnAuthorizeContainer`` returns early for a hub and never runs
+    the viewer's second ``_fnAuthorizeExistingViewerOwner`` check — so this
+    drives the exact path Sweep C1 hardens. Session A claims the container
+    (binding the owner record to A) and connects. Session B redeems its OWN
+    credential but copies A's genuine lease value onto the connect. The lease
+    VALUE is real, yet it is bound to A's session, so B must be refused 409
+    and must not take the owner record; the true owner still reconnects.
+
+    Kills: in workflowRoutes._fnRequireOwningLeaseForConnect, the
+    session-bound ``fbBrowserSessionOwnsLease`` check reverted to the
+    value-only ``fbSessionOwnsContainer``, so a copied lease value alone
+    admits a foreign session and lets it take the container.
+    """
+    responseClaim = clientBrowser.post(
+        f"/api/registry/{S_CONTAINER_NAME}/claim",
+    )
+    assert responseClaim.status_code == 200, responseClaim.text
+    sLeaseId = responseClaim.json()["sLeaseId"]
+    responseOwner = clientBrowser.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        headers={"X-Vaibify-Lease": sLeaseId},
+    )
+    assert responseOwner.status_code == 200, responseOwner.text
+
+    clientSessionB = TestClient(
+        appHub,
+        headers={"X-Session-Token": fsBootstrapCredential(appHub)},
+    )
+    responseSessionB = clientSessionB.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        headers={"X-Vaibify-Lease": sLeaseId},
+    )
+    assert responseSessionB.status_code == 409, responseSessionB.text
+    recordOwner = appHub.state.dictContainerOwners[S_CONTAINER_NAME]
+    assert recordOwner.sLeaseId == sLeaseId, (
+        "a refused connect must not change the owning lease"
+    )
+
+    responseOwnerAgain = clientBrowser.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        headers={"X-Vaibify-Lease": sLeaseId},
+    )
+    assert responseOwnerAgain.status_code == 200, (
+        "the true owner must still connect with its own lease "
+        f"({responseOwnerAgain.text})"
+    )
+
+
+@pytest.mark.falsification
 def test_release_refuses_second_session_presenting_a_copied_lease(
     appHub, clientBrowser,
 ):
