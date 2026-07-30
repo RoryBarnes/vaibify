@@ -362,29 +362,24 @@ async def test_terminal_ws_route_delegates_to_guard():
     mockWs.close.assert_awaited_once_with(code=4003)
 
 
-# -- empty-shared-token fail-closed (M2) ----------------------------------
+# -- empty-credential fail-closed (4401) ----------------------------------
 
 
-@pytest.mark.falsification
-def test_empty_shared_token_fails_closed_4401():
-    """An empty configured shared token must not clear the token gate.
+def test_empty_credential_fails_closed_4401():
+    """An empty browser credential must be refused at the token gate.
 
-    Kills: M2: drop bool(sSharedToken) guard in fbCheckSharedToken
-    (line 56) -> 'return sPresented == sSharedToken'
+    After Sweep A the WebSocket gate authenticates a per-browser credential,
+    not a shared token; a connection presenting an empty ``sToken`` carries
+    no valid credential, so ``fiContainerSessionRejectionCode`` must reject
+    it 4401 (bad token) and never fall through to the owning-lease check —
+    the fail-closed-when-unconfigured property, now enforced by credential
+    validation rather than the retired shared-token guard.
     """
-    # When the hub starts with an empty session token, the shared-token
-    # gate must stay fail-closed: a loopback browser presenting the same
-    # empty token ('' == '') must NOT clear the CSRF/trust check just
-    # because both sides are empty. The bool(sSharedToken) guard is the
-    # only fail-closed-when-unconfigured defense, so an owning-lease holder
-    # presenting an empty token is rejected at the token gate (4401), never
-    # admitted to the lease check.
     dictCtx = {
         "sSessionToken": "",
         "dictContainerOwners": _fdictOwnersWithOwner(),
     }
     conn = _fconnBrowser(sToken="")
-    assert webSocketAuthorization.fbCheckSharedToken(conn, "") is False
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         conn, dictCtx, S_CONTAINER,
     ) == 4401

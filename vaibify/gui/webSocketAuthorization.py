@@ -25,8 +25,6 @@ process-global allow set.
 
 __all__ = [
     "fbCheckOrigin",
-    "fbCheckSharedToken",
-    "fbCheckLeaseOwnership",
     "fsBrowserSessionIdForCredential",
     "fbCheckBoundLeaseOwnership",
     "fbCheckAgentToken",
@@ -57,20 +55,6 @@ def fbCheckOrigin(connection):
     :func:`fbCheckAgentToken` so the two lanes never blur together.
     """
     return fbValidateWebSocketOrigin(connection)
-
-
-def fbCheckSharedToken(connection, sSharedToken):
-    """Return True when the connection presents the shared session token."""
-    sPresented = connection.query_params.get("sToken", "")
-    return bool(sSharedToken) and sPresented == sSharedToken
-
-
-def fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
-    """Return True when the presented lease owns the named container."""
-    sLeaseId = connection.query_params.get("sLeaseId", "")
-    return containerOwnership.fbSessionOwnsContainer(
-        dictContainerOwners, sName, sLeaseId,
-    )
 
 
 def fsBrowserSessionIdForCredential(connection, dictBrowserSessions):

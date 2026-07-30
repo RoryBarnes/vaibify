@@ -104,12 +104,6 @@ LIST_FALSIFICATIONS = [
         new='return fElapsedSeconds > fGraceSeconds',
     ),
     Falsification(
-        nodeid='tests/testWebSocketAuthorization.py::test_empty_shared_token_fails_closed_4401',
-        source='vaibify/gui/webSocketAuthorization.py',
-        old='return bool(sSharedToken) and sPresented == sSharedToken',
-        new='return sPresented == sSharedToken',
-    ),
-    Falsification(
         nodeid='tests/testWebSocketAuthorization.py::test_agent_lane_served_while_browser_session_live',
         source='vaibify/gui/webSocketAuthorization.py',
         old="""    if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
