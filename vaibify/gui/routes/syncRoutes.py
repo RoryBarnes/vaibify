@@ -2434,20 +2434,31 @@ def _fnRegisterEphemeralSecretSweep(app, dictCtx):
     from vaibify.config.ephemeralStore import fnSweepStaleEphemeralFiles
 
     def fnSweepAtStartup(_app):
-        fnSweepStaleEphemeralFiles(
-            setProtectedPaths=_fsetMountedHostPaths(dictCtx),
-        )
+        setMounted = _fsetMountedHostPaths(dictCtx)
+        if setMounted is None:
+            # Enumeration failed: we cannot tell which files a live
+            # container still bind-mounts, so deleting any of them could
+            # leave that container permanently unstartable (Docker fails
+            # the mount and stubs a directory where the file was). Forbid
+            # the sweep entirely rather than proceed with nothing
+            # protected -- an empty protected set is the DESTRUCTIVE
+            # direction, not the safe one.
+            return
+        fnSweepStaleEphemeralFiles(setProtectedPaths=setMounted)
 
     app.state.listLifespanStartup.append(fnSweepAtStartup)
 
 
 def _fsetMountedHostPaths(dictCtx):
-    """Return every host path bind-mounted by any container.
+    """Return every host path bind-mounted by any container, or None.
 
-    Includes stopped containers: a stopped container is restartable,
-    and its mounts are re-resolved at start. An unreachable daemon
-    yields the empty set, which makes the sweep skip nothing rather
-    than delete something still in use -- the safe direction.
+    Includes stopped containers: a stopped container is restartable, and
+    its mounts are re-resolved at start. An unreachable daemon returns
+    ``None`` -- deliberately distinct from an empty set (enumerated, no
+    mounts) -- so the caller forbids the sweep entirely rather than
+    proceeding with nothing protected, which would delete files a live
+    container still mounts. Age is not evidence of garbage; reachability
+    is, and an unreachable daemon means reachability is unknown.
     """
     setPaths = set()
     try:
@@ -2457,5 +2468,5 @@ def _fsetMountedHostPaths(dictCtx):
                 if sSource:
                     setPaths.add(sSource)
     except Exception:  # noqa: BLE001 — never block hub startup
-        return set()
+        return None
     return setPaths

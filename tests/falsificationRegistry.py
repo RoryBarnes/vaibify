@@ -835,6 +835,17 @@ LIST_FALSIFICATIONS = [
         old="        for sPath in (sSourceAbs, sDestAbs):",
         new="        for sPath in (sDestAbs,):",
     ),
+    # An unreachable Docker daemon yields no protected paths; proceeding
+    # with an empty protected set deletes credential files a live
+    # container still mounts. Enumeration failure must forbid the sweep.
+    Falsification(
+        nodeid='tests/testEphemeralStore.py::test_sweep_is_forbidden_when_the_daemon_is_unreachable',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old="""        setMounted = _fsetMountedHostPaths(dictCtx)
+        if setMounted is None:""",
+        new="""        setMounted = _fsetMountedHostPaths(dictCtx)
+        if False:""",
+    ),
     # A mount at the workspace root is an ANCESTOR of the destination;
     # the destination is a descendant of the mount. Dropping the
     # descendant direction of the overlap check lets that rm -rf through.
