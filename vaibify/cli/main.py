@@ -173,6 +173,23 @@ def _fnOpenBrowserUnlessSuppressed(sUrl):
     ).start()
 
 
+def _fsLaunchUrlWithCapability(sBaseUrl, app):
+    """Append a one-time bootstrap capability to the browser launch URL.
+
+    The capability authorises the launched browser to exchange it once for
+    a per-browser session credential. It goes in the URL FRAGMENT so it
+    never reaches the server's access log, and it is never echoed to the
+    terminal. Apps without a browser-session store (e.g. the setup wizard)
+    fall back to the bare URL.
+    """
+    from vaibify.gui import browserSession
+    dictStore = getattr(app.state, "dictBrowserSessions", None)
+    if dictStore is None:
+        return sBaseUrl
+    sCapability = browserSession.fsMintBootstrapCapability(dictStore)
+    return f"{sBaseUrl}/#bootstrap={sCapability}"
+
+
 def fnLaunchHub(iExplicitPort):
     """Start the hub-mode server and open the browser.
 
@@ -196,7 +213,9 @@ def fnLaunchHub(iExplicitPort):
         sUrl = f"http://127.0.0.1:{iPort}"
         click.echo(f"Starting Vaibify hub at {sUrl}")
         app = fappCreateHubApplication(iExpectedPort=iPort)
-        _fnOpenBrowserUnlessSuppressed(sUrl)
+        _fnOpenBrowserUnlessSuppressed(
+            _fsLaunchUrlWithCapability(sUrl, app),
+        )
         uvicorn.run(
             app, host="127.0.0.1", port=iPort,
             log_level="warning", timeout_graceful_shutdown=3,
@@ -310,7 +329,9 @@ def gui(sProjectName):
         sWorkspaceRoot=sRoot, sTerminalUserArg=sTerminalUser,
         iExpectedPort=8050,
     )
-    _fnOpenBrowserUnlessSuppressed(sUrl)
+    _fnOpenBrowserUnlessSuppressed(
+        _fsLaunchUrlWithCapability(sUrl, app),
+    )
     uvicorn.run(
         app, host="127.0.0.1", port=8050,
         log_level="warning", timeout_graceful_shutdown=3,

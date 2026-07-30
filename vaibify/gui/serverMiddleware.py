@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
 
 from . import actionCatalog
+from . import browserSession
 from . import containerOwnership
 
 __all__ = [
@@ -181,15 +182,31 @@ def _fsContainerIdFromPath(sPath):
 
 
 def _fbBrowserTokenRejected(request):
-    """Return True when a browser request to a guarded path lacks the token."""
+    """Return True when a browser request to a guarded path lacks credentials.
+
+    Accepts either a valid per-browser credential minted via the capability
+    bootstrap (``/api/bootstrap``) or, transitionally, the shared hub
+    session token. ``/api/session-token`` and ``/api/bootstrap`` are the
+    unauthenticated entry points and are exempt.
+    """
     sPath = request.url.path
     bNeedsToken = (
-        sPath.startswith("/api/") and sPath != "/api/session-token"
+        sPath.startswith("/api/")
+        and sPath not in ("/api/session-token", "/api/bootstrap")
     )
     if not bNeedsToken:
         return False
-    sExpected = request.app.state.sSessionToken
-    return _fsBrowserPresentedToken(request, sPath) != sExpected
+    sPresented = _fsBrowserPresentedToken(request, sPath)
+    if sPresented and sPresented == request.app.state.sSessionToken:
+        return False
+    dictBrowserSessions = getattr(
+        request.app.state, "dictBrowserSessions", None,
+    )
+    if dictBrowserSessions is not None and browserSession.fbValidateCredential(
+        dictBrowserSessions, sPresented,
+    ):
+        return False
+    return True
 
 
 def _fsBrowserPresentedToken(request, sPath):

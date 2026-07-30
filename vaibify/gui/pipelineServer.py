@@ -71,6 +71,7 @@ __all__ = [
 
 from . import actionCatalog
 from . import agentSessionBridge
+from . import browserSession
 from . import conftestManager
 from . import containerOwnership
 from . import workflowManager
@@ -1777,6 +1778,38 @@ def _fnRegisterStaticFiles(app, dictCtx):
                 "session token.",
             )
         return {"sToken": dictCtx["sSessionToken"]}
+
+    @app.post("/api/bootstrap")
+    async def fnBootstrapSession(request: Request):
+        """Exchange a launch capability for a per-browser credential.
+
+        The capability is carried in the browser's URL fragment and
+        posted here once; the container never holds it, so the agent lane
+        is refused outright. Redemption is bounded-replay: a retried
+        exchange within the capability's TTL returns the same credential.
+        """
+        if request.headers.get(
+            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="The in-container agent must not bootstrap a "
+                "browser session.",
+            )
+        try:
+            dictBody = await request.json()
+        except Exception:  # noqa: BLE001 — malformed body is just invalid
+            dictBody = {}
+        sCapability = (dictBody or {}).get("sCapability", "")
+        sSessionId, sCredential = browserSession.ftRedeemCapability(
+            dictCtx["dictBrowserSessions"], sCapability,
+        )
+        if not sCredential:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired bootstrap capability.",
+            )
+        return {"sSessionId": sSessionId, "sCredential": sCredential}
 
     if os.path.isdir(STATIC_DIRECTORY):
         app.mount(
