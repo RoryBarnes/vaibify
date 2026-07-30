@@ -102,6 +102,15 @@ var VaibifyWorkflowManager = (function () {
         if (elBanner) elBanner.hidden = true;
     }
 
+    /* Incremented on every workflow selection. A load or refresh that
+     * started before the current generation is stale: the user switched
+     * workflows while it was in flight, so applying its result would
+     * overwrite the workflow they actually switched to (the double-click
+     * / switch-during-load race). The server-side workflow-identity check
+     * that rejects a stale WRITE lands with the A1 enforcement layer; this
+     * is the rendering-side guard that keeps a stale READ off the screen. */
+    var _iWorkflowGeneration = 0;
+
     async function fnSelectWorkflow(
         sId, sWorkflowPathArg, sWorkflowName, iSizeBytes
     ) {
@@ -110,18 +119,24 @@ var VaibifyWorkflowManager = (function () {
         if (bShowBanner) {
             _fnShowLargeWorkflowLoadingBanner(sWorkflowName, iSize);
         }
+        _iWorkflowGeneration += 1;
+        var iThisGeneration = _iWorkflowGeneration;
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sWorkflowPathArg);
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnActivateWorkflow(
                 sId, dictResult, sWorkflowName);
             fnCheckOriginDrift(sId, false);
         } catch (error) {
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         } finally {
-            _fnHideLargeWorkflowLoadingBanner();
+            if (iThisGeneration === _iWorkflowGeneration) {
+                _fnHideLargeWorkflowLoadingBanner();
+            }
         }
     }
 
@@ -133,14 +148,20 @@ var VaibifyWorkflowManager = (function () {
         var sPath = VaibifyApp.fsGetWorkflowPath();
         if (!sId || !sPath) return;
         _bRefreshing = true;
+        var iThisGeneration = _iWorkflowGeneration;
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sPath);
+            /* A workflow switch during the refresh supersedes it; applying
+             * this refresh would write the old workflow's data onto the
+             * newly selected one. */
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnRefreshWorkflowData(dictResult);
             await fnCheckOriginDrift(sId, false);
             VaibifyApp.fnShowToast(
                 "Project refreshed", "info");
         } catch (error) {
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
