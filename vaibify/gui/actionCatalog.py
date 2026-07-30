@@ -841,6 +841,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # The supervised party must never switch its own supervision on
     # or off; Supervised mode is toggled by the researcher only.
     ("POST", "/api/workflow/{sContainerId}/supervision/configure"),
+    # The capability-bootstrap exchange: mints a per-browser session
+    # credential from a launch capability the container never holds. The
+    # endpoint itself 403s the agent lane; it is control-plane, never
+    # agent-invokable.
+    ("POST", "/api/bootstrap"),
     # Control-plane endpoints used by the UI to bootstrap a session;
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),

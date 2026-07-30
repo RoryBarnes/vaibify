@@ -3729,7 +3729,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # import), and the parsed loopback-origin predicate replacing a
     # prefix compare. All three are the module's existing
     # request-validation responsibility.
-    "pipelineServer.py": 2174,
+    # +33 (2026-07-30): the capability-bootstrap exchange endpoint
+    # (/api/bootstrap, A1) and the viewer first-connect session-binding
+    # (P0). Both extend this module's existing session-establishment
+    # responsibility; no new seam.
+    "pipelineServer.py": 2243,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -3813,7 +3817,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +18 (2026-07-29): the ten hub control-plane routes added to
     # SET_INTENTIONALLY_EXCLUDED_PATHS so the agent lane refuses the
     # control plane. Governing every route is the catalog's whole job.
-    "actionCatalog.py": 950,
+    # +5 (2026-07-30): the /api/bootstrap auth endpoint excluded from the
+    # agent lane (A1). Same governance responsibility.
+    "actionCatalog.py": 955,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
