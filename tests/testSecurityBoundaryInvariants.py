@@ -259,6 +259,11 @@ def testContainerScopedHttpMutationRequiresOwningLease(appViewerAndDocker):
     and proven unchanged, so the refusal is a true no-write, not a 500 after
     a partial mutation. As a positive control, the owner presenting its own
     credential + lease still succeeds, proving the gate is not blanket-deny.
+
+    Kills: in routeScope.ContainerAwareRoute.get_route_handler, neutralize
+    the ``if iCode:`` short-circuit so a refused container-owner request
+    falls through to the endpoint body — the non-owning session's mutation
+    then succeeds instead of being rejected.
     """
     appViewer, connectionDocker = appViewerAndDocker
     clientOwner = TestClient(
@@ -469,9 +474,16 @@ def testContainerReadScopeIsAFrozenRatchetedAllowlist():
 # ─────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.falsification
 def testFutureSchemaVersionIsNotSilentlyDowngraded():
     """A workflow newer than this build must not be silently downgraded.
+
+    The falsification-of-record for this behaviour is the canonical,
+    registered ``testWorkflowSchemaForwardCompat.py::
+    test_future_schema_version_is_refused_not_downgraded`` (same mutation,
+    stronger ``pytest.raises`` assertion). This copy stays as a plain
+    regression check inside the security bundle; it carries no
+    ``falsification`` marker so it does not claim a second, redundant
+    registry entry for the identical mutant.
 
     THE GENERAL RULE. ``fnApplyMigrations`` runs forward migrators until
     the dict reaches ``I_CURRENT_WORKFLOW_VERSION`` and then

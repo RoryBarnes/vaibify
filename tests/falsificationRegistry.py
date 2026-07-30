@@ -81,6 +81,16 @@ LIST_FALSIFICATIONS = [
     ):""",
         new="""    if sLeaseId and recordOwner.sLeaseId == sLeaseId:""",
     ),
+    # The HTTP-boundary counterpart of the copied-lease WebSocket gate:
+    # ContainerAwareRoute short-circuits a container-owner request that
+    # the strong predicate refuses. Neutralizing the short-circuit lets a
+    # non-owning browser session mutate a container it never claimed.
+    Falsification(
+        nodeid='tests/testSecurityBoundaryInvariants.py::testContainerScopedHttpMutationRequiresOwningLease',
+        source='vaibify/gui/routeScope.py',
+        old='                if iCode:\n                    return _fresponseForbidden(iCode)',
+        new='                if False:\n                    return _fresponseForbidden(iCode)',
+    ),
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_release_stops_keep_alive',
         source='vaibify/gui/containerOwnership.py',
