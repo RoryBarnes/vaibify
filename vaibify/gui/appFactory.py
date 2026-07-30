@@ -105,10 +105,15 @@ def _fappBuildApplication(dictConfig):
     resolution instead of the last build winning for both.
     """
     from . import pipelineServer
+    from . import routeScope
     app = FastAPI(
         title=dictConfig["sTitle"],
         lifespan=serverLifespan._alifespanShared,
     )
+    # Install the container-owner route class BEFORE any route registers:
+    # route_class only governs routes added after the assignment, so an
+    # ordering slip would silently leave routes unauthorized.
+    app.router.route_class = routeScope.ContainerAwareRoute
     sSessionToken = secrets.token_urlsafe(32)
     _fnInitialiseApplicationState(app, dictConfig, sSessionToken)
     serverMiddleware.fnRegisterMiddleware(app)
@@ -119,6 +124,7 @@ def _fappBuildApplication(dictConfig):
     )
     _fnRegisterHubLifecycle(app, dictCtx, dictConfig)
     _fnRegisterBackgroundTasks(app, dictCtx)
+    routeScope.fnValidateRouteScopesOrRaise(app)
     return app
 
 

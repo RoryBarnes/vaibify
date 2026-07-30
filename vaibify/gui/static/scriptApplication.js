@@ -184,10 +184,19 @@ const VaibifyApp = (function () {
         window.fetch = function (sUrl, dictOptions) {
             dictOptions = dictOptions || {};
             dictOptions.headers = dictOptions.headers || {};
+            /* The lease is read INSIDE the wrapper on every call: the
+               wrapper is installed before the container is claimed, so
+               capturing fsGetLeaseId() at install time would send an empty
+               lease forever. The lease travels as a header, never a query
+               param, so it never lands in an access log or browser
+               history. */
+            var sLease = fsGetLeaseId();
             if (typeof dictOptions.headers.set === "function") {
                 dictOptions.headers.set("X-Session-Token", sToken);
+                if (sLease) dictOptions.headers.set("X-Vaibify-Lease", sLease);
             } else {
                 dictOptions.headers["X-Session-Token"] = sToken;
+                if (sLease) dictOptions.headers["X-Vaibify-Lease"] = sLease;
             }
             return originalFetch.call(window, sUrl, dictOptions);
         };
@@ -590,8 +599,7 @@ const VaibifyApp = (function () {
     async function fnEnterNoWorkflow(sId) {
         try {
             var dictConnect = await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sId +
-                "?sLeaseId=" + encodeURIComponent(fsGetLeaseId()));
+                "/api/connect/" + sId);
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;

@@ -64,17 +64,13 @@ var VaibifyWorkflowManager = (function () {
 
     /* The connect handler is gated on the owner-of-record lease, the
      * same principal the WebSockets present, so a second browser tab
-     * cannot bypass the claim route's 409 and take the workflow. */
-    function _fsLeaseQuery() {
-        return "&sLeaseId=" +
-            encodeURIComponent(VaibifyApp.fsGetLeaseId());
-    }
-
+     * cannot bypass the claim route's 409 and take the workflow. The
+     * lease rides the X-Vaibify-Lease header the authenticated-fetch
+     * wrapper attaches, never a query param. */
     function _fdictFetchWorkflow(sId, sPath) {
         return VaibifyApi.fdictPostRaw(
             "/api/connect/" + sId +
-            "?sWorkflowPath=" + encodeURIComponent(sPath) +
-            _fsLeaseQuery()
+            "?sWorkflowPath=" + encodeURIComponent(sPath)
         );
     }
 
@@ -436,8 +432,7 @@ var VaibifyWorkflowManager = (function () {
             await VaibifyApi.fdictPostRaw(
                 "/api/connect/" + sContainerId +
                 "?sWorkflowPath=" +
-                encodeURIComponent(sWorkflowPath) +
-                _fsLeaseQuery()
+                encodeURIComponent(sWorkflowPath)
             );
         } catch (error) {
             VaibifyApp.fnShowToast(

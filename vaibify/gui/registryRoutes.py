@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
+from vaibify.gui.routeScope import fsLeaseFromRequest
 
 logger = logging.getLogger("vaibify")
 
@@ -118,10 +119,14 @@ def _fnRegisterGetRegistry(app, dictCtx):
     """
 
     @app.get("/api/registry")
-    async def fnGetRegistry(sLeaseId: str = ""):
+    async def fnGetRegistry(request: Request):
         from vaibify.config.registryManager import (
             flistGetAllProjectsWithStatus,
         )
+        # The caller's lease rides the X-Vaibify-Lease header (never a query
+        # param, which would leak into logs); it is used only to grey tiles
+        # another session holds, never as authorization.
+        sLeaseId = fsLeaseFromRequest(request)
         _fnReapStaleContainerClaims()
         listRegistered = flistGetAllProjectsWithStatus()
         listVaibify, listUnrecognized = (
@@ -200,11 +205,13 @@ def _fnRegisterClaimContainer(app, dictCtx):
     """Register POST /api/registry/{sName}/claim."""
 
     @app.post("/api/registry/{sName}/claim")
-    async def fdictClaimContainer(
-        request: Request, sName: str, sLeaseId: str = "",
-    ):
+    async def fdictClaimContainer(request: Request, sName: str):
         from vaibify.gui import containerOwnership, browserSession
         _fnRejectInvalidProjectName(sName)
+        # The re-claim lease rides the X-Vaibify-Lease header so a reloaded
+        # tab re-asserting its sessionStorage lease is idempotent without the
+        # lease ever appearing in a query string.
+        sLeaseId = fsLeaseFromRequest(request)
         iPort = getattr(app.state, "iHubPort", 0)
         sContainerId = _fsResolveContainerId(dictCtx, sName)
         # Bind the lease to the claiming browser session. A shared-token
@@ -272,9 +279,12 @@ def _fnRegisterReleaseContainer(app, dictCtx):
     del dictCtx
 
     @app.post("/api/registry/{sName}/release")
-    async def fdictReleaseContainer(sName: str, sLeaseId: str = ""):
+    async def fdictReleaseContainer(request: Request, sName: str):
         from vaibify.gui import containerOwnership
         _fnRejectInvalidProjectName(sName)
+        # The owning lease rides the X-Vaibify-Lease header; release only
+        # succeeds when it matches the owner record.
+        sLeaseId = fsLeaseFromRequest(request)
         bReleased = containerOwnership.fnReleaseOwnership(
             app.state.dictContainerOwners, sName, sLeaseId,
         )

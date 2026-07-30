@@ -331,11 +331,12 @@ var VaibifyContainerManager = (function () {
     }
 
     async function _fbClaimContainer(sName) {
-        var sLeaseId = VaibifyApp.fsGetLeaseForContainer(sName);
+        /* Any re-claim lease rides the X-Vaibify-Lease header the
+           authenticated-fetch wrapper attaches, never a query param. */
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
-                "/claim?sLeaseId=" + encodeURIComponent(sLeaseId), {});
+                "/claim", {});
             VaibifyApp.fnRecordClaimedLease(sName, dictResult.sLeaseId);
             return true;
         } catch (error) {
@@ -356,11 +357,12 @@ var VaibifyContainerManager = (function () {
 
     async function fnReleaseClaim(sName) {
         if (!sName) return;
-        var sLeaseId = VaibifyApp.fsGetLeaseForContainer(sName);
+        /* The owning lease rides the X-Vaibify-Lease header the
+           authenticated-fetch wrapper attaches, never a query param. */
         try {
             await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
-                "/release?sLeaseId=" + encodeURIComponent(sLeaseId), {});
+                "/release", {});
         } catch (error) {
             /* release is best-effort; the grace reaper will clean up */
         }
@@ -786,8 +788,10 @@ var VaibifyContainerManager = (function () {
     }
 
     function _fsRegistryUrl() {
-        var sLeaseId = VaibifyApp.fsGetLeaseId();
-        return "/api/registry?sLeaseId=" + encodeURIComponent(sLeaseId);
+        /* The caller's lease rides the X-Vaibify-Lease header the
+           authenticated-fetch wrapper attaches; the registry endpoint reads
+           it only to grey tiles another session holds. */
+        return "/api/registry";
     }
 
     async function _fsResolveContainerId(sName) {

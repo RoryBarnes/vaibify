@@ -10,8 +10,10 @@ from fastapi import HTTPException, Request
 from typing import Optional
 
 from .. import browserSession
+from .. import containerOwnership
 from .. import workflowManager
 from ..actionCatalog import fnAgentAction
+from ..routeScope import fnRouteScope, fsLeaseFromRequest, S_SCOPE_OWNER_ESTABLISHING
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     CreateWorkflowRequest,
@@ -20,7 +22,6 @@ from ..pipelineServer import (
     fsContainerNameForId,
     _fsSanitizeServerError,
 )
-from ..webSocketAuthorization import fbCheckLeaseOwnership
 
 
 _PATTERN_WORKFLOW_FILENAME = re.compile(
@@ -261,8 +262,9 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
     connect had no gate at all: a second browser tab could skip the
     claim route's 409 and take the workflow, the project-repo path, and
     the container's agent session out from under the owning session.
-    The lease check here is the shared guard's own
-    ``fbCheckLeaseOwnership``, so the two lanes can never drift apart.
+    The lease check here reads the ``X-Vaibify-Lease`` header (the HTTP
+    lease transport) and the owner-of-record, the same principal the
+    WebSocket gates use, so the two lanes can never drift apart.
 
     An unowned container is left open ONLY in the single-container
     viewer, whose bootstrap that is: the viewer has no claim route and
@@ -286,7 +288,9 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
                 "Claim this container before connecting to it.",
             )
         return
-    if fbCheckLeaseOwnership(requestHttp, dictContainerOwners, sName):
+    if containerOwnership.fbSessionOwnsContainer(
+        dictContainerOwners, sName, fsLeaseFromRequest(requestHttp),
+    ):
         return
     raise HTTPException(409, "In use in another browser session")
 
@@ -295,6 +299,7 @@ def _fnRegisterConnect(app, dictCtx):
     """Register POST /api/connect route."""
 
     @app.post("/api/connect/{sContainerId}")
+    @fnRouteScope(S_SCOPE_OWNER_ESTABLISHING, "sContainerId", "id")
     async def fnConnect(
         requestHttp: Request,
         sContainerId: str,

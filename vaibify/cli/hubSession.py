@@ -26,6 +26,7 @@ import click
 
 
 S_BROWSER_TOKEN_HEADER = "X-Session-Token"
+S_LEASE_HEADER = "X-Vaibify-Lease"
 F_DEFAULT_TIMEOUT_SECONDS = 300.0
 F_BOOTSTRAP_TIMEOUT_SECONDS = 30.0
 _T_TERMINAL_EVENT_TYPES = (
@@ -89,6 +90,7 @@ def _fobjParseResponseBody(response):
 def ftSendHttpRequest(
     sBaseUrl, sSessionToken, sMethod, sPath, dictFields=None,
     fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
+    sLeaseId="",
 ):
     """Return ``(iStatusCode, objBody)`` for one researcher-lane call.
 
@@ -98,12 +100,17 @@ def ftSendHttpRequest(
     because a GET body is non-portable and FastAPI binds primitives from
     the query.
     ``dictQuery`` is for the control-plane routes that declare their
-    parameters as query values on a POST — claim, release, connect.
+    parameters as query values on a POST — connect's ``sWorkflowPath``.
+    ``sLeaseId``, when set, rides the ``X-Vaibify-Lease`` header (never a
+    query param, which would leak into logs): claim's re-claim lease,
+    release's owning lease, connect's owning lease.
     """
     import requests
     dictHeaders = (
         {S_BROWSER_TOKEN_HEADER: sSessionToken} if sSessionToken else {}
     )
+    if sLeaseId:
+        dictHeaders[S_LEASE_HEADER] = sLeaseId
     dictKeywords = {}
     if dictQuery:
         dictKeywords["params"] = dict(dictQuery)
@@ -222,7 +229,7 @@ def fnReleaseContainer(dictSession):
             "POST",
             "/api/registry/%s/release" % dictSession["sContainerName"],
             None, F_BOOTSTRAP_TIMEOUT_SECONDS,
-            dictQuery={"sLeaseId": dictSession["sLeaseId"]},
+            sLeaseId=dictSession["sLeaseId"],
         )
     except HubSessionError as error:
         click.echo("Warning: lease release failed: %s" % error, err=True)
@@ -268,10 +275,8 @@ def fnConnectWorkflow(dictSession, sWorkflowPath):
             dictSession["sBaseUrl"], dictSession["sSessionToken"],
             "POST", "/api/connect/%s" % dictSession["sContainerId"],
             None, F_DEFAULT_TIMEOUT_SECONDS,
-            dictQuery={
-                "sWorkflowPath": sPath,
-                "sLeaseId": dictSession["sLeaseId"],
-            },
+            dictQuery={"sWorkflowPath": sPath},
+            sLeaseId=dictSession["sLeaseId"],
         ),
         "Project connect",
     )

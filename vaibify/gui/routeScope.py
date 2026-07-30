@@ -1,0 +1,349 @@
+"""Container-owner authorization for HTTP routes (the strong predicate).
+
+Sweep A gave every browser request a per-session credential and upgraded
+the WebSocket gate to the strong predicate — a valid ``BrowserSessionRecord``
+credential AND a lease bound to that session
+(:func:`containerOwnership.fbBrowserSessionOwnsLease`). This module carries
+the same predicate onto the container-scoped HTTP routes, closing gap-2: a
+same-hub browser tab that never claimed a container could previously mutate
+it because ``SessionTokenMiddleware`` authorizes only the hub-wide credential,
+never the per-container owning lease.
+
+The mechanism is a scope marker plus a route class:
+
+* :func:`fnRouteScope` (and the :func:`fnContainerOwner` specialization)
+  stamps a scope declaration onto an endpoint, exactly as
+  ``actionCatalog.fnAgentAction`` stamps an agent-action name. A
+  ``container-owner`` declaration names its target path parameter and the
+  identity kind (``"id"`` resolves via ``OwnerRecord.sContainerId``;
+  ``"name"`` is the owner-map key directly).
+* :class:`ContainerAwareRoute`, installed on ``app.router.route_class``
+  before any route registers, calls :func:`fiAuthorizeContainerHttp` before
+  the endpoint body for every ``container-owner`` route.
+
+A mutating route carries a ``container-owner`` scope implicitly when its path
+template carries ``{sContainerId}`` — the marker of a viewer container-session
+route — so the 80-odd such routes need no per-handler decoration. The
+override decorator is for the exceptions: the owner-*establishing* connect
+route, and any future ``container-read`` owned-container GET (declared, not
+yet enforced). Non-container control-plane routes are named in
+:data:`DICT_CONTROL_PLANE_SCOPES`; a mutating route matching none of these
+fails at app construction (:func:`fnValidateRouteScopesOrRaise`), so an
+unscoped route can never ship (default-deny).
+"""
+
+from fastapi.routing import APIRoute
+from starlette.responses import Response
+
+from . import actionCatalog
+from . import browserSession
+from . import containerOwnership
+
+__all__ = [
+    "S_LEASE_HEADER_NAME",
+    "S_SCOPE_PUBLIC_STATIC",
+    "S_SCOPE_BOOTSTRAP_CAPABILITY",
+    "S_SCOPE_BROWSER_HUB",
+    "S_SCOPE_CONTAINER_OWNER",
+    "S_SCOPE_OWNER_ESTABLISHING",
+    "S_SCOPE_CONTAINER_READ",
+    "DICT_CONTROL_PLANE_SCOPES",
+    "SET_CONTAINER_READ_ROUTES",
+    "ContainerAwareRoute",
+    "fnRouteScope",
+    "fnContainerOwner",
+    "fdictResolveRouteScope",
+    "fiAuthorizeContainerHttp",
+    "fnValidateRouteScopesOrRaise",
+    "fsLeaseFromRequest",
+]
+
+
+# The lease rides an HTTP header, never a query param: a query string leaks
+# into access logs and browser history. The WebSocket transport keeps its
+# query-param lease (its URL is never logged like an XHR is).
+S_LEASE_HEADER_NAME = "X-Vaibify-Lease"
+
+S_SCOPE_PUBLIC_STATIC = "public-static"
+S_SCOPE_BOOTSTRAP_CAPABILITY = "bootstrap-capability"
+S_SCOPE_BROWSER_HUB = "browser-hub"
+S_SCOPE_CONTAINER_OWNER = "container-owner"
+S_SCOPE_OWNER_ESTABLISHING = "owner-establishing"
+# Temporary: owned-container GETs are declared but NOT yet enforced. The
+# frozen allowlist below is ratcheted by the architectural invariant, so a
+# new route cannot silently adopt the deferred scope.
+S_SCOPE_CONTAINER_READ = "container-read"
+
+_SET_VALID_SCOPES = frozenset({
+    S_SCOPE_PUBLIC_STATIC,
+    S_SCOPE_BOOTSTRAP_CAPABILITY,
+    S_SCOPE_BROWSER_HUB,
+    S_SCOPE_CONTAINER_OWNER,
+    S_SCOPE_OWNER_ESTABLISHING,
+    S_SCOPE_CONTAINER_READ,
+})
+
+_SET_STATE_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+I_AUTHORIZED = 0
+I_REJECT_FORBIDDEN = 403
+
+
+# Non-container control-plane routes and the scope each carries. A mutating
+# HTTP route whose path template carries no ``{sContainerId}`` segment is
+# authorized by the hub-wide browser credential (``browser-hub``), mints or
+# arbitrates ownership (``owner-establishing``), or is the credential
+# bootstrap itself (``bootstrap-capability``). This map is the frozen
+# allowlist: a new mutating control-plane route must be classified here or
+# fail app construction.
+DICT_CONTROL_PLANE_SCOPES = {
+    ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
+    ("POST", "/api/registry"): S_SCOPE_BROWSER_HUB,
+    ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/build"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/start"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/settings"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/projects/create"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/registry/{sName}/claim"): S_SCOPE_OWNER_ESTABLISHING,
+    ("POST", "/api/registry/{sName}/release"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/session/spawn"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
+}
+
+# Owned-container GETs deliberately left unenforced this slice. Frozen empty
+# ON PURPOSE: no route may adopt ``container-read`` until reads-enforcement
+# lands, and the architectural invariant fails CI if this set grows.
+SET_CONTAINER_READ_ROUTES = frozenset()
+
+
+def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
+    """Stamp an authorization scope onto an HTTP route endpoint.
+
+    Metadata only, exactly like ``actionCatalog.fnAgentAction``: the
+    behaviour lives in :class:`ContainerAwareRoute`, which reads this stamp
+    when it builds the route handler. A ``container-owner`` (or
+    ``owner-establishing``) declaration must also name its ``sTargetParam``
+    path parameter and ``sIdentityKind`` (``"id"`` or ``"name"``) so the
+    authority can resolve which owner record governs the request.
+
+    Placed BELOW the ``@app.<verb>(...)`` line (decorators apply bottom-up)
+    so it stamps the same function object FastAPI registers. Applying it to
+    anything but a plain endpoint function is rejected, so a marker attached
+    to an already-built ``APIRoute`` — the misuse that would silently do
+    nothing — raises instead.
+    """
+    if sScope not in _SET_VALID_SCOPES:
+        raise ValueError(f"Unknown route scope: {sScope!r}")
+
+    def _fnDecorator(fnEndpoint):
+        if isinstance(fnEndpoint, APIRoute) or not callable(fnEndpoint):
+            raise TypeError(
+                "fnRouteScope must decorate an endpoint function, below the "
+                "@app.<verb> line; it received a "
+                f"{type(fnEndpoint).__name__}."
+            )
+        fnEndpoint._dictRouteScope = {
+            "sScope": sScope,
+            "sTargetParam": sTargetParam,
+            "sIdentityKind": sIdentityKind,
+        }
+        return fnEndpoint
+    return _fnDecorator
+
+
+def fnContainerOwner(sTargetParam="sContainerId", sIdentityKind="id"):
+    """Declare a route as container-owner scoped (the common specialization).
+
+    A thin wrapper over :func:`fnRouteScope`; use it to gate a mutating
+    route whose owner is keyed by ``sIdentityKind`` on ``sTargetParam``.
+    Most container routes need no decoration — the ``{sContainerId}``
+    segment implies this scope — so this exists for the routes whose target
+    parameter or identity kind departs from that default.
+    """
+    return fnRouteScope(
+        S_SCOPE_CONTAINER_OWNER, sTargetParam, sIdentityKind,
+    )
+
+
+def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
+    """Return the scope declaration for a route, or ``None`` when unscoped.
+
+    Resolution order: an explicit :func:`fnRouteScope` stamp wins; else a
+    mutating ``{sContainerId}`` path is container-owner by convention; else
+    a control-plane route named in :data:`DICT_CONTROL_PLANE_SCOPES` carries
+    its declared scope. Anything else is ``None`` — which
+    :func:`fnValidateRouteScopesOrRaise` treats as a construction error for a
+    mutating route (default-deny).
+    """
+    dictExplicit = getattr(fnEndpoint, "_dictRouteScope", None)
+    if dictExplicit is not None:
+        return dictExplicit
+    setNormalized = set(setMethods or ())
+    bMutating = bool(_SET_STATE_MUTATING_METHODS & setNormalized)
+    if "{sContainerId}" in sPath and bMutating:
+        return {
+            "sScope": S_SCOPE_CONTAINER_OWNER,
+            "sTargetParam": "sContainerId",
+            "sIdentityKind": "id",
+        }
+    for sMethod in setNormalized:
+        sScope = DICT_CONTROL_PLANE_SCOPES.get((sMethod, sPath))
+        if sScope is not None:
+            return {"sScope": sScope, "sTargetParam": None,
+                    "sIdentityKind": None}
+    return None
+
+
+def fsLeaseFromRequest(request):
+    """Return the ``X-Vaibify-Lease`` header value, or '' when absent."""
+    return request.headers.get(S_LEASE_HEADER_NAME.lower(), "")
+
+
+def _ftResolveOwnerTarget(dictContainerOwners, dictScope, sTargetValue):
+    """Return ``(sName, sContainerId)`` the scope's target resolves to.
+
+    For the ``"name"`` identity kind the path value IS the owner-map key.
+    For ``"id"`` the owner record carrying that Docker id is found and its
+    name returned; an id no owner serves yields ``(None, sContainerId)``, so
+    the browser lane below answers "claim first".
+    """
+    if dictScope.get("sIdentityKind") == "name":
+        return (sTargetValue, "")
+    for sName, recordOwner in dictContainerOwners.items():
+        if recordOwner.sContainerId == sTargetValue:
+            return (sName, sTargetValue)
+    return (None, sTargetValue)
+
+
+def fiAuthorizeContainerHttp(request, appState, dictScope):
+    """Return ``0`` when the request may act on its target container, else 403.
+
+    The strong predicate on the HTTP boundary. The in-container agent lane
+    is decided first: an ``X-Vaibify-Session`` header present but not
+    authorizing this container id is refused immediately, never falling
+    through to the browser check. The browser lane requires BOTH a valid
+    per-session credential and a lease bound to that session
+    (:func:`containerOwnership.fbBrowserSessionOwnsLease`), so a second tab
+    replaying a copied lease is refused even though the lease value is
+    genuine. A container with no owner record answers "claim first".
+    """
+    dictContainerOwners = getattr(appState, "dictContainerOwners", {}) or {}
+    dictBrowserSessions = getattr(appState, "dictBrowserSessions", {}) or {}
+    sTargetValue = request.path_params.get(dictScope.get("sTargetParam"), "")
+    sName, sContainerId = _ftResolveOwnerTarget(
+        dictContainerOwners, dictScope, sTargetValue,
+    )
+    sAgentToken = request.headers.get(
+        actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+    )
+    if sAgentToken:
+        if containerOwnership.fbAgentTokenAuthorizesContainerId(
+            dictContainerOwners, sAgentToken, sContainerId,
+        ):
+            return I_AUTHORIZED
+        return I_REJECT_FORBIDDEN
+    sCredential = request.headers.get("x-session-token", "")
+    sBrowserSessionId = browserSession.fsSessionIdForCredential(
+        dictBrowserSessions, sCredential,
+    )
+    if not sBrowserSessionId:
+        return I_REJECT_FORBIDDEN
+    if sName is None or dictContainerOwners.get(sName) is None:
+        return I_REJECT_FORBIDDEN
+    if containerOwnership.fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId,
+        fsLeaseFromRequest(request),
+    ):
+        return I_AUTHORIZED
+    return I_REJECT_FORBIDDEN
+
+
+class ContainerAwareRoute(APIRoute):
+    """Route class that enforces the container-owner predicate before serving.
+
+    Installed on ``app.router.route_class`` before any route registers, so
+    every route becomes an instance and none can slip past the authority
+    through a registration-ordering accident. For a ``container-owner``
+    route the wrapper runs :func:`fiAuthorizeContainerHttp` first and short-
+    circuits the endpoint on refusal; every other scope (and the read-only
+    routes) pass straight through.
+    """
+
+    def get_route_handler(self):
+        fnOriginalHandler = super().get_route_handler()
+
+        async def fnAuthorizedHandler(request):
+            dictScope = fdictResolveRouteScope(
+                self.methods, self.path, self.endpoint,
+            )
+            if (
+                dictScope is not None
+                and dictScope["sScope"] == S_SCOPE_CONTAINER_OWNER
+            ):
+                iCode = fiAuthorizeContainerHttp(
+                    request, request.app.state, dictScope,
+                )
+                if iCode:
+                    return _fresponseForbidden(iCode)
+            return await fnOriginalHandler(request)
+
+        return fnAuthorizedHandler
+
+
+def _fresponseForbidden(iStatusCode):
+    """Return the JSON refusal for a caller that does not own the container."""
+    return Response(
+        status_code=iStatusCode,
+        content=(
+            '{"detail":"You do not hold this container\'s lease; claim or '
+            'connect to it first."}'
+        ),
+        media_type="application/json",
+    )
+
+
+def _fbIsApplicableMutatingRoute(route):
+    """Return True for an HTTP APIRoute the default-deny check must classify.
+
+    WebSocket routes carry no ``methods`` and are gated separately by the
+    WebSocket authority; static mounts have no ``endpoint``; FastAPI's own
+    ``/openapi.json`` and docs routes are read-only. So the applicable set
+    is exactly the state-mutating :class:`APIRoute` instances.
+    """
+    if not isinstance(route, APIRoute):
+        return False
+    setMethods = set(getattr(route, "methods", None) or ())
+    return bool(_SET_STATE_MUTATING_METHODS & setMethods)
+
+
+def fnValidateRouteScopesOrRaise(app):
+    """Raise when any mutating route on ``app`` declares no authorization scope.
+
+    Default-deny at construction: a state-mutating route that is neither a
+    ``{sContainerId}`` container route nor a named control-plane route has no
+    scope, so it would ship unauthorized. Failing here makes that impossible
+    to merge.
+    """
+    listUnscoped = []
+    for route in app.routes:
+        if not _fbIsApplicableMutatingRoute(route):
+            continue
+        dictScope = fdictResolveRouteScope(
+            route.methods, route.path, route.endpoint,
+        )
+        if dictScope is None:
+            listUnscoped.append(
+                (sorted(route.methods), route.path),
+            )
+    if listUnscoped:
+        raise RuntimeError(
+            "Mutating routes with no declared authorization scope "
+            "(default-deny — add a {sContainerId} segment, an explicit "
+            "@fnRouteScope, or a DICT_CONTROL_PLANE_SCOPES entry):\n  "
+            + "\n  ".join(
+                f"{listMethods} {sPath}"
+                for listMethods, sPath in sorted(listUnscoped)
+            )
+        )
