@@ -2,17 +2,22 @@
 
 Source: ``vaibify/containerImage/entrypoint.sh``.
 
-The migration is the safety net for legacy workspace volumes that
-carry root-owned files (created before the two-phase entrypoint
-landed in commit a2b29f2). A regression here resurfaces as
-"researcher cannot push to GitHub": git's object writes hit
-permission-denied on a root-owned ``.git/objects/<prefix>``
-directory and the agent has no sudo to fix it.
+The migration is the safety net for legacy workspace volumes that carry
+root-owned files (created before the two-phase entrypoint landed in
+commit a2b29f2). A regression here resurfaces as "researcher cannot push
+to GitHub": git's object writes hit permission-denied on a root-owned
+``.git/objects/<prefix>`` directory and the agent has no sudo to fix it.
 
-Real root ownership cannot be synthesised inside a pytest run, so
-the helper is exercised with stub ``find`` and ``chown`` shell
-functions that record their invocations. The logic under test is
-purely about *when* the chown fires, not about the chown itself.
+Both the detection scan and the chown are MOUNT-AWARE: a configured bind
+mount can be nested beneath ``${WORKSPACE}``, and a blanket recursive
+chown (or bare find) would traverse into it and rewrite ownership across
+the host directory. These exercise the *when* (detection), the pruning of
+nested mounts, the fail-closed behaviour when the mount table is
+unreadable, and the mountinfo parsing (component boundary + octal escape
+decoding). Real root ownership and real bind mounts cannot be synthesised
+from an unprivileged pytest process, so ``find``/``chown`` and the
+mount-listing helper are stubbed; the real-container nested-bind
+behaviour is the container-acceptance lane's job.
 """
 
 import os
@@ -31,8 +36,8 @@ def _fsRunHelperScript(sWorkspace, sBody):
     """Source entrypoint.sh in a subshell and run sBody.
 
     The main block at the bottom of entrypoint.sh is guarded by a
-    ``BASH_SOURCE == 0`` check, so sourcing leaves the helpers
-    defined without executing the entrypoint itself.
+    ``BASH_SOURCE == 0`` check, so sourcing leaves the helpers defined
+    without executing the entrypoint itself.
     """
     sScript = (
         "set +e\n"
@@ -41,100 +46,168 @@ def _fsRunHelperScript(sWorkspace, sBody):
         "source " + _S_ENTRYPOINT + "\n"
         + sBody
     )
-    resultProc = subprocess.run(
+    return subprocess.run(
         ["bash", "-c", sScript],
         capture_output=True, text=True,
     )
-    return resultProc
 
 
 def test_migration_noop_on_clean_workspace(tmp_path):
     """No chown fires when no entry is root-owned.
 
-    On a clean volume ``find -uid 0 -print -quit`` returns empty;
-    the helper must return without invoking chown so container
-    boot stays fast.
+    On a clean volume ``find -uid 0 -print -quit`` returns empty; the
+    helper must return without invoking chown so container boot stays
+    fast.
     """
-    sWorkspace = str(tmp_path)
     sBody = (
         'CONTAINER_USER=test\n'
         'chown() { echo CHOWN_INVOKED >&2; return 0; }\n'
         'fnMigrateWorkspaceOwnership\n'
     )
-    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    resultProc = _fsRunHelperScript(str(tmp_path), sBody)
     assert resultProc.returncode == 0, resultProc.stderr
     assert "CHOWN_INVOKED" not in resultProc.stderr
     assert "Migration complete" not in resultProc.stdout
 
 
-def test_migration_runs_recursive_chown_when_root_owned_entry_found(tmp_path):
-    """A single root-owned entry triggers the full recursive chown.
+def test_migration_chowns_found_paths_not_a_blanket_recursive(tmp_path):
+    """A root-owned entry triggers a chown of the found paths, not -R.
 
-    The find stub returns a fake hit (real root-owned files cannot
-    be created from an unprivileged test process); the chown stub
-    records the exact argument vector so the test can assert
-    ``-R --no-dereference`` and the right user/path land together.
+    The old implementation ran ``chown -R ${WORKSPACE}``, which walks
+    straight into any bind mount nested under the workspace. The new one
+    chowns the paths ``find`` reports (bind subtrees pruned), so the
+    argument vector must carry ``--no-dereference`` and the user but NOT
+    ``-R``.
     """
-    sWorkspace = str(tmp_path)
+    # The chown runs via ``find -print0 | xargs -0 chown``; xargs execs
+    # the real chown binary (a shell-function stub would not intercept
+    # it, and macOS chown rejects the GNU --no-dereference flag), so stub
+    # xargs to capture the exact command it would run.
     sBody = (
         'CONTAINER_USER=test\n'
+        # Readable mount table, no nested mounts (deterministic across
+        # macOS, which has no /proc/self/mountinfo).
+        'fnListNestedWorkspaceMounts() { return 0; }\n'
         'find() { echo /workspace/Repo/.git/objects/3f; return 0; }\n'
-        'chown() { echo "CHOWN_ARGS:$*" >&2; return 0; }\n'
+        'xargs() { echo "XARGS:$*" >&2; return 0; }\n'
         'fnMigrateWorkspaceOwnership\n'
     )
-    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    resultProc = _fsRunHelperScript(str(tmp_path), sBody)
     assert resultProc.returncode == 0, resultProc.stderr
-    sExpected = (
-        "CHOWN_ARGS:-R --no-dereference test:test " + sWorkspace
-    )
-    assert sExpected in resultProc.stderr, resultProc.stderr
     assert "Migration complete" in resultProc.stdout
+    assert "XARGS:" in resultProc.stderr, resultProc.stderr
+    assert "chown --no-dereference test:test" in resultProc.stderr
+    assert "-R" not in resultProc.stderr, (
+        "the mount-aware migration must not run a blanket recursive chown"
+    )
 
 
 def test_migration_does_nothing_when_workspace_missing(tmp_path):
-    """Helper returns silently when WORKSPACE does not exist.
-
-    Guards against the helper trying to chown a path the host has
-    not yet provisioned (e.g., container started before its volume
-    mount finished resolving).
-    """
-    sWorkspace = str(tmp_path / "does-not-exist")
+    """Helper returns silently when WORKSPACE does not exist."""
     sBody = (
         'CONTAINER_USER=test\n'
         'chown() { echo CHOWN_INVOKED >&2; return 0; }\n'
         'fnMigrateWorkspaceOwnership\n'
     )
-    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    resultProc = _fsRunHelperScript(
+        str(tmp_path / "does-not-exist"), sBody,
+    )
     assert resultProc.returncode == 0, resultProc.stderr
     assert "CHOWN_INVOKED" not in resultProc.stderr
 
 
-def test_migration_uses_deep_scan_not_shallow_loop(tmp_path):
-    """The trigger is ``find -uid 0`` over the whole tree.
+def test_migration_prunes_nested_mounts_from_scan_and_chown(tmp_path):
+    """Nested mount points are pruned from both the scan and the chown.
 
-    Regression guard: the previous implementation only scanned
-    top-level entries of ``${WORKSPACE}/`` via a shell glob, so a
-    nested root-owned path under a top-level repo dir owned by the
-    container user was silently skipped. This test re-defines
-    ``find`` to log its argv to a file (the helper redirects
-    ``find``'s stderr to /dev/null so we cannot use stderr here)
-    and asserts the helper calls it with ``-uid 0 -print -quit``
-    against ``${WORKSPACE}``.
+    With bind mounts nested under the workspace, both ``find`` calls must
+    carry a ``-path ... -prune`` expression naming each mount, so neither
+    the detection scan nor the chown descends into a mounted host dir.
     """
-    sWorkspace = str(tmp_path)
     sFindLog = str(tmp_path / "find.log")
     sBody = (
         'CONTAINER_USER=test\n'
-        'find() { printf "FIND_ARGS:%s\\n" "$*" >> "' + sFindLog + '"; '
-        'return 0; }\n'
+        'fnListNestedWorkspaceMounts() {\n'
+        '  printf "%s\\n" /workspace/data /workspace/sub; return 0; }\n'
+        'find() { printf "FIND:%s\\n" "$*" >> "' + sFindLog + '"; '
+        'echo /workspace/hit; return 0; }\n'
         'chown() { return 0; }\n'
         'fnMigrateWorkspaceOwnership\n'
     )
-    resultProc = _fsRunHelperScript(sWorkspace, sBody)
+    resultProc = _fsRunHelperScript(str(tmp_path), sBody)
     assert resultProc.returncode == 0, resultProc.stderr
     with open(sFindLog) as fileHandle:
-        sFindLogContents = fileHandle.read()
-    sExpected = (
-        "FIND_ARGS:" + sWorkspace + " -uid 0 -print -quit"
+        sLog = fileHandle.read()
+    # Detection scan carries the prune + the -uid 0 probe.
+    assert (
+        "( -path /workspace/data -o -path /workspace/sub ) -prune "
+        "-o -uid 0 -print -quit" in sLog
+    ), sLog
+    # The chown-list scan carries the same prune + -print0.
+    assert (
+        "( -path /workspace/data -o -path /workspace/sub ) -prune "
+        "-o -print0" in sLog
+    ), sLog
+
+
+def test_migration_fails_closed_when_mount_table_unreadable(tmp_path):
+    """An unreadable mount table skips the migration, never a blind chown.
+
+    If we cannot enumerate the mounts we cannot tell a bind from the
+    volume's own storage, so a recursive chown could rewrite ownership
+    across a mounted host directory. The helper must warn and return.
+    """
+    sBody = (
+        'CONTAINER_USER=test\n'
+        'fnListNestedWorkspaceMounts() { return 1; }\n'
+        'find() { echo /workspace/hit; return 0; }\n'
+        'chown() { echo CHOWN_INVOKED >&2; return 0; }\n'
+        'fnMigrateWorkspaceOwnership\n'
     )
-    assert sExpected in sFindLogContents, sFindLogContents
+    resultProc = _fsRunHelperScript(str(tmp_path), sBody)
+    assert resultProc.returncode == 0, resultProc.stderr
+    assert "CHOWN_INVOKED" not in resultProc.stderr
+    assert "Migration complete" not in resultProc.stdout
+    assert "skipping workspace-ownership migration" in resultProc.stderr
+
+
+def test_list_nested_mounts_parses_boundary_and_escapes(tmp_path):
+    """The mount lister keeps proper descendants and decodes octal escapes.
+
+    Locks the awk contract: ``/workspace`` itself is excluded (equal, not
+    descendant), ``/workspace-foo`` is excluded (not a component
+    boundary), ``/other`` is excluded (not under the workspace), and the
+    ``\\040`` space / ``\\134`` backslash escapes are decoded.
+    """
+    sMountInfo = tmp_path / "mountinfo"
+    sMountInfo.write_text(
+        "23 28 0:21 / /workspace rw - tmpfs vol rw\n"
+        "24 23 0:22 / /workspace/data rw - ext4 /dev/sda1 rw\n"
+        "25 23 0:23 / /workspace-foo rw - ext4 /dev/sda2 rw\n"
+        "26 24 0:24 / /workspace/sub/deep rw - ext4 /dev/sda3 rw\n"
+        "27 23 0:25 / /workspace/my\\040data rw - ext4 /dev/sda4 rw\n"
+        "28 1 0:26 / /other rw - ext4 /dev/sda5 rw\n"
+        "29 23 0:27 / /workspace/back\\134slash rw - ext4 /dev/sda6 rw\n",
+        encoding="utf-8",
+    )
+    sBody = (
+        'fnListNestedWorkspaceMounts "' + str(sMountInfo) + '"\n'
+    )
+    resultProc = _fsRunHelperScript("/workspace", sBody)
+    assert resultProc.returncode == 0, resultProc.stderr
+    listLines = resultProc.stdout.splitlines()
+    assert listLines == [
+        "/workspace/data",
+        "/workspace/sub/deep",
+        "/workspace/my data",
+        "/workspace/back\\slash",
+    ], resultProc.stdout
+
+
+def test_list_nested_mounts_fails_closed_on_unreadable(tmp_path):
+    """A missing mount table returns non-zero and emits nothing."""
+    sBody = (
+        'fnListNestedWorkspaceMounts "' + str(tmp_path / "nope") + '"\n'
+        'echo "RC:$?"\n'
+    )
+    resultProc = _fsRunHelperScript("/workspace", sBody)
+    assert "RC:1" in resultProc.stdout, resultProc.stdout

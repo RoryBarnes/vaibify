@@ -1192,24 +1192,101 @@ fnSourceBinariesInEnv() {
 }
 
 # ---------------------------------------------------------------------------
-# fnMigrateWorkspaceOwnership: One-time chown for pre-split-entrypoint volumes
-# Uses ``find -uid 0 -print -quit`` so the scan is deep (catches nested
-# residue such as ``.git/objects/3f`` left by a pre-split host-side git
-# operation, which an earlier top-level-only check missed and which
-# blocks the in-container agent from writing further objects into that
-# prefix) but still fast in the common case — find exits on the first
-# match, so a clean volume costs at most one directory walk.
+# fnListNestedWorkspaceMounts: emit every bind/other mount point nested
+# STRICTLY BELOW ${WORKSPACE}, one per line, mountinfo octal escapes
+# decoded. ${WORKSPACE} itself is a named-volume mount point, so it is a
+# proper-descendant test, never an equal one. Returns non-zero (and emits
+# nothing) if /proc/self/mountinfo cannot be read or awk cannot parse it,
+# so the caller can fail closed. Newline-separation is safe here: a
+# vaibify bind target cannot contain a newline (the host-side repository
+# validator rejects it), and non-vaibify mounts never land under
+# ${WORKSPACE}.
+# ---------------------------------------------------------------------------
+fnListNestedWorkspaceMounts() {
+    local sMountInfo="${1:-/proc/self/mountinfo}"
+    [ -r "${sMountInfo}" ] || return 1
+    awk -v ws="${WORKSPACE}" '
+        function decode(s) {
+            gsub(/\\040/, " ", s); gsub(/\\011/, "\t", s)
+            gsub(/\\012/, "\n", s); gsub(/\\134/, "\\", s)
+            return s
+        }
+        {
+            mp = decode($5)
+            # Proper descendant: under ws on a COMPONENT boundary (ws
+            # followed by "/"), and not ws itself — so "/workspace-foo"
+            # is not treated as under "/workspace".
+            if (mp != ws && index(mp, ws "/") == 1) { print mp }
+        }
+    ' "${sMountInfo}"
+}
+
+# ---------------------------------------------------------------------------
+# fnMigrateWorkspaceOwnership: One-time chown for pre-split-entrypoint
+# volumes. Both the detection scan and the chown are MOUNT-AWARE: they
+# prune every bind mount nested under ${WORKSPACE} so neither descends
+# into a mounted host directory. ${WORKSPACE} is a named volume, but a
+# configured bind mount can be nested BENEATH it, and a blanket
+# ``chown -R ${WORKSPACE}`` (or a bare ``find ${WORKSPACE}``) would
+# traverse straight into that bind and rewrite ownership across the host
+# directory. The scan stays deep within the volume's OWN storage (so it
+# still catches nested residue such as ``.git/objects/3f`` a pre-split
+# host-side git operation left) while skipping the bind subtrees — which
+# also stops a root-owned file inside a skipped bind from re-triggering
+# this "one-time" migration on every start.
+#
+# Fail closed: if the mount table cannot be read or parsed we cannot tell
+# a bind from the volume's own storage, so we skip the migration rather
+# than risk a recursive chown into a mount.
 # ---------------------------------------------------------------------------
 fnMigrateWorkspaceOwnership() {
     if [ ! -d "${WORKSPACE}" ]; then
         return
     fi
-    if [ -z "$(find "${WORKSPACE}" -uid 0 -print -quit 2>/dev/null)" ]; then
+
+    local sMounts
+    if ! sMounts=$(fnListNestedWorkspaceMounts); then
+        echo "[vaib] WARNING: /proc/self/mountinfo unreadable or" \
+             "unparseable; skipping workspace-ownership migration to" \
+             "avoid a recursive chown that could touch a bind mount." >&2
         return
     fi
+
+    # Build a find prune expression for every nested mount point.
+    local -a saPruneArgs=()
+    local sMountPoint
+    while IFS= read -r sMountPoint; do
+        [ -n "${sMountPoint}" ] || continue
+        if [ "${#saPruneArgs[@]}" -gt 0 ]; then
+            saPruneArgs+=( -o )
+        fi
+        saPruneArgs+=( -path "${sMountPoint}" )
+    done <<< "${sMounts}"
+
+    # Detection: any root-owned path in the volume's OWN storage (bind
+    # subtrees pruned)? If none, there is nothing to migrate.
+    local sFound
+    if [ "${#saPruneArgs[@]}" -gt 0 ]; then
+        sFound=$(find "${WORKSPACE}" \( "${saPruneArgs[@]}" \) -prune \
+            -o -uid 0 -print -quit 2>/dev/null)
+    else
+        sFound=$(find "${WORKSPACE}" -uid 0 -print -quit 2>/dev/null)
+    fi
+    if [ -z "${sFound}" ]; then
+        return
+    fi
+
     echo "[vaib] One-time migration: adjusting workspace ownership..."
-    chown -R --no-dereference \
-        "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
+    if [ "${#saPruneArgs[@]}" -gt 0 ]; then
+        find "${WORKSPACE}" \( "${saPruneArgs[@]}" \) -prune -o -print0 \
+            2>/dev/null \
+            | xargs -0 --no-run-if-empty chown --no-dereference \
+                  "${CONTAINER_USER}:${CONTAINER_USER}"
+    else
+        find "${WORKSPACE}" -print0 2>/dev/null \
+            | xargs -0 --no-run-if-empty chown --no-dereference \
+                  "${CONTAINER_USER}:${CONTAINER_USER}"
+    fi
     echo "[vaib] Migration complete."
 }
 
