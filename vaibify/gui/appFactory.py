@@ -14,6 +14,7 @@ import time
 
 from fastapi import FastAPI
 
+from . import browserSession
 from . import containerOwnership
 from . import serverLifespan
 from . import serverMiddleware
@@ -35,6 +36,9 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     app.state.dictContainerOwners = (
         containerOwnership.fdictCreateOwnerRegistry()
     )
+    app.state.dictBrowserSessions = (
+        browserSession.fdictCreateBrowserSessionStore()
+    )
     app.state.iExpectedPort = dictConfig["iExpectedPort"]
     app.state.iActiveWebSockets = 0
     app.state.fLastActivityMonotonic = time.monotonic()
@@ -53,6 +57,7 @@ def _fdictBuildApplicationContext(app, dictConfig, sSessionToken):
     dictCtx["sTerminalUser"] = dictConfig["sTerminalUser"]
     dictCtx["iPort"] = dictConfig["iExpectedPort"]
     dictCtx["dictContainerOwners"] = app.state.dictContainerOwners
+    dictCtx["dictBrowserSessions"] = app.state.dictBrowserSessions
     if dictConfig["bIsHub"]:
         dictCtx["bIsHub"] = True
     return dictCtx
