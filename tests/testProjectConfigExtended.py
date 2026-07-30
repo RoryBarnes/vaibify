@@ -72,7 +72,7 @@ def test_repo_destination_traversal_is_rejected():
     host data outside the workspace root. The host validator must
     reject it before it reaches container.conf.
 
-    Kills: In projectConfig._fbValidateRepositoryDestinations, drop the
+    Kills: In projectConfig._fbIsSafeRepositoryDestination, drop the
     ``".." in sDestination.split("/")`` guard from the isabs/.. check.
     """
     dictConfig = _fdictConfigWithRepos([
@@ -96,9 +96,9 @@ def test_repo_destination_colliding_with_bind_mount_is_rejected():
     to ${WORKSPACE}/data, whose rm -rf deletes the mounted host
     directory's contents through the mount.
 
-    Kills: In projectConfig._fbValidateRepositoryDestinations, replace
-    the collision check with a constant ``if any([]):`` so no bind
-    target is ever consulted.
+    Kills: In projectConfig._flistAbsoluteBindTargets, return an empty
+    list before the mount loop, so no bind target is ever consulted by
+    the overlap check.
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
@@ -170,6 +170,163 @@ def test_repo_plain_relative_destination_is_allowed():
 def test_repo_without_destination_is_allowed():
     dictConfig = _fdictConfigWithRepos([
         {"name": "r", "url": "https://x/r.git"},
+    ])
+    assert fbValidateConfig(dictConfig) is True
+
+
+# --- F1: the name itself derives a SOURCE path, the Critical miss. A repo
+#     named 'data' clones straight onto a /workspace/data bind mount with
+#     no traversal at all; the host validator must reject it. ---
+
+@pytest.mark.falsification
+def test_repo_name_colliding_with_bind_mount_is_rejected():
+    """A repo NAME that lands on a bind mount clones into the host dir.
+
+    ``${WORKSPACE}/${name}`` is the clone/update source; if it equals a
+    bind target the startup clone writes into the mounted host directory,
+    no destination or traversal required.
+
+    Kills: In projectConfig._fbNoBindOverlap, iterate only
+    ``(sDestAbs,)`` so the name-derived SOURCE path is never checked
+    against the bind targets.
+    """
+    dictConfig = _fdictConfigWithRepos(
+        [{"name": "data", "url": "https://x/r.git"}],
+        [{"host": "~/Documents", "container": "/workspace/data"}],
+    )
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_name_reserved_git_is_rejected():
+    """A repo named '.git' would turn /workspace back into a repo root."""
+    dictConfig = _fdictConfigWithRepos([
+        {"name": ".git", "url": "https://x/r.git"},
+    ])
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_name_reserved_vaibify_is_rejected():
+    dictConfig = _fdictConfigWithRepos([
+        {"name": ".vaibify", "url": "https://x/r.git"},
+    ])
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_name_with_slash_or_traversal_is_rejected():
+    for sBadName in ["../escape", "a/b", "..", ".", "x" * 300]:
+        dictConfig = _fdictConfigWithRepos([
+            {"name": sBadName, "url": "https://x/r.git"},
+        ])
+        assert fbValidateConfig(dictConfig) is False, sBadName
+
+
+def test_repo_field_with_conf_delimiter_is_rejected():
+    """A '|' or newline in any field would inject container.conf records."""
+    for dictBad in [
+        {"name": "a|b", "url": "https://x/r.git"},
+        {"name": "r", "url": "https://x/r.git\nmalicious|line"},
+        {"name": "r", "url": "https://x/r.git", "destination": "a|b"},
+        {"name": "r", "url": "https://x/r.git", "branch": "main\nx"},
+    ]:
+        dictConfig = _fdictConfigWithRepos([dictBad])
+        assert fbValidateConfig(dictConfig) is False, dictBad
+
+
+def test_repo_url_with_shell_metacharacter_is_rejected():
+    for sBadUrl in ["https://x/r.git;rm -rf /", "https://x/$(id).git",
+                    "https://x/r.git `whoami`", "https://x/ r.git"]:
+        dictConfig = _fdictConfigWithRepos([
+            {"name": "r", "url": sBadUrl},
+        ])
+        assert fbValidateConfig(dictConfig) is False, sBadUrl
+
+
+def test_repo_scp_like_url_is_allowed():
+    """The scp-like git form has no scheme but is legitimate."""
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "r", "url": "git@github.com:org/repo.git"},
+    ])
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_repo_install_method_enum_is_enforced():
+    for sMethod in [
+        "c_and_pip", "pip_no_deps", "pip_editable", "scripts_only",
+        "reference",
+    ]:
+        dictConfig = _fdictConfigWithRepos([
+            {"name": "r", "url": "https://x/r.git", "installMethod": sMethod},
+        ])
+        assert fbValidateConfig(dictConfig) is True, sMethod
+    dictBad = _fdictConfigWithRepos([
+        {"name": "r", "url": "https://x/r.git", "installMethod": "sudo_pip"},
+    ])
+    assert fbValidateConfig(dictBad) is False
+
+
+def test_repo_branch_charset_is_enforced():
+    dictOk = _fdictConfigWithRepos([
+        {"name": "r", "url": "https://x/r.git", "branch": "feature/x-1.2"},
+    ])
+    assert fbValidateConfig(dictOk) is True
+    dictBad = _fdictConfigWithRepos([
+        {"name": "r", "url": "https://x/r.git", "branch": "a..b"},
+    ])
+    assert fbValidateConfig(dictBad) is False
+
+
+def test_repo_dotdir_name_is_allowed():
+    """A non-reserved dot-name (e.g. '.claude') is a legitimate clone dir."""
+    dictConfig = _fdictConfigWithRepos([
+        {"name": ".claude", "url": "https://x/r.git"},
+    ])
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_repo_cross_entry_source_vs_destination_collision_is_rejected():
+    """One repo's clone source must not be another's relocation target."""
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "data", "url": "https://x/a.git"},
+        {"name": "b", "url": "https://x/b.git", "destination": "data"},
+    ])
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_duplicate_names_are_rejected():
+    for sSecondName in ["data", "DATA"]:
+        dictConfig = _fdictConfigWithRepos([
+            {"name": "data", "url": "https://x/a.git"},
+            {"name": sSecondName, "url": "https://x/b.git"},
+        ])
+        assert fbValidateConfig(dictConfig) is False, sSecondName
+
+
+def test_repo_destination_inside_own_source_is_rejected():
+    """A destination nested under its own source moves a dir into itself."""
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "code", "url": "https://x/a.git", "destination": "code/sub"},
+    ])
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_repo_destination_equal_to_source_is_allowed_noop():
+    """destination == source is a no-op relocation, not a self-overlap."""
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "code", "url": "https://x/a.git", "destination": "code"},
+    ])
+    assert fbValidateConfig(dictConfig) is True
+
+
+def test_repo_non_dictionary_entry_is_rejected():
+    dictConfig = _fdictConfigWithRepos(["not-a-dict"])
+    assert fbValidateConfig(dictConfig) is False
+
+
+def test_two_independent_repos_are_allowed():
+    """The common case — two ordinary repos — must still validate."""
+    dictConfig = _fdictConfigWithRepos([
+        {"name": "alpha", "url": "https://x/a.git"},
+        {"name": "beta", "url": "https://x/b.git", "destination": "libs/beta"},
     ])
     assert fbValidateConfig(dictConfig) is True
 

@@ -246,7 +246,7 @@ def fbValidateConfig(dictConfig):
         _fbValidatePackageManager,
         _fbValidateCondaPackages,
         _fbValidateListFields,
-        _fbValidateRepositoryDestinations,
+        _fbValidateRepositories,
         _fbValidateFeatures,
         _fbValidateDashboardPort,
         _fbValidateResourceLimits,
@@ -254,44 +254,199 @@ def fbValidateConfig(dictConfig):
     return all(fnCheck(dictConfig) for fnCheck in listChecks)
 
 
-def _fbValidateRepositoryDestinations(dictConfig):
-    """Reject repository destinations that escape the workspace or collide.
+# A repository ``name`` is a path basename (the clone directory); a
+# ``destination`` is an in-workspace relative path (where the clone is
+# moved). Both are interpolated into ``container.conf`` records of the
+# form ``name|url|branch|install_method[|destination]``, so ``|`` and the
+# record separators must never appear in any field, and ``name`` must not
+# be a traversal component or a vaibify-managed / repo-root directory.
+_S_SAFE_REPO_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+_S_SAFE_GIT_REF = re.compile(r"^[A-Za-z0-9._/-]+$")
+_SET_RESERVED_REPO_NAMES = frozenset({".vaibify", ".git", ".", ".."})
+_SET_VALID_INSTALL_METHODS = frozenset({
+    "c_and_pip", "pip_no_deps", "pip_editable", "scripts_only", "reference",
+})
+_I_MAX_REPO_FIELD_LENGTH = 256
+# container.conf field/record delimiters plus NUL, forbidden in every field.
+_S_FORBIDDEN_FIELD_CHARS = "|\n\r\x00"
+# Shell metacharacters and whitespace additionally forbidden in a URL. The
+# scp-like git form (``git@host:path``) is preserved: ``@ : / . - _ ~`` and
+# alphanumerics are allowed; command-injection characters are not.
+_S_URL_FORBIDDEN_CHARS = _S_FORBIDDEN_FIELD_CHARS + " \t;&$()<>`\"'\\*?{}[]"
 
-    A repository's ``destination`` becomes ``${WORKSPACE}/${destination}``
-    inside the container, and the entrypoint ``rm -rf``s that path before
-    relocating the clone. An unvalidated destination is therefore a
-    deletion primitive: a ``../`` value escapes the workspace, and a value
-    that lands on a bind mount deletes the mounted host directory's
-    contents. Both are refused here, at the host, before the value is ever
-    written into ``container.conf`` — defence at the validation layer, not
-    inside the container that would execute the delete.
+
+def _fbHasForbiddenFieldChar(sValue):
+    """True if a field contains a container.conf delimiter or NUL."""
+    return any(sChar in sValue for sChar in _S_FORBIDDEN_FIELD_CHARS)
+
+
+def _fbIsSafeRepositoryName(sName):
+    """True when a repo name is a safe, non-reserved path basename.
+
+    The name derives the clone SOURCE path ``${WORKSPACE}/${name}``, so an
+    unvalidated name is the same collision/deletion primitive as an
+    unvalidated destination, on the source side — a name of ``data`` clones
+    straight onto a ``/workspace/data`` bind mount with no traversal at all,
+    and a name of ``.git`` turns ``/workspace`` back into a repository root.
     """
+    if not sName or len(sName) > _I_MAX_REPO_FIELD_LENGTH:
+        return False
+    if sName in _SET_RESERVED_REPO_NAMES:
+        return False
+    return bool(_S_SAFE_REPO_NAME.match(sName))
+
+
+def _fbIsSafeRepositoryUrl(sUrl):
+    """True when a repo URL carries no shell metacharacters or whitespace."""
+    if not sUrl or len(sUrl) > _I_MAX_REPO_FIELD_LENGTH:
+        return False
+    return not any(sChar in sUrl for sChar in _S_URL_FORBIDDEN_CHARS)
+
+
+def _fbIsSafeGitRef(sRef):
+    """True when a branch/ref uses only the safe git-ref charset (or empty)."""
+    if not sRef:
+        return True
+    if len(sRef) > _I_MAX_REPO_FIELD_LENGTH or ".." in sRef:
+        return False
+    return bool(_S_SAFE_GIT_REF.match(sRef))
+
+
+def _fbIsSafeRepositoryDestination(sDestination):
+    """True when a destination is an in-workspace relative path (or empty).
+
+    An empty destination means "clone in place, do not relocate," so it is
+    valid and contributes no destination path to the overlap checks.
+    """
+    if not sDestination:
+        return True
+    if len(sDestination) > _I_MAX_REPO_FIELD_LENGTH:
+        return False
+    if _fbHasForbiddenFieldChar(sDestination):
+        return False
+    return not (
+        posixpath.isabs(sDestination) or ".." in sDestination.split("/")
+    )
+
+
+def _fbValidateRepositoryEntry(dictRepo):
+    """Validate one repository entry's type, name, url, ref, method, dest."""
+    if not isinstance(dictRepo, dict):
+        return False
+    if not _fbIsSafeRepositoryName(dictRepo.get("name") or ""):
+        return False
+    if not _fbIsSafeRepositoryUrl(dictRepo.get("url") or ""):
+        return False
+    if not _fbIsSafeGitRef(dictRepo.get("branch") or ""):
+        return False
+    sMethod = dictRepo.get("installMethod") or "pip_editable"
+    if sMethod not in _SET_VALID_INSTALL_METHODS:
+        return False
+    return _fbIsSafeRepositoryDestination(dictRepo.get("destination") or "")
+
+
+def _fbValidateRepositories(dictConfig):
+    """Reject unsafe repository entries and colliding source/dest paths.
+
+    Validates every entry's fields, then checks that no repository's
+    derived SOURCE (``${WORKSPACE}/${name}``) or DESTINATION
+    (``${WORKSPACE}/${destination}``) path collides with a bind mount,
+    another entry, or the entry's own source — the full class of the
+    name/destination path-collision hazard, at the host validation layer.
+    """
+    listRepos = dictConfig.get("repositories") or []
+    if not isinstance(listRepos, list):
+        return False
+    if not all(_fbValidateRepositoryEntry(dictRepo) for dictRepo in listRepos):
+        return False
+    return _fbRepositoryPathsAreSafe(dictConfig)
+
+
+def _ftRepositoryPaths(sWorkspace, dictRepo):
+    """Return ``(sSourceAbs, sDestAbs-or-None)`` for one repo, normalized."""
+    sSourceAbs = posixpath.normpath(
+        posixpath.join(sWorkspace, dictRepo.get("name") or "")
+    )
+    sDestination = dictRepo.get("destination") or ""
+    if not sDestination:
+        return (sSourceAbs, None)
+    return (
+        sSourceAbs,
+        posixpath.normpath(posixpath.join(sWorkspace, sDestination)),
+    )
+
+
+def _fbRepositoryPathsAreSafe(dictConfig):
+    """True when every repo source/dest path clears all overlap rules."""
     sWorkspace = posixpath.normpath(
         dictConfig.get("workspaceRoot") or "/workspace"
     )
     listBindTargets = _flistAbsoluteBindTargets(dictConfig)
-    for dictRepo in dictConfig.get("repositories") or []:
-        if not isinstance(dictRepo, dict):
+    listEntries = [
+        _ftRepositoryPaths(sWorkspace, dictRepo)
+        for dictRepo in dictConfig.get("repositories") or []
+        if isinstance(dictRepo, dict) and (dictRepo.get("name") or "")
+    ]
+    return (
+        _fbNoBindOverlap(listEntries, listBindTargets)
+        and _fbNoSameEntryOverlap(listEntries)
+        and _fbNoCrossEntryOverlap(listEntries)
+    )
+
+
+def _fbNoBindOverlap(listEntries, listBindTargets):
+    """True when no repo source or destination overlaps a bind target."""
+    for sSourceAbs, sDestAbs in listEntries:
+        for sPath in (sSourceAbs, sDestAbs):
+            if sPath is None:
+                continue
+            if any(
+                _fbPathsOverlapCaseInsensitive(sPath, sBind)
+                for sBind in listBindTargets
+            ):
+                return False
+    return True
+
+
+def _fbNoSameEntryOverlap(listEntries):
+    """True when no destination sits inside or above its own source.
+
+    An exact no-op (destination resolves to the source) is allowed; any
+    other overlap would move a directory into itself or delete part of its
+    own source.
+    """
+    for sSourceAbs, sDestAbs in listEntries:
+        if sDestAbs is None or sDestAbs.lower() == sSourceAbs.lower():
             continue
-        sDestination = dictRepo.get("destination") or ""
-        if not sDestination:
-            continue
-        if posixpath.isabs(sDestination) or ".." in sDestination.split("/"):
-            return False
-        # Resolve to the ABSOLUTE container path the entrypoint rm -rf's,
-        # then compare against every bind target in absolute space. The
-        # earlier workspace-relative form dropped a mount at the workspace
-        # root itself (empty relative string), so ``/workspace`` mounted +
-        # destination ``data`` slipped through and rm -rf'd the mount.
-        sDestAbs = posixpath.normpath(
-            posixpath.join(sWorkspace, sDestination)
-        )
-        if any(
-            _fbContainerPathsOverlap(sDestAbs, sBind)
-            for sBind in listBindTargets
-        ):
+        if _fbPathsOverlapCaseInsensitive(sSourceAbs, sDestAbs):
             return False
     return True
+
+
+def _fbNoCrossEntryOverlap(listEntries):
+    """True when no entry's source/dest overlaps another entry's source/dest.
+
+    Catches duplicate/case-colliding names (equal sources) and one repo's
+    clone target silently becoming another's relocation target.
+    """
+    for iFirst, tFirst in enumerate(listEntries):
+        listFirst = [sPath for sPath in tFirst if sPath is not None]
+        for iSecond, tSecond in enumerate(listEntries):
+            if iFirst == iSecond:
+                continue
+            listSecond = [sPath for sPath in tSecond if sPath is not None]
+            for sPathFirst in listFirst:
+                if any(
+                    _fbPathsOverlapCaseInsensitive(sPathFirst, sPathSecond)
+                    for sPathSecond in listSecond
+                ):
+                    return False
+    return True
+
+
+def _fbPathsOverlapCaseInsensitive(sFirst, sSecond):
+    """Case-insensitive equal-or-nested overlap of two absolute paths."""
+    return _fbContainerPathsOverlap(sFirst.lower(), sSecond.lower())
 
 
 def _fbContainerPathsOverlap(sFirst, sSecond):

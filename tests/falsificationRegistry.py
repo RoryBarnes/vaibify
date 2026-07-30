@@ -812,8 +812,10 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_destination_traversal_is_rejected',
         source='vaibify/config/projectConfig.py',
-        old='        if posixpath.isabs(sDestination) or ".." in sDestination.split("/"):',
-        new='        if posixpath.isabs(sDestination):',
+        old='''    return not (
+        posixpath.isabs(sDestination) or ".." in sDestination.split("/")
+    )''',
+        new='    return not posixpath.isabs(sDestination)',
     ),
     Falsification(
         nodeid='tests/testProjectConfigExtended.py::test_repo_destination_colliding_with_bind_mount_is_rejected',
@@ -823,6 +825,15 @@ LIST_FALSIFICATIONS = [
         new="""    listTargets = []
     return listTargets
     for dictMount in dictConfig.get("bindMounts") or []:""",
+    ),
+    # The repo NAME derives the clone SOURCE path ${WORKSPACE}/${name};
+    # dropping the source from the bind-overlap check lets a name that
+    # equals a bind target clone into the mounted host directory.
+    Falsification(
+        nodeid='tests/testProjectConfigExtended.py::test_repo_name_colliding_with_bind_mount_is_rejected',
+        source='vaibify/config/projectConfig.py',
+        old="        for sPath in (sSourceAbs, sDestAbs):",
+        new="        for sPath in (sDestAbs,):",
     ),
     # A mount at the workspace root is an ANCESTOR of the destination;
     # the destination is a descendant of the mount. Dropping the
