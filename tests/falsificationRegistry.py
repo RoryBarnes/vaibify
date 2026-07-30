@@ -2519,9 +2519,13 @@ def _fdictEntry(sRel):
         nodeid='tests/testCliHubSessionMutationCoverage.py::test_release_sends_the_lease_where_the_route_reads_it',
         source='vaibify/cli/hubSession.py',
         old="""            None, F_BOOTSTRAP_TIMEOUT_SECONDS,
-            dictQuery={"sLeaseId": dictSession["sLeaseId"]},""",
+            sLeaseId=dictSession["sLeaseId"],
+        )
+    except HubSessionError as error:""",
         new="""            {"sLeaseId": dictSession["sLeaseId"]},
-            F_BOOTSTRAP_TIMEOUT_SECONDS,""",
+            F_BOOTSTRAP_TIMEOUT_SECONDS,
+        )
+    except HubSessionError as error:""",
     ),
     Falsification(
         # Paths a route by the lease's key (container name) instead of

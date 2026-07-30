@@ -87,7 +87,7 @@ def test_hub_admits_connect_after_a_claim(appHub, clientBrowser):
     sLeaseId = responseClaim.json()["sLeaseId"]
     responseHttp = clientBrowser.post(
         f"/api/connect/{S_CONTAINER_ID}",
-        params={"sLeaseId": sLeaseId},
+        headers={"X-Vaibify-Lease": sLeaseId},
     )
     assert responseHttp.status_code == 200, responseHttp.text
 
@@ -102,6 +102,6 @@ def test_hub_refuses_connect_bearing_a_foreign_lease(
     assert responseClaim.status_code == 200
     responseHttp = clientBrowser.post(
         f"/api/connect/{S_CONTAINER_ID}",
-        params={"sLeaseId": "not-the-owning-lease"},
+        headers={"X-Vaibify-Lease": "not-the-owning-lease"},
     )
     assert responseHttp.status_code == 409, responseHttp.text

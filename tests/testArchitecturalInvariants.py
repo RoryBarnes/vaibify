@@ -2911,6 +2911,24 @@ def _fbModuleImportsAuthorizationGuard(pathModule):
     return False
 
 
+def _fbModuleImportsOwnershipAuthority(pathModule):
+    """Return True when pathModule imports the container-ownership authority.
+
+    The connect handler is an HTTP route: its lease rides the
+    ``X-Vaibify-Lease`` header, so it consults the shared
+    ``containerOwnership`` authority (via ``routeScope`` for the header)
+    rather than the WebSocket query-param guard. Either import proves it
+    reaches for the shared authority instead of an inline membership check.
+    """
+    _, treeAst = ftParseFile(pathModule)
+    for sName, _iLine in flistExtractImports(treeAst):
+        if sName.endswith("containerOwnership") or sName.endswith(
+            "routeScope"
+        ):
+            return True
+    return False
+
+
 def testClaimRejectsForeignLease():
     """A foreign-lease claim is arbitrated to 409, never short-circuited.
 
@@ -2986,19 +3004,25 @@ def testWebSocketGatesUseSharedAuthorizationGuard():
     access-decision module may reference a process-global
     ``setAllowedContainers`` membership set.
 
-    ``workflowRoutes`` is in the list because the connect handler is the
-    third gate ``architecture.md`` names: it had no ownership check at
-    all until 2026-07-25, so a second tab could bypass the claim route's
-    409 while the documentation claimed otherwise.
+    The connect handler is the third gate ``architecture.md`` names: it
+    had no ownership check at all until 2026-07-25, so a second tab could
+    bypass the claim route's 409 while the documentation claimed otherwise.
+    Since the HTTP lease moved to the ``X-Vaibify-Lease`` header (Sweep B),
+    connect consults the ``containerOwnership`` authority rather than the
+    WebSocket query-param guard — still a shared authority, never an inline
+    membership check.
     """
-    for sFileName in (
-        "pipelineRoutes.py", "terminalRoutes.py", "workflowRoutes.py",
-    ):
+    for sFileName in ("pipelineRoutes.py", "terminalRoutes.py"):
         pathModule = ROUTES_DIR / sFileName
         assert _fbModuleImportsAuthorizationGuard(pathModule), (
             f"{sFileName} must import the shared guard from "
             f"webSocketAuthorization instead of inlining the gate"
         )
+    pathWorkflow = ROUTES_DIR / "workflowRoutes.py"
+    assert _fbModuleImportsOwnershipAuthority(pathWorkflow), (
+        "workflowRoutes must consult the shared containerOwnership "
+        "authority for the connect gate instead of inlining the check"
+    )
     listViolations = [
         pathModule.name for pathModule in _T_ACCESS_DECISION_MODULES
         if "setAllowedContainers" in fsReadSource(pathModule)
@@ -3393,15 +3417,15 @@ def testConnectHandlerGatesOnTheOwningLease():
     )
     sGateBody = ast.unparse(nodeGate)
     iResolve = sGateBody.find("fsContainerNameForId(")
-    iLease = sGateBody.find("fbCheckLeaseOwnership(")
+    iLease = sGateBody.find("fbSessionOwnsContainer(")
     assert iResolve != -1 and iLease != -1, (
         "the connect gate must resolve the docker id to the container "
-        "name and then consult webSocketAuthorization."
-        "fbCheckLeaseOwnership -- never an inlined membership check"
+        "name and then consult containerOwnership.fbSessionOwnsContainer "
+        "on the X-Vaibify-Lease header -- never an inlined membership check"
     )
     assert iResolve < iLease, (
         "the connect gate must call fsContainerNameForId BEFORE "
-        "fbCheckLeaseOwnership; the owner map is name-keyed, so an "
+        "fbSessionOwnsContainer; the owner map is name-keyed, so an "
         "id-keyed lookup silently misses and refuses every real session"
     )
 

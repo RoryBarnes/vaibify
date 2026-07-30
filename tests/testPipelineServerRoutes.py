@@ -150,7 +150,10 @@ def _fnConnectToContainer(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictConnect = responseHttp.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
 # ── Index and the retired session-token oracle ─────────────────
@@ -773,6 +776,7 @@ def test_find_workflows(clientHttp):
 
 
 def test_create_workflow(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "New Pipeline",
         "sFileName": "newPipeline",
@@ -789,6 +793,7 @@ def test_create_workflow(clientHttp):
 
 
 def test_create_workflow_409_on_filename_collision(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "First",
         "sFileName": "shared",
@@ -813,6 +818,7 @@ def test_create_workflow_409_on_filename_collision(clientHttp):
 
 
 def test_create_workflow_rejects_path_traversal(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "Sneaky",
         "sFileName": "../escape",
@@ -826,6 +832,7 @@ def test_create_workflow_rejects_path_traversal(clientHttp):
 
 
 def test_create_workflow_rejects_filename_with_slash(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "Slashed",
         "sFileName": "sub/dir/file",
@@ -839,6 +846,7 @@ def test_create_workflow_rejects_filename_with_slash(clientHttp):
 
 
 def test_create_workflow_rejects_leading_dot_filename(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "DotFile",
         "sFileName": ".hidden",
@@ -852,6 +860,7 @@ def test_create_workflow_rejects_leading_dot_filename(clientHttp):
 
 
 def test_create_workflow_rejects_empty_filename(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "Empty",
         "sFileName": "   ",

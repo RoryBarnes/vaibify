@@ -71,23 +71,25 @@ def test_the_cli_authenticates_as_the_researcher_not_as_the_agent():
 
 
 def test_release_sends_the_lease_where_the_route_reads_it():
-    """The release lease must ride the query string, not the body.
+    """The release lease must ride the X-Vaibify-Lease header, not the body.
 
-    ``POST /api/registry/{sName}/release`` declares ``sLeaseId`` as a
-    query parameter, so a body-borne lease reaches the handler as the
-    empty string: the hub answers 200 with ``bReleased: false`` and goes
-    on holding the container. Observed live — the next command was
-    refused "In use in another browser session".
+    ``POST /api/registry/{sName}/release`` reads the owning lease from the
+    ``X-Vaibify-Lease`` header (never a query param, which would leak into
+    logs), so a body-borne lease reaches the handler as the empty string:
+    the hub answers 200 with ``bReleased: false`` and goes on holding the
+    container. Observed live — the next command was refused "In use in
+    another browser session".
 
-    Kills: the release call's ``dictQuery={"sLeaseId": ...}`` ->
+    Kills: the release call's ``sLeaseId=dictSession["sLeaseId"]`` ->
     passing the lease as the request body instead.
     """
     with patch("requests.request") as mockRequest:
         mockRequest.return_value = _FakeResponse({"bReleased": True})
         hubSession.fnReleaseContainer(_fdictSession())
     dictKeywords = mockRequest.call_args.kwargs
-    assert dictKeywords["params"] == {"sLeaseId": "lease-abc"}
+    assert dictKeywords["headers"]["X-Vaibify-Lease"] == "lease-abc"
     assert "json" not in dictKeywords
+    assert "params" not in dictKeywords
 
 
 def test_generated_paths_carry_the_container_id_not_the_name():

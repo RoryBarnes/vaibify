@@ -170,6 +170,9 @@ def _fnConnect(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert response.status_code == 200, response.text
+    dictConnect = response.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
 
 
 # ── draftManager unit tests ────────────────────────────────────
@@ -279,6 +282,12 @@ def test_draft_delete_missing_succeeds(clientHttp):
 
 
 def test_draft_write_rejected_when_no_workflow_path(clientHttp):
+    # Connect in no-workflow mode: this establishes the owning lease (so
+    # the container-owner gate admits the request) while leaving no active
+    # workflow path, which is the condition under test.
+    responseConnect = clientHttp.post(f"/api/connect/{S_CONTAINER_ID}")
+    assert responseConnect.status_code == 200, responseConnect.text
+    clientHttp.headers["X-Vaibify-Lease"] = responseConnect.json()["sLeaseId"]
     response = clientHttp.put(
         f"/api/draft/{S_CONTAINER_ID}/workspace/src/foo.py",
         json={"sContent": "abc"},

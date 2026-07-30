@@ -342,13 +342,33 @@ def testCatalogAdmitsARouteWhoseAliasIsAgentSafe():
 
 
 def _fresponseConnect(client, sLeaseId=None):
-    """POST /api/connect, optionally presenting a lease."""
-    dictParams = {"sWorkflowPath": S_WORKFLOW_PATH}
+    """POST /api/connect, optionally presenting a lease in the header.
+
+    The HTTP lease transport is the ``X-Vaibify-Lease`` header (never a
+    query param), so a presented lease rides there.
+    """
+    dictHeaders = {}
     if sLeaseId is not None:
-        dictParams["sLeaseId"] = sLeaseId
+        dictHeaders["X-Vaibify-Lease"] = sLeaseId
     return client.post(
-        f"/api/connect/{S_CONTAINER_ID}", params=dictParams,
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": S_WORKFLOW_PATH},
+        headers=dictHeaders,
     )
+
+
+def _fnConnectAsOwner(client):
+    """Connect, then hold the returned owning lease on the client.
+
+    Mirrors the browser: the connect response carries the lease, which the
+    authenticated-fetch wrapper then attaches as ``X-Vaibify-Lease`` on
+    every later container-owner request. Stamping it onto the client's
+    default headers reproduces that so a post-connect mutation authorizes.
+    """
+    responseConnect = _fresponseConnect(client)
+    assert responseConnect.status_code == 200, responseConnect.text
+    client.headers["X-Vaibify-Lease"] = responseConnect.json()["sLeaseId"]
+    return responseConnect
 
 
 @pytest.mark.falsification
@@ -454,6 +474,7 @@ def testBrowserPullIsNotConfinedToTheExportDirectory(
     clientBrowser, sHomeDirectory,
 ):
     """The researcher's own pull keeps its full home-directory range."""
+    _fnConnectAsOwner(clientBrowser)
     with patch.object(pipelineServer, "_fnDockerCopy"):
         responseHttp = clientBrowser.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
@@ -487,10 +508,14 @@ def testSaveAndRunTestRefusesDenylistedPaths(clientBrowser):
     contract the AICS truth system rests on. The generic write route has
     carried both guards for months; this one had neither.
 
+    The owning lease is held so the 403 comes from the path denylist, not
+    the container-owner gate — otherwise the mutation this test kills would
+    survive behind an authorization refusal.
+
     Kills: testRoutes._fsResolveTestFilePath: the denylist call
     `fnRejectWriteDenylistedPath(sNormalized, sRoot)` replaced by `pass`.
     """
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     for sFilePath in (
         ".git/hooks/pre-commit",
         ".vaibify/environment.json",
@@ -501,7 +526,7 @@ def testSaveAndRunTestRefusesDenylistedPaths(clientBrowser):
 
 def testSaveAndRunTestRefusesPathsOutsideTheRepo(clientBrowser):
     """A traversing test path is refused rather than written."""
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     responseHttp = _fresponseSaveAndRunTest(
         clientBrowser, "../../etc/cron.d/payload")
     assert responseHttp.status_code == 403
@@ -509,7 +534,7 @@ def testSaveAndRunTestRefusesPathsOutsideTheRepo(clientBrowser):
 
 def testSaveAndRunTestStillWritesALegitimatePath(clientBrowser):
     """The ordinary case keeps working after the guards were added."""
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     responseHttp = _fresponseSaveAndRunTest(
         clientBrowser, "stepA/tests/test_quantitative.py")
     assert responseHttp.status_code == 200

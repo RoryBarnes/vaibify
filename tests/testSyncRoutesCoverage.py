@@ -141,13 +141,22 @@ def _fmockCreateDockerSync():
 
 
 def _fnConnectToContainer(clientHttp):
-    """POST to /api/connect and return the response dict."""
+    """POST to /api/connect, hold the owning lease, and return the dict.
+
+    The connect response carries the lease that binds this session to the
+    container; holding it on the client (as ``X-Vaibify-Lease``) reproduces
+    the browser's authenticated-fetch wrapper so every later container-owner
+    request authorizes.
+    """
     responseHttp = clientHttp.post(
         f"/api/connect/{S_CONTAINER_ID}",
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictResponse = responseHttp.json()
+    if dictResponse.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictResponse["sLeaseId"]
+    return dictResponse
 
 
 @pytest.fixture

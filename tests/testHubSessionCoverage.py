@@ -281,7 +281,10 @@ def test_connect_workflow_records_the_selected_path():
     ) as mockSend:
         hubSession.fnConnectWorkflow(dictSession, "p/project.json")
     assert dictSession["sWorkflowPath"] == "p/project.json"
-    assert mockSend.call_args.kwargs["dictQuery"]["sLeaseId"] == "lease-abc"
+    assert mockSend.call_args.kwargs["dictQuery"] == {
+        "sWorkflowPath": "p/project.json",
+    }
+    assert mockSend.call_args.kwargs["sLeaseId"] == "lease-abc"
 
 
 def test_inspect_hub_session_assembles_a_read_only_session():
