@@ -3777,7 +3777,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # completion, design §2.3) and the viewer served-record's
     # dictSessionOwner index sync. Both extend task registration and
     # ownership recording this module already owns.
-    "pipelineServer.py": 2249,
+    # +14 (2026-07-31): ORPHANED_SESSION slice 4 — the cardinality
+    # refusal on the viewer first-connect creation path (design §9): a
+    # session already holding a different container is refused before a
+    # second owner record is minted. Extends the ownership recording
+    # this module already owns.
+    "pipelineServer.py": 2263,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

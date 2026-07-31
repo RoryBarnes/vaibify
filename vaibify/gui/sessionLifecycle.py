@@ -58,6 +58,7 @@ __all__ = [
     "F_ABSOLUTE_SESSION_CAP_SECONDS",
     "F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS",
     "fdictCreateLifecycleLockStore",
+    "ftdictClaimWithCardinality",
     "fbReleaseExplicit",
 ]
 
@@ -138,6 +139,37 @@ def _flockObtainSessionCardinality(dictLockStore):
         if dictLockStore["lockSessionCardinality"] is None:
             dictLockStore["lockSessionCardinality"] = asyncio.Lock()
         return dictLockStore["lockSessionCardinality"]
+
+
+async def ftdictClaimWithCardinality(
+    appState, sName, sLeaseId, iPort, sContainerId="",
+    fbPipelineRunning=None, sBrowserSessionId="",
+):
+    """Commit a claim under the canonical lock order (design §9).
+
+    The sole claim path for routes: acquires the container-mutation lock
+    (the drain), then the hub-wide cardinality lock, and only then runs
+    the synchronous :func:`containerOwnership.ftdictClaim`, whose
+    cardinality read-check-write on ``dictSessionOwner`` therefore
+    executes atomically against every other creation path. Two
+    concurrent claims by one session on two DIFFERENT containers take
+    two different container-mutation locks but serialize on the single
+    cardinality lock, so they resolve to exactly one owner record.
+    Returns the primitive's ``(iStatusCode, dictPayload)`` verdict
+    unchanged.
+    """
+    dictLockStore = _fdictLockStoreForAppState(appState)
+    dictContainerOwners = getattr(appState, "dictContainerOwners", {})
+    dictSessionOwner = getattr(appState, "dictSessionOwner", None)
+    async with _flockObtainContainerMutation(dictLockStore, sName):
+        async with _flockObtainSessionCardinality(dictLockStore):
+            return containerOwnership.ftdictClaim(
+                dictContainerOwners, sName, sLeaseId, iPort,
+                sContainerId=sContainerId,
+                fbPipelineRunning=fbPipelineRunning,
+                sBrowserSessionId=sBrowserSessionId,
+                dictSessionOwner=dictSessionOwner,
+            )
 
 
 async def fbReleaseExplicit(appState, sName, sLeaseId, sBrowserSessionId=""):

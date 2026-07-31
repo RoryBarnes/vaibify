@@ -2597,4 +2597,29 @@ def _fdictEntry(sRel):
         old='    for sAgent in claude codex gemini opencode cline openhands pi; do',
         new='    for sAgent in claude codex gemini opencode cline openhands pi newagent; do',
     ),
+    # ORPHANED_SESSION slice 4 (design §9, falsification case 19 claim
+    # half): neutralizing the cardinality read-check lets one browser
+    # session accumulate two owner records.
+    Falsification(
+        nodeid='tests/testSessionCardinality.py::test_second_claim_by_the_same_session_is_refused',
+        source='vaibify/gui/containerOwnership.py',
+        old='    if sHeldElsewhereName:\n        return (409, _fdictCardinalityRefused(sName, sHeldElsewhereName))',
+        new='    if False:\n        return (409, _fdictCardinalityRefused(sName, sHeldElsewhereName))',
+    ),
+    Falsification(
+        # The concurrent half of case 19: with the read-check gone, the
+        # same-session race on two different containers grants both.
+        nodeid='tests/testSessionCardinality.py::test_concurrent_claims_on_two_containers_resolve_to_one_record',
+        source='vaibify/gui/containerOwnership.py',
+        old='    if sHeldElsewhereName:\n        return (409, _fdictCardinalityRefused(sName, sHeldElsewhereName))',
+        new='    if False:\n        return (409, _fdictCardinalityRefused(sName, sHeldElsewhereName))',
+    ),
+    Falsification(
+        # The viewer first-connect creation path has its own guard; the
+        # claim-route check cannot cover it.
+        nodeid='tests/testSessionCardinality.py::test_viewer_first_connect_refuses_a_session_holding_another_container',
+        source='vaibify/gui/pipelineServer.py',
+        old='    if sHeldElsewhereName:\n        raise HTTPException(',
+        new='    if False:\n        raise HTTPException(',
+    ),
 ]

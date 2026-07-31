@@ -206,7 +206,7 @@ def _fnRegisterClaimContainer(app, dictCtx):
 
     @app.post("/api/registry/{sName}/claim")
     async def fdictClaimContainer(request: Request, sName: str):
-        from vaibify.gui import containerOwnership, browserSession
+        from vaibify.gui import browserSession, sessionLifecycle
         _fnRejectInvalidProjectName(sName)
         # The re-claim lease rides the X-Vaibify-Lease header so a reloaded
         # tab re-asserting its sessionStorage lease is idempotent without the
@@ -220,14 +220,19 @@ def _fnRegisterClaimContainer(app, dictCtx):
             getattr(app.state, "dictBrowserSessions", {}),
             request.headers.get("x-session-token", ""),
         )
-        iStatusCode, dictPayload = containerOwnership.ftdictClaim(
-            app.state.dictContainerOwners, sName, sLeaseId, iPort,
-            sContainerId=sContainerId,
-            fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
-                dictCtx, sOwned,
-            ),
-            sBrowserSessionId=sBrowserSessionId,
-            dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
+        # The commit goes through the sessionLifecycle authority (never
+        # containerOwnership.ftdictClaim directly), whose canonical lock
+        # order makes the one-container-per-session read-check-write
+        # atomic across concurrent claims on different containers.
+        iStatusCode, dictPayload = (
+            await sessionLifecycle.ftdictClaimWithCardinality(
+                app.state, sName, sLeaseId, iPort,
+                sContainerId=sContainerId,
+                fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
+                    dictCtx, sOwned,
+                ),
+                sBrowserSessionId=sBrowserSessionId,
+            )
         )
         if iStatusCode != 200:
             raise HTTPException(status_code=iStatusCode, detail=dictPayload)

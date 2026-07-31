@@ -35,6 +35,7 @@ __all__ = [
     "fsMintAgentToken",
     "fsAgentTokenForName",
     "fbAgentTokenAuthorizesContainerId",
+    "fsConflictingHeldContainer",
     "ftdictClaim",
     "fbBrowserSessionOwnsLease",
     "fnReleaseOwnership",
@@ -228,6 +229,23 @@ def fbAgentTokenAuthorizesContainerId(
     return False
 
 
+def fsConflictingHeldContainer(dictSessionOwner, sBrowserSessionId, sName):
+    """Return the DIFFERENT container this session already holds, or ''.
+
+    The cardinality read (design §9): one container per browser session,
+    answered from the ``dictSessionOwner`` reverse index. A transitional
+    unbound caller (empty session id) or an absent index never conflicts,
+    and the session's own container is never a conflict — the idempotent
+    same-container reclaim path handles that case.
+    """
+    if dictSessionOwner is None or not sBrowserSessionId:
+        return ""
+    sHeldContainerName = dictSessionOwner.get(sBrowserSessionId, "")
+    if sHeldContainerName and sHeldContainerName != sName:
+        return sHeldContainerName
+    return ""
+
+
 def ftdictClaim(
     dictContainerOwners, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, fGraceSeconds=_F_GRACE_SECONDS,
@@ -241,7 +259,19 @@ def ftdictClaim(
     ``sessionStorage`` lease never self-locks. A foreign or absent lease
     is refused with 409 unless the current owner is reapable, in which
     case the dead owner is released and the claim is granted fresh.
+
+    Cardinality (design §9) is checked first: a bound session that
+    already holds a different container is refused 409 before any
+    arbitration, naming the held container. Routes reach this primitive
+    through :func:`sessionLifecycle.ftdictClaimWithCardinality`, whose
+    hub-wide cardinality lock makes this read-check-write atomic across
+    concurrent claims on different containers.
     """
+    sHeldElsewhereName = fsConflictingHeldContainer(
+        dictSessionOwner, sBrowserSessionId, sName,
+    )
+    if sHeldElsewhereName:
+        return (409, _fdictCardinalityRefused(sName, sHeldElsewhereName))
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
         return _ftdictClaimUnowned(
@@ -346,6 +376,24 @@ def _fdictClaimRefused(sName, recordOwner):
         "bClaimed": False,
         "sMessage": "In use in another browser session",
         "sStartedIso": _fsReadStartedIso(recordOwner),
+    }
+
+
+def _fdictCardinalityRefused(sName, sHeldContainerName):
+    """Return the 409 body for a session that already holds a container.
+
+    One container per browser session (design §9). The refusal names the
+    session's own held container so the message is actionable: release
+    that container, then claim this one.
+    """
+    return {
+        "sName": sName,
+        "bClaimed": False,
+        "sMessage": (
+            "This browser session already holds container "
+            f"'{sHeldContainerName}'; release it before claiming another"
+        ),
+        "sHeldContainerName": sHeldContainerName,
     }
 
 

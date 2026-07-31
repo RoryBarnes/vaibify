@@ -370,6 +370,122 @@ def testNoRouteModuleCallsTheReleasePrimitivesDirectly():
     )
 
 
+# -- slice 4: cardinality — one container per session ----------------------
+
+
+def testConflictingHeldContainerReadsTheReverseIndex():
+    """Only a bound session holding a DIFFERENT container conflicts."""
+    dictSessionOwner = {"session-a": S_PROJECT_NAME}
+    assert containerOwnership.fsConflictingHeldContainer(
+        dictSessionOwner, "session-a", "OtherProject",
+    ) == S_PROJECT_NAME
+    assert containerOwnership.fsConflictingHeldContainer(
+        dictSessionOwner, "session-a", S_PROJECT_NAME,
+    ) == "", "the session's own container is never a conflict"
+    assert containerOwnership.fsConflictingHeldContainer(
+        dictSessionOwner, "", "OtherProject",
+    ) == "", "a transitional unbound caller never conflicts"
+    assert containerOwnership.fsConflictingHeldContainer(
+        None, "session-a", "OtherProject",
+    ) == "", "an absent reverse index never conflicts"
+
+
+def testClaimPrimitiveRefusesASecondContainerForABoundSession():
+    """One session, two containers: the second claim is a named 409."""
+    dictOwners = {}
+    dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
+    iFirstStatus, _ = containerOwnership.ftdictClaim(
+        dictOwners, S_PROJECT_NAME, "", iPort=8050,
+        sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
+        dictSessionOwner=dictSessionOwner,
+    )
+    assert iFirstStatus == 200
+    iSecondStatus, dictRefusal = containerOwnership.ftdictClaim(
+        dictOwners, "SecondProject", "", iPort=8050,
+        sContainerId="cid-fedcba987654", sBrowserSessionId="session-a",
+        dictSessionOwner=dictSessionOwner,
+    )
+    assert iSecondStatus == 409
+    assert dictRefusal["sHeldContainerName"] == S_PROJECT_NAME
+    assert S_PROJECT_NAME in dictRefusal["sMessage"]
+    assert "SecondProject" not in dictOwners, (
+        "a refused claim must not mint a second owner record"
+    )
+    assert dictSessionOwner == {"session-a": S_PROJECT_NAME}
+
+
+def testUnboundTransitionalClaimsBypassTheCardinalityCheck():
+    """Shared-token claims (no session binding) must not regress."""
+    dictOwners = {}
+    dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
+    for sName, iPort in ((S_PROJECT_NAME, 8050), ("SecondProject", 8051)):
+        iStatusCode, _ = containerOwnership.ftdictClaim(
+            dictOwners, sName, "", iPort=iPort,
+            sBrowserSessionId="", dictSessionOwner=dictSessionOwner,
+        )
+        assert iStatusCode == 200
+    assert dictSessionOwner == {}, (
+        "an unbound claim records no cardinality entry"
+    )
+
+
+@pytest.mark.asyncio
+async def testClaimWithCardinalityAuthorityPreservesTheVerdicts():
+    """The lifecycle claim answers as the primitive does: grant, the
+    idempotent same-container reclaim, and the cardinality 409."""
+    dictOwners = {}
+    dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
+    stateStub = _StateStub(dictOwners, dictSessionOwner)
+    iStatusCode, dictPayload = (
+        await sessionLifecycle.ftdictClaimWithCardinality(
+            stateStub, S_PROJECT_NAME, "", 8050,
+            sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
+        )
+    )
+    assert iStatusCode == 200
+    iReclaimStatus, dictReclaim = (
+        await sessionLifecycle.ftdictClaimWithCardinality(
+            stateStub, S_PROJECT_NAME, dictPayload["sLeaseId"], 8050,
+            sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
+        )
+    )
+    assert iReclaimStatus == 200
+    assert dictReclaim["sLeaseId"] == dictPayload["sLeaseId"]
+    iRefusedStatus, dictRefusal = (
+        await sessionLifecycle.ftdictClaimWithCardinality(
+            stateStub, "SecondProject", "", 8050,
+            sBrowserSessionId="session-a",
+        )
+    )
+    assert iRefusedStatus == 409
+    assert dictRefusal["sHeldContainerName"] == S_PROJECT_NAME
+    assert dictSessionOwner == {"session-a": S_PROJECT_NAME}
+
+
+def testNoRouteModuleCallsTheClaimPrimitiveDirectly():
+    """sessionLifecycle is the only caller of the claim primitive.
+
+    The claim commit must acquire container-mutation → cardinality in
+    canonical order, so a route calling
+    ``containerOwnership.ftdictClaim(`` directly would bypass the lock
+    that makes the cardinality read-check-write atomic. Mirrors
+    ``testNoRouteModuleCallsTheReleasePrimitivesDirectly``.
+    """
+    from pathlib import Path
+    pathGui = Path(containerOwnership.__file__).resolve().parent
+    setAllowedFiles = {"containerOwnership.py", "sessionLifecycle.py"}
+    listOffenders = [
+        pathFile.name
+        for pathFile in sorted(pathGui.rglob("*.py"))
+        if pathFile.name not in setAllowedFiles
+        and "ftdictClaim(" in pathFile.read_text(encoding="utf-8")
+    ]
+    assert listOffenders == [], (
+        "the claim primitive is called outside the sessionLifecycle "
+        f"authority: {listOffenders}"
+    )
+
+
 # -- config knobs ----------------------------------------------------------
 
 

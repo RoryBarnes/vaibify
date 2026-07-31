@@ -1389,6 +1389,20 @@ def _fnRegisterViewerServedContainer(
         _fnAuthorizeExistingViewerOwner(recordOwner, sBrowserSessionId)
         dictCtx["sViewerLease"] = recordOwner.sLeaseId
         return
+    # Cardinality on the creation path (design §9): a session that
+    # already holds a different container is refused before a second
+    # record is minted. This read runs synchronously on the event loop
+    # (no await between check and write), so it cannot interleave with
+    # the lock-guarded claim path's read-check-write.
+    sHeldElsewhereName = containerOwnership.fsConflictingHeldContainer(
+        dictCtx.get("dictSessionOwner"), sBrowserSessionId, sName,
+    )
+    if sHeldElsewhereName:
+        raise HTTPException(
+            409,
+            "This browser session already holds container "
+            f"'{sHeldElsewhereName}'; release it before connecting another",
+        )
     sLeaseId = containerOwnership.fsMintLease()
     dictContainerOwners[sName] = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
