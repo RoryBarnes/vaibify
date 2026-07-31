@@ -2622,4 +2622,89 @@ def _fdictEntry(sRel):
         old='    if sHeldElsewhereName:\n        raise HTTPException(',
         new='    if False:\n        raise HTTPException(',
     ),
+    # ORPHANED_SESSION slice 3 sub-step 3a (design §8/§13): the
+    # write-ahead operation journal and its quarantine. Case 27 —
+    # acquisition must consult the journal atomically with the fresh
+    # flock; bypassing the consult reverts to the silent dead-PID reap.
+    Falsification(
+        nodeid='tests/testOperationJournalMutationCoverage.py::test_quarantine_survives_hub_sigkill_and_blocks_the_next_claim',
+        source='vaibify/config/containerLock.py',
+        old='        if fileHandle is not None:\n            return _ffileRefuseUnsettledJournal(\n                fileHandle, sProjectName, connectionDocker,\n            )',
+        new='        if fileHandle is not None:\n            return fileHandle',
+    ),
+    # Case 36, auto-clear half: a provably-dead, provably-settled
+    # leftover must clear automatically, or every interrupted multi-hour
+    # run demands a human and the gate becomes a rubber stamp.
+    Falsification(
+        nodeid='tests/testOperationJournalMutationCoverage.py::test_auto_tier_clears_a_provably_dead_leftover_with_a_logged_note',
+        source='vaibify/config/operationJournal.py',
+        old='    if dictProbe["bSettled"]:\n        return ("settled", dictProbe["sDetail"])',
+        new='    if dictProbe["bSettled"]:\n        return ("quarantinePermanent", dictProbe["sDetail"])',
+    ),
+    # Case 36, busy half: a live IN_FLIGHT holder is in use, never
+    # quarantined; quarantining it would poison a working run.
+    Falsification(
+        nodeid='tests/testOperationJournalMutationCoverage.py::test_live_in_flight_holder_reads_busy_never_quarantined',
+        source='vaibify/config/operationJournal.py',
+        old='    if dictProbe["bHolderAlive"]:\n        return ("busy", dictProbe["sDetail"])',
+        new='    if dictProbe["bHolderAlive"]:\n        return ("quarantinePermanent", dictProbe["sDetail"])',
+    ),
+    # Case 37, fail-closed half: with the malformed branch disabled, a
+    # damaged journal falls through to the valid-records path with zero
+    # records and resolves SETTLED — damage reading as clean.
+    Falsification(
+        nodeid='tests/testOperationJournalMutationCoverage.py::test_malformed_unreadable_and_newer_journals_read_quarantined',
+        source='vaibify/config/operationJournal.py',
+        old='    if dictOutcomeRead["sReadState"] == "malformed":',
+        new='    if False and dictOutcomeRead["sReadState"] == "malformed":',
+    ),
+    # Case 37, durability half: writing in place instead of staging into
+    # a temp file lets a crash mid-write destroy the previous journal.
+    Falsification(
+        nodeid='tests/testOperationJournalMutationCoverage.py::test_journal_survives_a_torn_write',
+        source='vaibify/config/operationJournal.py',
+        old='    sTemporaryPath = f"{sPath}{_S_TEMPORARY_WRITE_SUFFIX}.{os.getpid()}"',
+        new='    sTemporaryPath = sPath',
+    ),
+    # Case 42, semantics half: an ordinary write that treats a damaged
+    # journal as fresh silently replaces (and so clears) the quarantine
+    # marker — the acknowledge-shaped clear the design forbids.
+    Falsification(
+        nodeid='tests/testOperationJournalMutationCoverage.py::test_newer_version_requires_upgrade_and_malformed_refuses_writes',
+        source='vaibify/config/operationJournal.py',
+        old='''    if dictOutcomeRead["sReadState"] != "valid":
+        raise OperationJournalUnreadableError(
+            f"The operation journal for container '{sContainerName}' is "
+            f"{dictOutcomeRead['sReadState']} and refuses ordinary writes "
+            f"({dictOutcomeRead['sDetail']}); reconciliation is required."
+        )''',
+        new='''    if dictOutcomeRead["sReadState"] != "valid":
+        return _fdictBuildEmptyPayload(sContainerName)''',
+    ),
+    # Case 45, journal half (the carrier half lands with sub-step 3b):
+    # replacing the record SET on every prepare loses coexistence, so a
+    # pipeline task, a terminal exec, and a file write cannot be
+    # journaled at once.
+    Falsification(
+        nodeid='tests/testOperationJournalMutationCoverage.py::test_journal_is_a_set_and_claimable_only_when_every_record_settles',
+        source='vaibify/config/operationJournal.py',
+        old='        dictPayload["dictOperations"][sOperationId] = dictRecord',
+        new='        dictPayload["dictOperations"] = {sOperationId: dictRecord}',
+    ),
+    # Case 39: without the journal entry in the home-relative denylist,
+    # a mount of ~/.vaibify (or the journal itself) reaches the
+    # quarantine markers from inside a container.
+    Falsification(
+        nodeid='tests/testBindMountValidator.py::test_journal_directory_mount_is_rejected_in_every_direction',
+        source='vaibify/config/bindMountValidator.py',
+        old='''    ".kube",
+    # The operation-journal quarantine markers (design §8): a same-UID
+    # agent inside a container that could mount this directory could
+    # delete a quarantine marker and un-quarantine a container whose
+    # past operations were never proven settled.
+    ".vaibify/journal",
+)''',
+        new='''    ".kube",
+)''',
+    ),
 ]

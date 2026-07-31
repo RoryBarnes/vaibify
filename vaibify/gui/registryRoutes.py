@@ -127,7 +127,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         # param, which would leak into logs); it is used only to grey tiles
         # another session holds, never as authorization.
         sLeaseId = fsLeaseFromRequest(request)
-        _fnReapStaleContainerClaims()
+        _fnReapStaleContainerClaims(dictCtx)
         listRegistered = flistGetAllProjectsWithStatus()
         listVaibify, listUnrecognized = (
             _ftupleDiscoverAllContainers(dictCtx)
@@ -135,7 +135,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         listContainers = _flistMergeProjectsAndContainers(
             listRegistered, listVaibify,
         )
-        _fnAnnotateLockState(listContainers)
+        _fnAnnotateLockState(listContainers, dictCtx)
         _fnAnnotateOwnershipState(
             listContainers, app.state.dictContainerOwners, sLeaseId,
         )
@@ -145,19 +145,21 @@ def _fnRegisterGetRegistry(app, dictCtx):
         }
 
 
-def _fnReapStaleContainerClaims():
+def _fnReapStaleContainerClaims(dictCtx):
     """Reap claims whose holder PID is dead before listing containers.
 
     Runs on every GET /api/registry (the container-picker refresh
     path) so a claim orphaned by a killed vaibify server is released
-    without restarting the hub.
+    without restarting the hub. Also runs the operation journal's
+    automatic probe tier (with the live Docker connection, so exec and
+    start records can be verified rather than failing closed).
     """
     from vaibify.config.containerLock import fnReapStaleContainerLocks
-    fnReapStaleContainerLocks()
+    fnReapStaleContainerLocks(connectionDocker=dictCtx.get("docker"))
 
 
-def _fnAnnotateLockState(listContainers):
-    """Populate bLocked / iLockedBy* fields on each container dict."""
+def _fnAnnotateLockState(listContainers, dictCtx):
+    """Populate bLocked / iLockedBy* / journal fields on each container."""
     from vaibify.config.containerLock import fdictReadLockHolder
     for dictContainer in listContainers:
         sName = dictContainer.get("sName")
@@ -171,6 +173,32 @@ def _fnAnnotateLockState(listContainers):
             dictContainer["iLockedByPort"] = dictHolder.get("iPort")
         else:
             dictContainer["bLocked"] = False
+        _fnAnnotateJournalState(dictContainer, sName, dictCtx)
+
+
+def _fnAnnotateJournalState(dictContainer, sName, dictCtx):
+    """Surface an unsettled operation journal on the registry listing.
+
+    A quarantined container must never render as available: the tile
+    is marked ``bQuarantined`` with ``sJournalState`` QUARANTINED, and
+    ``bLocked`` is forced True so every existing consumer of the
+    listing also refuses it. The resolution here is read-only — the
+    probe-and-persist pass already ran in the reaper on this request.
+    """
+    from vaibify.config import operationJournal
+    from vaibify.config.containerLock import fbIsValidProjectName
+    if not fbIsValidProjectName(sName):
+        return
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        sName, dictCtx.get("docker"), bPersistResolution=False,
+    )
+    sResolution = dictResolution["sResolution"]
+    dictContainer["sJournalState"] = sResolution
+    dictContainer["bQuarantined"] = (
+        sResolution == operationJournal.S_RESOLUTION_QUARANTINED
+    )
+    if sResolution != operationJournal.S_RESOLUTION_SETTLED:
+        dictContainer["bLocked"] = True
 
 
 def _fnAnnotateOwnershipState(
@@ -232,6 +260,7 @@ def _fnRegisterClaimContainer(app, dictCtx):
                     dictCtx, sOwned,
                 ),
                 sBrowserSessionId=sBrowserSessionId,
+                connectionDocker=dictCtx.get("docker"),
             )
         )
         if iStatusCode != 200:

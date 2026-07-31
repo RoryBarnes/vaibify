@@ -59,6 +59,7 @@ from dataclasses import dataclass, field
 from vaibify.config import pidFileRegistry
 from vaibify.config.containerLock import (
     ContainerLockedError,
+    ContainerQuarantinedError,
     fnAcquireContainerLock,
     fnReleaseContainerLock,
 )
@@ -249,7 +250,7 @@ def fsConflictingHeldContainer(dictSessionOwner, sBrowserSessionId, sName):
 def ftdictClaim(
     dictContainerOwners, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, fGraceSeconds=_F_GRACE_SECONDS,
-    sBrowserSessionId="", dictSessionOwner=None,
+    sBrowserSessionId="", dictSessionOwner=None, connectionDocker=None,
 ):
     """Arbitrate a claim and return ``(iStatusCode, dictPayload)``.
 
@@ -276,7 +277,7 @@ def ftdictClaim(
     if recordOwner is None:
         return _ftdictClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
-            sBrowserSessionId, dictSessionOwner,
+            sBrowserSessionId, dictSessionOwner, connectionDocker,
         )
     # The same-lease reclaim stays idempotent only when the owner is
     # unbound (a shared-token, transitional claim carries '') OR the
@@ -298,18 +299,25 @@ def ftdictClaim(
         )
         return _ftdictClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
-            sBrowserSessionId, dictSessionOwner,
+            sBrowserSessionId, dictSessionOwner, connectionDocker,
         )
     return (409, _fdictClaimRefused(sName, recordOwner))
 
 
 def _ftdictClaimUnowned(
     dictContainerOwners, sName, iPort, sContainerId, sBrowserSessionId="",
-    dictSessionOwner=None,
+    dictSessionOwner=None, connectionDocker=None,
 ):
-    """Acquire the host flock for an unowned container and mint a lease."""
+    """Acquire the host flock for an unowned container and mint a lease.
+
+    A container whose operation journal is quarantined is refused even
+    though its flock is free: the write-ahead record of an unsettled
+    past operation outlives the process that held the flock.
+    """
     try:
-        fileHandleLock = fnAcquireContainerLock(sName, iPort)
+        fileHandleLock = fnAcquireContainerLock(sName, iPort, connectionDocker)
+    except ContainerQuarantinedError as error:
+        return (409, _fdictQuarantineRefused(sName, error))
     except ContainerLockedError as error:
         return (409, _fdictCrossHubRefused(sName, error))
     sLeaseId = _fnRecordNewOwner(
@@ -405,6 +413,20 @@ def _fdictCrossHubRefused(sName, error):
         "sMessage": str(error),
         "iLockedByPid": error.iHolderPid,
         "iLockedByPort": error.iHolderPort,
+    }
+
+
+def _fdictQuarantineRefused(sName, error):
+    """Return the 409 body for a journal-quarantined container.
+
+    ``bQuarantined`` lets the picker say WHY the container is refused:
+    not "in use elsewhere" but "an earlier operation never settled".
+    """
+    return {
+        "sName": sName,
+        "bClaimed": False,
+        "bQuarantined": True,
+        "sMessage": str(error),
     }
 
 

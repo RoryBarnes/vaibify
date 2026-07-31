@@ -238,3 +238,37 @@ def test_container_target_missing_is_rejected(monkeypatch, tmp_path):
     os.makedirs(sHostPath)
     with pytest.raises(BindMountValidationError):
         fnValidateBindMount({"host": sHostPath})
+
+
+@pytest.mark.falsification
+def test_journal_directory_mount_is_rejected_in_every_direction(
+    monkeypatch, tmp_path,
+):
+    """Design §13 case 39: the quarantine markers are bind-mount-denied.
+
+    Every agent inside a container runs as the same UID that owns
+    ``~/.vaibify/journal`` on the host, so any mount that exposes the
+    journal — the directory itself, an ancestor, a descendant, or a
+    symlink resolving into it — would let a compromised agent delete a
+    quarantine marker and un-quarantine a container whose past
+    operations were never proven settled.
+
+    Kills: in bindMountValidator._LIST_HOME_RELATIVE_DENY_PREFIXES,
+    drop the ".vaibify/journal" entry (with its comment block), so a
+    mount of ~/.vaibify passes the home-allowlist untouched.
+    """
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sJournalDirectory = str(sHome / ".vaibify" / "journal")
+    os.makedirs(sJournalDirectory)
+    listHostPaths = [
+        sJournalDirectory,
+        str(sHome / ".vaibify"),
+        os.path.join(sJournalDirectory, "demo.operationJournal"),
+    ]
+    for sHostPath in listHostPaths:
+        with pytest.raises(BindMountValidationError):
+            fnValidateBindMount({"host": sHostPath, "container": "/mnt"})
+    sSymlinkPath = str(sHome / "innocuousData")
+    os.symlink(sJournalDirectory, sSymlinkPath)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": sSymlinkPath, "container": "/mnt"})

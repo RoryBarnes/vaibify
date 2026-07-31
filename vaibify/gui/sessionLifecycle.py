@@ -143,7 +143,7 @@ def _flockObtainSessionCardinality(dictLockStore):
 
 async def ftdictClaimWithCardinality(
     appState, sName, sLeaseId, iPort, sContainerId="",
-    fbPipelineRunning=None, sBrowserSessionId="",
+    fbPipelineRunning=None, sBrowserSessionId="", connectionDocker=None,
 ):
     """Commit a claim under the canonical lock order (design §9).
 
@@ -169,6 +169,7 @@ async def ftdictClaimWithCardinality(
                 fbPipelineRunning=fbPipelineRunning,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
+                connectionDocker=connectionDocker,
             )
 
 

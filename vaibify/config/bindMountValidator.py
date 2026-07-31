@@ -32,6 +32,11 @@ _LIST_HOME_RELATIVE_DENY_PREFIXES = (
     ".gnupg",
     ".docker",
     ".kube",
+    # The operation-journal quarantine markers (design §8): a same-UID
+    # agent inside a container that could mount this directory could
+    # delete a quarantine marker and un-quarantine a container whose
+    # past operations were never proven settled.
+    ".vaibify/journal",
 )
 
 
