@@ -410,6 +410,8 @@ def _fnRegisterPipelineWs(app, dictCtx):
             fnServe, lambda: fnIncrementWebSocketCount(app),
             lambda: fnDecrementWebSocketCount(app),
             bExclusivePipelineLane=True,
+            dictSessionSockets=dictCtx.get("dictSessionSockets"),
+            dictBrowserSessions=dictCtx.get("dictBrowserSessions"),
         )
 
 

@@ -23,6 +23,8 @@ from dataclasses import dataclass
 __all__ = [
     "BootstrapCapability",
     "BrowserSessionRecord",
+    "S_SESSION_STATE_ACTIVE",
+    "S_SESSION_STATE_REVOKED",
     "fdictCreateBrowserSessionStore",
     "fsMintBootstrapCapability",
     "ftRedeemCapability",
@@ -37,6 +39,12 @@ __all__ = [
 I_CAPABILITY_TTL_SECONDS = 300
 
 _lockBrowserSessions = threading.Lock()
+
+# The browser-credential axis (design §2.2): a REVOKED record authorizes
+# nothing, ever — revocation is how the ORPHANED_SESSION transition cuts
+# a departed browser's credential without deleting its audit trail.
+S_SESSION_STATE_ACTIVE = "ACTIVE"
+S_SESSION_STATE_REVOKED = "REVOKED"
 
 
 @dataclass
@@ -58,6 +66,7 @@ class BrowserSessionRecord:
     sCredential: str
     fCreatedMonotonic: float
     fLastSeenMonotonic: float
+    sState: str = S_SESSION_STATE_ACTIVE
 
 
 def fdictCreateBrowserSessionStore():
@@ -122,10 +131,13 @@ def _tMintSessionForCapability(dictStore, recordCap, fNow):
 
 
 def fbValidateCredential(dictStore, sCredential):
-    """Return True when the credential names a live browser session.
+    """Return True when the credential names a live, ACTIVE browser session.
 
-    Refreshes the session's last-seen stamp (the sliding-window input the
-    expiry lifecycle will consume in a later slice).
+    A REVOKED record authorizes nothing and its last-seen stamp is left
+    untouched — a revoked browser presenting its old credential must not
+    look recently active. Refreshes the ACTIVE session's last-seen stamp
+    (the sliding-window input the expiry lifecycle will consume in a
+    later slice).
     """
     if not sCredential:
         return False
@@ -134,6 +146,8 @@ def fbValidateCredential(dictStore, sCredential):
             "dictSessionsByCredential", {},
         ).get(sCredential)
         if recordSession is None:
+            return False
+        if recordSession.sState != S_SESSION_STATE_ACTIVE:
             return False
         recordSession.fLastSeenMonotonic = time.monotonic()
         return True

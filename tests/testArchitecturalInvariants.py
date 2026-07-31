@@ -2989,9 +2989,18 @@ def testReleaseRejectsNonOwner():
     )
     assert bMissing is False
     sSource = fsReadSource(GUI_DIR / "registryRoutes.py")
-    assert "fnReleaseOwnership" in sSource and "sLeaseId" in sSource, (
-        "the release route must verify the lease via "
-        "containerOwnership.fnReleaseOwnership"
+    assert "fbReleaseExplicit" in sSource and "sLeaseId" in sSource, (
+        "the release route must commit through the sessionLifecycle "
+        "authority (fbReleaseExplicit), never an inline drop"
+    )
+    assert "fnReleaseOwnership" not in sSource, (
+        "no route may call the containerOwnership release primitives "
+        "directly; sessionLifecycle is the single transition authority"
+    )
+    sLifecycleSource = fsReadSource(GUI_DIR / "sessionLifecycle.py")
+    assert "fnReleaseOwnership" in sLifecycleSource, (
+        "sessionLifecycle.fbReleaseExplicit must delegate the lease "
+        "arbitration to containerOwnership.fnReleaseOwnership"
     )
 
 
@@ -3582,7 +3591,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # _flistSanitizedIncidents and the lane branch that gives the agent
     # an allowlisted per-container view. Cohesive with the existing
     # host-log endpoint; no new responsibility, no seam to split.
-    "routes/pipelineRoutes.py": 2798,
+    # +2 (2026-07-31): the pipeline WebSocket threads the session-socket
+    # index and browser-session store into the shared serve wrapper
+    # (ORPHANED_SESSION slice 1). Two keyword arguments, no new logic.
+    "routes/pipelineRoutes.py": 2800,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -3760,7 +3772,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (/api/bootstrap, A1) and the viewer first-connect session-binding
     # (P0). Both extend this module's existing session-establishment
     # responsibility; no new seam.
-    "pipelineServer.py": 2243,
+    # +6 (2026-07-31): ORPHANED_SESSION slice 1 — the pipeline task's
+    # mutable iOwnerGeneration field (retagged in place, read at
+    # completion, design §2.3) and the viewer served-record's
+    # dictSessionOwner index sync. Both extend task registration and
+    # ownership recording this module already owns.
+    "pipelineServer.py": 2249,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

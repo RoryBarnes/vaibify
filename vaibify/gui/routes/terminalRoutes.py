@@ -65,6 +65,8 @@ async def _fnTrackAndServeTerminal(
         websocket, dictCtx.get("dictContainerOwners", {}), sName,
         fnServe, lambda: _pipelineServer.fnIncrementWebSocketCount(app),
         lambda: _pipelineServer.fnDecrementWebSocketCount(app),
+        dictSessionSockets=dictCtx.get("dictSessionSockets"),
+        dictBrowserSessions=dictCtx.get("dictBrowserSessions"),
     )
 
 

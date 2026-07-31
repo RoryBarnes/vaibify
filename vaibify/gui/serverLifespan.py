@@ -379,6 +379,7 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
     containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
         lambda sName: _fbOwnedNamePipelineRunning(app, dictCtx, sName),
+        dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )
 
 

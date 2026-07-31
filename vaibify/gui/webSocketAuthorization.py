@@ -178,6 +178,7 @@ async def fnCloseWithCode(connection, iCloseCode):
 async def fnServeUnderLiveConnectionCounters(
     connection, dictContainerOwners, sName, fnServe,
     fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=False,
+    dictSessionSockets=None, dictBrowserSessions=None,
 ):
     """Serve an already-gated WebSocket under the live-connection counters.
 
@@ -190,6 +191,13 @@ async def fnServeUnderLiveConnectionCounters(
     live count. The agent lane (non-loopback origin) is exempt from the
     per-container budget so a machine action never displaces the
     researcher's single session.
+
+    Each admitted browser socket is tracked as a ``ConnectionRecord``
+    stamped with the owner generation current at accept: the decrement
+    is matched on that record, so a socket whose ``finally`` fires after
+    the generation rotated decrements nothing on the successor, and the
+    record is indexed by browser session in ``dictSessionSockets`` for
+    the active-close path a revocation needs (design §2.3).
     """
     bBrowser = fbCheckOrigin(connection)
     if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
@@ -197,10 +205,18 @@ async def fnServeUnderLiveConnectionCounters(
     ):
         await fnCloseWithCode(connection, I_REJECT_DUPLICATE_SESSION)
         return
+    recordConnection = None
     if bBrowser:
         containerOwnership.fnIncrementLiveConnection(
             dictContainerOwners, sName,
             bPipelineLane=bExclusivePipelineLane,
+        )
+        recordConnection = _frecordBuildConnectionRecord(
+            connection, dictContainerOwners, sName,
+            bExclusivePipelineLane, dictBrowserSessions,
+        )
+        containerOwnership.fnRegisterSessionSocket(
+            dictSessionSockets, recordConnection,
         )
     fnIncrementGlobal()
     try:
@@ -208,7 +224,30 @@ async def fnServeUnderLiveConnectionCounters(
     finally:
         fnDecrementGlobal()
         if bBrowser:
-            containerOwnership.fnDecrementLiveConnection(
-                dictContainerOwners, sName,
-                bPipelineLane=bExclusivePipelineLane,
+            containerOwnership.fnDecrementLiveConnectionForRecord(
+                dictContainerOwners, sName, recordConnection,
             )
+            containerOwnership.fnDeregisterSessionSocket(
+                dictSessionSockets, recordConnection,
+            )
+
+
+def _frecordBuildConnectionRecord(
+    connection, dictContainerOwners, sName, bExclusivePipelineLane,
+    dictBrowserSessions,
+):
+    """Build the tracked record for an admitted browser WebSocket."""
+    return containerOwnership.ConnectionRecord(
+        connection=connection,
+        sBrowserSessionId=fsBrowserSessionIdForCredential(
+            connection, dictBrowserSessions or {},
+        ),
+        iOwnerGeneration=containerOwnership.fiOwnerGenerationForName(
+            dictContainerOwners, sName,
+        ),
+        sLane=(
+            containerOwnership.S_LANE_PIPELINE
+            if bExclusivePipelineLane
+            else containerOwnership.S_LANE_TERMINAL
+        ),
+    )

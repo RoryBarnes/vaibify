@@ -1115,7 +1115,9 @@ def _fdictBusyRefusalEvent(sAction, dictRequest):
     }
 
 
-def _fnRegisterPipelineTask(dictPipelineTasks, sContainerId, taskPipeline):
+def _fnRegisterPipelineTask(
+    dictPipelineTasks, sContainerId, taskPipeline, iOwnerGeneration=1,
+):
     """Store a pipeline task and arrange for self-eviction on completion.
 
     Without the done-callback, completed-normally tasks linger in
@@ -1124,10 +1126,23 @@ def _fnRegisterPipelineTask(dictPipelineTasks, sContainerId, taskPipeline):
     after the task finishes (success, failure, or cancellation) and
     drops the entry only if it still points at this task, so a brand-new
     run for the same container is never accidentally evicted.
+
+    Task ownership is a MUTABLE ``iOwnerGeneration`` field on the task
+    record itself, retagged in place by a host transfer (design §2.3) —
+    never a parallel ``{id: generation}`` map, which turns ambiguous when
+    an old completion callback fires after a transfer. The done-callback
+    therefore reads the record's generation at completion time, not a
+    snapshot captured at registration.
     """
+    taskPipeline.iOwnerGeneration = iOwnerGeneration
     dictPipelineTasks[sContainerId] = taskPipeline
 
     def fnEvictOnDone(taskCompleted):
+        logger.debug(
+            "Pipeline task for %s finished under owner generation %s",
+            sContainerId,
+            getattr(taskCompleted, "iOwnerGeneration", 0),
+        )
         if dictPipelineTasks.get(sContainerId) is taskCompleted:
             dictPipelineTasks.pop(sContainerId, None)
     taskPipeline.add_done_callback(fnEvictOnDone)
@@ -1381,6 +1396,9 @@ def _fnRegisterViewerServedContainer(
         sContainerId=sContainerId,
         sBrowserSessionId=sBrowserSessionId,
     )
+    dictSessionOwner = dictCtx.get("dictSessionOwner")
+    if dictSessionOwner is not None and sBrowserSessionId:
+        dictSessionOwner[sBrowserSessionId] = sName
     dictCtx["sViewerLease"] = sLeaseId
 
 

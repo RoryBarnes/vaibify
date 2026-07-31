@@ -21,8 +21,16 @@ staleness contract.
 """
 
 __all__ = [
+    "S_OWNER_STATE_ACTIVE",
+    "S_OWNER_STATE_ORPHANED_SESSION",
+    "S_LANE_PIPELINE",
+    "S_LANE_TERMINAL",
     "OwnerRecord",
+    "ConnectionRecord",
     "fdictCreateOwnerRegistry",
+    "fdictCreateSessionOwnerIndex",
+    "fdictCreateSessionSocketIndex",
+    "ffReadSecondsFromEnvironment",
     "fsMintLease",
     "fsMintAgentToken",
     "fsAgentTokenForName",
@@ -31,12 +39,18 @@ __all__ = [
     "fbBrowserSessionOwnsLease",
     "fnReleaseOwnership",
     "fbSessionOwnsContainer",
+    "fiOwnerGenerationForName",
     "fnIncrementLiveConnection",
     "fnDecrementLiveConnection",
+    "fnDecrementLiveConnectionForRecord",
+    "fnRegisterSessionSocket",
+    "fnDeregisterSessionSocket",
     "fbOwnerIsReapable",
     "flistReapIdleOwnerships",
 ]
 
+import logging
+import os
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -49,8 +63,45 @@ from vaibify.config.containerLock import (
 )
 from vaibify.config.keepAliveManager import fnStopKeepAlive
 
+logger = logging.getLogger("vaibify")
 
-_F_GRACE_SECONDS = 30.0
+# The browser-authority axis holds exactly two values (design §1): a
+# record is ACTIVE while a live browser session owns it, and
+# ORPHANED_SESSION once the last browser socket is gone past the
+# reconnect window. Orphaning retains the flock, keep-alive, agent
+# token, and exclusivity; only a host transfer or the safe reaper ends
+# it. Start-progress and poison are future orthogonal axes, never
+# additional values here.
+S_OWNER_STATE_ACTIVE = "ACTIVE"
+S_OWNER_STATE_ORPHANED_SESSION = "ORPHANED_SESSION"
+
+S_LANE_PIPELINE = "pipeline"
+S_LANE_TERMINAL = "terminal"
+
+
+def ffReadSecondsFromEnvironment(sVariableName, fDefaultSeconds):
+    """Return a seconds knob from the environment, or its default.
+
+    A malformed value is reported and ignored rather than crashing the
+    hub at import time: a lifecycle tuning knob must never be able to
+    prevent startup.
+    """
+    sRawValue = os.environ.get(sVariableName, "")
+    if not sRawValue:
+        return fDefaultSeconds
+    try:
+        return float(sRawValue)
+    except ValueError:
+        logger.warning(
+            "Ignoring non-numeric %s=%r; using the default %s seconds",
+            sVariableName, sRawValue, fDefaultSeconds,
+        )
+        return fDefaultSeconds
+
+
+_F_GRACE_SECONDS = ffReadSecondsFromEnvironment(
+    "VAIBIFY_REAP_GRACE_SECONDS", 30.0,
+)
 
 
 @dataclass
@@ -65,6 +116,18 @@ class OwnerRecord:
     sockets, so only a second concurrent *pipeline* socket marks a
     duplicate tab; and ``fLastSeenMonotonic`` starts the grace window
     the moment the last live connection drops.
+
+    The ORPHANED_SESSION foundation fields (design §2.1): ``sState`` is
+    the two-valued browser-authority axis; ``iOwnerGeneration`` starts at
+    1 and is bumped only by a host transfer, so a stale socket or task
+    carrying an old generation can be told apart from the successor;
+    ``fOrphanedSinceMonotonic`` stamps the ACTIVE→ORPHANED transition (0.0
+    while never orphaned) so the reap grace measures from the orphan
+    moment, not the last socket; ``fLastAgentActivityMonotonic`` and
+    ``iInFlightAgentRequests`` let the safe reaper see a live in-container
+    agent; and ``bSocketEverExisted`` gates the zero-sockets orphan
+    trigger, so a claim that never opened a socket falls to the idle
+    window instead of orphaning instantly.
     """
 
     sLeaseId: str
@@ -75,10 +138,50 @@ class OwnerRecord:
     iLiveConnectionCount: int = 0
     iLivePipelineConnectionCount: int = 0
     fLastSeenMonotonic: float = field(default_factory=time.monotonic)
+    sState: str = S_OWNER_STATE_ACTIVE
+    iOwnerGeneration: int = 1
+    fOrphanedSinceMonotonic: float = 0.0
+    fLastAgentActivityMonotonic: float = 0.0
+    iInFlightAgentRequests: int = 0
+    bSocketEverExisted: bool = False
+
+
+@dataclass(eq=False)
+class ConnectionRecord:
+    """One live browser WebSocket, tagged with its session and generation.
+
+    Stored in ``app.state.dictSessionSockets`` (design §2.3) so a revoked
+    session's sockets can be actively closed, and matched by the
+    count-decrement path so a socket that outlived a generation rotation
+    decrements nothing on the successor's counters. Identity equality
+    (``eq=False``) keeps each record hashable and distinct, exactly one
+    per accepted socket.
+    """
+
+    connection: object
+    sBrowserSessionId: str
+    iOwnerGeneration: int
+    sLane: str
 
 
 def fdictCreateOwnerRegistry():
     """Return a fresh, empty owner-of-record map for ``app.state``."""
+    return {}
+
+
+def fdictCreateSessionOwnerIndex():
+    """Return the empty ``{sBrowserSessionId: sName}`` reverse index.
+
+    The cardinality authority (design §9): one container per browser
+    session. This slice only keeps the index in sync on the claim and
+    release paths; refusing a second claim lands with the cardinality
+    slice.
+    """
+    return {}
+
+
+def fdictCreateSessionSocketIndex():
+    """Return the empty ``{sBrowserSessionId: set[ConnectionRecord]}`` map."""
     return {}
 
 
@@ -128,7 +231,7 @@ def fbAgentTokenAuthorizesContainerId(
 def ftdictClaim(
     dictContainerOwners, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, fGraceSeconds=_F_GRACE_SECONDS,
-    sBrowserSessionId="",
+    sBrowserSessionId="", dictSessionOwner=None,
 ):
     """Arbitrate a claim and return ``(iStatusCode, dictPayload)``.
 
@@ -143,7 +246,7 @@ def ftdictClaim(
     if recordOwner is None:
         return _ftdictClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
-            sBrowserSessionId,
+            sBrowserSessionId, dictSessionOwner,
         )
     # The same-lease reclaim stays idempotent only when the owner is
     # unbound (a shared-token, transitional claim carries '') OR the
@@ -160,16 +263,19 @@ def ftdictClaim(
     if _fbOwnerIsReapableNow(
         recordOwner, sName, fbPipelineRunning, fGraceSeconds,
     ):
-        _fnForceReleaseOwnership(dictContainerOwners, sName)
+        _fnForceReleaseOwnership(
+            dictContainerOwners, sName, dictSessionOwner,
+        )
         return _ftdictClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
-            sBrowserSessionId,
+            sBrowserSessionId, dictSessionOwner,
         )
     return (409, _fdictClaimRefused(sName, recordOwner))
 
 
 def _ftdictClaimUnowned(
     dictContainerOwners, sName, iPort, sContainerId, sBrowserSessionId="",
+    dictSessionOwner=None,
 ):
     """Acquire the host flock for an unowned container and mint a lease."""
     try:
@@ -178,14 +284,14 @@ def _ftdictClaimUnowned(
         return (409, _fdictCrossHubRefused(sName, error))
     sLeaseId = _fnRecordNewOwner(
         dictContainerOwners, sName, fileHandleLock, sContainerId,
-        sBrowserSessionId,
+        sBrowserSessionId, dictSessionOwner,
     )
     return (200, _fdictClaimGranted(sName, sLeaseId))
 
 
 def _fnRecordNewOwner(
     dictContainerOwners, sName, fileHandleLock, sContainerId="",
-    sBrowserSessionId="",
+    sBrowserSessionId="", dictSessionOwner=None,
 ):
     """Mint a lease plus a per-container agent token and store the owner."""
     sLeaseId = fsMintLease()
@@ -196,6 +302,8 @@ def _fnRecordNewOwner(
         sContainerId=sContainerId,
         sBrowserSessionId=sBrowserSessionId,
     )
+    if dictSessionOwner is not None and sBrowserSessionId:
+        dictSessionOwner[sBrowserSessionId] = sName
     return sLeaseId
 
 
@@ -262,6 +370,7 @@ def _fsReadStartedIso(recordOwner):
 
 def fnReleaseOwnership(
     dictContainerOwners, sName, sLeaseId, sBrowserSessionId="",
+    dictSessionOwner=None,
 ):
     """Release ownership only when the caller proves the session-bound lease.
 
@@ -292,19 +401,30 @@ def fnReleaseOwnership(
     )
     if not (bBoundOwner or bUnboundOwner):
         return False
-    _fnForceReleaseOwnership(dictContainerOwners, sName)
+    _fnForceReleaseOwnership(dictContainerOwners, sName, dictSessionOwner)
     return True
 
 
-def _fnForceReleaseOwnership(dictContainerOwners, sName):
+def _fnForceReleaseOwnership(
+    dictContainerOwners, sName, dictSessionOwner=None,
+):
     """Drop a record and free its flock and keep-alive, lease unchecked.
 
     Used by the reaper and the take-over path, where the prior owner is
-    already proven dead, so no lease is presented.
+    already proven dead, so no lease is presented. Also drops the
+    released session's entry from the ``dictSessionOwner`` reverse index
+    when the caller maintains one, so the cardinality authority never
+    reports a container the owner map no longer holds.
     """
     recordOwner = dictContainerOwners.pop(sName, None)
     if recordOwner is None:
         return
+    if (
+        dictSessionOwner is not None
+        and recordOwner.sBrowserSessionId
+        and dictSessionOwner.get(recordOwner.sBrowserSessionId) == sName
+    ):
+        dictSessionOwner.pop(recordOwner.sBrowserSessionId, None)
     if recordOwner.fileHandleLock is not None:
         fnReleaseContainerLock(recordOwner.fileHandleLock)
     fnStopKeepAlive(sName)
@@ -320,12 +440,24 @@ def fbSessionOwnsContainer(dictContainerOwners, sName, sLeaseId):
     )
 
 
+def fiOwnerGenerationForName(dictContainerOwners, sName):
+    """Return the owner record's current generation, or 0 when unowned.
+
+    ``0`` is never a live generation (records start at 1), so a
+    connection record stamped 0 — a socket accepted while the container
+    had no owner — can never match a real owner and never decrements.
+    """
+    recordOwner = dictContainerOwners.get(sName)
+    return recordOwner.iOwnerGeneration if recordOwner is not None else 0
+
+
 def fnIncrementLiveConnection(dictContainerOwners, sName, bPipelineLane=False):
     """Record a new live connection for an owned container."""
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
         return
     recordOwner.iLiveConnectionCount += 1
+    recordOwner.bSocketEverExisted = True
     if bPipelineLane:
         recordOwner.iLivePipelineConnectionCount += 1
     recordOwner.fLastSeenMonotonic = time.monotonic()
@@ -344,6 +476,51 @@ def fnDecrementLiveConnection(dictContainerOwners, sName, bPipelineLane=False):
             0, recordOwner.iLivePipelineConnectionCount - 1,
         )
     recordOwner.fLastSeenMonotonic = time.monotonic()
+
+
+def fnDecrementLiveConnectionForRecord(
+    dictContainerOwners, sName, recordConnection,
+):
+    """Drop a live connection only when its generation is still current.
+
+    The decrement is matched on the connection record (design §2.3): a
+    socket whose ``finally`` fires after a host transfer carries the OLD
+    generation, and letting it decrement would corrupt the successor's
+    counters. A mismatched (or absent) record decrements nothing and
+    does not refresh the owner's liveness stamp.
+    """
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is None or recordConnection is None:
+        return
+    if recordConnection.iOwnerGeneration != recordOwner.iOwnerGeneration:
+        return
+    fnDecrementLiveConnection(
+        dictContainerOwners, sName,
+        bPipelineLane=recordConnection.sLane == S_LANE_PIPELINE,
+    )
+
+
+def fnRegisterSessionSocket(dictSessionSockets, recordConnection):
+    """Add a connection record to its browser session's live-socket set."""
+    if dictSessionSockets is None or recordConnection is None:
+        return
+    if not recordConnection.sBrowserSessionId:
+        return
+    dictSessionSockets.setdefault(
+        recordConnection.sBrowserSessionId, set(),
+    ).add(recordConnection)
+
+
+def fnDeregisterSessionSocket(dictSessionSockets, recordConnection):
+    """Remove a connection record, dropping its session's emptied set."""
+    if dictSessionSockets is None or recordConnection is None:
+        return
+    setRecords = dictSessionSockets.get(recordConnection.sBrowserSessionId)
+    if setRecords is None:
+        return
+    setRecords.discard(recordConnection)
+    if not setRecords:
+        dictSessionSockets.pop(recordConnection.sBrowserSessionId, None)
 
 
 def fbOwnerIsReapable(recordOwner, fGraceSeconds=_F_GRACE_SECONDS):
@@ -371,7 +548,7 @@ def _fbOwnerIsReapableNow(
 
 def flistReapIdleOwnerships(
     dictContainerOwners, fbPipelineRunning=None,
-    fGraceSeconds=_F_GRACE_SECONDS,
+    fGraceSeconds=_F_GRACE_SECONDS, dictSessionOwner=None,
 ):
     """Release every idle, past-grace ownership and return their names.
 
@@ -386,6 +563,8 @@ def flistReapIdleOwnerships(
         if _fbOwnerIsReapableNow(
             recordOwner, sName, fbPipelineRunning, fGraceSeconds,
         ):
-            _fnForceReleaseOwnership(dictContainerOwners, sName)
+            _fnForceReleaseOwnership(
+                dictContainerOwners, sName, dictSessionOwner,
+            )
             listReaped.append(sName)
     return listReaped

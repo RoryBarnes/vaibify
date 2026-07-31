@@ -18,6 +18,7 @@ from . import browserSession
 from . import containerOwnership
 from . import serverLifespan
 from . import serverMiddleware
+from . import sessionLifecycle
 
 logger = logging.getLogger("vaibify")
 
@@ -39,6 +40,15 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     app.state.dictBrowserSessions = (
         browserSession.fdictCreateBrowserSessionStore()
     )
+    app.state.dictSessionOwner = (
+        containerOwnership.fdictCreateSessionOwnerIndex()
+    )
+    app.state.dictSessionSockets = (
+        containerOwnership.fdictCreateSessionSocketIndex()
+    )
+    app.state.dictLifecycleLocks = (
+        sessionLifecycle.fdictCreateLifecycleLockStore()
+    )
     app.state.iExpectedPort = dictConfig["iExpectedPort"]
     app.state.iActiveWebSockets = 0
     app.state.fLastActivityMonotonic = time.monotonic()
@@ -58,6 +68,8 @@ def _fdictBuildApplicationContext(app, dictConfig, sSessionToken):
     dictCtx["iPort"] = dictConfig["iExpectedPort"]
     dictCtx["dictContainerOwners"] = app.state.dictContainerOwners
     dictCtx["dictBrowserSessions"] = app.state.dictBrowserSessions
+    dictCtx["dictSessionOwner"] = app.state.dictSessionOwner
+    dictCtx["dictSessionSockets"] = app.state.dictSessionSockets
     if dictConfig["bIsHub"]:
         dictCtx["bIsHub"] = True
     return dictCtx
@@ -205,6 +217,9 @@ def _fnRegisterHubShutdownReleaseLocks(app):
             except OSError:
                 pass
         dictContainerOwners.clear()
+        dictSessionOwner = getattr(app.state, "dictSessionOwner", None)
+        if dictSessionOwner is not None:
+            dictSessionOwner.clear()
     app.state.listLifespanShutdown.append(fnReleaseAllContainerLocks)
 
 
