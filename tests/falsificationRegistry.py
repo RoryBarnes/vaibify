@@ -91,6 +91,15 @@ LIST_FALSIFICATIONS = [
         old='                if iCode:\n                    return _fresponseForbidden(iCode)',
         new='                if False:\n                    return _fresponseForbidden(iCode)',
     ),
+    # The read half of the same boundary: dropping container-read from the
+    # enforced-scope set reverts owned-container GETs to the old
+    # declared-but-unenforced state while every mutation test stays green.
+    Falsification(
+        nodeid='tests/testSecurityBoundaryInvariants.py::testContainerScopedHttpReadRequiresOwningLease',
+        source='vaibify/gui/routeScope.py',
+        old='_SET_LEASE_ENFORCED_SCOPES = frozenset({\n    S_SCOPE_CONTAINER_OWNER,\n    S_SCOPE_CONTAINER_READ,\n})',
+        new='_SET_LEASE_ENFORCED_SCOPES = frozenset({\n    S_SCOPE_CONTAINER_OWNER,\n})',
+    ),
     Falsification(
         nodeid='tests/testContainerOwnership.py::test_release_stops_keep_alive',
         source='vaibify/gui/containerOwnership.py',

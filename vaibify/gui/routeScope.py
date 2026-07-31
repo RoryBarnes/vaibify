@@ -19,14 +19,16 @@ The mechanism is a scope marker plus a route class:
   ``"name"`` is the owner-map key directly).
 * :class:`ContainerAwareRoute`, installed on ``app.router.route_class``
   before any route registers, calls :func:`fiAuthorizeContainerHttp` before
-  the endpoint body for every ``container-owner`` route.
+  the endpoint body for every ``container-owner`` and ``container-read``
+  route.
 
 A mutating route carries a ``container-owner`` scope implicitly when its path
 template carries ``{sContainerId}`` — the marker of a viewer container-session
-route — so the 80-odd such routes need no per-handler decoration. The
-override decorator is for the exceptions: the owner-*establishing* connect
-route, and any future ``container-read`` owned-container GET (declared, not
-yet enforced). Non-container control-plane routes are named in
+route — and a GET/HEAD route with that segment carries ``container-read`` by
+the mirror convention; both scopes are enforced with the same bound-lease
+predicate, so the 100-odd such routes need no per-handler decoration. The
+override decorator is for the exceptions, such as the owner-*establishing*
+connect route. Non-container control-plane routes are named in
 :data:`DICT_CONTROL_PLANE_SCOPES`; a mutating route matching none of these
 fails at app construction (:func:`fnValidateRouteScopesOrRaise`), so an
 unscoped route can never ship (default-deny).
@@ -69,9 +71,9 @@ S_SCOPE_BOOTSTRAP_CAPABILITY = "bootstrap-capability"
 S_SCOPE_BROWSER_HUB = "browser-hub"
 S_SCOPE_CONTAINER_OWNER = "container-owner"
 S_SCOPE_OWNER_ESTABLISHING = "owner-establishing"
-# Temporary: owned-container GETs are declared but NOT yet enforced. The
-# frozen allowlist below is ratcheted by the architectural invariant, so a
-# new route cannot silently adopt the deferred scope.
+# Owned-container GETs: ENFORCED since the read-enforcement slice with the
+# same bound-lease predicate as container-owner. The frozen allowlist below
+# remains the ratchet, so a new route cannot silently adopt the scope.
 S_SCOPE_CONTAINER_READ = "container-read"
 
 _SET_VALID_SCOPES = frozenset({
@@ -84,6 +86,14 @@ _SET_VALID_SCOPES = frozenset({
 })
 
 _SET_STATE_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+# Both container scopes run the identical bound-lease authority: reading an
+# owned container leaks its files, logs, and credentials-adjacent state to a
+# non-owning session just as surely as mutating it corrupts them.
+_SET_LEASE_ENFORCED_SCOPES = frozenset({
+    S_SCOPE_CONTAINER_OWNER,
+    S_SCOPE_CONTAINER_READ,
+})
 
 I_AUTHORIZED = 0
 I_REJECT_FORBIDDEN = 403
@@ -129,12 +139,15 @@ DICT_CONTROL_PLANE_SCOPES = {
 }
 
 # Owned-container GETs resolve to ``container-read`` by the GET/{sContainerId}
-# convention (see :func:`fdictResolveRouteScope`). The scope is DECLARED, not
-# enforced: ``ContainerAwareRoute`` still gates only ``container-owner``, so
-# these reads are not lease-checked this slice. This frozen allowlist is the
-# ratchet — every route resolving to ``container-read`` must appear here, so a
-# NEW owned-container GET fails ``testContainerReadScopeIsAFrozenRatchetedAllowlist``
-# until it is acknowledged (and reads-enforcement can then adopt it wholesale).
+# convention (see :func:`fdictResolveRouteScope`) and are ENFORCED:
+# ``ContainerAwareRoute`` runs the same bound-lease authority for them as for
+# ``container-owner`` mutations. Pre-claim surfaces stay out of this scope by
+# construction — the picker and registry operate on name-keyed or listing
+# routes that carry no ``{sContainerId}`` segment, and the id-keyed reads
+# here (``/ready``, ``/workflows``) are only issued after the claim minted
+# the lease. This frozen allowlist is the ratchet — every route resolving to
+# ``container-read`` must appear here, so a NEW owned-container GET fails
+# ``testContainerReadScopeIsAFrozenRatchetedAllowlist`` until acknowledged.
 SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
@@ -241,8 +254,8 @@ def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
     Resolution order: an explicit :func:`fnRouteScope` stamp wins; else a
     mutating ``{sContainerId}`` path is container-owner by convention, and a
     non-mutating (GET/HEAD) ``{sContainerId}`` path is container-read by the
-    mirror convention (DECLARED, not enforced — ``ContainerAwareRoute`` gates
-    only container-owner); else a control-plane route named in
+    mirror convention (both enforced by ``ContainerAwareRoute`` with the
+    bound-lease authority); else a control-plane route named in
     :data:`DICT_CONTROL_PLANE_SCOPES` carries its declared scope. Anything
     else is ``None`` — which :func:`fnValidateRouteScopesOrRaise` treats as a
     construction error for a mutating route (default-deny).
@@ -337,14 +350,14 @@ def fiAuthorizeContainerHttp(request, appState, dictScope):
 
 
 class ContainerAwareRoute(APIRoute):
-    """Route class that enforces the container-owner predicate before serving.
+    """Route class that enforces the bound-lease predicate before serving.
 
     Installed on ``app.router.route_class`` before any route registers, so
     every route becomes an instance and none can slip past the authority
     through a registration-ordering accident. For a ``container-owner``
-    route the wrapper runs :func:`fiAuthorizeContainerHttp` first and short-
-    circuits the endpoint on refusal; every other scope (and the read-only
-    routes) pass straight through.
+    or ``container-read`` route the wrapper runs
+    :func:`fiAuthorizeContainerHttp` first and short-circuits the endpoint
+    on refusal; every other scope passes straight through.
     """
 
     def get_route_handler(self):
@@ -356,7 +369,7 @@ class ContainerAwareRoute(APIRoute):
             )
             if (
                 dictScope is not None
-                and dictScope["sScope"] == S_SCOPE_CONTAINER_OWNER
+                and dictScope["sScope"] in _SET_LEASE_ENFORCED_SCOPES
             ):
                 iCode = fiAuthorizeContainerHttp(
                     request, request.app.state, dictScope,

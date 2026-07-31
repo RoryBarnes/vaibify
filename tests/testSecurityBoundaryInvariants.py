@@ -314,6 +314,80 @@ def testContainerScopedHttpMutationRequiresOwningLease(appViewerAndDocker):
     )
 
 
+@pytest.mark.falsification
+def testContainerScopedHttpReadRequiresOwningLease(appViewerAndDocker):
+    """A container-scoped HTTP read must reject a non-owning session.
+
+    THE GENERAL RULE, extended to reads (the read-enforcement slice of the
+    ORPHANED_SESSION foundation). Reading an owned container leaks its
+    files, logs, git state, and workflow contents to a session that never
+    claimed it — the same boundary violation as a foreign mutation, minus
+    the write. ``ContainerAwareRoute`` therefore runs the identical
+    bound-lease authority for the ``container-read`` scope that it runs for
+    ``container-owner``.
+
+    Driven through live clients with the container name distinct from the
+    container id, exactly like the mutation gate above. Session A connects
+    and takes the lease. Session B — a genuinely distinct
+    ``BrowserSessionRecord`` credential — then drives a container-read GET
+    three ways: with no lease, with a forged lease, and with session A's
+    REAL lease copied. All three must be refused, and the refusal body must
+    carry none of the workflow content the endpoint would have served, so
+    the gate is a true no-read, not a leak with an error code. As a
+    positive control, the owner presenting its own credential + lease still
+    reads its steps, proving the gate is not blanket-deny.
+
+    Kills: in routeScope._SET_LEASE_ENFORCED_SCOPES, drop
+    S_SCOPE_CONTAINER_READ from the enforced set — reverting reads to the
+    declared-but-unenforced state — and the non-owning session's GET
+    succeeds instead of being rejected.
+    """
+    appViewer, _connectionDocker = appViewerAndDocker
+    clientOwner = TestClient(
+        appViewer,
+        headers={"X-Session-Token": fsBootstrapCredential(appViewer)},
+    )
+    sOwningLease = _fdictOwnerFromConnect(clientOwner)
+    assert sOwningLease
+    assert S_CONTAINER_NAME in appViewer.state.dictContainerOwners
+    assert S_CONTAINER_ID not in appViewer.state.dictContainerOwners
+
+    clientIntruder = TestClient(
+        appViewer,
+        headers={"X-Session-Token": fsBootstrapCredential(appViewer)},
+    )
+    for dictLeaseHeader in (
+        {},
+        {"X-Vaibify-Lease": "forged-not-the-owning-lease"},
+        {"X-Vaibify-Lease": sOwningLease},  # A's real lease, copied
+    ):
+        responseRead = clientIntruder.get(
+            f"/api/steps/{S_CONTAINER_ID}", headers=dictLeaseHeader,
+        )
+        assert responseRead.status_code in (401, 403), (
+            "A session that does not OWN the container read a "
+            "container-scoped route (GET /api/steps) and got "
+            f"{responseRead.status_code}; the bound owning lease is not "
+            f"enforced on reads (lease header={dictLeaseHeader})."
+        )
+        assert "Step A" not in responseRead.text, (
+            "The refusal response still leaked workflow content to the "
+            "non-owning session; the authority must short-circuit before "
+            "the handler body runs."
+        )
+
+    # Positive control: the owner, presenting its own lease, reads freely.
+    responseOwner = clientOwner.get(
+        f"/api/steps/{S_CONTAINER_ID}",
+        headers={"X-Vaibify-Lease": sOwningLease},
+    )
+    assert responseOwner.status_code == 200, (
+        "The owning session was refused its own container read — the gate "
+        f"is blanket-denying rather than authorizing ({responseOwner.text})."
+    )
+    assert "Step A" in responseOwner.text
+
+
 # ---- source invariant: enforcement is mechanical, not inspected ------
 
 
@@ -512,16 +586,16 @@ def testContainerAwareRouteRunsAuthorityBeforeEndpoint(monkeypatch):
 
 
 def testContainerReadScopeIsAFrozenRatchetedAllowlist():
-    """No route may adopt the deferred ``container-read`` scope off-list.
+    """No route may adopt the ``container-read`` scope off-list.
 
-    Owned-container GETs now RESOLVE to ``container-read`` by the
-    GET/{sContainerId} convention (a declared, not-yet-enforced scope), so
-    the ratchet is checked against the resolved scope, not merely an explicit
-    stamp. Every route that resolves to ``container-read`` must be enumerated
-    in the frozen ``SET_CONTAINER_READ_ROUTES``; a NEW owned-container GET
-    fails this check until it is acknowledged there — the machine tripwire
-    that keeps the deferral honest and lets reads-enforcement adopt the whole
-    set at once.
+    Owned-container GETs RESOLVE to ``container-read`` by the
+    GET/{sContainerId} convention (now lease-ENFORCED by
+    ``ContainerAwareRoute``), so the ratchet is checked against the resolved
+    scope, not merely an explicit stamp. Every route that resolves to
+    ``container-read`` must be enumerated in the frozen
+    ``SET_CONTAINER_READ_ROUTES``; a NEW owned-container GET fails this
+    check until it is acknowledged there — the machine tripwire that makes
+    adopting the enforced scope a deliberate, reviewed act.
     """
     for app in _ftBuildBothApplications():
         for route in app.routes:

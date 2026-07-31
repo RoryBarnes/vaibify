@@ -596,24 +596,28 @@ def test_update_settings_partial(clientHttp):
 # ── Not connected errors ─────────────────────────────────────
 
 
-def test_steps_without_connect_returns_404(clientHttp):
+def test_steps_without_connect_returns_403(clientHttp):
+    """Reads of an unowned container are refused by the lease gate (403),
+    which fires before the not-connected 404 could."""
     responseHttp = clientHttp.get(
         f"/api/steps/{S_CONTAINER_ID}"
     )
-    assert responseHttp.status_code == 404
+    assert responseHttp.status_code == 403
 
 
-def test_settings_without_connect_returns_404(clientHttp):
+def test_settings_without_connect_returns_403(clientHttp):
+    """Same lease-gate refusal as steps: no owner record means 403."""
     responseHttp = clientHttp.get(
         f"/api/settings/{S_CONTAINER_ID}"
     )
-    assert responseHttp.status_code == 404
+    assert responseHttp.status_code == 403
 
 
 # ── Monitor ───────────────────────────────────────────────────
 
 
 def test_get_monitor_stats(clientHttp):
+    _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
         f"/api/monitor/{S_CONTAINER_ID}"
     )
@@ -764,6 +768,7 @@ def test_clean_outputs(clientHttp):
 
 
 def test_find_workflows(clientHttp):
+    _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
         f"/api/workflows/{S_CONTAINER_ID}"
     )

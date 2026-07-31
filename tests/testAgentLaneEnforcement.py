@@ -632,6 +632,7 @@ def test_host_log_tail_browser_lane_keeps_raw_view(clientBrowser, tmp_path):
     from vaibify.gui.routes import pipelineRoutes
 
     hostIncidents.fnResetHostIncidents()
+    _fnConnectAsOwner(clientBrowser)
     sLog = tmp_path / "vaibify.log"
     sLog.write_text(
         "2026-06-16 INFO vaibify: " + S_CONTAINER_ID + " hello\n",

@@ -418,7 +418,15 @@ def test_fnDockerCopy_raises_on_failure():
 
 
 def test_session_token_via_query_param_on_download(clientHttp):
-    """Query-param credentials only accepted for download and WebSocket."""
+    """Query-param credentials clear the middleware on download paths only.
+
+    The credential lane and the lease gate are distinct: the query-param
+    ``sToken`` clears ``SessionTokenMiddleware`` (no 401), but the
+    container-read lease authority then refuses the request (403) because
+    a bare navigation carries no bound-lease header. The owning session,
+    whose client presents the lease like the browser's authenticated-fetch
+    wrapper, still downloads.
+    """
     _fnConnectToContainer(clientHttp)
     sToken = fsBootstrapCredential(clientHttp.app)
     clientNoHeader = TestClient(clientHttp.app)
@@ -426,7 +434,12 @@ def test_session_token_via_query_param_on_download(clientHttp):
         f"/api/files/{S_CONTAINER_ID}/download/"
         f"workspace/stepA/output.dat?sToken={sToken}",
     )
-    assert responseHttp.status_code in (200, 500)
+    assert responseHttp.status_code == 403
+    responseOwner = clientHttp.get(
+        f"/api/files/{S_CONTAINER_ID}/download/"
+        "workspace/stepA/output.dat",
+    )
+    assert responseOwner.status_code in (200, 500)
 
 
 def test_session_token_query_param_rejected_non_download(clientHttp):

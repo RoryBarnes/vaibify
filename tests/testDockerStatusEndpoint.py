@@ -49,6 +49,32 @@ def _fclearDockerStatusHolder():
     pipelineServer._dictDockerStatus["sCommand"] = ""
 
 
+def _fclientOwningContainer(app, sContainerId):
+    """Return a TestClient whose browser session owns ``sContainerId``.
+
+    Container reads are lease-enforced, and with Docker down there is no
+    claim path to mint a lease, so the owner record is installed directly
+    — bound to this client's real browser session — to reach the
+    endpoint's Docker-unavailable diagnosis through the gate.
+    """
+    from vaibify.gui import browserSession, containerOwnership
+    sCredential = fsBootstrapCredential(app)
+    sSessionId = browserSession.fsSessionIdForCredential(
+        app.state.dictBrowserSessions, sCredential,
+    )
+    app.state.dictContainerOwners["docker-down-owned-name"] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId="docker-status-lease", fileHandleLock=None,
+            sAgentToken="", sContainerId=sContainerId,
+            sBrowserSessionId=sSessionId,
+        )
+    )
+    return TestClient(app, headers={
+        "X-Session-Token": sCredential,
+        "X-Vaibify-Lease": "docker-status-lease",
+    })
+
+
 def test_get_docker_status_returns_cached_diagnosis():
     """GET surfaces the cached error/hint/command for the banner."""
     app = _fbuildAppWithoutDocker()
@@ -139,9 +165,7 @@ def test_retry_keeps_error_when_probe_still_fails():
 def test_503_includes_specific_diagnosis_not_generic_message():
     """The kebab Start path's 503 must carry the actionable hint."""
     app = _fbuildAppWithoutDocker()
-    clientHttp = TestClient(
-        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
-    )
+    clientHttp = _fclientOwningContainer(app, "anything")
     response = clientHttp.get(
         "/api/containers/anything/ready"
     )
@@ -155,9 +179,7 @@ def test_503_includes_specific_diagnosis_not_generic_message():
 def test_route_swap_visible_to_other_routes():
     """After retry success, downstream routes see the new connection."""
     app = _fbuildAppWithoutDocker()
-    clientHttp = TestClient(
-        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
-    )
+    clientHttp = _fclientOwningContainer(app, "x")
 
     response503 = clientHttp.get("/api/containers/x/ready")
     assert response503.status_code == 503

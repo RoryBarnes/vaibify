@@ -204,7 +204,12 @@ def _fnConnect(clientHttp):
         params={"sWorkflowPath": _S_WORKFLOW_PATH},
     )
     assert response.status_code == 200
-    return response.json()
+    dictConnect = response.json()
+    # Container reads are lease-enforced; carry the owning lease like the
+    # browser's authenticated-fetch wrapper does.
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
 def _fdictPollFileStatus(clientHttp, iWorkflowEpoch):
@@ -390,7 +395,12 @@ def test_deleted_file_surfaces_warning(clientHttp, fixtureMock):
 def _fnConnectNoWorkflow(clientHttp):
     response = clientHttp.post(f"/api/connect/{_S_CONTAINER_ID}")
     assert response.status_code == 200
-    return response.json()
+    dictConnect = response.json()
+    # Container reads are lease-enforced; carry the owning lease like the
+    # browser's authenticated-fetch wrapper does.
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
 def _fdictPollDiscovery(clientHttp):
