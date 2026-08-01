@@ -159,7 +159,7 @@ def test_require_ok_raises_with_raw_body_when_not_a_dict():
 
 def test_redeem_host_lane_credential_exchanges_a_socket_capability():
     with patch.object(
-        hubSession, "fsMintBootstrapCapability", return_value="cap-1",
+        hubSession, "fsRequestBootstrapCapability", return_value="cap-1",
     ), patch.object(
         hubSession, "ftSendHttpRequest",
         return_value=(200, {"sCredential": "cred-1"}),
@@ -173,7 +173,7 @@ def test_redeem_host_lane_credential_exchanges_a_socket_capability():
 
 def test_redeem_host_lane_credential_raises_when_absent():
     with patch.object(
-        hubSession, "fsMintBootstrapCapability", return_value="cap-1",
+        hubSession, "fsRequestBootstrapCapability", return_value="cap-1",
     ), patch.object(
         hubSession, "ftSendHttpRequest", return_value=(200, {}),
     ):
@@ -187,7 +187,7 @@ def test_mint_bootstrap_capability_surfaces_a_socket_refusal():
         return_value={"bAccepted": False, "sError": "no store"},
     ):
         with pytest.raises(HubSessionError, match="no store"):
-            hubSession.fsMintBootstrapCapability(8137)
+            hubSession.fsRequestBootstrapCapability(8137)
 
 
 def test_mint_bootstrap_capability_reports_an_unreachable_socket():
@@ -197,7 +197,7 @@ def test_mint_bootstrap_capability_reports_an_unreachable_socket():
         side_effect=HostControlError("no socket for port 8137"),
     ):
         with pytest.raises(HubSessionError, match="host control socket"):
-            hubSession.fsMintBootstrapCapability(8137)
+            hubSession.fsRequestBootstrapCapability(8137)
 
 
 def test_resolve_container_id_returns_running_id():

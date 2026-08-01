@@ -189,7 +189,7 @@ def ftSendSessionRequest(
     )
 
 
-def fsMintBootstrapCapability(iHubPort):
+def fsRequestBootstrapCapability(iHubPort):
     """Return a launch capability minted over the hub's control socket.
 
     Host-lane only: the socket lives in a ``0700`` directory, is
@@ -229,7 +229,7 @@ def fsRedeemHostLaneCredential(iHubPort, sBaseUrl):
     credential it returns is an ordinary per-browser session, holding
     no container until this client claims one.
     """
-    sCapability = fsMintBootstrapCapability(iHubPort)
+    sCapability = fsRequestBootstrapCapability(iHubPort)
     objBody = _fobjRequireOkResponse(
         ftSendHttpRequest(
             sBaseUrl, "", "POST", S_BOOTSTRAP_ENDPOINT,
