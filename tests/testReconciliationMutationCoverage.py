@@ -9,8 +9,10 @@ keyed the same way the code under test is.
 
 Scope notes: case 42's semantics half (auto-clear tiering) landed with
 3a in ``testOperationJournalMutationCoverage.py``; case 46's
-DRAINING-transfer half lands with slice 5; case 26b (the full
-force-abandon lifecycle) lands with slice 5 — the poison refusal
+DRAINING-transfer halves landed with slice 5 (``testHostTransfer.py``
+and ``testTerminalContainmentLive.py``); case 26b's full
+force-abandon lifecycle landed with slice 5 in
+``testHostControlChannel.py`` — the poison refusal
 surface is unit-tested in ``testPoisonRecord.py``.
 """
 

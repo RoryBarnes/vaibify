@@ -4,8 +4,9 @@ A host-lane force-abandon poisons an owner record whose guarded worker
 is wedged. While the poison stands, exclusivity is retained: claim,
 release, reap, and carrier admission all refuse at their existing
 choke points, and the registry listing surfaces the state truthfully.
-The full lifecycle (case 26b) lands with slice 5; these are the
-refusal semantics available now. The setting path — the control
+The full lifecycle (case 26b) landed with slice 5 in
+``testHostControlChannel.py`` (force-abandon → refuse claim/transfer/
+reap → reconcile → transfer); these are the refusal semantics. The setting path — the control
 socket's force-abandon handler — is driven for real in
 ``testHostControlChannel.py``.
 """

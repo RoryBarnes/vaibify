@@ -3321,4 +3321,80 @@ def _fdictEntry(sRel):
         old='    recordOwner.iInFlightAgentRequests += 1',
         new='    recordOwner.iInFlightAgentRequests += 0',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 5, checkpoint 4 — the remaining transfer
+    # halves (cases 16b, 4's 3b half, 26b's lifecycle, 43's and 46's
+    # real-container transfer halves).
+    # ------------------------------------------------------------------
+    # Case 16b, slice-5 half (the shielded supervisor keeps the drain
+    # held across a requester cancel, so a transfer stays busy-refused
+    # until the worker truly dies):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testCancelledRequesterKeepsTransferBlockedUntilWorkerDies',
+        source='vaibify/gui/commitCarrier.py',
+        old='    return await asyncio.shield(taskSupervisor)',
+        new='    return await taskSupervisor',
+    ),
+    # Case 4, 3b half (the mode-(b) supervisor's own lane-tuple
+    # revalidation under the drain refuses a pre-transfer tuple):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testOldTupleLockHeldMutationIsRefusedAfterTransfer',
+        source='vaibify/gui/commitCarrier.py',
+        old='''        if not fbLaneTupleStillCurrent(appState, supervisor.dictLaneTuple):
+            raise CommitRefusedError(''',
+        new='''        if False:
+            raise CommitRefusedError(''',
+    ),
+    # Case 26b, full lifecycle (force-abandon must actually SET the
+    # poison — an acknowledge-without-poison leaves the transfer
+    # refusal misattributed to the journal and the claim un-poisoned):
+    Falsification(
+        nodeid='tests/testHostControlChannel.py::test_force_abandon_lifecycle_poisons_refuses_and_reconciles',
+        source='vaibify/gui/hostControlChannel.py',
+        old='''    recordOwner.poison = containerOwnership.PoisonRecord(
+        sGuardedOperationId=sExpectedOperationId,
+        sContainerId=recordOwner.sContainerId,
+        sTaskHandleId=sTaskHandleId,
+        fAbandonedMonotonic=time.monotonic(),
+    )''',
+        new='''    recordOwner.poison = None''',
+    ),
+    # Case 43, transfer-commit half (real container; also drives case
+    # 44's transfer path): under the agree-with-exec_inspect prover
+    # mutant, the DRAINING phase "proves" a live group empty, the
+    # transfer commits over it, and the surviving signal-trapping
+    # descendant writes its marker under the successor's ownership.
+    # Kill-confirmation requires a reachable Docker daemon; without
+    # one the test skips and the mutant survives vacuously.
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_transfer_commits_only_after_the_descendant_is_proven_dead',
+        source='vaibify/docker/dockerConnection.py',
+        old='''        return {
+            "bConclusive": True, "iMemberCount": iMemberCount,
+            "sDetail": f"{iMemberCount} live member(s)",
+        }''',
+        new='''        return {
+            "bConclusive": True, "iMemberCount": 0,
+            "sDetail": f"{iMemberCount} live member(s)",
+        }''',
+    ),
+    # Case 46, real-container half (a PAUSED container makes every
+    # drain probe indeterminate; the optimistic-commit mutant settles
+    # whatever the final probe says, so the transfer commits instead
+    # of refusing retained-and-quarantined). Kill-confirmation
+    # requires a reachable Docker daemon; without one the test skips
+    # and the mutant survives vacuously.
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_indeterminate_drain_refuses_transfer_and_quarantines',
+        source='vaibify/gui/terminalContainment.py',
+        old='''    if _fbProbeProvesEmpty(dictProbe):
+        return _fdictSettleProvenRecord(recordTerminal, dictProbe)
+    return _fdictQuarantineRecord(
+        recordTerminal,
+        "the terminal process group could not be proven empty: "
+        f"{dictProbe.get('sDetail', '')}",
+    )''',
+        new='''    return _fdictSettleProvenRecord(recordTerminal, dictProbe)''',
+    ),
 ]

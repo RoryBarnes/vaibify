@@ -10,6 +10,7 @@ throughout (repo epistemics rule).
 
 import asyncio
 import logging
+import threading
 import time
 from types import SimpleNamespace
 
@@ -859,3 +860,130 @@ async def testUnsettledForeignJournalRecordRefusesTransfer():
     assert stateApp.dictContainerOwners[
         S_PROJECT_NAME
     ].iOwnerGeneration == 1
+
+
+# -- the mode-(b) drain across a transfer (cases 16b and 4) ------------------
+
+
+async def _fsupervisorAwaitRegistered(stateApp):
+    """Wait until the mode-(b) supervisor exists and journaled its op."""
+    for _ in range(500):
+        for supervisor in getattr(
+            stateApp, "dictMutationSupervisors", {},
+        ).values():
+            if supervisor.sOperationId:
+                return supervisor
+        await asyncio.sleep(0.01)
+    raise AssertionError("the supervisor never registered its operation")
+
+
+@pytest.mark.asyncio
+@pytest.mark.falsification
+async def testCancelledRequesterKeepsTransferBlockedUntilWorkerDies():
+    """Case 16b (slice-5 half): the shielded-supervisor drain vs transfer.
+
+    Cancelling a mode-(b) mutation's REQUESTING coroutine stops the
+    awaiting, never the worker: the supervisor holds the drain until
+    the worker thread actually terminates, so a transfer meanwhile is
+    busy-refused with its capability left ARMED. Once the worker
+    exits — its effect committed under the OLD generation, the
+    completes-before contract — the SAME capability transfers, and no
+    old-generation effect lands after the commit.
+
+    Kills: un-shielding the requester's await in
+    ``commitCarrier.fdictRunLockHeldMutation`` (``await asyncio.shield(
+    taskSupervisor)`` -> ``await taskSupervisor``) — a cancelled
+    request then tears down the supervisor under the live worker, the
+    drain frees while the worker thread still runs, and the first
+    transfer no longer answers busy-retry.
+    """
+    stateApp = _fstateBuildAppState()
+    sOldSessionId, _, sOldLease = _tSeedOwnedContainer(stateApp)
+    dictLaneTuple = _dictBuildBrowserLaneTuple(
+        stateApp, sOldSessionId, sOldLease,
+    )
+    eventWorkerMayExit = threading.Event()
+    dictWorkerLog = {}
+
+    def fnWorker(supervisor):
+        eventWorkerMayExit.wait(10)
+        dictWorkerLog["iGenerationAtCommit"] = stateApp.dictContainerOwners[
+            S_PROJECT_NAME
+        ].iOwnerGeneration
+        return "worker-finished"
+
+    taskRequest = asyncio.get_running_loop().create_task(
+        commitCarrier.fdictRunLockHeldMutation(
+            stateApp, S_PROJECT_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "file-write", "a guarded write", fnWorker,
+        ),
+    )
+    supervisor = await _fsupervisorAwaitRegistered(stateApp)
+    taskRequest.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await taskRequest
+    sCapability = _fsMintTransferCapability(stateApp)
+    sOutcomeWhileWorkerLives, _ = await _tTransfer(stateApp, sCapability)
+    assert sOutcomeWhileWorkerLives == (
+        sessionLifecycle.S_TRANSFER_BUSY_RETRY
+    ), (
+        "the transfer must stay blocked while the cancelled request's "
+        "worker thread is still alive"
+    )
+    assert stateApp.dictContainerOwners[
+        S_PROJECT_NAME
+    ].iOwnerGeneration == 1
+    eventWorkerMayExit.set()
+    await asyncio.wait_for(supervisor.taskSupervisor, 5)
+    assert dictWorkerLog["iGenerationAtCommit"] == 1, (
+        "the worker's effect must have committed under the OLD "
+        "generation, before any transfer"
+    )
+    assert supervisor.dictOutcome["bCommitted"] is True
+    sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
+    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED
+    assert dictPayload["iOwnerGeneration"] == 2
+    assert _dictJournalOperations() == {}, (
+        "the completed worker's journal record must be settled, not "
+        "adopted or quarantined"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.falsification
+async def testOldTupleLockHeldMutationIsRefusedAfterTransfer():
+    """Case 4 (3b half): the mode-(b) revalidation refuses a stale tuple.
+
+    A lock-held mutation submitted with the pre-transfer lane tuple is
+    refused by the supervisor's OWN revalidation under the drain — the
+    3b twin of the mode-(a) commit-point check — so its worker never
+    runs and no journal record is ever written.
+
+    Kills: neutralizing the lane-tuple revalidation in
+    ``commitCarrier._fdictSuperviseLockHeldWorker``.
+    """
+    stateApp = _fstateBuildAppState()
+    sOldSessionId, _, sOldLease = _tSeedOwnedContainer(stateApp)
+    dictOldLaneTuple = _dictBuildBrowserLaneTuple(
+        stateApp, sOldSessionId, sOldLease,
+    )
+    sCapability = _fsMintTransferCapability(stateApp)
+    sOutcome, _ = await _tTransfer(stateApp, sCapability)
+    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED
+    listEffectRuns = []
+
+    def fnWorker(supervisor):
+        listEffectRuns.append(True)
+        return "never-committed"
+
+    with pytest.raises(commitCarrier.CommitRefusedError):
+        await commitCarrier.fdictRunLockHeldMutation(
+            stateApp, S_PROJECT_NAME, S_CONTAINER_ID, dictOldLaneTuple,
+            "file-write", "a stale write", fnWorker,
+        )
+    assert listEffectRuns == [], (
+        "a stale-tuple mode-(b) worker must never run"
+    )
+    assert _dictJournalOperations() == {}, (
+        "the refusal must precede the journal write"
+    )

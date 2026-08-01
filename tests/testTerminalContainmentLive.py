@@ -4,8 +4,9 @@ The browser fake cannot prove Docker exec termination (design v13
 §6.1), so these tests drive REAL terminal execs in a throwaway
 container: a shell detaches a signal-trapping descendant, the exec
 dies, and only the group prover can tell whether anything survived.
-Case 44's transfer and expiry halves land with slices 5 and 6; case
-43's transfer-commit half lands with slice 5 — the registry entries
+Case 43's transfer-commit half and case 44's transfer half landed
+with slice 5 (the two transfer tests at the bottom of this file);
+case 44's expiry half lands with slice 6 — the registry entries
 say so.
 
 Live-daemon convention (``testDockerConnectionLive``): each test
@@ -156,8 +157,9 @@ def test_prover_reports_survivors_after_exec_inspect_says_dead(
 ):
     """``Running == false`` while the group is provably NOT empty.
 
-    Case 43, groundwork half (the transfer-commit half lands with
-    slice 5): a real detached, signal-trapping descendant survives its
+    Case 43, groundwork half (the transfer-commit half is
+    ``test_transfer_commits_only_after_the_descendant_is_proven_dead``
+    below): a real detached, signal-trapping descendant survives its
     exec — the daemon reports the exec exited while the group prover
     reports a live member, and the journal's terminal probe therefore
     quarantines instead of settling. This is the exact codex-round-12
@@ -213,8 +215,9 @@ def test_release_kills_the_detached_descendant_or_quarantines(
 ):
     """Explicit release terminates-and-proves against a real container.
 
-    Case 44, release half (the transfer and expiry halves land with
-    slices 5 and 6): release must leave the descendant provably dead
+    Case 44, release half (the transfer half is the slice-5 transfer
+    test below; the expiry half lands with slice 6): release must
+    leave the descendant provably dead
     (its marker never appears) or the record retained-and-quarantined
     — never a clean release with a live group.
 
@@ -377,3 +380,181 @@ def test_two_real_terminals_and_a_pipeline_record_settle_independently(
         "settling the first terminal must not have touched the second"
     )
     terminalContainment.fnDrainSessionRecord(sessionSecond)
+
+
+# ---------------------------------------------------------------------
+# Slice 5: the transfer halves of cases 43 and 46, against a real
+# container.
+# ---------------------------------------------------------------------
+
+@pytest.fixture
+def tLiveContainerWithReapingInit():
+    """A throwaway container whose PID 1 (tini, ``init=True``) reaps.
+
+    The transfer-commit half needs the PROVEN-DEAD drain arm, and the
+    prover honestly counts a KILLed-but-unreaped zombie as a member:
+    under a non-reaping PID 1 (the plain fixture's ``sleep``), a
+    killed orphan stays a zombie forever and every drain quarantines.
+    A reaping init is the environment in which "prove the group empty"
+    can actually succeed, which is what this half must demonstrate.
+    """
+    fnRequireDaemonReachable()
+    import docker
+    from vaibify.docker.dockerConnection import DockerConnection
+    clientDocker = docker.from_env()
+    sName = f"vaibifyTermContain{secrets.token_hex(4)}"
+    container = clientDocker.containers.run(
+        S_THROWAWAY_IMAGE, ["sleep", "300"], name=sName, detach=True,
+        init=True,
+    )
+    try:
+        yield (sName, container.id, DockerConnection())
+    finally:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
+
+
+def _stateBuildTransferAppState(tLiveContainer):
+    """Return an app state holding the container with a real old session."""
+    from vaibify.gui import browserSession, commitCarrier, containerOwnership
+    from vaibify.gui import terminalContainment
+    sName, sContainerId, connectionDocker = tLiveContainer
+    stateApp = SimpleNamespace(
+        dictContainerOwners={},
+        dictSessionOwner={},
+        dictSessionSockets={},
+        dictBrowserSessions=browserSession.fdictCreateBrowserSessionStore(),
+        dictDurableTaskRecords=commitCarrier.fdictCreateDurableTaskRegistry(),
+        dictTerminalExecutionRecords=(
+            terminalContainment.fdictCreateTerminalRecordRegistry()
+        ),
+    )
+    sLaunchCapability = browserSession.fsMintBootstrapCapability(
+        stateApp.dictBrowserSessions,
+    )
+    sOldSessionId, sOldCredential = browserSession.ftRedeemCapability(
+        stateApp.dictBrowserSessions, sLaunchCapability,
+    )
+    recordOwner = containerOwnership.OwnerRecord(
+        sLeaseId=containerOwnership.fsMintLease(),
+        fileHandleLock=None,
+        sAgentToken=containerOwnership.fsMintAgentToken(),
+        sContainerId=sContainerId,
+        sBrowserSessionId=sOldSessionId,
+    )
+    stateApp.dictContainerOwners[sName] = recordOwner
+    stateApp.dictSessionOwner[sOldSessionId] = sName
+    return (stateApp, recordOwner, sOldCredential)
+
+
+def _tRunTransfer(stateApp, sName):
+    """Mint and redeem a transfer capability; return (sOutcome, dict)."""
+    from vaibify.gui import browserSession, sessionLifecycle
+    sCapability = browserSession.fsMintTransferCapability(
+        stateApp.dictBrowserSessions, sName, 1,
+    )
+    return asyncio.run(
+        sessionLifecycle.ftTransferOwnership(stateApp, sCapability),
+    )
+
+
+@pytest.mark.falsification
+def test_transfer_commits_only_after_the_descendant_is_proven_dead(
+    tLiveContainerWithReapingInit,
+):
+    """Case 43, transfer-commit half (also case 44's transfer path).
+
+    A real detached, signal-trapping descendant is alive when the
+    transfer begins; the DRAINING phase must terminate the recorded
+    session group and PROVE it empty before the commit, so a committed
+    transfer implies the descendant is dead — its marker never appears
+    even after its sleep window — with the journal settled and the
+    successor at generation 2.
+
+    Kills: hardcoding ``fdictProbeProcessGroupMembers``'s member count
+    to zero (the prover that agrees with ``exec_inspect``): the drain
+    then "proves" the live group empty, the transfer commits over it,
+    and the surviving descendant writes its marker after the commit.
+    Kill-confirmation requires a reachable Docker daemon; without one
+    this test skips and the mutant survives vacuously.
+    """
+    from vaibify.gui import browserSession, sessionLifecycle
+    tLiveContainer = tLiveContainerWithReapingInit
+    sName, sContainerId, connectionDocker = tLiveContainer
+    stateApp, recordOwner, sOldCredential = _stateBuildTransferAppState(
+        tLiveContainer,
+    )
+    session = _fsessionStartContainedTerminal(tLiveContainer, stateApp)
+    _fnSpawnTrappingDescendant(session, tLiveContainer)
+    fSpawnedMonotonic = time.monotonic()
+    sOutcome, dictPayload = _tRunTransfer(stateApp, sName)
+    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED, dictPayload
+    assert recordOwner.iOwnerGeneration == 2
+    assert browserSession.fbValidateCredential(
+        stateApp.dictBrowserSessions, sOldCredential,
+    ) is False
+    assert not stateApp.dictTerminalExecutionRecords.get(sName), (
+        "the committed transfer left a live terminal record behind"
+    )
+    assert _fdictJournalOperations(sName) == {}, (
+        "a committed transfer implies every terminal record settled"
+    )
+    fWindowEnd = fSpawnedMonotonic + F_DESCENDANT_SLEEP_SECONDS + 1.5
+    while time.monotonic() < fWindowEnd:
+        time.sleep(0.2)
+    assert not _fbLeakedMarkerExists(tLiveContainer), (
+        "the transfer committed while the detached descendant was "
+        "still alive — it survived to write its marker under the "
+        "successor's ownership"
+    )
+
+
+@pytest.mark.falsification
+def test_indeterminate_drain_refuses_transfer_and_quarantines(
+    tLiveContainer,
+):
+    """Case 46, real-container half: indeterminate → retained, refused.
+
+    The container is PAUSED under a live terminal whose descendant
+    traps signals, so the drain can neither deliver a signal nor run a
+    probe: every outcome is indeterminate. The transfer must REFUSE
+    and leave the record retained-and-QUARANTINED — never an
+    optimistic commit, and never a pretended rollback of kills that
+    already happened — with the old owner intact at generation 1.
+
+    Kills: making ``fdictTerminateAndProveRecord`` settle whatever the
+    final probe says (the optimistic commit): the paused container's
+    inconclusive probe then reads as proven-empty, the record settles,
+    and the transfer commits. Kill-confirmation requires a reachable
+    Docker daemon; without one this test skips and the mutant survives
+    vacuously.
+    """
+    import docker
+    from vaibify.gui import browserSession, sessionLifecycle
+    sName, sContainerId, connectionDocker = tLiveContainer
+    stateApp, recordOwner, sOldCredential = _stateBuildTransferAppState(
+        tLiveContainer,
+    )
+    session = _fsessionStartContainedTerminal(tLiveContainer, stateApp)
+    _fnSpawnTrappingDescendant(session, tLiveContainer)
+    sOperationId = session.recordContainment.sOperationId
+    containerLive = docker.from_env().containers.get(sContainerId)
+    containerLive.pause()
+    try:
+        sOutcome, dictPayload = _tRunTransfer(stateApp, sName)
+    finally:
+        containerLive.unpause()
+    assert sOutcome == sessionLifecycle.S_TRANSFER_REFUSED, dictPayload
+    assert "quarantined" in dictPayload["sMessage"]
+    assert recordOwner.iOwnerGeneration == 1, (
+        "a refused transfer must leave the old owner untouched"
+    )
+    assert browserSession.fbValidateCredential(
+        stateApp.dictBrowserSessions, sOldCredential,
+    ) is True, "the old session must survive a refused transfer"
+    dictOperations = _fdictJournalOperations(sName)
+    assert dictOperations[sOperationId]["sState"] == (
+        "NEEDS_RECONCILIATION"
+    ), "the indeterminate record must be retained-and-quarantined"

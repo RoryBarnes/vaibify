@@ -637,3 +637,86 @@ def test_client_reports_a_stale_bound_socket_with_no_listener(
     with pytest.raises(HostControlError) as excInfo:
         fdictSendHostControlRequest(I_HUB_PORT, {"sOperation": "x"})
     assert "stale or unreachable" in str(excInfo.value)
+
+
+# ---------------------------------------------------------------------
+# Case 26b — the full force-abandon lifecycle over the socket.
+# ---------------------------------------------------------------------
+
+@pytest.mark.falsification
+def test_force_abandon_lifecycle_poisons_refuses_and_reconciles(
+    fixtureShortControlDirectory,
+):
+    """Case 26b: poison, retain, refuse everything, exit via reconcile.
+
+    The full lifecycle, socket-driven end to end: a host force-abandon
+    sets the ``PoisonRecord`` while the flock stays held; a claim is
+    refused AS poisoned and a host transfer is refused naming the
+    force-abandon (BEFORE the journal quarantine check, so the message
+    points at the right recovery); the record is never reapable; and
+    only ``reconcile`` — proving the recorded worker dead — clears the
+    poison, after which the very same ARMED transfer capability
+    commits.
+
+    Kills: making the force-abandon handler acknowledge without
+    setting the poison (``recordOwner.poison = None``): the transfer
+    refusal then reads as a journal quarantine rather than the
+    force-abandon, and the claim refusal loses ``bPoisoned``.
+    """
+    import subprocess
+    import sys
+    from vaibify.gui import browserSession, sessionLifecycle
+    processDead = subprocess.Popen(
+        [sys.executable, "-c", "pass"], start_new_session=True,
+    )
+    processDead.wait()
+    sOperationId = operationJournal.fsPrepareOperation(
+        S_PROJECT, "helper", "a wedged helper",
+    )
+    operationJournal.fnPromoteOperationToInFlight(
+        S_PROJECT, sOperationId,
+        {"iHolderPid": processDead.pid,
+         "iHolderProcessGroup": processDead.pid},
+    )
+    app = _fappBuildFakeHubApplication()
+    recordOwner = _frecordOwnerHoldingFlock()
+    app.state.dictContainerOwners[S_PROJECT] = recordOwner
+    dictAbandoned = _fdictSendToFakeHub(app, {
+        "sOperation": "force-abandon",
+        "sContainerName": S_PROJECT,
+        "sExpectedOperationId": sOperationId,
+    })
+    assert dictAbandoned["bPoisoned"] is True
+    assert recordOwner.poison is not None
+    assert recordOwner.fileHandleLock is not None, (
+        "poison retains the flock; it is never dropped"
+    )
+    iClaimCode, dictClaimBody = containerOwnership.ftdictClaim(
+        app.state.dictContainerOwners, S_PROJECT, "a-foreign-lease", 8123,
+    )
+    assert iClaimCode == 409
+    assert dictClaimBody.get("bPoisoned") is True
+    assert containerOwnership.fbOwnerIsReapable(recordOwner, 0.0) is False
+    sCapability = browserSession.fsMintTransferCapability(
+        app.state.dictBrowserSessions, S_PROJECT, 1,
+    )
+    sOutcomeRefused, dictRefusedBody = asyncio.run(
+        sessionLifecycle.ftTransferOwnership(app.state, sCapability),
+    )
+    assert sOutcomeRefused == sessionLifecycle.S_TRANSFER_REFUSED
+    assert "force-abandoned" in dictRefusedBody["sMessage"], (
+        "the refusal must name the force-abandon, not a generic "
+        "journal quarantine"
+    )
+    dictReconciled = _fdictSendToFakeHub(app, {
+        "sOperation": "reconcile",
+        "sContainerName": S_PROJECT,
+        "listExpectedOperationIds": [sOperationId],
+    })
+    assert dictReconciled["bAccepted"] is True
+    assert recordOwner.poison is None
+    sOutcome, dictPayload = asyncio.run(
+        sessionLifecycle.ftTransferOwnership(app.state, sCapability),
+    )
+    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED
+    assert recordOwner.iOwnerGeneration == 2
