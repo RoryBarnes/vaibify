@@ -194,7 +194,9 @@ def _sTerminalUrl(sLeaseId=S_LEASE, sToken=S_CREDENTIAL):
     )
 
 
-async def _fnFakeBlockingTerminalSession(websocket, dictCtx, sContainerId):
+async def _fnFakeBlockingTerminalSession(
+    app, websocket, dictCtx, sContainerId, sName,
+):
     """Stand-in terminal session that stays live until the client leaves."""
     try:
         await websocket.receive_text()
@@ -309,7 +311,9 @@ def test_second_terminal_ws_served_alongside_live_connections():
     )
     listCountsDuringServe = []
 
-    async def _fnFakeCountingTerminalSession(websocket, dictCtxArg, sId):
+    async def _fnFakeCountingTerminalSession(
+        app, websocket, dictCtxArg, sId, sName,
+    ):
         listCountsDuringServe.append(
             dictCtx["dictContainerOwners"][S_PROJECT_NAME]
             .iLiveConnectionCount,
@@ -339,7 +343,9 @@ def test_owner_terminal_ws_accepted_when_name_differs_from_id():
     dictCtx["terminals"] = {}
     listCountDuring = []
 
-    async def _fnFakeStartAndRun(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeStartAndRun(
+        app, websocket, dictCtxArg, sContainerId, sName,
+    ):
         listCountDuring.append(
             dictCtx["dictContainerOwners"][S_PROJECT_NAME]
             .iLiveConnectionCount

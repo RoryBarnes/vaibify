@@ -376,19 +376,66 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
     (design §8, case 32): the supervisor is the single releasing
     party, so the reaper may never free a record whose guarded worker
     can still commit.
+
+    Terminal executions gate reaping the same way (design §7, case
+    44): a reap-eligible owner's live terminal records are first
+    terminated-and-proven (or retained-and-quarantined) — a terminal
+    exec that outlived its socket is not a dead terminal — and any
+    record still live afterwards vetoes the reap outright.
     """
     if not getattr(app.state, "bReapOwnerships", False):
         return
     from . import commitCarrier
+    from . import terminalContainment
     dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
+
+    def fbGuardedWorkLive(sName):
+        return (
+            commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
+            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+        )
+
+    _fnDrainTerminalsOfReapableOwners(
+        app, dictContainerOwners, fbGuardedWorkLive,
+    )
     containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
         lambda sName: (
-            commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
-            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+            fbGuardedWorkLive(sName)
+            or terminalContainment.fbContainerHasLiveTerminalRecords(
+                app.state, sName,
+            )
         ),
         dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )
+
+
+def _fnDrainTerminalsOfReapableOwners(
+    app, dictContainerOwners, fbGuardedWorkLive,
+):
+    """Terminate-and-prove the terminals of every reap-eligible owner.
+
+    Runs only for records the reaper would otherwise release (idle
+    past grace, no guarded work), so a live session's open terminal is
+    never touched. After the drain each of those records is settled or
+    quarantined; anything still live vetoes the reap in the caller.
+    """
+    from . import terminalContainment
+    for sName in list(dictContainerOwners.keys()):
+        recordOwner = dictContainerOwners.get(sName)
+        if recordOwner is None:
+            continue
+        if not terminalContainment.fbContainerHasLiveTerminalRecords(
+            app.state, sName,
+        ):
+            continue
+        if not containerOwnership.fbOwnerIsReapable(recordOwner):
+            continue
+        if fbGuardedWorkLive(sName):
+            continue
+        terminalContainment.fdictDrainTerminalRecordsForContainer(
+            app.state, sName,
+        )
 
 
 async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):

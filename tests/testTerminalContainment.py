@@ -482,3 +482,190 @@ def test_amend_refuses_a_prepared_record():
         operationJournal.fnAmendInFlightHolderIdentity(
             S_PROJECT, sOperationId, {"iHolderProcessGroup": 41},
         )
+
+
+# ---------------------------------------------------------------------
+# Wiring: the authority-ending paths drive terminate-and-prove.
+# ---------------------------------------------------------------------
+
+def _fappStateBuildOwned(connectionStub, sLeaseId="lease-t1"):
+    """Return an appState owning S_PROJECT with one live terminal."""
+    from vaibify.gui.containerOwnership import OwnerRecord
+    recordOwner = OwnerRecord(
+        sLeaseId=sLeaseId, fileHandleLock=None,
+        sContainerId=S_CONTAINER_ID, sBrowserSessionId="sess-t1",
+    )
+    appState = SimpleNamespace(
+        dictContainerOwners={S_PROJECT: recordOwner},
+        dictSessionOwner={}, dictMutationSupervisors={},
+        dictDurableTaskRecords={},
+    )
+    recordTerminal = _frecordBuildJournaled(
+        connectionStub, appState=appState,
+    )
+    return appState, recordOwner, recordTerminal
+
+
+def test_release_drains_terminals_before_committing():
+    """A permitted release terminates-and-proves every terminal (§10)."""
+    import asyncio
+    from vaibify.gui import sessionLifecycle
+    connectionStub = _StubContainmentConnection(iMemberCount=0)
+    appState, _, _ = _fappStateBuildOwned(connectionStub)
+    bReleased = asyncio.run(
+        sessionLifecycle.fbReleaseExplicit(
+            appState, S_PROJECT, "lease-t1",
+            sBrowserSessionId="sess-t1",
+        ),
+    )
+    assert bReleased is True
+    assert connectionStub.listSignals == ["TERM"]
+    assert _fdictJournalOperations() == {}
+    assert not terminalContainment.fbContainerHasLiveTerminalRecords(
+        appState, S_PROJECT,
+    )
+
+
+def test_refused_release_never_touches_the_owners_terminals():
+    """An unauthorized release attempt drains nothing."""
+    import asyncio
+    from vaibify.gui import sessionLifecycle
+    connectionStub = _StubContainmentConnection(iMemberCount=0)
+    appState, _, recordTerminal = _fappStateBuildOwned(connectionStub)
+    bReleased = asyncio.run(
+        sessionLifecycle.fbReleaseExplicit(
+            appState, S_PROJECT, "copied-lease",
+            sBrowserSessionId="sess-attacker",
+        ),
+    )
+    assert bReleased is False
+    assert connectionStub.listSignals == []
+    assert recordTerminal.sState == "live"
+    assert len(_fdictJournalOperations()) == 1
+
+
+def test_release_quarantines_an_unprovable_terminal_and_proceeds():
+    """Release retains-and-quarantines when the group cannot be proven."""
+    import asyncio
+    from unittest.mock import patch
+    from vaibify.gui import sessionLifecycle
+    connectionStub = _StubContainmentConnection(iMemberCount=2)
+    appState, _, _ = _fappStateBuildOwned(connectionStub)
+    with patch.object(
+        terminalContainment, "F_TERMINATE_WAIT_SECONDS", 0.01,
+    ), patch.object(terminalContainment, "F_KILL_WAIT_SECONDS", 0.01):
+        bReleased = asyncio.run(
+            sessionLifecycle.fbReleaseExplicit(
+                appState, S_PROJECT, "lease-t1",
+                sBrowserSessionId="sess-t1",
+            ),
+        )
+    assert bReleased is True
+    dictOperations = _fdictJournalOperations()
+    assert next(iter(dictOperations.values()))["sState"] == (
+        "NEEDS_RECONCILIATION"
+    )
+
+
+def test_reaper_drains_terminals_of_a_reapable_owner():
+    """The reaper settles a dead session's terminal before releasing."""
+    import time as moduleTime
+    from vaibify.gui import serverLifespan
+    connectionStub = _StubContainmentConnection(iMemberCount=0)
+    appState, recordOwner, _ = _fappStateBuildOwned(connectionStub)
+    appState.bReapOwnerships = True
+    recordOwner.fLastSeenMonotonic = moduleTime.monotonic() - 99999.0
+    app = SimpleNamespace(state=appState)
+    dictCtx = {"docker": MagicMock(flistGetRunningContainers=lambda: [])}
+    serverLifespan._fnReapIdleOwnershipsForApp(app, dictCtx)
+    assert S_PROJECT not in appState.dictContainerOwners
+    assert _fdictJournalOperations() == {}
+    assert connectionStub.listSignals == ["TERM"]
+
+
+def test_reaper_leaves_a_live_sessions_terminal_alone():
+    """A connected owner is not reapable; its terminal is untouched."""
+    from vaibify.gui import serverLifespan
+    connectionStub = _StubContainmentConnection(iMemberCount=0)
+    appState, recordOwner, recordTerminal = _fappStateBuildOwned(
+        connectionStub,
+    )
+    appState.bReapOwnerships = True
+    recordOwner.iLiveConnectionCount = 1
+    app = SimpleNamespace(state=appState)
+    dictCtx = {"docker": MagicMock(flistGetRunningContainers=lambda: [])}
+    serverLifespan._fnReapIdleOwnershipsForApp(app, dictCtx)
+    assert S_PROJECT in appState.dictContainerOwners
+    assert recordTerminal.sState == "live"
+    assert connectionStub.listSignals == []
+
+
+def test_shutdown_drain_hook_terminates_live_terminals():
+    """The lifespan drain hook proves every terminal group dead (§8)."""
+    import asyncio
+    from vaibify.gui import appFactory
+    connectionStub = _StubContainmentConnection(iMemberCount=0)
+    appState, _, _ = _fappStateBuildOwned(connectionStub)
+    appState.listLifespanShutdown = []
+    appState.bMutationAdmissionsClosed = False
+    app = SimpleNamespace(state=appState)
+    appFactory._fnRegisterShutdownDrainGuardedMutations(app)
+    asyncio.run(appState.listLifespanShutdown[0](app))
+    assert _fdictJournalOperations() == {}
+    assert connectionStub.listSignals == ["TERM"]
+
+
+@pytest.mark.falsification
+def test_shutdown_retains_the_flock_of_a_live_terminal_container():
+    """A still-live terminal record keeps its container's flock held.
+
+    Design §8 (case 44, shutdown half): the flock-release hook must
+    skip a container whose terminal group may still write, exactly as
+    it skips live mutation work.
+
+    Kills: dropping ``fsetNamesWithLiveTerminalRecords`` from the
+    retained-name union in ``appFactory.fnReleaseAllContainerLocks``.
+    """
+    import asyncio
+    from vaibify.gui import appFactory
+    connectionStub = _StubContainmentConnection(iMemberCount=0)
+    appState, _, _ = _fappStateBuildOwned(connectionStub)
+    appState.listLifespanShutdown = []
+    app = SimpleNamespace(state=appState)
+    appFactory._fnRegisterHubShutdownReleaseLocks(app)
+    asyncio.run(appState.listLifespanShutdown[0](app))
+    assert S_PROJECT in appState.dictContainerOwners
+
+
+@pytest.mark.falsification
+def test_socket_close_drains_the_containment_record():
+    """Closing the terminal WebSocket terminates-and-proves (§7).
+
+    A closed socket is not a dead terminal: the run loop's teardown
+    must drain the containment record, not merely send exit
+    keystrokes and close the socket.
+
+    Kills: dropping the ``fnDrainSessionRecord`` call from
+    ``pipelineServer.fnRunTerminalSession``'s ``finally``.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock
+    from vaibify.gui import pipelineServer
+    connectionStub = _StubContainmentConnection(iMemberCount=0)
+    recordTerminal = _frecordBuildJournaled(connectionStub)
+    session = TerminalSession(connectionStub, S_CONTAINER_ID)
+    session._bRunning = True
+    session._socketExec = SimpleNamespace(
+        _sock=MagicMock(), close=lambda: None,
+    )
+    recordTerminal.session = session
+    session.recordContainment = recordTerminal
+    websocketFake = AsyncMock()
+    websocketFake.receive = AsyncMock(
+        return_value={"type": "websocket.disconnect"},
+    )
+    asyncio.run(
+        pipelineServer.fnRunTerminalSession(session, websocketFake, {}),
+    )
+    assert recordTerminal.sState == "settled"
+    assert _fdictJournalOperations() == {}

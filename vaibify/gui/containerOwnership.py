@@ -39,6 +39,7 @@ __all__ = [
     "fsConflictingHeldContainer",
     "ftdictClaim",
     "fbBrowserSessionOwnsLease",
+    "fbReleaseWouldBePermitted",
     "fnReleaseOwnership",
     "fbSessionOwnsContainer",
     "fiOwnerGenerationForName",
@@ -485,6 +486,36 @@ def _fsReadStartedIso(recordOwner):
     return dictHolder.get("sStartedIso", "")
 
 
+def fbReleaseWouldBePermitted(
+    dictContainerOwners, sName, sLeaseId, sBrowserSessionId="",
+):
+    """Return True when a release by this caller would be committed.
+
+    The arbitration half of :func:`fnReleaseOwnership`, exposed so the
+    release authority can run its terminal drain (design §10) only for
+    a caller that will actually be permitted — an unauthorized release
+    attempt must never terminate the true owner's terminals.
+    """
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is None:
+        return False
+    if getattr(recordOwner, "poison", None) is not None:
+        # A poisoned record refuses release even to its owner: dropping
+        # the flock while a force-abandoned worker's death is unproven
+        # would hand the container to a second owner a zombie may still
+        # write (design §2.1). Reconciliation is the only exit.
+        return False
+    bBoundOwner = fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
+    )
+    bUnboundOwner = (
+        recordOwner.sBrowserSessionId == ""
+        and bool(sLeaseId)
+        and recordOwner.sLeaseId == sLeaseId
+    )
+    return bBoundOwner or bUnboundOwner
+
+
 def fnReleaseOwnership(
     dictContainerOwners, sName, sLeaseId, sBrowserSessionId="",
     dictSessionOwner=None,
@@ -505,24 +536,9 @@ def fnReleaseOwnership(
     caller that does not hold the session-bound lease, which closes both
     the old append-only authorization leak and the copied-lease replay.
     """
-    recordOwner = dictContainerOwners.get(sName)
-    if recordOwner is None:
-        return False
-    if getattr(recordOwner, "poison", None) is not None:
-        # A poisoned record refuses release even to its owner: dropping
-        # the flock while a force-abandoned worker's death is unproven
-        # would hand the container to a second owner a zombie may still
-        # write (design §2.1). Reconciliation is the only exit.
-        return False
-    bBoundOwner = fbBrowserSessionOwnsLease(
-        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
-    )
-    bUnboundOwner = (
-        recordOwner.sBrowserSessionId == ""
-        and bool(sLeaseId)
-        and recordOwner.sLeaseId == sLeaseId
-    )
-    if not (bBoundOwner or bUnboundOwner):
+    if not fbReleaseWouldBePermitted(
+        dictContainerOwners, sName, sLeaseId, sBrowserSessionId,
+    ):
         return False
     _fnForceReleaseOwnership(dictContainerOwners, sName, dictSessionOwner)
     return True

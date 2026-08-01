@@ -1325,7 +1325,15 @@ async def fnRunTerminalSession(
     provided, ``fnTerminalReadLoop`` posts a ``complete:130`` sentinel
     on abnormal exit so a runner paused at ``interactiveComplete`` does
     not deadlock when the terminal-WS dies (audit HIGH #9).
+
+    The close path drains the session's containment record BEFORE the
+    socket close (design §7: a socket closing is not a terminal dying):
+    input is fenced, the recorded process group is terminated and
+    PROVEN empty in a worker thread — or the record retains-and-
+    quarantines — and only then are the exit keystrokes and socket
+    close of ``fnClose`` a mere courtesy instead of the only teardown.
     """
+    from . import terminalContainment
     sSessionId = session.sSessionId
     dictTerminalSessions[sSessionId] = session
     await websocket.send_json(
@@ -1339,8 +1347,11 @@ async def fnRunTerminalSession(
     except WebSocketDisconnect:
         pass
     finally:
-        session.fnClose()
         taskReader.cancel()
+        await asyncio.to_thread(
+            terminalContainment.fnDrainSessionRecord, session,
+        )
+        session.fnClose()
         dictTerminalSessions.pop(sSessionId, None)
 
 

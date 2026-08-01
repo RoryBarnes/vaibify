@@ -8,6 +8,7 @@ context builder, and exception handler are reached through
 route-registration semantics stay untouched.
 """
 
+import asyncio
 import logging
 import secrets
 import time
@@ -20,6 +21,7 @@ from . import containerOwnership
 from . import serverLifespan
 from . import serverMiddleware
 from . import sessionLifecycle
+from . import terminalContainment
 
 logger = logging.getLogger("vaibify")
 
@@ -55,6 +57,9 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     )
     app.state.dictDurableTaskRecords = (
         commitCarrier.fdictCreateDurableTaskRegistry()
+    )
+    app.state.dictTerminalExecutionRecords = (
+        terminalContainment.fdictCreateTerminalRecordRegistry()
     )
     app.state.bMutationAdmissionsClosed = False
     app.state.iExpectedPort = dictConfig["iExpectedPort"]
@@ -228,10 +233,19 @@ def _fnRegisterShutdownDrainGuardedMutations(app):
     drained worker has finished; a worker that outlives the bounded
     drain keeps running on its thread with its flock retained — it is
     never torn down while it can still commit.
+
+    Live terminal executions are drained here like live mutation work
+    (design §7/§8, case 44): each recorded process group is terminated
+    and proven empty, or its journal record retains-and-quarantines,
+    BEFORE the flock-release hook runs — a terminal group that may
+    still write must never have its container handed to another hub.
     """
 
     async def fnDrainGuardedMutations(app):
         await commitCarrier.fdictDrainMutationSupervisors(app.state)
+        await asyncio.to_thread(
+            terminalContainment.fdictDrainAllTerminalRecords, app.state,
+        )
 
     app.state.listLifespanShutdown.append(fnDrainGuardedMutations)
 
@@ -251,6 +265,8 @@ def _fnRegisterHubShutdownReleaseLocks(app):
         dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
         dictSessionOwner = getattr(app.state, "dictSessionOwner", None)
         setRetainedNames = commitCarrier.fsetNamesWithLiveMutationWork(
+            app.state,
+        ) | terminalContainment.fsetNamesWithLiveTerminalRecords(
             app.state,
         )
         for sName, recordOwner in list(dictContainerOwners.items()):

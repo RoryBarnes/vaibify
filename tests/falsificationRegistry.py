@@ -966,10 +966,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testConnectHubOwnershipGate.py::test_release_refuses_second_session_presenting_a_copied_lease',
         source='vaibify/gui/containerOwnership.py',
-        old="""    if not (bBoundOwner or bUnboundOwner):
-        return False""",
-        new="""    if recordOwner.sLeaseId != sLeaseId:
-        return False""",
+        old="""    return bBoundOwner or bUnboundOwner""",
+        new="""    return recordOwner.sLeaseId == sLeaseId""",
     ),
     # Sweep C8: the repo-URL check must reject a leading-dash argument
     # injection and non-vetted git transports (ext::, file://). Dropping the
@@ -2777,11 +2775,13 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_reaper_never_releases_owner_with_live_guarded_work',
         source='vaibify/gui/serverLifespan.py',
-        old='''        lambda sName: (
+        old='''    def fbGuardedWorkLive(sName):
+        return (
             commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
             or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
-        ),''',
-        new='''        lambda sName: _fbOwnedNamePipelineRunning(app, dictCtx, sName),''',
+        )''',
+        new='''    def fbGuardedWorkLive(sName):
+        return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
     ),
     # Case 38 (holder half): neutralizing the holder comparison admits
     # any holder under a merely-present record.
@@ -2946,5 +2946,34 @@ def _fdictEntry(sRel):
         new='''    if not dictExecProbe["bSettled"]:
         return dictExecProbe
     return dictExecProbe''',
+    ),
+    # Shutdown half of case 44 (unit): the flock-release hook must skip
+    # a container whose terminal group may still write, exactly as it
+    # skips live mutation work.
+    Falsification(
+        nodeid='tests/testTerminalContainment.py::test_shutdown_retains_the_flock_of_a_live_terminal_container',
+        source='vaibify/gui/appFactory.py',
+        old='''        setRetainedNames = commitCarrier.fsetNamesWithLiveMutationWork(
+            app.state,
+        ) | terminalContainment.fsetNamesWithLiveTerminalRecords(
+            app.state,
+        )''',
+        new='''        setRetainedNames = commitCarrier.fsetNamesWithLiveMutationWork(
+            app.state,
+        )''',
+    ),
+    # A closed socket is not a dead terminal (design §7): the run
+    # loop's teardown must terminate-and-prove, not merely send exit
+    # keystrokes and close the socket.
+    Falsification(
+        nodeid='tests/testTerminalContainment.py::test_socket_close_drains_the_containment_record',
+        source='vaibify/gui/pipelineServer.py',
+        old='''        taskReader.cancel()
+        await asyncio.to_thread(
+            terminalContainment.fnDrainSessionRecord, session,
+        )
+        session.fnClose()''',
+        new='''        taskReader.cancel()
+        session.fnClose()''',
     ),
 ]

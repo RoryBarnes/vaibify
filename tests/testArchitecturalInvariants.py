@@ -3794,7 +3794,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (_fdictBuildDurableDispatchContext). Extends the dispatch/task
     # registration this module already owns; the carrier machinery
     # lives in commitCarrier.py.
-    "pipelineServer.py": 2344,
+    # +11 (2026-07-31): ORPHANED_SESSION slice 3d — the terminal run
+    # loop's close path drains the containment record (terminate the
+    # recorded process group and prove it empty) before the socket
+    # close, per design §7: a socket closing is not a terminal dying.
+    # The machinery lives in terminalContainment.py; this is one call
+    # plus its rationale.
+    "pipelineServer.py": 2355,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

@@ -119,7 +119,9 @@ async def _fnAcceptAndCloseNormally(websocket, dictCtx, sContainerId):
     await websocket.close(code=I_CLOSE_NORMAL)
 
 
-async def _fnBlockingTerminalSession(websocket, dictCtx, sContainerId):
+async def _fnBlockingTerminalSession(
+    app, websocket, dictCtx, sContainerId, sName,
+):
     """Stand-in terminal session; the route has already accepted."""
     try:
         await websocket.receive_text()

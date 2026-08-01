@@ -197,14 +197,30 @@ async def fbReleaseExplicit(appState, sName, sLeaseId, sBrowserSessionId=""):
     :func:`containerOwnership.fnReleaseOwnership`, which alone decides
     whether the presenting session holds the session-bound lease. The
     reverse index is passed through so a committed release also drops
-    the session's cardinality entry. Returns the primitive's verdict
-    unchanged — this slice adds the authority, not new refusal
-    conditions.
+    the session's cardinality entry.
+
+    A PERMITTED release first terminates every live terminal execution
+    of the container and proves each recorded process group empty — or
+    retains-and-quarantines the record (design §10, case 44) — so a
+    signal-trapping shell cannot write after release just as it cannot
+    after a transfer. The drain runs under the container-mutation lock
+    but BEFORE the briefly-held cardinality lock, and only for a caller
+    the arbitration will actually permit: an unauthorized release
+    attempt never touches the true owner's terminals.
     """
+    from . import terminalContainment
     dictLockStore = _fdictLockStoreForAppState(appState)
     dictContainerOwners = getattr(appState, "dictContainerOwners", {})
     dictSessionOwner = getattr(appState, "dictSessionOwner", None)
     async with _flockObtainContainerMutation(dictLockStore, sName):
+        if containerOwnership.fbReleaseWouldBePermitted(
+            dictContainerOwners, sName, sLeaseId,
+            sBrowserSessionId=sBrowserSessionId,
+        ):
+            await asyncio.to_thread(
+                terminalContainment.fdictDrainTerminalRecordsForContainer,
+                appState, sName,
+            )
         async with _flockObtainSessionCardinality(dictLockStore):
             return containerOwnership.fnReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,

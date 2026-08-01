@@ -2,6 +2,8 @@
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
+
 from fastapi import WebSocket
 
 from .. import pipelineServer as _pipelineServer
@@ -59,7 +61,9 @@ async def _fnTrackAndServeTerminal(
 
     async def fnServe():
         await websocket.accept()
-        await _fnStartAndRunTerminal(websocket, dictCtx, sContainerId)
+        await _fnStartAndRunTerminal(
+            app, websocket, dictCtx, sContainerId, sName,
+        )
 
     await fnServeUnderLiveConnectionCounters(
         websocket, dictCtx.get("dictContainerOwners", {}), sName,
@@ -70,16 +74,33 @@ async def _fnTrackAndServeTerminal(
     )
 
 
-async def _fnStartAndRunTerminal(websocket, dictCtx, sContainerId):
-    """Start the terminal session and run it to completion."""
+async def _fnStartAndRunTerminal(app, websocket, dictCtx, sContainerId, sName):
+    """Start the terminal session and run it to completion.
+
+    The session is containment-wired (slice 3d): its start is the
+    journaled create → journal → start split, so the exec becomes a
+    durable ``TerminalExecutionRecord`` that release, reaping, and
+    shutdown terminate-and-prove. The start runs in a worker thread —
+    group discovery polls the container — so the hub event loop is
+    never blocked behind a slow probe.
+    """
+    recordOwner = (dictCtx.get("dictContainerOwners") or {}).get(sName)
     session = TerminalSession(
         dictCtx["docker"], sContainerId,
         sUser=dictCtx["containerUsers"].get(
             sContainerId, dictCtx.get("sTerminalUser")
         ),
+        dictContainment={
+            "appState": app.state,
+            "sContainerName": sName,
+            "iOwnerGeneration": (
+                recordOwner.iOwnerGeneration if recordOwner is not None
+                else 0
+            ),
+        },
     )
     try:
-        session.fnStart()
+        await asyncio.to_thread(session.fnStart)
     except Exception as error:
         await fnRejectTerminalStart(websocket, error)
         return

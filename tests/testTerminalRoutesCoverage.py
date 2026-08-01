@@ -209,6 +209,11 @@ class TestTerminalWsSuccessfulSession:
 
         mockSessionCls.assert_called_once_with(
             dictCtx["docker"], "container-1", sUser="astro",
+            dictContainment={
+                "appState": app.state,
+                "sContainerName": "container-1",
+                "iOwnerGeneration": 0,
+            },
         )
         mockSession.fnStart.assert_called_once()
         mockRun.assert_awaited_once_with(
@@ -228,7 +233,9 @@ class TestTerminalWsPresenceCounter:
         app = SimpleNamespace(state=SimpleNamespace(iActiveWebSockets=0))
         listCountsDuring = []
 
-        async def _fnRecordCount(websocket, dictCtx, sContainerId):
+        async def _fnRecordCount(
+            app, websocket, dictCtx, sContainerId, sName,
+        ):
             listCountsDuring.append(app.state.iActiveWebSockets)
 
         with patch.object(
@@ -248,7 +255,7 @@ class TestTerminalWsPresenceCounter:
 
         app = SimpleNamespace(state=SimpleNamespace(iActiveWebSockets=0))
 
-        async def _fnRaise(websocket, dictCtx, sContainerId):
+        async def _fnRaise(app, websocket, dictCtx, sContainerId, sName):
             raise RuntimeError("session crashed")
 
         with patch.object(
@@ -302,4 +309,9 @@ class TestTerminalWsDefaultUser:
 
         mockSessionCls.assert_called_once_with(
             dictCtx["docker"], "container-1", sUser="root",
+            dictContainment={
+                "appState": app.state,
+                "sContainerName": "container-1",
+                "iOwnerGeneration": 0,
+            },
         )
