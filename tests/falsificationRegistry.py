@@ -2894,4 +2894,57 @@ def _fdictEntry(sRel):
         new='''    sActualSha256 = fsComputeJournalFileSha256(sContainerName)
     if False:''',
     ),
+
+    # --- Slice 3d: terminal-exec containment (design v13 §6.1/§7/§10). ---
+    # The terminal exec id must be durable BEFORE exec_start (the
+    # create -> journal -> start split applied to terminals); the
+    # mutation starts the exec first, leaving a crash window with an
+    # unidentified writer.
+    Falsification(
+        nodeid='tests/testTerminalContainment.py::test_start_journals_the_exec_id_before_exec_start',
+        source='vaibify/gui/terminalSession.py',
+        old='''        terminalContainment.fnPromoteTerminalOperation(
+            sContainerName, sOperationId, self._sExecId,
+            self._sContainerId, self._dictContainment["iOwnerGeneration"],
+        )
+        self._socketExec = (
+            self._connectionDocker.fsocketExecStart(self._sExecId)
+        )''',
+        new='''        self._socketExec = (
+            self._connectionDocker.fsocketExecStart(self._sExecId)
+        )
+        terminalContainment.fnPromoteTerminalOperation(
+            sContainerName, sOperationId, self._sExecId,
+            self._sContainerId, self._dictContainment["iOwnerGeneration"],
+        )''',
+    ),
+    # Terminate-and-prove must PROVE the group empty; the mutation is
+    # the optimistic proceed the design forbids (v13: "never an
+    # optimistic proceed").
+    Falsification(
+        nodeid='tests/testTerminalContainment.py::test_surviving_group_member_quarantines_never_settles',
+        source='vaibify/gui/terminalContainment.py',
+        old='''def _fbProbeProvesEmpty(dictProbe):
+    """Return True only for a conclusive zero-member probe."""
+    return bool(dictProbe.get("bConclusive")) and (
+        dictProbe.get("iMemberCount") == 0
+    )''',
+        new='''def _fbProbeProvesEmpty(dictProbe):
+    """Return True only for a conclusive zero-member probe."""
+    return True''',
+    ),
+    # The codex-round-12 hole, unit half (case 43): settling a terminal
+    # record on ``exec_inspect Running == false`` alone lets a detached
+    # signal-trapping descendant write after the record clears. The
+    # real-container half is tests/testTerminalContainmentLive.py.
+    Falsification(
+        nodeid='tests/testTerminalContainment.py::test_terminal_probe_refuses_to_settle_on_exec_dead_alone',
+        source='vaibify/config/operationJournal.py',
+        old='''    if not dictExecProbe["bSettled"]:
+        return dictExecProbe
+    return _fdictProbeTerminalGroupEmptiness(dictRecord, connectionDocker)''',
+        new='''    if not dictExecProbe["bSettled"]:
+        return dictExecProbe
+    return dictExecProbe''',
+    ),
 ]

@@ -68,6 +68,7 @@ __all__ = [
     "fdictReadJournalOutcome",
     "fsPrepareOperation",
     "fnPromoteOperationToInFlight",
+    "fnAmendInFlightHolderIdentity",
     "fnRequestOperationCancel",
     "fnMarkOperationNeedsReconciliation",
     "fnSettleOperation",
@@ -135,12 +136,12 @@ _SET_ALLOWED_RECORD_STRING_KEYS = frozenset({
     "sExpectedSha256", "sPriorSha256", "sNote",
 })
 _SET_ALLOWED_RECORD_INTEGER_KEYS = frozenset({
-    "iHolderPid", "iHolderProcessGroup",
+    "iHolderPid", "iHolderProcessGroup", "iOwnerGeneration",
 })
 _SET_HOLDER_IDENTITY_KEYS = frozenset({
     "iHolderPid", "iHolderProcessGroup", "sDockerExecId",
     "sDockerContainerId", "sReservationLabel", "sExpectedSha256",
-    "sPriorSha256",
+    "sPriorSha256", "iOwnerGeneration",
 })
 
 _LOCK_JOURNAL_WRITE = threading.Lock()
@@ -528,6 +529,43 @@ def _fdictRequireOperationRecord(dictPayload, sContainerName, sOperationId):
     return dictRecord
 
 
+def fnAmendInFlightHolderIdentity(
+    sContainerName, sOperationId, dictIdentityFields,
+):
+    """Add missing holder-identity fields to an IN_FLIGHT record.
+
+    A terminal execution learns its in-container process group only
+    after ``exec_start`` runs the group-reporting wrapper (design v13
+    §6.1), so its record is promoted with the exec id first and the
+    group is amended here once discovered. Only allowlisted identity
+    fields may be added, and an already-recorded identity value is
+    never rewritten — an amendment that disagrees with the record is a
+    different holder and is refused.
+    """
+    _fnValidateHolderIdentity(dictIdentityFields)
+    with _LOCK_JOURNAL_WRITE:
+        dictPayload = _fdictLoadPayloadForWrite(sContainerName)
+        dictRecord = _fdictRequireOperationRecord(
+            dictPayload, sContainerName, sOperationId,
+        )
+        if dictRecord["sState"] != S_OPERATION_STATE_IN_FLIGHT:
+            raise OperationJournalRecordError(
+                f"Operation {sOperationId} is {dictRecord['sState']}; only "
+                "an in-flight operation can have identity fields amended"
+            )
+        for sIdentityKey, valueIdentity in dictIdentityFields.items():
+            if sIdentityKey in dictRecord and (
+                dictRecord[sIdentityKey] != valueIdentity
+            ):
+                raise OperationJournalRecordError(
+                    f"Operation {sOperationId} already records "
+                    f"{sIdentityKey}; an amendment may add identity, "
+                    "never rewrite it"
+                )
+        dictRecord.update(dictIdentityFields)
+        _fnStoreJournalPayload(sContainerName, dictPayload)
+
+
 def fnRequestOperationCancel(sContainerName, sOperationId):
     """Mark an IN_FLIGHT record CANCEL_REQUESTED (cancellation pending)."""
     with _LOCK_JOURNAL_WRITE:
@@ -763,6 +801,81 @@ def _fdictProbeExecOperation(dictRecord, connectionDocker):
     )
 
 
+def _fdictProbeTerminalOperation(dictRecord, connectionDocker):
+    """Probe a terminal record: the exec ended AND its group is empty.
+
+    The codex-round-12 hole (design v13, case 43): ``exec_inspect``
+    reporting ``Running == false`` proves only that the terminal's
+    exec-root shell ended — a detached, signal-trapping descendant
+    survives it in the same recorded session/process group. A terminal
+    record therefore settles only when the daemon reports the exec
+    exited AND an in-container probe proves no process with the
+    recorded group remains (or the container itself is definitively
+    gone, which no process survives).
+    """
+    sDockerExecId = dictRecord.get("sDockerExecId")
+    sDockerContainerId = dictRecord.get("sDockerContainerId")
+    if not sDockerExecId or not sDockerContainerId:
+        return _fdictProbeOutcome(
+            False, False, False,
+            "terminal record is missing its exec id or container id",
+        )
+    if connectionDocker is None:
+        return _fdictProbeOutcome(
+            False, False, True,
+            "no Docker connection is available to verify the terminal "
+            "settled",
+        )
+    dictExecProbe = _fdictProbeExecOperation(dictRecord, connectionDocker)
+    if dictExecProbe["bHolderAlive"] or dictExecProbe["bIndeterminate"]:
+        return dictExecProbe
+    if not dictExecProbe["bSettled"]:
+        return dictExecProbe
+    return _fdictProbeTerminalGroupEmptiness(dictRecord, connectionDocker)
+
+
+def _fdictProbeTerminalGroupEmptiness(dictRecord, connectionDocker):
+    """Settle a dead-exec terminal only on a proven-empty process group."""
+    iHolderProcessGroup = dictRecord.get("iHolderProcessGroup")
+    if not fbIsUsablePid(iHolderProcessGroup):
+        return _fdictProbeOutcome(
+            False, False, False,
+            "terminal record never learned its process group; group "
+            "emptiness is unprovable and reconciliation is required",
+        )
+    if not hasattr(connectionDocker, "fdictProbeProcessGroupMembers"):
+        return _fdictProbeOutcome(
+            False, False, False,
+            "this Docker connection cannot probe process groups; the "
+            "verifier is unsupported and reconciliation is required",
+        )
+    try:
+        dictGroupProbe = connectionDocker.fdictProbeProcessGroupMembers(
+            dictRecord["sDockerContainerId"], iHolderProcessGroup,
+        )
+    except Exception as error:
+        return _fdictProbeOutcome(
+            False, False, True, f"process-group probe failed: {error}",
+        )
+    if not dictGroupProbe.get("bConclusive"):
+        return _fdictProbeOutcome(
+            False, False, True,
+            "the process-group probe was inconclusive: "
+            f"{dictGroupProbe.get('sDetail', '')}",
+        )
+    if dictGroupProbe.get("iMemberCount", -1) == 0:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the exec exited and its recorded process group is empty",
+        )
+    return _fdictProbeOutcome(
+        False, False, False,
+        f"{dictGroupProbe['iMemberCount']} process(es) outlived the "
+        "terminal exec in its recorded group; a detached descendant "
+        "requires reconciliation or a container restart",
+    )
+
+
 def _fdictProbeStartOperation(dictRecord, connectionDocker):
     """Probe a container start/create record by its recorded target."""
     iHolderPid = dictRecord.get("iHolderPid")
@@ -941,6 +1054,10 @@ DICT_OPERATION_PROBE_CATALOG = {
     },
     "exec": {
         "fdictProbe": _fdictProbeExecOperation,
+        "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,
+    },
+    "terminal": {
+        "fdictProbe": _fdictProbeTerminalOperation,
         "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,
     },
     "helper": {

@@ -186,7 +186,7 @@ def test_settling_the_last_record_unlinks_the_journal_file():
 def test_every_journaled_kind_has_a_probe_and_a_cleanup_handler():
     """Structural (design §8): the catalog covers every accepted kind."""
     assert set(DICT_OPERATION_PROBE_CATALOG) == {
-        "start", "exec", "helper", "file-write",
+        "start", "exec", "helper", "file-write", "terminal",
     }
     for sKind, dictHandler in DICT_OPERATION_PROBE_CATALOG.items():
         assert callable(dictHandler["fdictProbe"]), sKind

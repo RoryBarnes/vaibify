@@ -671,19 +671,23 @@ class DockerConnection:
         return infoTar
 
     def fsExecCreate(
-        self, sContainerId, sCommand="/bin/bash", sUser=None
+        self, sContainerId, sCommand="/bin/bash", sUser=None,
+        listCommand=None,
     ):
         """Create an interactive exec instance, return exec id.
 
         Defaults to the unprivileged container user when ``sUser`` is
         omitted so terminal sessions opened from the dashboard do not
-        land as root.
+        land as root. ``listCommand`` bypasses docker-py's shlex split
+        of a string command for callers that need an exact argv (the
+        terminal containment wrapper's ``/bin/sh -c`` script would be
+        destroyed by tokenization).
         """
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveContainerUser(container)
         dictKwargs = {
-            "cmd": sCommand,
+            "cmd": listCommand if listCommand is not None else sCommand,
             "tty": True,
             "stdin": True,
             "stdout": True,
@@ -706,6 +710,167 @@ class DockerConnection:
         self._clientDocker.api.exec_resize(
             sExecId, height=iRows, width=iColumns
         )
+
+    def fdictInspectExec(self, sExecId):
+        """Return the daemon's inspect payload for an exec instance.
+
+        The probe half of the operation journal's exec and terminal
+        verifiers (design §8): ``Running`` distinguishes a live exec
+        from a settled one. Named to match the duck-typed contract the
+        journal's probe catalog checks with ``hasattr``.
+        """
+        return self._clientDocker.api.exec_inspect(sExecId)
+
+    def ftupleRunRootShellProbe(self, sContainerId, sScript):
+        """Run a ``/bin/sh`` script as root; return (iExitCode, sOutput).
+
+        The containment-probe primitive (design v13 §6.1): group
+        discovery, group signalling, and group-emptiness proof all run
+        through it. It deliberately uses ``/bin/sh`` — not the bash the
+        ordinary exec paths assume — so the probes work in minimal
+        images, and root so they can signal the unprivileged terminal
+        user's processes. Probes are part of the authority machinery,
+        not route-reachable mutations, so they carry no journal record.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        iExitCode, baOutput = container.exec_run(
+            ["/bin/sh", "-c", sScript], user="root", demux=False,
+        )
+        sOutput = (baOutput or b"").decode("utf-8", errors="replace")
+        return (-1 if iExitCode is None else int(iExitCode), sOutput)
+
+    def fdictProbeProcessGroupMembers(self, sContainerId, iProcessGroup):
+        """Count in-container processes in a session/process group.
+
+        Walks ``/proc/*/stat`` inside the container and counts every
+        process whose process group OR session equals
+        ``iProcessGroup`` (a terminal shell's job control moves
+        children to new groups within the same session, so matching
+        the group alone would miss exactly the detached descendants
+        this probe exists to find). Returns ``bConclusive`` False when
+        the probe could not run; a definitively absent or stopped
+        container is conclusive with zero members, since no process
+        survives its container.
+        """
+        sScript = _fsBuildProcessGroupScript(iProcessGroup, ":")
+        try:
+            iExitCode, sOutput = self.ftupleRunRootShellProbe(
+                sContainerId, sScript,
+            )
+        except Exception as error:
+            if _fbErrorMeansContainerGone(error):
+                return {
+                    "bConclusive": True, "iMemberCount": 0,
+                    "sDetail": f"container is gone or stopped: {error}",
+                }
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": f"process-group probe failed: {error}",
+            }
+        iMemberCount = _fiParseMemberCount(sOutput)
+        if iExitCode != 0 or iMemberCount < 0:
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": (
+                    "process-group probe gave no parseable count "
+                    f"(exit {iExitCode}): {sOutput[:200]!r}"
+                ),
+            }
+        return {
+            "bConclusive": True, "iMemberCount": iMemberCount,
+            "sDetail": f"{iMemberCount} live member(s)",
+        }
+
+    def fnSignalProcessGroupMembers(
+        self, sContainerId, iProcessGroup, sSignalName,
+    ):
+        """Signal every in-container process of a session/process group.
+
+        ``sSignalName`` is allowlisted to TERM and KILL. A container
+        that is already gone or stopped needs no signal and is treated
+        as a quiet success; any other probe failure is also quiet —
+        the terminate-and-prove caller decides on the PROOF, never on
+        the signal delivery.
+        """
+        if sSignalName not in ("TERM", "KILL"):
+            raise ValueError(
+                f"Unsupported process-group signal {sSignalName!r}; "
+                "only TERM and KILL are allowlisted"
+            )
+        sScript = _fsBuildProcessGroupScript(
+            iProcessGroup, f'kill -{sSignalName} "$iMemberPid" 2>/dev/null',
+        )
+        try:
+            self.ftupleRunRootShellProbe(sContainerId, sScript)
+        except Exception:
+            pass
+
+
+# POSIX-sh walk of /proc/*/stat matching a target session/process
+# group. The comm field can contain spaces and parentheses, so the
+# fields after it are recovered by stripping through the LAST ')'
+# (``${sStatContent##*) }``); positional field 3 is then pgrp and 4 is
+# session. The probe excludes its own shell by pid, and IGROUPTARGET
+# is substituted only after integer validation, so no caller-supplied
+# text can reach the script.
+_S_PROCESS_GROUP_SCRIPT_TEMPLATE = """iCount=0
+for sStatPath in /proc/[0-9]*/stat; do
+  sStatContent=$(cat "$sStatPath" 2>/dev/null) || continue
+  sStatTail="${sStatContent##*) }"
+  set -- $sStatTail
+  [ "$3" = "IGROUPTARGET" ] || [ "$4" = "IGROUPTARGET" ] || continue
+  iMemberPid="${sStatPath#/proc/}"
+  iMemberPid="${iMemberPid%/stat}"
+  [ "$iMemberPid" = "$$" ] && continue
+  iCount=$((iCount+1))
+  PERMEMBERACTION
+done
+printf 'iMembers=%s\\n' "$iCount"
+"""
+
+
+def _fsBuildProcessGroupScript(iProcessGroup, sPerMemberAction):
+    """Return the /proc-walk script for one validated group id."""
+    if not isinstance(iProcessGroup, int) or isinstance(
+        iProcessGroup, bool,
+    ) or iProcessGroup <= 0:
+        raise ValueError(
+            f"A process group id must be a positive integer, got "
+            f"{iProcessGroup!r}"
+        )
+    return _S_PROCESS_GROUP_SCRIPT_TEMPLATE.replace(
+        "IGROUPTARGET", str(iProcessGroup),
+    ).replace("PERMEMBERACTION", sPerMemberAction)
+
+
+def _fiParseMemberCount(sOutput):
+    """Return the iMembers count from probe output, or -1 unparseable."""
+    for sLine in sOutput.splitlines():
+        sLine = sLine.strip()
+        if sLine.startswith("iMembers="):
+            try:
+                return int(sLine[len("iMembers="):])
+            except ValueError:
+                return -1
+    return -1
+
+
+def _fbErrorMeansContainerGone(error):
+    """Return True when an exec error proves the container has no processes.
+
+    A 404 (no such container) or a 409 "is not running" both mean no
+    process can remain inside it — the container-stop fallback the
+    design names (v13 §6.1) observed working. Anything else proves
+    nothing.
+    """
+    iStatusCode = getattr(error, "status_code", None)
+    if iStatusCode is None:
+        iStatusCode = getattr(
+            getattr(error, "response", None), "status_code", None,
+        )
+    if iStatusCode == 404:
+        return True
+    return iStatusCode == 409 and "not running" in str(error).lower()
 
 
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):
