@@ -324,6 +324,73 @@ async def testSessionInsideTheAbsoluteCapWithALiveSocketSurvives():
     ) is True
 
 
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testCapDuringALiveRunOrphansAndNeverReleases():
+    """Expiry mid-run ends the session's authority, not the run.
+
+    Case 1 (design §1/§11): a session holding a LIVE mode-(c) durable
+    task hits its absolute cap. The correct commit is ORPHANED — the
+    record, its host flock, its agent token, and the running task all
+    survive; only the browser's authority ends. A release here would
+    free the flock over work that can still commit, so the next hub to
+    claim the container would be writing beside a live run. The safe
+    reaper must then decline it too, however long the orphan stands,
+    while the task is live.
+
+    Kills: committing an expired owning session with a force-release
+    of the owner record instead of the orphan transition in
+    ``sessionLifecycle._fnCommitSessionExpiry``.
+    """
+    stateApp = _fstateBuildAppState()
+    sSessionId, sCredential = _tMintBrowserSession(stateApp)
+    recordOwner = _recordSeedOwnedContainer(stateApp, sSessionId)
+    fileHandleLock = containerLock.fnAcquireContainerLock(
+        S_PROJECT_NAME, 8137,
+    )
+    recordOwner.fileHandleLock = fileHandleLock
+    sAgentTokenBefore = recordOwner.sAgentToken
+    recordTask = SimpleNamespace(
+        sTaskId="task-live-run", sState="running", iOwnerGeneration=1,
+        taskAsync=SimpleNamespace(done=lambda: False),
+    )
+    stateApp.dictDurableTaskRecords[S_PROJECT_NAME] = recordTask
+    _recordOpenLiveSocket(stateApp, sSessionId)
+    _fnAgeSessionBy(
+        stateApp, sCredential,
+        sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS + 1.0,
+    )
+    await sessionLifecycle.fnEvaluateSessionLifecycle(stateApp)
+    assert recordOwner.sState == (
+        containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+    )
+    assert stateApp.dictContainerOwners[S_PROJECT_NAME] is recordOwner, (
+        "expiry during a live run must never release the record"
+    )
+    assert recordOwner.fileHandleLock is fileHandleLock
+    assert recordOwner.sAgentToken == sAgentTokenBefore
+    assert stateApp.dictDurableTaskRecords[S_PROJECT_NAME] is recordTask
+    assert recordTask.taskAsync.done() is False, (
+        "orphaning ends the browser session, never the container's work"
+    )
+    with pytest.raises(containerLock.ContainerLockedError):
+        containerLock.fnAcquireContainerLock(S_PROJECT_NAME, 8138)
+    # And the safe reaper declines it while the run is live, however
+    # long the orphan has stood.
+    recordOwner.fOrphanedSinceMonotonic = time.monotonic() - 99999.0
+    recordOwner.iLiveConnectionCount = 0
+    dictCtx = {
+        "docker": SimpleNamespace(flistGetRunningContainers=lambda: []),
+    }
+    serverLifespan._fnReapIdleOwnershipsForApp(
+        SimpleNamespace(state=stateApp), dictCtx,
+    )
+    assert S_PROJECT_NAME in stateApp.dictContainerOwners, (
+        "the reaper released an orphaned record whose run is still live"
+    )
+    containerLock.fnReleaseContainerLock(fileHandleLock)
+
+
 # -- the pre-expiry warning's backend truth ---------------------------------
 
 

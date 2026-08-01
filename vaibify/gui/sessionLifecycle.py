@@ -69,6 +69,10 @@ __all__ = [
     "flockContainerMutationForAppState",
     "ftdictClaimWithCardinality",
     "fbReleaseExplicit",
+    "ftReleaseExplicit",
+    "S_RELEASE_RELEASED",
+    "S_RELEASE_NOT_OWNER",
+    "S_RELEASE_BUSY",
     "ftTransferOwnership",
     "fnOrphanSession",
     "fnOrphanOwnersPastReconnectWindow",
@@ -139,6 +143,14 @@ F_TRANSFER_COMMIT_HEADROOM_SECONDS = (
 # STALE_GENERATION is the ABA refusal; REFUSED covers the retained
 # refusals (poison, cancel-requested task, unsettled journal, a
 # quarantining drain) whose message names the recovery path.
+# Explicit-release outcomes (design §10). RELEASED committed; NOT_OWNER
+# is the lease/session refusal; BUSY is the retained refusal — the
+# record still exists and the container is still held, which is why it
+# answers 409 rather than a bare "false".
+S_RELEASE_RELEASED = "released"
+S_RELEASE_NOT_OWNER = "notOwner"
+S_RELEASE_BUSY = "busy"
+
 S_TRANSFER_TRANSFERRED = "transferred"
 S_TRANSFER_BUSY_RETRY = "busyRetry"
 S_TRANSFER_EXPIRED = "expired"
@@ -246,44 +258,134 @@ async def ftdictClaimWithCardinality(
 
 
 async def fbReleaseExplicit(appState, sName, sLeaseId, sBrowserSessionId=""):
-    """Commit an explicit release under the canonical lock order.
+    """Return True when an explicit release COMMITS (design §10).
 
-    The sole release path for routes (design §3): acquires the
-    container-mutation lock (the drain), then the cardinality lock, then
-    delegates the arbitration to the synchronous
-    :func:`containerOwnership.fnReleaseOwnership`, which alone decides
-    whether the presenting session holds the session-bound lease. The
-    reverse index is passed through so a committed release also drops
-    the session's cardinality entry.
-
-    A PERMITTED release first terminates every live terminal execution
-    of the container and proves each recorded process group empty — or
-    retains-and-quarantines the record (design §10, case 44) — so a
-    signal-trapping shell cannot write after release just as it cannot
-    after a transfer. The drain runs under the container-mutation lock
-    but BEFORE the briefly-held cardinality lock, and only for a caller
-    the arbitration will actually permit: an unauthorized release
-    attempt never touches the true owner's terminals.
+    The boolean face of :func:`ftReleaseExplicit`, for callers that
+    only need to know whether the record went away. A foreign lease
+    and a busy container both read False here; the route uses the
+    outcome form so it can tell the researcher WHICH, and why.
     """
-    from . import terminalContainment
+    sOutcome, _ = await ftReleaseExplicit(
+        appState, sName, sLeaseId, sBrowserSessionId=sBrowserSessionId,
+    )
+    return sOutcome == S_RELEASE_RELEASED
+
+
+async def ftReleaseExplicit(
+    appState, sName, sLeaseId, sBrowserSessionId="", bForce=False,
+):
+    """Arbitrate and commit an explicit release; return its outcome.
+
+    The sole release path for routes (design §3/§10), under the
+    canonical lock order: the container-mutation lock (the drain),
+    then the cardinality lock. Returns ``(sOutcome, dictPayload)``;
+    every refusal carries an ``sMessage`` naming the recovery.
+
+    Order, and why each step is where it is:
+
+    1. **Authorization first.** ``fbReleaseWouldBePermitted`` alone
+       decides whether the presenting session holds the session-bound
+       lease, so an unauthorized attempt learns nothing about the
+       container's business and never touches the true owner's
+       terminals or channels.
+    2. **Busy refusal (§10).** A live durable task or a live guarded
+       mutation refuses outright — those can still commit, and freeing
+       the flock over them would hand the container to a second owner
+       a live worker is still writing. A live in-container agent
+       refuses too, but ``bForce`` overrides THAT refusal and only
+       that one.
+    3. **Terminal drain.** Every live terminal execution is terminated
+       and its recorded process group proven empty, or the record is
+       retained-and-quarantined (case 44), so a signal-trapping shell
+       cannot write after release any more than it can after transfer.
+    4. **Channels close BEFORE the flock (§10).** The releasing
+       session's own WebSockets are detached and closed while the
+       record still exists; only then is the flock freed. Releasing
+       first would leave a live socket pointed at a container the hub
+       no longer owns.
+    """
     dictLockStore = _fdictLockStoreForAppState(appState)
     dictContainerOwners = getattr(appState, "dictContainerOwners", {})
     dictSessionOwner = getattr(appState, "dictSessionOwner", None)
     async with _flockObtainContainerMutation(dictLockStore, sName):
-        if containerOwnership.fbReleaseWouldBePermitted(
+        if not containerOwnership.fbReleaseWouldBePermitted(
             dictContainerOwners, sName, sLeaseId,
             sBrowserSessionId=sBrowserSessionId,
         ):
-            await asyncio.to_thread(
-                terminalContainment.fdictDrainTerminalRecordsForContainer,
-                appState, sName,
-            )
+            return (S_RELEASE_NOT_OWNER, {
+                "sMessage": f"Container '{sName}' is not held by this "
+                            "browser session's lease, so it was not "
+                            "released.",
+            })
+        sBusyMessage = _fsReleaseBusyReason(appState, sName, bForce)
+        if sBusyMessage:
+            return (S_RELEASE_BUSY, {"sMessage": sBusyMessage})
+        await _fnDrainAndCloseBeforeRelease(appState, sName)
         async with _flockObtainSessionCardinality(dictLockStore):
-            return containerOwnership.fnReleaseOwnership(
+            bReleased = containerOwnership.fnReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
             )
+    if not bReleased:
+        return (S_RELEASE_NOT_OWNER, {
+            "sMessage": f"Container '{sName}' was not released; its "
+                        "ownership changed during the request.",
+        })
+    return (S_RELEASE_RELEASED, {})
+
+
+def _fsReleaseBusyReason(appState, sName, bForce):
+    """Return why a release is refused as busy, or '' when permitted.
+
+    Design §10: permitted only with no live durable task, no in-flight
+    guarded mutation, and no recent agent activity. **Force overrides
+    ONLY the agent-liveness refusal** — never a live durable task and
+    never a live guarded mutation, because those can still commit to
+    the container, and no researcher's impatience makes that safe.
+    """
+    from . import commitCarrier
+    if _frecordLiveDurableTask(appState, sName) is not None:
+        return (
+            f"Container '{sName}' has a run still in progress. "
+            "Releasing it would hand the container away from live "
+            "work, so it is retained; wait for the run to finish or "
+            "stop it first."
+        )
+    if commitCarrier.fbContainerHasLiveMutationWork(appState, sName):
+        return (
+            f"Container '{sName}' has a guarded operation still "
+            "running. It is retained until that operation settles."
+        )
+    if bForce:
+        return ""
+    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)
+    if recordOwner is not None and containerOwnership.fbAgentIsLiveOnRecord(
+        recordOwner,
+    ):
+        return (
+            f"An in-container agent is working in '{sName}', so it was "
+            "retained. Wait for the agent to go idle, or stop the "
+            "container to take it back."
+        )
+    return ""
+
+
+async def _fnDrainAndCloseBeforeRelease(appState, sName):
+    """Prove the terminals dead and close the channels, flock still held."""
+    from . import terminalContainment
+    await asyncio.to_thread(
+        terminalContainment.fdictDrainTerminalRecordsForContainer,
+        appState, sName,
+    )
+    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)
+    if recordOwner is None:
+        return
+    await _fnCloseDetachedConnections(
+        _flistDetachOldSessionConnections(
+            appState, recordOwner, recordOwner.sBrowserSessionId,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------

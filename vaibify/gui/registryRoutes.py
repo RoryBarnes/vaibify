@@ -317,11 +317,19 @@ def _fbNameHasRunningPipeline(dictCtx, sName):
 
 
 def _fnRegisterReleaseContainer(app, dictCtx):
-    """Register POST /api/registry/{sName}/release."""
+    """Register POST /api/registry/{sName}/release.
+
+    A BUSY refusal answers 409 with the record retained (design §10),
+    not a 200 carrying ``bReleased: false``: the tab must keep its
+    lease, because it still owns the container. The optional
+    ``bForce`` body field overrides the agent-liveness refusal only —
+    the lifecycle authority refuses a live run either way.
+    """
     del dictCtx
 
     @app.post("/api/registry/{sName}/release")
     async def fdictReleaseContainer(request: Request, sName: str):
+        from fastapi.responses import JSONResponse
         from vaibify.gui import browserSession, sessionLifecycle
         _fnRejectInvalidProjectName(sName)
         # The owning lease rides the X-Vaibify-Lease header; release only
@@ -334,11 +342,35 @@ def _fnRegisterReleaseContainer(app, dictCtx):
             getattr(app.state, "dictBrowserSessions", {}),
             request.headers.get("x-session-token", ""),
         )
-        bReleased = await sessionLifecycle.fbReleaseExplicit(
+        sOutcome, dictPayload = await sessionLifecycle.ftReleaseExplicit(
             app.state, sName, sLeaseId,
             sBrowserSessionId=sBrowserSessionId,
+            bForce=await _fbReadForceFlag(request),
         )
-        return {"sName": sName, "bReleased": bReleased}
+        dictBody = dict(dictPayload, sName=sName, bReleased=(
+            sOutcome == sessionLifecycle.S_RELEASE_RELEASED
+        ))
+        if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
+            # The refusal reason rides `detail`, the shape the client's
+            # error extractor reads — the same one the claim 409 uses.
+            return JSONResponse(status_code=409, content=dict(
+                dictBody, detail={"sMessage": dictPayload["sMessage"]},
+            ))
+        return dictBody
+
+
+async def _fbReadForceFlag(request):
+    """Return the request's ``bForce`` flag, tolerating no body at all.
+
+    The dashboard's ``pagehide`` beacon posts an empty body, so a
+    missing or malformed body must read as "not forced" rather than
+    fail the release.
+    """
+    try:
+        dictBody = await request.json()
+    except Exception:  # noqa: BLE001 — an absent body is simply not forced
+        return False
+    return bool((dictBody or {}).get("bForce"))
 
 
 def _fnRegisterAddProject(app, dictCtx):

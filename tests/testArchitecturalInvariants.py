@@ -2989,9 +2989,12 @@ def testReleaseRejectsNonOwner():
     )
     assert bMissing is False
     sSource = fsReadSource(GUI_DIR / "registryRoutes.py")
-    assert "fbReleaseExplicit" in sSource and "sLeaseId" in sSource, (
+    # Either face of the authority satisfies this: fbReleaseExplicit
+    # answers "did it commit?", ftReleaseExplicit additionally answers
+    # "and why not" so the route can 409 a retained refusal (§10).
+    assert "ReleaseExplicit" in sSource and "sLeaseId" in sSource, (
         "the release route must commit through the sessionLifecycle "
-        "authority (fbReleaseExplicit), never an inline drop"
+        "authority (fb/ftReleaseExplicit), never an inline drop"
     )
     assert "fnReleaseOwnership" not in sSource, (
         "no route may call the containerOwnership release primitives "
@@ -3846,7 +3849,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # it (the cap is the deadline it counts down to, and the socket
     # veto it must NOT count down to); homing it anywhere else would
     # let the countdown and the expiry drift apart.
-    "sessionLifecycle.py": 990,
+    # +101 (2026-08-01): ORPHANED_SESSION slice 6 — the §10 explicit
+    # release authority: the busy arbitration (live run / live guarded
+    # mutation / live agent, with force scoped to the agent alone) and
+    # the channel close that must precede freeing the flock. It is the
+    # same transition table as the rest of this module and shares its
+    # lock order, its terminal drain, and its connection-detach helper.
+    "sessionLifecycle.py": 1092,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -3912,7 +3921,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +7 (2026-07-31): the poison axis joins the same listing annotation
     # (design §2.1: a force-abandoned owner surfaces as bPoisoned, the
     # live in-process mirror of the durable quarantine record).
-    "registryRoutes.py": 1174,
+    # +32 (2026-08-01): the release route answers a RETAINED refusal
+    # with 409 and its reason (design §10) instead of a 200 carrying
+    # "bReleased: false", and reads the optional bForce flag off a
+    # body the pagehide beacon may not send at all. The arbitration
+    # itself is in sessionLifecycle; this is its HTTP skin.
+    "registryRoutes.py": 1206,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

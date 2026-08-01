@@ -221,9 +221,10 @@ def test_release_kills_the_detached_descendant_or_quarantines(
     (its marker never appears) or the record retained-and-quarantined
     — never a clean release with a live group.
 
-    Kills: disabling the terminal drain in
-    ``sessionLifecycle.fbReleaseExplicit`` (the ``if`` guard forced
-    False). Kill-confirmation requires a reachable Docker daemon;
+    Kills: dropping the terminal drain from
+    ``sessionLifecycle._fnDrainAndCloseBeforeRelease``, so a permitted
+    release frees the flock without proving the recorded process group
+    dead. Kill-confirmation requires a reachable Docker daemon;
     without one this test skips and the mutant survives vacuously.
     """
     from vaibify.gui import sessionLifecycle

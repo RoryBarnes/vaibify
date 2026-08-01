@@ -3001,11 +3001,12 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_release_kills_the_detached_descendant_or_quarantines',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''        if containerOwnership.fbReleaseWouldBePermitted(
-            dictContainerOwners, sName, sLeaseId,
-            sBrowserSessionId=sBrowserSessionId,
-        ):''',
-        new='''        if False:''',
+        old='''    await asyncio.to_thread(
+        terminalContainment.fdictDrainTerminalRecordsForContainer,
+        appState, sName,
+    )
+    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)''',
+        new='''    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)''',
     ),
     Falsification(
         nodeid='tests/testTerminalContainmentLive.py::test_reaper_kills_the_detached_descendant_or_quarantines',
@@ -3272,10 +3273,10 @@ def _fdictEntry(sRel):
         nodeid='tests/testSafeReaper.py::testOrphanedReapGraceRunsFromTheOrphanStampNotTheLastSocket',
         source='vaibify/gui/containerOwnership.py',
         old='''    fOrphanedElapsedSeconds = (
-        fNowMonotonic - recordOwner.fOrphanedSinceMonotonic
+        time.monotonic() - recordOwner.fOrphanedSinceMonotonic
     )''',
         new='''    fOrphanedElapsedSeconds = (
-        fNowMonotonic - recordOwner.fLastSeenMonotonic
+        time.monotonic() - recordOwner.fLastSeenMonotonic
     )''',
     ),
     # Case 7, agent-stamp half (reap succeeds only with a STALE agent
@@ -3283,13 +3284,11 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testSafeReaper.py::testOrphanedReapRequiresAStaleAgentActivityStamp',
         source='vaibify/gui/containerOwnership.py',
-        old='''    if recordOwner.fLastAgentActivityMonotonic > 0.0 and (
-        fNowMonotonic - recordOwner.fLastAgentActivityMonotonic
+        old='''    return recordOwner.fLastAgentActivityMonotonic > 0.0 and (
+        time.monotonic() - recordOwner.fLastAgentActivityMonotonic
         < fGraceSeconds
-    ):
-        return False''',
-        new='''    if False:
-        return False''',
+    )''',
+        new='''    return False''',
     ),
     # Case 7, journal half (ORPHANED->RELEASED requires every journal
     # record settled; the veto lives in the reaper loop):
@@ -3444,13 +3443,11 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testOrphanedRecordWithLiveAgentRestActivityIsNotReaped',
         source='vaibify/gui/containerOwnership.py',
-        old='''    if recordOwner.fLastAgentActivityMonotonic > 0.0 and (
-        fNowMonotonic - recordOwner.fLastAgentActivityMonotonic
+        old='''    return recordOwner.fLastAgentActivityMonotonic > 0.0 and (
+        time.monotonic() - recordOwner.fLastAgentActivityMonotonic
         < fGraceSeconds
-    ):
-        return False''',
-        new='''    if False:
-        return False''',
+    )''',
+        new='''    return False''',
     ),
     # Case 20, real-orphan half (mid-dispatch, with the admission
     # stamp aged stale, ONLY the in-flight bracket pins the record):
@@ -3548,5 +3545,66 @@ def _fdictEntry(sRel):
         0.0,
         F_SLIDING_IDLE_SECONDS - dictLifetime["fIdleSeconds"],
     )''',
+    ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 6, checkpoint 4 — the remaining normative
+    # cases: 1 (expiry orphans, never releases) and 11/17 (the §10
+    # explicit-release authority).
+    # ------------------------------------------------------------------
+    # Case 1: an expired session holding a live run must be ORPHANED.
+    # Releasing would free the flock over work that can still commit.
+    Falsification(
+        nodeid='tests/testSessionLifecycleEvaluator.py::testCapDuringALiveRunOrphansAndNeverReleases',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    await fnOrphanSession(
+        appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
+    )''',
+        new='''    containerOwnership._fnForceReleaseOwnership(
+        appState.dictContainerOwners, sName,
+        getattr(appState, "dictSessionOwner", None),
+    )''',
+    ),
+    # Case 11: the agent refusal is about a LIVE agent; a stale stamp
+    # must not lock a researcher out of releasing an idle container.
+    Falsification(
+        nodeid='tests/testExplicitReleaseAuthority.py::testIdleReleaseWithAStaleAgentStampSucceeds',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if recordOwner is not None and containerOwnership.fbAgentIsLiveOnRecord(
+        recordOwner,
+    ):''',
+        new='''    if recordOwner is not None:''',
+    ),
+    # Case 17, force half: force overrides the agent refusal and ONLY
+    # that one — never a live durable task.
+    Falsification(
+        nodeid='tests/testExplicitReleaseAuthority.py::testReleaseUnderALiveAgentNeedsForceAndForceNeverBeatsALiveRun',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    from . import commitCarrier
+    if _frecordLiveDurableTask(appState, sName) is not None:''',
+        new='''    from . import commitCarrier
+    if bForce:
+        return ""
+    if _frecordLiveDurableTask(appState, sName) is not None:''',
+    ),
+    # Case 17, ordering half: the channels close while the flock is
+    # still held, never after the container has been handed back.
+    Falsification(
+        nodeid='tests/testExplicitReleaseAuthority.py::testPermittedReleaseClosesChannelsBeforeFreeingTheFlock',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''        await _fnDrainAndCloseBeforeRelease(appState, sName)
+        async with _flockObtainSessionCardinality(dictLockStore):
+            bReleased = containerOwnership.fnReleaseOwnership(
+                dictContainerOwners, sName, sLeaseId,
+                sBrowserSessionId=sBrowserSessionId,
+                dictSessionOwner=dictSessionOwner,
+            )''',
+        new='''        async with _flockObtainSessionCardinality(dictLockStore):
+            bReleased = containerOwnership.fnReleaseOwnership(
+                dictContainerOwners, sName, sLeaseId,
+                sBrowserSessionId=sBrowserSessionId,
+                dictSessionOwner=dictSessionOwner,
+            )
+        await _fnDrainAndCloseBeforeRelease(appState, sName)''',
     ),
 ]

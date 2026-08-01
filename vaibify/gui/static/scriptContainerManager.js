@@ -364,7 +364,19 @@ var VaibifyContainerManager = (function () {
                 "/api/registry/" + encodeURIComponent(sName) +
                 "/release", {});
         } catch (error) {
-            /* release is best-effort; the grace reaper will clean up */
+            /* A 409 is a RETAINED refusal: the container is still
+               ours (a run is live, or an agent is working in it), so
+               dropping the lease here would leave this tab unable to
+               act on a container it still owns, and the picker would
+               render it as somebody else's. Say so and keep the
+               lease. Any other failure stays best-effort -- the grace
+               reaper cleans up. */
+            if (error && error.iStatus === 409) {
+                VaibifyApp.fnShowToast(
+                    (error.dictDetail && error.dictDetail.sMessage) ||
+                    error.message, "warning");
+                return;
+            }
         }
         VaibifyApp.fnForgetLease();
     }

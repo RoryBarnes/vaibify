@@ -49,6 +49,7 @@ __all__ = [
     "fnDecrementLiveConnectionForRecord",
     "fnRegisterSessionSocket",
     "fnDeregisterSessionSocket",
+    "fbAgentIsLiveOnRecord",
     "fbOwnerIsReapable",
     "flistReapIdleOwnerships",
 ]
@@ -695,28 +696,39 @@ def fbOwnerIsReapable(recordOwner, fGraceSeconds=_F_GRACE_SECONDS):
     return fElapsedSeconds >= fGraceSeconds
 
 
+def fbAgentIsLiveOnRecord(recordOwner, fGraceSeconds=_F_GRACE_SECONDS):
+    """Return True when an in-container agent is live on this record.
+
+    The §7 agent-liveness reading, named once because two authorities
+    consult it and must agree: the safe reaper, which may not release
+    a record an agent is still acting in, and the explicit-release
+    arbitration (§10), which refuses a release under a live agent
+    unless the caller forces. A request still in flight pins the
+    record for its whole duration (``iInFlightAgentRequests``, case
+    20); between calls, an activity stamp fresher than the grace pins
+    it (``fLastAgentActivityMonotonic``, case 7).
+    """
+    if recordOwner.iInFlightAgentRequests > 0:
+        return True
+    return recordOwner.fLastAgentActivityMonotonic > 0.0 and (
+        time.monotonic() - recordOwner.fLastAgentActivityMonotonic
+        < fGraceSeconds
+    )
+
+
 def _fbOrphanedRecordIsReapable(recordOwner, fGraceSeconds):
     """Answer the record-local ORPHANED→RELEASED conditions (design §7).
 
     The reap grace runs from the ORPHAN stamp, never from the last
-    socket, and a live in-container agent pins the record two ways: a
-    request still in flight (``iInFlightAgentRequests``, held above
-    zero for a long call's whole duration — case 20) and a fresh
-    activity stamp (``fLastAgentActivityMonotonic``, which must be
-    STALE past the same grace — case 7). The caller-level vetoes —
-    live guarded work, live terminal records, unsettled journal
-    records — stay with the reaper loop, which can see the app state.
+    socket, and a live in-container agent — in flight or recently
+    active — pins the record outright. The caller-level vetoes (live
+    guarded work, live terminal records, unsettled journal records)
+    stay with the reaper loop, which can see the app state.
     """
-    fNowMonotonic = time.monotonic()
-    if recordOwner.iInFlightAgentRequests > 0:
-        return False
-    if recordOwner.fLastAgentActivityMonotonic > 0.0 and (
-        fNowMonotonic - recordOwner.fLastAgentActivityMonotonic
-        < fGraceSeconds
-    ):
+    if fbAgentIsLiveOnRecord(recordOwner, fGraceSeconds):
         return False
     fOrphanedElapsedSeconds = (
-        fNowMonotonic - recordOwner.fOrphanedSinceMonotonic
+        time.monotonic() - recordOwner.fOrphanedSinceMonotonic
     )
     return fOrphanedElapsedSeconds >= fGraceSeconds
 
