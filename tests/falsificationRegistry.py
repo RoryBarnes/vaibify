@@ -88,8 +88,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testSecurityBoundaryInvariants.py::testContainerScopedHttpMutationRequiresOwningLease',
         source='vaibify/gui/routeScope.py',
-        old='                if iCode:\n                    return _fresponseForbidden(iCode)',
-        new='                if False:\n                    return _fresponseForbidden(iCode)',
+        old='                if iCode:\n                    return _fresponseRefused(iCode)',
+        new='                if False:\n                    return _fresponseRefused(iCode)',
     ),
     # The read half of the same boundary: dropping container-read from the
     # enforced-scope set reverts owned-container GETs to the old
@@ -3624,5 +3624,19 @@ def _fdictEntry(sRel):
     )''',
         new='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
     )''',
+    ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 9 — lifecycle owner-gating and the
+    # server-owned start reservation (design §10b / §12 slice 9).
+    # ------------------------------------------------------------------
+    # The residual this slice closes: stop was browser-hub, so any
+    # same-hub tab could tear down the container another session was
+    # working in.
+    Falsification(
+        nodeid='tests/testContainerLifecycleGating.py::test_stop_by_a_session_that_does_not_hold_the_lease_is_refused',
+        source='vaibify/gui/routeScope.py',
+        old='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_CONTAINER_LIFECYCLE,',
+        new='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_BROWSER_HUB,',
     ),
 ]

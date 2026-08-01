@@ -34,6 +34,8 @@ fails at app construction (:func:`fnValidateRouteScopesOrRaise`), so an
 unscoped route can never ship (default-deny).
 """
 
+import json
+
 from fastapi.routing import APIRoute
 from starlette.responses import Response
 
@@ -49,6 +51,7 @@ __all__ = [
     "S_SCOPE_CONTAINER_OWNER",
     "S_SCOPE_OWNER_ESTABLISHING",
     "S_SCOPE_CONTAINER_READ",
+    "S_SCOPE_CONTAINER_LIFECYCLE",
     "DICT_CONTROL_PLANE_SCOPES",
     "SET_CONTAINER_READ_ROUTES",
     "ContainerAwareRoute",
@@ -56,6 +59,7 @@ __all__ = [
     "fnContainerOwner",
     "fdictResolveRouteScope",
     "fiAuthorizeContainerHttp",
+    "fiAuthorizeContainerLifecycleHttp",
     "fnValidateRouteScopesOrRaise",
     "fsLeaseFromRequest",
 ]
@@ -75,6 +79,11 @@ S_SCOPE_OWNER_ESTABLISHING = "owner-establishing"
 # same bound-lease predicate as container-owner. The frozen allowlist below
 # remains the ratchet, so a new route cannot silently adopt the scope.
 S_SCOPE_CONTAINER_READ = "container-read"
+# Name-keyed container lifecycle (stop, settings, cancel-a-start):
+# lease-enforced WHENEVER the container is owned, permitted when it has
+# no owner record at all. See :func:`fiAuthorizeContainerLifecycleHttp`
+# for why that differs from ``container-owner``.
+S_SCOPE_CONTAINER_LIFECYCLE = "container-lifecycle"
 
 _SET_VALID_SCOPES = frozenset({
     S_SCOPE_PUBLIC_STATIC,
@@ -83,6 +92,7 @@ _SET_VALID_SCOPES = frozenset({
     S_SCOPE_CONTAINER_OWNER,
     S_SCOPE_OWNER_ESTABLISHING,
     S_SCOPE_CONTAINER_READ,
+    S_SCOPE_CONTAINER_LIFECYCLE,
 })
 
 _SET_STATE_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -95,8 +105,20 @@ _SET_LEASE_ENFORCED_SCOPES = frozenset({
     S_SCOPE_CONTAINER_READ,
 })
 
+# Every scope ``ContainerAwareRoute`` runs a container authority for. The
+# lifecycle scope answers a DIFFERENT question for an unowned container
+# than the two above, so it carries its own authority rather than joining
+# their set.
+_SET_AUTHORIZED_CONTAINER_SCOPES = (
+    _SET_LEASE_ENFORCED_SCOPES | frozenset({S_SCOPE_CONTAINER_LIFECYCLE})
+)
+
 I_AUTHORIZED = 0
 I_REJECT_FORBIDDEN = 403
+# A lifecycle mutation arriving while the container's start reservation
+# is live: refused as a CONFLICT, not a forbidden — the caller may well
+# be the owner, and the honest answer is "not yet", not "not you".
+I_REJECT_STARTING = 409
 
 
 # Non-container control-plane routes and the scope each carries. A mutating
@@ -107,21 +129,24 @@ I_REJECT_FORBIDDEN = 403
 # allowlist: a new mutating control-plane route must be classified here or
 # fail app construction.
 #
-# DELIBERATE RESIDUAL — the name-keyed container-lifecycle routes
-# (``.../{sName}/start``, ``/stop``, ``/build``, ``/settings``, and
-# ``/release``'s sibling ``/claim``) are classified ``browser-hub``, NOT
-# lease-enforced, on purpose. The hub is single-user, so the lease is
-# live-session coordination, not an authorization boundary against a hostile
-# peer; and the picker operates on these routes BEFORE and ACROSS claims,
-# when no lease exists yet. Safe owner-gating of stop/settings additionally
-# depends on the ORPHANED_SESSION takeover lifecycle (a crashed owner's
-# container must remain stoppable), which is not yet built, so owner-gating
-# them is DEFERRED rather than declared. ``connect`` and ``release`` are the
-# exceptions that ARE session-bound (owner-establishing / the bound-lease
-# check in ``fnReleaseOwnership``), because each touches the live session's
-# integrity: connect takes over the workflow and the agent session, and
-# release drops the owner record. See docs/architecture.md, "Single browser
-# session per container".
+# The name-keyed container-lifecycle family, and why each lands where it
+# does (design §12, slice 9). ``stop`` and ``settings`` are
+# ``container-lifecycle``: lease-enforced whenever the container is owned,
+# so one browser session can no longer stop or reconfigure a container
+# another session is working in, and refused 409 while a start reservation
+# is live. The dashboard's "Rebuild" is a client-side composite of stop
+# then build, so gating stop gates rebuild's destructive half.
+#
+# DELIBERATE RESIDUAL — ``build`` and ``claim`` stay ``browser-hub``.
+# Build is an IMAGE operation with no owner: a project whose container has
+# never run has no owner record and no lease, so blanket-gating it would
+# make building impossible for exactly the projects that need it. Claim is
+# the route that MINTS the lease, so it cannot require one. The hub is
+# single-user, so for both the browser credential is the boundary and the
+# lease is live-session coordination. ``connect`` and ``release`` are
+# session-bound by their own authorities (owner-establishing / the
+# bound-lease check in ``fnReleaseOwnership``). See docs/architecture.md,
+# "Single browser session per container".
 DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/transfer"): S_SCOPE_BOOTSTRAP_CAPABILITY,
@@ -129,8 +154,9 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/build"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/start"): S_SCOPE_BROWSER_HUB,
-    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_BROWSER_HUB,
-    ("POST", "/api/containers/{sName}/settings"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_CONTAINER_LIFECYCLE,
+    ("POST", "/api/containers/{sName}/settings"):
+        S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/projects/create"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/registry/{sName}/claim"): S_SCOPE_OWNER_ESTABLISHING,
@@ -281,9 +307,25 @@ def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
     for sMethod in setNormalized:
         sScope = DICT_CONTROL_PLANE_SCOPES.get((sMethod, sPath))
         if sScope is not None:
-            return {"sScope": sScope, "sTargetParam": None,
-                    "sIdentityKind": None}
+            return _fdictDeclareControlPlaneScope(sScope)
     return None
+
+
+def _fdictDeclareControlPlaneScope(sScope):
+    """Return the scope declaration for a named control-plane route.
+
+    Only ``container-lifecycle`` names a target: it is the one
+    control-plane scope with an owner to resolve, and it is name-keyed by
+    definition (the lifecycle routes are the ``{sName}`` family, which
+    the picker reaches before any container id exists).
+    """
+    if sScope == S_SCOPE_CONTAINER_LIFECYCLE:
+        return {
+            "sScope": sScope,
+            "sTargetParam": "sName",
+            "sIdentityKind": "name",
+        }
+    return {"sScope": sScope, "sTargetParam": None, "sIdentityKind": None}
 
 
 def fsLeaseFromRequest(request):
@@ -350,6 +392,47 @@ def fiAuthorizeContainerHttp(request, appState, dictScope):
     return I_REJECT_FORBIDDEN
 
 
+def fiAuthorizeContainerLifecycleHttp(request, appState, dictScope):
+    """Return ``0``, ``403``, or ``409`` for a name-keyed lifecycle route.
+
+    Lease-enforced WHENEVER the container is owned, and permitted when it
+    carries no owner record at all. The asymmetry is deliberate, and it is
+    why this is not simply ``container-owner``: stopping or reconfiguring a
+    container another browser session is working in destroys that session's
+    live work, so it is refused (403); but a container nobody holds has no
+    session to protect, and the picker legitimately operates on one before
+    any claim exists, so refusing there would make an unowned container
+    unstoppable from the dashboard that shows it running.
+
+    A live start reservation (design §10b) refuses even the owner with
+    ``409``: the container is mid-create/mid-start, and mutating it
+    underneath the running start is the partial-state hazard the
+    reservation exists to bound. The in-container agent lane is refused
+    outright — an agent never operates the container control plane.
+    """
+    dictContainerOwners = getattr(appState, "dictContainerOwners", {}) or {}
+    dictBrowserSessions = getattr(appState, "dictBrowserSessions", {}) or {}
+    sName = request.path_params.get(dictScope.get("sTargetParam") or "", "")
+    if request.headers.get(actionCatalog.S_SESSION_HEADER_NAME.lower(), ""):
+        return I_REJECT_FORBIDDEN
+    sBrowserSessionId = browserSession.fsSessionIdForCredential(
+        dictBrowserSessions, request.headers.get("x-session-token", ""),
+    )
+    if not sBrowserSessionId:
+        return I_REJECT_FORBIDDEN
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is None:
+        return I_AUTHORIZED
+    if not containerOwnership.fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId,
+        fsLeaseFromRequest(request),
+    ):
+        return I_REJECT_FORBIDDEN
+    if getattr(recordOwner, "reservation", None) is not None:
+        return I_REJECT_STARTING
+    return I_AUTHORIZED
+
+
 class ContainerAwareRoute(APIRoute):
     """Route class that enforces the bound-lease predicate before serving.
 
@@ -377,13 +460,13 @@ class ContainerAwareRoute(APIRoute):
             )
             if (
                 dictScope is not None
-                and dictScope["sScope"] in _SET_LEASE_ENFORCED_SCOPES
+                and dictScope["sScope"] in _SET_AUTHORIZED_CONTAINER_SCOPES
             ):
-                iCode = fiAuthorizeContainerHttp(
+                iCode = _fiAuthorizeForScope(
                     request, request.app.state, dictScope,
                 )
                 if iCode:
-                    return _fresponseForbidden(iCode)
+                    return _fresponseRefused(iCode)
                 tAdmissionTokens = commitCarrier.ftupleOpenRequestAdmission(
                     request.app.state, dictScope, request,
                 )
@@ -400,14 +483,43 @@ class ContainerAwareRoute(APIRoute):
         return fnAuthorizedHandler
 
 
+def _fiAuthorizeForScope(request, appState, dictScope):
+    """Route a scoped request to its authority; return its verdict code.
+
+    The two container authorities differ only in how they treat an
+    UNOWNED container (see :func:`fiAuthorizeContainerLifecycleHttp`), so
+    the dispatch lives here rather than inside either of them. The
+    module-global lookups are deliberate: a test that substitutes an
+    authority sees its substitute honoured.
+    """
+    if dictScope["sScope"] == S_SCOPE_CONTAINER_LIFECYCLE:
+        return fiAuthorizeContainerLifecycleHttp(request, appState, dictScope)
+    return fiAuthorizeContainerHttp(request, appState, dictScope)
+
+
+def _fresponseRefused(iStatusCode):
+    """Return the JSON refusal body matching an authority's verdict."""
+    if iStatusCode == I_REJECT_STARTING:
+        return _fresponseJson(iStatusCode, (
+            "This container is still starting; wait for the start to "
+            "finish or cancel it, then try again."
+        ))
+    return _fresponseForbidden(iStatusCode)
+
+
 def _fresponseForbidden(iStatusCode):
     """Return the JSON refusal for a caller that does not own the container."""
+    return _fresponseJson(iStatusCode, (
+        "You do not hold this container's lease; claim or connect to it "
+        "first."
+    ))
+
+
+def _fresponseJson(iStatusCode, sDetail):
+    """Return a JSON ``detail`` body — the shape the client's reader wants."""
     return Response(
         status_code=iStatusCode,
-        content=(
-            '{"detail":"You do not hold this container\'s lease; claim or '
-            'connect to it first."}'
-        ),
+        content=json.dumps({"detail": sDetail}),
         media_type="application/json",
     )
 
