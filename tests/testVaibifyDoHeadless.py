@@ -292,6 +292,35 @@ def test_do_refuses_and_names_the_agent_lane_when_a_dashboard_holds_it(
     ) is True
 
 
+def test_dry_run_bootstraps_but_never_claims_the_container(
+    tLiveHub, monkeypatch, capsys,
+):
+    """``--dry-run`` names the exact call and takes nothing.
+
+    It still needs a credential (the container id comes from the hub's
+    registry), so the socket bootstrap runs — but no claim follows, and
+    a dashboard tab holding the container is undisturbed. The printed
+    URL must carry the Docker id, never the container name.
+    """
+    from vaibify.cli import actionCommands
+    app, iPort = tLiveHub
+    recordOwner, _, _ = _tClaimAsDashboard(app, iPort)
+    sLeaseBefore = recordOwner.sLeaseId
+    monkeypatch.setattr(
+        actionCommands, "_fsResolveContainerName",
+        lambda sProjectName: S_CONTAINER_NAME,
+    )
+    actionCommands.fnRunCatalogAction(
+        _fdictProbeAction(),
+        dict(_fdictCommandParameters(iPort), bDryRun=True),
+    )
+    tCaptured = capsys.readouterr()
+    assert S_CONTAINER_ID in tCaptured.out, tCaptured.out + tCaptured.err
+    assert S_CONTAINER_NAME not in tCaptured.out
+    assert app.state.dictContainerOwners[S_CONTAINER_NAME] is recordOwner
+    assert recordOwner.sLeaseId == sLeaseBefore
+
+
 def test_do_mints_a_session_that_never_carries_a_second_container(
     tLiveHub, monkeypatch,
 ):

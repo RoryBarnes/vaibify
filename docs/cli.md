@@ -570,17 +570,34 @@ browser drives, so the dashboard sees every one of them; they are not a
 second, parallel way to change a project. Start one with `vaibify` in
 another terminal.
 
-**One session per container still holds.** The CLI claims the container's
-lease for the duration of one command and releases it afterwards, so a
-container currently open in a dashboard tab answers with *"In use in
-another browser session"* rather than being taken over.
+**One session per container still holds.** The CLI claims the
+container's lease for the duration of one command and releases it
+afterwards — including when the action fails, so a failed command never
+strands the claim. A container currently open in a dashboard tab is
+therefore refused rather than taken over:
 
-**The CLI is the researcher lane.** It authenticates with the hub's
-shared session token exactly as the browser does. The `bAgentSafe` flag
-in the catalog governs what a compromised *in-container agent* may
-invoke; it does not restrict the person at their own terminal, so
-user-only actions like `clean-outputs` are available here and are marked
-in `--help`.
+```
+Error: Container 'myProject' is held by another vaibify session: In use
+in another browser session. Vaibify allows one session per container, so
+this command cannot take it from a live dashboard. Either close the
+dashboard tab holding it (or release the container from the picker) and
+run this again, or run the same action from inside the container with
+'vaibify-do', the in-container agent lane, which acts within the session
+that is already open.
+```
+
+That is the deliberate answer, not a limitation to work around: taking
+the container would mean revoking a session someone is working in.
+
+**The CLI is the researcher lane.** It authenticates exactly as the
+browser does — with a per-browser credential — obtaining it headlessly:
+it mints a one-time launch capability over the hub's host control
+socket (a `0700` Unix socket, peer-authenticated to the user who
+started the hub, unreachable from any container or remote peer) and
+redeems it at `/api/bootstrap`. The `bAgentSafe` flag in the catalog
+governs what a compromised *in-container agent* may invoke; it does not
+restrict the person at their own terminal, so user-only actions like
+`clean-outputs` are available here and are marked in `--help`.
 
 ## Publishing
 
