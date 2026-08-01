@@ -1,12 +1,18 @@
-"""Session management route: spawn a new vaibify hub process.
+"""Browser-session routes: spawn a new hub, and read a session's lifetime.
 
-Exposes ``POST /api/session/spawn``. Picks a free port with the
-shared port allocator, launches a detached child running
-``python -m vaibify --port <free>``, and returns the URL the
-frontend should open in a new browser tab. No user-controlled
-arguments are ever appended to the child command line, and the
-route rejects requests carrying the in-container agent token so
-only browser-origin callers can spawn new hubs.
+``POST /api/session/spawn`` picks a free port with the shared port
+allocator, launches a detached child running ``python -m vaibify
+--port <free>``, and returns the URL the frontend should open in a new
+browser tab. No user-controlled arguments are ever appended to the
+child command line.
+
+``GET /api/session/lifetime`` reports how long the PRESENTING browser
+session has before its absolute cap — the backend truth the dashboard's
+pre-expiry warning renders (design §11).
+
+Both routes reject requests carrying the in-container agent token: only
+a browser-origin caller may spawn a hub, and the agent holds no browser
+session whose lifetime it could read.
 """
 
 __all__ = ["fnRegisterAll", "S_SUPPRESS_BROWSER_ENV"]
@@ -23,6 +29,7 @@ from fastapi import HTTPException, Request
 
 _I_MAX_LIVE_SPAWNS = 5
 _S_AGENT_SESSION_HEADER_NAME = "x-vaibify-session"
+_S_BROWSER_CREDENTIAL_HEADER_NAME = "x-session-token"
 _F_READY_TIMEOUT_SECONDS = 5.0
 _F_READY_POLL_INTERVAL_SECONDS = 0.05
 S_SUPPRESS_BROWSER_ENV = "VAIBIFY_SUPPRESS_BROWSER"
@@ -54,14 +61,16 @@ def _fnPruneDeadChildren(listChildren):
     ]
 
 
-def _fnRejectContainerAgentCallers(request):
+def _fnRejectContainerAgentCallers(request, sDetail=""):
     """Deny requests that authenticate via the in-container agent token."""
     sAgentToken = request.headers.get(_S_AGENT_SESSION_HEADER_NAME, "")
     if sAgentToken:
         raise HTTPException(
             status_code=403,
-            detail="Spawning new vaibify windows is not permitted "
-            "from inside the container.",
+            detail=sDetail or (
+                "Spawning new vaibify windows is not permitted "
+                "from inside the container."
+            ),
         )
 
 
@@ -116,6 +125,31 @@ def _fnRegisterSpawn(app):
         }
 
 
+def _fnRegisterLifetime(app):
+    """Register GET /api/session/lifetime on the given app.
+
+    The backend truth behind the pre-expiry dashboard warning (design
+    §11). It reports only the clocks of the session whose credential
+    the request presents — resolved from the header, never from a
+    caller-supplied session id — so no browser can read another's
+    remaining lifetime. The in-container agent holds no browser
+    session at all and is refused outright.
+    """
+
+    @app.get("/api/session/lifetime")
+    async def fdictGetSessionLifetime(request: Request):
+        from ..sessionLifecycle import fdictSessionExpiryView
+        _fnRejectContainerAgentCallers(
+            request,
+            sDetail="The in-container agent holds no browser session, "
+            "so it has no session lifetime to read.",
+        )
+        return fdictSessionExpiryView(
+            request.app.state,
+            request.headers.get(_S_BROWSER_CREDENTIAL_HEADER_NAME, ""),
+        )
+
+
 def _fnRegisterSpawnedChildShutdown(app):
     """Terminate every spawned hub child when this process shuts down.
 
@@ -143,4 +177,5 @@ def fnRegisterAll(app, dictCtx):
     """Register all session routes."""
     del dictCtx
     _fnRegisterSpawn(app)
+    _fnRegisterLifetime(app)
     _fnRegisterSpawnedChildShutdown(app)

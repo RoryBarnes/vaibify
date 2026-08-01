@@ -473,3 +473,60 @@ def testTransferFragmentAttachesTheTransferredSessionAndLease(
         stateApp.dictContainerOwners.pop(S_CONTAINER_NAME, None)
         stateApp.dictSessionOwner.pop(sOldSessionId, None)
         stateApp.dictSessionOwner.pop(recordOwner.sBrowserSessionId, None)
+
+
+# ---------------------------------------------------------------------
+# Journey -- the pre-expiry warning (design paragraph 11, slice 7)
+# ---------------------------------------------------------------------
+
+
+def testSessionCapWarningComesFromTheBackendAndReachesTheScreen(
+    pageDashboard, serverHub,
+):
+    """A session near its absolute cap is warned, in backend numbers.
+
+    The dashboard cannot know when its session ends; the server does.
+    This drives the real path front to back: the page polls
+    ``/api/session/lifetime``, the server answers from the session
+    record's own creation stamp, and the researcher sees a toast
+    naming the remaining minutes. Nothing here fakes the response --
+    only the record's age is moved, exactly as a real day-long tab
+    would move it.
+
+    A fresh session must produce NO warning, so the toast cannot be a
+    banner that is always on.
+    """
+    from vaibify.gui import sessionLifecycle
+    stateApp = serverHub.app.state
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    sCredential = _fsPageCredential(pageDashboard)
+    assert sCredential, "the page must have bootstrapped a credential"
+    assert pageDashboard.locator(".toast").count() == 0, (
+        "a fresh session must not be warned about its cap"
+    )
+    recordSession = stateApp.dictBrowserSessions[
+        "dictSessionsByCredential"
+    ][sCredential]
+    fCreatedRestore = recordSession.fCreatedMonotonic
+    try:
+        # Age the record to five minutes short of the cap. The page is
+        # told nothing; it re-polls and learns it from the server.
+        recordSession.fCreatedMonotonic -= (
+            sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS - 300.0
+        )
+        pageDashboard.evaluate(
+            "() => VaibifyPolling.fnStartSessionLifetimePolling()"
+        )
+        locatorToast = pageDashboard.locator(
+            ".toast", has_text="maximum lifetime"
+        )
+        locatorToast.first.wait_for(state="visible", timeout=10000)
+        sToastText = locatorToast.first.inner_text()
+        assert "5 minutes" in sToastText, sToastText
+        assert "vaibify open" in sToastText, (
+            "the warning must name the re-attach path, not just the loss"
+        )
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        recordSession.fCreatedMonotonic = fCreatedRestore

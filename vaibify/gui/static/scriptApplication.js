@@ -18,6 +18,7 @@ const VaibifyApp = (function () {
         dictDashboardMode: null,
         sLeaseId: "",
         sLeaseContainerName: null,
+        bSessionExpiryWarned: false,
     };
 
     var _S_LEASE_STORAGE_KEY = "vaibifyContainerLease";
@@ -362,6 +363,34 @@ const VaibifyApp = (function () {
             fnProcessFileStatusResponse);
         VaibifyPolling.fnSetWorkflowDiscoveryHandler(
             fnProcessWorkflowDiscovery);
+        VaibifyPolling.fnSetSessionLifetimeHandler(
+            _fnHandleSessionLifetime);
+    }
+
+    function _fnHandleSessionLifetime(dictLifetime) {
+        /* The server says how long this browser session has before its
+         * absolute cap; every number here comes from that payload, so
+         * the warning cannot drift from the deadline it describes.
+         * Warned once per crossing: the poll repeats every minute and
+         * a toast a minute would be noise, but if the server ever
+         * reports the session as no longer near its cap (a transfer
+         * minted a fresh one) the latch reopens for the new one. */
+        if (!dictLifetime || !dictLifetime.bSessionKnown ||
+                !dictLifetime.bExpiringSoon) {
+            _dictSessionState.bSessionExpiryWarned = false;
+            return;
+        }
+        if (_dictSessionState.bSessionExpiryWarned) return;
+        _dictSessionState.bSessionExpiryWarned = true;
+        var iMinutes = Math.max(1, Math.round(
+            dictLifetime.fSecondsUntilSessionCap / 60));
+        fnShowToast(
+            "This browser session reaches its maximum lifetime in " +
+            "about " + iMinutes + " minute" +
+            (iMinutes === 1 ? "" : "s") + ". Run 'vaibify open' to " +
+            "continue in a fresh tab — your container and any running " +
+            "step keep going.",
+            "warning");
     }
 
     /* --- Initialization --- */
@@ -371,6 +400,9 @@ const VaibifyApp = (function () {
         await fnFetchSessionToken();
         fnRegisterWebSocketHandlers();
         fnRegisterPollingHandlers();
+        /* Container-independent: a session sitting on the picker is
+         * subject to the same cap as one inside a workflow. */
+        VaibifyPolling.fnStartSessionLifetimePolling();
         fnLoadUserName();
         fnLoadTimestampSetting();
         fnShowContainerLanding();

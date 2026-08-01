@@ -42,6 +42,7 @@ __all__ = [
     "fbValidateCredential",
     "fsSessionIdForCredential",
     "fdictActiveSessionLifetimes",
+    "fdictLifetimeForCredential",
     "I_CAPABILITY_TTL_SECONDS",
 ]
 
@@ -388,6 +389,34 @@ def fdictActiveSessionLifetimes(dictStore):
                 )
             dictLifetimes[recordSession.sSessionId] = dictLifetime
     return dictLifetimes
+
+
+def fdictLifetimeForCredential(dictStore, sCredential):
+    """Return one credential's ``{fIdleSeconds, fAgeSeconds}``, or None.
+
+    The read behind the pre-expiry warning: a session may only ever be
+    told about ITS OWN clocks, so this resolves the presenting
+    credential rather than a session id supplied by the caller. A
+    REVOKED or unknown credential answers None, and the last-seen stamp
+    is deliberately NOT refreshed here — the middleware already did
+    that for an authorized request, and a read of remaining lifetime
+    must not itself extend the lifetime.
+    """
+    if not sCredential:
+        return None
+    fNow = time.monotonic()
+    with _lockBrowserSessions:
+        recordSession = dictStore.get(
+            "dictSessionsByCredential", {},
+        ).get(sCredential)
+        if recordSession is None or (
+            recordSession.sState != S_SESSION_STATE_ACTIVE
+        ):
+            return None
+        return {
+            "fIdleSeconds": fNow - recordSession.fLastSeenMonotonic,
+            "fAgeSeconds": fNow - recordSession.fCreatedMonotonic,
+        }
 
 
 def fsSessionIdForCredential(dictStore, sCredential):

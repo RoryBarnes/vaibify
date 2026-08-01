@@ -1,4 +1,4 @@
-"""Owner-aware session expiry and the ~5 s evaluator (design §11).
+"""Session expiry, the absolute cap, and the ~5 s evaluator (design §11).
 
 Drives ``sessionLifecycle.fnExpireIdleBrowserSessions`` and
 ``fnEvaluateSessionLifecycle`` against a REAL browser-session store and
@@ -87,14 +87,25 @@ def _recordSeedOwnedContainer(stateApp, sSessionId):
     return recordOwner
 
 
-def _fnAgeSessionPastSlidingIdle(stateApp, sCredential):
-    """Rewind a credential's last-seen stamp past the sliding-idle window."""
-    recordSession = stateApp.dictBrowserSessions[
+def _recordSessionForCredential(stateApp, sCredential):
+    """Return the live BrowserSessionRecord behind a credential."""
+    return stateApp.dictBrowserSessions[
         "dictSessionsByCredential"
     ][sCredential]
+
+
+def _fnAgeSessionPastSlidingIdle(stateApp, sCredential):
+    """Rewind a credential's last-seen stamp past the sliding-idle window."""
+    recordSession = _recordSessionForCredential(stateApp, sCredential)
     recordSession.fLastSeenMonotonic = time.monotonic() - (
         sessionLifecycle.F_SLIDING_IDLE_SECONDS + 1.0
     )
+
+
+def _fnAgeSessionBy(stateApp, sCredential, fSeconds):
+    """Rewind a credential's CREATION stamp — the absolute-cap clock."""
+    recordSession = _recordSessionForCredential(stateApp, sCredential)
+    recordSession.fCreatedMonotonic = time.monotonic() - fSeconds
 
 
 def _recordOpenLiveSocket(stateApp, sSessionId):
@@ -250,6 +261,161 @@ async def testLiveWebSocketVetoesSlidingIdle():
     ), "with the socket gone the same stale stamp must expire"
 
 
+# -- the absolute cap (slice 7) ---------------------------------------------
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testAbsoluteCapFiresDespiteALiveWebSocket():
+    """The cap overrides the socket veto (§11), and orphans an owner.
+
+    The socket veto is scoped to sliding idle ALONE. A forgotten-open
+    tab — the sole case the absolute cap exists to bound — holds a
+    live socket by definition, so a veto generalized to all three
+    triggers would make the cap unreachable in exactly its target
+    case. Here the session is fully "active": a live pipeline socket
+    and a last-seen stamp refreshed a moment ago. Only its age has run
+    out, and that must be enough — committed through the orphan
+    transition, since the session owns a container.
+
+    Kills: letting a live WebSocket veto the absolute cap as well as
+    sliding idle in ``sessionLifecycle._fbBrowserSessionHasExpired``.
+    """
+    stateApp = _fstateBuildAppState()
+    sSessionId, sCredential = _tMintBrowserSession(stateApp)
+    recordOwner = _recordSeedOwnedContainer(stateApp, sSessionId)
+    recordConnection = _recordOpenLiveSocket(stateApp, sSessionId)
+    _fnAgeSessionBy(
+        stateApp, sCredential,
+        sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS + 1.0,
+    )
+    assert recordOwner.iLiveConnectionCount == 1
+    await sessionLifecycle.fnExpireIdleBrowserSessions(stateApp)
+    assert recordOwner.sState == (
+        containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+    ), "the absolute cap must fire regardless of socket liveness"
+    assert browserSession.fbValidateCredential(
+        stateApp.dictBrowserSessions, sCredential,
+    ) is False
+    assert recordConnection.connection.listCloseCodes == [4401], (
+        "the capped session's live socket must be actively closed"
+    )
+    assert stateApp.dictContainerOwners[S_PROJECT_NAME] is recordOwner, (
+        "the cap ends the browser session's authority, not the record"
+    )
+
+
+@pytest.mark.asyncio
+async def testSessionInsideTheAbsoluteCapWithALiveSocketSurvives():
+    """An aged-but-not-capped session with a socket keeps authorizing."""
+    stateApp = _fstateBuildAppState()
+    sSessionId, sCredential = _tMintBrowserSession(stateApp)
+    recordOwner = _recordSeedOwnedContainer(stateApp, sSessionId)
+    _recordOpenLiveSocket(stateApp, sSessionId)
+    _fnAgeSessionBy(
+        stateApp, sCredential,
+        sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS - 60.0,
+    )
+    _fnAgeSessionPastSlidingIdle(stateApp, sCredential)
+    await sessionLifecycle.fnExpireIdleBrowserSessions(stateApp)
+    assert recordOwner.sState == containerOwnership.S_OWNER_STATE_ACTIVE
+    assert browserSession.fbValidateCredential(
+        stateApp.dictBrowserSessions, sCredential,
+    ) is True
+
+
+# -- the pre-expiry warning's backend truth ---------------------------------
+
+
+@pytest.mark.falsification
+def testExpiryViewCountsDownTheCapForThePresentingSessionOnly():
+    """The warning's payload is derived from the session's own record.
+
+    The countdown is the ABSOLUTE CAP's remaining lifetime measured
+    from the presenting credential's creation stamp — the deadline
+    that has no socket veto — and it crosses ``bExpiringSoon`` exactly
+    at the configured lead. A credential the store does not know, or
+    one already revoked, is answered ``bSessionKnown`` False with a
+    zero countdown, never another session's clocks.
+
+    Kills: reporting the sliding-idle clock instead of the
+    absolute-cap clock in ``sessionLifecycle.fdictSessionExpiryView``
+    — a countdown toward a deadline a live socket forbids.
+    """
+    stateApp = _fstateBuildAppState()
+    _, sCredential = _tMintBrowserSession(stateApp)
+    dictFresh = sessionLifecycle.fdictSessionExpiryView(
+        stateApp, sCredential,
+    )
+    assert dictFresh["bSessionKnown"] is True
+    assert dictFresh["bExpiringSoon"] is False
+    assert dictFresh["fWarningLeadSeconds"] == (
+        sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS
+    )
+    assert dictFresh["fSecondsUntilSessionCap"] == pytest.approx(
+        sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS, abs=5.0,
+    )
+    # Idle for longer than the whole warning lead, but young: the
+    # sliding clock must NOT be what the countdown reports.
+    _fnAgeSessionPastSlidingIdle(stateApp, sCredential)
+    assert sessionLifecycle.fdictSessionExpiryView(
+        stateApp, sCredential,
+    )["bExpiringSoon"] is False, (
+        "the countdown must track the capped deadline, not idleness"
+    )
+    _fnAgeSessionBy(
+        stateApp, sCredential,
+        sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS
+        - sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS + 60.0,
+    )
+    dictWarned = sessionLifecycle.fdictSessionExpiryView(
+        stateApp, sCredential,
+    )
+    assert dictWarned["bExpiringSoon"] is True
+    assert 0.0 < dictWarned["fSecondsUntilSessionCap"] <= (
+        sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS
+    )
+    dictUnknown = sessionLifecycle.fdictSessionExpiryView(
+        stateApp, "not-a-credential",
+    )
+    assert dictUnknown == {
+        "bSessionKnown": False,
+        "fSecondsUntilSessionCap": 0.0,
+        "fWarningLeadSeconds": (
+            sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS
+        ),
+        "bExpiringSoon": False,
+    }
+
+
+def testExpiryViewRefusesToExtendTheSessionItReports():
+    """Reading remaining lifetime must not refresh the idle clock."""
+    stateApp = _fstateBuildAppState()
+    _, sCredential = _tMintBrowserSession(stateApp)
+    _fnAgeSessionPastSlidingIdle(stateApp, sCredential)
+    fStampBefore = _recordSessionForCredential(
+        stateApp, sCredential,
+    ).fLastSeenMonotonic
+    sessionLifecycle.fdictSessionExpiryView(stateApp, sCredential)
+    assert _recordSessionForCredential(
+        stateApp, sCredential,
+    ).fLastSeenMonotonic == fStampBefore, (
+        "a lifetime read must not itself extend the lifetime"
+    )
+
+
+def testRevokedCredentialLearnsNothingFromTheExpiryView():
+    """A revoked session's credential reads as unknown."""
+    stateApp = _fstateBuildAppState()
+    sSessionId, sCredential = _tMintBrowserSession(stateApp)
+    browserSession.fnRevokeSessionById(
+        stateApp.dictBrowserSessions, sSessionId,
+    )
+    assert sessionLifecycle.fdictSessionExpiryView(
+        stateApp, sCredential,
+    )["bSessionKnown"] is False
+
+
 # -- the evaluator pass and its scheduling ----------------------------------
 
 
@@ -356,6 +522,85 @@ def testEvaluatorLoopSurvivesAFailingPass():
     assert len(listCalls) >= 3, (
         "a single failed pass must not terminate the evaluator loop"
     )
+
+
+def _appBuildRealApplication():
+    """Build the real application over the fail-closed Docker mock."""
+    from unittest.mock import patch
+    from tests.testAgentLaneEnforcement import MockDockerConnection
+    from vaibify.gui import pipelineServer
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker", MockDockerConnection,
+    ):
+        return pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser",
+        )
+
+
+def testLifetimeRouteServesTheOwnSessionAndRefusesTheAgentLane():
+    """The route is browser-only and reports the presenter's own clocks.
+
+    Two refusals stack. The route names no container, so the agent
+    lane's per-container token authorizes nothing on it and the
+    middleware never admits it: the agent's request falls through to
+    the browser-credential check and is answered 401. It is refused
+    again at the handler (see the sibling test), which is what holds
+    if a future path shape ever admits the lane.
+    """
+    from fastapi.testclient import TestClient
+    app = _appBuildRealApplication()
+    sCapability = browserSession.fsMintBootstrapCapability(
+        app.state.dictBrowserSessions,
+    )
+    _, sCredential = browserSession.ftRedeemCapability(
+        app.state.dictBrowserSessions, sCapability,
+    )
+    clientBrowser = TestClient(app, headers={
+        "X-Session-Token": sCredential,
+    })
+    responseBrowser = clientBrowser.get("/api/session/lifetime")
+    assert responseBrowser.status_code == 200
+    dictPayload = responseBrowser.json()
+    assert dictPayload["bSessionKnown"] is True
+    assert dictPayload["bExpiringSoon"] is False
+    assert dictPayload["fSecondsUntilSessionCap"] > 0.0
+    app.state.dictContainerOwners[S_PROJECT_NAME] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId=containerOwnership.fsMintLease(),
+            fileHandleLock=None,
+            sAgentToken="agent-token-for-lifetime-tests",
+            sContainerId=S_CONTAINER_ID,
+            sBrowserSessionId="",
+        )
+    )
+    clientAgent = TestClient(app, headers={
+        "X-Vaibify-Session": "agent-token-for-lifetime-tests",
+        "Host": "host.docker.internal:8050",
+    })
+    assert clientAgent.get(
+        "/api/session/lifetime",
+    ).status_code == 401, (
+        "the in-container agent holds no browser session and must be "
+        "refused, never handed a session's remaining lifetime"
+    )
+
+
+def testLifetimeHandlerRefusesAnAgentTokenOnItsOwn():
+    """The handler's own agent refusal, with no middleware above it."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from vaibify.gui.routes.sessionRoutes import fnRegisterAll
+    app = FastAPI()
+    fnRegisterAll(app, {})
+    app.state.dictBrowserSessions = (
+        browserSession.fdictCreateBrowserSessionStore()
+    )
+    clientAgent = TestClient(app, headers={
+        "X-Vaibify-Session": "any-agent-token",
+    })
+    responseAgent = clientAgent.get("/api/session/lifetime")
+    assert responseAgent.status_code == 403
+    assert "no browser session" in responseAgent.json()["detail"]
 
 
 def testHubApplicationRegistersTheEvaluatorOnItsLifespan():

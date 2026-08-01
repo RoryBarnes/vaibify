@@ -3840,7 +3840,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fnOrphanSession, never a bare revoke, so splitting it out would
     # put the caller and the only correct commit path in different
     # files. The evaluator's SCHEDULING lives in serverLifespan.
-    "sessionLifecycle.py": 930,
+    # +60 (2026-08-01): ORPHANED_SESSION slice 7 — the absolute cap and
+    # fdictSessionExpiryView, the backend truth the pre-expiry warning
+    # renders. The view is the read side of the very predicate beside
+    # it (the cap is the deadline it counts down to, and the socket
+    # veto it must NOT count down to); homing it anywhere else would
+    # let the countdown and the expiry drift apart.
+    "sessionLifecycle.py": 990,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

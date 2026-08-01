@@ -74,6 +74,8 @@ __all__ = [
     "fnOrphanOwnersPastReconnectWindow",
     "fnExpireIdleBrowserSessions",
     "fnEvaluateSessionLifecycle",
+    "fdictSessionExpiryView",
+    "F_EXPIRY_WARNING_LEAD_SECONDS",
 ]
 
 import asyncio
@@ -102,6 +104,16 @@ F_ABSOLUTE_SESSION_CAP_SECONDS = (
 F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
         "VAIBIFY_LIFECYCLE_EVALUATOR_CADENCE_SECONDS", 5.0,
+    )
+)
+
+# How long before the absolute cap the dashboard is warned (design
+# §11). Generous by design: the warning exists so a researcher whose
+# tab has been open all day can finish, or re-attach with
+# 'vaibify open', rather than discover the cap by being logged out.
+F_EXPIRY_WARNING_LEAD_SECONDS = (
+    containerOwnership.ffReadSecondsFromEnvironment(
+        "VAIBIFY_EXPIRY_WARNING_LEAD_SECONDS", 900.0,
     )
 )
 
@@ -878,17 +890,72 @@ async def fnExpireIdleBrowserSessions(appState):
 
 
 def _fbBrowserSessionHasExpired(dictLifetime, recordOwner):
-    """Return True when a session's sliding-idle window has run out.
+    """Return True when a session's cap or sliding-idle window ran out.
 
-    A live WebSocket VETOES sliding-idle (design §11): a quiet but
-    connected pipeline socket is activity, and the socket layer never
-    refreshes the credential's last-seen stamp, so without the veto a
-    dashboard that only streams events would have its credential
-    revoked under the researcher.
+    Two windows with deliberately different relationships to a live
+    socket (design §11):
+
+    The ABSOLUTE CAP, measured from the session's creation, fires
+    REGARDLESS of socket liveness. Scoping the socket veto to sliding
+    idle is the whole point: a forgotten-open tab — the sole case the
+    cap exists to bound — holds a live socket by definition, so a veto
+    generalized to all three triggers would make the cap unreachable
+    in exactly its target case. The pre-expiry dashboard warning
+    (:func:`fdictSessionExpiryView`) is the mitigation.
+
+    SLIDING IDLE is vetoed by a live WebSocket: a quiet but connected
+    pipeline socket is activity, and the socket layer never refreshes
+    the credential's last-seen stamp, so without the veto a dashboard
+    that only streams events would have its credential revoked under
+    the researcher.
     """
+    if dictLifetime["fAgeSeconds"] >= F_ABSOLUTE_SESSION_CAP_SECONDS:
+        return True
     if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
         return False
     return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS
+
+
+def fdictSessionExpiryView(appState, sCredential):
+    """Return the presenting browser session's own expiry truth (§11).
+
+    The single input to the pre-expiry dashboard warning. Every field
+    is derived HERE, from the session record's own monotonic stamps: a
+    page that counted down on its own clock would drift, would keep
+    counting after a hub restart replaced the session entirely, and
+    could not see a cap the environment had tuned — three ways to show
+    the researcher a deadline that is not the real one.
+
+    The countdown reports the ABSOLUTE CAP, not sliding idle. Sliding
+    idle is refreshed by every request and vetoed by a live socket, so
+    a dashboard in use is never near it and a countdown toward it
+    would be a deadline the veto forbids. The cap has no veto, so it
+    is the one worth warning about.
+
+    An unknown or revoked credential answers ``bSessionKnown`` False
+    with a zero countdown, never another session's clocks.
+    """
+    dictStore = getattr(appState, "dictBrowserSessions", None) or {}
+    dictLifetime = browserSession.fdictLifetimeForCredential(
+        dictStore, sCredential,
+    )
+    if dictLifetime is None:
+        return {
+            "bSessionKnown": False,
+            "fSecondsUntilSessionCap": 0.0,
+            "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
+            "bExpiringSoon": False,
+        }
+    fRemainingSeconds = max(
+        0.0,
+        F_ABSOLUTE_SESSION_CAP_SECONDS - dictLifetime["fAgeSeconds"],
+    )
+    return {
+        "bSessionKnown": True,
+        "fSecondsUntilSessionCap": fRemainingSeconds,
+        "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
+        "bExpiringSoon": fRemainingSeconds <= F_EXPIRY_WARNING_LEAD_SECONDS,
+    }
 
 
 async def _fnCommitSessionExpiry(

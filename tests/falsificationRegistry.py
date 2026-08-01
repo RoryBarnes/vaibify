@@ -3515,4 +3515,38 @@ def _fdictEntry(sRel):
     return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
         new='''    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 7 — the absolute cap and the pre-expiry
+    # warning's backend truth (design §11).
+    # ------------------------------------------------------------------
+    # The socket veto is scoped to sliding idle ALONE: a forgotten-open
+    # tab holds a live socket by definition, so generalizing the veto
+    # makes the cap unreachable in exactly its target case.
+    Falsification(
+        nodeid='tests/testSessionLifecycleEvaluator.py::testAbsoluteCapFiresDespiteALiveWebSocket',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if dictLifetime["fAgeSeconds"] >= F_ABSOLUTE_SESSION_CAP_SECONDS:
+        return True
+    if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
+        return False''',
+        new='''    if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
+        return False
+    if dictLifetime["fAgeSeconds"] >= F_ABSOLUTE_SESSION_CAP_SECONDS:
+        return True''',
+    ),
+    # The warning counts down the CAP, the deadline with no veto — not
+    # the sliding-idle clock a live socket forbids from ever firing.
+    Falsification(
+        nodeid='tests/testSessionLifecycleEvaluator.py::testExpiryViewCountsDownTheCapForThePresentingSessionOnly',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    fRemainingSeconds = max(
+        0.0,
+        F_ABSOLUTE_SESSION_CAP_SECONDS - dictLifetime["fAgeSeconds"],
+    )''',
+        new='''    fRemainingSeconds = max(
+        0.0,
+        F_SLIDING_IDLE_SECONDS - dictLifetime["fIdleSeconds"],
+    )''',
+    ),
 ]
