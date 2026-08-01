@@ -3800,7 +3800,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # close, per design §7: a socket closing is not a terminal dying.
     # The machinery lives in terminalContainment.py; this is one call
     # plus its rationale.
-    "pipelineServer.py": 2355,
+    # +50 (2026-08-01): ORPHANED_SESSION slice 5 — the /api/transfer
+    # redemption endpoint beside its sibling /api/bootstrap, plus the
+    # outcome→status map. The transaction itself lives in
+    # sessionLifecycle.py; this is the HTTP skin over it, which is this
+    # module's existing session-establishment responsibility.
+    "pipelineServer.py": 2405,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -3902,7 +3907,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # control plane. Governing every route is the catalog's whole job.
     # +5 (2026-07-30): the /api/bootstrap auth endpoint excluded from the
     # agent lane (A1). Same governance responsibility.
-    "actionCatalog.py": 955,
+    # +5 (2026-08-01): the /api/transfer redemption endpoint excluded
+    # from the agent lane (ORPHANED_SESSION slice 5, 'vaibify open').
+    # Same governance responsibility.
+    "actionCatalog.py": 960,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

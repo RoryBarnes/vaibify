@@ -122,7 +122,13 @@ const VaibifyApp = (function () {
         return oMatch ? decodeURIComponent(oMatch[1]) : "";
     }
 
-    function _fnClearBootstrapFragment() {
+    function _fsReadTransferCapabilityFromFragment() {
+        var sHash = window.location.hash || "";
+        var oMatch = sHash.match(/[#&]transfer=([^&]+)/);
+        return oMatch ? decodeURIComponent(oMatch[1]) : "";
+    }
+
+    function _fnClearCapabilityFragment() {
         try {
             window.history.replaceState(
                 null, "",
@@ -160,24 +166,54 @@ const VaibifyApp = (function () {
         } catch (e) { return ""; }
     }
 
+    async function _fsExchangeTransferCapability(sCapability) {
+        /* The 'vaibify open' landing: the CLI minted this capability over
+         * the host control socket, redeemed it (committing the ownership
+         * transfer), and launched this tab with it in the URL fragment.
+         * This exchange rides the server's bounded replay window, so it
+         * returns the SAME credential-and-lease tuple the commit minted.
+         * Raw fetch: /api/transfer is exempt, like /api/bootstrap. */
+        try {
+            var response = await window.fetch("/api/transfer", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sCapability: sCapability }),
+            });
+            var data = await response.json();
+            if (!response.ok || data.sOutcome !== "transferred") {
+                return "";
+            }
+            if (data.sContainerName && data.sLeaseId) {
+                fnRecordClaimedLease(data.sContainerName, data.sLeaseId);
+            }
+            return data.sCredential || "";
+        } catch (e) { return ""; }
+    }
+
     async function fnFetchSessionToken() {
-        /* Prefer a fresh launch capability (exchanged once, then cleared
-         * from the URL), then a stored per-tab credential (so a reload
+        /* Prefer a fresh capability from the URL fragment -- a transferred
+         * session ('vaibify open') or a launch bootstrap -- exchanged once
+         * and then cleared, then a stored per-tab credential (so a reload
          * keeps working). With neither, the tab has no credential and is
          * correctly denied -- the retired shared-token oracle is gone. */
         var sCredential = "";
+        var sTransferCapability = _fsReadTransferCapabilityFromFragment();
+        if (sTransferCapability) {
+            sCredential = await _fsExchangeTransferCapability(
+                sTransferCapability);
+        }
         var sCapability = _fsReadBootstrapCapabilityFromFragment();
-        if (sCapability) {
+        if (!sCredential && sCapability) {
             sCredential = await _fsExchangeBootstrapCapability(sCapability);
-            /* Clear the fragment only once the exchange has SUCCEEDED. A
-             * transient failure (offline, hub restarting) must leave the
-             * capability in the URL so a reload can re-mint -- the server
-             * honours a bounded replay window -- rather than discarding the
-             * one credential-minting token on the first hiccup. */
-            if (sCredential) {
-                _fnClearBootstrapFragment();
-                _fnStoreCredential(sCredential);
-            }
+        }
+        /* Clear the fragment only once an exchange has SUCCEEDED. A
+         * transient failure (offline, hub restarting) must leave the
+         * capability in the URL so a reload can re-mint -- the server
+         * honours a bounded replay window -- rather than discarding the
+         * one credential-minting token on the first hiccup. */
+        if (sCredential && (sTransferCapability || sCapability)) {
+            _fnClearCapabilityFragment();
+            _fnStoreCredential(sCredential);
         }
         if (!sCredential) {
             sCredential = _fsRestoreStoredCredential();

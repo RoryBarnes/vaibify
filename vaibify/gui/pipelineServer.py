@@ -74,6 +74,7 @@ from . import agentSessionBridge
 from . import browserSession
 from . import conftestManager
 from . import containerOwnership
+from . import sessionLifecycle
 from . import workflowManager
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
 from .figureServer import fsMimeTypeForFile
@@ -1911,6 +1912,22 @@ def fsComputeStaticCacheVersion():
     return str(iMaxMtime)
 
 
+# HTTP status per transfer outcome (design §6.1): the redemption
+# endpoint reports the transaction's verdict honestly — 200 only for a
+# committed (or replayed) transfer, 404 for a record reaped between
+# mint and redeem ("claim normally"), 410 for a capability that must be
+# minted afresh, and 409 for busy-retry, the stale-generation ABA
+# refusal, and every retained refusal.
+_DICT_TRANSFER_OUTCOME_STATUS = {
+    sessionLifecycle.S_TRANSFER_TRANSFERRED: 200,
+    sessionLifecycle.S_TRANSFER_BUSY_RETRY: 409,
+    sessionLifecycle.S_TRANSFER_STALE_GENERATION: 409,
+    sessionLifecycle.S_TRANSFER_REFUSED: 409,
+    sessionLifecycle.S_TRANSFER_UNOWNED: 404,
+    sessionLifecycle.S_TRANSFER_EXPIRED: 410,
+}
+
+
 def _fnRegisterStaticFiles(app, dictCtx):
     """Register index page, token endpoint, and static file mount."""
 
@@ -1958,6 +1975,39 @@ def _fnRegisterStaticFiles(app, dictCtx):
                 detail="Invalid or expired bootstrap capability.",
             )
         return {"sSessionId": sSessionId, "sCredential": sCredential}
+
+    @app.post("/api/transfer")
+    async def fnRedeemTransferCapability(request: Request):
+        """Redeem a host-minted transfer capability (design §6, slice 5).
+
+        The commit half of ``vaibify open``: the capability was minted
+        over the peer-authenticated host control socket and redeeming
+        it commits ``sessionLifecycle.ftTransferOwnership``. Bounded
+        replay is deliberate — the CLI redeems first so the outcome
+        lands in the terminal, and the launched browser replays the
+        same capability from its URL fragment for the same tuple.
+        """
+        from fastapi.responses import JSONResponse
+        if request.headers.get(
+            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="The in-container agent must not redeem a "
+                "transfer capability.",
+            )
+        try:
+            dictBody = await request.json()
+        except Exception:  # noqa: BLE001 — malformed body is just invalid
+            dictBody = {}
+        sCapability = (dictBody or {}).get("sCapability", "")
+        sOutcome, dictPayload = await sessionLifecycle.ftTransferOwnership(
+            request.app.state, sCapability,
+        )
+        return JSONResponse(
+            status_code=_DICT_TRANSFER_OUTCOME_STATUS.get(sOutcome, 409),
+            content=dict(dictPayload, sOutcome=sOutcome),
+        )
 
     if os.path.isdir(STATIC_DIRECTORY):
         app.mount(

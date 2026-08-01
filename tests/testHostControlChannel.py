@@ -69,6 +69,7 @@ def fixtureShortControlDirectory(monkeypatch):
 
 def _fappBuildFakeHubApplication(iHubPort=I_HUB_PORT):
     """Return a SimpleNamespace app with the hub state the channel uses."""
+    from vaibify.gui import browserSession
     return SimpleNamespace(state=SimpleNamespace(
         iHubPort=iHubPort,
         listLifespanStartup=[],
@@ -76,6 +77,7 @@ def _fappBuildFakeHubApplication(iHubPort=I_HUB_PORT):
         dictContainerOwners={},
         dictMutationSupervisors={},
         dictDurableTaskRecords={},
+        dictBrowserSessions=browserSession.fdictCreateBrowserSessionStore(),
     ))
 
 
@@ -488,7 +490,9 @@ def test_an_invalid_container_name_is_refused_on_every_operation(
     fixtureShortControlDirectory,
 ):
     app = _fappBuildFakeHubApplication()
-    for sOperation in ("reconcile", "force-abandon", "break-glass"):
+    for sOperation in (
+        "reconcile", "force-abandon", "break-glass", "mint-transfer",
+    ):
         dictResponse = _fdictSendToFakeHub(app, {
             "sOperation": sOperation,
             "sContainerName": "../escape",
@@ -498,6 +502,112 @@ def test_an_invalid_container_name_is_refused_on_every_operation(
         })
         assert dictResponse["bAccepted"] is False
         assert "sContainerName" in dictResponse["sError"]
+
+
+# ---------------------------------------------------------------------
+# mint-transfer: the vaibify open handshake (design §6b, slice 5).
+# ---------------------------------------------------------------------
+
+def test_mint_transfer_without_generation_describes_and_mints_nothing(
+    fixtureShortControlDirectory,
+):
+    app = _fappBuildFakeHubApplication()
+    recordOwner = _frecordOwnerHoldingFlock()
+    recordOwner.iOwnerGeneration = 7
+    app.state.dictContainerOwners[S_PROJECT] = recordOwner
+    dictResponse = _fdictSendToFakeHub(app, {
+        "sOperation": "mint-transfer",
+        "sContainerName": S_PROJECT,
+    })
+    assert dictResponse == {
+        "bAccepted": True,
+        "bMinted": False,
+        "iCurrentOwnerGeneration": 7,
+    }
+    assert app.state.dictBrowserSessions["dictCapabilities"] == {}
+
+
+def test_mint_transfer_binds_the_capability_to_the_seen_generation(
+    fixtureShortControlDirectory,
+):
+    from vaibify.gui import browserSession
+    app = _fappBuildFakeHubApplication()
+    recordOwner = _frecordOwnerHoldingFlock()
+    recordOwner.iOwnerGeneration = 3
+    app.state.dictContainerOwners[S_PROJECT] = recordOwner
+    dictResponse = _fdictSendToFakeHub(app, {
+        "sOperation": "mint-transfer",
+        "sContainerName": S_PROJECT,
+        "iExpectedOwnerGeneration": 3,
+    })
+    assert dictResponse["bAccepted"] is True
+    assert dictResponse["bMinted"] is True
+    sCapability = dictResponse["sTransferCapability"]
+    dictInspect = browserSession.fdictInspectTransferCapability(
+        app.state.dictBrowserSessions, sCapability,
+    )
+    assert dictInspect["sState"] == "ARMED"
+    assert dictInspect["sContainerName"] == S_PROJECT
+    assert dictInspect["iExpectedOwnerGeneration"] == 3
+    assert "sLeaseId" not in dictResponse
+    assert "sCredential" not in dictResponse
+
+
+@pytest.mark.falsification
+def test_mint_transfer_refuses_a_generation_the_hub_no_longer_serves(
+    fixtureShortControlDirectory,
+):
+    """A stale CLI can never mint against a successor generation.
+
+    Case 2, mint half (design §6b): the mint round trip re-compares
+    the described generation against the live record, so a CLI that
+    described generation 1 cannot mint after a transfer bumped the
+    owner to generation 2 — it is told to look again, and no
+    capability exists that could ever displace the successor.
+
+    Kills: dropping the generation comparison from
+    ``_fdictHandleMintTransfer`` so any positive integer mints.
+    """
+    app = _fappBuildFakeHubApplication()
+    recordOwner = _frecordOwnerHoldingFlock()
+    recordOwner.iOwnerGeneration = 2
+    app.state.dictContainerOwners[S_PROJECT] = recordOwner
+    dictResponse = _fdictSendToFakeHub(app, {
+        "sOperation": "mint-transfer",
+        "sContainerName": S_PROJECT,
+        "iExpectedOwnerGeneration": 1,
+    })
+    assert dictResponse["bAccepted"] is False
+    assert "generation 2, not 1" in dictResponse["sError"]
+    assert app.state.dictBrowserSessions["dictCapabilities"] == {}
+
+
+def test_mint_transfer_for_an_unowned_container_says_claim_normally(
+    fixtureShortControlDirectory,
+):
+    app = _fappBuildFakeHubApplication()
+    dictResponse = _fdictSendToFakeHub(app, {
+        "sOperation": "mint-transfer",
+        "sContainerName": S_PROJECT,
+    })
+    assert dictResponse["bAccepted"] is False
+    assert dictResponse["bUnowned"] is True
+    assert "claim it normally" in dictResponse["sError"]
+
+
+def test_mint_transfer_refuses_a_non_positive_or_boolean_generation(
+    fixtureShortControlDirectory,
+):
+    app = _fappBuildFakeHubApplication()
+    app.state.dictContainerOwners[S_PROJECT] = _frecordOwnerHoldingFlock()
+    for valueGeneration in (0, -1, True, "1", 1.5):
+        dictResponse = _fdictSendToFakeHub(app, {
+            "sOperation": "mint-transfer",
+            "sContainerName": S_PROJECT,
+            "iExpectedOwnerGeneration": valueGeneration,
+        })
+        assert dictResponse["bAccepted"] is False, valueGeneration
+        assert "positive integer" in dictResponse["sError"]
 
 
 # ---------------------------------------------------------------------

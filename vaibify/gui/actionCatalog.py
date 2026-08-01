@@ -846,6 +846,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # endpoint itself 403s the agent lane; it is control-plane, never
     # agent-invokable.
     ("POST", "/api/bootstrap"),
+    # The transfer-capability redemption ('vaibify open', design §6):
+    # commits a host-authorized ownership transfer from a capability
+    # minted over the peer-authenticated host control socket, which the
+    # container never holds. The endpoint itself 403s the agent lane.
+    ("POST", "/api/transfer"),
     # Control-plane endpoints used by the UI to bootstrap a session;
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),

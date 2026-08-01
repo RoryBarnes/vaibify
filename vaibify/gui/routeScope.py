@@ -124,6 +124,7 @@ I_REJECT_FORBIDDEN = 403
 # session per container".
 DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
+    ("POST", "/api/transfer"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/registry"): S_SCOPE_BROWSER_HUB,
     ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/build"): S_SCOPE_BROWSER_HUB,

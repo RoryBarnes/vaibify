@@ -3236,4 +3236,27 @@ def _fdictEntry(sRel):
         browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
         return (S_TRANSFER_REFUSED, {''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 5, checkpoint 2 — the mint-transfer socket
+    # operation and the vaibify open client (design §6b).
+    # ------------------------------------------------------------------
+    # Case 2, mint half (the socket handshake: a stale CLI can never
+    # mint against a successor generation without seeing it):
+    Falsification(
+        nodeid='tests/testHostControlChannel.py::test_mint_transfer_refuses_a_generation_the_hub_no_longer_serves',
+        source='vaibify/gui/hostControlChannel.py',
+        old='    if valueExpectedGeneration != recordOwner.iOwnerGeneration:',
+        new='    if False and valueExpectedGeneration != recordOwner.iOwnerGeneration:',
+    ),
+    # Case 15, end-to-end half (real Unix-socket mint -> real HTTP
+    # redemption; a client that skips the peer-authenticated mint and
+    # presents an unminted token must be refused, and the command must
+    # report the failure instead of opening a browser):
+    Falsification(
+        nodeid='tests/testVaibifyOpen.py::test_open_transfers_over_real_socket_and_http',
+        source='vaibify/cli/commandOpen.py',
+        old='    return dictMinted["sTransferCapability"]',
+        new='    return "an-unminted-transfer-token"',
+    ),
 ]

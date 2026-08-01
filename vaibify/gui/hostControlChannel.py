@@ -11,18 +11,21 @@ foreign uid is closed without a byte of response.
 
 The protocol is a CLOSED, allowlisted operation schema: one JSON line
 in, one JSON line out. The operations shipped here are the ones with
-consumers today — ``reconcile``, ``force-abandon``, and ``break-glass``
-(the ``vaibify reconcile`` CLI). ``mint-bootstrap`` and
-``mint-transfer`` join the allowlist WITH their clients in slices 8 and
-5 respectively; they are deliberately absent rather than stubbed. Any
-unlisted opcode is rejected with a defined error naming the allowlist.
+consumers today — ``reconcile``, ``force-abandon``, ``break-glass``
+(the ``vaibify reconcile`` CLI), and ``mint-transfer`` (the
+``vaibify open`` CLI, slice 5). ``mint-bootstrap`` joins the allowlist
+WITH its client in slice 8; it is deliberately absent rather than
+stubbed. Any unlisted opcode is rejected with a defined error naming
+the allowlist.
 
 Every destructive operation carries an ABA guard (design §6b, cases 42
 and 46): ``reconcile`` and ``force-abandon`` require the container name
 plus the expected journal/task operation id(s), so a stale request can
 never act on a successor operation; ``break-glass`` carries the sha256
 of the bounded raw marker bytes, because a malformed record has no
-parseable operation id.
+parseable operation id. ``mint-transfer`` carries the expected owner
+generation, learned from the hub itself in a describe round trip, so a
+stale CLI can never transfer a successor generation without seeing it.
 
 Per-hub discovery mirrors the ``sessionRegistry`` slot pattern: the
 socket path is keyed by hub port, stale sockets (no live hub slot for
@@ -36,6 +39,7 @@ __all__ = [
     "S_SOCKET_OPERATION_RECONCILE",
     "S_SOCKET_OPERATION_FORCE_ABANDON",
     "S_SOCKET_OPERATION_BREAK_GLASS",
+    "S_SOCKET_OPERATION_MINT_TRANSFER",
     "F_RECONCILE_DRAIN_WAIT_SECONDS",
     "HostControlError",
     "fituplePeerUidGid",
@@ -57,6 +61,7 @@ import time
 
 from vaibify.config import containerLock, operationJournal, reconciliation
 from vaibify.config.pidFileRegistry import fnEnsureDirectory, fnUnlinkQuietly
+from . import browserSession
 from . import commitCarrier
 from . import containerOwnership
 from . import sessionLifecycle
@@ -66,6 +71,7 @@ logger = logging.getLogger("vaibify")
 S_SOCKET_OPERATION_RECONCILE = "reconcile"
 S_SOCKET_OPERATION_FORCE_ABANDON = "force-abandon"
 S_SOCKET_OPERATION_BREAK_GLASS = "break-glass"
+S_SOCKET_OPERATION_MINT_TRANSFER = "mint-transfer"
 
 F_RECONCILE_DRAIN_WAIT_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
@@ -376,8 +382,8 @@ def _fsNotHeldHereRefusal(sName):
 
 
 # ---------------------------------------------------------------------
-# Operation handlers. mint-bootstrap / mint-transfer join the allowlist
-# in slices 8 / 5 together with their clients — never as dead stubs.
+# Operation handlers. mint-bootstrap joins the allowlist in slice 8
+# together with its client — never as a dead stub.
 # ---------------------------------------------------------------------
 
 async def _fdictHandleReconcile(app, dictCtx, dictRequest):
@@ -623,10 +629,79 @@ def _fnStopContainerByNameQuietly(sContainerName):
     fnStopContainer(sContainerName)
 
 
+async def _fdictHandleMintTransfer(app, dictCtx, dictRequest):
+    """Describe or mint an ARMED transfer capability (design §6b, slice 5).
+
+    The two-step handshake that keeps a stale CLI from ever
+    transferring a successor generation without seeing it: a request
+    WITHOUT ``iExpectedOwnerGeneration`` is a DESCRIBE — the hub
+    answers with the current owner generation and mints nothing — and
+    a request WITH it mints only while it still equals the live
+    generation. The minted capability is itself bound to that
+    generation, which :func:`sessionLifecycle.ftTransferOwnership`
+    re-verifies under the drain and again at its synchronous commit
+    point. The reply carries the capability only — never a lease or a
+    browser credential.
+    """
+    del dictCtx
+    sName = _fsValidatedContainerName(dictRequest)
+    if not sName:
+        return _fdictRefusal("a valid sContainerName is required")
+    recordOwner = app.state.dictContainerOwners.get(sName)
+    if recordOwner is None:
+        return dict(
+            _fdictRefusal(
+                f"container '{sName}' is not owned by this hub; there "
+                "is no session to transfer — claim it normally from "
+                "the dashboard"
+            ),
+            bUnowned=True,
+        )
+    valueExpectedGeneration = dictRequest.get("iExpectedOwnerGeneration")
+    if valueExpectedGeneration is None:
+        return {
+            "bAccepted": True,
+            "bMinted": False,
+            "iCurrentOwnerGeneration": recordOwner.iOwnerGeneration,
+        }
+    if (
+        not isinstance(valueExpectedGeneration, int)
+        or isinstance(valueExpectedGeneration, bool)
+        or valueExpectedGeneration <= 0
+    ):
+        return _fdictRefusal(
+            "iExpectedOwnerGeneration must be a positive integer; omit "
+            "it to be told the current generation first"
+        )
+    if valueExpectedGeneration != recordOwner.iOwnerGeneration:
+        return _fdictRefusal(
+            f"container '{sName}' is at owner generation "
+            f"{recordOwner.iOwnerGeneration}, not "
+            f"{valueExpectedGeneration}; the owner changed since it was "
+            "described — run 'vaibify open' again"
+        )
+    dictStore = getattr(app.state, "dictBrowserSessions", None)
+    if dictStore is None:
+        return _fdictRefusal(
+            "this hub serves no browser-session store, so a transfer "
+            "capability cannot be minted"
+        )
+    sCapability = browserSession.fsMintTransferCapability(
+        dictStore, sName, valueExpectedGeneration,
+    )
+    return {
+        "bAccepted": True,
+        "bMinted": True,
+        "sTransferCapability": sCapability,
+        "iExpectedOwnerGeneration": valueExpectedGeneration,
+    }
+
+
 _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_RECONCILE: _fdictHandleReconcile,
     S_SOCKET_OPERATION_FORCE_ABANDON: _fdictHandleForceAbandon,
     S_SOCKET_OPERATION_BREAK_GLASS: _fdictHandleBreakGlass,
+    S_SOCKET_OPERATION_MINT_TRANSFER: _fdictHandleMintTransfer,
 }
 
 

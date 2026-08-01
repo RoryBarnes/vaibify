@@ -397,3 +397,79 @@ def testStaleSocketCloseDoesNotOrphanTheLiveSocket(
         "current view, so one container's run output can be rendered "
         "as another's"
     )
+
+
+# ---------------------------------------------------------------------
+# Journey -- the 'vaibify open' landing (#transfer= fragment)
+# ---------------------------------------------------------------------
+
+
+def testTransferFragmentAttachesTheTransferredSessionAndLease(
+    pageDashboard, serverHub,
+):
+    """A ``#transfer=`` fragment becomes a live credential AND lease.
+
+    The ``vaibify open`` landing (design paragraph 6, slice 5), front and
+    back: the page must exchange the capability at ``/api/transfer``,
+    stash the transferred credential in sessionStorage, record the
+    transferred lease for the container, clear the fragment, and load
+    with zero console errors; the backend must hold the rotated lease
+    bound to the NEW browser session at generation 2, with the old
+    session's credential revoked. The container NAME stays distinct
+    from the container ID throughout.
+    """
+    from vaibify.gui import browserSession, containerOwnership
+    from tests.browser.fakeDockerAdapter import S_CONTAINER_ID
+    stateApp = serverHub.app.state
+    sOldLaunch = browserSession.fsMintBootstrapCapability(
+        stateApp.dictBrowserSessions,
+    )
+    sOldSessionId, sOldCredential = browserSession.ftRedeemCapability(
+        stateApp.dictBrowserSessions, sOldLaunch,
+    )
+    recordOwner = containerOwnership.OwnerRecord(
+        sLeaseId=containerOwnership.fsMintLease(),
+        fileHandleLock=None,
+        sAgentToken=containerOwnership.fsMintAgentToken(),
+        sContainerId=S_CONTAINER_ID,
+        sBrowserSessionId=sOldSessionId,
+    )
+    stateApp.dictContainerOwners[S_CONTAINER_NAME] = recordOwner
+    stateApp.dictSessionOwner[sOldSessionId] = S_CONTAINER_NAME
+    sTransferCapability = browserSession.fsMintTransferCapability(
+        stateApp.dictBrowserSessions, S_CONTAINER_NAME, 1,
+    )
+    try:
+        pageDashboard.goto(
+            f"{serverHub.sBaseUrl}/#transfer={sTransferCapability}",
+            wait_until="networkidle",
+        )
+        sCredential = _fsPageCredential(pageDashboard)
+        assert sCredential, "the transfer exchange minted no credential"
+        sStoredLease = pageDashboard.evaluate(
+            """() => window.sessionStorage.getItem(
+                'vaibifyContainerLease')"""
+        )
+        dictLease = json.loads(sStoredLease or "{}")
+        assert dictLease.get("sName") == S_CONTAINER_NAME
+        assert dictLease.get("sLeaseId") == recordOwner.sLeaseId
+        assert "#transfer" not in pageDashboard.url, (
+            "the one-time capability must be cleared from the URL "
+            "after a successful exchange"
+        )
+        assert recordOwner.iOwnerGeneration == 2
+        assert recordOwner.sBrowserSessionId not in ("", sOldSessionId)
+        assert browserSession.fbValidateCredential(
+            stateApp.dictBrowserSessions, sOldCredential,
+        ) is False, "the displaced session's credential must be revoked"
+        assert browserSession.fbValidateCredential(
+            stateApp.dictBrowserSessions, sCredential,
+        ) is True
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        # serverHub is module-scoped: leave no owner record behind for
+        # the journeys that run after this one.
+        stateApp.dictContainerOwners.pop(S_CONTAINER_NAME, None)
+        stateApp.dictSessionOwner.pop(sOldSessionId, None)
+        stateApp.dictSessionOwner.pop(recordOwner.sBrowserSessionId, None)

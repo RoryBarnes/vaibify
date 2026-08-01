@@ -94,6 +94,7 @@ from .commandDoctor import doctor
 from .commandGenerateStandards import generate_standards
 from .commandInit import init
 from .commandLs import ls
+from .commandOpen import open_container
 from .commandReconcile import reconcile
 from .commandRegister import register
 from .commandReproduce import reproduce
@@ -245,6 +246,7 @@ main.add_command(doctor)
 main.add_command(sessions)
 main.add_command(do)
 main.add_command(reconcile)
+main.add_command(open_container)
 
 
 @main.command("stop")

@@ -30,6 +30,16 @@ __all__ = [
 
 _SET_LOCAL_HOST_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
 
+# The two capability-exchange endpoints, exempt from the per-browser
+# credential requirement because on each the posted one-time capability
+# IS the credential being exchanged (launch bootstrap and the
+# host-authorized transfer of design §6). Everything else under /api/
+# requires a live browser credential.
+_SET_CAPABILITY_EXCHANGE_PATHS = frozenset({
+    "/api/bootstrap",
+    "/api/transfer",
+})
+
 
 def fbIsAllowedHostHeader(sHostHeader, iExpectedPort):
     """Return True when sHostHeader resolves to a local loopback origin.
@@ -187,13 +197,14 @@ def _fbBrowserTokenRejected(request):
     Accepts only a per-browser credential minted via the capability
     bootstrap (``/api/bootstrap``); the retired shared hub session token is
     no longer honored, closing the oracle a container-side actor on loopback
-    could once read. ``/api/bootstrap`` is the sole unauthenticated entry
-    point and is exempt.
+    could once read. The capability-exchange endpoints — ``/api/bootstrap``
+    and ``/api/transfer`` — are the only unauthenticated entry points: on
+    each, the presented capability IS the credential being exchanged.
     """
     sPath = request.url.path
     bNeedsToken = (
         sPath.startswith("/api/")
-        and sPath != "/api/bootstrap"
+        and sPath not in _SET_CAPABILITY_EXCHANGE_PATHS
     )
     if not bNeedsToken:
         return False
