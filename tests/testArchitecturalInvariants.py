@@ -3829,6 +3829,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # mutation, and who releases the drain) across call hops; every
     # piece changes for the same reason (the §8 model).
     "commitCarrier.py": 980,
+    # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
+    # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
+    # credential, §6b), to hostControlChannel.py. The module IS the
+    # closed operation schema plus the one peer-credential portability
+    # shim that guards every operation in it; a handler homed elsewhere
+    # would be an operation the allowlist does not visibly enumerate,
+    # which is the property this protocol exists to hold.
+    "hostControlChannel.py": 810,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one

@@ -37,7 +37,8 @@ class _FakeResponse:
 def _fdictSession():
     return {
         "sBaseUrl": "http://127.0.0.1:8137",
-        "sSessionToken": "shared-token",
+        "iHubPort": 8137,
+        "sCredential": "browser-credential",
         "sContainerName": "someProject",
         "sContainerId": "0123456789ab",
         "sLeaseId": "lease-abc",
@@ -156,20 +157,47 @@ def test_require_ok_raises_with_raw_body_when_not_a_dict():
 # ------------------------------------------------------------------
 
 
-def test_fetch_session_token_returns_the_token():
+def test_redeem_host_lane_credential_exchanges_a_socket_capability():
     with patch.object(
+        hubSession, "fsMintBootstrapCapability", return_value="cap-1",
+    ), patch.object(
         hubSession, "ftSendHttpRequest",
-        return_value=(200, {"sToken": "shared-token"}),
-    ):
-        assert hubSession.fsFetchSessionToken("http://h") == "shared-token"
+        return_value=(200, {"sCredential": "cred-1"}),
+    ) as mockSend:
+        assert hubSession.fsRedeemHostLaneCredential(
+            8137, "http://h",
+        ) == "cred-1"
+    assert mockSend.call_args.args[3] == hubSession.S_BOOTSTRAP_ENDPOINT
+    assert mockSend.call_args.args[4] == {"sCapability": "cap-1"}
 
 
-def test_fetch_session_token_raises_when_absent():
+def test_redeem_host_lane_credential_raises_when_absent():
     with patch.object(
+        hubSession, "fsMintBootstrapCapability", return_value="cap-1",
+    ), patch.object(
         hubSession, "ftSendHttpRequest", return_value=(200, {}),
     ):
-        with pytest.raises(HubSessionError, match="no session token"):
-            hubSession.fsFetchSessionToken("http://h")
+        with pytest.raises(HubSessionError, match="no.*credential"):
+            hubSession.fsRedeemHostLaneCredential(8137, "http://h")
+
+
+def test_mint_bootstrap_capability_surfaces_a_socket_refusal():
+    with patch(
+        "vaibify.gui.hostControlChannel.fdictSendHostControlRequest",
+        return_value={"bAccepted": False, "sError": "no store"},
+    ):
+        with pytest.raises(HubSessionError, match="no store"):
+            hubSession.fsMintBootstrapCapability(8137)
+
+
+def test_mint_bootstrap_capability_reports_an_unreachable_socket():
+    from vaibify.gui.hostControlChannel import HostControlError
+    with patch(
+        "vaibify.gui.hostControlChannel.fdictSendHostControlRequest",
+        side_effect=HostControlError("no socket for port 8137"),
+    ):
+        with pytest.raises(HubSessionError, match="host control socket"):
+            hubSession.fsMintBootstrapCapability(8137)
 
 
 def test_resolve_container_id_returns_running_id():
@@ -252,7 +280,7 @@ def test_release_warns_when_the_hub_still_holds_the_container(capsys):
 
 def test_select_workflow_path_returns_the_explicit_value():
     assert hubSession.fsSelectWorkflowPath(
-        "http://h", "tok", "cid", "given/project.json",
+        _fdictSession(), "given/project.json",
     ) == "given/project.json"
 
 
@@ -260,10 +288,11 @@ def test_select_workflow_path_discovers_the_first_project():
     with patch.object(
         hubSession, "ftSendHttpRequest",
         return_value=(200, [{"sPath": "found/project.json"}]),
-    ):
+    ) as mockSend:
         assert hubSession.fsSelectWorkflowPath(
-            "http://h", "tok", "cid",
+            _fdictSession(),
         ) == "found/project.json"
+    assert mockSend.call_args.kwargs["sLeaseId"] == "lease-abc"
 
 
 def test_select_workflow_path_raises_when_none_found():
@@ -271,7 +300,7 @@ def test_select_workflow_path_raises_when_none_found():
         hubSession, "ftSendHttpRequest", return_value=(200, []),
     ):
         with pytest.raises(HubSessionError, match="No vaibify project"):
-            hubSession.fsSelectWorkflowPath("http://h", "tok", "cid")
+            hubSession.fsSelectWorkflowPath(_fdictSession())
 
 
 def test_connect_workflow_records_the_selected_path():
@@ -289,9 +318,9 @@ def test_connect_workflow_records_the_selected_path():
 
 def test_inspect_hub_session_assembles_a_read_only_session():
     with patch.object(
-        hubSession, "fsResolveHubBaseUrl", return_value="http://127.0.0.1:8137",
+        hubSession, "fiResolveHubPort", return_value=8137,
     ), patch.object(
-        hubSession, "fsFetchSessionToken", return_value="tok",
+        hubSession, "fsRedeemHostLaneCredential", return_value="cred",
     ), patch.object(
         hubSession, "fsResolveContainerId", return_value="cid",
     ):
@@ -373,10 +402,10 @@ def test_send_http_action_maps_status_to_exit_code(iStatus, iExpected, capsys):
 # ------------------------------------------------------------------
 
 
-def test_build_pipeline_socket_url_carries_token_and_lease():
+def test_build_pipeline_socket_url_carries_credential_and_lease():
     sUrl = hubSession._fsBuildPipelineSocketUrl(_fdictSession())
     assert sUrl.startswith("ws://127.0.0.1:8137/ws/pipeline/0123456789ab")
-    assert "sToken=shared-token" in sUrl
+    assert "sToken=browser-credential" in sUrl
     assert "sLeaseId=lease-abc" in sUrl
 
 

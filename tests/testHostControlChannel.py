@@ -283,10 +283,12 @@ def test_an_unknown_opcode_is_refused_naming_the_allowlist(
 ):
     app = _fappBuildFakeHubApplication()
     dictResponse = _fdictSendToFakeHub(
-        app, {"sOperation": "mint-bootstrap"},
+        app, {"sOperation": "seize-container"},
     )
     assert dictResponse["bAccepted"] is False
-    for sOperation in ("reconcile", "force-abandon", "break-glass"):
+    for sOperation in (
+        "reconcile", "force-abandon", "break-glass", "mint-bootstrap",
+    ):
         assert sOperation in dictResponse["sError"]
 
 
@@ -608,6 +610,72 @@ def test_mint_transfer_refuses_a_non_positive_or_boolean_generation(
         })
         assert dictResponse["bAccepted"] is False, valueGeneration
         assert "positive integer" in dictResponse["sError"]
+
+
+# ---------------------------------------------------------------------
+# mint-bootstrap: the headless `vaibify do` credential (§6b, slice 8).
+# ---------------------------------------------------------------------
+
+def test_mint_bootstrap_mints_an_ordinary_launch_capability(
+    fixtureShortControlDirectory,
+):
+    """The op hands back a plain bootstrap capability, nothing more.
+
+    It must be indistinguishable from the one the hub puts in a
+    browser's URL fragment: operation ``bootstrap``, no container
+    name, no expected owner generation — so redeeming it can only
+    create a session, never displace an owner.
+    """
+    from vaibify.gui import browserSession
+    app = _fappBuildFakeHubApplication()
+    dictResponse = _fdictSendToFakeHub(app, {
+        "sOperation": "mint-bootstrap",
+    })
+    assert dictResponse["bAccepted"] is True
+    assert dictResponse["bMinted"] is True
+    sCapability = dictResponse["sBootstrapCapability"]
+    recordCapability = (
+        app.state.dictBrowserSessions["dictCapabilities"][sCapability]
+    )
+    assert recordCapability.sOperation == (
+        browserSession.S_CAPABILITY_OPERATION_BOOTSTRAP
+    )
+    assert recordCapability.sState == "ARMED"
+    assert recordCapability.sContainerName == ""
+    assert recordCapability.iExpectedOwnerGeneration == 0
+    assert "sCredential" not in dictResponse
+    assert "sLeaseId" not in dictResponse
+
+
+def test_mint_bootstrap_never_touches_an_owner_record(
+    fixtureShortControlDirectory,
+):
+    """Minting for the CLI leaves a dashboard owner exactly as it was."""
+    app = _fappBuildFakeHubApplication()
+    recordOwner = _frecordOwnerHoldingFlock()
+    recordOwner.iOwnerGeneration = 4
+    app.state.dictContainerOwners[S_PROJECT] = recordOwner
+    sLeaseBefore = recordOwner.sLeaseId
+    sSessionBefore = recordOwner.sBrowserSessionId
+    assert _fdictSendToFakeHub(app, {
+        "sOperation": "mint-bootstrap",
+        "sContainerName": S_PROJECT,
+    })["bMinted"] is True
+    assert recordOwner.iOwnerGeneration == 4
+    assert recordOwner.sLeaseId == sLeaseBefore
+    assert recordOwner.sBrowserSessionId == sSessionBefore
+
+
+def test_mint_bootstrap_refuses_a_hub_with_no_session_store(
+    fixtureShortControlDirectory,
+):
+    app = _fappBuildFakeHubApplication()
+    app.state.dictBrowserSessions = None
+    dictResponse = _fdictSendToFakeHub(app, {
+        "sOperation": "mint-bootstrap",
+    })
+    assert dictResponse["bAccepted"] is False
+    assert "browser-session store" in dictResponse["sError"]
 
 
 # ---------------------------------------------------------------------

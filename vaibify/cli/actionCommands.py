@@ -17,10 +17,16 @@ catalog's vocabulary identical to the in-container ``vaibify-do`` CLI's
 without overwriting a single existing command.
 
 The lane is the RESEARCHER lane throughout (see
-:mod:`vaibify.cli.hubSession`): the shared session token plus the
-per-claim lease, never the per-container agent token. ``bAgentSafe``
-constrains a compromised in-container agent, not the researcher at their
-own terminal, so user-only actions are generated here like any other.
+:mod:`vaibify.cli.hubSession`): a per-browser credential, bootstrapped
+headlessly over the hub's host control socket, plus the per-claim lease,
+never the per-container agent token. ``bAgentSafe`` constrains a
+compromised in-container agent, not the researcher at their own
+terminal, so user-only actions are generated here like any other.
+
+One session per container is enforced against this lane like any other,
+so a container a dashboard tab already holds answers the claim with 409
+and the command stops with that refusal explained — it never transfers
+or revokes the dashboard's session to get in.
 """
 
 import json

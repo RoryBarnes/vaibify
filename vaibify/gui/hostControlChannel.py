@@ -12,11 +12,10 @@ foreign uid is closed without a byte of response.
 The protocol is a CLOSED, allowlisted operation schema: one JSON line
 in, one JSON line out. The operations shipped here are the ones with
 consumers today — ``reconcile``, ``force-abandon``, ``break-glass``
-(the ``vaibify reconcile`` CLI), and ``mint-transfer`` (the
-``vaibify open`` CLI, slice 5). ``mint-bootstrap`` joins the allowlist
-WITH its client in slice 8; it is deliberately absent rather than
-stubbed. Any unlisted opcode is rejected with a defined error naming
-the allowlist.
+(the ``vaibify reconcile`` CLI), ``mint-transfer`` (the ``vaibify open``
+CLI, slice 5), and ``mint-bootstrap`` (the headless ``vaibify do``
+credential, slice 8). Any unlisted opcode is rejected with a defined
+error naming the allowlist.
 
 Every destructive operation carries an ABA guard (design §6b, cases 42
 and 46): ``reconcile`` and ``force-abandon`` require the container name
@@ -26,6 +25,12 @@ of the bounded raw marker bytes, because a malformed record has no
 parseable operation id. ``mint-transfer`` carries the expected owner
 generation, learned from the hub itself in a describe round trip, so a
 stale CLI can never transfer a successor generation without seeing it.
+``mint-bootstrap`` needs no such guard, and deliberately has no
+container field at all: it mints an ORDINARY launch capability — the
+same thing the hub puts in the browser's URL fragment — which names no
+container, carries no ownership authority, and displaces no owner. A
+host-lane caller redeems it into a plain browser session and must then
+claim like any other browser.
 
 Per-hub discovery mirrors the ``sessionRegistry`` slot pattern: the
 socket path is keyed by hub port, stale sockets (no live hub slot for
@@ -40,6 +45,7 @@ __all__ = [
     "S_SOCKET_OPERATION_FORCE_ABANDON",
     "S_SOCKET_OPERATION_BREAK_GLASS",
     "S_SOCKET_OPERATION_MINT_TRANSFER",
+    "S_SOCKET_OPERATION_MINT_BOOTSTRAP",
     "F_RECONCILE_DRAIN_WAIT_SECONDS",
     "HostControlError",
     "fituplePeerUidGid",
@@ -72,6 +78,7 @@ S_SOCKET_OPERATION_RECONCILE = "reconcile"
 S_SOCKET_OPERATION_FORCE_ABANDON = "force-abandon"
 S_SOCKET_OPERATION_BREAK_GLASS = "break-glass"
 S_SOCKET_OPERATION_MINT_TRANSFER = "mint-transfer"
+S_SOCKET_OPERATION_MINT_BOOTSTRAP = "mint-bootstrap"
 
 F_RECONCILE_DRAIN_WAIT_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
@@ -382,8 +389,7 @@ def _fsNotHeldHereRefusal(sName):
 
 
 # ---------------------------------------------------------------------
-# Operation handlers. mint-bootstrap joins the allowlist in slice 8
-# together with its client — never as a dead stub.
+# Operation handlers. Each landed with its client, never as a dead stub.
 # ---------------------------------------------------------------------
 
 async def _fdictHandleReconcile(app, dictCtx, dictRequest):
@@ -697,11 +703,44 @@ async def _fdictHandleMintTransfer(app, dictCtx, dictRequest):
     }
 
 
+async def _fdictHandleMintBootstrap(app, dictCtx, dictRequest):
+    """Mint an ORDINARY launch capability for a headless client (slice 8).
+
+    The credential half of ``vaibify do``: the researcher's own
+    terminal needs the same per-browser credential a dashboard tab
+    holds, and the hub's only mint points are the browser launch and
+    this socket. Peer authentication has already proved the caller is
+    the hub's own uid, which is the whole authorization — a container
+    cannot reach this socket, and a remote peer cannot either.
+
+    What it deliberately is NOT: a transfer. The capability carries no
+    container name and no owner generation, so redeeming it displaces
+    nobody and bumps no generation. A host-lane caller that wants a
+    container must claim it afterwards exactly as a browser does, and
+    is refused 409 while a dashboard holds it.
+    """
+    del dictCtx, dictRequest
+    dictStore = getattr(app.state, "dictBrowserSessions", None)
+    if dictStore is None:
+        return _fdictRefusal(
+            "this hub serves no browser-session store, so a bootstrap "
+            "capability cannot be minted"
+        )
+    return {
+        "bAccepted": True,
+        "bMinted": True,
+        "sBootstrapCapability": browserSession.fsMintBootstrapCapability(
+            dictStore,
+        ),
+    }
+
+
 _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_RECONCILE: _fdictHandleReconcile,
     S_SOCKET_OPERATION_FORCE_ABANDON: _fdictHandleForceAbandon,
     S_SOCKET_OPERATION_BREAK_GLASS: _fdictHandleBreakGlass,
     S_SOCKET_OPERATION_MINT_TRANSFER: _fdictHandleMintTransfer,
+    S_SOCKET_OPERATION_MINT_BOOTSTRAP: _fdictHandleMintBootstrap,
 }
 
 

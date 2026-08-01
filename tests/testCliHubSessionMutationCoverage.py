@@ -4,8 +4,8 @@ Three guarantees that a green suite would otherwise assert nothing
 about, each proven to fail when the guarantee is broken (see
 ``tests/falsificationRegistry.py`` for the exact mutation):
 
-* the CLI authenticates as the RESEARCHER (shared session token in
-  ``X-Session-Token``), never as the in-container agent;
+* the CLI authenticates as the RESEARCHER (its per-browser credential
+  in ``X-Session-Token``), never as the in-container agent;
 * the lease release reaches the hub as a query parameter, which is the
   only place the route reads it — sending it as a body silently leaves
   the container held, and the next command is refused 409;
@@ -40,7 +40,7 @@ class _FakeResponse:
 def _fdictSession():
     return {
         "sBaseUrl": "http://127.0.0.1:8137",
-        "sSessionToken": "shared-token",
+        "sCredential": "browser-credential",
         "sContainerName": "someProject",
         "sContainerId": "0123456789ab",
         "sLeaseId": "lease-abc",
@@ -62,11 +62,11 @@ def test_the_cli_authenticates_as_the_researcher_not_as_the_agent():
     with patch("requests.request") as mockRequest:
         mockRequest.return_value = _FakeResponse({"ok": True})
         hubSession.ftSendHttpRequest(
-            "http://127.0.0.1:8137", "shared-token", "GET",
+            "http://127.0.0.1:8137", "browser-credential", "GET",
             "/api/registry",
         )
     dictHeaders = mockRequest.call_args.kwargs["headers"]
-    assert dictHeaders == {"X-Session-Token": "shared-token"}
+    assert dictHeaders == {"X-Session-Token": "browser-credential"}
     assert "X-Vaibify-Session" not in dictHeaders
 
 
