@@ -777,6 +777,7 @@ async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
     dictPipelineTasks=None, dictDurableContext=None,
+    fbFrameCredentialStillActive=None,
 ):
     """Receive and dispatch pipeline WebSocket messages.
 
@@ -803,7 +804,17 @@ async def fnPipelineMessageLoop(
 
     try:
         while True:
-            dictRequest = json.loads(await websocket.receive_text())
+            sFrameText = await websocket.receive_text()
+            # Per-frame re-auth backstop (design §5, slice 6): a frame
+            # already in flight when its session was revoked must be
+            # refused, not dispatched — the active close is the
+            # authority, this is the backstop behind it.
+            if fbFrameCredentialStillActive is not None and (
+                not fbFrameCredentialStillActive()
+            ):
+                await websocket.close(code=4401)
+                return
+            dictRequest = json.loads(sFrameText)
             sAction = dictRequest.get("sAction", "")
             if sAction in ("interactiveResume", "interactiveSkip"):
                 _fnHandleInteractiveResponse(
@@ -1275,11 +1286,23 @@ async def fnTerminalReadLoop(session, websocket, dictInteractive=None):
             fnSignalTerminalAbnormalExit(dictInteractive)
 
 
-async def fnTerminalInputLoop(session, websocket):
-    """Receive WebSocket messages and route to terminal session."""
+async def fnTerminalInputLoop(
+    session, websocket, fbFrameCredentialStillActive=None,
+):
+    """Receive WebSocket messages and route to terminal session.
+
+    Applies the same per-frame re-auth backstop as the pipeline loop:
+    keystrokes from a REVOKED browser session are refused, never
+    forwarded into the container.
+    """
     while True:
         message = await websocket.receive()
         if message.get("type") == "websocket.disconnect":
+            break
+        if fbFrameCredentialStillActive is not None and (
+            not fbFrameCredentialStillActive()
+        ):
+            await websocket.close(code=4401)
             break
         if "bytes" in message:
             session.fnSendInput(message["bytes"])
@@ -1319,6 +1342,7 @@ async def fnRejectNotConnected(websocket):
 
 async def fnRunTerminalSession(
     session, websocket, dictTerminalSessions, dictInteractive=None,
+    fbFrameCredentialStillActive=None,
 ):
     """Manage terminal session lifecycle after successful start.
 
@@ -1344,7 +1368,10 @@ async def fnRunTerminalSession(
         fnTerminalReadLoop(session, websocket, dictInteractive)
     )
     try:
-        await fnTerminalInputLoop(session, websocket)
+        await fnTerminalInputLoop(
+            session, websocket,
+            fbFrameCredentialStillActive=fbFrameCredentialStillActive,
+        )
     except WebSocketDisconnect:
         pass
     finally:
@@ -1360,7 +1387,9 @@ async def fnRunTerminalSession(
 # Pipeline WebSocket handler
 # ---------------------------------------------------------------
 
-async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
+async def fnHandlePipelineWs(
+    websocket, dictCtx, sContainerId, fbFrameCredentialStillActive=None,
+):
     """Accept and run the pipeline WebSocket session."""
     await websocket.accept()
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
@@ -1376,6 +1405,7 @@ async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
             dictDurableContext=_fdictBuildDurableDispatchContext(
                 websocket, dictCtx, sContainerId,
             ),
+            fbFrameCredentialStillActive=fbFrameCredentialStillActive,
         )
     except WebSocketDisconnect:
         pass

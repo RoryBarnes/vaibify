@@ -34,6 +34,7 @@ __all__ = [
     "ftRedeemCapability",
     "fdictInspectTransferCapability",
     "fnExpireCapability",
+    "fnExpireCapabilitiesForSession",
     "ftMintDetachedSessionRecord",
     "fnDiscardSessionRecord",
     "fnRevokeSessionById",
@@ -248,6 +249,24 @@ def fnExpireCapability(dictStore, sCapability):
         recordCap = dictStore.get("dictCapabilities", {}).get(sCapability)
         if recordCap is not None:
             recordCap.sState = "EXPIRED"
+
+
+def fnExpireCapabilitiesForSession(dictStore, sSessionId):
+    """Expire every capability issued to one browser session.
+
+    The orphan transition's step (d) (design §5): a session whose
+    credential is revoked must not remain recoverable through the
+    bounded replay of the capability that minted it. Tickets and
+    download capabilities will join this cancellation when their
+    mechanism slices land; today the store holds only bootstrap and
+    transfer capabilities.
+    """
+    if not sSessionId:
+        return
+    with _lockBrowserSessions:
+        for recordCap in dictStore.get("dictCapabilities", {}).values():
+            if recordCap.sIssuedSessionId == sSessionId:
+                recordCap.sState = "EXPIRED"
 
 
 def ftMintDetachedSessionRecord(dictStore):

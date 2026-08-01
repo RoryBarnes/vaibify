@@ -18,6 +18,7 @@ from ..pipelineServer import (
     fsContainerNameForId,
 )
 from ..webSocketAuthorization import (
+    ffbBuildPerFrameCredentialCheck,
     fiContainerSessionRejectionCode,
     fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
@@ -114,6 +115,11 @@ async def _fnStartAndRunTerminal(app, websocket, dictCtx, sContainerId, sName):
         await fnRunTerminalSession(
             session, websocket, dictCtx["terminals"],
             dictInteractive=dictInteractive,
+            fbFrameCredentialStillActive=(
+                ffbBuildPerFrameCredentialCheck(
+                    websocket, dictCtx.get("dictBrowserSessions"),
+                )
+            ),
         )
     finally:
         _fnRecordTerminalAttribution(

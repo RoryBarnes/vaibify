@@ -28,6 +28,7 @@ from ..serverLifespan import (
     fnIncrementWebSocketCount,
 )
 from ..webSocketAuthorization import (
+    ffbBuildPerFrameCredentialCheck,
     fiContainerSessionRejectionCode,
     fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
@@ -403,7 +404,14 @@ def _fnRegisterPipelineWs(app, dictCtx):
         dictCtx["require"]()
 
         async def fnServe():
-            await fnHandlePipelineWs(websocket, dictCtx, sContainerId)
+            await fnHandlePipelineWs(
+                websocket, dictCtx, sContainerId,
+                fbFrameCredentialStillActive=(
+                    ffbBuildPerFrameCredentialCheck(
+                        websocket, dictCtx.get("dictBrowserSessions"),
+                    )
+                ),
+            )
 
         await fnServeUnderLiveConnectionCounters(
             websocket, dictCtx.get("dictContainerOwners", {}), sName,

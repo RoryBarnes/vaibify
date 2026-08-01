@@ -31,6 +31,7 @@ __all__ = [
     "fbAuthorizeContainerSession",
     "fiContainerSessionRejectionCode",
     "fbRefuseSecondLiveConnection",
+    "ffbBuildPerFrameCredentialCheck",
     "fnCloseWithCode",
     "fnServeUnderLiveConnectionCounters",
 ]
@@ -158,6 +159,28 @@ def fbRefuseSecondLiveConnection(dictContainerOwners, sName):
     return (
         recordOwner is not None
         and recordOwner.iLivePipelineConnectionCount >= 1
+    )
+
+
+def ffbBuildPerFrameCredentialCheck(connection, dictBrowserSessions):
+    """Return the per-frame re-auth backstop for an accepted WebSocket.
+
+    The active close on revocation (design §5) is authoritative; this
+    backstop covers a socket already mid-frame in the revoke window: a
+    browser socket's frames keep authorizing only while the credential
+    it connected with still names an ACTIVE browser session, so a
+    REVOKED session's in-flight frame is refused instead of dispatched.
+    Each passing check also refreshes the session's last-seen stamp —
+    frames are activity for the sliding-idle window (design §11). The
+    agent lane presents no browser credential, so its check is
+    constant-true; the agent's authority ends with the owner record's
+    per-container token, not with any browser session.
+    """
+    if not fbCheckOrigin(connection):
+        return lambda: True
+    sCredential = connection.query_params.get("sToken", "")
+    return lambda: browserSession.fbValidateCredential(
+        dictBrowserSessions or {}, sCredential,
     )
 
 

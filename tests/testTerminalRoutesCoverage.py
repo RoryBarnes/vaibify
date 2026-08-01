@@ -216,10 +216,13 @@ class TestTerminalWsSuccessfulSession:
             },
         )
         mockSession.fnStart.assert_called_once()
-        mockRun.assert_awaited_once_with(
-            mockSession, mockWs, dictCtx["terminals"],
-            dictInteractive=None,
-        )
+        tArgs, dictKwargs = mockRun.await_args
+        assert tArgs == (mockSession, mockWs, dictCtx["terminals"])
+        assert dictKwargs["dictInteractive"] is None
+        # The per-frame credential backstop (design section 5) rides
+        # along as a callable; the route must hand one down so a frame
+        # arriving after revocation is refused.
+        assert callable(dictKwargs["fbFrameCredentialStillActive"])
 
 
 class TestTerminalWsPresenceCounter:

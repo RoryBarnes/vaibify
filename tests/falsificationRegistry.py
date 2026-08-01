@@ -3397,4 +3397,95 @@ def _fdictEntry(sRel):
     )''',
         new='''    return _fdictSettleProvenRecord(recordTerminal, dictProbe)''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 6, checkpoint 1 — the orphan transition,
+    # the §4 zero-sockets trigger, and the §5 per-frame backstop
+    # (cases 10, 18, the orphan-transition half of 7, the real-orphan
+    # halves of 13 and 20).
+    # ------------------------------------------------------------------
+    # Case 10 (reload/pagehide during a live task retains ownership):
+    Falsification(
+        nodeid='tests/testOrphanTransition.py::testReloadReconnectWithinWindowRetainsOwnership',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    return (
+        time.monotonic() - recordOwner.fLastSeenMonotonic
+        >= F_RECONNECT_WINDOW_SECONDS
+    )''',
+        new='''    return (
+        time.monotonic() - recordOwner.fLastSeenMonotonic
+        >= 0.0
+    )''',
+    ),
+    # Case 18 (closing one terminal socket doesn't orphan; per-lane
+    # counting — every browser lane vetoes the trigger):
+    Falsification(
+        nodeid='tests/testOrphanTransition.py::testTerminalLaneSocketVetoesTheOrphanTrigger',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if recordOwner.iLiveConnectionCount > 0:
+        return False''',
+        new='''    if recordOwner.iLivePipelineConnectionCount > 0:
+        return False''',
+    ),
+    # Case 7, orphan-transition half (the reap grace measures from the
+    # REAL orphan commit's stamp, not the long-dead last socket — the
+    # mutant stamps the commit with the last-socket time, the exact
+    # bug shape the case forbids):
+    Falsification(
+        nodeid='tests/testOrphanTransition.py::testReapGraceMeasuresFromTheRealOrphanTransition',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='    recordOwner.fOrphanedSinceMonotonic = time.monotonic()',
+        new='    recordOwner.fOrphanedSinceMonotonic = recordOwner.fLastSeenMonotonic',
+    ),
+    # Case 13, real-orphan half (a live agent's REST activity pins a
+    # record orphaned through the real transition; same predicate
+    # mutation as the slice-5 hand-set-state entry, killed here
+    # end-to-end through fnOrphanSession + the real middleware):
+    Falsification(
+        nodeid='tests/testOrphanTransition.py::testOrphanedRecordWithLiveAgentRestActivityIsNotReaped',
+        source='vaibify/gui/containerOwnership.py',
+        old='''    if recordOwner.fLastAgentActivityMonotonic > 0.0 and (
+        fNowMonotonic - recordOwner.fLastAgentActivityMonotonic
+        < fGraceSeconds
+    ):
+        return False''',
+        new='''    if False:
+        return False''',
+    ),
+    # Case 20, real-orphan half (mid-dispatch, with the admission
+    # stamp aged stale, ONLY the in-flight bracket pins the record):
+    Falsification(
+        nodeid='tests/testOrphanTransition.py::testInFlightAgentRequestPinsARealOrphanedRecordInTheReaperLoop',
+        source='vaibify/gui/serverMiddleware.py',
+        old='    recordOwner.iInFlightAgentRequests += 1',
+        new='    recordOwner.iInFlightAgentRequests += 0',
+    ),
+    # The §5 per-frame backstop, pipeline lane (a frame in flight at
+    # revocation is refused, never dispatched):
+    Falsification(
+        nodeid='tests/testOrphanTransition.py::testPipelineFrameFromARevokedSessionIsRefusedNotDispatched',
+        source='vaibify/gui/pipelineServer.py',
+        old='''            if fbFrameCredentialStillActive is not None and (
+                not fbFrameCredentialStillActive()
+            ):
+                await websocket.close(code=4401)
+                return''',
+        new='''            if False:
+                await websocket.close(code=4401)
+                return''',
+    ),
+    # The §5 per-frame backstop, terminal lane (a revoked session's
+    # keystroke never reaches the container):
+    Falsification(
+        nodeid='tests/testOrphanTransition.py::testTerminalKeystrokeFromARevokedSessionIsRefused',
+        source='vaibify/gui/pipelineServer.py',
+        old='''        if fbFrameCredentialStillActive is not None and (
+            not fbFrameCredentialStillActive()
+        ):
+            await websocket.close(code=4401)
+            break''',
+        new='''        if False:
+            await websocket.close(code=4401)
+            break''',
+    ),
 ]

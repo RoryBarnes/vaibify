@@ -107,7 +107,12 @@ def _fsTerminalUrl(sCredential, sLeaseId):
 I_CLOSE_NORMAL = 1000
 
 
-async def _fnAcceptAndCloseNormally(websocket, dictCtx, sContainerId):
+async def _fnAcceptAndCloseNormally(
+    websocket,
+    dictCtx,
+    sContainerId,
+    **dictUnused,
+):
     """Stand-in serve function that closes as soon as it is reached.
 
     Used where the test asserts a REFUSAL code: if the gate ever admits
@@ -151,7 +156,12 @@ def testConnectMintsTheLeaseThatOpensThePipelineWebSocket(
 
     listPipelineCountsWhileServing = []
 
-    async def _fnRecordAndServe(websocket, dictCtx, sContainerId):
+    async def _fnRecordAndServe(
+        websocket,
+        dictCtx,
+        sContainerId,
+        **dictUnused,
+    ):
         await websocket.accept()
         listPipelineCountsWhileServing.append(
             appServed.state.dictContainerOwners[S_CONTAINER_NAME]
@@ -233,7 +243,12 @@ def testDuplicateTabPipelineWebSocketIsRefusedOnTheServedApplication(
     sLeaseId = _fsConnectAndReturnLease(clientBrowser)
     listReachedServe = []
 
-    async def _fnHoldFirstCloseRest(websocket, dictCtx, sContainerId):
+    async def _fnHoldFirstCloseRest(
+        websocket,
+        dictCtx,
+        sContainerId,
+        **dictUnused,
+    ):
         await websocket.accept()
         listReachedServe.append(sContainerId)
         if len(listReachedServe) > 1:
@@ -287,7 +302,12 @@ def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
     sLeaseId = _fsConnectAndReturnLease(clientBrowser)
     listCountsWhilePipelineServes = []
 
-    async def _fnRecordAndServe(websocket, dictCtx, sContainerId):
+    async def _fnRecordAndServe(
+        websocket,
+        dictCtx,
+        sContainerId,
+        **dictUnused,
+    ):
         await websocket.accept()
         recordOwner = (
             appServed.state.dictContainerOwners[S_CONTAINER_NAME]

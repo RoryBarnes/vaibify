@@ -118,7 +118,7 @@ def test_owner_pipeline_ws_accepted_when_name_differs_from_id():
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     listCountDuring = []
 
-    async def _fnFakeServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeServe(websocket, dictCtxArg, sContainerId, **dictUnused):
         await websocket.accept()
         listCountDuring.append(
             dictCtx["dictContainerOwners"][S_PROJECT_NAME]
@@ -232,7 +232,12 @@ def test_terminal_plus_pipeline_ws_coexist_in_one_session():
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     listCountsAtPipelineServe = []
 
-    async def _fnFakePipelineServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakePipelineServe(
+        websocket,
+        dictCtxArg,
+        sContainerId,
+        **dictUnused,
+    ):
         await websocket.accept()
         recordOwner = dictCtx["dictContainerOwners"][S_PROJECT_NAME]
         listCountsAtPipelineServe.append((
@@ -276,7 +281,12 @@ def test_second_pipeline_ws_refused_4409_while_first_is_live():
     """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
 
-    async def _fnFakeBlockingPipelineServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeBlockingPipelineServe(
+        websocket,
+        dictCtxArg,
+        sContainerId,
+        **dictUnused,
+    ):
         await websocket.accept()
         try:
             await websocket.receive_text()
@@ -385,7 +395,7 @@ def test_agent_lane_authorized_by_container_id_against_name_record():
     """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
 
-    async def _fnFakeServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeServe(websocket, dictCtxArg, sContainerId, **dictUnused):
         await websocket.accept()
 
     with patch(
@@ -550,7 +560,7 @@ def test_viewer_minted_lease_authorizes_pipeline_ws():
     pipelineServer._fnRegisterViewerServedContainer(dictCtx, S_CONTAINER_ID)
     sLease = dictCtx["sViewerLease"]
 
-    async def _fnFakeServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeServe(websocket, dictCtxArg, sContainerId, **dictUnused):
         await websocket.accept()
 
     with patch(

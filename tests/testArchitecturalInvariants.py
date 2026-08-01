@@ -3594,7 +3594,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-07-31): the pipeline WebSocket threads the session-socket
     # index and browser-session store into the shared serve wrapper
     # (ORPHANED_SESSION slice 1). Two keyword arguments, no new logic.
-    "routes/pipelineRoutes.py": 2800,
+    # +8 (2026-08-01): the pipeline WebSocket builds the §5 per-frame
+    # credential check (ORPHANED_SESSION slice 6) and threads it into
+    # the handler. One builder call, no new logic here.
+    "routes/pipelineRoutes.py": 2808,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -3805,7 +3808,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # outcome→status map. The transaction itself lives in
     # sessionLifecycle.py; this is the HTTP skin over it, which is this
     # module's existing session-establishment responsibility.
-    "pipelineServer.py": 2405,
+    # +30 (2026-08-01): ORPHANED_SESSION slice 6 — the §5 per-frame
+    # re-auth backstop on both receive loops (pipeline and terminal):
+    # a frame in flight when its session is revoked is refused with
+    # 4401, never dispatched. The check itself is built in
+    # webSocketAuthorization; these are the two refusal sites on the
+    # loops this module already owns.
+    "pipelineServer.py": 2435,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -3814,6 +3823,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # mutation, and who releases the drain) across call hops; every
     # piece changes for the same reason (the §8 model).
     "commitCarrier.py": 980,
+    # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
+    # state-transition authority (design §3) — claim, release,
+    # transfer, and now the slice-6 orphan transition commit in one
+    # module, each under the same canonical lock order. Splitting the
+    # transitions apart would smear the one place that may commit an
+    # ownership state change across several files; every function here
+    # changes for the same reason (the §1 state machine).
+    "sessionLifecycle.py": 830,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

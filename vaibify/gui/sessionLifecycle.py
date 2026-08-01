@@ -70,6 +70,8 @@ __all__ = [
     "ftdictClaimWithCardinality",
     "fbReleaseExplicit",
     "ftTransferOwnership",
+    "fnOrphanSession",
+    "fnOrphanOwnersPastReconnectWindow",
 ]
 
 import asyncio
@@ -697,3 +699,125 @@ async def _fnCloseDetachedConnections(listDetached):
             await recordConnection.connection.close(code=4401)
         except Exception:  # noqa: BLE001 — a dead socket is already closed
             pass
+
+
+# ---------------------------------------------------------------------
+# The orphan transition (design §4/§5, slice 6).
+# ---------------------------------------------------------------------
+
+async def fnOrphanSession(appState, sName, fbStillWarranted=None):
+    """Commit ACTIVE→ORPHANED_SESSION for the container's owning session.
+
+    The §5 orphan transition, under the canonical lock order: the
+    synchronous commit — credential revocation, unused-capability
+    cancellation, the workflow-session hook, the ORPHANED stamp — runs
+    under the container-mutation lock with no ``await`` inside it, and
+    the active socket close runs only AFTER the commit (the close is an
+    ``await``; by then the credential authorizes nothing, and the
+    per-frame backstop covers a socket already mid-frame). The record
+    RETAINS its flock, keep-alive, agent token, generation, and any
+    live task — orphaning ends the browser session's authority, never
+    the container's work; only a host transfer or the safe reaper ends
+    the record itself.
+
+    ``fbStillWarranted`` re-evaluates the caller's trigger against the
+    owner record under the held lock — a socket may have reconnected,
+    or a transfer may have rebound the record, between detection and
+    commit — and a False answer skips the transition.
+    """
+    dictLockStore = _fdictLockStoreForAppState(appState)
+    async with _flockObtainContainerMutation(dictLockStore, sName):
+        listOrphanedConnections = _flistCommitOrphanSynchronously(
+            appState, sName, fbStillWarranted,
+        )
+    await _fnCloseDetachedConnections(listOrphanedConnections)
+
+
+def _flistCommitOrphanSynchronously(appState, sName, fbStillWarranted):
+    """Run the synchronous orphan commit; return the sockets to close.
+
+    Steps (a) through (d) of design §5 plus the ORPHANED stamp, all
+    synchronous so nothing interleaves on the event loop between the
+    revocation and the state change. The session's live connection
+    records are returned — not detached — because the orphan keeps the
+    owner generation, so each closed socket's ``finally`` decrements
+    the counters and drops its ``dictSessionSockets`` entry itself.
+    """
+    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)
+    if recordOwner is None or recordOwner.sState == (
+        containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+    ):
+        return []
+    if fbStillWarranted is not None and not fbStillWarranted(recordOwner):
+        return []
+    dictStore = getattr(appState, "dictBrowserSessions", None) or {}
+    sSessionId = recordOwner.sBrowserSessionId
+    # (a) The credential authorizes nothing from this statement on.
+    browserSession.fnRevokeSessionById(dictStore, sSessionId)
+    # (d) Unused capabilities die with the session (tickets and
+    # download capabilities join this call when their slices land).
+    browserSession.fnExpireCapabilitiesForSession(dictStore, sSessionId)
+    # (c) The workflow-session invalidation hook — a recorded no-op.
+    _fnInvalidateWorkflowSessionsForOrphan(sSessionId)
+    recordOwner.sState = containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+    recordOwner.fOrphanedSinceMonotonic = time.monotonic()
+    dictSessionSockets = getattr(appState, "dictSessionSockets", None) or {}
+    # (b) collected here, closed by the caller after the commit.
+    return list(dictSessionSockets.get(sSessionId, set()))
+
+
+def _fnInvalidateWorkflowSessionsForOrphan(sBrowserSessionId):
+    """The §5(c) workflow-session invalidation hook — deliberately empty.
+
+    Deferred with the rationale recorded (design §5): the credential is
+    revoked in the same synchronous commit, so no HTTP request can
+    authorize as the orphaned session and a live workflow-session id
+    can never be replayed by it, and the agent lane never authorizes
+    through workflow-session ids at all. Real invalidation lands with
+    the workflow-session mechanism slice, wired through this call site.
+    """
+    del sBrowserSessionId
+
+
+async def fnOrphanOwnersPastReconnectWindow(appState):
+    """Orphan every ACTIVE owner whose last socket is gone past the window.
+
+    The §4 trigger: only matched-generation decrements can bring
+    ``iLiveConnectionCount`` to zero; ``bSocketEverExisted`` gates out a
+    claim that never opened a socket (a claim-then-crash falls to the
+    idle reap window instead of orphaning instantly); and the reconnect
+    window is measured from ``fLastSeenMonotonic``, which every socket
+    close stamps, so a reload that reconnects within
+    ``F_RECONNECT_WINDOW_SECONDS`` stays ACTIVE. Counting the terminal
+    lane in the same live total means closing one terminal while the
+    pipeline socket lives never orphans (case 18). The conditions are
+    re-evaluated under the container-mutation lock, so a socket that
+    reconnects between detection and commit cancels the transition. The
+    frontend's ``pagehide`` handler deliberately emits no release
+    signal today; were one added it could only SHORTEN this grace,
+    never orphan authoritatively (design §4).
+    """
+    dictContainerOwners = getattr(appState, "dictContainerOwners", {})
+    for sName in list(dictContainerOwners.keys()):
+        recordOwner = dictContainerOwners.get(sName)
+        if recordOwner is None or not _fbOwnerPastReconnectWindow(
+            recordOwner,
+        ):
+            continue
+        await fnOrphanSession(
+            appState, sName, fbStillWarranted=_fbOwnerPastReconnectWindow,
+        )
+
+
+def _fbOwnerPastReconnectWindow(recordOwner):
+    """Return True when the §4 zero-sockets orphan conditions all hold."""
+    if recordOwner.sState != containerOwnership.S_OWNER_STATE_ACTIVE:
+        return False
+    if not recordOwner.bSocketEverExisted:
+        return False
+    if recordOwner.iLiveConnectionCount > 0:
+        return False
+    return (
+        time.monotonic() - recordOwner.fLastSeenMonotonic
+        >= F_RECONNECT_WINDOW_SECONDS
+    )
