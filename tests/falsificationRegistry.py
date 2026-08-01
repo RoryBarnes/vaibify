@@ -2841,4 +2841,57 @@ def _fdictEntry(sRel):
     "sys.exit(iExitCode)\\n"
 )''',
     ),
+
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_cli_clears_a_sigkill_quarantine_and_restores_claim',
+        source='vaibify/config/reconciliation.py',
+        old='''    operationJournal.fnClearOperationsReconciled(
+        sContainerName, listClearableOperationIds,
+    )''',
+        new='''    del sContainerName, listClearableOperationIds''',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconciliation_refuses_while_the_recorded_writer_lives',
+        source='vaibify/config/reconciliation.py',
+        old='''    if dictProbe["bHolderAlive"]:
+        return (
+            False,
+            f"the recorded writer is still alive ({dictProbe['sDetail']}); "
+            "reconciliation cannot clear a quarantine over a live writer",
+        )''',
+        new='''    if dictProbe["bHolderAlive"]:
+        return (True, dictProbe["sDetail"])''',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_reconcile_versus_claim_is_atomic_on_the_container_flock',
+        source='vaibify/config/containerLock.py',
+        old='''    for _ in range(_I_MAX_ACQUIRE_ATTEMPTS):
+        fileHandle = _ffileTryAcquireFlock(sPath, sProjectName, iPort)
+        if fileHandle is not None:
+            return fileHandle
+    raise ContainerLockedError(sProjectName, 0, 0)''',
+        new='''    return _ffileOpenLockFileNoFollow(sPath)''',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_a_stale_reconciliation_cannot_clear_a_successor_record',
+        source='vaibify/config/reconciliation.py',
+        old='    if set(dictOperations) != set(setExpectedOperationIds or ()):',
+        new='    if False:',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_a_newer_version_journal_requires_upgrade_never_a_blind_clear',
+        source='vaibify/config/operationJournal.py',
+        old='''    if sReadState == "requiresUpgrade":
+        raise OperationJournalUnreadableError(''',
+        new='''    if False:
+        raise OperationJournalUnreadableError(''',
+    ),
+    Falsification(
+        nodeid='tests/testReconciliationMutationCoverage.py::test_break_glass_clears_only_the_malformed_record_it_names',
+        source='vaibify/config/operationJournal.py',
+        old='''    sActualSha256 = fsComputeJournalFileSha256(sContainerName)
+    if sActualSha256 != sExpectedSha256:''',
+        new='''    sActualSha256 = fsComputeJournalFileSha256(sContainerName)
+    if False:''',
+    ),
 ]

@@ -16,8 +16,6 @@ import os
 import signal
 import subprocess
 import sys
-import threading
-import time
 
 import pytest
 
@@ -447,40 +445,3 @@ def test_break_glass_refuses_while_a_live_process_holds_the_flock():
     assert os.path.exists(fsJournalPathFor(S_PROJECT))
 
 
-def test_reconciliation_lock_arbitrates_against_a_concurrent_claim():
-    """While the transaction holds the flock a claim is refused (case 35).
-
-    The cleanup step is blocked on an event mid-transaction; a claim
-    attempted in that window must observe the held flock, not a
-    momentarily-cleared journal. The kill-confirmed falsification half
-    lives in testReconciliationMutationCoverage.py.
-    """
-    sOperationId = _fsJournalDeadHelperRecord()
-    eventCleanupEntered = threading.Event()
-    eventReleaseCleanup = threading.Event()
-    dictCatalogEntry = operationJournal.DICT_OPERATION_PROBE_CATALOG[
-        "helper"
-    ]
-    fnOriginalCleanup = dictCatalogEntry["fnCleanupAfterSettledProbe"]
-
-    def fnBlockingCleanup(dictRecord, connectionDocker):
-        eventCleanupEntered.set()
-        assert eventReleaseCleanup.wait(timeout=30)
-        fnOriginalCleanup(dictRecord, connectionDocker)
-
-    dictCatalogEntry["fnCleanupAfterSettledProbe"] = fnBlockingCleanup
-    try:
-        threadReconcile = threading.Thread(
-            target=fdictReconcileCrashTimeJournal,
-            args=(S_PROJECT, None, {sOperationId}),
-        )
-        threadReconcile.start()
-        assert eventCleanupEntered.wait(timeout=30)
-        with pytest.raises(containerLock.ContainerLockedError):
-            containerLock.fnAcquireContainerLock(S_PROJECT, 8400)
-    finally:
-        eventReleaseCleanup.set()
-        threadReconcile.join(timeout=30)
-        dictCatalogEntry["fnCleanupAfterSettledProbe"] = fnOriginalCleanup
-    fileHandle = containerLock.fnAcquireContainerLock(S_PROJECT, 8400)
-    containerLock.fnReleaseContainerLock(fileHandle)
