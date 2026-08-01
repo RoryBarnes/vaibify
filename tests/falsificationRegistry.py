@@ -3607,4 +3607,22 @@ def _fdictEntry(sRel):
             )
         await _fnDrainAndCloseBeforeRelease(appState, sName)''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 8 — the `vaibify do` headless bootstrap and
+    # the lease attachment (design §6b). The omission mutated here is
+    # the one that shipped: fiSendHttpAction sent the credential alone,
+    # so every owner-scoped call was refused while the CLI's own mocked
+    # tests stayed green. Under the mutation the flow dies at connect
+    # ("In use in another browser session") and the command exits 4.
+    # ------------------------------------------------------------------
+    Falsification(
+        nodeid='tests/testVaibifyDoHeadless.py::test_do_bootstraps_over_the_socket_and_acts_under_its_lease',
+        source='vaibify/cli/hubSession.py',
+        old='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
+        sLeaseId=dictSession["sLeaseId"],
+    )''',
+        new='''        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
+    )''',
+    ),
 ]
