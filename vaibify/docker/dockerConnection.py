@@ -21,6 +21,8 @@ import shlex
 import warnings
 from dataclasses import dataclass
 
+from vaibify.config import mutationAdmission
+
 
 _CACHED_CONTAINER_USER = {}
 
@@ -373,18 +375,34 @@ class DockerConnection:
         on process exit. Returns an :class:`ExecResult` with the same
         contract as :meth:`texecRunInContainerStreamed` so callers can
         keep their post-exec bookkeeping unchanged.
+
+        This is the durable-task exec primitive the carrier guards
+        (design §8): in an enforced lane it refuses to launch without a
+        carrier-minted mode-(c) durable-task guard, and under such a
+        guard the launch is the two-phase create -> journal -> start
+        split — the real exec id is journaled BEFORE ``exec_start``, so
+        a crash between the two leaves an identified, probeable record,
+        never a writer nobody can name (the hazard ``exec_run`` hides).
         """
+        mutationAdmission.fnAssertDurableExecAdmitted(
+            sContainerId, "texecRunInContainerStreamedWithChunks",
+        )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveContainerUser(container)
         dictKwargs = self._fdictBuildExecCreateKwargs(
             sCommand, sWorkdir, sUser,
         )
+        dictExecHandle = mutationAdmission.fdictBeginJournaledExec(
+            sContainerId,
+        )
         sExecId = self._clientDocker.api.exec_create(
             container.id, **dictKwargs,
         )["Id"]
+        mutationAdmission.fnPromoteJournaledExec(dictExecHandle, sExecId)
         sStdout, sStderr = self._ftStreamExecLines(sExecId, fnEmitChunk)
         dictInspect = self._clientDocker.api.exec_inspect(sExecId)
+        mutationAdmission.fnSettleJournaledExec(dictExecHandle)
         return ExecResult(
             iExitCode=int(dictInspect.get("ExitCode") or 0),
             sStdout=sStdout, sStderr=sStderr,
@@ -592,7 +610,16 @@ class DockerConnection:
         requested permissions and ownership atomically — there is no
         post-write ``chmod`` window during which a secret-bearing
         file is world-readable (audit finding M1).
+
+        This is the workspace-file-write funnel the commit-guard
+        carrier guards (design §8): in an enforced lane (an HTTP
+        request or a carrier-launched durable task) the write refuses
+        to proceed without a live, still-current carrier admission for
+        this container — before any byte reaches the daemon.
         """
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteFileViaTar",
+        )
         import posixpath
         import time
 

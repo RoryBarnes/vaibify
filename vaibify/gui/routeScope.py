@@ -357,13 +357,20 @@ class ContainerAwareRoute(APIRoute):
     through a registration-ordering accident. For a ``container-owner``
     or ``container-read`` route the wrapper runs
     :func:`fiAuthorizeContainerHttp` first and short-circuits the endpoint
-    on refusal; every other scope passes straight through.
+    on refusal, then serves the handler under a commit-guard request
+    admission (design §8) so the write funnel can revalidate the lane
+    tuple at each commit point; every other scope is served with the
+    request lane merely MARKED — a route without container authority
+    that reaches a container-mutating primitive is refused at the
+    funnel, which is what makes the primitives unreachable directly
+    from a route.
     """
 
     def get_route_handler(self):
         fnOriginalHandler = super().get_route_handler()
 
         async def fnAuthorizedHandler(request):
+            from . import commitCarrier
             dictScope = fdictResolveRouteScope(
                 self.methods, self.path, self.endpoint,
             )
@@ -376,7 +383,18 @@ class ContainerAwareRoute(APIRoute):
                 )
                 if iCode:
                     return _fresponseForbidden(iCode)
-            return await fnOriginalHandler(request)
+                tAdmissionTokens = commitCarrier.ftupleOpenRequestAdmission(
+                    request.app.state, dictScope, request,
+                )
+                try:
+                    return await fnOriginalHandler(request)
+                finally:
+                    commitCarrier.fnCloseRequestAdmission(tAdmissionTokens)
+            tokenLane = commitCarrier.ftokenMarkEnforcedRequestLane()
+            try:
+                return await fnOriginalHandler(request)
+            finally:
+                commitCarrier.fnResetEnforcedRequestLane(tokenLane)
 
         return fnAuthorizedHandler
 

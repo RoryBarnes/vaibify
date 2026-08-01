@@ -58,6 +58,7 @@ __all__ = [
     "F_ABSOLUTE_SESSION_CAP_SECONDS",
     "F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS",
     "fdictCreateLifecycleLockStore",
+    "flockContainerMutationForAppState",
     "ftdictClaimWithCardinality",
     "fbReleaseExplicit",
 ]
@@ -139,6 +140,20 @@ def _flockObtainSessionCardinality(dictLockStore):
         if dictLockStore["lockSessionCardinality"] is None:
             dictLockStore["lockSessionCardinality"] = asyncio.Lock()
         return dictLockStore["lockSessionCardinality"]
+
+
+def flockContainerMutationForAppState(appState, sName):
+    """Return the per-container mutation lock (the drain) for an app.
+
+    The commit-guard carrier's public handle on lock 1 of the hierarchy
+    (design §3.5): a mode-(b) supervisor holds it for its worker's whole
+    life, a mode-(c) durable task launches and finalizes under it, and a
+    transfer (slice 5) will wait it out. Locks are created synchronized
+    and never deleted, so every caller shares the same object per name.
+    """
+    return _flockObtainContainerMutation(
+        _fdictLockStoreForAppState(appState), sName,
+    )
 
 
 async def ftdictClaimWithCardinality(

@@ -15,6 +15,7 @@ import time
 from fastapi import FastAPI
 
 from . import browserSession
+from . import commitCarrier
 from . import containerOwnership
 from . import serverLifespan
 from . import serverMiddleware
@@ -49,6 +50,13 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     app.state.dictLifecycleLocks = (
         sessionLifecycle.fdictCreateLifecycleLockStore()
     )
+    app.state.dictMutationSupervisors = (
+        commitCarrier.fdictCreateMutationSupervisorRegistry()
+    )
+    app.state.dictDurableTaskRecords = (
+        commitCarrier.fdictCreateDurableTaskRegistry()
+    )
+    app.state.bMutationAdmissionsClosed = False
     app.state.iExpectedPort = dictConfig["iExpectedPort"]
     app.state.iActiveWebSockets = 0
     app.state.fLastActivityMonotonic = time.monotonic()
@@ -134,6 +142,11 @@ def _fappBuildApplication(dictConfig):
     pipelineServer._fnRegisterAllRoutes(
         app, dictCtx, dictConfig["sWorkspaceRoot"],
     )
+    # The mutation drain MUST be appended before every hub shutdown
+    # hook: shutdown hooks run in append order, and the flock-release
+    # hook may only run after the guarded workers have been drained
+    # (design §8 — shutdown ordering is a correctness boundary).
+    _fnRegisterShutdownDrainGuardedMutations(app)
     _fnRegisterHubLifecycle(app, dictCtx, dictConfig)
     _fnRegisterBackgroundTasks(app, dictCtx)
     routeScope.fnValidateRouteScopesOrRaise(app)
@@ -202,24 +215,59 @@ def _fnRegisterHubStartupReapStaleClaims(app):
     app.state.listLifespanStartup.append(fnReapStaleClaims)
 
 
+def _fnRegisterShutdownDrainGuardedMutations(app):
+    """Stop admitting guarded mutations, then bounded-drain the workers.
+
+    Appended BEFORE the keep-alive and flock-release hooks so shutdown
+    runs in the design §8 order: close admissions → drain the mutation
+    supervisors → only then stop keep-alive and release flocks. The
+    executor hook is appended last of all (``_fnRegisterBackgroundTasks``
+    runs after this), so by the time it shuts the pool down every
+    drained worker has finished; a worker that outlives the bounded
+    drain keeps running on its thread with its flock retained — it is
+    never torn down while it can still commit.
+    """
+
+    async def fnDrainGuardedMutations(app):
+        await commitCarrier.fdictDrainMutationSupervisors(app.state)
+
+    app.state.listLifespanShutdown.append(fnDrainGuardedMutations)
+
+
 def _fnRegisterHubShutdownReleaseLocks(app):
-    """Release all held container locks when the hub shuts down."""
+    """Release held container locks at shutdown — except live workers'.
+
+    A container whose guarded worker survived the bounded shutdown
+    drain keeps its owner record AND its flock (design §8, case 26): an
+    OS flock frees the instant this process exits anyway, but while the
+    process lives no other hub may be handed a container a still-
+    writing worker can commit to.
+    """
 
     async def fnReleaseAllContainerLocks(app):
         from vaibify.config.containerLock import fnReleaseContainerLock
         dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
-        for recordOwner in list(dictContainerOwners.values()):
-            fileHandle = getattr(recordOwner, "fileHandleLock", None)
-            if fileHandle is None:
-                continue
-            try:
-                fnReleaseContainerLock(fileHandle)
-            except OSError:
-                pass
-        dictContainerOwners.clear()
         dictSessionOwner = getattr(app.state, "dictSessionOwner", None)
-        if dictSessionOwner is not None:
-            dictSessionOwner.clear()
+        setRetainedNames = commitCarrier.fsetNamesWithLiveMutationWork(
+            app.state,
+        )
+        for sName, recordOwner in list(dictContainerOwners.items()):
+            if sName in setRetainedNames:
+                continue
+            fileHandle = getattr(recordOwner, "fileHandleLock", None)
+            if fileHandle is not None:
+                try:
+                    fnReleaseContainerLock(fileHandle)
+                except OSError:
+                    pass
+            dictContainerOwners.pop(sName, None)
+            sBoundSessionId = getattr(recordOwner, "sBrowserSessionId", "")
+            if (
+                dictSessionOwner is not None
+                and sBoundSessionId
+                and dictSessionOwner.get(sBoundSessionId) == sName
+            ):
+                dictSessionOwner.pop(sBoundSessionId, None)
     app.state.listLifespanShutdown.append(fnReleaseAllContainerLocks)
 
 

@@ -775,7 +775,7 @@ def fdictInteractiveContextForContainer(sContainerId):
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
-    dictPipelineTasks=None,
+    dictPipelineTasks=None, dictDurableContext=None,
 ):
     """Receive and dispatch pipeline WebSocket messages.
 
@@ -829,20 +829,67 @@ async def fnPipelineMessageLoop(
             if dictOverwriteRefusal is not None:
                 await fnCallback(dictOverwriteRefusal)
                 continue
-            taskPipeline = asyncio.create_task(
-                _fnSafeDispatch(
-                    sAction, dictRequest, connectionDocker,
-                    sContainerId, dictWorkflow,
-                    dictWorkflowPathCache, sWorkflowDirectory,
-                    fnCallback, dictInteractive,
+            def fnStartDispatchTask(
+                sActionBound=sAction, dictRequestBound=dictRequest,
+            ):
+                return asyncio.create_task(
+                    _fnSafeDispatch(
+                        sActionBound, dictRequestBound, connectionDocker,
+                        sContainerId, dictWorkflow,
+                        dictWorkflowPathCache, sWorkflowDirectory,
+                        fnCallback, dictInteractive,
+                    )
                 )
+
+            taskPipeline, iOwnerGeneration = await _ftLaunchDispatchTask(
+                dictDurableContext, sContainerId, fnStartDispatchTask,
             )
+            if taskPipeline is None:
+                await fnCallback(
+                    _fdictBusyRefusalEvent(sAction, dictRequest),
+                )
+                continue
             if dictPipelineTasks is not None:
                 _fnRegisterPipelineTask(
                     dictPipelineTasks, sContainerId, taskPipeline,
+                    iOwnerGeneration=iOwnerGeneration,
                 )
     finally:
         _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
+
+
+async def _ftLaunchDispatchTask(
+    dictDurableContext, sContainerId, fnStartDispatchTask,
+):
+    """Launch a dispatch as a mode-(c) durable task when wired.
+
+    With a durable context (the production WebSocket path) the task is
+    registered through the commit-guard carrier: it inherits the
+    durable admission, its container-side execs are journaled through
+    the create -> journal -> start split, and a concurrent durable
+    launch or stale lane tuple is refused as ``(None, 1)`` — the
+    caller answers with the honest busy/refusal event. Without a
+    durable context (direct library and test callers) the task runs
+    exactly as before.
+    """
+    if dictDurableContext is None:
+        return (fnStartDispatchTask(), 1)
+    from . import commitCarrier
+    try:
+        dictLaunch = await commitCarrier.fdictLaunchDurableTask(
+            dictDurableContext["appState"], dictDurableContext["sName"],
+            sContainerId, dictDurableContext["dictLaneTuple"],
+            fnStartDispatchTask,
+        )
+    except commitCarrier.CommitRefusedError as error:
+        logger.warning(
+            "Durable dispatch refused for container %s: %s",
+            sContainerId, error,
+        )
+        return (None, 1)
+    if not dictLaunch["bLaunched"]:
+        return (None, 1)
+    return (dictLaunch["taskAsync"], dictLaunch["iOwnerGeneration"])
 
 
 def _fnRecordDispatchAttribution(
@@ -1314,9 +1361,43 @@ async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
             websocket, dictCtx["docker"], sContainerId,
             dictWorkflow, dictCtx["paths"], sDir,
             dictPipelineTasks=dictCtx["pipelineTasks"],
+            dictDurableContext=_fdictBuildDurableDispatchContext(
+                websocket, dictCtx, sContainerId,
+            ),
         )
     except WebSocketDisconnect:
         pass
+
+
+def _fdictBuildDurableDispatchContext(websocket, dictCtx, sContainerId):
+    """Bind the socket's owner name and lane tuple for mode-(c) launches.
+
+    Returns ``None`` when the socket cannot be bound to an owned
+    container (a viewer serving an unclaimed container, or a test
+    harness with no owner map) — dispatch then runs on the legacy
+    unregistered path rather than refusing work the ownership model
+    does not yet cover.
+    """
+    appState = getattr(getattr(websocket, "app", None), "state", None)
+    if appState is None:
+        return None
+    dictContainerOwners = dictCtx.get("dictContainerOwners", {}) or {}
+    for sName, recordOwner in dictContainerOwners.items():
+        if recordOwner.sContainerId == sContainerId or sName == sContainerId:
+            break
+    else:
+        return None
+    from . import commitCarrier
+    dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromWebSocket(
+        appState, sName, websocket,
+    )
+    if dictLaneTuple is None:
+        return None
+    return {
+        "appState": appState,
+        "sName": sName,
+        "dictLaneTuple": dictLaneTuple,
+    }
 
 
 # ---------------------------------------------------------------

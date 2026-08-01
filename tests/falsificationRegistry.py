@@ -2707,4 +2707,140 @@ def _fdictEntry(sRel):
         new='''    ".kube",
 )''',
     ),
+
+    # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).
+    # Case 16, mode (a): with the write-funnel gate removed, a dummy
+    # route's direct container write reaches put_archive unadmitted.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_a',
+        source='vaibify/docker/dockerConnection.py',
+        old='''        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteFileViaTar",
+        )''',
+        new='''        pass''',
+    ),
+    # Case 16, mode (b): inverting the enforced-lane check makes the
+    # funnel a no-op exactly where it must fail closed, so a write
+    # laundered across asyncio.to_thread lands unadmitted.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_b',
+        source='vaibify/config/mutationAdmission.py',
+        old='''    if not fbLaneEnforced():
+        return
+    admission = fadmissionActiveForContainerId(sContainerId)''',
+        new='''    if fbLaneEnforced():
+        return
+    admission = fadmissionActiveForContainerId(sContainerId)''',
+    ),
+    # Case 16c: with the durable-launch gate removed, a route reaches
+    # exec_create without a carrier-minted mode-(c) guard.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_route_durable_exec_without_mode_c_guard_is_refused',
+        source='vaibify/docker/dockerConnection.py',
+        old='''        mutationAdmission.fnAssertDurableExecAdmitted(
+            sContainerId, "texecRunInContainerStreamedWithChunks",
+        )''',
+        new='''        pass''',
+    ),
+    # Case 16b: without the shield, cancelling the requesting coroutine
+    # cancels the supervisor, the drain frees while the worker thread
+    # keeps running, and a competitor acquires mid-effect.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_cancelled_requester_leaves_drain_held_until_worker_ends',
+        source='vaibify/gui/commitCarrier.py',
+        old='    return await asyncio.shield(taskSupervisor)',
+        new='    return await taskSupervisor',
+    ),
+    # Case 26: without the retained-names skip, hub shutdown frees the
+    # flock of a container whose guarded worker is still live, handing
+    # it to the next hub mid-commit.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_hub_shutdown_retains_flock_while_guarded_worker_lives',
+        source='vaibify/gui/appFactory.py',
+        old='''        for sName, recordOwner in list(dictContainerOwners.items()):
+            if sName in setRetainedNames:
+                continue''',
+        new='''        for sName, recordOwner in list(dictContainerOwners.items()):''',
+    ),
+    # Case 31 (carrier half): a cancel plane that settles the journal
+    # record itself clears the write-ahead record while the worker can
+    # still commit — the supervisor must be the single settler.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_out_of_band_cancel_leaves_supervisor_as_single_releaser',
+        source='vaibify/gui/commitCarrier.py',
+        old='''        supervisor.eventCancelRequested.set()
+        _fnMarkSupervisorCancelRequested(supervisor)''',
+        new='''        supervisor.eventCancelRequested.set()
+        _fnMarkSupervisorCancelRequested(supervisor)
+        operationJournal.fnSettleOperation(sName, supervisor.sOperationId)''',
+    ),
+    # Case 32 (carrier half): dropping the carrier veto lets the idle
+    # reaper force-release an owner whose guarded worker is live.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_reaper_never_releases_owner_with_live_guarded_work',
+        source='vaibify/gui/serverLifespan.py',
+        old='''        lambda sName: (
+            commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
+            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+        ),''',
+        new='''        lambda sName: _fbOwnedNamePipelineRunning(app, dictCtx, sName),''',
+    ),
+    # Case 38 (holder half): neutralizing the holder comparison admits
+    # any holder under a merely-present record.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_identity_gate_admits_own_record_and_refuses_foreign_holder',
+        source='vaibify/config/mutationAdmission.py',
+        old='''    for sIdentityKey, valueExpected in (dictHolderIdentity or {}).items():
+        if dictOwnRecord.get(sIdentityKey) != valueExpected:''',
+        new='''    for sIdentityKey, valueExpected in (dictHolderIdentity or {}).items():
+        if False and dictOwnRecord.get(sIdentityKey) != valueExpected:''',
+    ),
+    # Case 38 (quarantine half): neutralizing the NEEDS_RECONCILIATION
+    # scan lets a sitting owner resume mid-quarantine.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_identity_gate_refuses_sitting_owner_mid_quarantine',
+        source='vaibify/config/mutationAdmission.py',
+        old='''    for sRecordId, dictRecord in dictOperations.items():
+        if dictRecord["sState"] == (
+            operationJournal.S_OPERATION_STATE_NEEDS_RECONCILIATION
+        ):''',
+        new='''    for sRecordId, dictRecord in dictOperations.items():
+        if False and dictRecord["sState"] == (
+            operationJournal.S_OPERATION_STATE_NEEDS_RECONCILIATION
+        ):''',
+    ),
+    # Case 45 (carrier half): an added presence-based refusal denies an
+    # operation its own record whenever any other record coexists.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_carrier_admits_each_operation_against_its_own_record',
+        source='vaibify/config/mutationAdmission.py',
+        old='    dictOwnRecord = dictOperations.get(sOperationId)',
+        new='''    if len(dictOperations) > 1:
+        raise MutationNotAdmittedError(
+            "presence-based refusal (mutant)"
+        )
+    dictOwnRecord = dictOperations.get(sOperationId)''',
+    ),
+    # Case 41 (gate part): reordering the helper stub to act BEFORE
+    # reading the stdin gate lets a killed parent leave a landed effect
+    # with no identity-persisted releasing gate.
+    Falsification(
+        nodeid='tests/testCommitCarrier.py::test_parent_kill_at_each_two_phase_transition_leaves_no_actor',
+        source='vaibify/gui/commitCarrier.py',
+        old='''S_GATED_HELPER_STUB = (
+    "import os, sys, subprocess\\n"
+    "sGateLine = sys.stdin.readline()\\n"
+    "if sGateLine.strip() != 'GO':\\n"
+    "    sys.exit(3)\\n"
+    "sys.exit(subprocess.call(sys.argv[1:]))\\n"
+)''',
+        new='''S_GATED_HELPER_STUB = (
+    "import os, sys, subprocess\\n"
+    "iExitCode = subprocess.call(sys.argv[1:])\\n"
+    "sGateLine = sys.stdin.readline()\\n"
+    "if sGateLine.strip() != 'GO':\\n"
+    "    sys.exit(3)\\n"
+    "sys.exit(iExitCode)\\n"
+)''',
+    ),
 ]

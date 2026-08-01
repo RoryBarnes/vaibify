@@ -5,7 +5,7 @@ __all__ = ["fnRegisterAll"]
 import asyncio
 import posixpath
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
 from .. import workflowManager
@@ -39,16 +39,57 @@ def _fnRegisterSettingsPut(app, dictCtx):
     async def fnUpdateSettings(
         sContainerId: str,
         request: WorkflowSettingsRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        for sKey, value in fdictFilterNonNone(
-            request.model_dump()
-        ).items():
-            dictWorkflow[sKey] = value
-        dictCtx["save"](sContainerId, dictWorkflow)
+        _fnCommitSettingsUpdate(
+            dictCtx, sContainerId, dictWorkflow,
+            fdictFilterNonNone(request.model_dump()), requestHttp,
+        )
         return fdictExtractSettings(dictWorkflow)
+
+
+def _fnCommitSettingsUpdate(
+    dictCtx, sContainerId, dictWorkflow, dictUpdates, requestHttp,
+):
+    """Commit the settings save through carrier mode (a) (design §8).
+
+    The synchronous-commit mode: the write-ahead ``file-write`` record
+    carries the pre-update and intended post-update fingerprints of
+    ``project.json`` (the save path's own serialization authority), so
+    a crash inside the commit window is provable afterwards — the
+    probe either finds the prior bytes (nothing landed), the expected
+    bytes (the write landed; a pending migration may shift them, which
+    reads as quarantine-until-reconciled, never as a silent guess).
+    """
+    from .. import commitCarrier
+    appState = requestHttp.app.state
+    dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
+        appState, sContainerId, requestHttp,
+    )
+    if dictLaneTuple is None:
+        raise HTTPException(
+            403, "The settings save cannot be bound to this "
+            "container's owner record; claim or connect first.")
+    sPriorFingerprint = workflowManager.fsComputeWorkflowFingerprint(
+        dictWorkflow)
+    for sKey, value in dictUpdates.items():
+        dictWorkflow[sKey] = value
+    commitCarrier.fdictCommitSynchronousMutation(
+        appState, dictLaneTuple["sContainerName"], sContainerId,
+        dictLaneTuple, "file-write",
+        dictCtx["paths"].get(sContainerId, "") or "project.json",
+        lambda: dictCtx["save"](sContainerId, dictWorkflow),
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": (
+                workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+            ),
+            "sPriorSha256": sPriorFingerprint,
+        },
+    )
 
 
 def _fnRegisterLogRoutes(app, dictCtx):

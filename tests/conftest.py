@@ -80,6 +80,24 @@ def fixtureHermeticKeyring(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fnIsolateOperationJournalDirectory(monkeypatch, tmp_path):
+    """Keep every test's write-ahead journal out of ~/.vaibify/journal.
+
+    The commit-guard carrier journals every guarded mutation, so any
+    test that saves settings or pushes through the real routes would
+    otherwise write (and, on failure, leave quarantine records in) the
+    researcher's real journal directory — the same host-state hazard
+    class as the log and keyring fixtures above.
+    """
+    from vaibify.config import operationJournal
+    monkeypatch.setattr(
+        operationJournal, "_S_JOURNAL_DIRECTORY",
+        str(tmp_path / "operationJournalIsolated"),
+    )
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fnClearPushDedupeCache():
     """Reset the syncRoutes push idempotency cache between tests.
 

@@ -12,7 +12,7 @@ import re
 import threading
 import time
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
 from .. import containerGit, workflowManager
@@ -296,15 +296,46 @@ def _fnPersistPostPushDigests(
 
 async def _ftRunOverleafPushCall(
     syncDispatcher, connectionDocker, sContainerId,
-    listFilePaths, sMirrorSha, dictOverleafArgs,
+    listFilePaths, sMirrorSha, dictOverleafArgs, requestHttp=None,
 ):
-    """Invoke the blocking Overleaf push dispatcher in a worker thread."""
-    return await asyncio.to_thread(
-        syncDispatcher.ftResultPushToOverleaf,
-        connectionDocker, sContainerId,
-        listFilePaths, sMirrorSha=sMirrorSha,
-        **dictOverleafArgs,
+    """Run the blocking Overleaf push under carrier mode (b) (design §8).
+
+    The push is an irreversible sync commit that crosses a worker-
+    thread ``await``, so on the production route (``requestHttp``
+    present) it runs as a lock-held async mutation: a shielded
+    supervisor holds the container's mutation drain until the worker
+    thread actually terminates, and the write-ahead journal records
+    the operation before it launches. The worker's bound is the Docker
+    client's socket deadline
+    (``dockerConnection.I_DOCKER_CLIENT_TIMEOUT_SECONDS``). Direct
+    library/test callers that pass no request run the legacy
+    ``to_thread`` path — an unenforced lane, named in the carrier's
+    documented remainder, never a pretend-guarded one.
+    """
+    def fnPushWorker(supervisor=None):
+        del supervisor
+        return syncDispatcher.ftResultPushToOverleaf(
+            connectionDocker, sContainerId,
+            listFilePaths, sMirrorSha=sMirrorSha,
+            **dictOverleafArgs,
+        )
+
+    if requestHttp is None:
+        return await asyncio.to_thread(fnPushWorker)
+    from .. import commitCarrier
+    appState = requestHttp.app.state
+    dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
+        appState, sContainerId, requestHttp,
     )
+    if dictLaneTuple is None:
+        raise HTTPException(
+            403, "The Overleaf push cannot be bound to this "
+            "container's owner record; claim or connect first.")
+    dictCommit = await commitCarrier.fdictRunLockHeldMutation(
+        appState, dictLaneTuple["sContainerName"], sContainerId,
+        dictLaneTuple, "helper", "overleaf-push", fnPushWorker,
+    )
+    return dictCommit["result"]
 
 
 async def _fnFinalizeOverleafPush(
@@ -379,6 +410,7 @@ def _fnRecordPushProvenance(
 
 async def _fdictRunOverleafPushFlow(
     syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
+    requestHttp=None,
 ):
     """Perform the Overleaf push itself; returns the sync result dict."""
     sTargetDirectory = _fsResolveTargetDirectory(request, dictWorkflow)
@@ -390,6 +422,7 @@ async def _fdictRunOverleafPushFlow(
     iExit, sOut = await _ftRunOverleafPushCall(
         syncDispatcher, dictCtx["docker"], sContainerId,
         request.listFilePaths, sMirrorSha, dictOverleafArgs,
+        requestHttp=requestHttp,
     )
     dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
     sPushStatus = syncDispatcher.fsParsePushStatusFromOutput(sOut)
@@ -408,7 +441,7 @@ async def _fdictRunOverleafPushFlow(
 
 
 async def _fdictHandleOverleafPushRequest(
-    syncDispatcher, dictCtx, sContainerId, request,
+    syncDispatcher, dictCtx, sContainerId, request, requestHttp=None,
 ):
     """End-to-end Overleaf push: flow + post-push bookkeeping."""
     dictCtx["require"]()
@@ -421,6 +454,7 @@ async def _fdictHandleOverleafPushRequest(
         dictCtx["workflows"], sContainerId)
     dictResult = await _fdictRunOverleafPushFlow(
         syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
+        requestHttp=requestHttp,
     )
     sProjectId = dictResult.pop("_sProjectId", "")
     sTargetDirectory = dictResult.pop("_sTargetDirectory", "")
@@ -557,9 +591,11 @@ def _fnRegisterOverleafPush(app, dictCtx):
     @app.post("/api/overleaf/{sContainerId}/push")
     async def fnOverleafPush(
         sContainerId: str, request: SyncPushRequest,
+        requestHttp: Request,
     ):
         return await _fdictHandleOverleafPushRequest(
             syncDispatcher, dictCtx, sContainerId, request,
+            requestHttp=requestHttp,
         )
 
 

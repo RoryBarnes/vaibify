@@ -3637,7 +3637,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +11 (2026-07-29): the sweep fails closed on daemon-enumeration
     # failure (None vs empty protected set). Same credential-sweep
     # responsibility; no seam to split.
-    "routes/syncRoutes.py": 2472,
+    # +36 (2026-07-31): ORPHANED_SESSION slice 3b — the Overleaf push
+    # runs as a carrier mode-(b) lock-held mutation (design §8): the
+    # lane-tuple binding and the shielded-supervisor call wrap the
+    # existing blocking dispatcher. Extends the push flow this module
+    # already owns; the carrier machinery itself lives in
+    # commitCarrier.py.
+    "routes/syncRoutes.py": 2508,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -3782,7 +3788,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # session already holding a different container is refused before a
     # second owner record is minted. Extends the ownership recording
     # this module already owns.
-    "pipelineServer.py": 2263,
+    # +81 (2026-07-31): ORPHANED_SESSION slice 3b — pipeline dispatch
+    # launches through carrier mode (c) (_ftLaunchDispatchTask) and the
+    # WebSocket handler binds the durable dispatch context
+    # (_fdictBuildDurableDispatchContext). Extends the dispatch/task
+    # registration this module already owns; the carrier machinery
+    # lives in commitCarrier.py.
+    "pipelineServer.py": 2344,
+    # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
+    # one normative unit — three commit modes, the shielded supervisor
+    # + registry, the out-of-band cancellation plane, the parent-gated
+    # helper spawn, and the ordered-shutdown drain. Splitting it would
+    # smear a single security boundary (who may commit a container
+    # mutation, and who releases the drain) across call hops; every
+    # piece changes for the same reason (the §8 model).
+    "commitCarrier.py": 980,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

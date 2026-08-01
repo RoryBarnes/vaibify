@@ -371,14 +371,22 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
 
     Only hubs enable this (``bReapOwnerships``); the single-container
     viewer's served record carries no host flock and dies with the
-    process, so it is never force-released here.
+    process, so it is never force-released here. A container with a
+    live commit-guard supervisor or durable task is likewise vetoed
+    (design §8, case 32): the supervisor is the single releasing
+    party, so the reaper may never free a record whose guarded worker
+    can still commit.
     """
     if not getattr(app.state, "bReapOwnerships", False):
         return
+    from . import commitCarrier
     dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
     containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
-        lambda sName: _fbOwnedNamePipelineRunning(app, dictCtx, sName),
+        lambda sName: (
+            commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
+            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+        ),
         dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )
 

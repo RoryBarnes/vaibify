@@ -324,8 +324,35 @@ def _fnRegisterConnect(app, dictCtx):
         _fnRequireOwningLeaseForConnect(
             dictCtx, sContainerId, requestHttp)
         sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)
-        return await fdictHandleConnect(
-            dictCtx, sContainerId, sWorkflowPath, sBrowserSessionId)
+        # Connect writes into the container (the per-container agent
+        # session file) after arbitrating ownership itself, so it holds
+        # the carrier's owner-establishing admission for the handler's
+        # duration (design §8) — the one lane where the owner record
+        # may be created DURING the handler (viewer first connect).
+        from .. import commitCarrier
+        tAdmissionTokens = commitCarrier.ftupleOpenEstablishingAdmission(
+            _fsResolveOwnedNameForContainerId(dictCtx, sContainerId),
+            sContainerId,
+        )
+        try:
+            return await fdictHandleConnect(
+                dictCtx, sContainerId, sWorkflowPath, sBrowserSessionId)
+        finally:
+            commitCarrier.fnCloseRequestAdmission(tAdmissionTokens)
+
+
+def _fsResolveOwnedNameForContainerId(dictCtx, sContainerId):
+    """Return the owner-map key serving a Docker id, or the id itself.
+
+    The hub keys its owner map by project name and records the Docker
+    id at claim time; the viewer keys it by the container id directly
+    (and may not have recorded it yet on first connect).
+    """
+    dictContainerOwners = dictCtx.get("dictContainerOwners", {}) or {}
+    for sName, recordOwner in dictContainerOwners.items():
+        if recordOwner.sContainerId == sContainerId or sName == sContainerId:
+            return sName
+    return sContainerId
 
 
 def _fsResolveBrowserSessionId(dictCtx, requestHttp):
