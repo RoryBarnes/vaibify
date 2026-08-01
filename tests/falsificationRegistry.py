@@ -3052,4 +3052,188 @@ def _fdictEntry(sRel):
         dictPayload["dictOperations"] = {}
         _fnStoreJournalPayload(sContainerName, dictPayload)''',
     ),
+
+    # --- Slice 5: the host-authorized transfer transaction (design
+    # §6.1/§6.2). Cases 2/3/4/5/6/8/12/14/15/23/26b/31/44/46, transfer
+    # halves. Where the transaction checks a condition at BOTH the
+    # pre-mint layer and the commit point, the pre-mint mutant is
+    # detected through the DRAINING side effect (a doomed transfer
+    # must never touch the sitting owner's terminals), because the
+    # commit-point backstop makes the refusal itself indistinguishable.
+    # Case 2 (stale-generation refusal, the ABA guard):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testStaleGenerationTransferIsRefused',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if recordOwner.iOwnerGeneration != iExpectedGen:
+        browserSession.fnExpireCapability(dictStore, sCapability)
+        return (S_TRANSFER_STALE_GENERATION, {
+            "sMessage": f"Container '{sName}' changed owners after this "''',
+        new='''    if False:
+        browserSession.fnExpireCapability(dictStore, sCapability)
+        return (S_TRANSFER_STALE_GENERATION, {
+            "sMessage": f"Container '{sName}' changed owners after this "''',
+    ),
+    # Case 2/15 (ACTIVE transfer revokes the old session in-commit):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testCorrectGenerationActiveTransferSucceedsAndRevokes',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='    browserSession.fnRevokeSessionById(dictStore, sOldSessionId)',
+        new='    pass',
+    ),
+    # Case 3 (bounded replay returns the STORED tuple):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testLostTransferResponseReplaysTheStoredTuple',
+        source='vaibify/gui/browserSession.py',
+        old='        recordCap.sIssuedLease = sLeaseId',
+        new='        recordCap.sIssuedLease = ""',
+    ),
+    # Case 14 (reaped record answers "claim normally", never retry):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testReapedRecordYieldsClaimNormally',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)
+    if recordOwner is None:
+        browserSession.fnExpireCapability(dictStore, sCapability)
+        return (S_TRANSFER_UNOWNED, {''',
+        new='''    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)
+    if recordOwner is None:
+        browserSession.fnExpireCapability(dictStore, sCapability)
+        return (S_TRANSFER_BUSY_RETRY, {''',
+    ),
+    # Case 26b (poison refuses transfer before the DRAINING phase):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testPoisonedRecordRefusesTransfer',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if getattr(recordOwner, "poison", None) is not None:
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' carries a force-abandoned "''',
+        new='''    if False:
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' carries a force-abandoned "''',
+    ),
+    # Case 31 (a cancel that won the lock blocks the transfer):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testCancelRequestedDurableTaskRefusesTransfer',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    recordTask = _frecordLiveDurableTask(appState, sName)
+    if recordTask is not None and recordTask.sState != "running":
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a durable task whose "
+                        "cancellation is in progress; retry once it has "
+                        "settled.",
+        })
+    sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
+        new='''    recordTask = _frecordLiveDurableTask(appState, sName)
+    if recordTask is not None and False:
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a durable task whose "
+                        "cancellation is in progress; retry once it has "
+                        "settled.",
+        })
+    sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
+    ),
+    # Case 23 (the barrier test: adoption, not a blanket live-task
+    # refusal — the exact "different operation ⇒ refuse" mistake the
+    # §8 adoption exception exists to prevent):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testBarrierTransferAdoptsAStillRunningDurableTask',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    recordTask = _frecordLiveDurableTask(appState, sName)
+    if recordTask is not None and recordTask.sState != "running":
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a durable task whose "
+                        "cancellation is in progress; retry once it has "
+                        "settled.",
+        })
+    sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
+        new='''    recordTask = _frecordLiveDurableTask(appState, sName)
+    if recordTask is not None:
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a durable task whose "
+                        "cancellation is in progress; retry once it has "
+                        "settled.",
+        })
+    sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
+    ),
+    # Case 5 (the preserved task is retagged in place, not left stale):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testPreservedTaskCompletesAttributedToNewGeneration',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='    _fnRetagLiveDurableTask(appState, sName, iNewGeneration)',
+        new='    pass',
+    ),
+    # Case 4 (an old-generation ordinary mutation fails at the
+    # carrier's linearization check after a REAL transfer):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testOldLaneTupleCannotCommitAfterTransfer',
+        source='vaibify/gui/commitCarrier.py',
+        old='''    if not dictLaneTuple:
+        return False
+    dictContainerOwners = getattr(appState, "dictContainerOwners", {}) or {}
+    recordOwner = dictContainerOwners.get(dictLaneTuple["sContainerName"])''',
+        new='''    if not dictLaneTuple:
+        return False
+    return True
+    dictContainerOwners = getattr(appState, "dictContainerOwners", {}) or {}
+    recordOwner = dictContainerOwners.get(dictLaneTuple["sContainerName"])''',
+    ),
+    # Case 6 (old sockets are detached, closed, and inert afterwards):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testOldGenerationCleanupCannotTouchNewGenerationState',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    dictSessionSockets = getattr(appState, "dictSessionSockets", None)
+    if dictSessionSockets is None or not sOldSessionId:
+        return []
+    return list(dictSessionSockets.pop(sOldSessionId, set()))''',
+        new='''    dictSessionSockets = getattr(appState, "dictSessionSockets", None)
+    if dictSessionSockets is None or not sOldSessionId:
+        return []
+    return []''',
+    ),
+    # Case 8 (the agent token rides through the transfer untouched):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testAgentAuthorizationSurvivesTransfer',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    recordOwner.sLeaseId = sNewLease
+    recordOwner.sBrowserSessionId = sNewSessionId''',
+        new='''    recordOwner.sLeaseId = sNewLease
+    recordOwner.sAgentToken = containerOwnership.fsMintAgentToken()
+    recordOwner.sBrowserSessionId = sNewSessionId''',
+    ),
+    # Case 12 (a half-implemented transfer that bumps the generation
+    # without rotating the browser principals lets the displaced
+    # session release the successor's record):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testStaleGenerationReleaseIsRefusedAfterTransfer',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    recordOwner.sLeaseId = sNewLease
+    recordOwner.sBrowserSessionId = sNewSessionId
+    recordOwner.iOwnerGeneration = iNewGeneration''',
+        new='''    recordOwner.iOwnerGeneration = iNewGeneration''',
+    ),
+    # Case 44, transfer half (the DRAINING phase terminates-and-proves
+    # every terminal before the commit):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testTransferDrainsTerminalRecordsBeforeCommit',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    dictDrain = await asyncio.to_thread(
+        terminalContainment.fdictDrainTerminalRecordsForContainer,
+        appState, sName,
+    )
+    if dictDrain["listQuarantinedOperationIds"]:''',
+        new='''    dictDrain = {"listQuarantinedOperationIds": []}
+    if dictDrain["listQuarantinedOperationIds"]:''',
+    ),
+    # Case 46, transfer half (a failed drain refuses and retains the
+    # quarantine; it never commits over it and never rolls it back):
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testQuarantinedDrainRefusesAndRetainsNotRollsBack',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if dictDrain["listQuarantinedOperationIds"]:
+        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
+        return (S_TRANSFER_REFUSED, {''',
+        new='''    if False:
+        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
+        return (S_TRANSFER_REFUSED, {''',
+    ),
 ]

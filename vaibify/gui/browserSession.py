@@ -25,9 +25,19 @@ __all__ = [
     "BrowserSessionRecord",
     "S_SESSION_STATE_ACTIVE",
     "S_SESSION_STATE_REVOKED",
+    "S_CAPABILITY_OPERATION_BOOTSTRAP",
+    "S_CAPABILITY_OPERATION_TRANSFER",
     "fdictCreateBrowserSessionStore",
     "fsMintBootstrapCapability",
+    "fsMintTransferCapability",
+    "fsCapabilityOperationKind",
     "ftRedeemCapability",
+    "fdictInspectTransferCapability",
+    "fnExpireCapability",
+    "ftMintDetachedSessionRecord",
+    "fnDiscardSessionRecord",
+    "fnRevokeSessionById",
+    "fnStoreTransferResult",
     "fbValidateCredential",
     "fsSessionIdForCredential",
     "I_CAPABILITY_TTL_SECONDS",
@@ -46,16 +56,36 @@ _lockBrowserSessions = threading.Lock()
 S_SESSION_STATE_ACTIVE = "ACTIVE"
 S_SESSION_STATE_REVOKED = "REVOKED"
 
+# The capability operations (design §2.4): "bootstrap" mints a plain
+# browser session; "transfer" additionally commits the host-authorized
+# ownership transfer (slice 5) and is minted ONLY over the
+# peer-authenticated host control socket, never by the hub launch path.
+S_CAPABILITY_OPERATION_BOOTSTRAP = "bootstrap"
+S_CAPABILITY_OPERATION_TRANSFER = "transfer"
+
 
 @dataclass
 class BootstrapCapability:
-    """A one-time launch capability exchanged for a browser credential."""
+    """A one-time launch capability exchanged for a browser credential.
+
+    A ``transfer`` capability additionally names its target container
+    and the owner generation it expects (the ABA guard: a stale
+    capability can never displace a successor owner), and stores the
+    committed result tuple so the same ARMED→REDEEMED→EXPIRED bounded
+    replay that recovers a lost bootstrap response also recovers a
+    lost transfer response (design §2.4, case 3).
+    """
 
     sCapability: str
     sState: str            # ARMED | REDEEMED | EXPIRED
     fMintedMonotonic: float
+    sOperation: str = S_CAPABILITY_OPERATION_BOOTSTRAP
+    sContainerName: str = ""
+    iExpectedOwnerGeneration: int = 0
     sIssuedCredential: str = ""
     sIssuedSessionId: str = ""
+    sIssuedLease: str = ""
+    iIssuedOwnerGeneration: int = 0
 
 
 @dataclass
@@ -103,6 +133,12 @@ def ftRedeemCapability(dictStore, sCapability):
         recordCap = dictStore["dictCapabilities"].get(sCapability)
         if recordCap is None:
             return (None, None)
+        if recordCap.sOperation != S_CAPABILITY_OPERATION_BOOTSTRAP:
+            # A transfer capability must commit the transfer
+            # transaction (sessionLifecycle.ftTransferOwnership); the
+            # plain bootstrap lane may never redeem it into a bare
+            # credential with the ownership commit skipped.
+            return (None, None)
         fNow = time.monotonic()
         if fNow - recordCap.fMintedMonotonic > I_CAPABILITY_TTL_SECONDS:
             recordCap.sState = "EXPIRED"
@@ -116,6 +152,15 @@ def ftRedeemCapability(dictStore, sCapability):
 
 def _tMintSessionForCapability(dictStore, recordCap, fNow):
     """Mint the session for a first redemption. Caller holds the lock."""
+    sSessionId, sCredential = _tCreateSessionRecordLocked(dictStore, fNow)
+    recordCap.sState = "REDEEMED"
+    recordCap.sIssuedSessionId = sSessionId
+    recordCap.sIssuedCredential = sCredential
+    return (sSessionId, sCredential)
+
+
+def _tCreateSessionRecordLocked(dictStore, fNow):
+    """Create and store a fresh session record. Caller holds the lock."""
     sSessionId = secrets.token_urlsafe(16)
     sCredential = secrets.token_urlsafe(32)
     dictStore["dictSessionsByCredential"][sCredential] = BrowserSessionRecord(
@@ -124,10 +169,142 @@ def _tMintSessionForCapability(dictStore, recordCap, fNow):
         fCreatedMonotonic=fNow,
         fLastSeenMonotonic=fNow,
     )
-    recordCap.sState = "REDEEMED"
-    recordCap.sIssuedSessionId = sSessionId
-    recordCap.sIssuedCredential = sCredential
     return (sSessionId, sCredential)
+
+
+# ---------------------------------------------------------------------
+# The transfer capability lane (design §2.4, slice 5). Minted only over
+# the host control socket; redeemed by sessionLifecycle.ftTransferOwnership.
+# ---------------------------------------------------------------------
+
+def fsMintTransferCapability(
+    dictStore, sContainerName, iExpectedOwnerGeneration,
+):
+    """Mint an ARMED transfer capability bound to a container+generation."""
+    sCapability = secrets.token_urlsafe(32)
+    with _lockBrowserSessions:
+        dictStore["dictCapabilities"][sCapability] = BootstrapCapability(
+            sCapability=sCapability,
+            sState="ARMED",
+            fMintedMonotonic=time.monotonic(),
+            sOperation=S_CAPABILITY_OPERATION_TRANSFER,
+            sContainerName=sContainerName,
+            iExpectedOwnerGeneration=iExpectedOwnerGeneration,
+        )
+    return sCapability
+
+
+def fsCapabilityOperationKind(dictStore, sCapability):
+    """Return a known capability's operation kind, or '' when unknown."""
+    with _lockBrowserSessions:
+        recordCap = dictStore.get("dictCapabilities", {}).get(sCapability)
+        return recordCap.sOperation if recordCap is not None else ""
+
+
+def fdictInspectTransferCapability(dictStore, sCapability):
+    """Return a transfer capability's live view, or None when unknown.
+
+    Applies the TTL on inspection exactly as :func:`ftRedeemCapability`
+    does on redemption: a capability past its window is marked EXPIRED
+    whatever its state, so a stale REDEEMED result is never replayed
+    forever. ``dictStoredResult`` carries the committed transfer tuple
+    for a REDEEMED capability still inside the replay window.
+    """
+    with _lockBrowserSessions:
+        recordCap = dictStore.get("dictCapabilities", {}).get(sCapability)
+        if recordCap is None or (
+            recordCap.sOperation != S_CAPABILITY_OPERATION_TRANSFER
+        ):
+            return None
+        fRemainingTtl = I_CAPABILITY_TTL_SECONDS - (
+            time.monotonic() - recordCap.fMintedMonotonic
+        )
+        if fRemainingTtl <= 0:
+            recordCap.sState = "EXPIRED"
+        return {
+            "sState": recordCap.sState,
+            "fRemainingTtlSeconds": max(0.0, fRemainingTtl),
+            "sContainerName": recordCap.sContainerName,
+            "iExpectedOwnerGeneration": recordCap.iExpectedOwnerGeneration,
+            "dictStoredResult": _fdictStoredTransferResult(recordCap),
+        }
+
+
+def _fdictStoredTransferResult(recordCap):
+    """Return the stored transfer tuple, or None while not REDEEMED."""
+    if recordCap.sState != "REDEEMED":
+        return None
+    return {
+        "sSessionId": recordCap.sIssuedSessionId,
+        "sCredential": recordCap.sIssuedCredential,
+        "sLeaseId": recordCap.sIssuedLease,
+        "iOwnerGeneration": recordCap.iIssuedOwnerGeneration,
+    }
+
+
+def fnExpireCapability(dictStore, sCapability):
+    """Mark a capability EXPIRED so it can never be redeemed or replayed."""
+    with _lockBrowserSessions:
+        recordCap = dictStore.get("dictCapabilities", {}).get(sCapability)
+        if recordCap is not None:
+            recordCap.sState = "EXPIRED"
+
+
+def ftMintDetachedSessionRecord(dictStore):
+    """Mint a session record bound to no capability yet (transfer pre-mint).
+
+    The transfer transaction pre-mints everything reversible before it
+    fences terminals (design §6.1); the session becomes reachable only
+    when :func:`fnStoreTransferResult` binds it to the capability at
+    the commit point, and :func:`fnDiscardSessionRecord` rolls it back
+    on any pre-commit refusal.
+    """
+    with _lockBrowserSessions:
+        return _tCreateSessionRecordLocked(dictStore, time.monotonic())
+
+
+def fnDiscardSessionRecord(dictStore, sCredential):
+    """Remove a pre-minted, never-issued session record (rollback)."""
+    with _lockBrowserSessions:
+        dictStore.get("dictSessionsByCredential", {}).pop(sCredential, None)
+
+
+def fnRevokeSessionById(dictStore, sSessionId):
+    """Revoke every ACTIVE record of a session id; return True if any."""
+    if not sSessionId:
+        return False
+    bRevokedAny = False
+    with _lockBrowserSessions:
+        for recordSession in dictStore.get(
+            "dictSessionsByCredential", {},
+        ).values():
+            if recordSession.sSessionId == sSessionId and (
+                recordSession.sState == S_SESSION_STATE_ACTIVE
+            ):
+                recordSession.sState = S_SESSION_STATE_REVOKED
+                bRevokedAny = True
+    return bRevokedAny
+
+
+def fnStoreTransferResult(
+    dictStore, sCapability, sSessionId, sCredential, sLeaseId,
+    iOwnerGeneration,
+):
+    """Mark a transfer capability REDEEMED with its stored result tuple.
+
+    Part of the transfer's synchronous commit (design §6.1): after this
+    the bounded replay returns exactly this tuple, so a lost response
+    is recoverable without a second transfer.
+    """
+    with _lockBrowserSessions:
+        recordCap = dictStore.get("dictCapabilities", {}).get(sCapability)
+        if recordCap is None:
+            return
+        recordCap.sState = "REDEEMED"
+        recordCap.sIssuedSessionId = sSessionId
+        recordCap.sIssuedCredential = sCredential
+        recordCap.sIssuedLease = sLeaseId
+        recordCap.iIssuedOwnerGeneration = iOwnerGeneration
 
 
 def fbValidateCredential(dictStore, sCredential):
