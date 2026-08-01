@@ -87,6 +87,26 @@ def fnRegisterLifespanTask(app, fnStart, fnStop):
     app.state.listLifespanShutdown.append(fnStop)
 
 
+async def fnCancelBackgroundTask(app, sTaskAttributeName):
+    """Cancel a registered background loop and await its clean exit.
+
+    Every background loop here stores its task on ``app.state`` under
+    its own attribute name and stops the same way at shutdown; this is
+    that one way. A task that already finished is left alone, and both
+    ``CancelledError`` and any exception the loop was carrying are
+    swallowed so one loop's failure cannot abort the remaining
+    shutdown hooks.
+    """
+    taskBackground = getattr(app.state, sTaskAttributeName, None)
+    if taskBackground is None or taskBackground.done():
+        return
+    taskBackground.cancel()
+    try:
+        await taskBackground
+    except (asyncio.CancelledError, Exception):
+        pass
+
+
 # Interval between periodic container-cache sweeps. The eviction work
 # itself is cheap (one Docker list + a handful of dict pops); the cap
 # determines worst-case latency between a container disappearing and
@@ -118,14 +138,7 @@ def _fnRegisterPeriodicContainerSweep(app, dictCtx, fInterval=None):
         app.state.taskContainerSweep = taskSweep
 
     async def fnStopSweepTask(app):
-        taskSweep = getattr(app.state, "taskContainerSweep", None)
-        if taskSweep is None or taskSweep.done():
-            return
-        taskSweep.cancel()
-        try:
-            await taskSweep
-        except (asyncio.CancelledError, Exception):
-            pass
+        await fnCancelBackgroundTask(app, "taskContainerSweep")
 
     fnRegisterLifespanTask(app, fnStartSweepTask, fnStopSweepTask)
 
@@ -517,13 +530,71 @@ def _fnRegisterIdleShutdownWatchdog(app, dictCtx, fInterval=None):
         )
 
     async def fnStopWatchdog(app):
-        taskWatchdog = getattr(app.state, "taskIdleWatchdog", None)
-        if taskWatchdog is None or taskWatchdog.done():
-            return
-        taskWatchdog.cancel()
-        try:
-            await taskWatchdog
-        except (asyncio.CancelledError, Exception):
-            pass
+        await fnCancelBackgroundTask(app, "taskIdleWatchdog")
 
     fnRegisterLifespanTask(app, fnStartWatchdog, fnStopWatchdog)
+
+
+async def _fnSessionLifecycleEvaluatorLoop(app, fInterval):
+    """Run the session-lifecycle evaluator forever on its own cadence.
+
+    Exits cleanly on ``CancelledError`` (lifespan shutdown). Any other
+    exception is logged and the loop continues: one failed pass must
+    never leave the hub with no orphan trigger and no session expiry
+    for the rest of the process lifetime.
+    """
+    from . import sessionLifecycle
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            await sessionLifecycle.fnEvaluateSessionLifecycle(app.state)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning(
+                "Session-lifecycle evaluator iteration failed",
+                exc_info=True,
+            )
+
+
+def _fnRegisterSessionLifecycleEvaluator(app, fInterval=None):
+    """Install the session-lifecycle evaluator on the lifespan.
+
+    A SEPARATE loop from the 60 s idle watchdog, on the design §11
+    cadence (``F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS``, ~5 s), because
+    the watchdog's period is coarser than the reconnect window it would
+    be policing: a 15 s window evaluated once a minute behaves as a
+    60 s window.
+
+    Worst-case detection latency: a condition that becomes true one
+    instant after a tick starts is committed on the NEXT tick, so the
+    lag between a condition holding and its commit is at most one
+    cadence plus one pass's duration. End to end that makes the worst
+    case ``F_RECONNECT_WINDOW_SECONDS`` + ~5 s from the last socket
+    close to the orphan commit, and ``F_SLIDING_IDLE_SECONDS`` + ~5 s
+    from the last request to a session's expiry.
+
+    The task is cancelled by the lifespan's shutdown hooks like the
+    sweep and the watchdog. It is registered here, alongside them and
+    before the thread-pool executor, so the design §8 ordered shutdown
+    — close admissions, drain the guarded workers, stop keep-alive,
+    release the flocks — is untouched; a pass that lands during that
+    sequence can only orphan (which retains the flock and the work) or
+    revoke a credential, never release a record.
+    """
+    from . import sessionLifecycle
+    fIntervalEffective = (
+        fInterval if fInterval is not None
+        else sessionLifecycle.F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS
+    )
+
+    async def fnStartEvaluator(app):
+        app.state.taskSessionLifecycleEvaluator = asyncio.create_task(
+            _fnSessionLifecycleEvaluatorLoop(app, fIntervalEffective),
+            name="vaibify-session-lifecycle",
+        )
+
+    async def fnStopEvaluator(app):
+        await fnCancelBackgroundTask(app, "taskSessionLifecycleEvaluator")
+
+    fnRegisterLifespanTask(app, fnStartEvaluator, fnStopEvaluator)

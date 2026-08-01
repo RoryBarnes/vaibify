@@ -41,6 +41,7 @@ __all__ = [
     "fnStoreTransferResult",
     "fbValidateCredential",
     "fsSessionIdForCredential",
+    "fdictActiveSessionLifetimes",
     "I_CAPABILITY_TTL_SECONDS",
 ]
 
@@ -347,6 +348,46 @@ def fbValidateCredential(dictStore, sCredential):
             return False
         recordSession.fLastSeenMonotonic = time.monotonic()
         return True
+
+
+def fdictActiveSessionLifetimes(dictStore):
+    """Return ``{sSessionId: {fIdleSeconds, fAgeSeconds}}`` for ACTIVE records.
+
+    The lifecycle evaluator's read of the two expiry clocks (design
+    §11), taken under the store lock so a concurrent mint or revocation
+    is never observed half-applied. Policy — the windows, the live-socket
+    veto, and what an expiry commits — stays in ``sessionLifecycle``;
+    this function only reports the clocks.
+
+    A session id carrying several credential records (a replayed
+    bootstrap re-issues the SAME credential, so this is rare) is as
+    recently seen as its most recent record and as old as its earliest
+    one: the reading that never expires a session some live credential
+    is still refreshing.
+    """
+    fNow = time.monotonic()
+    dictLifetimes = {}
+    with _lockBrowserSessions:
+        for recordSession in dictStore.get(
+            "dictSessionsByCredential", {},
+        ).values():
+            if recordSession.sState != S_SESSION_STATE_ACTIVE:
+                continue
+            dictExisting = dictLifetimes.get(recordSession.sSessionId)
+            dictLifetime = {
+                "fIdleSeconds": fNow - recordSession.fLastSeenMonotonic,
+                "fAgeSeconds": fNow - recordSession.fCreatedMonotonic,
+            }
+            if dictExisting is not None:
+                dictLifetime["fIdleSeconds"] = min(
+                    dictExisting["fIdleSeconds"],
+                    dictLifetime["fIdleSeconds"],
+                )
+                dictLifetime["fAgeSeconds"] = max(
+                    dictExisting["fAgeSeconds"], dictLifetime["fAgeSeconds"],
+                )
+            dictLifetimes[recordSession.sSessionId] = dictLifetime
+    return dictLifetimes
 
 
 def fsSessionIdForCredential(dictStore, sCredential):

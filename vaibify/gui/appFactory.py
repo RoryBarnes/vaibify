@@ -107,7 +107,7 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
 
 
 def _fnRegisterBackgroundTasks(app, dictCtx):
-    """Install the sweep, idle-watchdog, and threadpool lifespan tasks.
+    """Install the sweep, watchdog, evaluator, and threadpool tasks.
 
     The thread-pool executor is registered LAST so its shutdown hook is
     appended after the sweep and idle-watchdog stop hooks. Shutdown hooks
@@ -120,6 +120,7 @@ def _fnRegisterBackgroundTasks(app, dictCtx):
     """
     serverLifespan._fnRegisterPeriodicContainerSweep(app, dictCtx)
     serverLifespan._fnRegisterIdleShutdownWatchdog(app, dictCtx)
+    serverLifespan._fnRegisterSessionLifecycleEvaluator(app)
     serverLifespan._fnRegisterDefaultThreadPoolExecutor(app)
 
 

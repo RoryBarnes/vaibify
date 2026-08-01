@@ -72,6 +72,8 @@ __all__ = [
     "ftTransferOwnership",
     "fnOrphanSession",
     "fnOrphanOwnersPastReconnectWindow",
+    "fnExpireIdleBrowserSessions",
+    "fnEvaluateSessionLifecycle",
 ]
 
 import asyncio
@@ -821,3 +823,101 @@ def _fbOwnerPastReconnectWindow(recordOwner):
         time.monotonic() - recordOwner.fLastSeenMonotonic
         >= F_RECONNECT_WINDOW_SECONDS
     )
+
+
+# ---------------------------------------------------------------------
+# Owner-aware session expiry and the lifecycle evaluator (design §11).
+# ---------------------------------------------------------------------
+
+async def fnEvaluateSessionLifecycle(appState):
+    """Run one lifecycle-evaluator pass over every owner and session.
+
+    The single body of the ~5 s evaluator loop (design §11), whose
+    scheduling lives in ``serverLifespan``. Two passes, in this order:
+    the §4 zero-sockets orphan trigger first, so an owner whose browser
+    is already gone is orphaned by its own (short) reconnect window
+    rather than waiting out the (long) session windows; then the
+    owner-aware session sweep, which by then sees the orphan's
+    revocation already committed and has nothing left to do for it.
+    """
+    await fnOrphanOwnersPastReconnectWindow(appState)
+    await fnExpireIdleBrowserSessions(appState)
+
+
+async def fnExpireIdleBrowserSessions(appState):
+    """Expire every browser session past its window — owner-aware.
+
+    The §11 session sweep. A session that bootstraps and browses the
+    picker without ever claiming has a credential and no owner record,
+    so owner-record orphaning (§5) alone would let it live forever;
+    this pass is what bounds it. It must be OWNER-AWARE, though: an
+    expired session that OWNS a container is committed through
+    :func:`fnOrphanSession`, never a bare revoke, because a bare revoke
+    would strand an ACTIVE record whose owner can no longer
+    authenticate and which the orphan-only reaper conditions cannot
+    release.
+
+    Expiry is re-evaluated under the container-mutation lock through
+    ``fbStillWarranted``, so a record that was transferred or already
+    orphaned between detection and commit is left to its new owner.
+    """
+    dictStore = getattr(appState, "dictBrowserSessions", None)
+    if not dictStore:
+        return
+    dictContainerOwners = getattr(appState, "dictContainerOwners", {})
+    dictSessionOwner = getattr(appState, "dictSessionOwner", None) or {}
+    dictLifetimes = browserSession.fdictActiveSessionLifetimes(dictStore)
+    for sSessionId, dictLifetime in dictLifetimes.items():
+        sName = dictSessionOwner.get(sSessionId, "")
+        recordOwner = dictContainerOwners.get(sName) if sName else None
+        if not _fbBrowserSessionHasExpired(dictLifetime, recordOwner):
+            continue
+        await _fnCommitSessionExpiry(
+            appState, dictStore, sName, recordOwner, sSessionId,
+        )
+
+
+def _fbBrowserSessionHasExpired(dictLifetime, recordOwner):
+    """Return True when a session's sliding-idle window has run out.
+
+    A live WebSocket VETOES sliding-idle (design §11): a quiet but
+    connected pipeline socket is activity, and the socket layer never
+    refreshes the credential's last-seen stamp, so without the veto a
+    dashboard that only streams events would have its credential
+    revoked under the researcher.
+    """
+    if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
+        return False
+    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS
+
+
+async def _fnCommitSessionExpiry(
+    appState, dictStore, sName, recordOwner, sSessionId,
+):
+    """Commit one expired session: orphan its owner, or revoke it bare."""
+    if not _fbOwnerRecordIsOwnedByActiveSession(recordOwner, sSessionId):
+        browserSession.fnRevokeSessionById(dictStore, sSessionId)
+        return
+
+    def fbStillOwnedByThisSession(recordAny):
+        return _fbOwnerRecordIsOwnedByActiveSession(recordAny, sSessionId)
+
+    await fnOrphanSession(
+        appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
+    )
+
+
+def _fbOwnerRecordIsOwnedByActiveSession(recordOwner, sSessionId):
+    """Return True when an ACTIVE owner record is bound to this session.
+
+    A record bound to a DIFFERENT session (a host transfer rebound it
+    after the reverse index was read) or already ORPHANED must not be
+    orphaned on this session's behalf: the first belongs to a
+    successor, and the second already revoked this credential in its
+    own commit.
+    """
+    if recordOwner is None:
+        return False
+    if recordOwner.sState != containerOwnership.S_OWNER_STATE_ACTIVE:
+        return False
+    return recordOwner.sBrowserSessionId == sSessionId

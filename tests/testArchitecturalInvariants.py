@@ -3814,7 +3814,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4401, never dispatched. The check itself is built in
     # webSocketAuthorization; these are the two refusal sites on the
     # loops this module already owns.
-    "pipelineServer.py": 2435,
+    # +2 (2026-08-01): the session-lifecycle evaluator joins the
+    # serverLifespan re-export block (its registration and its loop),
+    # like the sweep and the idle watchdog beside it.
+    "pipelineServer.py": 2437,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -3830,7 +3833,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # transitions apart would smear the one place that may commit an
     # ownership state change across several files; every function here
     # changes for the same reason (the §1 state machine).
-    "sessionLifecycle.py": 830,
+    # +100 (2026-08-01): ORPHANED_SESSION slice 6 — the owner-aware
+    # session sweep and the evaluator pass that drives it. It belongs
+    # beside the orphan transition it commits through: the sweep's
+    # whole point is that an expired OWNING session must go through
+    # fnOrphanSession, never a bare revoke, so splitting it out would
+    # put the caller and the only correct commit path in different
+    # files. The evaluator's SCHEDULING lives in serverLifespan.
+    "sessionLifecycle.py": 930,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

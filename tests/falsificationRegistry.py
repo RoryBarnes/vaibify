@@ -3488,4 +3488,31 @@ def _fdictEntry(sRel):
             await websocket.close(code=4401)
             break''',
     ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 6, checkpoint 2 — the owner-aware session
+    # sweep and the live-socket veto on sliding idle (design §11).
+    # ------------------------------------------------------------------
+    # The owner-aware rule: an expired OWNING session must be committed
+    # through the orphan transition, never a bare credential revoke that
+    # would strand an ACTIVE record no reaper condition can release.
+    Falsification(
+        nodeid='tests/testSessionLifecycleEvaluator.py::testExpiredOwningSessionIsOrphanedNotBareRevoked',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    await fnOrphanSession(
+        appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
+    )''',
+        new='''    browserSession.fnRevokeSessionById(dictStore, sSessionId)''',
+    ),
+    # A live WebSocket vetoes sliding idle: the socket layer never
+    # refreshes the credential stamp, so without the veto a streaming
+    # dashboard is revoked under the researcher.
+    Falsification(
+        nodeid='tests/testSessionLifecycleEvaluator.py::testLiveWebSocketVetoesSlidingIdle',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if recordOwner is not None and recordOwner.iLiveConnectionCount > 0:
+        return False
+    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
+        new='''    return dictLifetime["fIdleSeconds"] >= F_SLIDING_IDLE_SECONDS''',
+    ),
 ]
