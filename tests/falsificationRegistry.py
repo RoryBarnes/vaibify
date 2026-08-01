@@ -2976,4 +2976,80 @@ def _fdictEntry(sRel):
         new='''        taskReader.cancel()
         session.fnClose()''',
     ),
+
+    # --- Slice 3d, real-container halves (cases 43, 44, 45). These
+    # five tests are docker_live-marked: they SKIP without a reachable
+    # daemon (VAIBIFY_REQUIRE_DOCKER_DAEMON turns the skip into a
+    # failure in the opt-in CI job), so kill-confirming them REQUIRES
+    # a live daemon — under a daemon-less reconfirm run the mutant
+    # survives vacuously via the skip, which is a limit of the
+    # harness, not of the tests. Each was kill-confirmed by hand
+    # against Docker 28.x. Case 43's transfer-commit half and case
+    # 44's transfer/expiry halves land with slices 5 and 6.
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_prover_reports_survivors_after_exec_inspect_says_dead',
+        source='vaibify/docker/dockerConnection.py',
+        old='''        return {
+            "bConclusive": True, "iMemberCount": iMemberCount,
+            "sDetail": f"{iMemberCount} live member(s)",
+        }''',
+        new='''        return {
+            "bConclusive": True, "iMemberCount": 0,
+            "sDetail": f"{iMemberCount} live member(s)",
+        }''',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_release_kills_the_detached_descendant_or_quarantines',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''        if containerOwnership.fbReleaseWouldBePermitted(
+            dictContainerOwners, sName, sLeaseId,
+            sBrowserSessionId=sBrowserSessionId,
+        ):''',
+        new='''        if False:''',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_reaper_kills_the_detached_descendant_or_quarantines',
+        source='vaibify/gui/serverLifespan.py',
+        old='''    _fnDrainTerminalsOfReapableOwners(
+        app, dictContainerOwners, fbGuardedWorkLive,
+    )
+    containerOwnership.flistReapIdleOwnerships(
+        dictContainerOwners,
+        lambda sName: (
+            fbGuardedWorkLive(sName)
+            or terminalContainment.fbContainerHasLiveTerminalRecords(
+                app.state, sName,
+            )
+        ),
+        dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
+    )''',
+        new='''    containerOwnership.flistReapIdleOwnerships(
+        dictContainerOwners,
+        lambda sName: fbGuardedWorkLive(sName),
+        dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
+    )''',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_shutdown_drain_kills_the_detached_descendant_or_quarantines',
+        source='vaibify/gui/appFactory.py',
+        old='''    async def fnDrainGuardedMutations(app):
+        await commitCarrier.fdictDrainMutationSupervisors(app.state)
+        await asyncio.to_thread(
+            terminalContainment.fdictDrainAllTerminalRecords, app.state,
+        )''',
+        new='''    async def fnDrainGuardedMutations(app):
+        await commitCarrier.fdictDrainMutationSupervisors(app.state)''',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalContainmentLive.py::test_two_real_terminals_and_a_pipeline_record_settle_independently',
+        source='vaibify/config/operationJournal.py',
+        old='''                "reconciliation transaction instead"
+            )
+        del dictPayload["dictOperations"][sOperationId]
+        _fnStoreJournalPayload(sContainerName, dictPayload)''',
+        new='''                "reconciliation transaction instead"
+            )
+        dictPayload["dictOperations"] = {}
+        _fnStoreJournalPayload(sContainerName, dictPayload)''',
+    ),
 ]
