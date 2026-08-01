@@ -3020,6 +3020,7 @@ def _fdictEntry(sRel):
             or terminalContainment.fbContainerHasLiveTerminalRecords(
                 app.state, sName,
             )
+            or _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName)
         ),
         dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )''',
@@ -3258,5 +3259,66 @@ def _fdictEntry(sRel):
         source='vaibify/cli/commandOpen.py',
         old='    return dictMinted["sTransferCapability"]',
         new='    return "an-unminted-transfer-token"',
+    ),
+
+    # ------------------------------------------------------------------
+    # ORPHANED_SESSION slice 5, checkpoint 3 — the safe reaper's
+    # ORPHANED->RELEASED conditions and the agent-liveness stamps
+    # (design §7; cases 7, 20, and the orphaned half of 32).
+    # ------------------------------------------------------------------
+    # Case 7, orphan-grace half (the reap grace measures from the
+    # orphan stamp, never from the last socket):
+    Falsification(
+        nodeid='tests/testSafeReaper.py::testOrphanedReapGraceRunsFromTheOrphanStampNotTheLastSocket',
+        source='vaibify/gui/containerOwnership.py',
+        old='''    fOrphanedElapsedSeconds = (
+        fNowMonotonic - recordOwner.fOrphanedSinceMonotonic
+    )''',
+        new='''    fOrphanedElapsedSeconds = (
+        fNowMonotonic - recordOwner.fLastSeenMonotonic
+    )''',
+    ),
+    # Case 7, agent-stamp half (reap succeeds only with a STALE agent
+    # activity stamp):
+    Falsification(
+        nodeid='tests/testSafeReaper.py::testOrphanedReapRequiresAStaleAgentActivityStamp',
+        source='vaibify/gui/containerOwnership.py',
+        old='''    if recordOwner.fLastAgentActivityMonotonic > 0.0 and (
+        fNowMonotonic - recordOwner.fLastAgentActivityMonotonic
+        < fGraceSeconds
+    ):
+        return False''',
+        new='''    if False:
+        return False''',
+    ),
+    # Case 7, journal half (ORPHANED->RELEASED requires every journal
+    # record settled; the veto lives in the reaper loop):
+    Falsification(
+        nodeid='tests/testSafeReaper.py::testOrphanedReapVetoedWhileAJournalRecordIsUnsettled',
+        source='vaibify/gui/serverLifespan.py',
+        old='            or _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName)',
+        new='            or False',
+    ),
+    # Case 32, orphaned half (the reaper and a cancelling durable task
+    # cannot both release the record; same busy-veto mutation as the
+    # carrier half, killed here through an ORPHANED_SESSION record):
+    Falsification(
+        nodeid='tests/testSafeReaper.py::testOrphanedReapAndCancelCannotBothReleaseTheRecord',
+        source='vaibify/gui/serverLifespan.py',
+        old='''    def fbGuardedWorkLive(sName):
+        return (
+            commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
+            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+        )''',
+        new='''    def fbGuardedWorkLive(sName):
+        return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
+    ),
+    # Case 20, slice-5 half (an admitted agent request pins the record
+    # for its FULL duration through the in-flight bracket):
+    Falsification(
+        nodeid='tests/testSafeReaper.py::testLongRunningAgentRequestHoldsTheRecordLiveFullDuration',
+        source='vaibify/gui/serverMiddleware.py',
+        old='    recordOwner.iInFlightAgentRequests += 1',
+        new='    recordOwner.iInFlightAgentRequests += 0',
     ),
 ]

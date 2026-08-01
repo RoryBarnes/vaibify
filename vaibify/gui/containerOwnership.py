@@ -36,6 +36,7 @@ __all__ = [
     "fsMintAgentToken",
     "fsAgentTokenForName",
     "fbAgentTokenAuthorizesContainerId",
+    "frecordOwnerAuthorizedByAgentToken",
     "fsConflictingHeldContainer",
     "ftdictClaim",
     "fbBrowserSessionOwnsLease",
@@ -239,23 +240,34 @@ def fsAgentTokenForName(dictContainerOwners, sName):
 def fbAgentTokenAuthorizesContainerId(
     dictContainerOwners, sPresentedToken, sContainerId,
 ):
-    """Return True when a presented agent token owns ``sContainerId``.
+    """Return True when a presented agent token owns ``sContainerId``."""
+    return frecordOwnerAuthorizedByAgentToken(
+        dictContainerOwners, sPresentedToken, sContainerId,
+    ) is not None
+
+
+def frecordOwnerAuthorizedByAgentToken(
+    dictContainerOwners, sPresentedToken, sContainerId,
+):
+    """Return the OwnerRecord a presented agent token owns, or None.
 
     The per-container token is the proof of which container the agent
     speaks for; it authorizes only the container whose owner record both
     minted it and serves that Docker id. An empty token or id never
-    matches, so a request that names no container fails closed.
+    matches, so a request that names no container fails closed. The
+    record itself is returned so the middleware can stamp agent
+    liveness (design §7) on the same authority it authorized with.
     """
     if not sPresentedToken or not sContainerId:
-        return False
+        return None
     for recordOwner in dictContainerOwners.values():
         if (
             recordOwner.sAgentToken
             and recordOwner.sAgentToken == sPresentedToken
             and recordOwner.sContainerId == sContainerId
         ):
-            return True
-    return False
+            return recordOwner
+    return None
 
 
 def fsConflictingHeldContainer(dictSessionOwner, sBrowserSessionId, sName):
@@ -669,13 +681,44 @@ def fbOwnerIsReapable(recordOwner, fGraceSeconds=_F_GRACE_SECONDS):
     here, so this predicate stays a pure function of the record. A
     poisoned record is never reapable: reaping would release the flock
     over a force-abandoned worker whose death is unproven (design §2.1).
+    An ACTIVE record keeps the idle-grace reap measured from its last
+    live socket; an ORPHANED_SESSION record answers the stricter §7
+    conditions instead.
     """
     if getattr(recordOwner, "poison", None) is not None:
         return False
     if recordOwner.iLiveConnectionCount > 0:
         return False
+    if recordOwner.sState == S_OWNER_STATE_ORPHANED_SESSION:
+        return _fbOrphanedRecordIsReapable(recordOwner, fGraceSeconds)
     fElapsedSeconds = time.monotonic() - recordOwner.fLastSeenMonotonic
     return fElapsedSeconds >= fGraceSeconds
+
+
+def _fbOrphanedRecordIsReapable(recordOwner, fGraceSeconds):
+    """Answer the record-local ORPHANED→RELEASED conditions (design §7).
+
+    The reap grace runs from the ORPHAN stamp, never from the last
+    socket, and a live in-container agent pins the record two ways: a
+    request still in flight (``iInFlightAgentRequests``, held above
+    zero for a long call's whole duration — case 20) and a fresh
+    activity stamp (``fLastAgentActivityMonotonic``, which must be
+    STALE past the same grace — case 7). The caller-level vetoes —
+    live guarded work, live terminal records, unsettled journal
+    records — stay with the reaper loop, which can see the app state.
+    """
+    fNowMonotonic = time.monotonic()
+    if recordOwner.iInFlightAgentRequests > 0:
+        return False
+    if recordOwner.fLastAgentActivityMonotonic > 0.0 and (
+        fNowMonotonic - recordOwner.fLastAgentActivityMonotonic
+        < fGraceSeconds
+    ):
+        return False
+    fOrphanedElapsedSeconds = (
+        fNowMonotonic - recordOwner.fOrphanedSinceMonotonic
+    )
+    return fOrphanedElapsedSeconds >= fGraceSeconds
 
 
 def _fbOwnerIsReapableNow(

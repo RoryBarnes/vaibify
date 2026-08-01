@@ -382,6 +382,13 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
     terminated-and-proven (or retained-and-quarantined) — a terminal
     exec that outlived its socket is not a dead terminal — and any
     record still live afterwards vetoes the reap outright.
+
+    An ORPHANED_SESSION record is additionally vetoed while ANY of its
+    journaled operation records is unsettled (design §7): the drain
+    above may settle its terminals within this same pass, but a record
+    it quarantined — or any other unsettled operation — retains the
+    orphaned ownership until ``vaibify reconcile`` proves it, so the
+    flock is never freed over work whose fate is unproven.
     """
     if not getattr(app.state, "bReapOwnerships", False):
         return
@@ -405,9 +412,32 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
             or terminalContainment.fbContainerHasLiveTerminalRecords(
                 app.state, sName,
             )
+            or _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName)
         ),
         dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )
+
+
+def _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName):
+    """Veto an ORPHANED record's reap while its journal is unsettled.
+
+    Design §7: ORPHANED→RELEASED requires EVERY journaled operation
+    record settled, and a journal that cannot be read as valid counts
+    as unsettled (fail closed). ACTIVE records keep today's idle-grace
+    reap: their in-process work is already vetoed through the live
+    supervisor, durable-task, and terminal checks, and the write-ahead
+    journal still blocks the NEXT claim at flock acquisition.
+    """
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is None or recordOwner.sState != (
+        containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+    ):
+        return False
+    from vaibify.config import operationJournal
+    dictOutcomeRead = operationJournal.fdictReadJournalOutcome(sName)
+    if dictOutcomeRead["sReadState"] not in ("absent", "valid"):
+        return True
+    return bool(dictOutcomeRead["dictOperations"])
 
 
 def _fnDrainTerminalsOfReapableOwners(

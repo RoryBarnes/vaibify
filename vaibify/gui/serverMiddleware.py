@@ -105,12 +105,51 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
                     "User-only action: ask the researcher to run it "
                     "from the dashboard",
                 )
-            return await call_next(request)
+            return await _fresponseServeAdmittedAgentRequest(
+                request, dictContainerOwners, call_next,
+            )
         if not _fbRequestHasAllowedHost(request):
             return _fresponseJsonError(400, "Invalid Host header")
         if _fbBrowserTokenRejected(request):
             return _fresponseJsonError(401, "Unauthorized")
         return await call_next(request)
+
+
+async def _fresponseServeAdmittedAgentRequest(
+    request, dictContainerOwners, call_next,
+):
+    """Serve an ADMITTED agent-lane request, stamping agent liveness.
+
+    The safe reaper's agent-liveness inputs (design §7): every admitted
+    agent-lane call refreshes ``fLastAgentActivityMonotonic`` and holds
+    ``iInFlightAgentRequests`` above zero for its FULL duration, so a
+    long-running agent request pins its owner record however long it
+    runs (case 20). Only admitted requests reach here — an invalid,
+    cross-container, or catalog-refused call never pins the record.
+
+    Accepted trade-off, recorded per design §7: a compromised agent
+    can hold its own container's record alive indefinitely by polling.
+    That is within the powers the agent already has, and the host-stop
+    path is the backstop; the alternative — reaping under a live agent
+    — would hand the container to a second owner while the first is
+    still acting in it.
+    """
+    recordOwner = containerOwnership.frecordOwnerAuthorizedByAgentToken(
+        dictContainerOwners,
+        _fsAgentPresentedToken(request),
+        _fsContainerIdFromPath(request.url.path),
+    )
+    if recordOwner is None:
+        return await call_next(request)
+    recordOwner.fLastAgentActivityMonotonic = time.monotonic()
+    recordOwner.iInFlightAgentRequests += 1
+    try:
+        return await call_next(request)
+    finally:
+        recordOwner.iInFlightAgentRequests = max(
+            0, recordOwner.iInFlightAgentRequests - 1,
+        )
+        recordOwner.fLastAgentActivityMonotonic = time.monotonic()
 
 
 def fbRequestRidesAgentLane(request):
