@@ -192,6 +192,35 @@ def _ffileRefuseUnsettledJournal(fileHandle, sProjectName, connectionDocker):
     return fileHandle
 
 
+def ffileAcquireReconciliationLock(sProjectName, iPort):
+    """Acquire the exclusive reconciliation lock and return the handle.
+
+    The reconciliation lock IS the same cross-process arbitration
+    primitive the claim path uses — this container's flock — taken in
+    the same stated order: both paths acquire the flock FIRST, then act
+    on the journal (a claim examines it and refuses an unsettled set; a
+    reconciliation proves the set settled and clears the marker LAST,
+    before releasing). Serializing on one flock is what makes
+    reconcile-versus-claim atomic (design §8, case 35): while a
+    reconciliation holds it, a concurrent claim is refused as locked;
+    while a live hub holds it, this acquisition raises
+    ``ContainerLockedError`` and the caller must route the
+    reconciliation to that hub over its host control socket instead.
+
+    Unlike :func:`fnAcquireContainerLock`, the journal gate is NOT
+    applied — refusing a quarantined container here would make every
+    quarantine permanently unclearable.
+    """
+    _fnValidateProjectName(sProjectName)
+    _fnEnsureLockDirectory()
+    sPath = fsLockPathFor(sProjectName)
+    for _ in range(_I_MAX_ACQUIRE_ATTEMPTS):
+        fileHandle = _ffileTryAcquireFlock(sPath, sProjectName, iPort)
+        if fileHandle is not None:
+            return fileHandle
+    raise ContainerLockedError(sProjectName, 0, 0)
+
+
 def _ffileTryAcquireFlock(sPath, sProjectName, iPort):
     """Attempt one flock acquisition; return None when a retry is due.
 

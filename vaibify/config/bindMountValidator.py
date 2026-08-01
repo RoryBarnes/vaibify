@@ -37,6 +37,11 @@ _LIST_HOME_RELATIVE_DENY_PREFIXES = (
     # delete a quarantine marker and un-quarantine a container whose
     # past operations were never proven settled.
     ".vaibify/journal",
+    # The host-control Unix sockets (design §6b/§14): the control plane
+    # is host-only by construction — a container that could mount this
+    # directory would reach the same-UID peer-authenticated socket and
+    # drive reconcile/force-abandon/break-glass from inside.
+    ".vaibify/control",
 )
 
 

@@ -3865,7 +3865,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the claim threads the Docker connection into the journal's
     # automatic tier. Annotating listed containers with host lock and
     # journal state is this module's existing responsibility.
-    "registryRoutes.py": 1167,
+    # +7 (2026-07-31): the poison axis joins the same listing annotation
+    # (design §2.1: a force-abandoned owner surfaces as bPoisoned, the
+    # live in-process mirror of the durable quarantine record).
+    "registryRoutes.py": 1174,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

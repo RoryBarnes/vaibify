@@ -265,6 +265,11 @@ def fbLaneTupleStillCurrent(appState, dictLaneTuple):
     recordOwner = dictContainerOwners.get(dictLaneTuple["sContainerName"])
     if recordOwner is None:
         return False
+    if getattr(recordOwner, "poison", None) is not None:
+        # A poisoned owner record (host force-abandon, design §2.1)
+        # admits NO further mutation on any lane — checked here so all
+        # three carrier modes and the funnel revalidator refuse at once.
+        return False
     if recordOwner.iOwnerGeneration != dictLaneTuple["iOwnerGeneration"]:
         return False
     if dictLaneTuple["sLane"] == S_LANE_AGENT:

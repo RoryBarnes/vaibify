@@ -272,3 +272,36 @@ def test_journal_directory_mount_is_rejected_in_every_direction(
     os.symlink(sJournalDirectory, sSymlinkPath)
     with pytest.raises(BindMountValidationError):
         fnValidateBindMount({"host": sSymlinkPath, "container": "/mnt"})
+
+
+def test_control_socket_directory_mount_is_rejected_in_every_direction(
+    monkeypatch, tmp_path,
+):
+    """Design §6b/§14: the host control sockets are bind-mount-denied.
+
+    The control plane is host-only by construction: every agent inside
+    a container runs as the same UID that owns ``~/.vaibify/control``
+    on the host, so any mount exposing it — the directory itself, an
+    ancestor, a descendant, or a symlink resolving into it — would let
+    a compromised agent connect to the peer-authenticated socket and
+    drive reconcile/force-abandon/break-glass from inside.
+
+    Kills: in bindMountValidator._LIST_HOME_RELATIVE_DENY_PREFIXES,
+    drop the ".vaibify/control" entry (with its comment block), so a
+    mount of the socket directory passes the home-allowlist untouched.
+    """
+    sHome = _ftConfigureHome(monkeypatch, tmp_path)
+    sControlDirectory = str(sHome / ".vaibify" / "control")
+    os.makedirs(sControlDirectory)
+    listHostPaths = [
+        sControlDirectory,
+        str(sHome / ".vaibify"),
+        os.path.join(sControlDirectory, "hub-8123.controlSocket"),
+    ]
+    for sHostPath in listHostPaths:
+        with pytest.raises(BindMountValidationError):
+            fnValidateBindMount({"host": sHostPath, "container": "/mnt"})
+    sSymlinkPath = str(sHome / "innocuousSockets")
+    os.symlink(sControlDirectory, sSymlinkPath)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": sSymlinkPath, "container": "/mnt"})

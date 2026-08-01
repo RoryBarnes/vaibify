@@ -71,6 +71,10 @@ __all__ = [
     "fnRequestOperationCancel",
     "fnMarkOperationNeedsReconciliation",
     "fnSettleOperation",
+    "fnClearOperationsReconciled",
+    "fsComputeJournalFileSha256",
+    "fnAssertJournalIsBreakGlassClearable",
+    "fnBreakGlassClearMalformedJournal",
     "fdictResolveContainerJournal",
 ]
 
@@ -576,6 +580,98 @@ def fnSettleOperation(sContainerName, sOperationId):
             )
         del dictPayload["dictOperations"][sOperationId]
         _fnStoreJournalPayload(sContainerName, dictPayload)
+
+
+def fnClearOperationsReconciled(sContainerName, listOperationIds):
+    """Remove records the reconciliation transaction has proven settled.
+
+    The one clear that may release a ``NEEDS_RECONCILIATION`` record —
+    callable only from the reconciliation transaction
+    (:mod:`vaibify.config.reconciliation`), which proves the holder
+    dead and the effect settled BEFORE calling this, and which holds
+    the exclusive reconciliation lock (the container flock, or the live
+    hub's mutation lock) so the clear is the LAST step of the
+    transaction. Every named id must exist; a missing id means the
+    record set changed since it was proven, and nothing is cleared.
+    """
+    with _LOCK_JOURNAL_WRITE:
+        dictPayload = _fdictLoadPayloadForWrite(sContainerName)
+        for sOperationId in listOperationIds:
+            _fdictRequireOperationRecord(
+                dictPayload, sContainerName, sOperationId,
+            )
+        for sOperationId in listOperationIds:
+            del dictPayload["dictOperations"][sOperationId]
+        _fnStoreJournalPayload(sContainerName, dictPayload)
+
+
+def fsComputeJournalFileSha256(sContainerName):
+    """Return the sha256 of the raw journal bytes, '' when absent.
+
+    The break-glass identity (design §6b): a malformed record has no
+    parseable operation id, so the hash of its raw marker bytes is the
+    only ABA guard a destructive clear can carry.
+    """
+    return _fsComputeHostFileSha256(fsJournalPathFor(sContainerName))
+
+
+def fnAssertJournalIsBreakGlassClearable(sContainerName, sExpectedSha256):
+    """Raise unless the journal is a MALFORMED marker with matching bytes.
+
+    Refuses a ``valid`` journal (ordinary reconciliation owns those),
+    an unknown-NEWER version (upgrading is required — never
+    blind-break), an absent marker, and raw bytes that no longer hash
+    to ``sExpectedSha256`` — a replacement marker written since the
+    caller inspected the file is never the record it named. Callers
+    run this BEFORE any destructive preparation (stopping containers),
+    so a stale or misdirected break-glass has no side effect at all;
+    :func:`fnBreakGlassClearMalformedJournal` re-runs it under the
+    journal lock as the authoritative check.
+    """
+    dictOutcomeRead = fdictReadJournalOutcome(sContainerName)
+    sReadState = dictOutcomeRead["sReadState"]
+    if sReadState == "absent":
+        raise OperationJournalRecordError(
+            f"Container '{sContainerName}' has no journal marker; "
+            "there is nothing to break-glass"
+        )
+    if sReadState == "requiresUpgrade":
+        raise OperationJournalUnreadableError(
+            f"The journal for container '{sContainerName}' uses a "
+            "NEWER schema version; upgrade vaibify instead of "
+            "breaking the glass — a readable record is never "
+            "destroyed blind"
+        )
+    if sReadState == "valid":
+        raise OperationJournalRecordError(
+            f"The journal for container '{sContainerName}' is valid; "
+            "run the ordinary reconciliation transaction instead of "
+            "the break-glass"
+        )
+    sActualSha256 = fsComputeJournalFileSha256(sContainerName)
+    if sActualSha256 != sExpectedSha256:
+        raise OperationJournalRecordError(
+            f"The journal marker for container '{sContainerName}' "
+            "does not match the presented hash; it was replaced "
+            "since it was inspected, and the break-glass clears "
+            "only the record it names"
+        )
+
+
+def fnBreakGlassClearMalformedJournal(sContainerName, sExpectedSha256):
+    """Destructively unlink a MALFORMED journal whose bytes hash-match.
+
+    The documented break-glass (design §8, case 46). The clearability
+    assertion runs under the journal write lock, so a marker replaced
+    after the caller's side-effect-free pre-check is still refused
+    here. Callers must first stop every possibly-relevant container
+    and helper; this function clears only the marker.
+    """
+    with _LOCK_JOURNAL_WRITE:
+        fnAssertJournalIsBreakGlassClearable(
+            sContainerName, sExpectedSha256,
+        )
+        fnUnlinkQuietly(fsJournalPathFor(sContainerName))
 
 
 # ---------------------------------------------------------------------

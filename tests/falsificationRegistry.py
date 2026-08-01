@@ -2702,10 +2702,8 @@ def _fdictEntry(sRel):
     # agent inside a container that could mount this directory could
     # delete a quarantine marker and un-quarantine a container whose
     # past operations were never proven settled.
-    ".vaibify/journal",
-)''',
-        new='''    ".kube",
-)''',
+    ".vaibify/journal",''',
+        new='''    ".kube",''',
     ),
 
     # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).

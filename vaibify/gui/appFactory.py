@@ -94,7 +94,9 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
     if not dictConfig["bIsHub"]:
         return
     from .registryRoutes import fnRegisterRegistryRoutes
+    from .hostControlChannel import fnRegisterHostControlChannel
     fnRegisterRegistryRoutes(app, dictCtx)
+    fnRegisterHostControlChannel(app, dictCtx)
     _fnRegisterHubShutdownStopKeepAlive(app)
     _fnRegisterHubLockLifecycle(app)
 

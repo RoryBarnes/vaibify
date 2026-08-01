@@ -217,6 +217,13 @@ def _fnAnnotateOwnershipState(
             recordOwner is not None
             and recordOwner.sLeaseId != sCallerLease
         )
+        # Honest surfacing of a force-abandoned (poisoned) owner: the
+        # journal annotation already renders the durable quarantine
+        # mirror; this adds the live in-process axis (design §2.1).
+        dictContainer["bPoisoned"] = bool(
+            recordOwner is not None
+            and getattr(recordOwner, "poison", None) is not None
+        )
 
 
 def _fnRejectInvalidProjectName(sName):

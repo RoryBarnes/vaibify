@@ -26,6 +26,7 @@ __all__ = [
     "S_LANE_PIPELINE",
     "S_LANE_TERMINAL",
     "OwnerRecord",
+    "PoisonRecord",
     "ConnectionRecord",
     "fdictCreateOwnerRegistry",
     "fdictCreateSessionOwnerIndex",
@@ -107,6 +108,29 @@ _F_GRACE_SECONDS = ffReadSecondsFromEnvironment(
 
 
 @dataclass
+class PoisonRecord:
+    """A force-abandoned worker's identity — the third orthogonal axis.
+
+    Design §2.1: set ONLY by a host-lane force-abandon over the
+    peer-authenticated control socket, for a wedged guarded worker that
+    cannot be terminated cleanly. While set, the owner record KEEPS its
+    flock and refuses every mutation, claim, transfer, release, and
+    reap — exclusivity is retained, never dropped, so a zombie worker
+    can never be writing a container a second owner also holds. It
+    clears only when the reconciliation transaction proves the worker
+    dead (recycle-proof), which then clears the poison and the durable
+    journal marker last. The durable mirror is the journal record
+    marked ``NEEDS_RECONCILIATION`` at force-abandon time, so the
+    quarantine survives a hub crash.
+    """
+
+    sGuardedOperationId: str
+    sContainerId: str = ""
+    sTaskHandleId: str = ""
+    fAbandonedMonotonic: float = field(default_factory=time.monotonic)
+
+
+@dataclass
 class OwnerRecord:
     """One browser session's ownership of a single container.
 
@@ -146,6 +170,9 @@ class OwnerRecord:
     fLastAgentActivityMonotonic: float = 0.0
     iInFlightAgentRequests: int = 0
     bSocketEverExisted: bool = False
+    # The optional PoisonRecord (design §2.1): None while healthy. See
+    # the PoisonRecord docstring for the refusal semantics while set.
+    poison: object = None
 
 
 @dataclass(eq=False)
@@ -279,6 +306,12 @@ def ftdictClaim(
             dictContainerOwners, sName, iPort, sContainerId,
             sBrowserSessionId, dictSessionOwner, connectionDocker,
         )
+    # A poisoned record refuses EVERY claim — including the owner's own
+    # same-lease reclaim and the reapable take-over — because a
+    # force-abandoned worker's death is unproven and exclusivity must
+    # be retained until reconciliation proves it (design §2.1).
+    if getattr(recordOwner, "poison", None) is not None:
+        return (409, _fdictPoisonRefused(sName))
     # The same-lease reclaim stays idempotent only when the owner is
     # unbound (a shared-token, transitional claim carries '') OR the
     # presented session matches the bound owner. A lease match against a
@@ -405,6 +438,20 @@ def _fdictCardinalityRefused(sName, sHeldContainerName):
     }
 
 
+def _fdictPoisonRefused(sName):
+    """Return the 409 body for a poisoned (force-abandoned) container."""
+    return {
+        "sName": sName,
+        "bClaimed": False,
+        "bPoisoned": True,
+        "sMessage": (
+            f"Container '{sName}' carries a force-abandoned operation "
+            "whose worker is not yet proven dead; run 'vaibify "
+            "reconcile' once the worker has exited"
+        ),
+    }
+
+
 def _fdictCrossHubRefused(sName, error):
     """Return the 409 body for a container held by another hub process."""
     return {
@@ -460,6 +507,12 @@ def fnReleaseOwnership(
     """
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
+        return False
+    if getattr(recordOwner, "poison", None) is not None:
+        # A poisoned record refuses release even to its owner: dropping
+        # the flock while a force-abandoned worker's death is unproven
+        # would hand the container to a second owner a zombie may still
+        # write (design §2.1). Reconciliation is the only exit.
         return False
     bBoundOwner = fbBrowserSessionOwnsLease(
         dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
@@ -597,8 +650,12 @@ def fbOwnerIsReapable(recordOwner, fGraceSeconds=_F_GRACE_SECONDS):
     """Return True when a record has no live connection past the grace.
 
     The busy veto (no running pipeline) is applied by the caller, not
-    here, so this predicate stays a pure function of the record.
+    here, so this predicate stays a pure function of the record. A
+    poisoned record is never reapable: reaping would release the flock
+    over a force-abandoned worker whose death is unproven (design §2.1).
     """
+    if getattr(recordOwner, "poison", None) is not None:
+        return False
     if recordOwner.iLiveConnectionCount > 0:
         return False
     fElapsedSeconds = time.monotonic() - recordOwner.fLastSeenMonotonic
