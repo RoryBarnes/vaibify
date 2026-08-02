@@ -36,7 +36,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # somebody classified those rows. Raising it means new call sites
 # shipped unreviewed, which is the state this record exists to make
 # visible.
-I_UNCLASSIFIED_ROW_BUDGET = 287
+I_UNCLASSIFIED_ROW_BUDGET = 304
 
 
 def _fmoduleGenerator():
@@ -325,6 +325,69 @@ def testANameAssignedTwiceIsNotGuessedAt(moduleGenerator):
         "the scan guessed which of two assignments was live"
     )
     assert len(visitor.listUnresolvedSubprocessSites) == 1
+
+
+def testTheScannerSeesADockerSdkMutation(moduleGenerator):
+    """docker-py reaches the daemon without a CLI or a primitive.
+
+    ``vaibify destroy`` removes a volume and an image through the SDK.
+    A scan that looked only for ``subprocess.run(["docker", ...])`` and
+    for named gateway primitives reported on a boundary it had never
+    looked at: neither call produced a row.
+    """
+    listRows = _flistScanSource(moduleGenerator, """
+        def fnRemoveImage(sFullName):
+            dockerClient = docker.from_env()
+            dockerClient.images.remove(sFullName, force=True)
+    """)
+    listSdk = [
+        dictRow for dictRow in listRows
+        if dictRow["sReferenceKind"] == (
+            moduleGenerator.S_REFERENCE_DIRECT_DOCKER_SDK
+        )
+    ]
+    assert len(listSdk) == 1, listRows
+    assert listSdk[0]["sPrimitive"] == "sdk images.remove"
+    assert listSdk[0]["bMutationCapable"] is True
+
+
+def testTheScannerFollowsAnSdkObjectToItsMutation(moduleGenerator):
+    """The mutation is a method on the object the SDK handed back.
+
+    ``volume = client.volumes.get(name)`` then ``volume.remove()``: a
+    chain-only scan sees the READ and misses the delete, which is
+    exactly the shape ``vaibify destroy`` uses.
+    """
+    listRows = _flistScanSource(moduleGenerator, """
+        def fnRemoveVolume(sVolumeName):
+            dockerClient = docker.from_env()
+            volume = dockerClient.volumes.get(sVolumeName)
+            volume.remove(force=True)
+    """)
+    listMutating = [
+        dictRow for dictRow in listRows if dictRow["bMutationCapable"]
+    ]
+    assert [dictRow["sPrimitive"] for dictRow in listMutating] == [
+        "sdk volume.remove",
+    ], listRows
+
+
+def testAnSdkReadIsRecordedAsARead(moduleGenerator):
+    """Listing containers reaches the daemon and changes nothing."""
+    listRows = _flistScanSource(moduleGenerator, """
+        def flistContainers():
+            return docker.from_env().containers.list()
+    """)
+    assert len(listRows) == 1, listRows
+    assert listRows[0]["bMutationCapable"] is False
+
+
+def testANonDockerAttributeCallIsNotRecorded(moduleGenerator):
+    """The SDK scan must not sweep in every attribute call."""
+    assert _flistScanSource(moduleGenerator, """
+        def fnSaveIt(dictRegistry, sKey):
+            dictRegistry.entries.remove(sKey)
+    """) == []
 
 
 def testTwoReferencesInOneFunctionGetDistinctRows(moduleGenerator):

@@ -60,6 +60,12 @@ S_ACCESS_TYPED_READ = "typed-read"
 # the daemon without passing any primitive at all, so a scan that knew
 # only about primitives would report a boundary it had not looked at.
 S_ACCESS_DIRECT_DOCKER_CLI = "direct-docker-cli"
+# A docker-py SDK call assembled outside both gateways. It reaches the
+# daemon through the library rather than the CLI, so a scan that looked
+# only for `subprocess.run(["docker", ...])` reported on a boundary it
+# had not looked at -- `vaibify destroy` removes a volume and an image
+# this way, and neither produced a row.
+S_ACCESS_DIRECT_DOCKER_SDK = "direct-docker-sdk"
 
 # HOW the primitive is reached. A bound method PASSED as a callback --
 # ``asyncio.to_thread(connection.ftResultExecuteCommand, ...)`` -- is a
@@ -71,6 +77,7 @@ S_ACCESS_DIRECT_DOCKER_CLI = "direct-docker-cli"
 S_REFERENCE_DIRECT_CALL = "direct-call"
 S_REFERENCE_PASSED_CALLABLE = "passed-callable"
 S_REFERENCE_DIRECT_DOCKER_CLI = "direct-docker-cli"
+S_REFERENCE_DIRECT_DOCKER_SDK = "direct-docker-sdk"
 
 # Docker CLI subcommands that change something, as opposed to reporting
 # it. ``info``, ``inspect``, ``ps``, and ``context`` are reads.
@@ -126,6 +133,19 @@ DICT_PRIMITIVE_ACCESS = {
     "fbContainerIsNetworkIsolated": S_ACCESS_TYPED_READ,
 }
 
+# The docker-py collections a call chain must pass through to count,
+# and the leaf methods on them that CHANGE something. `list`, `get`,
+# and `inspect` are reads and are recorded as such.
+SET_DOCKER_SDK_COLLECTIONS = frozenset({
+    "containers", "images", "volumes", "networks", "api",
+})
+SET_MUTATING_SDK_METHODS = frozenset({
+    "remove", "prune", "create", "run", "start", "stop", "kill",
+    "restart", "pause", "unpause", "pull", "push", "build", "commit",
+    "tag", "put_archive", "exec_create", "exec_start", "exec_resize",
+    "rename", "update",
+})
+
 SET_MUTATION_CAPABLE_ACCESS = frozenset({
     S_ACCESS_ARBITRARY_COMMAND,
     S_ACCESS_ROOT_SHELL,
@@ -134,6 +154,7 @@ SET_MUTATION_CAPABLE_ACCESS = frozenset({
     S_ACCESS_EXEC_STATE,
     S_ACCESS_SIGNAL,
     S_ACCESS_LIFECYCLE,
+    S_ACCESS_DIRECT_DOCKER_SDK,
 })
 
 # The modules that DEFINE the primitives. Their own definitions and
@@ -225,6 +246,7 @@ class _VisitorCallSites(ast.NodeVisitor):
         self._listFunctionStack = []
         self._setCalledFunctionNodes = set()
         self._dictLocalCommandLists = {}
+        self._dictSdkBoundNames = set()
 
     def fnCollect(self, treeModule):
         """Walk a parsed module, direct calls resolved first."""
@@ -232,6 +254,7 @@ class _VisitorCallSites(ast.NodeVisitor):
             if isinstance(nodeCall, ast.Call):
                 self._setCalledFunctionNodes.add(id(nodeCall.func))
         self._dictLocalCommandLists = _fdictCollectCommandLists(treeModule)
+        self._dictSdkBoundNames = _fsetCollectSdkBoundNames(treeModule)
         self.visit(treeModule)
 
     def visit_FunctionDef(self, nodeFunction):
@@ -251,6 +274,7 @@ class _VisitorCallSites(ast.NodeVisitor):
             ))
         else:
             self._fnRecordDirectDockerInvocation(nodeCall)
+            self._fnRecordDirectDockerSdkCall(nodeCall)
         self.generic_visit(nodeCall)
 
     def visit_Attribute(self, nodeAttribute):
@@ -306,6 +330,21 @@ class _VisitorCallSites(ast.NodeVisitor):
             ),
         ))
 
+    def _fnRecordDirectDockerSdkCall(self, nodeCall):
+        """Record a docker-py call assembled outside a gateway."""
+        sMethod = _fsDockerSdkMethodForCall(
+            nodeCall, self._dictSdkBoundNames,
+        )
+        if sMethod is None:
+            return
+        self.listRows.append(self._fdictBuildRow(
+            nodeCall, f"sdk {sMethod}", S_ACCESS_DIRECT_DOCKER_SDK,
+            S_REFERENCE_DIRECT_DOCKER_SDK,
+            bMutationCapable=sMethod.split(".")[-1] in (
+                SET_MUTATING_SDK_METHODS
+            ),
+        ))
+
     def _fdictBuildRow(
         self, nodeReference, sPrimitive, sAccess, sReferenceKind,
         bMutationCapable=None,
@@ -336,6 +375,58 @@ class _VisitorCallSites(ast.NodeVisitor):
                 else S_UNCLASSIFIED
             )
         return dictRow
+
+
+def _flistAttributeChain(nodeExpression):
+    """Return the dotted name a call's function expression spells."""
+    listParts = []
+    nodeCurrent = nodeExpression
+    while isinstance(nodeCurrent, ast.Attribute):
+        listParts.append(nodeCurrent.attr)
+        nodeCurrent = nodeCurrent.value
+    if isinstance(nodeCurrent, ast.Name):
+        listParts.append(nodeCurrent.id)
+    return list(reversed(listParts))
+
+
+def _fsetCollectSdkBoundNames(treeModule):
+    """Return local names bound to an object fetched from the SDK.
+
+    ``volume = dockerClient.volumes.get(name)`` then
+    ``volume.remove(force=True)``: the mutation is a method on the
+    RETURNED object, so a chain-only scan sees the read and misses the
+    delete. One step of propagation catches the shape this package
+    actually uses -- ``vaibify destroy`` removes a volume exactly so.
+    """
+    setBound = set()
+    for nodeAssign in ast.walk(treeModule):
+        if not isinstance(nodeAssign, ast.Assign):
+            continue
+        if not isinstance(nodeAssign.value, ast.Call):
+            continue
+        listChain = _flistAttributeChain(nodeAssign.value.func)
+        if not any(
+            sPart in SET_DOCKER_SDK_COLLECTIONS for sPart in listChain
+        ):
+            continue
+        for nodeTarget in nodeAssign.targets:
+            if isinstance(nodeTarget, ast.Name):
+                setBound.add(nodeTarget.id)
+    return setBound
+
+
+def _fsDockerSdkMethodForCall(nodeCall, setSdkBoundNames):
+    """Return the docker-py method a call invokes, or None."""
+    listChain = _flistAttributeChain(nodeCall.func)
+    if len(listChain) < 2:
+        return None
+    if any(sPart in SET_DOCKER_SDK_COLLECTIONS for sPart in listChain):
+        return ".".join(listChain[-2:])
+    if listChain[0] in setSdkBoundNames and listChain[-1] in (
+        SET_MUTATING_SDK_METHODS
+    ):
+        return ".".join(listChain[-2:])
+    return None
 
 
 def _fbIsSubprocessLaunch(nodeCall):

@@ -481,13 +481,29 @@ on a second grant point anywhere.
 
 **`tests/mutationInventory.json` is the record of every reference that
 can reach a container** — direct calls, primitives passed as callables
-(`asyncio.to_thread(connection.fnWriteFile, ...)` is a call site), and
-Docker CLI invocations assembled from scratch. Regenerate it with
-`python tools/generateMutationInventory.py --write`. The drift check
-fails on an added, removed, duplicated, edited, or hand-altered row,
-and the subprocess launches whose command the scan cannot read are
-counted rather than dropped. The semantic classification is unfinished
-and ratcheted: the count may only go down.
+(`asyncio.to_thread(connection.fnWriteFile, ...)` is a call site),
+Docker CLI invocations assembled from scratch, and docker-py SDK calls
+including one step of propagation onto the object the SDK returned
+(`volume = client.volumes.get(...)` then `volume.remove()`).
+Regenerate with `python tools/generateMutationInventory.py --write`.
+The drift check fails on an added, removed, duplicated, edited, or
+hand-altered row, and the subprocess launches whose command the scan
+cannot read are counted rather than dropped.
+
+**What the boundary does NOT yet do, stated so nobody reads the above
+as more than it is.** `ContainerAwareRoute` opens a generic
+`S_ADMISSION_MODE_REQUEST` admission for every authorized
+container-scoped request, so the primitive gate passes for anything
+reached during that request whether or not the route chose a carrier
+mode. The gate therefore catches DIRECT primitive reach, not undeclared
+intent. Until a route selects its mode explicitly, a mutation it starts
+with `asyncio.to_thread` holds no mutation lock and registers no
+durable work, so a transfer arriving mid-flight sees an unlocked
+container and commits — and the old owner's command keeps running.
+Nine background-task launches sit in modules that register neither
+lock-held nor durable work. The semantic classification of the
+inventory is unfinished and ratcheted: the count may only go down, and
+it is the input to that migration, not a substitute for it.
 
 **A busy container refuses a hand-over at once, and names what is busy.**
 The lock HOLDER registers its operation kind and target, because an

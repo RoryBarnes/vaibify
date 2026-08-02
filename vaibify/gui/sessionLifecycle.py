@@ -568,17 +568,26 @@ async def ftTransferOwnership(appState, sCapability):
     ``S_TRANSFER_TRANSFERRED`` carries the new session's credential,
     lease, and generation; every other outcome carries ``sMessage``.
 
-    Shape (design §6.1): locks in canonical order — the bounded drain
-    wait lands on the container-mutation lock FIRST, holding no global
-    lock; pre-commit refusals (unowned, stale generation, poison,
-    cancel-requested task, unsettled journal) then run under the held
-    drain; everything reversible is pre-minted; terminals are fenced
-    and terminated-and-proven (DRAINING — a quarantining drain refuses,
-    it never pretends to roll back); and the linearization — final
-    checks, lease rotation, session rebind, generation bump, task
-    retag, old-credential revocation, stored-result write — commits
-    SYNCHRONOUSLY with no ``await`` between the final check and the
-    commit. Old sockets are actively closed only after the commit.
+    Shape (design §6.1): a busy container is refused AT ONCE, naming
+    what holds it — the transfer never waits on the mutation lock, and
+    there is no DRAINING phase. With the lock free it is taken first,
+    holding no global lock; pre-commit refusals (unowned, stale
+    generation, poison, cancel-requested task, unsettled journal, a
+    live terminal record) run under it; everything reversible is
+    pre-minted; and the linearization — final checks, lease rotation,
+    session rebind, generation bump, task retag, old-credential
+    revocation, stored-result write — commits SYNCHRONOUSLY with no
+    ``await`` between the final check and the commit. Old sockets are
+    actively closed only after the commit.
+
+    A live mode-(c) durable task is ADOPTED, not refused: it is retagged
+    to the successor generation and keeps running. That is deliberate
+    and is the point of the axis — a researcher whose browser died
+    during a six-hour run re-attaches with ``vaibify open`` rather than
+    waiting the run out — but it does mean a transfer is not a barrier
+    against every live mutation. It is a barrier against every
+    UNREGISTERED one, which is why registration is the property that
+    matters.
     """
     dictStore = getattr(appState, "dictBrowserSessions", None)
     dictInspect = browserSession.fdictInspectTransferCapability(
@@ -776,8 +785,9 @@ def _fsUnadoptableJournalReason(appState, sName, recordTask):
     The §8 identity-gate exception applied to transfer: an unsettled
     record is tolerated only when it IS the registered mode-(c) task's
     live exec record (the journal id matches the task record — the
-    adoption case) or a live terminal record the DRAINING phase is
-    about to settle or quarantine. Anything else — a quarantined
+    adoption case). A live terminal record is NOT tolerated: there is
+    no DRAINING phase any more, and the commit point refuses over one
+    rather than settling it on a probe. Anything else — a quarantined
     record, an unreadable journal, an orphaned unsettled operation —
     refuses, fail closed.
     """

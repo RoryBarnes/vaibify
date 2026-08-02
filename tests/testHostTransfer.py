@@ -1179,6 +1179,7 @@ async def testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation():
     bounded wait (`await asyncio.wait_for(lockMutation.acquire(),
     F_TRANSFER_DRAIN_WAIT_SECONDS)`) in place of the immediate refusal.
     """
+    import threading
     import time
 
     stateApp = _fstateBuildAppState()
@@ -1188,11 +1189,22 @@ async def testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation():
     dictLaneTuple = _dictBuildBrowserLaneTuple(
         stateApp, sOldSessionId, sOldLease,
     )
-    eventRelease = asyncio.Event()
+    # A SYNCHRONOUS worker blocked on a threading.Event, because the
+    # carrier runs workers with asyncio.to_thread. An `async def` worker
+    # would be called in that thread, hand back a coroutine object
+    # nobody awaits, and return at once -- so the mutation this test
+    # exists to block would never block, and the test would pass on
+    # scheduling luck while Python warned that the coroutine was never
+    # awaited. That is exactly what the first version of this test did.
+    eventStarted = threading.Event()
+    eventRelease = threading.Event()
+    listCommitted = []
 
-    async def _fnHeldWorker(*tArguments):
-        del tArguments
-        await eventRelease.wait()
+    def _fnHeldWorker(supervisor):
+        del supervisor
+        eventStarted.set()
+        eventRelease.wait(10)
+        listCommitted.append("committed")
         return "done"
 
     taskMutation = asyncio.ensure_future(
@@ -1201,15 +1213,15 @@ async def testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation():
             "file-write", "/workspace/project.json", _fnHeldWorker,
         ),
     )
-    for _ in range(200):
-        await asyncio.sleep(0)
-        if sessionLifecycle._flockObtainContainerMutation(
-            sessionLifecycle._fdictLockStoreForAppState(stateApp),
-            S_PROJECT_NAME,
-        ).locked():
-            break
-    else:
-        raise AssertionError("the mutation never took the drain")
+    await asyncio.to_thread(eventStarted.wait, 10)
+    assert sessionLifecycle._flockObtainContainerMutation(
+        sessionLifecycle._fdictLockStoreForAppState(stateApp),
+        S_PROJECT_NAME,
+    ).locked(), "the mutation never took the drain"
+    assert listCommitted == [], (
+        "the worker finished before the transfer was attempted, so the "
+        "container was not busy when it mattered"
+    )
 
     sCapability = _fsMintTransferCapability(stateApp)
     fBefore = time.monotonic()
@@ -1235,8 +1247,13 @@ async def testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation():
         "invites cannot use it"
     )
 
+    assert listCommitted == [], (
+        "the worker committed while the transfer was being refused; the "
+        "refusal was not measured against a live mutation"
+    )
     eventRelease.set()
     await taskMutation
+    assert listCommitted == ["committed"]
 
     sOutcomeRetry, dictRetry = await _tTransfer(stateApp, sCapability)
     assert sOutcomeRetry == sessionLifecycle.S_TRANSFER_TRANSFERRED, (

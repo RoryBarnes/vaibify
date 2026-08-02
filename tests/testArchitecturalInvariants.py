@@ -4295,7 +4295,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-08-02): fnScheduleConnectionFencing — closing a fenced
     # socket is an await, and the poison commit is synchronous under the
     # held locks, so the close is scheduled rather than awaited there.
-    "sessionLifecycle.py": 1301,
+    # +6 (2026-08-02): the transfer docstring records that a live
+    # mode-(c) task is ADOPTED rather than refused, and why -- an
+    # external review read the old wording as a claim that transfer
+    # blocks every live mutation, which it does not and should not.
+    "sessionLifecycle.py": 1307,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

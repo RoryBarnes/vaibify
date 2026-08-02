@@ -974,3 +974,69 @@ def test_durable_task_journals_execs_through_create_journal_start():
         )["sReadState"] == "absent"
 
     asyncio.run(_fnDrive())
+
+
+# ---------------------------------------------------------------------
+# The carrier runs workers in a THREAD, so an async worker is a bug.
+# ---------------------------------------------------------------------
+
+def testNoCarrierWorkerIsAnAsyncFunction():
+    """A coroutine handed to a to_thread carrier never runs.
+
+    ``fdictRunLockHeldMutation`` executes its worker with
+    ``asyncio.to_thread``. Passing an ``async def`` calls it in that
+    thread, gets a coroutine object back, and returns immediately --
+    the work never happens and the lock is released at once. Python
+    says so, as "coroutine ... was never awaited", but only as a
+    warning attached to teardown, which pytest does not fail on.
+
+    That is not hypothetical. A transfer test written this way asserted
+    a busy container refused a hand-over WHILE A MUTATION WAS LIVE, and
+    passed on scheduling luck with no mutation live at all -- in the
+    same commit that described it as a six-step adversarial gate. The
+    structural check is cheaper and more certain than fighting pytest's
+    warning machinery: it reads the worker argument at every call site
+    and fails if it names an ``async def`` in the same module.
+
+    (To see the underlying warning while debugging one of these, run
+    the test with ``-W error``.)
+    """
+    import ast
+    import pathlib
+
+    pathRepository = pathlib.Path(__file__).resolve().parent.parent
+    listOffenders = []
+    for pathModule in sorted(
+        list((pathRepository / "vaibify").rglob("*.py"))
+        + list((pathRepository / "tests").rglob("*.py"))
+    ):
+        if "__pycache__" in pathModule.parts:
+            continue
+        treeAst = ast.parse(pathModule.read_text(encoding="utf-8"))
+        setAsyncNames = {
+            node.name for node in ast.walk(treeAst)
+            if isinstance(node, ast.AsyncFunctionDef)
+        }
+        for nodeCall in ast.walk(treeAst):
+            if not isinstance(nodeCall, ast.Call):
+                continue
+            if getattr(
+                nodeCall.func, "attr", getattr(nodeCall.func, "id", ""),
+            ) != "fdictRunLockHeldMutation":
+                continue
+            # (appState, sName, sContainerId, laneTuple, kind, target,
+            #  fnWorker)
+            if len(nodeCall.args) < 7:
+                continue
+            nodeWorker = nodeCall.args[6]
+            if isinstance(nodeWorker, ast.Name) and (
+                nodeWorker.id in setAsyncNames
+            ):
+                listOffenders.append(
+                    f"{pathModule.name}:{nodeCall.lineno} passes the "
+                    f"async worker {nodeWorker.id!r}"
+                )
+    assert listOffenders == [], (
+        f"the carrier runs workers with asyncio.to_thread, so an async "
+        f"worker never executes: {listOffenders}"
+    )

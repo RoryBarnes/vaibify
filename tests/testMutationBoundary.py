@@ -142,14 +142,22 @@ def testTheExemptionIsGrantedInExactlyOnePlace():
 
 
 def testEveryAuditedReadBuildsItsOwnCommand():
-    """A caller's string may never travel through the exemption.
+    """No caller-derived value may travel through the exemption.
 
-    This is the audit. An adapter that forwarded a command it was
-    handed would turn the read carve-out into a general bypass of the
-    mutation gate: any caller could ask for a "read" that deletes. Each
-    caller of the exemption must construct its command from a path or
-    an identifier, which shows up as the command argument being built
-    in the adapter rather than being one of its parameters.
+    This is the audit, and the first version of it was weaker than this
+    docstring: it caught only a positional argument that was directly a
+    parameter NAME, so a keyword argument, a local alias, an f-string,
+    a concatenation, or a helper's return value all slipped through. A
+    check that is narrower than the guarantee it states is the shape
+    this repository treats as the serious failure -- prose promising
+    what nothing enforces.
+
+    So the rule is inverted, from "reject the shapes I thought of" to
+    "accept only the shape I can verify": the command argument must be
+    a local name bound, in the same function, to an expression that
+    contains no parameter of that function. Anything else -- including
+    a spelling nobody has thought of yet -- fails and must be justified
+    by making the construction explicit.
     """
     sSource = (
         PATH_REPOSITORY / "vaibify" / "docker" / "dockerConnection.py"
@@ -161,29 +169,100 @@ def testEveryAuditedReadBuildsItsOwnCommand():
             nodeFunction, (ast.FunctionDef, ast.AsyncFunctionDef),
         ):
             continue
-        setParameters = {
-            nodeArgument.arg
-            for nodeArgument in nodeFunction.args.args
-        }
-        for nodeCall in ast.walk(nodeFunction):
-            if not isinstance(nodeCall, ast.Call):
-                continue
-            if getattr(nodeCall.func, "attr", "") != S_EXEMPTION_METHOD:
-                continue
-            if len(nodeCall.args) < 2:
-                continue
-            nodeCommand = nodeCall.args[1]
-            if isinstance(nodeCommand, ast.Name) and (
-                nodeCommand.id in setParameters
-            ):
-                listViolations.append(
-                    f"{nodeFunction.name} forwards its own parameter "
-                    f"{nodeCommand.id!r} through the read exemption"
-                )
+        listViolations.extend(
+            _flistExemptionViolations(nodeFunction),
+        )
     assert listViolations == [], (
-        f"the audited-read exemption must never carry a caller's "
+        f"the audited-read exemption must carry only an adapter-built "
         f"command: {listViolations}"
     )
+
+
+def _flistExemptionViolations(nodeFunction):
+    """Return the ways one function misuses the read exemption."""
+    setParameters = {
+        nodeArgument.arg for nodeArgument in
+        nodeFunction.args.args + nodeFunction.args.kwonlyargs
+    }
+    dictLocalBindings = _fdictLocalStringBindings(nodeFunction)
+    listViolations = []
+    for nodeCall in ast.walk(nodeFunction):
+        if not isinstance(nodeCall, ast.Call):
+            continue
+        if getattr(nodeCall.func, "attr", "") != S_EXEMPTION_METHOD:
+            continue
+        nodeCommand = _fnodeCommandArgument(nodeCall)
+        if nodeCommand is None:
+            listViolations.append(
+                f"{nodeFunction.name}: no command argument found"
+            )
+            continue
+        listViolations.extend(_flistCommandViolations(
+            nodeFunction.name, nodeCommand, setParameters,
+            dictLocalBindings,
+        ))
+    return listViolations
+
+
+def _fnodeCommandArgument(nodeCall):
+    """Return the command expression, positional or keyword."""
+    for nodeKeyword in nodeCall.keywords:
+        if nodeKeyword.arg == "sCommand":
+            return nodeKeyword.value
+    if len(nodeCall.args) >= 2:
+        return nodeCall.args[1]
+    return None
+
+
+def _fdictLocalStringBindings(nodeFunction):
+    """Map local names to the expressions assigned to them."""
+    dictBindings = {}
+    for nodeAssign in ast.walk(nodeFunction):
+        if not isinstance(nodeAssign, ast.Assign):
+            continue
+        for nodeTarget in nodeAssign.targets:
+            if isinstance(nodeTarget, ast.Name):
+                dictBindings.setdefault(nodeTarget.id, []).append(
+                    nodeAssign.value,
+                )
+    return dictBindings
+
+
+def _flistCommandViolations(
+    sFunctionName, nodeCommand, setParameters, dictLocalBindings,
+):
+    """Return why one command expression is not adapter-built."""
+    if isinstance(nodeCommand, ast.Constant):
+        return []
+    if not isinstance(nodeCommand, ast.Name):
+        # A call, an f-string, a concatenation: accepted only when it
+        # names no parameter anywhere inside it.
+        listNamed = _flistParameterNamesWithin(nodeCommand, setParameters)
+        return [
+            f"{sFunctionName}: the command expression carries the "
+            f"caller's {sorted(listNamed)}"
+        ] if listNamed else []
+    listBindings = dictLocalBindings.get(nodeCommand.id)
+    if not listBindings:
+        return [
+            f"{sFunctionName}: the command {nodeCommand.id!r} is not "
+            f"built in this function"
+        ]
+    listNamed = set()
+    for nodeBinding in listBindings:
+        listNamed |= _flistParameterNamesWithin(nodeBinding, setParameters)
+    return [
+        f"{sFunctionName}: the command {nodeCommand.id!r} is built from "
+        f"the caller's {sorted(listNamed)}"
+    ] if listNamed else []
+
+
+def _flistParameterNamesWithin(nodeExpression, setParameters):
+    """Return the function parameters an expression reads."""
+    return {
+        node.id for node in ast.walk(nodeExpression)
+        if isinstance(node, ast.Name) and node.id in setParameters
+    }
 
 
 def testTheGatewayIsTheOnlyModuleThatCallsExecRun():
@@ -229,3 +308,67 @@ def testTheCommandGateCoversTheDelegatingPrimitives():
             f"{sWrapper} no longer delegates to {sBase}, so it is "
             f"outside the gate that covers it"
         )
+
+
+# The bypass shapes an external review named as slipping past the first
+# version of the audit. Kept as cases rather than prose: a check that
+# claims to catch a class must be shown catching it.
+_LIST_EXEMPTION_BYPASS_SHAPES = [
+    ("a keyword argument", '''
+def fbaLeak(self, sContainerId, sCallerCommand):
+    self._texecRunAuditedRead(sContainerId, sCommand=sCallerCommand)
+'''),
+    ("a local alias", '''
+def fbaLeak(self, sContainerId, sCallerCommand):
+    sAlias = sCallerCommand
+    self._texecRunAuditedRead(sContainerId, sAlias)
+'''),
+    ("an f-string", '''
+def fbaLeak(self, sContainerId, sCallerCommand):
+    sBuilt = f"cat {sCallerCommand}"
+    self._texecRunAuditedRead(sContainerId, sBuilt)
+'''),
+    ("a concatenation", '''
+def fbaLeak(self, sContainerId, sCallerCommand):
+    self._texecRunAuditedRead(sContainerId, "cat " + sCallerCommand)
+'''),
+    ("a helper's return value", '''
+def fbaLeak(self, sContainerId, sCallerCommand):
+    sBuilt = fsBuildIt(sCallerCommand)
+    self._texecRunAuditedRead(sContainerId, sBuilt)
+'''),
+]
+
+
+@pytest.mark.parametrize(
+    "sShapeName,sSource", _LIST_EXEMPTION_BYPASS_SHAPES,
+    ids=[sName for sName, _ in _LIST_EXEMPTION_BYPASS_SHAPES],
+)
+def testTheAuditCatchesEveryKnownBypassShape(sShapeName, sSource):
+    """Each way a caller's command could reach the exemption is refused."""
+    import textwrap
+
+    nodeFunction = ast.parse(textwrap.dedent(sSource)).body[0]
+    listViolations = _flistExemptionViolations(nodeFunction)
+    assert listViolations, (
+        f"{sShapeName} carried the caller's command through the "
+        f"audited-read exemption unnoticed"
+    )
+
+
+def testTheAuditStillAcceptsAnAdapterBuiltCommand():
+    """The negative control: a real adapter's shape must pass.
+
+    Without this, a check that rejected everything would satisfy the
+    five cases above and quietly forbid the reads the exemption exists
+    to permit.
+    """
+    import textwrap
+
+    nodeFunction = ast.parse(textwrap.dedent('''
+def fbaSafe(self, sContainerId, sFilePath):
+    sProgram = "import os,sys; sys.stdout.write(" + repr("x") + ")"
+    sCommand = "python3 -c " + sProgram
+    self._texecRunAuditedRead(sContainerId, sCommand)
+''')).body[0]
+    assert _flistExemptionViolations(nodeFunction) == []
