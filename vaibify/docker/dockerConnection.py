@@ -554,6 +554,42 @@ class DockerConnection:
             )
         return baContent
 
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        """Return the names directly inside a container directory.
+
+        An AUDITED ADAPTER, in the sense the mutation boundary means it:
+        the caller supplies a PATH and never a command, and the command
+        this builds is fixed source text with the path carried as data.
+        Callers used to assemble ``f"ls -1 {sPath}"`` themselves and
+        hand it to a shell, which made a directory listing an arbitrary
+        command execution triggered by a path argument -- and broke on
+        any path containing a space.
+
+        The same two-layer quoting as :meth:`fbaFetchFile`: ``repr``
+        makes a valid Python literal, then ``shlex.quote`` wraps the
+        whole program as one shell argument, so nothing in the path
+        reaches the shell as syntax.
+
+        A missing or unreadable directory raises ``FileNotFoundError``;
+        an empty directory returns an empty list, which is a different
+        answer and must stay one.
+        """
+        sProgram = (
+            "import os,sys; "
+            "sys.stdout.write(chr(10).join(sorted(os.listdir("
+            + repr(sDirectoryPath) + "))))"
+        )
+        resultExec = self.texecRunInContainerStreamed(
+            sContainerId, "python3 -c " + shlex.quote(sProgram),
+        )
+        if resultExec.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot list directory in container: {sDirectoryPath}"
+            )
+        return [
+            sEntry for sEntry in resultExec.sStdout.split("\n") if sEntry
+        ]
+
     def fnIterStreamFile(
         self, sContainerId, sFilePath, iChunkSizeBytes=1048576,
     ):

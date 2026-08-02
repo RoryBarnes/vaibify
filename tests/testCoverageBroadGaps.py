@@ -41,11 +41,28 @@ def _fnRunAsync(coroutine):
 
 
 def _fMockDocker(iExitCode=0, sOutput=""):
-    """Return a mock Docker connection."""
+    """Return a mock Docker connection.
+
+    ``cat`` and ``ls`` are TYPED READS now, not shell commands, so their
+    mocks answer the typed primitives: a non-zero ``iExitCode`` becomes
+    the FileNotFoundError those primitives raise, which is the shape the
+    commands actually handle.
+    """
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (iExitCode, sOutput)
     mockDocker.fnWriteFile = MagicMock()
-    mockDocker.fbaFetchFile.return_value = b"fake content"
+    if iExitCode == 0:
+        mockDocker.fbaFetchFile.return_value = (
+            sOutput.encode("utf-8") if sOutput else b"fake content"
+        )
+        mockDocker.flistDirectoryEntries.return_value = [
+            sLine for sLine in sOutput.splitlines() if sLine.strip()
+        ]
+    else:
+        mockDocker.fbaFetchFile.side_effect = FileNotFoundError(sOutput)
+        mockDocker.flistDirectoryEntries.side_effect = FileNotFoundError(
+            sOutput,
+        )
     return mockDocker
 
 
@@ -724,15 +741,33 @@ class TestCommandWorkflowCli:
 class TestCommandLsCli:
     """Test ls CLI subcommand."""
 
-    def test_flistParseDirectoryListing(self):
-        from vaibify.cli.commandLs import _flistParseDirectoryListing
-        sOutput = "file1.txt\nfile2.py\n\n  dir1  \n"
-        listFiles = _flistParseDirectoryListing(sOutput)
-        assert listFiles == ["file1.txt", "file2.py", "dir1"]
+    def test_ls_never_builds_a_shell_command_from_the_path(self):
+        """The path is DATA, so a path cannot become syntax.
 
-    def test_flistParseDirectoryListing_empty(self):
-        from vaibify.cli.commandLs import _flistParseDirectoryListing
-        assert _flistParseDirectoryListing("") == []
+        ``ls -1 {path}`` went to ``/bin/bash -c``, so
+        ``vaibify ls '/tmp; rm -rf /workspace'`` ran both halves and a
+        path with a space in it simply failed. The command now asks the
+        audited adapter for a directory's entries and never assembles a
+        command at all.
+        """
+        mockDockerConn = _fMockDocker(sOutput="file1\n")
+        with patch(
+            "vaibify.cli.commandLs.fconfigResolveProject",
+            return_value=_fMockConfig(),
+        ), patch(
+            "vaibify.cli.commandLs.fconnectionRequireDocker",
+            return_value=mockDockerConn,
+        ), patch(
+            "vaibify.cli.commandLs.fsRequireRunningContainer",
+            return_value="ctn1",
+        ):
+            from vaibify.cli.commandLs import ls
+            result = CliRunner().invoke(ls, ["/tmp; touch /tmp/pwned"])
+        assert result.exit_code == 0
+        mockDockerConn.ftResultExecuteCommand.assert_not_called()
+        mockDockerConn.flistDirectoryEntries.assert_called_once_with(
+            "ctn1", "/tmp; touch /tmp/pwned",
+        )
 
     @patch("vaibify.cli.commandLs.fconfigResolveProject")
     @patch("vaibify.cli.commandLs.fconnectionRequireDocker")

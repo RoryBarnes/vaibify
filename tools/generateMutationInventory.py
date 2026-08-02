@@ -56,6 +56,29 @@ S_ACCESS_EXEC_STATE = "exec-state"
 S_ACCESS_SIGNAL = "signal"
 S_ACCESS_LIFECYCLE = "container-lifecycle"
 S_ACCESS_TYPED_READ = "typed-read"
+# A Docker CLI invocation assembled outside both gateways. It reaches
+# the daemon without passing any primitive at all, so a scan that knew
+# only about primitives would report a boundary it had not looked at.
+S_ACCESS_DIRECT_DOCKER_CLI = "direct-docker-cli"
+
+# HOW the primitive is reached. A bound method PASSED as a callback --
+# ``asyncio.to_thread(connection.ftResultExecuteCommand, ...)`` -- is a
+# call site in every sense that matters and was invisible to the first
+# scanner, because the AST node it produces is an attribute load, not a
+# Call. 21 mutation-capable sites were missing, including the
+# clean-outputs deletion this whole boundary was justified by. An alias
+# (``fnWriter = connection.fnWriteFile``) is the same shape.
+S_REFERENCE_DIRECT_CALL = "direct-call"
+S_REFERENCE_PASSED_CALLABLE = "passed-callable"
+S_REFERENCE_DIRECT_DOCKER_CLI = "direct-docker-cli"
+
+# Docker CLI subcommands that change something, as opposed to reporting
+# it. ``info``, ``inspect``, ``ps``, and ``context`` are reads.
+SET_MUTATING_DOCKER_SUBCOMMANDS = frozenset({
+    "run", "start", "stop", "rm", "kill", "restart", "exec", "cp",
+    "pull", "push", "build", "buildx", "create", "commit", "rename",
+    "update", "pause", "unpause", "prune", "load", "import", "tag",
+})
 
 # Every primitive that reaches a container or the Docker daemon, and the
 # access each one grants. Adding a primitive to the codebase without
@@ -81,6 +104,10 @@ DICT_PRIMITIVE_ACCESS = {
     "fnIterStreamFile": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,
+    # The audited adapter behind `vaibify ls`: the caller supplies a
+    # PATH, never a command, so it is a typed read even though it uses
+    # the raw executor internally.
+    "flistDirectoryEntries": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,
@@ -96,6 +123,7 @@ DICT_PRIMITIVE_ACCESS = {
     "fdictGetContainerStatus": S_ACCESS_TYPED_READ,
     "fdictProbeContainerPresence": S_ACCESS_TYPED_READ,
     "fdictFindContainersForReservation": S_ACCESS_TYPED_READ,
+    "fbContainerIsNetworkIsolated": S_ACCESS_TYPED_READ,
 }
 
 SET_MUTATION_CAPABLE_ACCESS = frozenset({
@@ -118,24 +146,93 @@ SET_GATEWAY_MODULES = frozenset({
 # The reviewer's fields: everything that needs judgement rather than
 # parsing. They are emitted UNCLASSIFIED so the record never implies a
 # review that did not happen.
+#
+# Three of them are LISTS, and that is not tidiness. A shared helper is
+# reachable from an HTTP route and from a durable pipeline worker, and
+# forcing one value would make the reviewer pick a lie. Where one call
+# site genuinely has several execution contexts, it says so; where a
+# single value is wrong, the alternative is to classify at the logical
+# entry point instead and record that here.
 TUPLE_REVIEWER_FIELDS = (
     "sLogicalOperation",
-    "sExecutionLane",
-    "sLockOwner",
+    "listExecutionLanes",
+    "listLockOwners",
     "sOperationMetadata",
-    "sCarrierMode",
+    "listCarrierModes",
     "sJournalKind",
     "sLifetime",
+    "sCarrierDisposition",
+    "sExclusionRationale",
+)
+
+# The list-valued reviewer fields and their permitted members. Free text
+# in a classification is how a record stops being comparable: "the
+# route" and "route wrapper" would be two different answers to one
+# question, and neither could be checked.
+DICT_REVIEWER_ENUMS = {
+    "listExecutionLanes": frozenset({
+        "http", "websocket", "background", "startup", "shutdown",
+        "host-cli", "host-control-socket",
+    }),
+    "listLockOwners": frozenset({
+        "route-wrapper", "carrier-supervisor", "lifecycle-transaction",
+        "none",
+    }),
+    "listCarrierModes": frozenset({
+        "synchronous", "lock-held", "durable", "none",
+    }),
+}
+
+DICT_REVIEWER_SCALAR_ENUMS = {
+    "sJournalKind": frozenset({
+        "start", "exec", "terminal", "helper", "file-write", "none",
+    }),
+    "sLifetime": frozenset({"request", "outlives-request"}),
+    # EXCLUDED demands a rationale. A boundary whose exceptions are
+    # unexplained is a boundary nobody can audit, and "it was already
+    # like that" is how the exceptions grow.
+    "sCarrierDisposition": frozenset({"migrate", "excluded"}),
+}
+
+# Free-text fields: they must say SOMETHING, and the empty string is not
+# a classification. Replacing UNCLASSIFIED with "" would otherwise
+# satisfy a ratchet that only looked for the sentinel.
+TUPLE_REVIEWER_PROSE_FIELDS = (
+    "sLogicalOperation",
+    "sOperationMetadata",
 )
 
 
 class _VisitorCallSites(ast.NodeVisitor):
-    """Collect primitive call sites with their enclosing function."""
+    """Collect every reference that can reach a container.
+
+    Three shapes, because the daemon can be reached three ways and a
+    scan that knows only the first proves nothing about the other two:
+
+    * a direct call, ``connection.fnWriteFile(...)``;
+    * a bound method PASSED somewhere -- ``asyncio.to_thread(
+      connection.ftResultExecuteCommand, ...)``, or an alias assignment
+      -- which produces an attribute LOAD, not a Call, and was
+      therefore invisible to the first version of this scanner; and
+    * a Docker CLI invocation assembled from scratch, which passes no
+      primitive at all.
+    """
 
     def __init__(self, sRelativePath):
         self.sRelativePath = sRelativePath
         self.listRows = []
+        self.listUnresolvedSubprocessSites = []
         self._listFunctionStack = []
+        self._setCalledFunctionNodes = set()
+        self._dictLocalCommandLists = {}
+
+    def fnCollect(self, treeModule):
+        """Walk a parsed module, direct calls resolved first."""
+        for nodeCall in ast.walk(treeModule):
+            if isinstance(nodeCall, ast.Call):
+                self._setCalledFunctionNodes.add(id(nodeCall.func))
+        self._dictLocalCommandLists = _fdictCollectCommandLists(treeModule)
+        self.visit(treeModule)
 
     def visit_FunctionDef(self, nodeFunction):
         self._listFunctionStack.append(nodeFunction.name)
@@ -147,12 +244,73 @@ class _VisitorCallSites(ast.NodeVisitor):
     def visit_Call(self, nodeCall):
         sPrimitive = _fsCalledName(nodeCall)
         if sPrimitive in DICT_PRIMITIVE_ACCESS:
-            self.listRows.append(self._fdictBuildRow(nodeCall, sPrimitive))
+            self.listRows.append(self._fdictBuildRow(
+                nodeCall, sPrimitive,
+                DICT_PRIMITIVE_ACCESS[sPrimitive],
+                S_REFERENCE_DIRECT_CALL,
+            ))
+        else:
+            self._fnRecordDirectDockerInvocation(nodeCall)
         self.generic_visit(nodeCall)
 
-    def _fdictBuildRow(self, nodeCall, sPrimitive):
+    def visit_Attribute(self, nodeAttribute):
+        self._fnRecordPassedCallable(nodeAttribute, nodeAttribute.attr)
+        self.generic_visit(nodeAttribute)
+
+    def visit_Name(self, nodeName):
+        if isinstance(nodeName.ctx, ast.Load):
+            self._fnRecordPassedCallable(nodeName, nodeName.id)
+        self.generic_visit(nodeName)
+
+    def _fnRecordPassedCallable(self, nodeReference, sPrimitive):
+        """Record a primitive referenced without being called here."""
+        if sPrimitive not in DICT_PRIMITIVE_ACCESS:
+            return
+        if id(nodeReference) in self._setCalledFunctionNodes:
+            return
+        self.listRows.append(self._fdictBuildRow(
+            nodeReference, sPrimitive,
+            DICT_PRIMITIVE_ACCESS[sPrimitive],
+            S_REFERENCE_PASSED_CALLABLE,
+        ))
+
+    def _fnRecordDirectDockerInvocation(self, nodeCall):
+        """Record a ``docker ...`` subprocess assembled outside a gateway."""
+        if _fbIsSubprocessLaunch(nodeCall) and _fbArgumentIsOpaque(
+            nodeCall, self._dictLocalCommandLists,
+        ):
+            # DECLARED, not ignored. The scan cannot see what a command
+            # built somewhere else contains, and a boundary that
+            # silently drops what it cannot read reports coverage it
+            # does not have.
+            self.listUnresolvedSubprocessSites.append({
+                "sFile": self.sRelativePath,
+                "sFunction": (
+                    self._listFunctionStack[-1]
+                    if self._listFunctionStack else "<module>"
+                ),
+                "iLine": nodeCall.lineno,
+            })
+            return
+        sSubcommand = _fsDockerSubcommandForCall(
+            nodeCall, self._dictLocalCommandLists,
+        )
+        if sSubcommand is None:
+            return
+        self.listRows.append(self._fdictBuildRow(
+            nodeCall, f"docker {sSubcommand}".strip(),
+            S_ACCESS_DIRECT_DOCKER_CLI,
+            S_REFERENCE_DIRECT_DOCKER_CLI,
+            bMutationCapable=(
+                sSubcommand in SET_MUTATING_DOCKER_SUBCOMMANDS
+            ),
+        ))
+
+    def _fdictBuildRow(
+        self, nodeReference, sPrimitive, sAccess, sReferenceKind,
+        bMutationCapable=None,
+    ):
         """Return one row: machine-derived identity, unclassified meaning."""
-        sAccess = DICT_PRIMITIVE_ACCESS[sPrimitive]
         dictRow = {
             "sFile": self.sRelativePath,
             "sFunction": (
@@ -160,17 +318,108 @@ class _VisitorCallSites(ast.NodeVisitor):
                 if self._listFunctionStack else "<module>"
             ),
             "sPrimitive": sPrimitive,
+            "sReferenceKind": sReferenceKind,
             "iOrdinal": 0,
-            "sFingerprint": _fsFingerprintCall(nodeCall),
+            "sFingerprint": _fsFingerprintNode(nodeReference),
             "sAccess": sAccess,
-            "bMutationCapable": sAccess in SET_MUTATION_CAPABLE_ACCESS,
+            "bMutationCapable": (
+                sAccess in SET_MUTATION_CAPABLE_ACCESS
+                if bMutationCapable is None else bMutationCapable
+            ),
             "bInsideGateway": (
                 self.sRelativePath in SET_GATEWAY_MODULES
             ),
         }
         for sField in TUPLE_REVIEWER_FIELDS:
-            dictRow[sField] = S_UNCLASSIFIED
+            dictRow[sField] = (
+                [S_UNCLASSIFIED] if sField in DICT_REVIEWER_ENUMS
+                else S_UNCLASSIFIED
+            )
         return dictRow
+
+
+def _fbIsSubprocessLaunch(nodeCall):
+    """Return True for a subprocess-launching call of any spelling."""
+    return _fsCalledName(nodeCall) in (
+        "run", "Popen", "call", "check_call", "check_output",
+    )
+
+
+def _fdictCollectCommandLists(treeModule):
+    """Map local names to the list literals they are assigned.
+
+    A one-step, same-module constant propagation, which is what most of
+    this package's subprocess calls actually look like:
+    ``saCommand = ["docker", "rm", ...]`` then ``subprocess.run(
+    saCommand, ...)``. Without it, ten real Docker invocations --
+    ``rm``, ``tag``, ``exec``, ``stats`` -- were invisible purely
+    because the argv had a name.
+
+    A name assigned more than once resolves to nothing: two candidate
+    values is not a resolution, and guessing one would be worse than
+    declaring the site unresolved.
+    """
+    dictAssigned = {}
+    setReassigned = set()
+    for nodeAssign in ast.walk(treeModule):
+        if not isinstance(nodeAssign, ast.Assign):
+            continue
+        if not isinstance(nodeAssign.value, (ast.List, ast.Tuple)):
+            continue
+        for nodeTarget in nodeAssign.targets:
+            if not isinstance(nodeTarget, ast.Name):
+                continue
+            if nodeTarget.id in dictAssigned:
+                setReassigned.add(nodeTarget.id)
+            dictAssigned[nodeTarget.id] = nodeAssign.value
+    return {
+        sName: nodeValue for sName, nodeValue in dictAssigned.items()
+        if sName not in setReassigned
+    }
+
+
+def _fnodeResolveArgumentVector(nodeCall, dictLocalCommandLists):
+    """Return the argv sequence node a subprocess call runs, or None."""
+    if not nodeCall.args:
+        return None
+    nodeArgument = nodeCall.args[0]
+    if isinstance(nodeArgument, (ast.List, ast.Tuple)):
+        return nodeArgument
+    if isinstance(nodeArgument, ast.Name):
+        return dictLocalCommandLists.get(nodeArgument.id)
+    return None
+
+
+def _fbArgumentIsOpaque(nodeCall, dictLocalCommandLists):
+    """Return True when the scan cannot read what a subprocess runs."""
+    if not nodeCall.args:
+        return False
+    nodeVector = _fnodeResolveArgumentVector(
+        nodeCall, dictLocalCommandLists,
+    )
+    if nodeVector is None:
+        return not isinstance(nodeCall.args[0], ast.Constant)
+    return bool(nodeVector.elts) and not isinstance(
+        nodeVector.elts[0], ast.Constant,
+    )
+
+
+def _fsDockerSubcommandForCall(nodeCall, dictLocalCommandLists):
+    """Return the docker subcommand a subprocess call runs, or None."""
+    if not _fbIsSubprocessLaunch(nodeCall):
+        return None
+    nodeVector = _fnodeResolveArgumentVector(
+        nodeCall, dictLocalCommandLists,
+    )
+    if nodeVector is None:
+        return None
+    listLiterals = [
+        nodeElement.value for nodeElement in nodeVector.elts
+        if isinstance(nodeElement, ast.Constant)
+    ]
+    if not listLiterals or listLiterals[0] != "docker":
+        return None
+    return listLiterals[1] if len(listLiterals) > 1 else ""
 
 
 def _fsCalledName(nodeCall):
@@ -183,33 +432,52 @@ def _fsCalledName(nodeCall):
     return ""
 
 
-def _fsFingerprintCall(nodeCall):
-    """Return a stable digest of the call expression's own source.
+def _fsFingerprintNode(nodeReference):
+    """Return a stable digest of a reference's own source expression.
 
     Unparsed from the AST rather than sliced out of the file, so
     reformatting and comment changes do not move it while a change to
-    the call ITSELF -- a new argument, a different target -- does. A row
-    whose fingerprint moved has to be re-read; that is what the
+    the reference ITSELF -- a new argument, a different target -- does.
+    A row whose fingerprint moved has to be re-read; that is what the
     fingerprint is for.
     """
     try:
-        sSource = ast.unparse(nodeCall)
+        sSource = ast.unparse(nodeReference)
     except AttributeError:  # pragma: no cover - Python < 3.9
-        sSource = ast.dump(nodeCall)
+        sSource = ast.dump(nodeReference)
     return hashlib.sha256(sSource.encode("utf-8")).hexdigest()[:16]
 
 
 def flistScanPackage():
     """Return every primitive call site in the package, ordinal-numbered."""
+    return _flistNumberOrdinals(_tScanPackage()[0])
+
+
+def flistUnresolvedSubprocessSites():
+    """Return the subprocess launches the scan could not read.
+
+    The scan's DECLARED blind spot: a command assembled somewhere the
+    scan cannot follow might be a Docker invocation, and nothing here
+    can tell. Reporting it is the whole point -- a boundary that
+    silently drops what it cannot read claims a completeness it does
+    not have, which is the failure this record exists to prevent.
+    """
+    return _tScanPackage()[1]
+
+
+def _tScanPackage():
+    """Return ``(listRows, listUnresolved)`` for the whole package."""
     listRows = []
+    listUnresolved = []
     for pathModule in sorted(PATH_PACKAGE.rglob("*.py")):
         if "__pycache__" in pathModule.parts:
             continue
         sRelativePath = str(pathModule.relative_to(PATH_PACKAGE))
         visitor = _VisitorCallSites(sRelativePath)
-        visitor.visit(ast.parse(pathModule.read_text(encoding="utf-8")))
+        visitor.fnCollect(ast.parse(pathModule.read_text(encoding="utf-8")))
         listRows.extend(visitor.listRows)
-    return _flistNumberOrdinals(listRows)
+        listUnresolved.extend(visitor.listUnresolvedSubprocessSites)
+    return (listRows, listUnresolved)
 
 
 def _flistNumberOrdinals(listRows):
@@ -221,19 +489,39 @@ def _flistNumberOrdinals(listRows):
     unrelated edit above it would change.
     """
     dictCounts = {}
-    for dictRow in listRows:
-        tKey = (dictRow["sFile"], dictRow["sFunction"], dictRow["sPrimitive"])
+    for dictRow in sorted(
+        listRows,
+        key=lambda row: (
+            row["sFile"], row["sFunction"], row["sPrimitive"],
+            row["sReferenceKind"], row["sFingerprint"],
+        ),
+    ):
+        tKey = (
+            dictRow["sFile"], dictRow["sFunction"], dictRow["sPrimitive"],
+            dictRow["sReferenceKind"],
+        )
         dictRow["iOrdinal"] = dictCounts.get(tKey, 0)
         dictCounts[tKey] = dictRow["iOrdinal"] + 1
-    return listRows
+    return sorted(listRows, key=fsRowKey)
 
 
 def fsRowKey(dictRow):
     """Return the stable identity of one call site."""
     return "|".join((
         dictRow["sFile"], dictRow["sFunction"], dictRow["sPrimitive"],
-        str(dictRow["iOrdinal"]),
+        dictRow["sReferenceKind"], str(dictRow["iOrdinal"]),
     ))
+
+
+# The fields the SCANNER owns. A checked-in row may not disagree with a
+# fresh scan about any of them: they are derived, so an edited one is
+# either a mistake or an attempt to reclassify a site by hand, and both
+# have to surface. The first version compared only keys and
+# fingerprints, so bMutationCapable could be flipped by hand and the
+# drift check stayed green.
+TUPLE_MACHINE_DERIVED_FIELDS = (
+    "sFingerprint", "sAccess", "bMutationCapable", "bInsideGateway",
+)
 
 
 def fdictLoadInventory():
@@ -248,17 +536,33 @@ def fdictCompareAgainstSource(dictInventory, listScanned):
     dictRecorded = {fsRowKey(row): row for row in dictInventory["listRows"]}
     dictScanned = {fsRowKey(row): row for row in listScanned}
     listDuplicated = _flistDuplicatedKeys(dictInventory["listRows"])
-    listEdited = [
-        sKey for sKey in sorted(set(dictRecorded) & set(dictScanned))
+    listEdited = []
+    listAltered = []
+    for sKey in sorted(set(dictRecorded) & set(dictScanned)):
         if dictRecorded[sKey]["sFingerprint"] != (
             dictScanned[sKey]["sFingerprint"]
-        )
-    ]
+        ):
+            listEdited.append(sKey)
+            continue
+        listDisagreeing = [
+            sField for sField in TUPLE_MACHINE_DERIVED_FIELDS
+            if dictRecorded[sKey].get(sField) != dictScanned[sKey][sField]
+        ]
+        if listDisagreeing:
+            listAltered.append(f"{sKey} ({', '.join(listDisagreeing)})")
     return {
         "listAdded": sorted(set(dictScanned) - set(dictRecorded)),
         "listRemoved": sorted(set(dictRecorded) - set(dictScanned)),
         "listDuplicated": listDuplicated,
         "listEdited": listEdited,
+        "listAltered": listAltered,
+        "listCountMismatch": (
+            [] if dictInventory.get("iRowCount") == len(listScanned)
+            else [
+                f"recorded {dictInventory.get('iRowCount')}, "
+                f"scanned {len(listScanned)}"
+            ]
+        ),
     }
 
 
@@ -275,11 +579,70 @@ def flistUnclassifiedKeys(dictInventory):
     """Return the keys still awaiting a reviewer's semantic judgement."""
     return sorted(
         fsRowKey(dictRow) for dictRow in dictInventory["listRows"]
-        if any(
-            dictRow.get(sField) == S_UNCLASSIFIED
-            for sField in TUPLE_REVIEWER_FIELDS
-        )
+        if _fbRowIsUnclassified(dictRow)
     )
+
+
+def _fbRowIsUnclassified(dictRow):
+    """Return True while any reviewer field is still the sentinel."""
+    for sField in TUPLE_REVIEWER_FIELDS:
+        objValue = dictRow.get(sField)
+        if isinstance(objValue, list):
+            if S_UNCLASSIFIED in objValue or not objValue:
+                return True
+        elif objValue == S_UNCLASSIFIED:
+            return True
+    return False
+
+
+def flistSchemaViolations(dictInventory):
+    """Return every classified value that is not a permitted one.
+
+    The ratchet counts rows that still hold the sentinel; this is the
+    other half, and without it the ratchet is trivially defeated by
+    replacing UNCLASSIFIED with an empty string or with prose nobody can
+    compare. A row is checked only once it claims to be classified --
+    an untouched row is honest about being untouched.
+    """
+    listViolations = []
+    for dictRow in dictInventory["listRows"]:
+        if _fbRowIsUnclassified(dictRow):
+            continue
+        listViolations.extend(_flistRowSchemaViolations(dictRow))
+    return listViolations
+
+
+def _flistRowSchemaViolations(dictRow):
+    """Return one classified row's schema violations."""
+    sKey = fsRowKey(dictRow)
+    listViolations = []
+    for sField, setPermitted in DICT_REVIEWER_ENUMS.items():
+        listValues = dictRow.get(sField) or []
+        if not isinstance(listValues, list) or not listValues:
+            listViolations.append(f"{sKey}: {sField} must be a non-empty list")
+            continue
+        for sValue in listValues:
+            if sValue not in setPermitted:
+                listViolations.append(
+                    f"{sKey}: {sField} has {sValue!r}, not one of "
+                    f"{sorted(setPermitted)}"
+                )
+    for sField, setPermitted in DICT_REVIEWER_SCALAR_ENUMS.items():
+        if dictRow.get(sField) not in setPermitted:
+            listViolations.append(
+                f"{sKey}: {sField} has {dictRow.get(sField)!r}, not one "
+                f"of {sorted(setPermitted)}"
+            )
+    for sField in TUPLE_REVIEWER_PROSE_FIELDS:
+        if not str(dictRow.get(sField) or "").strip():
+            listViolations.append(f"{sKey}: {sField} is empty")
+    if dictRow.get("sCarrierDisposition") == "excluded" and not str(
+        dictRow.get("sExclusionRationale") or "",
+    ).strip():
+        listViolations.append(
+            f"{sKey}: excluded from the carrier with no rationale"
+        )
+    return listViolations
 
 
 def _fdictBuildInventory(listScanned, dictExisting):
@@ -294,7 +657,10 @@ def _fdictBuildInventory(listScanned, dictExisting):
             for sField in TUPLE_REVIEWER_FIELDS:
                 dictRow[sField] = dictPrevious.get(sField, S_UNCLASSIFIED)
         listMerged.append(dictRow)
+    listUnresolved = flistUnresolvedSubprocessSites()
     return {
+        "iUnresolvedSubprocessCount": len(listUnresolved),
+        "listUnresolvedSubprocessSites": listUnresolved,
         "sPurpose": (
             "Every container-mutation call site in vaibify/, one row "
             "each. Machine-derived identity; reviewer-classified "

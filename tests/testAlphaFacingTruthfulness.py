@@ -143,3 +143,69 @@ def test_the_host_cli_conflict_guidance_never_offers_vaibify_open():
     assert "vaibify open" not in hubSession.S_AGENT_LANE_POINTER, (
         "the conflict guidance offers a command that cannot resolve it"
     )
+
+
+# ---------------------------------------------------------------------
+# A path argument must never become shell syntax.
+# ---------------------------------------------------------------------
+
+def test_no_cli_command_interpolates_a_path_into_a_container_command():
+    """``cat`` and ``ls`` are typed reads, and stay that way.
+
+    Both used to build ``f"cat {path}"`` / ``f"ls -1 {path}"`` and hand
+    the result to ``ftResultExecuteCommand``, which runs it under
+    ``/bin/bash -c``. A path is not syntax: ``vaibify cat '/tmp/a; rm
+    -rf /workspace'`` executed both halves, and the far more common
+    failure was that a path containing a space did not work at all.
+
+    Raised by an external review of the mutation inventory, and true:
+    the inventory listed both sites as trusted arbitrary commands, which
+    is exactly the classification a reviewer would have had to correct.
+    """
+    from vaibify.cli import commandCat, commandLs
+
+    for moduleCommand in (commandCat, commandLs):
+        sSource = Path(moduleCommand.__file__).read_text()
+        assert "ftResultExecuteCommand" not in sSource, (
+            f"{moduleCommand.__name__} still runs a shell command; a "
+            f"file read must go through a typed primitive"
+        )
+        for sInterpolated in ('f"cat {', 'f"ls -1 {', 'f"ls {'):
+            assert sInterpolated not in sSource, (
+                f"{moduleCommand.__name__} interpolates a path into a "
+                f"container command: {sInterpolated}"
+            )
+
+
+def test_the_directory_adapter_carries_the_path_as_data():
+    """The listing adapter builds fixed source text, never caller text.
+
+    A typed read may use a raw executor internally -- but only an
+    audited adapter may construct its command, and the audit is that
+    the caller's string is embedded through ``repr`` inside a program
+    that is then quoted whole. Asserted on the source because the
+    property is about how the command is BUILT, and a live call would
+    only show that one particular path happened not to break out.
+    """
+    import inspect
+
+    from vaibify.docker.dockerConnection import DockerConnection
+
+    sSource = inspect.getsource(DockerConnection.flistDirectoryEntries)
+    assert "repr(sDirectoryPath)" in sSource, (
+        "the path must be embedded as a Python literal, not "
+        "concatenated into shell text"
+    )
+    assert "shlex.quote" in sSource, (
+        "the assembled program must be quoted as a single shell "
+        "argument"
+    )
+    sExecCall = sSource[sSource.index("texecRunInContainerStreamed"):]
+    assert "shlex.quote(sProgram)" in sExecCall, (
+        "the command handed to the executor must be the quoted "
+        "program, not text assembled around the caller's path"
+    )
+    sBuild = sSource[:sSource.index("texecRunInContainerStreamed")]
+    assert "{sDirectoryPath}" not in sBuild, (
+        "the path is interpolated into the command being built"
+    )

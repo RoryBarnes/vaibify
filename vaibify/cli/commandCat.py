@@ -30,10 +30,20 @@ def cat(sProjectName, path):
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
     sNormalized = _fsNormalizePath(path)
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerName, f"cat {sNormalized}"
-    )
-    if iExitCode != 0:
-        click.echo(f"Error: {sOutput.strip()}")
+    # A TYPED read, not a shell command. The old form interpolated the
+    # caller's path into `cat {path}` and handed the result to
+    # `/bin/bash -c`, so `vaibify cat '/tmp/a; rm -rf /workspace'` ran
+    # both halves -- and a path containing a space simply failed.
+    # fbaFetchFile builds its own program under two layers of quoting;
+    # nothing the caller types reaches a shell as syntax.
+    try:
+        baContent = connectionDocker.fbaFetchFile(
+            sContainerName, sNormalized,
+        )
+    except FileNotFoundError:
+        click.echo(f"Error: cannot read {sNormalized} from the container")
         sys.exit(2)
-    click.echo(sOutput, nl=False)
+    except ValueError as error:
+        click.echo(f"Error: {error}")
+        sys.exit(2)
+    sys.stdout.buffer.write(baContent)
