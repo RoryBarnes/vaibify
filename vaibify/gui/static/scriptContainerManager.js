@@ -680,8 +680,51 @@ var VaibifyContainerManager = (function () {
     var _I_START_POLL_INTERVAL_MILLISECONDS = 1000;
     var _I_START_POLL_LIMIT = 900;
 
+    /* The name of a start this tab is following, remembered across a
+       reload. A start outlives the request that asked for it, so a
+       researcher who reloads mid-start used to be stranded: the server
+       was still pulling, the outcome and the lease were waiting on the
+       poll, and nothing in the reloaded page was polling. sessionStorage
+       is per-tab and survives a reload, which is exactly the scope of
+       "this tab is following that start". */
+    var S_PENDING_START_KEY = "vaibifyPendingStartName";
+
+    function _fnRememberPendingStart(sName) {
+        try {
+            window.sessionStorage.setItem(S_PENDING_START_KEY, sName);
+        } catch (error) {
+            /* A tab with storage disabled simply loses reload recovery;
+               it must not lose the ability to start a container. */
+        }
+    }
+
+    function _fnForgetPendingStart() {
+        try {
+            window.sessionStorage.removeItem(S_PENDING_START_KEY);
+        } catch (error) {
+            /* See above. */
+        }
+    }
+
+    async function fnResumeInterruptedStart() {
+        var sName = null;
+        try {
+            sName = window.sessionStorage.getItem(S_PENDING_START_KEY);
+        } catch (error) {
+            return;
+        }
+        if (!sName) return;
+        fnSetTilePending(sName);
+        try {
+            await _fnFollowStartToItsOutcome(sName, {});
+        } catch (error) {
+            _fnForgetPendingStart();
+        }
+    }
+
     async function fnStartContainer(sName) {
         fnSetTilePending(sName);
+        _fnRememberPendingStart(sName);
         try {
             var dictStart = await VaibifyApi.fdictPost(
                 _fsContainerUrl(sName, "/start"),
@@ -689,6 +732,7 @@ var VaibifyContainerManager = (function () {
             );
             await _fnFollowStartToItsOutcome(sName, dictStart);
         } catch (error) {
+            _fnForgetPendingStart();
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");
@@ -735,11 +779,26 @@ var VaibifyContainerManager = (function () {
     }
 
     function _fnReportStartOutcome(sName, dictStatus) {
+        _fnForgetPendingStart();
         if (dictStatus.sState === "SUCCEEDED") {
             if (dictStatus.sLeaseId) {
                 VaibifyApp.fnRecordClaimedLease(sName, dictStatus.sLeaseId);
             }
             VaibifyApp.fnShowToast("Container started", "success");
+            return;
+        }
+        /* OWNED is not an outcome: it means no start result is on
+           record and this session still owns the container, which is
+           what a reload after a long start now recovers. It carries the
+           live lease, so the tab can act again; claiming it "started"
+           would invent a start that did not happen in this window. */
+        if (dictStatus.sState === "OWNED") {
+            if (dictStatus.sLeaseId) {
+                VaibifyApp.fnRecordClaimedLease(sName, dictStatus.sLeaseId);
+            }
+            VaibifyApp.fnShowToast(
+                "Container '" + sName + "' is running and still yours.",
+                "success");
             return;
         }
         _dictAcknowledgedStartFailure[sName] = dictStatus.sReservationId;
@@ -1263,5 +1322,6 @@ var VaibifyContainerManager = (function () {
         fnReleaseClaim: fnReleaseClaim,
         fnStartContainer: fnStartContainer,
         fnCancelStartContainer: fnCancelStartContainer,
+        fnResumeInterruptedStart: fnResumeInterruptedStart,
     };
 })();

@@ -28,6 +28,10 @@ __all__ = [
     "OwnerRecord",
     "PoisonRecord",
     "ConnectionRecord",
+    "S_NO_PRIOR_OWNER",
+    "OwnershipIdentity",
+    "fidentityRecordOwnership",
+    "fbOwnershipIdentityStillHolds",
     "fdictCreateOwnerRegistry",
     "fdictCreateSessionOwnerIndex",
     "fdictCreateSessionSocketIndex",
@@ -108,6 +112,72 @@ def ffReadSecondsFromEnvironment(sVariableName, fDefaultSeconds):
 _F_GRACE_SECONDS = ffReadSecondsFromEnvironment(
     "VAIBIFY_REAP_GRACE_SECONDS", 30.0,
 )
+
+
+# The recorded identity of "there was no prior owner". A start that
+# CREATED a container's ownership must be able to say so, and it must be
+# a value, not the absence of one: an empty string is also what an
+# unclaimed record's lease looks like, so distinguishing them by
+# emptiness silently conflates "I made this ownership" with "I could not
+# read the ownership I found".
+S_NO_PRIOR_OWNER = "<no prior owner>"
+
+
+@dataclass(frozen=True)
+class OwnershipIdentity:
+    """Exactly which ownership an in-flight operation is running under.
+
+    A Boolean ("did this operation create the ownership?") cannot answer
+    the question that matters at settlement time, because the ownership
+    an operation created can be REPLACED while the operation runs: a
+    host transfer rotates the lease, the generation, and the browser
+    session on the same record, and the successor's ownership is not the
+    one the operation established. Comparing the recorded identity
+    against the live record makes that distinguishable, so a failing
+    operation frees only what it actually created and still holds.
+
+    ``sPriorOwnerLeaseId`` is :data:`S_NO_PRIOR_OWNER` when the operation
+    established the ownership itself, and the pre-existing lease
+    otherwise.
+    """
+
+    sPriorOwnerLeaseId: str
+    sLeaseId: str
+    iOwnerGeneration: int
+    sBrowserSessionId: str
+
+    @property
+    def bEstablishedTheOwnership(self):
+        """True when this operation created the ownership it runs under."""
+        return self.sPriorOwnerLeaseId == S_NO_PRIOR_OWNER
+
+
+def fidentityRecordOwnership(recordOwner, sPriorOwnerLeaseId):
+    """Capture the ownership identity an operation is about to run under."""
+    return OwnershipIdentity(
+        sPriorOwnerLeaseId=sPriorOwnerLeaseId,
+        sLeaseId=recordOwner.sLeaseId,
+        iOwnerGeneration=recordOwner.iOwnerGeneration,
+        sBrowserSessionId=recordOwner.sBrowserSessionId,
+    )
+
+
+def fbOwnershipIdentityStillHolds(recordOwner, identityOwnership):
+    """Return True when the live record is STILL the recorded ownership.
+
+    Every field must match. The generation alone would miss a release
+    and re-claim that happened to land on the same generation; the lease
+    alone would miss a rebinding to a different browser session.
+    """
+    if recordOwner is None or identityOwnership is None:
+        return False
+    return (
+        recordOwner.sLeaseId == identityOwnership.sLeaseId
+        and recordOwner.iOwnerGeneration == identityOwnership.iOwnerGeneration
+        and recordOwner.sBrowserSessionId == (
+            identityOwnership.sBrowserSessionId
+        )
+    )
 
 
 @dataclass

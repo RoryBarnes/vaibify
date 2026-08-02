@@ -54,9 +54,38 @@ def fixtureIsolateHostState(tmp_path, monkeypatch):
     )
 
 
+class MockDockerProjectNotRunning(MockDockerConnectionTwoContainers):
+    """The two-container mock with the project container NOT running.
+
+    This is the state a start actually begins from, and saying so is
+    load-bearing now: a start is refused outright when the daemon
+    reports the container already running, so a fixture that lists it as
+    running is asking the hub to start something that is up. Every test
+    below inherited that contradiction from the agent-lane mock and only
+    passed because nothing checked.
+    """
+
+    def flistGetRunningContainers(self):
+        return [
+            dictContainer
+            for dictContainer in super().flistGetRunningContainers()
+            if dictContainer["sName"] != S_PROJECT_NAME
+        ]
+
+
 @pytest.fixture
 def appHub():
     """Build the real hub application over a two-container mocked Docker."""
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        MockDockerProjectNotRunning,
+    ):
+        return pipelineServer.fappCreateHubApplication(iExpectedPort=0)
+
+
+@pytest.fixture
+def appHubProjectAlreadyRunning():
+    """Build the hub over a Docker that reports the project RUNNING."""
     with patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         MockDockerConnectionTwoContainers,
@@ -526,3 +555,424 @@ def test_an_expiring_session_orphans_a_mid_start_record_never_releases_it(
             containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
         ), "a start completing under an orphan leaves the authority alone"
         assert recordOwner.reservation is None
+
+
+# ------------------------------------------------------------------
+# Wave 1: the start may not cost the researcher their container.
+# ------------------------------------------------------------------
+
+def test_starting_a_running_container_you_own_keeps_your_ownership(
+    appHubProjectAlreadyRunning, tmp_path, monkeypatch,
+):
+    """Pressing Start on a container you own that is up costs nothing.
+
+    The whole defect in one test. The container is RUNNING and the
+    session OWNS it; Start is a mistake, not an attack, and its only
+    correct outcome is a refusal that leaves the lease, the flock, the
+    cardinality entry, and the exclusivity against a second session
+    exactly as they were. Before the fix the refusal ran the failure
+    settlement, which released ownership the start had not created, and
+    the researcher's container silently became somebody else's to claim.
+
+    Driven adversarially: the refusal is asserted, then the ownership,
+    then a SECOND browser session is made to try the same container and
+    must still be refused. A test that stopped at the 409 would pass
+    even if the record had been emptied.
+    """
+    appHub = appHubProjectAlreadyRunning
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        responseClaim = client.post(
+            f"/api/registry/{S_PROJECT_NAME}/claim", json={},
+        )
+        assert responseClaim.status_code == 200, responseClaim.text
+        sLeaseId = responseClaim.json()["sLeaseId"]
+        recordOwner = appHub.state.dictContainerOwners[S_PROJECT_NAME]
+        iGenerationBefore = recordOwner.iOwnerGeneration
+
+        responseStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        )
+        assert responseStart.status_code == 409, responseStart.text
+        assert "already running" in responseStart.json()["sMessage"]
+
+        assert executor.iCallCount == 0, (
+            "a refused start must not launch anything"
+        )
+        recordAfter = appHub.state.dictContainerOwners.get(S_PROJECT_NAME)
+        assert recordAfter is not None, (
+            "the refusal released the owner record: the researcher lost "
+            "a container they own and that is still running"
+        )
+        assert recordAfter.sLeaseId == sLeaseId
+        assert recordAfter.iOwnerGeneration == iGenerationBefore
+        assert recordAfter.fileHandleLock is not None, (
+            "the host flock was freed by a start that never took it"
+        )
+
+        sCredentialSecond = fsBootstrapCredential(appHub)
+        assert sCredentialSecond != sCredential
+        responseForeign = client.post(
+            f"/api/registry/{S_PROJECT_NAME}/claim", json={},
+            headers={"X-Session-Token": sCredentialSecond},
+        )
+        assert responseForeign.status_code == 409, (
+            "a second session was able to claim the container, so the "
+            f"first session's ownership did not survive: "
+            f"{responseForeign.text}"
+        )
+
+
+def test_a_start_refused_as_running_never_reserves_or_journals(
+    appHubProjectAlreadyRunning, tmp_path, monkeypatch,
+):
+    """The refusal precedes the reservation, not the other way round.
+
+    Ordering, asserted directly: an already-running container must be
+    refused BEFORE ownership is arbitrated, so there is no reservation
+    to unwind and no write-ahead journal record to settle. Refusing
+    after reserving is what made the failure settlement reachable at
+    all.
+    """
+    appHub = appHubProjectAlreadyRunning
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        responseStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        )
+        assert responseStart.status_code == 409
+    assert S_PROJECT_NAME not in appHub.state.dictContainerOwners, (
+        "an unowned container must stay unowned when its start is "
+        "refused outright"
+    )
+    assert appHub.state.dictStartResults == {}, (
+        "a refused start opened an outcome record, which would then "
+        "block the next start until somebody acknowledged it"
+    )
+
+
+def test_a_failed_start_does_not_release_a_successors_ownership(
+    appHub, tmp_path, monkeypatch,
+):
+    """A transfer during a start rotates the ownership the start created.
+
+    The residual the Boolean could not see. The start DOES create the
+    ownership, so "did I create it?" stays true for the whole run -- but
+    a host transfer rotates the lease, the generation, and the browser
+    session on that record while the start is in flight, and the
+    ownership that exists at settlement is the successor's, not the one
+    the start established. Releasing it would hand a live successor's
+    container away.
+
+    Keys are kept DISTINCT on purpose: the successor's lease, generation
+    and session all differ from the originals, so a comparison that
+    checked only one of them would still pass.
+    """
+    executor = HeldStartExecutor(errorToRaise=RuntimeError("boom"))
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+
+        recordOwner = appHub.state.dictContainerOwners[S_PROJECT_NAME]
+        recordOwner.sLeaseId = "successor-lease-value"
+        recordOwner.iOwnerGeneration += 1
+        recordOwner.sBrowserSessionId = "successor-browser-session"
+
+        executor.eventRelease.set()
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+
+        recordAfter = appHub.state.dictContainerOwners.get(S_PROJECT_NAME)
+        assert recordAfter is not None, (
+            "the failed start released the SUCCESSOR's ownership -- the "
+            "record it created had already been rotated away from it"
+        )
+        assert recordAfter.sLeaseId == "successor-lease-value"
+        assert recordAfter.reservation is None
+
+
+def test_a_failed_start_still_releases_the_ownership_it_created(
+    appHub, tmp_path, monkeypatch,
+):
+    """The negative control for the test above.
+
+    With no transfer, the identity still holds at settlement and the
+    start DID create the ownership, so the release must happen -- a
+    guard that simply never released would pass the previous test and
+    leave every failed start holding a container forever.
+    """
+    executor = HeldStartExecutor(errorToRaise=RuntimeError("boom"))
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+        executor.eventRelease.set()
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+        assert S_PROJECT_NAME not in appHub.state.dictContainerOwners, (
+            "a failed start that DID create the ownership must free it, "
+            "or the container is unclaimable until the hub restarts"
+        )
+
+
+# ------------------------------------------------------------------
+# Wave 1: cancelling a start, and recovering a lease.
+# ------------------------------------------------------------------
+
+def test_cancel_start_reaches_its_handler_while_a_start_is_live(
+    appHub, tmp_path, monkeypatch,
+):
+    """The cancel route must not be refused by the starting-409 gate.
+
+    The lifecycle authority refuses every name-keyed lifecycle mutation
+    with 409 while a start reservation is live, and its own message told
+    the researcher to "wait for the start to finish or cancel it" -- and
+    then refused the cancel by the same rule. A wedged start could only
+    be escaped by killing the hub. Nothing exercised the route over
+    HTTP, so nothing noticed.
+
+    Asserted on the CODE, not the wording: 409 with the gate's message
+    means the request never reached ``ftCancelStart`` at all.
+    """
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+
+        responseCancel = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start/cancel",
+        )
+        executor.eventRelease.set()
+
+        assert responseCancel.status_code != 409, (
+            "the cancel was refused by the starting gate before it "
+            f"reached its handler: {responseCancel.text}"
+        )
+        assert responseCancel.status_code == 200, responseCancel.text
+        dictCancel = responseCancel.json()
+        assert dictCancel["sReservationId"] == dictStart["sReservationId"]
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+
+
+def test_a_foreign_session_cannot_cancel_another_sessions_start(
+    appHub, tmp_path, monkeypatch,
+):
+    """Permitting the route while starting must not permit everybody.
+
+    The gate now authorizes the cancel path while a reservation is live,
+    which is only safe because ``ftCancelStart`` re-arbitrates on the
+    session itself. A second browser session must still be refused, or
+    the exemption would be a hole rather than a fix.
+    """
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+
+        sCredentialSecond = fsBootstrapCredential(appHub)
+        responseForeign = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start/cancel",
+            headers={"X-Session-Token": sCredentialSecond},
+        )
+        executor.eventRelease.set()
+
+        assert responseForeign.status_code in (403, 409), (
+            "a foreign session cancelled another session's start: "
+            f"{responseForeign.text}"
+        )
+        recordOwner = appHub.state.dictContainerOwners[S_PROJECT_NAME]
+        assert not recordOwner.reservation.recordStartTask.bCancelRequested, (
+            "a refused cancel still flagged the start task"
+        )
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+
+
+def test_the_owner_recovers_its_lease_after_the_result_record_expires(
+    appHub, tmp_path, monkeypatch,
+):
+    """Ownership outlives the transient outcome ledger.
+
+    The result ledger is bounded by design, so the record carrying a
+    successful start's lease eventually goes away. Ownership does not,
+    and a session that still holds it is entitled to its CURRENT lease
+    -- otherwise a researcher who reloaded after a long start reached a
+    404 and a dashboard that could not act on a container it owned.
+
+    The record is dropped outright here rather than waited out, which is
+    the same state expiry produces and does not make the suite sleep.
+    """
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+        executor.eventRelease.set()
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+
+        appHub.state.dictStartResults.clear()
+        recordOwner = appHub.state.dictContainerOwners[S_PROJECT_NAME]
+
+        dictRecovered = client.get(
+            f"/api/containers/{S_PROJECT_NAME}/start-status",
+        ).json()
+        assert dictRecovered["sState"] == startResultStore.S_RESULT_OWNED
+        assert dictRecovered["sLeaseId"] == recordOwner.sLeaseId, (
+            "the recovered lease must be the LIVE one, so a transfer "
+            "that rotated it hands out the successor's"
+        )
+
+
+def test_neither_the_agent_token_nor_a_foreign_session_recovers_a_lease(
+    appHub, tmp_path, monkeypatch,
+):
+    """Lease recovery is browser-credential-only.
+
+    The recovery answer hands out a container's live lease, so the two
+    lanes that must never reach it are driven directly: the
+    per-container agent token (a machine credential that holds no
+    browser session) and a second, genuine browser session that does not
+    own the container. Both must come away with nothing -- not a lease,
+    not a container id.
+    """
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+        executor.eventRelease.set()
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+        appHub.state.dictStartResults.clear()
+
+        recordOwner = appHub.state.dictContainerOwners[S_PROJECT_NAME]
+        assert recordOwner.sAgentToken, "the fixture must mint an agent token"
+
+        responseAgent = client.get(
+            f"/api/containers/{S_PROJECT_NAME}/start-status",
+            headers={"X-Session-Token": recordOwner.sAgentToken},
+        )
+        assert responseAgent.status_code != 200 or not (
+            responseAgent.json().get("sLeaseId")
+        ), (
+            "the in-container agent token recovered a browser lease: "
+            f"{responseAgent.text}"
+        )
+
+        sCredentialForeign = fsBootstrapCredential(appHub)
+        responseForeign = client.get(
+            f"/api/containers/{S_PROJECT_NAME}/start-status",
+            headers={"X-Session-Token": sCredentialForeign},
+        )
+        assert responseForeign.status_code != 200 or not (
+            responseForeign.json().get("sLeaseId")
+        ), (
+            "a foreign browser session recovered another session's "
+            f"lease: {responseForeign.text}"
+        )
+
+
+def test_a_failed_result_clears_at_its_window_so_a_retry_can_run(
+    appHub, tmp_path, monkeypatch,
+):
+    """An unacknowledged failure must not block a container forever.
+
+    A FAILED record refuses the next start until the researcher names
+    it, which is right while they might still be looking -- and wrong
+    forever. Without its own window, a browser that failed a start and
+    never came back left the container unstartable from any session.
+    """
+    executor = HeldStartExecutor(errorToRaise=RuntimeError("boom"))
+    fnInstallExecutor(monkeypatch, executor)
+    monkeypatch.setattr(
+        startResultStore, "F_FAILED_RESULT_WINDOW_SECONDS", 0.0,
+    )
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+        executor.eventRelease.set()
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+
+        executorRetry = HeldStartExecutor()
+        fnInstallExecutor(monkeypatch, executorRetry)
+        responseRetry = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        )
+        assert responseRetry.status_code == 202, (
+            "an expired failure still blocked the retry: "
+            f"{responseRetry.text}"
+        )
+        assert executorRetry.eventEntered.wait(timeout=5.0)
+        executorRetry.eventRelease.set()
+        fnWaitForSettledResult(
+            client, appHub, responseRetry.json()["sReservationId"],
+        )
+
+
+def test_a_pending_result_is_never_expired_out_from_under_a_slow_start(
+    appHub, tmp_path, monkeypatch,
+):
+    """A cold pull outlives every window in the ledger.
+
+    The record's lifetime used to run from CREATION and apply to every
+    state, so a start slower than the TTL had its record pruned while it
+    was still running -- and the poll that was supposed to deliver its
+    outcome answered "no start has been requested".
+    """
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    monkeypatch.setattr(startResultStore, "F_RESULT_TTL_SECONDS", 0.0)
+    monkeypatch.setattr(
+        startResultStore, "F_FAILED_RESULT_WINDOW_SECONDS", 0.0,
+    )
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+
+        dictStatus = client.get(
+            f"/api/containers/{S_PROJECT_NAME}/start-status",
+        ).json()
+        assert dictStatus["sState"] == startResultStore.S_RESULT_PENDING, (
+            "the in-flight start's record was expired away, so its "
+            f"outcome can never be delivered: {dictStatus}"
+        )
+        assert dictStatus["sReservationId"] == dictStart["sReservationId"]
+        executor.eventRelease.set()
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])

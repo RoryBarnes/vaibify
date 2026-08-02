@@ -346,12 +346,14 @@ def _tReserveForStartUnderLocks(
         if iStatusCode != 200:
             return (S_START_REFUSED, dictPayload, None)
         recordOwner = dictOwners[sName]
-        bOwnershipCreatedByStart = True
+        sPriorOwnerLeaseId = containerOwnership.S_NO_PRIOR_OWNER
     elif recordOwner.sBrowserSessionId not in ("", sBrowserSessionId):
         return (S_START_REFUSED, _fdictStartInUse(sName), None)
     else:
-        bOwnershipCreatedByStart = False
-    fnMintReservation(recordOwner, bOwnershipCreatedByStart)
+        sPriorOwnerLeaseId = recordOwner.sLeaseId
+    fnMintReservation(recordOwner, containerOwnership.fidentityRecordOwnership(
+        recordOwner, sPriorOwnerLeaseId,
+    ))
     return (S_START_RESERVED, {}, recordOwner)
 
 
@@ -365,7 +367,9 @@ def _fdictStartInUse(sName):
     }
 
 
-async def ftSettleFailedStartOwnership(appState, sName, fbCommitSettlement):
+async def ftSettleFailedStartOwnership(
+    appState, sName, identityOwnership, fbCommitSettlement,
+):
     """Commit a failed start's settlement, freeing the flock only if clean.
 
     ``fbCommitSettlement(recordOwner)`` runs synchronously inside the
@@ -375,31 +379,51 @@ async def ftSettleFailedStartOwnership(appState, sName, fbCommitSettlement):
     owner while a late create may still be landing.
 
     A clean settlement is necessary but NOT sufficient. The release is
-    additionally conditional on this start having CREATED the ownership
-    record: a start on a container the caller already owns reserves on
-    the existing record, and releasing that would drop a valid owner's
-    lease and free a flock nobody asked to give up — the researcher
-    clicks Start on a container they own that is already running, the
-    start refuses, and their ownership silently disappears.
+    additionally conditional on ``identityOwnership`` — the ownership
+    this start recorded when it began — both having been ESTABLISHED by
+    the start and STILL being the live ownership. Two distinct failures
+    hide behind that:
+
+    * a start on a container the caller already owns reserves on the
+      existing record, and releasing that drops a valid owner's lease
+      and frees a flock nobody offered — the researcher clicks Start on
+      a container they own that is already running, the start refuses,
+      and their ownership silently disappears; and
+    * the ownership a start DID establish can be replaced while the
+      start runs. A host transfer rotates the lease, the generation, and
+      the browser session on that record, so the successor's ownership
+      is not the one this start created, and a Boolean "I created it"
+      would happily free the successor's.
     """
     dictLockStore = _fdictLockStoreForAppState(appState)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
             dictOwners = getattr(appState, "dictContainerOwners", {})
             recordOwner = dictOwners.get(sName)
-            bStartOwnsTheRecord = bool(getattr(
-                getattr(recordOwner, "reservation", None),
-                "bOwnershipCreatedByStart", False,
-            ))
+            bMayRelease = _fbStartMayFreeOwnership(
+                recordOwner, identityOwnership,
+            )
             if not fbCommitSettlement(recordOwner) or recordOwner is None:
                 return
-            if not bStartOwnsTheRecord:
+            if not bMayRelease:
                 return
             containerOwnership.fnReleaseOwnership(
                 dictOwners, sName, recordOwner.sLeaseId,
                 sBrowserSessionId=recordOwner.sBrowserSessionId,
                 dictSessionOwner=getattr(appState, "dictSessionOwner", None),
             )
+
+
+def _fbStartMayFreeOwnership(recordOwner, identityOwnership):
+    """Return True when a failed start may release what it is sitting on."""
+    if identityOwnership is None:
+        return False
+    return (
+        identityOwnership.bEstablishedTheOwnership
+        and containerOwnership.fbOwnershipIdentityStillHolds(
+            recordOwner, identityOwnership,
+        )
+    )
 
 
 async def fbReleaseExplicit(appState, sName, sLeaseId, sBrowserSessionId=""):

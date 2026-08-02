@@ -3689,7 +3689,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testStartReservationFalsification.py::testAFailedStartNeverReleasesOwnershipItDidNotCreate',
         source='vaibify/gui/sessionLifecycle.py',
-        old="""            if not bStartOwnsTheRecord:
+        old="""            if not bMayRelease:
                 return
 """,
         new="",

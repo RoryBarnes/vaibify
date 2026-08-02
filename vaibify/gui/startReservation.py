@@ -40,6 +40,7 @@ never touch either layer directly.
 
 __all__ = [
     "F_HEARTBEAT_STALE_SECONDS",
+    "F_START_HARD_TIMEOUT_SECONDS",
     "StartCancelledError",
     "StartTaskRecord",
     "StartReservation",
@@ -73,6 +74,17 @@ logger = logging.getLogger("vaibify")
 # explicit operation (§10b) — it only tells the researcher the truth.
 F_HEARTBEAT_STALE_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
     "VAIBIFY_START_HEARTBEAT_STALE_SECONDS", 120.0,
+)
+
+# The absolute ceiling on one start. Deliberately generous: a cold pull
+# of a multi-gigabyte image is legitimately slow, and the heartbeat
+# CANNOT tell that apart from a wedge (it is stamped around whole
+# blocking primitives, with no progress callback inside them), so a
+# stall timeout built on it would kill healthy pulls. This is a backstop
+# against holding a container's ownership for the life of the hub, not a
+# stuck-start remedy -- explicit cancellation is that.
+F_START_HARD_TIMEOUT_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
+    "VAIBIFY_START_HARD_TIMEOUT_SECONDS", 3600.0,
 )
 
 # How long a cancel waits for the start task to finish its own
@@ -138,12 +150,14 @@ class StartReservation:
     sReservationId: str
     recordStartTask: StartTaskRecord
     fHeartbeatMonotonic: float = field(default_factory=time.monotonic)
-    # True only when this start CREATED the ownership record. A start
-    # on a container the caller already owns reserves on the existing
-    # record, and a failure must never release ownership the start did
-    # not establish (clicking Start on an already-running container you
-    # own would otherwise drop your own lease and free the flock).
-    bOwnershipCreatedByStart: bool = False
+    fStartedMonotonic: float = field(default_factory=time.monotonic)
+    # WHICH ownership this start is running under, captured when the
+    # reservation was minted: whether the start established it, and the
+    # lease, generation, and browser session it established. A failure
+    # frees ownership only when both still hold. See
+    # containerOwnership.OwnershipIdentity for why a Boolean cannot
+    # answer this.
+    identityOwnership: object = None
 
 
 def fsMintReservationId():
@@ -182,12 +196,28 @@ async def ftBeginStart(
     a lease could authorize. A repeated request by the initiating session
     is the idempotent recovery — the same 202, the same reservation, no
     second launch. Every refusal is a 409 naming what to do next.
+
+    Ordering (design §10b, hardened): INSPECT, then take the lifecycle
+    locks, then compare-and-reserve, then launch. The already-running
+    refusal has to come before the reservation, because it is not a
+    failure of the start — it is a request that should never have been
+    accepted, and accepting it means arbitrating ownership and then
+    unwinding it, which is where a valid owner's lease used to die. The
+    inspection is unlocked ON PURPOSE: no daemon call may be made while
+    the hub-wide cardinality lock is held. That leaves a race, so the
+    check is repeated authoritatively inside the launch, where losing
+    the race is an ordinary start failure rather than a lost lease.
     """
+    sRunningRefusal = _fsRefusalForAlreadyRunningContainer(
+        connectionDocker, sName,
+    )
+    if sRunningRefusal:
+        return (409, {"sName": sName, "sMessage": sRunningRefusal})
     sOutcome, dictBody, recordOwner = (
         await sessionLifecycle.ftReserveContainerForStart(
             appState, sName, sBrowserSessionId, iPort, connectionDocker,
-            lambda record, bCreated: _fnMintReservationOnRecord(
-                appState, sName, record, sBrowserSessionId, bCreated,
+            lambda record, identity: _fnMintReservationOnRecord(
+                appState, sName, record, sBrowserSessionId, identity,
             ),
             fsRefusalForPriorOutcome=lambda: _fsRefuseUnacknowledgedFailure(
                 appState, sName, sBrowserSessionId,
@@ -209,7 +239,7 @@ async def ftBeginStart(
 
 
 def _fnMintReservationOnRecord(
-    appState, sName, recordOwner, sSessionId, bOwnershipCreatedByStart,
+    appState, sName, recordOwner, sSessionId, identityOwnership,
 ):
     """Write the journal record, attach the reservation, open the result.
 
@@ -227,7 +257,7 @@ def _fnMintReservationOnRecord(
             sStartTaskId=secrets.token_hex(8),
             sJournalOperationId=sOperationId,
         ),
-        bOwnershipCreatedByStart=bOwnershipCreatedByStart,
+        identityOwnership=identityOwnership,
     )
     startResultStore.fnOpenStartResult(
         appState, sReservationId, sName,
@@ -244,6 +274,39 @@ def _fsRefuseUnacknowledgedFailure(
     )
     return _fsUnacknowledgedFailureReason(
         appState, sName, sBrowserSessionId,
+    )
+
+
+def _fsRefusalForAlreadyRunningContainer(connectionDocker, sName):
+    """Return why a start must be refused outright, or ''.
+
+    Read through the Docker CONNECTION the route already holds, not the
+    CLI: this runs on the request path, before any lock, and it is a
+    read, so it belongs on the cached gateway rather than in a fresh
+    subprocess.
+
+    Only a POSITIVE "it is running" refuses. A daemon that did not
+    answer falls through to the ordinary start -- refusing on an
+    unanswered probe would make the dashboard unable to start anything
+    whenever Docker is briefly busy -- and the authoritative check still
+    runs inside the launch, where losing the race is an ordinary start
+    failure rather than a lost lease.
+    """
+    if connectionDocker is None:
+        return ""
+    try:
+        listRunning = connectionDocker.flistGetRunningContainers()
+    except Exception:  # noqa: BLE001 — an unanswered probe is not a refusal
+        return ""
+    if not any(
+        dictContainer.get("sName") == sName
+        for dictContainer in listRunning or ()
+    ):
+        return ""
+    return (
+        f"Container '{sName}' is already running, so there is nothing to "
+        "start. Open it from the dashboard, or stop it first if you mean "
+        "to start a fresh one."
     )
 
 
@@ -325,11 +388,31 @@ def _fnPublishActiveOperationId(appState, sName, reservation):
 
 
 async def _fnRunStartTask(appState, sName, reservation, configProject):
-    """Run the create-then-start pair off the loop; settle either way."""
+    """Run the create-then-start pair off the loop; settle either way.
+
+    The hard ceiling is the ONLY timer: it exists so a launch that hangs
+    forever cannot hold a container's ownership for the life of the hub.
+    It is generous because the heartbeat does NOT track progress — it is
+    stamped around whole blocking primitives, so a legitimate
+    multi-gigabyte image pull is indistinguishable from a wedge — and a
+    tighter timer would kill healthy pulls. Explicit cancellation, not a
+    timer, is the remedy for a stuck start.
+    """
     try:
-        sContainerId = await asyncio.to_thread(
-            _fsExecuteReservedStart, sName, reservation, configProject,
+        sContainerId = await asyncio.wait_for(
+            asyncio.ensure_future(asyncio.to_thread(
+                _fsExecuteReservedStart, sName, reservation, configProject,
+            )),
+            F_START_HARD_TIMEOUT_SECONDS,
         )
+    except asyncio.TimeoutError:
+        reservation.recordStartTask.bCancelRequested = True
+        await _fnSettleStartFailure(appState, sName, reservation, RuntimeError(
+            "The start exceeded the "
+            f"{int(F_START_HARD_TIMEOUT_SECONDS)}-second hard ceiling and "
+            "was terminated."
+        ))
+        return
     except BaseException as errorStart:  # noqa: BLE001 — settled below
         await _fnSettleStartFailure(appState, sName, reservation, errorStart)
         return
@@ -370,7 +453,37 @@ def _fsExecuteReservedStart(sName, reservation, configProject):
         sContainerId, fnRegisterProcess=recordTask.fnAdoptProcess,
     )
     _fnStampHeartbeat(reservation)
+    _fnConfirmIncarnationIsRunning(sName, sContainerId)
     return sContainerId
+
+
+def _fnConfirmIncarnationIsRunning(sName, sContainerId):
+    """Re-inspect the EXACT incarnation before it can be called started.
+
+    The launch commands exiting zero is not the same as a running
+    container: an image whose entrypoint exits immediately produces a
+    successful ``docker create`` and ``docker start`` and a container
+    that is already gone. Committing SUCCEEDED there hands the
+    researcher a lease for a dead container and a dashboard that says it
+    is running -- the exact class of lie the dashboard must never tell.
+    So the container just created is re-inspected BY ID, not by name: a
+    name lookup could answer about a different incarnation entirely.
+
+    An unanswered daemon is not a failure. It is not evidence the
+    container died, and refusing there would turn a momentarily busy
+    Docker into a failed start; the ordinary liveness surfaces report
+    the truth either way.
+    """
+    dictPresence = containerManager.fdictProbeContainerPresence(sName)
+    if not dictPresence["bAnswered"]:
+        return
+    if containerManager.fbContainerIsRunning(sContainerId):
+        return
+    raise RuntimeError(
+        f"Container '{sName}' was created and started, but it is not "
+        "running -- its entrypoint exited immediately. Check the image's "
+        "command, then start it again."
+    )
 
 
 def _fnRefuseIfCancelled(recordTask):
@@ -452,7 +565,7 @@ async def _fnSettleStartFailure(appState, sName, reservation, errorStart):
         reservation.recordStartTask.bProcessWasSignalled,
     )
     await sessionLifecycle.ftSettleFailedStartOwnership(
-        appState, sName,
+        appState, sName, reservation.identityOwnership,
         lambda recordOwner: _fbCommitFailedStart(
             appState, sName, recordOwner, reservation, errorStart,
             dictSettlement, dictTermination,
@@ -710,10 +823,9 @@ def ftPollStartStatus(appState, sName, sBrowserSessionId):
         appState, sName,
     )
     if recordResult is None:
-        return (404, {
-            "sName": sName, "sState": "NONE",
-            "sMessage": f"No start has been requested for '{sName}'.",
-        })
+        return _tRecoverLeaseWithoutAResult(
+            appState, sName, sBrowserSessionId,
+        )
     if recordResult.sState == startResultStore.S_RESULT_SUCCEEDED:
         return _tDeliverSucceededResult(
             appState, sName, sBrowserSessionId, recordResult,
@@ -723,6 +835,39 @@ def ftPollStartStatus(appState, sName, sBrowserSessionId):
     return _tDeliverPendingResult(
         appState, sName, sBrowserSessionId, recordResult,
     )
+
+
+def _tRecoverLeaseWithoutAResult(appState, sName, sBrowserSessionId):
+    """Answer a poll with no result record left to read.
+
+    The result ledger is transient by design. Ownership is not: a
+    session that still owns the container is entitled to its CURRENT
+    lease for as long as it owns it, whether or not the outcome record
+    that once carried it has expired. Without this, a researcher whose
+    browser reloaded after a long start reached a 404 and a dashboard
+    that could not act on a container it demonstrably owned.
+
+    The lease comes from the live owner record — never from a stored
+    copy — so a transfer that rotated it hands out the successor's, and
+    a session that no longer owns the container gets nothing at all. The
+    state is reported honestly as its own value: no start outcome exists
+    here, and calling it SUCCEEDED would invent one.
+    """
+    recordOwner = getattr(appState, "dictContainerOwners", {}).get(sName)
+    if recordOwner is None or recordOwner.sBrowserSessionId != (
+        sBrowserSessionId
+    ):
+        return (404, {
+            "sName": sName, "sState": "NONE",
+            "sMessage": f"No start has been requested for '{sName}'.",
+        })
+    return (200, {
+        "sName": sName,
+        "sState": startResultStore.S_RESULT_OWNED,
+        "sReservationId": "",
+        "sContainerId": recordOwner.sContainerId,
+        "sLeaseId": recordOwner.sLeaseId,
+    })
 
 
 def _tDeliverPendingResult(

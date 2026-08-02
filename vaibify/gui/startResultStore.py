@@ -22,7 +22,9 @@ __all__ = [
     "S_RESULT_PENDING",
     "S_RESULT_SUCCEEDED",
     "S_RESULT_FAILED",
+    "S_RESULT_OWNED",
     "F_RESULT_TTL_SECONDS",
+    "F_FAILED_RESULT_WINDOW_SECONDS",
     "I_RESULT_CAP_TOTAL",
     "I_RESULT_CAP_PER_SESSION",
     "StartResultRecord",
@@ -43,12 +45,33 @@ from . import containerOwnership
 S_RESULT_PENDING = "PENDING"
 S_RESULT_SUCCEEDED = "SUCCEEDED"
 S_RESULT_FAILED = "FAILED"
+# Not an outcome, and deliberately not one of the three above: it is the
+# answer to "there is no start outcome on record, but you own this
+# container". Reporting that as SUCCEEDED would invent a start that
+# never happened in this window; reporting it as 404 stranded an owner
+# who reloaded after a long start.
+S_RESULT_OWNED = "OWNED"
 
 # The record outlives its reservation, but not indefinitely: an explicit
 # lifetime plus per-session and hub-wide caps, so a hub that starts
-# containers all day cannot accumulate outcomes without bound.
+# containers all day cannot accumulate outcomes without bound. The
+# lifetime is measured from SETTLEMENT, and a PENDING record is exempt:
+# a cold multi-gigabyte pull legitimately outlives any of these windows,
+# and expiring the record of a start that is still running is how a
+# researcher who reloads mid-start ends up with no way to learn what
+# happened.
 F_RESULT_TTL_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
     "VAIBIFY_START_RESULT_TTL_SECONDS", 900.0,
+)
+
+# A FAILED record blocks the next start until it is acknowledged, so it
+# needs its own, longer window after which it clears itself. Without
+# one, a browser that failed a start and never came back would leave the
+# container permanently unstartable from any session.
+F_FAILED_RESULT_WINDOW_SECONDS = (
+    containerOwnership.ffReadSecondsFromEnvironment(
+        "VAIBIFY_FAILED_RESULT_WINDOW_SECONDS", 1800.0,
+    )
 )
 I_RESULT_CAP_TOTAL = 64
 I_RESULT_CAP_PER_SESSION = 8
@@ -167,14 +190,29 @@ def fnRebindStartResultsForTransfer(appState, sName, sNewSessionId):
 
 
 def _fnPruneStartResults(dictStore):
-    """Drop expired records, then the oldest beyond the caps."""
+    """Drop expired SETTLED records, then the oldest beyond the caps."""
     fNow = time.monotonic()
     for sReservationId in list(dictStore):
-        if fNow - dictStore[sReservationId].fCreatedMonotonic >= (
-            F_RESULT_TTL_SECONDS
-        ):
+        if _fbResultRecordHasExpired(dictStore[sReservationId], fNow):
             dictStore.pop(sReservationId, None)
     _fnEnforceStartResultCaps(dictStore)
+
+
+def _fbResultRecordHasExpired(recordResult, fNow):
+    """Return True when a record's own window has closed.
+
+    A PENDING record never expires: the start it describes is still
+    running, and a pull can legitimately take longer than any window
+    here. It leaves the ledger when it settles, or with the hub.
+    """
+    if recordResult.sState == S_RESULT_PENDING:
+        return False
+    fWindow = (
+        F_FAILED_RESULT_WINDOW_SECONDS
+        if recordResult.sState == S_RESULT_FAILED
+        else F_RESULT_TTL_SECONDS
+    )
+    return fNow - recordResult.fSettledMonotonic >= fWindow
 
 
 def _fnEnforceStartResultCaps(dictStore):

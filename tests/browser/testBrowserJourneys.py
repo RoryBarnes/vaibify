@@ -565,11 +565,17 @@ def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
     _fnWriteBrowserLaneProjectConfig(serverHub)
     eventRelease = threading.Event()
     fnRealExecutor = startReservation._fsExecuteReservedStart
+    fnRealRunningList = serverHub.adapterDocker.flistGetRunningContainers
 
     def _fsHeldStart(sName, reservation, configProject):
         eventRelease.wait(timeout=30.0)
         return "browserLaneStartedContainerId"
 
+    # The lane's fake lists the project container as RUNNING, which is
+    # right for every other journey and is the one state a start may not
+    # begin from: a start on a running container is refused outright, so
+    # the premise has to be the honest pre-start one.
+    serverHub.adapterDocker.flistGetRunningContainers = lambda: []
     startReservation._fsExecuteReservedStart = _fsHeldStart
     try:
         pageDashboard.goto(
@@ -608,6 +614,7 @@ def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
         assert pageDashboard.listConsoleErrors == []
     finally:
         startReservation._fsExecuteReservedStart = fnRealExecutor
+        serverHub.adapterDocker.flistGetRunningContainers = fnRealRunningList
         eventRelease.set()
         _fnReleaseBrowserLaneOwnership(stateApp)
 
@@ -760,3 +767,103 @@ def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
         if "Failed to load resource" not in sError
     ]
     assert listScriptErrors == [], listScriptErrors
+
+
+# ---------------------------------------------------------------------
+# Journey -- a reload mid-start must not strand the researcher
+# ---------------------------------------------------------------------
+
+
+def testReloadDuringAStartPicksTheOutcomeBackUp(
+    pageDashboard, browserChromium, serverHub,
+):
+    """A start outlives the page that asked for it, so the page resumes.
+
+    The start is a server-owned reservation: the POST only reserves it,
+    and the outcome AND the container's lease arrive from the status
+    poll. A researcher who reloads while a multi-gigabyte image pulls
+    therefore used to be stranded -- the server finished, and no page
+    was listening. The tab remembers the pending start in
+    sessionStorage, which survives a reload, and resumes the poll on
+    load.
+
+    The mechanism under test IS sessionStorage's scope, so it is driven
+    both ways: the SAME browser context reloads and must recover, and a
+    SEPARATE context is the negative control -- it must not adopt
+    another tab's start, because sessionStorage is per tab and the lease
+    is another session's.
+    """
+    import threading
+
+    from vaibify.gui import startReservation
+
+    stateApp = serverHub.app.state
+    _fnWriteBrowserLaneProjectConfig(serverHub)
+    eventRelease = threading.Event()
+    fnRealExecutor = startReservation._fsExecuteReservedStart
+    fnRealRunningList = serverHub.adapterDocker.flistGetRunningContainers
+
+    def _fsHeldStart(sName, reservation, configProject):
+        eventRelease.wait(timeout=30.0)
+        return "browserLaneStartedContainerId"
+
+    serverHub.adapterDocker.flistGetRunningContainers = lambda: []
+    startReservation._fsExecuteReservedStart = _fsHeldStart
+    pageControl = None
+    try:
+        pageDashboard.goto(
+            serverHub.fsBootstrapUrl(), wait_until="networkidle",
+        )
+        pageDashboard.evaluate(
+            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            % S_CONTAINER_NAME
+        )
+        pageDashboard.locator(
+            ".toast", has_text="Starting container"
+        ).first.wait_for(state="visible", timeout=10000)
+        assert pageDashboard.evaluate(
+            "() => window.sessionStorage.getItem('vaibifyPendingStartName')"
+        ) == S_CONTAINER_NAME, (
+            "the tab did not record the start it is following, so a "
+            "reload has nothing to resume"
+        )
+
+        # The negative control, opened while the start is still in
+        # flight: a different browser context has neither the
+        # sessionStorage marker nor the owning session.
+        contextControl = browserChromium.new_context()
+        pageControl = contextControl.new_page()
+        pageControl.goto(
+            serverHub.fsBootstrapUrl(), wait_until="networkidle",
+        )
+        assert pageControl.evaluate(
+            "() => window.sessionStorage.getItem('vaibifyPendingStartName')"
+        ) is None, (
+            "a separate browser context adopted another tab's start"
+        )
+
+        pageDashboard.reload(wait_until="networkidle")
+        eventRelease.set()
+
+        pageDashboard.locator(
+            ".toast", has_text="Container started"
+        ).first.wait_for(state="visible", timeout=20000)
+        recordOwner = stateApp.dictContainerOwners[S_CONTAINER_NAME]
+        sPageLease = pageDashboard.evaluate(
+            "() => VaibifyApp.fsGetLeaseId()"
+        )
+        assert sPageLease == recordOwner.sLeaseId, (
+            "the reloaded page did not recover the lease the start "
+            "produced, so it owns a container it cannot act on"
+        )
+        assert pageDashboard.evaluate(
+            "() => window.sessionStorage.getItem('vaibifyPendingStartName')"
+        ) is None, "the resumed start was never cleared"
+        assert pageDashboard.listPageErrors == []
+    finally:
+        startReservation._fsExecuteReservedStart = fnRealExecutor
+        serverHub.adapterDocker.flistGetRunningContainers = fnRealRunningList
+        eventRelease.set()
+        if pageControl is not None:
+            pageControl.context.close()
+        _fnReleaseBrowserLaneOwnership(stateApp)

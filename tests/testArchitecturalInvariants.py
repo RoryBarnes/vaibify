@@ -3713,6 +3713,16 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
+    # when the ownership IDENTITY joined it — the recorded
+    # (prior-owner, lease, generation, session) tuple an in-flight
+    # operation runs under, and the comparison that says whether the
+    # live record is still it. It is deliberately here and not in a new
+    # module: it is a statement ABOUT an OwnerRecord, read in the same
+    # breath as the record's own fields, and a separate module would
+    # invite a second, drifting notion of what "the same ownership"
+    # means — which is the bug class it exists to close.
+    "containerOwnership.py": 854,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4084,7 +4094,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refused — one click on an already-running container you own. The
     # guard belongs here, in the module that owns release, rather than
     # in the settlement callback that answers cleanliness.
-    "sessionLifecycle.py": 1255,
+    # +24 (2026-08-02): the failed-start release gate compares the
+    # RECORDED ownership identity against the live record instead of a
+    # Boolean, so a start cannot free ownership a transfer replaced
+    # while it ran.
+    "sessionLifecycle.py": 1279,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -4100,7 +4114,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-01): the reservation records whether the start
     # established the ownership it runs under, which is the fact the
     # settlement guard above consults.
-    "startReservation.py": 814,
+    # +145 (2026-08-02): the start arbitration hardening — the
+    # already-running refusal that precedes the reservation, the
+    # re-inspection of the exact incarnation before SUCCEEDED may be
+    # committed, the hard ceiling, and the owner-lease recovery for a
+    # poll whose result record has expired. All four are steps of the
+    # same ordering, and that ordering IS the safety argument, so they
+    # belong beside it rather than in a module that would have to
+    # re-derive the reservation's state to act.
+    "startReservation.py": 959,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

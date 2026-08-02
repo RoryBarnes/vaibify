@@ -417,6 +417,11 @@ const VaibifyApp = (function () {
         VaibifyEventBindings.fnBindResizeHandles();
         VaibifyEventBindings.fnBindGlobalSettingsToggle();
         VaibifyEventBindings.fnBindRefreshRemoteStatus();
+        /* A start outlives the request that asked for it, so a reload
+           mid-start must pick the poll back up. Deliberately NOT
+           awaited: the poll runs for as long as the start does, and
+           initialization must not wait on a container pull. */
+        VaibifyContainerManager.fnResumeInterruptedStart();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });

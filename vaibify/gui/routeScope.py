@@ -172,6 +172,17 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
 }
 
+# The lifecycle routes that must still be reachable WHILE a start
+# reservation is live. Cancelling a start is the whole set, and it has
+# to be: the starting-409 exists to stop a mutation landing underneath a
+# running create, and cancelling the start is not such a mutation -- it
+# is the one action that ends it. Refusing it told the researcher to
+# "wait for the start to finish or cancel it", and then refused the
+# cancel, so a wedged start could only be escaped by killing the hub.
+_SET_LIFECYCLE_PATHS_PERMITTED_WHILE_STARTING = frozenset({
+    "/api/containers/{sName}/start/cancel",
+})
+
 # Owned-container GETs resolve to ``container-read`` by the GET/{sContainerId}
 # convention (see :func:`fdictResolveRouteScope`) and are ENFORCED:
 # ``ContainerAwareRoute`` runs the same bound-lease authority for them as for
@@ -314,11 +325,11 @@ def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
     for sMethod in setNormalized:
         sScope = DICT_CONTROL_PLANE_SCOPES.get((sMethod, sPath))
         if sScope is not None:
-            return _fdictDeclareControlPlaneScope(sScope)
+            return _fdictDeclareControlPlaneScope(sScope, sPath)
     return None
 
 
-def _fdictDeclareControlPlaneScope(sScope):
+def _fdictDeclareControlPlaneScope(sScope, sPath=""):
     """Return the scope declaration for a named control-plane route.
 
     Only ``container-lifecycle`` names a target: it is the one
@@ -331,6 +342,9 @@ def _fdictDeclareControlPlaneScope(sScope):
             "sScope": sScope,
             "sTargetParam": "sName",
             "sIdentityKind": "name",
+            "bPermittedWhileStarting": (
+                sPath in _SET_LIFECYCLE_PATHS_PERMITTED_WHILE_STARTING
+            ),
         }
     return {"sScope": sScope, "sTargetParam": None, "sIdentityKind": None}
 
@@ -434,10 +448,15 @@ def fiAuthorizeContainerLifecycleHttp(request, appState, dictScope):
     # keyed on the session rather than the lease: the session that
     # requested the start has no lease yet (a start hands none out), so a
     # lease-first order would tell the initiator "not yours" about the
-    # very container it is starting.
+    # very container it is starting. For the same reason, a route that is
+    # permitted while starting is AUTHORIZED here rather than falling
+    # through to the lease check it could not possibly satisfy; the
+    # handler re-arbitrates on the session itself.
     if recordOwner.sBrowserSessionId in ("", sBrowserSessionId) and (
         getattr(recordOwner, "reservation", None) is not None
     ):
+        if dictScope.get("bPermittedWhileStarting"):
+            return I_AUTHORIZED
         return I_REJECT_STARTING
     if not containerOwnership.fbBrowserSessionOwnsLease(
         dictContainerOwners, sName, sBrowserSessionId,
