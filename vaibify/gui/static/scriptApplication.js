@@ -182,13 +182,36 @@ const VaibifyApp = (function () {
             });
             var data = await response.json();
             if (!response.ok || data.sOutcome !== "transferred") {
+                _fnReportTransferRefusal(data);
                 return "";
             }
             if (data.sContainerName && data.sLeaseId) {
                 fnRecordClaimedLease(data.sContainerName, data.sLeaseId);
             }
             return data.sCredential || "";
-        } catch (e) { return ""; }
+        } catch (e) {
+            _fnReportTransferRefusal(null);
+            return "";
+        }
+    }
+
+    /* A refused transfer used to vanish: the exchange returned "" and
+       the tab quietly fell back to a stored credential or to none at
+       all, so the researcher who had just run 'vaibify open' saw a
+       dashboard that was simply not attached to their container and no
+       reason why. Every refusal the server sends names its own recovery
+       -- retry, re-mint, claim normally, reconcile -- and that is the
+       message to show. The generic line is used ONLY when there is no
+       server answer to show (the hub could not be reached at all), and
+       it says exactly that rather than inventing a cause. */
+    function _fnReportTransferRefusal(dictOutcome) {
+        var sMessage = (dictOutcome || {}).sMessage;
+        if (!sMessage) {
+            sMessage = "The hub could not be reached to complete the "
+                + "hand-over. Reload this page to try again, or run "
+                + "'vaibify open' once more.";
+        }
+        fnShowToast(sMessage, "error");
     }
 
     async function fnFetchSessionToken() {

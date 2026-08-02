@@ -362,9 +362,12 @@ def _fnRegisterReleaseContainer(app, dictCtx):
 async def _fbReadForceFlag(request):
     """Return the request's ``bForce`` flag, tolerating no body at all.
 
-    The dashboard's ``pagehide`` beacon posts an empty body, so a
-    missing or malformed body must read as "not forced" rather than
-    fail the release.
+    A release may legitimately arrive with no body at all, so a missing
+    or malformed one must read as "not forced" rather than fail the
+    release. Failing CLOSED is the point: an unreadable body can never
+    become a force, and force overrides ONLY the agent-liveness refusal
+    -- a live run, a live guarded mutation, and a poisoned record all
+    still refuse.
     """
     try:
         dictBody = await request.json()

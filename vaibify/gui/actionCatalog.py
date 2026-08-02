@@ -765,6 +765,7 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "PUT",
      "sPath": "/api/file/{sContainerId}/{sFilePath:path}",
      "bAgentSafe": True,
+     "saQueryFields": ["sWorkdir"],
      "sDescription": "Write text content to a file inside the container."},
     {"sName": "write-draft", "sCategory": "files",
      "sMethod": "PUT",
@@ -778,6 +779,7 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "DELETE",
      "sPath": "/api/draft/{sContainerId}/{sFilePath:path}",
      "bAgentSafe": False,
+     "saQueryFields": ["sWorkdir"],
      "sDescription": "Discard an editor draft. User-only because "
                      "drafts encode the researcher's unsaved edits."},
     {"sName": "check-files-exist", "sCategory": "files",
@@ -800,6 +802,7 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "GET",
      "sPath": "/api/pipeline/{sContainerId}/host-log-tail",
      "bAgentSafe": True,
+     "saQueryFields": ["iLines"],
      "sDescription": "Return the last N lines of ~/.vaibify/vaibify.log "
                      "filtered to this container. Args: {iLines: int, "
                      "default 200, cap 1000}. Read-only; lets an "

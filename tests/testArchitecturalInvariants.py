@@ -1451,6 +1451,100 @@ def testEveryCatalogActionHasCliCommand():
     )
 
 
+def testGeneratedActionsSendFieldsOnTheTransportTheRouteReads():
+    """Every query parameter a catalog route declares is in saQueryFields.
+
+    A generated action used to send all its caller fields as a JSON
+    body. FastAPI reads a query parameter from the query string only, so
+    a field aimed at one arrived nowhere and the parameter silently took
+    its default: ``get-host-log-tail iLines=50`` returned 200 lines
+    while the catalog's own description advertised the argument, and
+    ``write-file ... sWorkdir=/x`` wrote relative to somewhere else.
+    Silently doing something other than what was asked is the worst
+    shape of all -- there is nothing to notice.
+
+    The route signature is the authority here, not the catalog: this
+    reads each action's endpoint and requires every parameter that is
+    neither a path placeholder nor a request/body object to be declared
+    in ``saQueryFields``. A route that grows one fails the build.
+    """
+    import inspect
+    from unittest.mock import patch
+
+    from pydantic import BaseModel
+    from fastapi.routing import APIRoute
+
+    from vaibify.gui import pipelineServer
+    from vaibify.gui.actionCatalog import LIST_AGENT_ACTIONS
+    from tests.testAgentLaneEnforcement import MockDockerConnection
+
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker", MockDockerConnection,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser",
+        )
+    dictRoutesByKey = {}
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            for sMethod in route.methods:
+                dictRoutesByKey[(sMethod, route.path)] = route
+
+    listUndeclared = []
+    for dictEntry in LIST_AGENT_ACTIONS:
+        if dictEntry["sMethod"] == "WS":
+            continue
+        route = dictRoutesByKey.get(
+            (dictEntry["sMethod"], dictEntry["sPath"]),
+        )
+        if route is None:
+            continue
+        setDeclared = set(dictEntry.get("saQueryFields") or ())
+        for sName, parameter in inspect.signature(
+            route.endpoint,
+        ).parameters.items():
+            if _fbParameterIsPathPlaceholder(sName, route.path):
+                continue
+            if _fbParameterIsNotAQueryField(sName, parameter, BaseModel):
+                continue
+            if sName not in setDeclared:
+                listUndeclared.append(
+                    f"{dictEntry['sName']} -> {sName}"
+                )
+    assert listUndeclared == [], (
+        f"these catalog actions send a field the route reads from the "
+        f"QUERY string as a JSON body, so it is silently ignored; "
+        f"declare each in the entry's saQueryFields: {listUndeclared}"
+    )
+
+
+def _fbParameterIsPathPlaceholder(sName, sPath):
+    """Return True when the parameter fills a path placeholder."""
+    return f"{{{sName}}}" in sPath or f"{{{sName}:" in sPath
+
+
+def _fbParameterIsNotAQueryField(sName, parameter, typeBaseModel):
+    """Return True for parameters FastAPI does not read from the query."""
+    from fastapi import Request, Response, WebSocket
+
+    annotation = parameter.annotation
+    if annotation in (Request, Response, WebSocket, dict):
+        return True
+    if sName in ("request", "response", "websocket", "background_tasks"):
+        return True
+    if isinstance(annotation, type) and issubclass(
+        annotation, typeBaseModel,
+    ):
+        return True
+    # Optional[SomeModel] and other typing constructs: a body model
+    # wrapped in Optional keeps the model in its arguments.
+    return any(
+        isinstance(objArgument, type)
+        and issubclass(objArgument, typeBaseModel)
+        for objArgument in getattr(annotation, "__args__", ())
+    )
+
+
 def testGeneratedActionsNeverShadowTopLevelCommands():
     """Generated action commands must stay nested under ``vaibify do``.
 
@@ -4300,7 +4394,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # poll. The arbitration, launch, settlement, and delivery live in
     # startReservation.py; these three handlers resolve the browser
     # session, load the project config, and map outcomes to codes.
-    "registryRoutes.py": 1234,
+    # +3 (2026-08-02): the release force flag's docstring records that
+    # an unreadable body fails CLOSED, replacing a rationale that
+    # named a pagehide beacon the frontend deliberately never sends.
+    "registryRoutes.py": 1237,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -4333,7 +4430,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Same governance responsibility.
     # +1 (2026-08-01): cancelling a start joins the container control
     # plane the in-container agent may never operate (slice 9).
-    "actionCatalog.py": 961,
+    # +3 (2026-08-02): saQueryFields on the three actions whose routes
+    # read a parameter from the query string, so a generated command
+    # sends each field on the transport the route actually reads.
+    "actionCatalog.py": 964,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

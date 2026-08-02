@@ -862,9 +862,12 @@ An abandoned session does not hold a container forever. A hub or
 viewer left with no connected tab and nothing running self-retires
 after an idle timeout (see
 [Configuration](configuration.md#vaibify_hub_idle_timeout_seconds)),
-freeing its container. Ownership is also released the moment the owning
-tab closes (a `pagehide` signal) or a brief disconnect's grace window
-expires with no reconnect — never while a pipeline is still running.
+freeing its container. Ownership is otherwise released when a brief
+disconnect's grace window expires with no reconnect — never while a
+pipeline is still running. Closing the tab does not itself release
+anything: the browser fires the same signal on a reload, so treating it
+as release intent would drop a running container every time you
+refreshed the page.
 The hub re-polls availability every few seconds, so a freed container
 un-greys on its own without a page reload. You can also list and stop
 live sessions from the host with `vaibify sessions` (see the

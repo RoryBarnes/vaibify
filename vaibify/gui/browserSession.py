@@ -15,10 +15,13 @@ until process exit, and the capability supports bounded replay so a lost
 bootstrap response is recoverable.
 """
 
+import logging
 import secrets
 import threading
 import time
 from dataclasses import dataclass
+
+logger = logging.getLogger("vaibify")
 
 __all__ = [
     "BootstrapCapability",
@@ -44,12 +47,31 @@ __all__ = [
     "fdictActiveSessionLifetimes",
     "fdictLifetimeForCredential",
     "I_CAPABILITY_TTL_SECONDS",
+    "I_ACTIVE_SESSION_CAP",
+    "I_ARMED_CAPABILITY_CAP",
+    "F_REVOKED_RETENTION_SECONDS",
 ]
 
 # Bounded replay window: re-presenting a redeemed capability within this
 # many seconds returns the same credential, so a bootstrap response
 # dropped in transit is recoverable without minting a second session.
 I_CAPABILITY_TTL_SECONDS = 300
+
+# The store is bounded, and bounded in the one direction that is safe.
+# A sweep removes ONLY records that already authorize nothing -- expired
+# capabilities and revoked sessions past their retention -- so no live
+# principal is ever evicted to make room. Evicting an ACTIVE session
+# would log a working researcher out mid-run to satisfy a counter,
+# which is a worse outcome than refusing a NEW session: the refusal is
+# visible, recoverable, and affects somebody who has not started yet.
+I_ACTIVE_SESSION_CAP = 64
+I_ARMED_CAPABILITY_CAP = 64
+
+# How long a REVOKED session record is kept after revocation. Not zero,
+# because the record IS the audit trail of a session that was cut, and a
+# tab that returns after a revocation should meet a record that says so
+# rather than a hole.
+F_REVOKED_RETENTION_SECONDS = 3600.0
 
 _lockBrowserSessions = threading.Lock()
 
@@ -111,15 +133,74 @@ def fdictCreateBrowserSessionStore():
 
 
 def fsMintBootstrapCapability(dictStore):
-    """Mint an unguessable ARMED capability, record it, and return it."""
-    sCapability = secrets.token_urlsafe(32)
+    """Mint an unguessable ARMED capability, or ``""`` when at capacity.
+
+    The sweep runs first, so the cap is measured against records that
+    are actually live rather than against accumulated debris. A refusal
+    returns ``""`` -- the caller must report it, never launch a browser
+    at a URL carrying an empty capability.
+    """
     with _lockBrowserSessions:
+        _fnSweepDeadRecordsLocked(dictStore)
+        if _fiCountArmedCapabilitiesLocked(dictStore) >= (
+            I_ARMED_CAPABILITY_CAP
+        ):
+            logger.warning(
+                "Refusing a new launch capability: %d are already "
+                "outstanding. Redeem or wait for one to expire.",
+                I_ARMED_CAPABILITY_CAP,
+            )
+            return ""
+        sCapability = secrets.token_urlsafe(32)
         dictStore["dictCapabilities"][sCapability] = BootstrapCapability(
             sCapability=sCapability,
             sState="ARMED",
             fMintedMonotonic=time.monotonic(),
         )
     return sCapability
+
+
+def _fnSweepDeadRecordsLocked(dictStore):
+    """Drop records that already authorize nothing. Caller holds the lock.
+
+    Two classes, and only these two: a capability past its replay TTL
+    (it can never be redeemed again) and a REVOKED session past its
+    retention. An ACTIVE session is never touched no matter how many
+    there are -- the store is bounded by refusing new issuance, not by
+    evicting live principals.
+    """
+    fNow = time.monotonic()
+    dictCapabilities = dictStore["dictCapabilities"]
+    for sCapability in list(dictCapabilities):
+        if fNow - dictCapabilities[sCapability].fMintedMonotonic > (
+            I_CAPABILITY_TTL_SECONDS
+        ):
+            dictCapabilities.pop(sCapability, None)
+    dictSessions = dictStore["dictSessionsByCredential"]
+    for sCredential in list(dictSessions):
+        recordSession = dictSessions[sCredential]
+        if recordSession.sState != S_SESSION_STATE_REVOKED:
+            continue
+        if fNow - recordSession.fLastSeenMonotonic > (
+            F_REVOKED_RETENTION_SECONDS
+        ):
+            dictSessions.pop(sCredential, None)
+
+
+def _fiCountArmedCapabilitiesLocked(dictStore):
+    """Count capabilities that could still be redeemed."""
+    return sum(
+        1 for recordCap in dictStore["dictCapabilities"].values()
+        if recordCap.sState == "ARMED"
+    )
+
+
+def _fiCountActiveSessionsLocked(dictStore):
+    """Count sessions whose credential still authorizes."""
+    return sum(
+        1 for recordSession in dictStore["dictSessionsByCredential"].values()
+        if recordSession.sState == S_SESSION_STATE_ACTIVE
+    )
 
 
 def ftRedeemCapability(dictStore, sCapability):
@@ -154,8 +235,15 @@ def ftRedeemCapability(dictStore, sCapability):
 
 
 def _tMintSessionForCapability(dictStore, recordCap, fNow):
-    """Mint the session for a first redemption. Caller holds the lock."""
+    """Mint the session for a first redemption. Caller holds the lock.
+
+    A refused mint leaves the capability ARMED: the researcher can
+    redeem it once a session frees up, which is the whole point of
+    refusing rather than evicting.
+    """
     sSessionId, sCredential = _tCreateSessionRecordLocked(dictStore, fNow)
+    if sSessionId is None:
+        return (None, None)
     recordCap.sState = "REDEEMED"
     recordCap.sIssuedSessionId = sSessionId
     recordCap.sIssuedCredential = sCredential
@@ -163,7 +251,20 @@ def _tMintSessionForCapability(dictStore, recordCap, fNow):
 
 
 def _tCreateSessionRecordLocked(dictStore, fNow):
-    """Create and store a fresh session record. Caller holds the lock."""
+    """Create and store a fresh session record, or refuse at the cap.
+
+    Returns ``(None, None)`` when the hub already holds
+    :data:`I_ACTIVE_SESSION_CAP` active sessions. Refusing is the safe
+    direction: the alternative is evicting somebody's live session to
+    make room, which logs a working researcher out to satisfy a counter.
+    """
+    _fnSweepDeadRecordsLocked(dictStore)
+    if _fiCountActiveSessionsLocked(dictStore) >= I_ACTIVE_SESSION_CAP:
+        logger.warning(
+            "Refusing a new browser session: %d are already active.",
+            I_ACTIVE_SESSION_CAP,
+        )
+        return (None, None)
     sSessionId = secrets.token_urlsafe(16)
     sCredential = secrets.token_urlsafe(32)
     dictStore["dictSessionsByCredential"][sCredential] = BrowserSessionRecord(

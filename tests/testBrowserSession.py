@@ -94,3 +94,114 @@ def test_credentials_and_capabilities_are_unguessable_length():
     _, sCredential = browserSession.ftRedeemCapability(dictStore, sCapability)
     assert len(sCapability) >= 32
     assert len(sCredential) >= 32
+
+
+# ---------------------------------------------------------------------
+# The store is bounded, and bounded in the one direction that is safe.
+# ---------------------------------------------------------------------
+
+def test_the_sweep_removes_only_records_that_authorize_nothing():
+    """Expired capabilities and retired revoked sessions, and nothing else.
+
+    The store had no pruning at all, so every capability ever minted and
+    every session ever revoked stayed for the life of the hub. The sweep
+    that fixes that must be surgical: an ACTIVE session is a working
+    researcher, and a sweep that reached one would log them out to
+    reclaim memory.
+    """
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    sCapabilityLive = browserSession.fsMintBootstrapCapability(dictStore)
+    _sSessionIdActive, sCredentialActive = browserSession.ftRedeemCapability(
+        dictStore, sCapabilityLive,
+    )
+    sCapabilityStale = browserSession.fsMintBootstrapCapability(dictStore)
+    sSessionIdRevoked, sCredentialRevoked = (
+        browserSession.ftRedeemCapability(
+            dictStore,
+            browserSession.fsMintBootstrapCapability(dictStore),
+        )
+    )
+    browserSession.fnRevokeSessionById(dictStore, sSessionIdRevoked)
+
+    # Age the stale capability and the revoked session past their
+    # windows by moving their stamps, not by sleeping.
+    dictStore["dictCapabilities"][sCapabilityStale].fMintedMonotonic -= (
+        browserSession.I_CAPABILITY_TTL_SECONDS + 1
+    )
+    dictStore["dictSessionsByCredential"][
+        sCredentialRevoked
+    ].fLastSeenMonotonic -= (
+        browserSession.F_REVOKED_RETENTION_SECONDS + 1
+    )
+
+    browserSession._fnSweepDeadRecordsLocked(dictStore)
+
+    assert sCapabilityStale not in dictStore["dictCapabilities"]
+    assert sCredentialRevoked not in dictStore["dictSessionsByCredential"]
+    assert sCredentialActive in dictStore["dictSessionsByCredential"], (
+        "the sweep removed an ACTIVE session, logging out a researcher "
+        "who was working"
+    )
+    assert browserSession.fbValidateCredential(dictStore, sCredentialActive)
+
+
+def test_a_recently_revoked_session_is_kept_as_its_own_audit_trail():
+    """Revocation is not deletion; the record says a session was cut."""
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    sSessionId, sCredential = browserSession.ftRedeemCapability(
+        dictStore, browserSession.fsMintBootstrapCapability(dictStore),
+    )
+    browserSession.fnRevokeSessionById(dictStore, sSessionId)
+    browserSession._fnSweepDeadRecordsLocked(dictStore)
+    assert sCredential in dictStore["dictSessionsByCredential"]
+    assert not browserSession.fbValidateCredential(dictStore, sCredential)
+
+
+def test_the_active_session_cap_refuses_rather_than_evicting():
+    """At the cap, a NEW session is refused; no live one is displaced.
+
+    The direction is the whole point. Evicting an active principal to
+    admit a new one trades a visible refusal for an invisible logout of
+    somebody mid-run, and the researcher who loses their session is not
+    the one who asked for anything.
+    """
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    listCredentials = []
+    for _ in range(browserSession.I_ACTIVE_SESSION_CAP):
+        _sSessionId, sCredential = browserSession.ftRedeemCapability(
+            dictStore, browserSession.fsMintBootstrapCapability(dictStore),
+        )
+        listCredentials.append(sCredential)
+    assert all(listCredentials)
+
+    sCapabilityOverflow = browserSession.fsMintBootstrapCapability(dictStore)
+    tRefused = browserSession.ftRedeemCapability(
+        dictStore, sCapabilityOverflow,
+    )
+    assert tRefused == (None, None), (
+        "a session past the cap was minted anyway"
+    )
+    assert all(
+        browserSession.fbValidateCredential(dictStore, sCredential)
+        for sCredential in listCredentials
+    ), "an existing active session was evicted to admit a new one"
+    assert dictStore["dictCapabilities"][sCapabilityOverflow].sState == (
+        "ARMED"
+    ), (
+        "a refused redemption burned the capability, so the researcher "
+        "cannot retry once a session frees up"
+    )
+
+
+def test_a_refused_capability_mint_returns_empty_rather_than_a_token():
+    """At the capability cap, minting refuses instead of accumulating."""
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    listCapabilities = [
+        browserSession.fsMintBootstrapCapability(dictStore)
+        for _ in range(browserSession.I_ARMED_CAPABILITY_CAP)
+    ]
+    assert all(listCapabilities)
+    assert browserSession.fsMintBootstrapCapability(dictStore) == ""
+    assert len(dictStore["dictCapabilities"]) == (
+        browserSession.I_ARMED_CAPABILITY_CAP
+    )
