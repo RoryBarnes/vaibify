@@ -3762,7 +3762,9 @@ def _fdictEntry(sRel):
         old="""    recordTask.admission.dictLiveState["sActiveExecOperationId"] = (
         reservation.recordStartTask.sJournalOperationId
     )""",
-        new="""    recordTask.admission.dictLiveState["sActiveExecOperationId"] = """"",
+        new="""    recordTask.admission.dictLiveState["sActiveExecOperationId"] = (
+        ""
+    )""",
     ),
     Falsification(
         nodeid='tests/testHostTransfer.py::testTransferRebindsTheStartResultEntitlementToTheSuccessor',
