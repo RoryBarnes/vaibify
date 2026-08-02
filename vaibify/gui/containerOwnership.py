@@ -51,6 +51,8 @@ __all__ = [
     "fnIncrementLiveConnection",
     "fnDecrementLiveConnection",
     "fnDecrementLiveConnectionForRecord",
+    "flistPoisonAndFenceConnections",
+    "fnClearPoison",
     "fnRegisterSessionSocket",
     "fnDeregisterSessionSocket",
     "fbAgentIsLiveOnRecord",
@@ -729,6 +731,47 @@ def fnDecrementLiveConnectionForRecord(
         dictContainerOwners, sName,
         bPipelineLane=recordConnection.sLane == S_LANE_PIPELINE,
     )
+
+
+def flistPoisonAndFenceConnections(
+    recordOwner, recordPoison, dictSessionSockets,
+):
+    """Poison an owner record and return the sockets that must be fenced.
+
+    THE SINGLE WRITER of ``OwnerRecord.poison``. Poison and fencing are
+    one act, not two: a record marked poisoned while its pipeline socket
+    keeps dispatching frames is a container that refuses new mutations
+    and permits the ones already in flight, which is the opposite of
+    fail-closed. Returning the connections rather than closing them
+    keeps this function synchronous, so it can run inside the
+    lifecycle authority's held lock where the poison must be set;
+    the caller awaits the closes afterwards.
+
+    Only the MUTATION lane is fenced. Safe observability reads and the
+    trusted host reconciliation lane stay open on purpose -- poison is
+    cleared by ``vaibify reconcile``, which reaches the hub over the
+    host control socket, and fencing every lane would fence off the
+    poison's own cure.
+    """
+    recordOwner.poison = recordPoison
+    setRecords = (dictSessionSockets or {}).get(
+        recordOwner.sBrowserSessionId, set(),
+    )
+    return [
+        recordConnection for recordConnection in setRecords
+        if recordConnection.sLane == S_LANE_PIPELINE
+    ]
+
+
+def fnClearPoison(recordOwner):
+    """THE SINGLE CLEARER of ``OwnerRecord.poison``.
+
+    Called only from the reconciliation transaction, which has PROVEN
+    the abandoned worker dead; nothing else may decide a container is
+    healthy again.
+    """
+    if recordOwner is not None:
+        recordOwner.poison = None
 
 
 def fnRegisterSessionSocket(dictSessionSockets, recordConnection):

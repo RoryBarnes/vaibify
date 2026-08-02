@@ -12,6 +12,7 @@ import re
 from docker.errors import APIError, NotFound
 from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
+from .. import containerOwnership
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
@@ -28,6 +29,8 @@ from ..serverLifespan import (
     fnIncrementWebSocketCount,
 )
 from ..webSocketAuthorization import (
+    I_REJECT_POISONED,
+    fbContainerIsPoisoned,
     ffbBuildPerFrameCredentialCheck,
     fiContainerSessionRejectionCode,
     fnCloseWithCode,
@@ -401,7 +404,19 @@ def _fnRegisterPipelineWs(app, dictCtx):
         if iRejectCode:
             await fnCloseWithCode(websocket, iRejectCode)
             return
+        dictContainerOwners = dictCtx.get("dictContainerOwners", {})
+        # The pipeline socket is a mutation channel, so a poisoned
+        # container refuses it -- the caller's standing is fine, the
+        # container is not, and the recovery is 'vaibify reconcile'.
+        # Safe reads and the host reconciliation lane are deliberately
+        # NOT fenced: fencing those would fence off the poison's cure.
+        if fbContainerIsPoisoned(dictContainerOwners, sName):
+            await fnCloseWithCode(websocket, I_REJECT_POISONED)
+            return
         dictCtx["require"]()
+        iAcceptedGeneration = containerOwnership.fiOwnerGenerationForName(
+            dictContainerOwners, sName,
+        )
 
         async def fnServe():
             await fnHandlePipelineWs(
@@ -409,6 +424,9 @@ def _fnRegisterPipelineWs(app, dictCtx):
                 fbFrameCredentialStillActive=(
                     ffbBuildPerFrameCredentialCheck(
                         websocket, dictCtx.get("dictBrowserSessions"),
+                        dictContainerOwners=dictContainerOwners,
+                        sName=sName,
+                        iAcceptedGeneration=iAcceptedGeneration,
                     )
                 ),
             )

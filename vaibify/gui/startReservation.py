@@ -593,7 +593,7 @@ def _fbCommitFailedStart(
         )
     else:
         _fnQuarantineFailedStart(
-            sName, recordOwner, reservation, dictSettlement,
+            appState, sName, recordOwner, reservation, dictSettlement,
         )
     bReservationStillOurs = recordOwner is not None and (
         recordOwner.reservation is reservation
@@ -612,7 +612,9 @@ def _fbCommitFailedStart(
     return bReservationStillOurs and dictSettlement["bConclusive"]
 
 
-def _fnQuarantineFailedStart(sName, recordOwner, reservation, dictSettlement):
+def _fnQuarantineFailedStart(
+    appState, sName, recordOwner, reservation, dictSettlement,
+):
     """Poison the journal record and the owner record, retaining the flock.
 
     Fail closed: an uncertain daemon outcome must not become a claimable
@@ -636,11 +638,22 @@ def _fnQuarantineFailedStart(sName, recordOwner, reservation, dictSettlement):
         )
     if recordOwner is None:
         return
-    recordOwner.poison = containerOwnership.PoisonRecord(
-        sGuardedOperationId=reservation.recordStartTask.sJournalOperationId,
-        sContainerId=reservation.recordStartTask.sCreatedContainerId,
-        sTaskHandleId=reservation.recordStartTask.sStartTaskId,
+    listFenced = containerOwnership.flistPoisonAndFenceConnections(
+        recordOwner,
+        containerOwnership.PoisonRecord(
+            sGuardedOperationId=(
+                reservation.recordStartTask.sJournalOperationId
+            ),
+            sContainerId=reservation.recordStartTask.sCreatedContainerId,
+            sTaskHandleId=reservation.recordStartTask.sStartTaskId,
+        ),
+        getattr(appState, "dictSessionSockets", None),
     )
+    # Scheduled rather than awaited: this commit runs synchronously
+    # inside the lifecycle authority's held locks, and awaiting a socket
+    # close there would let the event loop interleave another
+    # transition into the middle of a settlement.
+    sessionLifecycle.fnScheduleConnectionFencing(listFenced)
 
 
 def _fnSettleJournalQuietly(sName, sOperationId):

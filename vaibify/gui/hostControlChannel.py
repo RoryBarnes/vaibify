@@ -447,8 +447,7 @@ async def _fdictProveAndClearOnHub(app, dictCtx, sName, listExpectedIds):
     if not dictProven["bProven"]:
         return _fdictRefusal(dictProven["sRefusalReason"])
     recordOwner = app.state.dictContainerOwners.get(sName)
-    if recordOwner is not None:
-        recordOwner.poison = None
+    containerOwnership.fnClearPoison(recordOwner)
     try:
         await asyncio.to_thread(
             reconciliation.fnCleanupAndClearProvenRecords,
@@ -507,12 +506,17 @@ async def _fdictHandleForceAbandon(app, dictCtx, dictRequest):
             f"journaled in container '{sName}'; a stale force-abandon "
             "may not poison a successor operation"
         )
-    recordOwner.poison = containerOwnership.PoisonRecord(
-        sGuardedOperationId=sExpectedOperationId,
-        sContainerId=recordOwner.sContainerId,
-        sTaskHandleId=sTaskHandleId,
-        fAbandonedMonotonic=time.monotonic(),
+    listFenced = containerOwnership.flistPoisonAndFenceConnections(
+        recordOwner,
+        containerOwnership.PoisonRecord(
+            sGuardedOperationId=sExpectedOperationId,
+            sContainerId=recordOwner.sContainerId,
+            sTaskHandleId=sTaskHandleId,
+            fAbandonedMonotonic=time.monotonic(),
+        ),
+        getattr(app.state, "dictSessionSockets", None),
     )
+    sessionLifecycle.fnScheduleConnectionFencing(listFenced)
     _fnSignalWedgedSupervisors(app.state, sName, sExpectedOperationId)
     bDurableMirrorWritten = _fbMirrorPoisonIntoJournal(
         sName, sExpectedOperationId,

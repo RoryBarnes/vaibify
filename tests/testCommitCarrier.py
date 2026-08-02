@@ -868,13 +868,26 @@ def test_mode_c_refuses_second_durable_launch_and_compare_matches():
     asyncio.run(_fnDrive())
 
 
-def test_mode_c_cancel_marks_terminates_and_cleans_by_stable_id():
-    """Mode (c) cancel: mark under the lock, terminate outside it."""
+def test_mode_c_cancel_refuses_and_leaves_the_task_running():
+    """Mode (c) has no generic cancel, and says so without pretending.
+
+    A durable task's worker runs in a thread Python cannot interrupt,
+    so cancelling the asyncio task stops only the AWAITING of it. The
+    previous implementation did exactly that and then removed the
+    registry entry, which is the dangerous half: release, transfer and
+    the reaper stopped seeing work that was still running, against a
+    container they were now free to hand to somebody else.
+
+    Asserted on the STATE, not just the answer -- a refusal that had
+    already cancelled the task would still return bCancelled False.
+    """
     async def _fnDrive():
         appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+        eventRelease = asyncio.Event()
 
         async def _fnBody():
-            await asyncio.sleep(30)
+            await eventRelease.wait()
+            return "ran"
 
         dictLaunch = await commitCarrier.fdictLaunchDurableTask(
             appState, S_CONTAINER_NAME, S_CONTAINER_ID, dictLaneTuple,
@@ -884,9 +897,18 @@ def test_mode_c_cancel_marks_terminates_and_cleans_by_stable_id():
             appState, S_CONTAINER_NAME, dictLaunch["sTaskId"],
             dictLaneTuple,
         )
-        assert dictCancel["bCancelled"] is True
-        with pytest.raises(asyncio.CancelledError):
-            await dictLaunch["taskAsync"]
+        assert dictCancel["bCancelled"] is False
+        assert dictCancel["bSupported"] is False
+        assert not dictLaunch["taskAsync"].cancelled(), (
+            "the refusal cancelled the asyncio task anyway"
+        )
+        assert appState.dictDurableTaskRecords, (
+            "the refusal removed the registry entry, so the container "
+            "now looks idle while its worker is still running"
+        )
+        eventRelease.set()
+        assert await dictLaunch["taskAsync"] == "ran"
+        await asyncio.sleep(0.05)
         assert appState.dictDurableTaskRecords == {}
 
     asyncio.run(_fnDrive())

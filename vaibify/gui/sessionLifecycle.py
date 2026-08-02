@@ -80,6 +80,7 @@ __all__ = [
     "S_RELEASE_NOT_OWNER",
     "S_RELEASE_BUSY",
     "ftTransferOwnership",
+    "fnScheduleConnectionFencing",
     "fnOrphanSession",
     "fnOrphanOwnersPastReconnectWindow",
     "fnExpireIdleBrowserSessions",
@@ -1277,3 +1278,24 @@ def _fbOwnerRecordIsOwnedByActiveSession(recordOwner, sSessionId):
     if recordOwner.sState != containerOwnership.S_OWNER_STATE_ACTIVE:
         return False
     return recordOwner.sBrowserSessionId == sSessionId
+
+
+def fnScheduleConnectionFencing(listConnections):
+    """Close a fenced connection set without awaiting it here.
+
+    The poison commit runs synchronously inside the held locks (design
+    §3.5: nothing may interleave on the event loop between a state read
+    and its commit), but closing a WebSocket is an ``await``. Scheduling
+    the closes keeps both properties: the commit stays atomic, and the
+    sockets still go. A failure to close is tolerated -- the per-frame
+    backstop already refuses a poisoned container's frames, so the close
+    is what makes the refusal visible promptly, not what makes it
+    correct.
+    """
+    if not listConnections:
+        return
+    try:
+        loopRunning = asyncio.get_event_loop()
+    except RuntimeError:
+        return
+    loopRunning.create_task(_fnCloseDetachedConnections(listConnections))

@@ -790,63 +790,39 @@ async def _fnFinalizeDurableTask(appState, recordTask):
 async def fdictRequestDurableTaskCancel(
     appState, sName, sTaskId, dictLaneTuple,
 ):
-    """Cancel a durable task: brief lock, mark, terminate outside.
+    """Refuse: a durable task has no generic cancellation.
 
-    Competes for the brief mutation lock with a (future) transfer: when
-    cancel wins it atomically sets the task and its live exec journal
-    record to ``CANCEL_REQUESTED`` so a subsequent transfer is refused;
-    the termination itself runs OUTSIDE the lock; cleanup reacquires
-    the lock and compare-matches the stable task id. A cancel arriving
-    after a transfer must authorize against the successor tuple or fail
-    as stale (``fbLaneTupleStillCurrent`` refuses the old tuple).
+    Python cannot interrupt a worker running in ``asyncio.to_thread``.
+    Cancelling the asyncio task only stops the AWAITING of it, and the
+    previous implementation then removed the registry entry -- so
+    release, transfer, and the reaper stopped seeing work that was
+    still running, against a container they were now free to hand to
+    somebody else. A cancel that reports success while the worker keeps
+    writing is worse than no cancel at all.
+
+    So this refuses explicitly, and refuses WITHOUT touching the task:
+    no ``Task.cancel()``, no registry removal, no journal mark. The
+    work runs to its natural end and settles itself, and the container
+    stays exclusively held until it does.
+
+    Cancellation that CAN be honest is kept and is separate: a start
+    reservation owns a killable OS process and a labelled container, so
+    ``startReservation.ftCancelStart`` terminates the process and proves
+    the labelled container gone; and mode-(b) work has an out-of-band
+    terminate hook whose supervisor remains the single settler
+    (:func:`fdictRequestLockHeldCancel`).
     """
-    lockMutation = sessionLifecycle.flockContainerMutationForAppState(
-        appState, sName,
-    )
-    async with lockMutation:
-        dictRegistry = _fdictDurableTaskRegistry(appState)
-        recordTask = dictRegistry.get(sName)
-        if recordTask is None or recordTask.sTaskId != sTaskId:
-            return {
-                "bCancelled": False,
-                "sReason": "no durable task with that stable id is "
-                           "registered for this container",
-            }
-        if not fbLaneTupleStillCurrent(appState, dictLaneTuple):
-            return {
-                "bCancelled": False,
-                "sReason": "the presented lane tuple does not match the "
-                           "container's current owner; a stale cancel "
-                           "may not touch a successor's task",
-            }
-        recordTask.sState = "cancelRequested"
-        _fnMarkDurableExecCancelRequested(recordTask)
-    recordTask.taskAsync.cancel()
-    async with lockMutation:
-        if dictRegistry.get(sName) is recordTask and (
-            recordTask.sTaskId == sTaskId
-        ):
-            dictRegistry.pop(sName, None)
-    return {"bCancelled": True, "sTaskId": sTaskId}
-
-
-def _fnMarkDurableExecCancelRequested(recordTask):
-    """Mark the task's live exec journal record CANCEL_REQUESTED."""
-    sExecOperationId = recordTask.admission.dictLiveState.get(
-        "sActiveExecOperationId", "",
-    )
-    if not sExecOperationId:
-        return
-    try:
-        operationJournal.fnRequestOperationCancel(
-            recordTask.sName, sExecOperationId,
-        )
-    except operationJournal.OperationJournalError as error:
-        logger.warning(
-            "Could not mark exec record %s CANCEL_REQUESTED for "
-            "container '%s': %s",
-            sExecOperationId, recordTask.sName, error,
-        )
+    del appState, sName, sTaskId, dictLaneTuple
+    return {
+        "bCancelled": False,
+        "bSupported": False,
+        "sReason": (
+            "A durable task cannot be cancelled: its worker runs in a "
+            "thread Python cannot interrupt, so cancelling would report "
+            "a stop that did not happen. Wait for it to finish, or "
+            "cancel the start that launched it."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------

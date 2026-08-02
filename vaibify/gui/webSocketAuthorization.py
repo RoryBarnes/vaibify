@@ -34,7 +34,9 @@ __all__ = [
     "ffbBuildPerFrameCredentialCheck",
     "fnCloseWithCode",
     "fnServeUnderLiveConnectionCounters",
+    "fbContainerIsPoisoned",
     "I_REJECT_TERMINAL_DISABLED",
+    "I_REJECT_POISONED",
 ]
 
 from . import browserSession
@@ -55,6 +57,14 @@ I_REJECT_DUPLICATE_SESSION = 4409
 # client that cannot tell the two apart would advise the researcher to
 # re-claim a container that is already theirs.
 I_REJECT_TERMINAL_DISABLED = 4503
+
+# A container whose owner record is POISONED: a guarded worker was
+# force-abandoned and could not be proven dead, so every mutation
+# channel is refused until reconciliation proves it gone. Distinct from
+# every authorization code because the caller's standing is not the
+# problem -- the container is -- and the recovery is 'vaibify
+# reconcile', not a re-claim.
+I_REJECT_POISONED = 4423
 
 
 def fbCheckOrigin(connection):
@@ -171,7 +181,27 @@ def fbRefuseSecondLiveConnection(dictContainerOwners, sName):
     )
 
 
-def ffbBuildPerFrameCredentialCheck(connection, dictBrowserSessions):
+def fbContainerIsPoisoned(dictContainerOwners, sName):
+    """Return True when the named container carries a poison record.
+
+    A poisoned record means a guarded worker was force-abandoned and
+    could not be proven dead. Exclusivity is RETAINED — the record keeps
+    its flock — and every mutation is refused until reconciliation
+    proves the worker gone. The pipeline socket is a mutation channel,
+    so it is refused too; safe observability reads and the trusted host
+    reconciliation lane are not, because fencing those would fence off
+    the poison's own cure.
+    """
+    recordOwner = (dictContainerOwners or {}).get(sName)
+    return recordOwner is not None and getattr(
+        recordOwner, "poison", None,
+    ) is not None
+
+
+def ffbBuildPerFrameCredentialCheck(
+    connection, dictBrowserSessions, dictContainerOwners=None, sName="",
+    iAcceptedGeneration=None,
+):
     """Return the per-frame re-auth backstop for an accepted WebSocket.
 
     The active close on revocation (design §5) is authoritative; this
@@ -180,17 +210,37 @@ def ffbBuildPerFrameCredentialCheck(connection, dictBrowserSessions):
     it connected with still names an ACTIVE browser session, so a
     REVOKED session's in-flight frame is refused instead of dispatched.
     Each passing check also refreshes the session's last-seen stamp —
-    frames are activity for the sliding-idle window (design §11). The
-    agent lane presents no browser credential, so its check is
-    constant-true; the agent's authority ends with the owner record's
-    per-container token, not with any browser session.
+    frames are activity for the sliding-idle window (design §11).
+
+    ``dictContainerOwners`` extends the same backstop to the two
+    container-scoped facts that can change under a live socket: the
+    container becoming POISONED, and its owner GENERATION rotating
+    under a host transfer. Both are re-read per frame rather than
+    captured at accept, because a socket admitted before either event
+    is exactly the socket that must stop acting after it. These checks
+    apply to the AGENT lane too — the agent holds no browser session,
+    but it drives the same mutation channel, and a poisoned container
+    must refuse a machine caller just as firmly as a human one.
     """
-    if not fbCheckOrigin(connection):
-        return lambda: True
+    bBrowser = fbCheckOrigin(connection)
     sCredential = connection.query_params.get("sToken", "")
-    return lambda: browserSession.fbValidateCredential(
-        dictBrowserSessions or {}, sCredential,
-    )
+
+    def fbFrameStillAuthorized():
+        if bBrowser and not browserSession.fbValidateCredential(
+            dictBrowserSessions or {}, sCredential,
+        ):
+            return False
+        if dictContainerOwners is None:
+            return True
+        if fbContainerIsPoisoned(dictContainerOwners, sName):
+            return False
+        return iAcceptedGeneration is None or (
+            containerOwnership.fiOwnerGenerationForName(
+                dictContainerOwners, sName,
+            ) == iAcceptedGeneration
+        )
+
+    return fbFrameStillAuthorized
 
 
 async def fnCloseWithCode(connection, iCloseCode):

@@ -3379,13 +3379,19 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testHostControlChannel.py::test_force_abandon_lifecycle_poisons_refuses_and_reconciles',
         source='vaibify/gui/hostControlChannel.py',
-        old='''    recordOwner.poison = containerOwnership.PoisonRecord(
-        sGuardedOperationId=sExpectedOperationId,
-        sContainerId=recordOwner.sContainerId,
-        sTaskHandleId=sTaskHandleId,
-        fAbandonedMonotonic=time.monotonic(),
-    )''',
-        new='''    recordOwner.poison = None''',
+        old='''    listFenced = containerOwnership.flistPoisonAndFenceConnections(
+        recordOwner,
+        containerOwnership.PoisonRecord(
+            sGuardedOperationId=sExpectedOperationId,
+            sContainerId=recordOwner.sContainerId,
+            sTaskHandleId=sTaskHandleId,
+            fAbandonedMonotonic=time.monotonic(),
+        ),
+        getattr(app.state, "dictSessionSockets", None),
+    )
+    sessionLifecycle.fnScheduleConnectionFencing(listFenced)''',
+        new='''    listFenced = []
+    sessionLifecycle.fnScheduleConnectionFencing(listFenced)''',
     ),
     # Case 43, transfer-commit half (real container; also drives case
     # 44's transfer path): under the agree-with-exec_inspect prover

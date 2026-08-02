@@ -3177,6 +3177,93 @@ def testWebSocketRoutesResolveIdToNameBeforeGate():
         )
 
 
+def testPoisonIsWrittenThroughOneFunctionOnly():
+    """Nothing assigns ``OwnerRecord.poison`` outside its two authorities.
+
+    Poison and fencing are one act. A record marked poisoned while its
+    pipeline socket keeps dispatching frames refuses new mutations and
+    permits the in-flight ones, which is the opposite of fail-closed --
+    so the poison write and the connection fencing live in a single
+    function, and a second assignment anywhere would be a poison that
+    fences nothing.
+
+    ``containerOwnership.py`` is the seam: it holds the one writer
+    (``flistPoisonAndFenceConnections``) and the one clearer
+    (``fnClearPoison``). Everything else must call them.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name == "containerOwnership.py":
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        for nodeAssign in ast.walk(treeAst):
+            if not isinstance(nodeAssign, ast.Assign):
+                continue
+            for nodeTarget in nodeAssign.targets:
+                if isinstance(nodeTarget, ast.Attribute) and (
+                    nodeTarget.attr == "poison"
+                ):
+                    listViolations.append(
+                        f"{pathModule.relative_to(PACKAGE_DIR)}"
+                        f":{nodeAssign.lineno}"
+                    )
+    assert listViolations == [], (
+        f"poison must be set through "
+        f"containerOwnership.flistPoisonAndFenceConnections and cleared "
+        f"through fnClearPoison, never assigned directly. Found: "
+        f"{listViolations}"
+    )
+
+
+def testThePipelineSocketIsFencedByPoison():
+    """The pipeline lane refuses a poisoned container, at accept and per frame.
+
+    Poison denies MUTATIONS. The pipeline WebSocket is a mutation
+    channel, so it must be refused at the gate with its own code -- the
+    caller's standing is fine, the container is not -- and revalidated
+    per frame, because the socket that must stop acting is precisely the
+    one admitted before the poison landed.
+    """
+    sRouteSource = fsReadSource(ROUTES_DIR / "pipelineRoutes.py")
+    assert "fbContainerIsPoisoned(" in sRouteSource, (
+        "the pipeline WebSocket must refuse a poisoned container"
+    )
+    assert "I_REJECT_POISONED" in sRouteSource, (
+        "the poison refusal must carry its own close code, so a client "
+        "can tell it from an authorization refusal"
+    )
+    assert "iAcceptedGeneration=" in sRouteSource, (
+        "the per-frame backstop must be given the generation admitted "
+        "at accept, or a transfer cannot fence a socket mid-frame"
+    )
+    sGuardSource = fsReadSource(GUI_DIR / "webSocketAuthorization.py")
+    iPerFrame = sGuardSource.find("def ffbBuildPerFrameCredentialCheck")
+    assert "fbContainerIsPoisoned(" in sGuardSource[iPerFrame:], (
+        "the per-frame backstop must re-read the poison state, not "
+        "capture it at accept"
+    )
+
+
+def testTheHostReconciliationLaneIsNotFencedByPoison():
+    """Poison must not fence off its own cure.
+
+    ``vaibify reconcile`` reaches a live hub over the host control
+    socket, and that lane is what CLEARS a poison. A fence that covered
+    every lane would leave a poisoned container unrecoverable without
+    killing the hub, so the host control channel must carry no poison
+    refusal of its own.
+    """
+    sSource = fsReadSource(GUI_DIR / "hostControlChannel.py")
+    assert "fbContainerIsPoisoned" not in sSource, (
+        "the host reconciliation lane must not refuse on poison; it is "
+        "the lane that clears it"
+    )
+    assert "fnClearPoison(" in sSource, (
+        "the reconciliation handler must clear the poison through the "
+        "single clearer"
+    )
+
+
 # ---------------------------------------------------------------------
 # The parked interactive terminal.
 #
@@ -3722,7 +3809,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # breath as the record's own fields, and a separate module would
     # invite a second, drifting notion of what "the same ownership"
     # means — which is the bug class it exists to close.
-    "containerOwnership.py": 854,
+    # +43 (2026-08-02): the single poison-and-fence writer and the
+    # single clearer. Poison and fencing are one act, and the fence
+    # needs the lane on ConnectionRecord, so both live beside the
+    # record they act on.
+    "containerOwnership.py": 897,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -3812,7 +3903,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +8 (2026-08-01): the pipeline WebSocket builds the §5 per-frame
     # credential check (ORPHANED_SESSION slice 6) and threads it into
     # the handler. One builder call, no new logic here.
-    "routes/pipelineRoutes.py": 2808,
+    # +18 (2026-08-02): the pipeline WebSocket refuses a poisoned
+    # container at the gate and hands the per-frame backstop the
+    # generation admitted at accept, so a transfer fences a live socket.
+    "routes/pipelineRoutes.py": 2826,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4051,7 +4145,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +5 (2026-08-02): the break-glass stop callback now reports whether
     # it PROVED the container stopped or absent, so the handler's local
     # shim documents that contract instead of forwarding blindly.
-    "hostControlChannel.py": 815,
+    # +4 (2026-08-02): the force-abandon routes its poison through the
+    # single writer and schedules the connection fencing.
+    "hostControlChannel.py": 819,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one
@@ -4098,7 +4194,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # RECORDED ownership identity against the live record instead of a
     # Boolean, so a start cannot free ownership a transfer replaced
     # while it ran.
-    "sessionLifecycle.py": 1279,
+    # +22 (2026-08-02): fnScheduleConnectionFencing — closing a fenced
+    # socket is an await, and the poison commit is synchronous under the
+    # held locks, so the close is scheduled rather than awaited there.
+    "sessionLifecycle.py": 1301,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -4122,7 +4221,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # same ordering, and that ordering IS the safety argument, so they
     # belong beside it rather than in a module that would have to
     # re-derive the reservation's state to act.
-    "startReservation.py": 959,
+    # +13 (2026-08-02): the quarantine path poisons through the single
+    # writer and fences the container's pipeline socket.
+    "startReservation.py": 972,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
