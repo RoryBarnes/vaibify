@@ -894,6 +894,7 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # invariant (testHubAppStateMutatingRoutesAreGoverned) does.
     ("POST", "/api/containers/{sName}/build"),
     ("POST", "/api/containers/{sName}/start"),
+    ("POST", "/api/containers/{sName}/start/cancel"),
     ("POST", "/api/containers/{sName}/stop"),
     ("POST", "/api/containers/{sName}/settings"),
     ("POST", "/api/registry"),

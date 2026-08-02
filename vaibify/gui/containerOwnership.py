@@ -150,6 +150,7 @@ class OwnerRecord:
     the two-valued browser-authority axis; ``iOwnerGeneration`` starts at
     1 and is bumped only by a host transfer, so a stale socket or task
     carrying an old generation can be told apart from the successor;
+    ``reservation`` is the orthogonal start axis (§10b);
     ``fOrphanedSinceMonotonic`` stamps the ACTIVE→ORPHANED transition (0.0
     while never orphaned) so the reap grace measures from the orphan
     moment, not the last socket; ``fLastAgentActivityMonotonic`` and
@@ -176,6 +177,14 @@ class OwnerRecord:
     # The optional PoisonRecord (design §2.1): None while healthy. See
     # the PoisonRecord docstring for the refusal semantics while set.
     poison: object = None
+    # The optional StartReservation (design §2.1/§10b): None unless a
+    # server-owned start is in flight. Start-progress is a SECOND,
+    # orthogonal axis, never a third ``sState`` value — a container can
+    # be ACTIVE and starting, or ORPHANED_SESSION and starting, and a
+    # compound state could express neither. The reservation holds only
+    # live execution state; the outcome lives in the bounded
+    # ``dictStartResults``, which is its sole delivery authority.
+    reservation: object = None
 
 
 @dataclass(eq=False)
@@ -687,6 +696,13 @@ def fbOwnerIsReapable(recordOwner, fGraceSeconds=_F_GRACE_SECONDS):
     conditions instead.
     """
     if getattr(recordOwner, "poison", None) is not None:
+        return False
+    if getattr(recordOwner, "reservation", None) is not None:
+        # A record carrying a live start reservation is NEVER idle
+        # (design §10b): the reservation is what makes the reaper — and
+        # the idle watchdog that reads this map — treat a container with
+        # no sockets yet as live work, so a hub can never self-SIGTERM
+        # or release the flock out from under a running docker create.
         return False
     if recordOwner.iLiveConnectionCount > 0:
         return False

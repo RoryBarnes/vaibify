@@ -21,6 +21,7 @@ from . import containerOwnership
 from . import serverLifespan
 from . import serverMiddleware
 from . import sessionLifecycle
+from . import startResultStore
 from . import terminalContainment
 
 logger = logging.getLogger("vaibify")
@@ -60,6 +61,9 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     )
     app.state.dictTerminalExecutionRecords = (
         terminalContainment.fdictCreateTerminalRecordRegistry()
+    )
+    app.state.dictStartResults = (
+        startResultStore.fdictCreateStartResultStore()
     )
     app.state.bMutationAdmissionsClosed = False
     app.state.iExpectedPort = dictConfig["iExpectedPort"]

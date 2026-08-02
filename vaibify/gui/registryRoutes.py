@@ -417,72 +417,100 @@ def _fnRegisterRemoveProject(app, dictCtx):
         return {"bSuccess": True}
 
 
+class StartContainerRequest(BaseModel):
+    """The optional body of a start request.
+
+    ``sAcknowledgeReservationId`` names the FAILED start whose outcome
+    the client has actually read. It is the explicit new-attempt action
+    of design §10b: a client that never polled cannot name it, so a
+    silent automatic retry cannot clear a failure the researcher never
+    saw.
+    """
+
+    sAcknowledgeReservationId: str = ""
+
+
 def _fnRegisterStartContainer(app, dictCtx):
-    """Register POST /api/containers/{sName}/start."""
+    """Register POST /api/containers/{sName}/start and its status poll.
+
+    Start is no longer request-scoped (design §10b). It arbitrates
+    ownership, mints a server-owned reservation under the host flock and
+    the cardinality lock, and answers ``202`` with a status-poll
+    location — never a lease, because nothing is running yet to
+    authorize. The outcome is delivered ONLY by the poll.
+    """
 
     @app.post("/api/containers/{sName}/start")
-    async def fnStartContainer(sName: str):
+    async def fnStartContainer(
+        request: Request, sName: str,
+        requestStart: Optional[StartContainerRequest] = None,
+    ):
+        from fastapi.responses import JSONResponse
+        from vaibify.gui import startReservation
         dictCtx["require"]()
+        _fnRejectInvalidProjectName(sName)
         dictProject = _fdictRequireProject(sName)
-        try:
-            sContainerId = await asyncio.to_thread(
-                _fsExecuteStart, dictProject,
-            )
-        except Exception as error:
-            logger.error("Start failed for %s: %s", sName, error)
-            raise HTTPException(500, f"Start failed: {error}")
-        return {
-            "bSuccess": True,
-            "sContainerId": sContainerId,
-        }
-
-
-def _fsExecuteStart(dictProject):
-    """Load config and start the container in detached mode."""
-    from vaibify.cli.configLoader import (
-        fconfigLoadFromPath, fsDockerDir,
-    )
-    from vaibify.config.keepAliveManager import fnStartKeepAlive
-    configProject = fconfigLoadFromPath(
-        dictProject["sConfigPath"],
-    )
-    sContainerName = dictProject["sContainerName"]
-    sContainerId = _fsStartOrCreate(
-        configProject, sContainerName, fsDockerDir(),
-    )
-    if configProject.bNeverSleep:
-        fnStartKeepAlive(sContainerName)
-    return sContainerId
-
-
-def _fsStartOrCreate(configProject, sContainerName, sDockerDir):
-    """Remove any stopped container and create a fresh one.
-
-    Always creates a new container so that secrets are mounted
-    via volume args at creation time.  Restarting an existing
-    container with ``docker start`` skips secret mounts and
-    leaves ``/run/secrets/`` empty.
-    """
-    from vaibify.docker.containerManager import (
-        fdictGetContainerStatus, fsStartContainerDetached,
-    )
-    dictStatus = fdictGetContainerStatus(sContainerName)
-    if dictStatus["bRunning"]:
-        raise RuntimeError(
-            f"Container '{sContainerName}' is already running"
+        iStatusCode, dictBody = await startReservation.ftBeginStart(
+            app.state, sName, _fsBrowserSessionFor(app, request),
+            _fconfigLoadForProject(dictProject),
+            getattr(app.state, "iHubPort", 0),
+            connectionDocker=dictCtx.get("docker"),
+            sAcknowledgeReservationId=(
+                requestStart.sAcknowledgeReservationId
+                if requestStart else ""
+            ),
         )
-    if dictStatus["bExists"]:
-        _fnRemoveContainer(sContainerName)
-    return fsStartContainerDetached(configProject, sDockerDir)
+        if iStatusCode == 409:
+            return JSONResponse(status_code=409, content=dict(
+                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+            ))
+        return JSONResponse(status_code=iStatusCode, content=dictBody)
+
+    @app.post("/api/containers/{sName}/start/cancel")
+    async def fnCancelStartContainer(
+        request: Request, sName: str, sReservationId: str = "",
+    ):
+        from fastapi.responses import JSONResponse
+        from vaibify.gui import startReservation
+        _fnRejectInvalidProjectName(sName)
+        iStatusCode, dictBody = await startReservation.ftCancelStart(
+            app.state, sName, _fsBrowserSessionFor(app, request),
+            sReservationId=sReservationId,
+        )
+        if iStatusCode != 200:
+            return JSONResponse(status_code=iStatusCode, content=dict(
+                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+            ))
+        return dictBody
+
+    @app.get("/api/containers/{sName}/start-status")
+    async def fnGetStartStatus(request: Request, sName: str):
+        from fastapi.responses import JSONResponse
+        from vaibify.gui import startReservation
+        _fnRejectInvalidProjectName(sName)
+        iStatusCode, dictBody = startReservation.ftPollStartStatus(
+            app.state, sName, _fsBrowserSessionFor(app, request),
+        )
+        if iStatusCode != 200:
+            return JSONResponse(status_code=iStatusCode, content=dict(
+                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+            ))
+        return dictBody
 
 
-def _fnRemoveContainer(sContainerName):
-    """Remove a stopped container so a fresh one can be created."""
-    import subprocess
-    subprocess.run(
-        ["docker", "rm", sContainerName],
-        capture_output=True, text=True,
+def _fsBrowserSessionFor(app, request):
+    """Resolve the requesting browser session id, or '' when unknown."""
+    from vaibify.gui import browserSession
+    return browserSession.fsSessionIdForCredential(
+        getattr(app.state, "dictBrowserSessions", {}),
+        request.headers.get("x-session-token", ""),
     )
+
+
+def _fconfigLoadForProject(dictProject):
+    """Load the validated project config the start will launch from."""
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    return fconfigLoadFromPath(dictProject["sConfigPath"])
 
 
 def _fnRegisterStopContainer(app, dictCtx):

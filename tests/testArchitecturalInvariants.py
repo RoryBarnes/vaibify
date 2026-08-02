@@ -3863,7 +3863,29 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the channel close that must precede freeing the flock. It is the
     # same transition table as the rest of this module and shares its
     # lock order, its terminal drain, and its connection-detach helper.
-    "sessionLifecycle.py": 1092,
+    # +146 (2026-08-01): ORPHANED_SESSION slice 9 — the start axis's two
+    # ownership transitions (§10b): ftReserveContainerForStart, whose
+    # claim-plus-cardinality read-check-write must be atomic against a
+    # concurrent claim on a DIFFERENT container, and
+    # ftSettleFailedStartOwnership, which frees the flock only for a
+    # settlement proven clean. They live here for the same reason every
+    # other transition does — this is the only module that may call the
+    # ownership primitives — plus the public cardinality-lock accessor
+    # and the start-result entitlement rebinding in the transfer commit.
+    "sessionLifecycle.py": 1238,
+    # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
+    # startReservation.py is one lifecycle (design §10b): arbitrate the
+    # start under the flock and the cardinality lock, launch it as a
+    # mode-(c) durable task, settle it, cancel it, and deliver its
+    # outcome. The one real seam has already been taken — the bounded
+    # outcome ledger lives in startResultStore.py, which changes for
+    # its own reasons (lifetime, caps, rebinding) — and what remains is
+    # a single state machine whose steps share the reservation object
+    # and the two locks. Splitting it further would put the ordering
+    # that IS the safety argument (process confirmed exited → labelled
+    # container conclusively gone → reservation compare-and-deleted →
+    # flock freed) across several files.
+    "startReservation.py": 805,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -3934,7 +3956,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # "bReleased: false", and reads the optional bForce flag off a
     # body the pagehide beacon may not send at all. The arbitration
     # itself is in sessionLifecycle; this is its HTTP skin.
-    "registryRoutes.py": 1206,
+    # +28 (2026-08-01): ORPHANED_SESSION slice 9 — the start route
+    # becomes the reservation's HTTP skin (202 + status location, never
+    # a lease), beside its cancel sibling and the canonical status
+    # poll. The arbitration, launch, settlement, and delivery live in
+    # startReservation.py; these three handlers resolve the browser
+    # session, load the project config, and map outcomes to codes.
+    "registryRoutes.py": 1234,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -3965,7 +3993,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +5 (2026-08-01): the /api/transfer redemption endpoint excluded
     # from the agent lane (ORPHANED_SESSION slice 5, 'vaibify open').
     # Same governance responsibility.
-    "actionCatalog.py": 960,
+    # +1 (2026-08-01): cancelling a start joins the container control
+    # plane the in-container agent may never operate (slice 9).
+    "actionCatalog.py": 961,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

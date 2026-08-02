@@ -298,6 +298,9 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
         return
     sLeaseId = fsLeaseFromRequest(requestHttp)
     sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)
+    _fnRefuseConnectWhileStarting(
+        dictContainerOwners[sName], sName, sBrowserSessionId,
+    )
     if containerOwnership.fbBrowserSessionOwnsLease(
         dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
     ):
@@ -308,6 +311,25 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
     ):
         return
     raise HTTPException(409, "In use in another browser session")
+
+
+def _fnRefuseConnectWhileStarting(recordOwner, sName, sBrowserSessionId):
+    """Tell the initiating session the truth: the start is still running.
+
+    Design §10b: a connect by the session that requested the start, while
+    the container is not yet running, must get a truthful pending refusal
+    — never a lease, because a workflow cannot be loaded from a container
+    that does not exist yet. Another session's connect falls through to
+    the ordinary in-use refusal, which says nothing it should not.
+    """
+    if getattr(recordOwner, "reservation", None) is None:
+        return
+    if recordOwner.sBrowserSessionId not in ("", sBrowserSessionId):
+        return
+    raise HTTPException(409, (
+        f"Container '{sName}' is still starting. Poll its start status; "
+        "connect once it reports the container running."
+    ))
 
 
 def _fnRegisterConnect(app, dictCtx):

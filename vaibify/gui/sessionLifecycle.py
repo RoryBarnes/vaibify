@@ -67,7 +67,13 @@ __all__ = [
     "S_TRANSFER_REFUSED",
     "fdictCreateLifecycleLockStore",
     "flockContainerMutationForAppState",
+    "flockSessionCardinalityForAppState",
     "ftdictClaimWithCardinality",
+    "ftReserveContainerForStart",
+    "ftSettleFailedStartOwnership",
+    "S_START_RESERVED",
+    "S_START_ALREADY_RESERVED",
+    "S_START_REFUSED",
     "fbReleaseExplicit",
     "ftReleaseExplicit",
     "S_RELEASE_RELEASED",
@@ -151,6 +157,13 @@ S_RELEASE_RELEASED = "released"
 S_RELEASE_NOT_OWNER = "notOwner"
 S_RELEASE_BUSY = "busy"
 
+# Start-reservation outcomes (design §10b). RESERVED minted a fresh
+# reservation; ALREADY_RESERVED is the idempotent recovery for a start
+# still in flight; REFUSED carries the message naming what to do next.
+S_START_RESERVED = "reserved"
+S_START_ALREADY_RESERVED = "alreadyReserved"
+S_START_REFUSED = "refused"
+
 S_TRANSFER_TRANSFERRED = "transferred"
 S_TRANSFER_BUSY_RETRY = "busyRetry"
 S_TRANSFER_EXPIRED = "expired"
@@ -225,6 +238,21 @@ def flockContainerMutationForAppState(appState, sName):
     )
 
 
+def flockSessionCardinalityForAppState(appState):
+    """Return the hub-wide cardinality lock (lock 2 of the hierarchy).
+
+    The start-reservation authority (``startReservation``, design §10b)
+    runs the same read-check-write against ``dictSessionOwner`` that a
+    claim does, so it must contend on the SAME object — a second lock
+    would let a claim on container A and a start on container B both see
+    an empty index. Exposed here, beside lock 1, so no caller is tempted
+    to reach into the private lock store and invert the canonical order.
+    """
+    return _flockObtainSessionCardinality(
+        _fdictLockStoreForAppState(appState),
+    )
+
+
 async def ftdictClaimWithCardinality(
     appState, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, sBrowserSessionId="", connectionDocker=None,
@@ -254,6 +282,106 @@ async def ftdictClaimWithCardinality(
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
                 connectionDocker=connectionDocker,
+            )
+
+
+async def ftReserveContainerForStart(
+    appState, sName, sBrowserSessionId, iPort, connectionDocker,
+    fnMintReservation, fsRefusalForPriorOutcome=None,
+):
+    """Acquire a container for a start and mint its reservation (§10b).
+
+    The start's creation path, committed here for the same reason every
+    other one is: the ownership acquisition and the one-container-per-
+    session read-check-write must be atomic against a concurrent claim on
+    a DIFFERENT container, which only the hub-wide cardinality lock can
+    make them. The claim primitive is reused deliberately — it is the
+    single place that arbitrates the flock, the journal quarantine, the
+    cross-hub refusal, and the reverse index together, so a start can
+    never open a second door into ownership.
+
+    ``fnMintReservation(recordOwner)`` runs synchronously inside the held
+    locks: the start authority owns what a reservation IS, this module
+    owns when a record may acquire one. The lease the claim mints is
+    never returned — a start hands out no authority, because nothing is
+    running yet for a lease to authorize.
+
+    Returns ``(sOutcome, dictPayload, recordOwner)``.
+    """
+    dictLockStore = _fdictLockStoreForAppState(appState)
+    async with _flockObtainContainerMutation(dictLockStore, sName):
+        async with _flockObtainSessionCardinality(dictLockStore):
+            return _tReserveForStartUnderLocks(
+                appState, sName, sBrowserSessionId, iPort, connectionDocker,
+                fnMintReservation, fsRefusalForPriorOutcome,
+            )
+
+
+def _tReserveForStartUnderLocks(
+    appState, sName, sBrowserSessionId, iPort, connectionDocker,
+    fnMintReservation, fsRefusalForPriorOutcome,
+):
+    """Arbitrate one start synchronously under both held locks."""
+    dictOwners = getattr(appState, "dictContainerOwners", {})
+    recordOwner = dictOwners.get(sName)
+    if recordOwner is not None and getattr(
+        recordOwner, "reservation", None,
+    ) is not None:
+        if recordOwner.sBrowserSessionId not in ("", sBrowserSessionId):
+            return (S_START_REFUSED, _fdictStartInUse(sName), None)
+        return (S_START_ALREADY_RESERVED, {}, recordOwner)
+    sRefusal = (
+        fsRefusalForPriorOutcome() if fsRefusalForPriorOutcome else ""
+    )
+    if sRefusal:
+        return (S_START_REFUSED, {"sName": sName, "sMessage": sRefusal}, None)
+    if recordOwner is None:
+        iStatusCode, dictPayload = containerOwnership.ftdictClaim(
+            dictOwners, sName, "", iPort,
+            sBrowserSessionId=sBrowserSessionId,
+            dictSessionOwner=getattr(appState, "dictSessionOwner", None),
+            connectionDocker=connectionDocker,
+        )
+        dictPayload.pop("sLeaseId", None)
+        if iStatusCode != 200:
+            return (S_START_REFUSED, dictPayload, None)
+        recordOwner = dictOwners[sName]
+    elif recordOwner.sBrowserSessionId not in ("", sBrowserSessionId):
+        return (S_START_REFUSED, _fdictStartInUse(sName), None)
+    fnMintReservation(recordOwner)
+    return (S_START_RESERVED, {}, recordOwner)
+
+
+def _fdictStartInUse(sName):
+    """Return the refusal body for a container another session holds."""
+    return {
+        "sName": sName,
+        "sMessage": (
+            f"Container '{sName}' is in use in another browser session."
+        ),
+    }
+
+
+async def ftSettleFailedStartOwnership(appState, sName, fbCommitSettlement):
+    """Commit a failed start's settlement, freeing the flock only if clean.
+
+    ``fbCommitSettlement(recordOwner)`` runs synchronously inside the
+    held locks and answers whether the container was proven clean. Only
+    then is the flock freed: an inconclusive settlement keeps it, so
+    neither this hub nor the next can hand the container to a second
+    owner while a late create may still be landing.
+    """
+    dictLockStore = _fdictLockStoreForAppState(appState)
+    async with _flockObtainContainerMutation(dictLockStore, sName):
+        async with _flockObtainSessionCardinality(dictLockStore):
+            dictOwners = getattr(appState, "dictContainerOwners", {})
+            recordOwner = dictOwners.get(sName)
+            if not fbCommitSettlement(recordOwner) or recordOwner is None:
+                return
+            containerOwnership.fnReleaseOwnership(
+                dictOwners, sName, recordOwner.sLeaseId,
+                sBrowserSessionId=recordOwner.sBrowserSessionId,
+                dictSessionOwner=getattr(appState, "dictSessionOwner", None),
             )
 
 
@@ -736,6 +864,7 @@ def _tCommitTransfer(
     _fnRebindSessionOwnerIndex(appState, sName, sOldSessionId,
                                sNewSessionId)
     _fnRetagLiveDurableTask(appState, sName, iNewGeneration)
+    _fnRebindStartResultEntitlement(appState, sName, sNewSessionId)
     listDetached = _flistDetachOldSessionConnections(
         appState, recordOwner, sOldSessionId,
     )
@@ -782,6 +911,23 @@ def _fnRetagLiveDurableTask(appState, sName, iNewGeneration):
         recordTask.taskAsync, "iOwnerGeneration",
     ):
         recordTask.taskAsync.iOwnerGeneration = iNewGeneration
+
+
+def _fnRebindStartResultEntitlement(appState, sName, sNewSessionId):
+    """Rebind the start-result entitlement inside the same commit (§10b).
+
+    A start requested by the predecessor may still be running, or may
+    have finished without its outcome being collected. Success delivery
+    needs no rebinding (it derives from the owner record, which this
+    commit has just rebound), but the FAILURE entitlement is bound to a
+    browser session — and this commit is about to revoke the old one. So
+    the successor inherits the right to read the outcome, atomically,
+    and the revoked session loses it.
+    """
+    from . import startResultStore
+    startResultStore.fnRebindStartResultsForTransfer(
+        appState, sName, sNewSessionId,
+    )
 
 
 def _flistDetachOldSessionConnections(appState, recordOwner, sOldSessionId):

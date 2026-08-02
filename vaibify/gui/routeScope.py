@@ -135,7 +135,12 @@ I_REJECT_STARTING = 409
 # so one browser session can no longer stop or reconfigure a container
 # another session is working in, and refused 409 while a start reservation
 # is live. The dashboard's "Rebuild" is a client-side composite of stop
-# then build, so gating stop gates rebuild's destructive half.
+# then build, so gating stop gates rebuild's destructive half. Cancelling
+# a start joins them: only the session that started a container may kill
+# its start. ``start`` itself is ``owner-establishing`` — like ``claim``,
+# it ARBITRATES ownership, minting the server-owned reservation under the
+# host flock and the cardinality lock (design §10b), so it cannot require
+# the lease it is about to create.
 #
 # DELIBERATE RESIDUAL — ``build`` and ``claim`` stay ``browser-hub``.
 # Build is an IMAGE operation with no owner: a project whose container has
@@ -153,7 +158,9 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/registry"): S_SCOPE_BROWSER_HUB,
     ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/containers/{sName}/build"): S_SCOPE_BROWSER_HUB,
-    ("POST", "/api/containers/{sName}/start"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/containers/{sName}/start"): S_SCOPE_OWNER_ESTABLISHING,
+    ("POST", "/api/containers/{sName}/start/cancel"):
+        S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/stop"): S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/settings"):
         S_SCOPE_CONTAINER_LIFECYCLE,
@@ -423,13 +430,20 @@ def fiAuthorizeContainerLifecycleHttp(request, appState, dictScope):
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
         return I_AUTHORIZED
+    # The starting refusal is answered to the record's OWN session first,
+    # keyed on the session rather than the lease: the session that
+    # requested the start has no lease yet (a start hands none out), so a
+    # lease-first order would tell the initiator "not yours" about the
+    # very container it is starting.
+    if recordOwner.sBrowserSessionId in ("", sBrowserSessionId) and (
+        getattr(recordOwner, "reservation", None) is not None
+    ):
+        return I_REJECT_STARTING
     if not containerOwnership.fbBrowserSessionOwnsLease(
         dictContainerOwners, sName, sBrowserSessionId,
         fsLeaseFromRequest(request),
     ):
         return I_REJECT_FORBIDDEN
-    if getattr(recordOwner, "reservation", None) is not None:
-        return I_REJECT_STARTING
     return I_AUTHORIZED
 
 
