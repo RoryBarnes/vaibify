@@ -193,6 +193,8 @@ var VaibifyContainerManager = (function () {
             '<div class="container-tile-menu" style="display:none;">' +
             '<div class="container-menu-item" data-action="start">' +
             "Start</div>" +
+            '<div class="container-menu-item" data-action="cancel-start">' +
+            "Cancel Start</div>" +
             '<div class="container-menu-item" data-action="stop">' +
             "Stop</div>" +
             '<div class="container-menu-item" data-action="restart">' +
@@ -383,6 +385,8 @@ var VaibifyContainerManager = (function () {
 
     async function fnHandleContainerAction(sName, sAction) {
         if (sAction === "start") await fnStartContainer(sName);
+        else if (sAction === "cancel-start")
+            await fnCancelStartContainer(sName);
         else if (sAction === "stop") await fnStopContainer(sName);
         else if (sAction === "restart") await fnRestartContainer(sName);
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
@@ -650,14 +654,24 @@ var VaibifyContainerManager = (function () {
         elDot.className = "status-dot status-pending";
     }
 
+    /* Reservation ids of failed starts this tab has already SHOWN the
+       researcher, keyed by container name. Naming one is how the next
+       start says "I read that failure and mean to try again" -- the
+       server refuses a start that would silently relaunch after an
+       unacknowledged failure (design 10b). */
+    var _dictAcknowledgedStartFailure = {};
+
+    var _I_START_POLL_INTERVAL_MILLISECONDS = 1000;
+    var _I_START_POLL_LIMIT = 900;
+
     async function fnStartContainer(sName) {
         fnSetTilePending(sName);
         try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/start"
+            var dictStart = await VaibifyApi.fdictPost(
+                _fsContainerUrl(sName, "/start"),
+                _fdictStartBody(sName)
             );
-            VaibifyApp.fnShowToast("Container started", "success");
+            await _fnFollowStartToItsOutcome(sName, dictStart);
         } catch (error) {
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
@@ -665,6 +679,106 @@ var VaibifyContainerManager = (function () {
         } finally {
             fnLoadContainers();
         }
+    }
+
+    function _fsContainerUrl(sName, sSuffix) {
+        return "/api/containers/" + encodeURIComponent(sName) + sSuffix;
+    }
+
+    function _fdictStartBody(sName) {
+        var sAcknowledged = _dictAcknowledgedStartFailure[sName];
+        delete _dictAcknowledgedStartFailure[sName];
+        return sAcknowledged
+            ? {sAcknowledgeReservationId: sAcknowledged} : {};
+    }
+
+    /* The start is a server-owned reservation: the POST only reserves
+       it, so the outcome -- and the container's lease -- arrive from
+       the status poll. Reporting "started" on the 202 would tell the
+       researcher a container is running when it may still be pulling,
+       or may have already failed. */
+    async function _fnFollowStartToItsOutcome(sName, dictStart) {
+        VaibifyApp.fnShowToast("Starting container...", "info");
+        var iAttempt = 0;
+        while (iAttempt < _I_START_POLL_LIMIT) {
+            var dictStatus = await VaibifyApi.fdictGet(
+                _fsContainerUrl(sName, "/start-status")
+            );
+            if (dictStatus.sState !== "PENDING") {
+                _fnReportStartOutcome(sName, dictStatus);
+                return;
+            }
+            _fnWarnOnStalledStart(sName, dictStatus, iAttempt);
+            await _fnSleepMilliseconds(_I_START_POLL_INTERVAL_MILLISECONDS);
+            iAttempt += 1;
+        }
+        VaibifyApp.fnShowToast(
+            "Container '" + sName + "' is still starting. Its status "
+            + "stays available; use Cancel Start if it is stuck.",
+            "warning");
+    }
+
+    function _fnReportStartOutcome(sName, dictStatus) {
+        if (dictStatus.sState === "SUCCEEDED") {
+            if (dictStatus.sLeaseId) {
+                VaibifyApp.fnRecordClaimedLease(sName, dictStatus.sLeaseId);
+            }
+            VaibifyApp.fnShowToast("Container started", "success");
+            return;
+        }
+        _dictAcknowledgedStartFailure[sName] = dictStatus.sReservationId;
+        VaibifyApp.fnShowToast(
+            VaibifyUtilities.fsSanitizeErrorForUser(
+                "Start failed: " + (dictStatus.sError || "unknown error")
+            ),
+            "error");
+    }
+
+    function _fnWarnOnStalledStart(sName, dictStatus, iAttempt) {
+        if (!dictStatus.bHeartbeatStale || iAttempt % 30 !== 0) return;
+        VaibifyApp.fnShowToast(
+            "Container '" + sName + "' has made no start progress for a "
+            + "while. Use Cancel Start to stop it.", "warning");
+    }
+
+    function _fnSleepMilliseconds(iMilliseconds) {
+        return new Promise(function (fnResolve) {
+            setTimeout(fnResolve, iMilliseconds);
+        });
+    }
+
+    async function fnCancelStartContainer(sName) {
+        try {
+            var dictCancel = await VaibifyApi.fdictPostRaw(
+                _fsContainerUrl(sName, "/start/cancel")
+            );
+            _fnReportCancelOutcome(sName, dictCancel);
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+        } finally {
+            fnLoadContainers();
+        }
+    }
+
+    function _fnReportCancelOutcome(sName, dictCancel) {
+        if (dictCancel.sReservationId) {
+            _dictAcknowledgedStartFailure[sName] = dictCancel.sReservationId;
+        }
+        if (dictCancel.bQuarantined) {
+            VaibifyApp.fnShowToast(
+                "The start was stopped, but the container could not be "
+                + "proven clean, so it is quarantined. Run 'vaibify "
+                + "reconcile " + sName + "' before starting it again.",
+                "warning");
+            return;
+        }
+        VaibifyApp.fnShowToast(
+            dictCancel.bCancelled
+                ? "Start cancelled"
+                : (dictCancel.sMessage || "Start is still terminating"),
+            dictCancel.bCancelled ? "success" : "warning");
     }
 
     async function fnStopContainer(sName) {
@@ -1131,5 +1245,7 @@ var VaibifyContainerManager = (function () {
         fsGetSelectedContainerId: fsGetSelectedContainerId,
         fsGetSelectedContainerName: fsGetSelectedContainerName,
         fnReleaseClaim: fnReleaseClaim,
+        fnStartContainer: fnStartContainer,
+        fnCancelStartContainer: fnCancelStartContainer,
     };
 })();

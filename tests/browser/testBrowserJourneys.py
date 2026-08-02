@@ -530,3 +530,104 @@ def testSessionCapWarningComesFromTheBackendAndReachesTheScreen(
         assert pageDashboard.listConsoleErrors == []
     finally:
         recordSession.fCreatedMonotonic = fCreatedRestore
+
+
+# ---------------------------------------------------------------------
+# Journey -- a start reports its real outcome, not its acceptance
+# ---------------------------------------------------------------------
+
+
+def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
+    pageDashboard, serverHub,
+):
+    """The page must not call a container started when it is still starting.
+
+    The start is a server-owned reservation (design §10b): the POST
+    answers 202 and the outcome — with the container's lease — arrives
+    only from the status poll. A page that toasted "Container started"
+    on the 202 would tell the researcher a container is running while
+    it is still pulling, or has already failed, which is exactly the
+    class of dashboard lie this repository forbids.
+
+    Driven front to back in a real browser against the real hub. Only
+    the Docker create-then-start pair is substituted, and it is HELD
+    OPEN on purpose so the "still starting" window is a real window:
+    while it is held the page must show progress and the reservation
+    must be live on the server; when it is released the page must show
+    success and hold the lease the server derived.
+    """
+    import threading
+
+    from vaibify.gui import startReservation
+
+    stateApp = serverHub.app.state
+    _fnWriteBrowserLaneProjectConfig(serverHub)
+    eventRelease = threading.Event()
+    fnRealExecutor = startReservation._fsExecuteReservedStart
+
+    def _fsHeldStart(sName, reservation, configProject):
+        eventRelease.wait(timeout=30.0)
+        return "browserLaneStartedContainerId"
+
+    startReservation._fsExecuteReservedStart = _fsHeldStart
+    try:
+        pageDashboard.goto(
+            serverHub.fsBootstrapUrl(), wait_until="networkidle",
+        )
+        pageDashboard.evaluate(
+            # Deliberately NOT awaited: the start is in flight for as
+            # long as the held executor says, and `evaluate` resolves a
+            # returned promise, which would block until it finished.
+            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            % S_CONTAINER_NAME
+        )
+        pageDashboard.locator(
+            ".toast", has_text="Starting container"
+        ).first.wait_for(state="visible", timeout=10000)
+        assert pageDashboard.locator(
+            ".toast", has_text="Container started"
+        ).count() == 0, (
+            "the page reported success while the start was still running"
+        )
+        recordOwner = stateApp.dictContainerOwners[S_CONTAINER_NAME]
+        assert recordOwner.reservation is not None, (
+            "the server must hold a live reservation while starting"
+        )
+        eventRelease.set()
+        pageDashboard.locator(
+            ".toast", has_text="Container started"
+        ).first.wait_for(state="visible", timeout=15000)
+        assert recordOwner.reservation is None
+        sPageLease = pageDashboard.evaluate("() => VaibifyApp.fsGetLeaseId()")
+        assert sPageLease == recordOwner.sLeaseId, (
+            "the page must hold the lease the status poll derived from "
+            "the live owner record"
+        )
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        startReservation._fsExecuteReservedStart = fnRealExecutor
+        eventRelease.set()
+        _fnReleaseBrowserLaneOwnership(stateApp)
+
+
+def _fnWriteBrowserLaneProjectConfig(serverHub):
+    """Write the seeded project's vaibify.yml so a start can load it."""
+    pathProject = os.path.join(serverHub.sHome, "browserLaneProject")
+    os.makedirs(pathProject, exist_ok=True)
+    with open(os.path.join(pathProject, "vaibify.yml"), "w") as fileHandle:
+        fileHandle.write(f"projectName: {S_CONTAINER_NAME}\n")
+
+
+def _fnReleaseBrowserLaneOwnership(stateApp):
+    """Drop the owner record this journey created, freeing its flock."""
+    from vaibify.gui import containerOwnership
+    recordOwner = stateApp.dictContainerOwners.get(S_CONTAINER_NAME)
+    if recordOwner is None:
+        return
+    containerOwnership.fnReleaseOwnership(
+        stateApp.dictContainerOwners, S_CONTAINER_NAME,
+        recordOwner.sLeaseId,
+        sBrowserSessionId=recordOwner.sBrowserSessionId,
+        dictSessionOwner=stateApp.dictSessionOwner,
+    )
