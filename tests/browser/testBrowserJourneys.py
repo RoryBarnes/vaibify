@@ -32,6 +32,7 @@ import os
 import pytest
 
 from tests.browser.fakeDockerAdapter import (
+    S_CONTAINER_ID,
     S_CONTAINER_NAME,
     UnmodelledContainerCall,
 )
@@ -631,3 +632,131 @@ def _fnReleaseBrowserLaneOwnership(stateApp):
         sBrowserSessionId=recordOwner.sBrowserSessionId,
         dictSessionOwner=stateApp.dictSessionOwner,
     )
+
+
+# ---------------------------------------------------------------------
+# Journey -- the disabled terminal is honest in the browser
+# ---------------------------------------------------------------------
+
+
+def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
+    pageDashboard, serverHub,
+):
+    """The page must not open a terminal socket, and the server refuses.
+
+    Two halves that only mean something together. The server half opens
+    a real ``/ws/terminal`` socket from the real browser and reads the
+    close code: it must be the withdrawal code, not an authorization
+    refusal, so a client can tell "this feature is gone" from "your
+    claim is bad". The frontend half asserts the page never dials the
+    lane at all -- a socket left to be refused would surface a
+    deliberate refusal as a connection failure, and the interactive-step
+    launcher would poll for a sentinel no shell will ever print.
+
+    Run in a real browser because a string search of the source cannot
+    tell whether a module still reaches for the socket at runtime.
+    """
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    sCredential = _fsPageCredential(pageDashboard)
+
+    iCloseCode = pageDashboard.evaluate(
+        """(sCredential) => new Promise((fnResolve) => {
+            const sProtocol =
+                window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(
+                sProtocol + '//' + window.location.host +
+                '/ws/terminal/any-container-id?sToken=' +
+                encodeURIComponent(sCredential) + '&sLeaseId=any-lease');
+            ws.onclose = (event) => fnResolve(event.code);
+            ws.onerror = () => fnResolve(-1);
+        })""",
+        sCredential,
+    )
+    from vaibify.gui import webSocketAuthorization
+    assert iCloseCode == webSocketAuthorization.I_REJECT_TERMINAL_DISABLED, (
+        "the server must close a terminal dial-in with the withdrawal "
+        f"code, distinct from every authorization refusal; got {iCloseCode}"
+    )
+
+    try:
+        dictFrontend = pageDashboard.evaluate(
+            """async ([sContainerId, sName]) => {
+                const listUrls = [];
+                const wsReal = window.WebSocket;
+                function WebSocketFake(sUrl) {
+                    listUrls.push(sUrl);
+                    this.readyState = 0;
+                    this.close = () => {};
+                }
+                WebSocketFake.CONNECTING = 0;
+                WebSocketFake.OPEN = 1;
+                WebSocketFake.CLOSING = 2;
+                WebSocketFake.CLOSED = 3;
+                window.WebSocket = WebSocketFake;
+                try {
+                    /* The real entry path: claim the container, then
+                     * enter it -- entering is what builds the terminal
+                     * strip (fnEnsureTab). Calling fnCreatePane alone
+                     * would find no container id, return early, and
+                     * prove nothing. */
+                    const dictClaim = await VaibifyApi.fdictPost(
+                        '/api/registry/' + encodeURIComponent(sName)
+                        + '/claim', {});
+                    VaibifyApp.fnRecordClaimedLease(
+                        sName, dictClaim.sLeaseId);
+                    await VaibifyApp.fnEnterNoWorkflow(sContainerId);
+                    VaibifyTerminal.fnCreateTab();
+                    /* Read the rendered ROWS, not the strip: xterm
+                     * injects a stylesheet into the strip, so the
+                     * strip's textContent is mostly CSS and a substring
+                     * check against it would be meaningless. */
+                    const listRows = Array.from(document.querySelectorAll(
+                        '#terminalStrip .xterm-rows'));
+                    return {
+                        listUrls: listUrls,
+                        bTabOpened: listRows.length > 0,
+                        bSendRefused:
+                            VaibifyTerminal.fbSendCommandInFreshTab(
+                                'echo hello') === false,
+                        sRowsText: listRows.map(
+                            (el) => el.textContent).join(' '),
+                    };
+                } finally {
+                    window.WebSocket = wsReal;
+                }
+            }""",
+            [S_CONTAINER_ID, S_CONTAINER_NAME],
+        )
+    finally:
+        _fnReleaseBrowserLaneOwnership(serverHub.app.state)
+
+    assert dictFrontend["bTabOpened"], (
+        "no terminal was actually opened, so the assertions below would "
+        "pass vacuously"
+    )
+    listTerminalUrls = [
+        sUrl for sUrl in dictFrontend["listUrls"] if "/ws/terminal" in sUrl
+    ]
+    assert listTerminalUrls == [], (
+        f"the frontend still dials the disabled terminal: {listTerminalUrls}"
+    )
+    assert dictFrontend["bSendRefused"], (
+        "fbSendCommandInFreshTab must report False so an interactive "
+        "step refuses instead of waiting forever for a sentinel"
+    )
+    assert "terminals are disabled" in dictFrontend["sRowsText"].lower(), (
+        "the pane must SAY why there is no shell; an empty black "
+        "rectangle is indistinguishable from a terminal that failed. "
+        f"Rendered rows were: {dictFrontend['sRowsText']!r}"
+    )
+    assert pageDashboard.listPageErrors == []
+    # Entering a container also opens the Repos panel, whose sidecar
+    # read the fail-closed fake does not model, so it answers 500. That
+    # is a declared gap in the fake, not a frontend fault, and it is
+    # named rather than tolerated silently: any console error that is
+    # NOT a failed request -- a ReferenceError, say -- still fails here.
+    listScriptErrors = [
+        sError for sError in pageDashboard.listConsoleErrors
+        if "Failed to load resource" not in sError
+    ]
+    assert listScriptErrors == [], listScriptErrors

@@ -34,6 +34,7 @@ __all__ = [
     "ffbBuildPerFrameCredentialCheck",
     "fnCloseWithCode",
     "fnServeUnderLiveConnectionCounters",
+    "I_REJECT_TERMINAL_DISABLED",
 ]
 
 from . import browserSession
@@ -46,6 +47,14 @@ I_REJECT_BAD_ORIGIN = 4003
 I_REJECT_BAD_TOKEN = 4401
 I_REJECT_FOREIGN_LEASE = 4403
 I_REJECT_DUPLICATE_SESSION = 4409
+
+# The interactive terminal is withdrawn for the alpha (see AGENTS.md,
+# "Withdrawn for the alpha"). The code is deliberately distinct from
+# every authorization refusal above: the socket is refused because the
+# feature is gone, not because this browser lacks standing, and a
+# client that cannot tell the two apart would advise the researcher to
+# re-claim a container that is already theirs.
+I_REJECT_TERMINAL_DISABLED = 4503
 
 
 def fbCheckOrigin(connection):

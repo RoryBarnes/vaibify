@@ -37,15 +37,29 @@ at any corner of the screen tells you where the project stands.
 
 ## Terminal
 
-Click in a terminal section to access a shell session inside the
-container. The terminal runs in your browser over WebSocket and behaves
-like a standard terminal emulator. Multiple sessions can run
-concurrently: the terminal strip holds up to **five** side-by-side
-panes, and each pane can hold any number of tabs, each tab its own
-shell session.
+**The in-browser terminal is disabled.** The terminal strip explains
+this in place of a shell.
 
-If an agent CLI is enabled for the project, start it from a terminal. For
-example:
+The reason is containment. A shell can start a process that detaches
+from the process group vaibify records for it, so vaibify cannot prove
+such a process has stopped — and if it cannot prove that, then
+releasing a container, handing it to another session, or shutting the
+hub down could not honestly report the container quiet. An unprovable
+boundary is worse than a missing feature, so the feature is the one
+that goes.
+
+To reach a shell inside the container, use Docker directly:
+
+```bash
+docker exec -it <container-name> bash
+```
+
+That is outside vaibify's containment, which is exactly the point: the
+responsibility for what you start there is visibly yours, not silently
+vaibify's.
+
+If an agent CLI is enabled for the project, start it from that shell.
+For example:
 
 ```bash
 claude --dangerously-skip-permissions
@@ -71,7 +85,7 @@ see [Agent actions](#agent-actions) below.
 
 ## Viewing Window
 
-The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
+The Viewing Windows above the terminal strip display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
 
 ## Repos panel
 
@@ -84,9 +98,9 @@ dirty status, and push controls.
 
 When you first open a container, repositories already present in the
 workspace (cloned by the entrypoint from `vaibify.yml`) are tracked
-automatically. If you clone additional repositories from the terminal,
-vaibify detects them within a few seconds and prompts you to **Track**
-or **Ignore** them.
+automatically. If you clone additional repositories inside the
+container, vaibify detects them within a few seconds and prompts you to
+**Track** or **Ignore** them.
 
 **Dirty detection** reflects whether you have made source-level
 changes. Build artifacts that package managers and compilers leave
@@ -94,7 +108,7 @@ behind (Python `__pycache__/`, C `*.o`, LaTeX `*.aux`,
 `*.egg-info/`, and so on) are filtered out, so a freshly installed
 repository shows as clean unless you have edited its source files.
 
-**Push** commits and pushes whatever you have staged in the terminal —
+**Push** commits and pushes whatever you have staged in the container —
 `git add`, `git commit`, `git push` rolled into a single button. A
 secondary **Push files…** option in the gear menu opens a file picker
 for selecting specific files to commit.
@@ -220,11 +234,12 @@ tweaking a script without re-running the simulation.
 
 #### Interactive steps
 
-Mark a step as *interactive* and it runs in the terminal with X11
-display forwarding, via the **Run in Terminal** button in its expanded
-view. Useful when a step requires human judgment — eyeballing an
-intermediate result, adjusting a parameter — or when you want to hand
-control to an agent for a specific stage.
+An *interactive* step is one a human drives in a shell. Because the
+in-browser terminal is disabled (see [Terminal](#terminal)), **an
+interactive step cannot be run from the dashboard**: **Run in Terminal**
+reports the refusal instead of starting a step that could never
+finish. Make the step automated, or run its commands yourself in a
+`docker exec` shell.
 
 #### The expanded step view
 
@@ -430,17 +445,17 @@ an action exists — a button that performs it in place:
   The same dialog holds **Supervised mode** (the rung above
   Recorded; requires the record enabled and reviewed). When on,
   every repository change must attribute to a recorded action
-  channel — a pipeline dispatch, an editor save, a context write, or
-  an open terminal session — within a 60-second window; changes with
+  channel — a pipeline dispatch, an editor save, or a context write —
+  within a 60-second window; changes with
   no recorded cause become **permanent, hash-chained flags**
   (`unattributed-modification`), and a repo that changed while the
   hub was not watching flags an `unsupervised-gap` on reconnect.
   Flags render as a red chip on the AI row and are never cleared by
   the tool; editing the flag file breaks its chain loudly.
   Attribution granularity is honest but coarse: the window and the
-  channel, not the file path — and a terminal session attributes as
-  an open channel without its keystrokes being captured (content
-  capture is a planned extension, stated in the dialog).
+  channel, not the file path. Work done in a `docker exec` shell has
+  no recorded channel at all, so it flags as unattributed — which is
+  the truthful answer, not a gap to paper over.
 - **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 
@@ -569,7 +584,7 @@ contains:
 
 - A link to the full online documentation.
 - **Using AI** — how to start the AI coding assistant from a
-  container terminal (`claude --dangerously-skip-permissions`) and
+  shell inside the container (`claude --dangerously-skip-permissions`) and
   why skipping per-command permission prompts is the intended, safe
   mode inside the sandbox: the container isolates the agent from
   your host, every edit is tracked in git and hash-pinned, and a
@@ -777,7 +792,7 @@ skills also slims the always-loaded container `CLAUDE.md` from ~470 to
 safety-critical rules (authoritative level signal, user-only
 publication, the token contract) kept inline.
 
-From inside a container terminal, you can list the available actions:
+From inside a shell in the container, you can list the available actions:
 
 ```bash
 vaibify-do --list

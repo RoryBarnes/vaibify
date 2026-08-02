@@ -286,8 +286,28 @@ var VaibifyPipelineRunner = (function () {
         var sFullCommand = _fsBuildInteractiveCommand(
             sDirectory, listCommands, sSentinel
         );
-        VaibifyTerminal.fnSendCommandInFreshTab(sFullCommand);
+        if (!VaibifyTerminal.fbSendCommandInFreshTab(sFullCommand)) {
+            _fnRefuseInteractiveWithoutTerminal();
+            return;
+        }
         _fnMonitorTerminalForSentinel(sSentinel);
+    }
+
+    /* An interactive step is defined as one a human drives in a shell,
+       so with terminals disabled there is nowhere to run it. Both
+       launch paths say so; the runner-driven one additionally
+       reports the step FAILED rather than leaving the runner polling for
+       a sentinel no shell will ever print — a silent hang would leave
+       the step showing "running" forever, which is precisely the kind of
+       dashboard lie the container state must never tell. */
+    var S_INTERACTIVE_NEEDS_TERMINAL =
+        "Interactive steps need a terminal, and terminals are disabled. "
+        + "Make the step automated, or run its commands in a shell you "
+        + "open yourself with docker exec.";
+
+    function _fnRefuseInteractiveWithoutTerminal() {
+        VaibifyApp.fnShowToast(S_INTERACTIVE_NEEDS_TERMINAL, "error");
+        _fnSendInteractiveComplete(1);
     }
 
     function _fsBuildInteractiveCommand(
@@ -696,7 +716,10 @@ var VaibifyPipelineRunner = (function () {
         var sFullCmd = _fsBuildInteractiveCommand(
             sDir, listCmds, sSentinel
         );
-        VaibifyTerminal.fnSendCommandInFreshTab(sFullCmd);
+        if (!VaibifyTerminal.fbSendCommandInFreshTab(sFullCmd)) {
+            VaibifyApp.fnShowToast(S_INTERACTIVE_NEEDS_TERMINAL, "error");
+            return;
+        }
         _fnMonitorStepCompletion(sSentinel, iIndex);
         var elStrip = document.getElementById("terminalStrip");
         if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });

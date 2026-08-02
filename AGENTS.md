@@ -416,8 +416,8 @@ in-process owner-of-record map `app.state.dictContainerOwners`, keyed by
 container **name** (the host flock and the caffeinate keep-alive are both
 name-keyed, so the owner map must be too; the WebSocket routes resolve
 the Docker container id to a name before the lease lookup). Claim
-(`registryRoutes`), the connect handler, the pipeline WebSocket, and the
-terminal WebSocket must all authorize through the single shared guard
+(`registryRoutes`), the connect handler, and the pipeline WebSocket must
+all authorize through the single shared guard
 `webSocketAuthorization.fbAuthorizeContainerSession` /
 `fiContainerSessionRejectionCode` — never an inlined container-id
 membership check. Never reintroduce `setAllowedContainers` (the old
@@ -437,12 +437,15 @@ one live *pipeline* WebSocket per container is enforced by the
 per-container `iLivePipelineConnectionCount` (a duplicate tab that copied
 the lease is closed 4409 — after `accept`, via `fnCloseWithCode`, so a
 real browser sees the code instead of an unreachable-looking 1006).
-Terminal sockets are counted in `iLiveConnectionCount` for liveness but
-never budgeted: one session legitimately holds the terminal strip, extra
-terminal tabs, AND the pipeline socket at once — budgeting all sockets
-shipped the Run-Step-always-refused bug (the terminal, opened on
-workflow entry, held the only slot; every Run Step was 4409'd and
-mislabeled "cannot reach server"). Run exclusivity is additionally
+Non-pipeline sockets are counted in `iLiveConnectionCount` for liveness
+but never budgeted: one session legitimately holds several sockets at
+once — budgeting all sockets shipped the Run-Step-always-refused bug
+(the terminal, opened on workflow entry, held the only slot; every Run
+Step was 4409'd and mislabeled "cannot reach server"). The terminal is
+disabled (see "The interactive terminal is disabled" below), so the
+unbudgeted lane has no production caller; the budget is still enforced
+and is driven through the real wrapper by a test-owned socket on that
+lane. Run exclusivity is additionally
 enforced at dispatch for every lane, including the budget-exempt agent
 lane: a run arriving while another pipeline action is live in that
 container is answered with a `runRefused` event, never started
@@ -454,6 +457,59 @@ Enforced by `testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
 `testWebSocketGatesUseSharedAuthorizationGuard`,
 `testSetAllowedContainersRemoved`, and
 `test_terminal_plus_pipeline_ws_coexist_in_one_session`.
+
+## The interactive terminal is disabled
+
+**`/ws/terminal` refuses every caller, and no production path creates a
+terminal execution.** A shell can `setsid` out of the process group the
+containment record tracks, so "the terminal stopped" is not provable,
+and release, hand-over, and shutdown cannot honestly report a container
+quiet while a terminal has run in it. An unprovable containment
+boundary is not shipped.
+
+The refusal is the **first statement** in the handler: it accepts, then
+closes with `I_REJECT_TERMINAL_DISABLED`. That ordering is the
+contract, not a detail. Before it, the handler resolved the Docker id
+(an existence oracle open to any caller that could reach the socket),
+ran the ownership gate (which *refreshes* the owner's liveness stamp),
+and entered the connection counters — so a refused dial-in had already
+learned what existed and disturbed a session it had no standing in. The
+close code is deliberately distinct from every authorization code: a
+client that cannot tell a disabled feature from a rejected credential
+tells the researcher to re-claim a container that is already theirs.
+The frontend does not open the socket at all, because a socket left to
+be refused reports a deliberate refusal as a connection failure.
+Interactive *steps* need a shell, so they refuse honestly instead of
+polling forever for a sentinel no shell will print.
+
+Four parking controls hold it there. A no-callers invariant over
+`terminalContainment` **cannot** pass — the module keeps production
+callers for drain, reap, and shutdown — so the controls are narrower:
+nothing in `vaibify/` constructs a `TerminalSession`
+(`testNoProductionPathConstructsATerminalSession`); only the refusal
+handler answers the path
+(`testOnlyTheWithdrawnHandlerServesTheTerminalWebSocket`); only the
+parked seam names the record-creation calls
+(`testNoProductionPathPreparesATerminalExecutionRecord`); and every
+surviving containment caller is cleanup
+(`testRemainingContainmentCallsAreCleanupOnly`). The handler's own
+ordering is pinned by `testWithdrawnTerminalRouteTouchesNothing`.
+
+**Legacy records are never swept.** A terminal journal record written
+by an earlier version stays on disk and keeps its container QUARANTINED
+until the container is positively stopped or its process group proven
+empty — that is, through `vaibify reconcile`. Disabling the route
+settles nothing, because it has proven nothing
+(`tests/testWithdrawnTerminalLegacyRecords.py`). Upgrading with a live
+terminal therefore leaves that container quarantined, which is a
+migration cost to state in release notes, not a bug to code around.
+
+**Do not re-enable it behind a flag.** A runtime switch is a bypass
+path by construction, and the boundary that made the terminal unsafe
+has not moved. Re-enabling means proving containment against a `setsid`
+descendant first; `tests/testTerminalContainment.py` keeps the old
+prover as the standing demonstration of why the boundary was invalid,
+and that is the gate any future terminal work must pass.
 
 ## Cross-step references via tokens
 

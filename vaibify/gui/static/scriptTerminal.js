@@ -177,7 +177,6 @@ const VaibifyTerminal = (function () {
             sLabel: "Term " + iTabCounter,
             terminal: null,
             fitAddon: null,
-            websocket: null,
             resizeObserver: null,
             bFitDeferred: false,
             iRefitTimer: null,
@@ -308,22 +307,11 @@ const VaibifyTerminal = (function () {
         fnActivateWideCharWidths(terminal);
         terminal.open(elContainer);
 
-        var elKillButton = document.createElement("button");
-        elKillButton.className = "terminal-kill-overlay";
-        elKillButton.title = "Kill foreground process";
-        elKillButton.textContent = "Kill";
-        elContainer.style.position = "relative";
-        elContainer.appendChild(elKillButton);
-        elKillButton.addEventListener("click", function () {
-            fnKillTabDirect(dictTab);
-        });
-
         dictTab.terminal = terminal;
         dictTab.fitAddon = fitAddon;
-        dictTab.elKillButton = elKillButton;
 
         fnBindCopyAndSelectionHandlers(dictTab, terminal);
-        fnConnectTerminalWebSocket(dictTab, terminal);
+        fnRenderTerminalDisabledNotice(terminal);
         fnBindTerminalResize(dictPane, dictTab, elContainer, fitAddon);
 
         /* Fit once the container is laid out, not before: an early fit
@@ -401,64 +389,35 @@ const VaibifyTerminal = (function () {
             });
     }
 
-    function fnConnectTerminalWebSocket(dictTab, terminal) {
-        var sProtocol =
-            window.location.protocol === "https:" ? "wss:" : "ws:";
-        var sContainerId = VaibifyApp.fsGetContainerId();
-        var sToken = VaibifyApp.fsGetSessionToken();
-        var sLeaseId = VaibifyApp.fsGetLeaseId();
-        var sUrl = sProtocol + "//" + window.location.host +
-            "/ws/terminal/" + sContainerId +
-            "?sToken=" + encodeURIComponent(sToken) +
-            "&sLeaseId=" + encodeURIComponent(sLeaseId);
-        var ws = new WebSocket(sUrl);
-        dictTab.websocket = ws;
-        ws.binaryType = "arraybuffer";
+    /* Interactive terminals are disabled: a shell can start a process
+       that outlives its window, and vaibify cannot prove such a process
+       stopped, so no release, hand-over, or shutdown could honestly say
+       the container was quiet. The tab does not open /ws/terminal at
+       all — a socket left to be refused would report a deliberate
+       refusal as a connection failure, which is a different and
+       misleading thing — and says so on screen instead of leaving an
+       empty black rectangle. */
+    var S_TERMINAL_DISABLED_NOTICE = [
+        "",
+        "  Interactive terminals are disabled.",
+        "",
+        "  A terminal can start a process that outlives its window, and",
+        "  vaibify cannot prove such a process has stopped — so",
+        "  releasing or handing over this container could not honestly",
+        "  report it as quiet.",
+        "",
+        "  Run steps from the pipeline above, ask the agent inside the",
+        "  container, or open a shell yourself with:",
+        "",
+        "      docker exec -it <container-name> bash",
+        "",
+    ];
 
-        ws.onopen = function () {
-            ws.send(JSON.stringify({
-                sType: "resize",
-                iRows: terminal.rows,
-                iColumns: terminal.cols,
-            }));
-        };
-
-        ws.onmessage = function (event) {
-            if (event.data instanceof ArrayBuffer) {
-                terminal.write(new Uint8Array(event.data));
-            } else if (typeof event.data === "string") {
-                try {
-                    var dictData = JSON.parse(event.data);
-                    if (dictData.sType === "error") {
-                        terminal.write(
-                            "\r\nError: " + dictData.sMessage + "\r\n"
-                        );
-                    }
-                } catch (_) {
-                    terminal.write(event.data);
-                }
-            }
-        };
-
-        ws.onclose = function () {
-            terminal.write("\r\n[Connection closed]\r\n");
-        };
-
-        dictTab.disposableOnData = terminal.onData(function (sData) {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(new TextEncoder().encode(sData));
-            }
+    function fnRenderTerminalDisabledNotice(terminal) {
+        S_TERMINAL_DISABLED_NOTICE.forEach(function (sLine) {
+            terminal.write(sLine + "\r\n");
         });
-
-        dictTab.disposableOnResize = terminal.onResize(function (size) {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    sType: "resize",
-                    iRows: size.rows,
-                    iColumns: size.cols,
-                }));
-            }
-        });
+        terminal.options.cursorBlink = false;
     }
 
     function fdictCaptureTerminalMetrics(term) {
@@ -555,12 +514,6 @@ const VaibifyTerminal = (function () {
     }
 
     function fnDisposeTab(dictTab) {
-        if (dictTab.websocket) dictTab.websocket.close();
-        dictTab.websocket = null;
-        if (dictTab.disposableOnData) dictTab.disposableOnData.dispose();
-        dictTab.disposableOnData = null;
-        if (dictTab.disposableOnResize) dictTab.disposableOnResize.dispose();
-        dictTab.disposableOnResize = null;
         if (dictTab.disposableOnSelectionChange) {
             dictTab.disposableOnSelectionChange.dispose();
         }
@@ -574,12 +527,6 @@ const VaibifyTerminal = (function () {
             dictTab.iCopyOnSelectTimer = null;
         }
         dictTab.bFitDeferred = false;
-        if (dictTab.elKillButton && dictTab.elKillButton.parentNode) {
-            dictTab.elKillButton.parentNode.removeChild(
-                dictTab.elKillButton
-            );
-        }
-        dictTab.elKillButton = null;
         if (dictTab.terminal) {
             dictTab.terminal.clear();
             dictTab.terminal.dispose();
@@ -703,35 +650,6 @@ const VaibifyTerminal = (function () {
         }
     });
 
-    function _fnSendWhenReady(dictPane, sCommand) {
-        var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
-        if (!dictTab || !dictTab.websocket) return;
-        var ws = dictTab.websocket;
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(new TextEncoder().encode(sCommand + "\r"));
-        } else {
-            ws.addEventListener("open", function () {
-                setTimeout(function () {
-                    ws.send(
-                        new TextEncoder().encode(sCommand + "\r"));
-                }, 500);
-            }, { once: true });
-        }
-    }
-
-    function fnKillTabDirect(dictTab) {
-        if (!dictTab || !dictTab.websocket) return;
-        var ws = dictTab.websocket;
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ sType: "kill" }));
-            if (dictTab.terminal) {
-                dictTab.terminal.write(
-                    "\r\n\x1b[31m[Process killed]\x1b[0m\r\n"
-                );
-            }
-        }
-    }
-
     function fnApplyTerminalTheme(term, sColor, iPaneIndex, iTabIndex) {
         var iYdispBefore = (term.buffer && term.buffer.active)
             ? term.buffer.active.viewportY : -1;
@@ -832,33 +750,14 @@ const VaibifyTerminal = (function () {
         fnCreatePane: fnCreatePane,
         fnCloseAll: fnCloseAll,
         fnFitActiveTerminal: fnFitAllTerminals,
-        fnSendCommandInFreshTab: function (sCommand) {
-            if (listPanes.length === 0) {
-                fnCreatePane();
-            } else {
-                fnCreateTab(0);
-            }
-            _fnSendWhenReady(listPanes[0], sCommand);
-        },
-        fnSendCommand: function (sCommand) {
-            if (listPanes.length === 0) {
-                fnCreatePane();
-            }
-            var dictPane = listPanes[0];
-            var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
-            if (!dictTab || !dictTab.websocket) return;
-            var ws = dictTab.websocket;
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(new TextEncoder().encode(sCommand + "\r"));
-            } else if (ws.readyState === WebSocket.CONNECTING) {
-                var sPending = sCommand;
-                ws.addEventListener("open", function () {
-                    setTimeout(function () {
-                        ws.send(new TextEncoder().encode(
-                            sPending + "\r"));
-                    }, 200);
-                }, { once: true });
-            }
+        /* Returns false while terminals are withdrawn, so a caller that
+           needs a shell learns it cannot have one instead of waiting
+           forever on output that will never arrive. The Boolean return
+           is the point: the previous void signature let the interactive
+           step launcher fire and then poll for a sentinel indefinitely. */
+        fbSendCommandInFreshTab: function (sCommand) {
+            void sCommand;
+            return false;
         },
     };
 })();

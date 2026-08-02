@@ -59,6 +59,7 @@ __all__ = [
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+PACKAGE_DIR = REPO_ROOT / "vaibify"
 GUI_DIR = REPO_ROOT / "vaibify" / "gui"
 ROUTES_DIR = GUI_DIR / "routes"
 STATIC_DIR = GUI_DIR / "static"
@@ -3144,18 +3145,24 @@ def testSetAllowedContainersRemoved():
 
 
 def testWebSocketRoutesResolveIdToNameBeforeGate():
-    """Both WS routes resolve the docker id to the canonical name first.
+    """The serving WS route resolves the docker id to the name first.
 
     The owner-of-record map is keyed by container NAME (the claim
     route's canonical key), but the WebSocket routes receive the docker
-    ID in their path. Each handler must call ``fsContainerNameForId``
-    before handing a name to ``fiContainerSessionRejectionCode`` and to
-    the per-container live-connection counter; otherwise the name-keyed
-    gate lookup misses and every authorized session closes 4403. This
-    pins the resolution boundary so an id-keyed regression cannot pass
-    CI silently.
+    ID in their path. A handler that serves a session must call
+    ``fsContainerNameForId`` before handing a name to
+    ``fiContainerSessionRejectionCode`` and to the per-container
+    live-connection counter; otherwise the name-keyed gate lookup misses
+    and every authorized session closes 4403. This pins the resolution
+    boundary so an id-keyed regression cannot pass CI silently.
+
+    The terminal route is deliberately absent: it serves no session at
+    all while terminals are withdrawn, and resolving the id there would
+    reintroduce the container-existence oracle the withdrawal removed.
+    :func:`testWithdrawnTerminalRouteTouchesNothing` asserts the
+    stronger property in its place.
     """
-    for sFileName in ("pipelineRoutes.py", "terminalRoutes.py"):
+    for sFileName in ("pipelineRoutes.py",):
         sSource = fsReadSource(ROUTES_DIR / sFileName)
         iResolve = sSource.find("fsContainerNameForId(")
         iGate = sSource.find("fiContainerSessionRejectionCode(")
@@ -3168,6 +3175,201 @@ def testWebSocketRoutesResolveIdToNameBeforeGate():
             f"fiContainerSessionRejectionCode so the name-keyed gate is "
             f"consulted with the resolved name, not the raw docker id"
         )
+
+
+# ---------------------------------------------------------------------
+# The parked interactive terminal.
+#
+# The terminal is the one lane whose containment could not be proven: a
+# descendant that calls setsid leaves the recorded process group, so
+# "the terminal stopped" was never provable and no authority-ending path
+# could honestly report the container quiet. It is withdrawn for the
+# alpha. A no-callers invariant over terminalContainment CANNOT pass --
+# the module keeps production callers for cleanup, drain, and shutdown
+# -- so the parking is expressed as four narrower controls instead.
+# ---------------------------------------------------------------------
+
+_S_TERMINAL_WS_PATH = "/ws/terminal"
+
+# Creating a terminal execution is what is parked. Draining, probing,
+# and registry construction are the cleanup half and must keep working:
+# a legacy record written before the upgrade still has to be terminated
+# and proven, or quarantined.
+_SET_TERMINAL_CREATION_SYMBOLS = frozenset({
+    "TerminalSession",
+    "TerminalExecutionRecord",
+    "fsPrepareTerminalOperation",
+    "fnPromoteTerminalOperation",
+    "fnRegisterTerminalRecord",
+    "fsMintGroupMarkerPath",
+    "fsBuildGroupReportingCommand",
+    "fiDiscoverTerminalProcessGroup",
+    "fnRecordTerminalProcessGroup",
+})
+
+# terminalSession.py holds the parked creation seam itself; the control
+# on it is that nothing in production CONSTRUCTS a TerminalSession, not
+# that the seam's body has been emptied (that is wave 7's deletion).
+_SET_TERMINAL_SEAM_MODULES = frozenset({
+    "terminalSession.py",
+    "terminalContainment.py",
+})
+
+
+def _flistCallNames(treeAst):
+    """Return every called name in a module, attribute calls included."""
+    listNames = []
+    for nodeCall in ast.walk(treeAst):
+        if not isinstance(nodeCall, ast.Call):
+            continue
+        nodeFunc = nodeCall.func
+        if isinstance(nodeFunc, ast.Name):
+            listNames.append(nodeFunc.id)
+        elif isinstance(nodeFunc, ast.Attribute):
+            listNames.append(nodeFunc.attr)
+    return listNames
+
+
+def _flistProductionPythonModules():
+    """Return every shipped Python module under the package root."""
+    return [
+        pathModule for pathModule in PACKAGE_DIR.rglob("*.py")
+        if "__pycache__" not in pathModule.parts
+    ]
+
+
+def testWithdrawnTerminalRouteTouchesNothing():
+    """The terminal route refuses first and touches no shared state.
+
+    Ordering is the whole contract. The pre-withdrawal handler resolved
+    the docker id, ran the ownership gate (which REFRESHES liveness),
+    and entered the connection counters before it could refuse anything
+    -- so an unauthenticated dial-in learned whether a named container
+    existed, and a refused one had already disturbed the owner's
+    liveness stamp. The withdrawn handler must reach none of that: the
+    close is the only statement it executes.
+    """
+    pathRoute = ROUTES_DIR / "terminalRoutes.py"
+    sSource = fsReadSource(pathRoute)
+    for sForbidden in (
+        "fsContainerNameForId",
+        "fiContainerSessionRejectionCode",
+        "fnServeUnderLiveConnectionCounters",
+        "TerminalSession",
+        "fnRunTerminalSession",
+    ):
+        assert f"{sForbidden}(" not in sSource, (
+            f"the withdrawn terminal route must not call {sForbidden}; "
+            f"the refusal is the first and only statement so it creates "
+            f"no ownership, no counters, no records, and reveals nothing "
+            f"about whether the container exists"
+        )
+    assert "I_REJECT_TERMINAL_DISABLED" in sSource, (
+        "the terminal route must close with the one fixed withdrawal "
+        "code, distinct from every authorization refusal"
+    )
+    assert "fnCloseWithCode(" in sSource, (
+        "the refusal must accept then close (fnCloseWithCode) so the "
+        "browser observes the real code instead of an opaque 1006"
+    )
+
+
+def testNoProductionPathConstructsATerminalSession():
+    """Nothing in the shipped package constructs a terminal session.
+
+    This is parking control 1. The route no longer builds one; this
+    fails the build if any production path -- a new route, a background
+    task, a convenience helper -- starts building one again while the
+    containment boundary is still unprovable.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        if "TerminalSession" in _flistCallNames(treeAst):
+            listViolations.append(str(pathModule.relative_to(PACKAGE_DIR)))
+    assert listViolations == [], (
+        f"no production path may construct a TerminalSession while the "
+        f"terminal is withdrawn; found in: {listViolations}"
+    )
+
+
+def testOnlyTheWithdrawnHandlerServesTheTerminalWebSocket():
+    """Parking control 2: exactly one handler answers ``/ws/terminal``."""
+    listServing = [
+        str(pathModule.relative_to(PACKAGE_DIR))
+        for pathModule in _flistProductionPythonModules()
+        if _S_TERMINAL_WS_PATH in fsReadSource(pathModule)
+    ]
+    assert listServing == ["gui/routes/terminalRoutes.py"], (
+        f"only the withdrawn refusal handler may answer "
+        f"{_S_TERMINAL_WS_PATH}; found in: {listServing}"
+    )
+    sSource = fsReadSource(ROUTES_DIR / "terminalRoutes.py")
+    assert sSource.count("@app.websocket(") == 1, (
+        "terminalRoutes must register exactly one WebSocket endpoint -- "
+        "the refusal -- so no second path can serve a session"
+    )
+
+
+def testNoProductionPathPreparesATerminalExecutionRecord():
+    """Parking control 3: only the parked seam names the creation calls.
+
+    A terminal execution becomes durable through
+    ``fsPrepareTerminalOperation`` -> ``fnPromoteTerminalOperation`` ->
+    ``fnRegisterTerminalRecord``. Outside the seam module (whose own
+    constructor is unreachable, per parking control 1) no shipped module
+    may name any of them, so no container can acquire a new
+    quarantine-bearing terminal record.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        setCalled = set(_flistCallNames(treeAst))
+        setOffending = setCalled & _SET_TERMINAL_CREATION_SYMBOLS
+        if setOffending:
+            listViolations.append(
+                (str(pathModule.relative_to(PACKAGE_DIR)),
+                 sorted(setOffending))
+            )
+    assert listViolations == [], (
+        f"terminal-record creation is parked; only the seam module may "
+        f"name these calls. Found: {listViolations}"
+    )
+
+
+def testRemainingContainmentCallsAreCleanupOnly():
+    """Parking control 4: every live containment caller is cleanup.
+
+    ``terminalContainment`` keeps production callers -- appFactory
+    builds the registry and drains it at shutdown, sessionLifecycle and
+    serverLifespan drain and query it on release, reap, and shutdown --
+    which is why a no-callers invariant cannot pass. What must hold is
+    narrower: none of those callers CREATES anything.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
+            continue
+        sSource = fsReadSource(pathModule)
+        if "terminalContainment" not in sSource:
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        setOffending = (
+            set(_flistCallNames(treeAst)) & _SET_TERMINAL_CREATION_SYMBOLS
+        )
+        if setOffending:
+            listViolations.append(
+                (str(pathModule.relative_to(PACKAGE_DIR)),
+                 sorted(setOffending))
+            )
+    assert listViolations == [], (
+        f"the surviving containment callers must be cleanup and "
+        f"reconciliation only; creation calls found in: {listViolations}"
+    )
 
 
 # ---------------------------------------------------------------------

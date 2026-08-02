@@ -6,8 +6,9 @@ authorized only when a loopback origin, a valid per-browser credential
 session all hold; each failure yields its own close code; and the
 in-container agent lane is authorized only by the container's own
 per-container agent token, never the hub-wide shared token and never
-another container's token. The final pair of tests proves both WebSocket
-route modules delegate to the single guard rather than inlining a gate.
+another container's token. The final pair of tests proves the pipeline
+route delegates to the single guard rather than inlining a gate, and
+that the withdrawn terminal route never reaches the guard at all.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -341,7 +342,16 @@ async def test_pipeline_ws_route_delegates_to_guard():
 
 
 @pytest.mark.asyncio
-async def test_terminal_ws_route_delegates_to_guard():
+async def test_terminal_ws_route_never_reaches_the_guard():
+    """The terminal route no longer consults the gate — it refuses first.
+
+    It used to delegate here like the pipeline route. The interactive
+    terminal is withdrawn for the alpha, and the gate REFRESHES the
+    owner's liveness stamp as a side effect of authorizing, so reaching
+    it would let an unauthenticated dial-in perturb a live session for a
+    feature that cannot be served anyway. The refusal is the handler's
+    first and only statement.
+    """
     from vaibify.gui.routes import terminalRoutes
 
     dictCtx = {
@@ -354,12 +364,13 @@ async def test_terminal_ws_route_delegates_to_guard():
     )
     mockWs = AsyncMock()
     with patch.object(
-        terminalRoutes, "fiContainerSessionRejectionCode",
-        return_value=4003,
+        webSocketAuthorization, "fiContainerSessionRejectionCode",
     ) as mockGuard:
         await fnHandler(mockWs, S_CONTAINER)
-    mockGuard.assert_called_once_with(mockWs, dictCtx, S_CONTAINER)
-    mockWs.close.assert_awaited_once_with(code=4003)
+    mockGuard.assert_not_called()
+    mockWs.close.assert_awaited_once_with(
+        code=webSocketAuthorization.I_REJECT_TERMINAL_DISABLED,
+    )
 
 
 # -- empty-credential fail-closed (4401) ----------------------------------

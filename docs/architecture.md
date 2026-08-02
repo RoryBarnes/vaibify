@@ -477,8 +477,8 @@ claimed it.
 
 `POST /api/registry/{name}/claim` mints the lease and returns it to the
 claiming tab, which stores it in its own `sessionStorage` (per-tab, and
-surviving a reload). Every subsequent access — the connect handler,
-the pipeline WebSocket, and the terminal WebSocket — presents the lease
+surviving a reload). Every subsequent access — the connect handler and
+the pipeline WebSocket — presents the lease
 in the `X-Vaibify-Lease` header (a header, not a query parameter, so it
 cannot land in a log). The per-session credential and the
 loopback-origin check remain the *trust boundary* (CSRF / "a browser is
@@ -629,18 +629,19 @@ Two tabs of one browser cannot both own a container: only the first
 claim mints a lease and a foreign claim is refused. A *duplicate* tab
 that copied the lease out of `sessionStorage` passes the idempotent
 claim, so exclusivity for that case is enforced at the WebSocket gate —
-but scoped to the **pipeline lane**. One legitimate session holds
-several sockets at once: the terminal strip opens a terminal WebSocket
-on project entry, Run Step opens the pipeline WebSocket on demand, and
-extra terminal tabs add more. Budgeting *all* sockets shipped the
-Run-Step-always-refused bug: the terminal held the single slot, every
-pipeline connection was closed 4409, and the browser reported a healthy
-server as unreachable.
+but scoped to the **pipeline lane**. One legitimate session may hold
+several sockets at once. Budgeting *all* sockets shipped the
+Run-Step-always-refused bug: the terminal, which opened its socket on
+project entry, held the single slot, every pipeline connection was
+closed 4409, and the browser reported a healthy server as unreachable.
 
 So the budget is: at most one live **pipeline** WebSocket per container
-(`iLivePipelineConnectionCount`); terminal sockets are counted in
-`iLiveConnectionCount` for liveness (the reaper and the idle watchdog
-read it) but are never refused. `fnIncrementLiveConnection` /
+(`iLivePipelineConnectionCount`); sockets on any other lane are counted
+in `iLiveConnectionCount` for liveness (the reaper and the idle watchdog
+read it) but are never refused. The terminal is disabled (see "The
+interactive terminal is disabled" in `AGENTS.md`), so the unbudgeted
+lane has no production caller today; the budget still holds and is
+driven through the real wrapper by a test-owned socket on that lane. `fnIncrementLiveConnection` /
 `fnDecrementLiveConnection` keep both counts, and a second concurrent
 pipeline connection presenting the same lease is refused with 4409.
 
@@ -663,8 +664,10 @@ budget) — so two runs can never race inside one container.
 
 `webSocketAuthorization.fbAuthorizeContainerSession` (and its
 status-code form `fiContainerSessionRejectionCode`) is the one gate,
-consumed verbatim by the pipeline WebSocket, the terminal WebSocket,
-and the connect handler. A loopback browser must clear, in order,
+consumed verbatim by the pipeline WebSocket and the connect handler.
+The terminal route consults it not at all: it is disabled and refuses
+as its first statement, precisely so an unauthenticated dial-in cannot
+reach a gate whose side effect is refreshing the owner's liveness. A loopback browser must clear, in order,
 loopback origin (`4003` on failure), shared token (`4401`), and owning
 lease (`4403`). A non-loopback connection is never a browser; it is
 admitted only through the lease-exempt **agent lane**
@@ -761,8 +764,8 @@ manually or the watchdog fires.
 interrupted (the dashboard's honesty contract). The watchdog vetoes
 shutdown when **any browser tab is connected** -- tracked by a live
 WebSocket presence counter (`fnIncrementWebSocketCount` /
-`fnDecrementWebSocketCount`) incremented right after a terminal or
-pipeline socket is accepted and decremented in a `finally` -- or when
+`fnDecrementWebSocketCount`) incremented right after a pipeline socket
+is accepted and decremented in a `finally` -- or when
 **any owned container is busy** (a pipeline is mid-run, per
 `fileStatusManager._fbPipelineIsRunning`). The set of owned containers
 is read from `dictContainerOwners.keys()`, the same owner-of-record
@@ -914,7 +917,9 @@ following files control test generation:
   `workflowManager` because it operates on the host filesystem. See
   the tradeoff note above and the `AGENTS.md` trap list.
 - `registryRoutes.py` — project registry API.
-- `terminalSession.py` — PTY bridge for terminal WebSocket.
+- `terminalSession.py` — PTY bridge for the terminal WebSocket. No
+  production path constructs one: the terminal is disabled (see
+  `AGENTS.md`, "The interactive terminal is disabled").
 - `resourceMonitor.py` — container CPU and memory stats.
 - `figureServer.py` — small utility; see source.
 - `setupServer.py` — setup wizard host-side server.

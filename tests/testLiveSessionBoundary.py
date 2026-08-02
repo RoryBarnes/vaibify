@@ -28,10 +28,12 @@ per-container connection budget all run for real.
 from unittest.mock import patch
 
 import pytest
+from fastapi import WebSocket
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from vaibify.gui import pipelineServer
+from vaibify.gui import webSocketAuthorization
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.testAgentLaneEnforcement import (
     MockDockerConnection,
@@ -124,14 +126,43 @@ async def _fnAcceptAndCloseNormally(
     await websocket.close(code=I_CLOSE_NORMAL)
 
 
-async def _fnBlockingTerminalSession(
-    app, websocket, dictCtx, sContainerId, sName,
-):
-    """Stand-in terminal session; the route has already accepted."""
-    try:
-        await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
+def _fnRegisterUnbudgetedLaneWs(app):
+    """Add a test-owned socket on the UNBUDGETED lane to the served app.
+
+    The interactive terminal was the production holder of an unbudgeted
+    socket; it is withdrawn for the alpha, so the lane has no production
+    caller left. The budget itself is unchanged and the lane returns when
+    the containment boundary can be proven, so the coexistence property
+    is driven here through the real
+    ``fnServeUnderLiveConnectionCounters`` on the real served
+    application, over a real connection, rather than left unasserted.
+
+    The lane flag is deliberately omitted so the DEFAULT is what is
+    under test: flipping it to ``True`` budgets every socket, which is
+    the Run-Step-always-refused regression.
+    """
+    @app.websocket("/ws/unbudgeted/{sContainerId}")
+    async def fnUnbudgetedWs(websocket: WebSocket, sContainerId: str):
+        async def fnServe():
+            await websocket.accept()
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                pass
+
+        await webSocketAuthorization.fnServeUnderLiveConnectionCounters(
+            websocket, app.state.dictContainerOwners, S_CONTAINER_NAME,
+            fnServe, lambda: None, lambda: None,
+            dictBrowserSessions=app.state.dictBrowserSessions,
+        )
+
+
+def _fsUnbudgetedUrl(sCredential, sLeaseId):
+    """Build the test-owned unbudgeted-lane URL, addressed by docker ID."""
+    return (
+        f"/ws/unbudgeted/{S_CONTAINER_ID}"
+        f"?sToken={sCredential}&sLeaseId={sLeaseId}"
+    )
 
 
 @pytest.mark.falsification
@@ -286,20 +317,24 @@ def testDuplicateTabPipelineWebSocketIsRefusedOnTheServedApplication(
 def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
     appServed, clientBrowser, sBrowserCredential,
 ):
-    """One session holds the terminal AND the pipeline socket at once.
+    """One session holds an unbudgeted AND the pipeline socket at once.
 
-    This is Run Step as the GUI drives it: the terminal strip opens its
-    socket on workflow entry and is still open when the pipeline socket
-    arrives. Budgeting every socket instead of only the pipeline lane
-    shipped the Run-Step-always-refused bug, where the terminal held the
-    single slot and every run was closed 4409 and mislabelled "cannot
-    reach server".
+    This is Run Step as the GUI drove it before the terminal was
+    withdrawn: the terminal strip opened its socket on workflow entry
+    and was still open when the pipeline socket arrived. Budgeting every
+    socket instead of only the pipeline lane shipped the
+    Run-Step-always-refused bug, where the terminal held the single slot
+    and every run was closed 4409 and mislabelled "cannot reach server".
+    The socket now comes from a test-owned route on that lane, because
+    the terminal route refuses every caller; the wrapper, the served
+    application, and the connection are all real.
 
     Kills: webSocketAuthorization.fnServeUnderLiveConnectionCounters:
     the signature default `bExclusivePipelineLane=False,` flipped to
-    `bExclusivePipelineLane=True,`, which budgets the terminal lane too.
+    `bExclusivePipelineLane=True,`, which budgets every other lane too.
     """
     sLeaseId = _fsConnectAndReturnLease(clientBrowser)
+    _fnRegisterUnbudgetedLaneWs(appServed)
     listCountsWhilePipelineServes = []
 
     async def _fnRecordAndServe(
@@ -318,14 +353,11 @@ def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
         ))
 
     with patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnBlockingTerminalSession,
-    ), patch(
         "vaibify.gui.routes.pipelineRoutes.fnHandlePipelineWs",
         _fnRecordAndServe,
     ):
         with clientBrowser.websocket_connect(
-            _fsTerminalUrl(sBrowserCredential, sLeaseId),
+            _fsUnbudgetedUrl(sBrowserCredential, sLeaseId),
             headers=_DICT_LOOPBACK_ORIGIN,
         ):
             with clientBrowser.websocket_connect(
@@ -334,7 +366,7 @@ def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
             ):
                 pass
     assert listCountsWhilePipelineServes == [(2, 1)], (
-        "with the terminal socket live, the same session's pipeline "
+        "with the unbudgeted socket live, the same session's pipeline "
         "socket must be served -- two live connections, one of them on "
         "the pipeline lane -- never refused as a duplicate tab"
     )
@@ -343,7 +375,38 @@ def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
     assert recordOwner.iLivePipelineConnectionCount == 0
 
 
-@pytest.mark.parametrize("fsBuildUrl", [_fsPipelineUrl, _fsTerminalUrl])
+def testWithdrawnTerminalRefusesTheOwnerOnTheServedApplication(
+    appServed, clientBrowser, sBrowserCredential,
+):
+    """The real served app refuses the terminal to its rightful owner.
+
+    Driven end to end -- claim over HTTP, then dial the terminal with
+    the lease that claim returned -- so the refusal is observed through
+    the same application a browser talks to, not a route registered in
+    isolation. The code must be the withdrawal code, and the owner
+    record must be untouched: an ownership refresh or a live-count bump
+    here would let an unauthenticated caller disturb a session it has
+    no standing in.
+    """
+    sLeaseId = _fsConnectAndReturnLease(clientBrowser)
+    with clientBrowser.websocket_connect(
+        _fsTerminalUrl(sBrowserCredential, sLeaseId),
+        headers=_DICT_LOOPBACK_ORIGIN,
+    ) as websocketClient:
+        with pytest.raises(WebSocketDisconnect) as excInfo:
+            websocketClient.receive_text()
+    assert excInfo.value.code == (
+        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
+    ), (
+        "the withdrawn terminal must close with its own code, not an "
+        f"authorization refusal; got {excInfo.value.code}"
+    )
+    recordOwner = appServed.state.dictContainerOwners[S_CONTAINER_NAME]
+    assert recordOwner.iLiveConnectionCount == 0
+    assert recordOwner.iLivePipelineConnectionCount == 0
+
+
+@pytest.mark.parametrize("fsBuildUrl", [_fsPipelineUrl])
 def testSecondSessionCopiedLeaseIsRefusedOnBothSockets(
     appServed, clientBrowser, sBrowserCredential, fsBuildUrl,
 ):
@@ -353,9 +416,15 @@ def testSecondSessionCopiedLeaseIsRefusedOnBothSockets(
     Session B redeems its OWN valid credential but copies A's genuine lease
     value onto the socket URL. The credential is valid and the lease value
     is real, yet the bound-lease gate ties the lease to A's session, so B is
-    refused 4403 on both the pipeline and the terminal socket -- the
-    copied-lease replay the strong predicate exists to stop, proven across
-    a real connection with the container NAME distinct from its ID.
+    refused 4403 -- the copied-lease replay the strong predicate exists to
+    stop, proven across a real connection with the container NAME distinct
+    from its ID.
+
+    The terminal socket is no longer a parameter: it refuses EVERY
+    caller with the withdrawal code, so running it here would assert
+    the withdrawal rather than the bound-lease gate and would go green
+    for the wrong reason. ``testWithdrawnTerminalRefusesTheOwnerOnThe
+    ServedApplication`` covers it directly instead.
     """
     sLeaseId = _fsConnectAndReturnLease(clientBrowser)
     sCredentialSessionB = fsBootstrapCredential(appServed)
@@ -366,9 +435,6 @@ def testSecondSessionCopiedLeaseIsRefusedOnBothSockets(
     with patch(
         "vaibify.gui.routes.pipelineRoutes.fnHandlePipelineWs",
         _fnAcceptAndCloseNormally,
-    ), patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnBlockingTerminalSession,
     ):
         with clientSessionB.websocket_connect(
             fsBuildUrl(sCredentialSessionB, sLeaseId),

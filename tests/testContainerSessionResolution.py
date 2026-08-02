@@ -13,12 +13,13 @@ exercised, not assumed.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from vaibify.gui import browserSession
 from vaibify.gui import containerOwnership
+from vaibify.gui import webSocketAuthorization
 from vaibify.gui.routes.pipelineRoutes import _fnRegisterPipelineWs
 from vaibify.gui.routes.terminalRoutes import _fnRegisterTerminalWs
 
@@ -194,16 +195,6 @@ def _sTerminalUrl(sLeaseId=S_LEASE, sToken=S_CREDENTIAL):
     )
 
 
-async def _fnFakeBlockingTerminalSession(
-    app, websocket, dictCtx, sContainerId, sName,
-):
-    """Stand-in terminal session that stays live until the client leaves."""
-    try:
-        await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
-
-
 def _fclientWithBothWsRoutes(dictCtx):
     """Register BOTH WebSocket routes on one app and return a client."""
     dictCtx.setdefault("containerUsers", {})
@@ -214,16 +205,49 @@ def _fclientWithBothWsRoutes(dictCtx):
     return TestClient(app)
 
 
+def _fnRegisterUnbudgetedLaneWs(app, dictCtx):
+    """Register a test-owned socket on the UNBUDGETED (non-pipeline) lane.
+
+    The interactive terminal is withdrawn for the alpha, so the
+    production route that used to hold an unbudgeted socket now refuses
+    every connection. The budget it exercised is still a live property
+    of ``fnServeUnderLiveConnectionCounters`` -- and the lane returns
+    when the containment boundary can be proven -- so the test drives
+    the real production wrapper over a real WebSocket with the lane flag
+    the terminal used, instead of asserting nothing until then.
+    """
+    @app.websocket("/ws/unbudgeted/{sContainerId}")
+    async def fnUnbudgetedWs(websocket: WebSocket, sContainerId: str):
+        async def fnServe():
+            await websocket.accept()
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                pass
+
+        # The lane flag is DELIBERATELY left at its default: unbudgeted
+        # is what the default must mean, and flipping it to True would
+        # budget every non-pipeline socket -- the Run-Step-always-refused
+        # regression. Passing it explicitly here would hide that mutant.
+        await webSocketAuthorization.fnServeUnderLiveConnectionCounters(
+            websocket, dictCtx["dictContainerOwners"], S_PROJECT_NAME,
+            fnServe, lambda: None, lambda: None,
+            dictBrowserSessions=dictCtx["dictBrowserSessions"],
+        )
+
+
 @pytest.mark.falsification
 def test_terminal_plus_pipeline_ws_coexist_in_one_session():
-    """One session's terminal AND pipeline sockets are both served, live
-    at the same time, on the same lease.
+    """An unbudgeted socket AND the pipeline socket coexist on one lease.
 
-    This is the Run Step path as the GUI actually drives it: the
-    terminal WS connects on workflow entry and is STILL OPEN when the
-    pipeline WS arrives. Both must serve concurrently; refusing the
+    This is the Run Step path as the GUI drove it before the terminal
+    was withdrawn: a socket on the unbudgeted lane is STILL OPEN when
+    the pipeline WS arrives. Both must serve concurrently; refusing the
     second socket silently killed every Run Step while the server was
-    healthy.
+    healthy. The first socket now comes from a test-owned route on that
+    lane rather than the withdrawn terminal route -- the budget under
+    test lives in ``fnServeUnderLiveConnectionCounters``, which is
+    production code either way.
 
     Kills: reverting fbRefuseSecondLiveConnection to the all-sockets
     budget (iLivePipelineConnectionCount -> iLiveConnectionCount), the
@@ -245,23 +269,25 @@ def test_terminal_plus_pipeline_ws_coexist_in_one_session():
             recordOwner.iLivePipelineConnectionCount,
         ))
 
+    app = FastAPI()
+    _fnRegisterPipelineWs(app, dictCtx)
+    _fnRegisterUnbudgetedLaneWs(app, dictCtx)
     with patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnFakeBlockingTerminalSession,
-    ), patch(
         "vaibify.gui.routes.pipelineRoutes.fnHandlePipelineWs",
         _fnFakePipelineServe,
     ):
-        client = _fclientWithBothWsRoutes(dictCtx)
+        client = TestClient(app)
         with client.websocket_connect(
-            _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+            f"/ws/unbudgeted/{S_CONTAINER_ID}"
+            f"?sToken={S_CREDENTIAL}&sLeaseId={S_LEASE}",
+            headers=_DICT_LOOPBACK_ORIGIN,
         ):
             with client.websocket_connect(
                 _sPipelineUrl(), headers=_DICT_LOOPBACK_ORIGIN,
             ):
                 pass
     assert listCountsAtPipelineServe == [(2, 1)], (
-        "with the terminal socket still live, the same session's "
+        "with the unbudgeted socket still live, the same session's "
         "pipeline socket must be SERVED (2 live connections total, "
         "1 on the pipeline lane), never refused 4409"
     )
@@ -309,75 +335,92 @@ def test_second_pipeline_ws_refused_4409_while_first_is_live():
             assert excInfo.value.code == 4409
 
 
-def test_second_terminal_ws_served_alongside_live_connections():
-    """A second terminal tab is a feature of one session, never a 4409.
+def test_second_unbudgeted_ws_served_alongside_live_connections():
+    """A second socket on the unbudgeted lane is served, never a 4409.
 
-    Seeds a live pipeline socket AND a live terminal socket on the
-    owner, then connects another terminal: multi-tab terminals must be
-    served — the old all-sockets budget refused them as duplicates.
+    Seeds a live pipeline socket AND a live unbudgeted socket on the
+    owner, then connects another: the old all-sockets budget refused
+    these as duplicates, which is what made the terminal starve Run
+    Step.
     """
     dictCtx = _fdictBuildContext(
         _fdictOwnersByName(iLiveCount=2, iLivePipelineCount=1),
     )
-    listCountsDuringServe = []
-
-    async def _fnFakeCountingTerminalSession(
-        app, websocket, dictCtxArg, sId, sName,
+    app = FastAPI()
+    _fnRegisterUnbudgetedLaneWs(app, dictCtx)
+    client = TestClient(app)
+    with client.websocket_connect(
+        f"/ws/unbudgeted/{S_CONTAINER_ID}"
+        f"?sToken={S_CREDENTIAL}&sLeaseId={S_LEASE}",
+        headers=_DICT_LOOPBACK_ORIGIN,
     ):
-        listCountsDuringServe.append(
+        assert (
             dictCtx["dictContainerOwners"][S_PROJECT_NAME]
-            .iLiveConnectionCount,
-        )
-
-    with patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnFakeCountingTerminalSession,
-    ):
-        client = _fclientWithBothWsRoutes(dictCtx)
-        with client.websocket_connect(
-            _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
-        ):
-            pass
-    assert listCountsDuringServe == [3], (
-        "an extra terminal tab must be served and counted for liveness"
-    )
+            .iLiveConnectionCount == 3
+        ), "an extra unbudgeted socket must be served and counted"
 
 
-# -- terminal route accepts the owner addressed by docker id -------------
+# -- the terminal route is withdrawn for every caller --------------------
 
 
-def test_owner_terminal_ws_accepted_when_name_differs_from_id():
-    """The terminal route resolves id->name and accepts the owner."""
+def test_owner_terminal_ws_is_refused_with_the_withdrawal_code():
+    """Even the rightful owner is refused, and told WHY.
+
+    The withdrawal is not an authorization outcome. A container's own
+    owner, presenting a valid credential and its own lease, must still
+    be closed with :data:`I_REJECT_TERMINAL_DISABLED` -- not 4403 --
+    because a client that cannot tell the two apart would advise the
+    researcher to re-claim a container that is already theirs. The
+    ownership record must be untouched by the attempt: no live count,
+    no session socket, no liveness refresh.
+    """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
-    dictCtx["containerUsers"] = {}
-    dictCtx["terminals"] = {}
-    listCountDuring = []
-
-    async def _fnFakeStartAndRun(
-        app, websocket, dictCtxArg, sContainerId, sName,
-    ):
-        listCountDuring.append(
-            dictCtx["dictContainerOwners"][S_PROJECT_NAME]
-            .iLiveConnectionCount
-        )
-
     app = FastAPI()
     _fnRegisterTerminalWs(app, dictCtx)
-    with patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnFakeStartAndRun,
+    client = TestClient(app)
+    with client.websocket_connect(
+        _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+    ) as websocketClient:
+        with pytest.raises(WebSocketDisconnect) as excInfo:
+            websocketClient.receive_text()
+    assert excInfo.value.code == (
+        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
+    )
+    recordOwner = dictCtx["dictContainerOwners"][S_PROJECT_NAME]
+    assert recordOwner.iLiveConnectionCount == 0
+    assert recordOwner.iLivePipelineConnectionCount == 0
+
+
+def test_terminal_ws_refusal_reveals_nothing_about_the_container():
+    """An unknown container is refused identically to a real one.
+
+    The pre-withdrawal handler resolved the docker id through the
+    daemon BEFORE any gate, so any caller that could reach the socket
+    could ask whether a named container existed. The withdrawn handler
+    must answer a fabricated id, a bad origin, and a garbage credential
+    with the same code and the same silence.
+    """
+    dictCtx = _fdictBuildContext(_fdictOwnersByName())
+    app = FastAPI()
+    _fnRegisterTerminalWs(app, dictCtx)
+    client = TestClient(app)
+    listCodes = []
+    for sUrl, dictHeaders in (
+        (f"/ws/terminal/no-such-container-id?sToken={S_CREDENTIAL}"
+         f"&sLeaseId={S_LEASE}", _DICT_LOOPBACK_ORIGIN),
+        (_sTerminalUrl(sToken="garbage-credential"), _DICT_LOOPBACK_ORIGIN),
+        (_sTerminalUrl(), {"origin": "http://evil.example"}),
     ):
-        client = TestClient(app)
         with client.websocket_connect(
-            f"/ws/terminal/{S_CONTAINER_ID}"
-            f"?sToken={S_CREDENTIAL}&sLeaseId={S_LEASE}",
-            headers=_DICT_LOOPBACK_ORIGIN,
-        ):
-            pass
-    assert listCountDuring == [1]
-    assert (
-        dictCtx["dictContainerOwners"][S_PROJECT_NAME].iLiveConnectionCount
-        == 0
+            sUrl, headers=dictHeaders,
+        ) as websocketClient:
+            with pytest.raises(WebSocketDisconnect) as excInfo:
+                websocketClient.receive_text()
+        listCodes.append(excInfo.value.code)
+    iWithdrawn = webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
+    assert listCodes == [iWithdrawn, iWithdrawn, iWithdrawn], (
+        "the withdrawn terminal route must answer every caller with the "
+        "same code, so it is not an existence oracle for containers"
     )
 
 
