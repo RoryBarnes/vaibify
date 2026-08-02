@@ -240,3 +240,42 @@ def test_the_registry_starts_empty_after_an_upgrade():
         appState, S_CONTAINER_NAME,
     )
     assert _fdictJournalOperations() != {}
+
+
+def test_no_terminal_process_can_be_created_through_the_route():
+    """The alpha gate half of the setsid problem.
+
+    ``testTerminalContainmentLive`` demonstrates that a ``setsid``
+    descendant escapes the recorded process group and that the record
+    then settles CLEAN over a live process -- the reason the terminal is
+    disabled. That demonstration drives ``TerminalSession`` directly, on
+    purpose, so it keeps proving the boundary is invalid no matter what
+    the route does.
+
+    This is the other half, and it is deliberately not the same test:
+    the route cannot create such a process at all, because it never
+    constructs a session. A ``TerminalSession`` that explodes on
+    construction proves it -- a route that merely returned early would
+    still pass a check of the response code.
+    """
+    from vaibify.gui.routes import terminalRoutes
+
+    assert not hasattr(terminalRoutes, "TerminalSession"), (
+        "terminalRoutes still holds a TerminalSession reference; the "
+        "parking controls exist so the name is not even in scope, and "
+        "a module that can name it can call it"
+    )
+
+    dictCtx = {"docker": _StubProbeConnection()}
+    app = FastAPI()
+    _fnRegisterTerminalWs(app, dictCtx)
+    client = TestClient(app)
+    with client.websocket_connect(
+        f"/ws/terminal/{S_CONTAINER_ID}?sToken=x&sLeaseId=y",
+        headers={"origin": "http://localhost"},
+    ) as websocketClient:
+        with pytest.raises(WebSocketDisconnect) as excInfo:
+            websocketClient.receive_text()
+    assert excInfo.value.code == (
+        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
+    )

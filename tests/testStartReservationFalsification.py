@@ -804,3 +804,190 @@ async def testAFailedStartNeverReleasesOwnershipItDidNotCreate():
     assert stateApp.dictSessionOwner.get(sSessionId) == S_PROJECT_NAME, (
         "the owner's cardinality entry was dropped by a failed start"
     )
+
+
+# ------------------------------------------------------------------
+# Wave 6: the start-versus-transfer barrier at MULTIPLE phases, and
+# the cardinality LOCK isolated from the cardinality REGISTRY.
+# ------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def testATransferBeforeTheLaunchRefusesAndChangesNothing():
+    """A transfer arriving between the reservation and the launch.
+
+    The existing barrier drives a transfer against a start whose durable
+    task is already registered, and it is ADOPTED. This is the earlier
+    phase, and it resolves the other way: the journal record is
+    IN_FLIGHT but no durable task exists yet, so the record is genuinely
+    un-attributable and the transfer refuses. That is the fail-closed
+    answer, and it is right -- what would be wrong is refusing while
+    ALSO disturbing something.
+
+    So the assertion that matters is the second one: the refusal must
+    leave the ownership, the generation and the reservation exactly as
+    they were. A refusal that half-committed would strand a start with
+    no owner to deliver its outcome to.
+
+    Kills: in sessionLifecycle, dropping the unsettled-journal refusal
+    (``continue`` in place of the ``return`` on the un-attributable
+    record), so a transfer commits over a start whose journal record
+    nothing can account for.
+    """
+    from tests.testHostTransfer import (
+        S_PROJECT_NAME as S_TRANSFER_PROJECT,
+        _fstateBuildAppState as _fstateTransfer,
+        _fsMintTransferCapability, _tSeedOwnedContainer, _tTransfer,
+    )
+    stateApp = _fstateTransfer()
+    _tSeedOwnedContainer(stateApp)
+
+    sOperationId = operationJournal.fsPrepareOperation(
+        S_TRANSFER_PROJECT, "start", S_TRANSFER_PROJECT,
+    )
+    operationJournal.fnPromoteOperationToInFlight(
+        S_TRANSFER_PROJECT, sOperationId,
+        {"iHolderPid": 1, "sReservationLabel": "b" * 32},
+    )
+    recordOwner = stateApp.dictContainerOwners[S_TRANSFER_PROJECT]
+    sLeaseBefore = recordOwner.sLeaseId
+    iGenerationBefore = recordOwner.iOwnerGeneration
+    reservation = startReservation.StartReservation(
+        sReservationId="b" * 32,
+        recordStartTask=startReservation.StartTaskRecord(
+            sStartTaskId="preLaunchTask", sJournalOperationId=sOperationId,
+        ),
+        identityOwnership=containerOwnership.fidentityRecordOwnership(
+            recordOwner, containerOwnership.S_NO_PRIOR_OWNER,
+        ),
+    )
+    recordOwner.reservation = reservation
+
+    sCapability = _fsMintTransferCapability(stateApp)
+    sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
+
+    assert sOutcome == sessionLifecycle.S_TRANSFER_REFUSED, (
+        f"an un-attributable journal record must refuse: {dictPayload}"
+    )
+    assert "reconcile" in dictPayload["sMessage"], (
+        "the refusal must name its recovery"
+    )
+    recordAfter = stateApp.dictContainerOwners[S_TRANSFER_PROJECT]
+    assert recordAfter.sLeaseId == sLeaseBefore, (
+        "a refused transfer rotated the lease anyway"
+    )
+    assert recordAfter.iOwnerGeneration == iGenerationBefore
+    assert recordAfter.reservation is reservation, (
+        "a refused transfer disturbed the in-flight start"
+    )
+    operationJournal.fnSettleOperation(S_TRANSFER_PROJECT, sOperationId)
+
+
+@pytest.mark.asyncio
+async def testAFailedStartAfterATransferDoesNotFreeTheSuccessor():
+    """The LAST phase: the transfer lands, then the start settles.
+
+    The barrier tests cover a transfer arriving while a start runs. This
+    is what happens next, and it is the phase where the damage would be
+    done: the start fails, and its settlement runs against an ownership
+    that is no longer the one it created. Driven through the real
+    settlement, with the successor's lease, generation and session all
+    distinct from the originals so a comparison that checked only one of
+    them would still pass.
+
+    Kills: in sessionLifecycle._fbStartMayFreeOwnership, comparing only
+    ``identityOwnership.bEstablishedTheOwnership`` -- the Boolean this
+    identity replaced, which stays true across a transfer and would free
+    the successor's ownership.
+    """
+    stateApp = _fstateBuildAppState()
+    sSessionId = _fsRedeemSession(stateApp)
+    controller = ControlledStart(bSpawnRealProcess=False)
+    daemon = RecordingDaemon([])
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            startReservation, "_fsExecuteReservedStart", controller.fsExecute,
+        )
+        monkeypatch.setattr(
+            containerManager, "fdictSettleReservationContainers",
+            daemon.fdictSettle,
+        )
+        iCode, _dictBody = await startReservation.ftBeginStart(
+            stateApp, S_PROJECT_NAME, sSessionId,
+            SimpleNamespace(bNeverSleep=False), iPort=0,
+        )
+        assert iCode == 202
+        await _fnAwaitEventSet(controller.eventEntered)
+
+        recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
+        recordOwner.sLeaseId = "successor-lease"
+        recordOwner.iOwnerGeneration += 1
+        recordOwner.sBrowserSessionId = "successor-session"
+
+        # Make the held launch FAIL, which is the path whose settlement
+        # decides whether ownership is freed.
+        recordOwner.reservation.recordStartTask.bCancelRequested = True
+        controller.eventRelease.set()
+        await _fnAwaitDurableTask(stateApp)
+
+    assert S_PROJECT_NAME in stateApp.dictContainerOwners, (
+        "the start's settlement freed the SUCCESSOR's ownership; a "
+        "transfer hands the container over, it does not hand it back"
+    )
+    assert stateApp.dictContainerOwners[S_PROJECT_NAME].sLeaseId == (
+        "successor-lease"
+    )
+
+
+@pytest.mark.asyncio
+async def testTheStartTakesTheCardinalityLockNotJustTheIndex():
+    """The LOCK path, isolated from the registry path it guards.
+
+    Case 19 proves the reverse-index CHECK happens: drop the index and
+    one session ends up holding two containers. It cannot prove the
+    cardinality LOCK is taken, because both critical sections are
+    synchronous and the event loop cannot interleave them -- so a
+    version that read the index without the lock passes that test.
+
+    This isolates the other half. The test holds the hub's cardinality
+    lock itself and asserts the start BLOCKS -- which it can only do by
+    trying to acquire it. Without the lock the start sails past a held
+    lock and answers immediately, and the guard for the first critical
+    section that ever awaits would have been silently removed.
+
+    Kills: in sessionLifecycle.ftReserveContainerForStart, replacing the
+    ``async with _flockObtainSessionCardinality(dictLockStore):`` with
+    ``if True:`` -- the reservation then arbitrates ownership without
+    the hub-wide lock.
+    """
+    stateApp = _fstateBuildAppState()
+    sSessionId = _fsRedeemSession(stateApp)
+    controller = ControlledStart(bSpawnRealProcess=False)
+    controller.eventRelease.set()
+    lockCardinality = sessionLifecycle.flockSessionCardinalityForAppState(
+        stateApp,
+    )
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            startReservation, "_fsExecuteReservedStart", controller.fsExecute,
+        )
+        await lockCardinality.acquire()
+        taskStart = asyncio.ensure_future(startReservation.ftBeginStart(
+            stateApp, S_PROJECT_NAME, sSessionId,
+            SimpleNamespace(bNeverSleep=False), iPort=0,
+        ))
+        try:
+            await asyncio.wait_for(asyncio.shield(taskStart), 0.25)
+        except asyncio.TimeoutError:
+            pass
+        else:
+            raise AssertionError(
+                "the start completed while the hub-wide cardinality "
+                "lock was held, so it never acquired it"
+            )
+        assert S_PROJECT_NAME not in stateApp.dictContainerOwners, (
+            "the start arbitrated ownership without the cardinality lock"
+        )
+        lockCardinality.release()
+        iCode, _dictBody = await taskStart
+        assert iCode == 202
+        await _fnAwaitDurableTask(stateApp)

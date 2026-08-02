@@ -45,6 +45,41 @@ class Falsification:
 LIST_FALSIFICATIONS = [
 
     Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testATransferBeforeTheLaunchRefusesAndChangesNothing',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""        return (
+            f"Container '{sName}' has an unsettled journal record "
+            f"({sOperationId}, kind {dictRecord['sKind']}) that is "
+            "neither the live durable task nor a drainable terminal; """,
+        new="""        continue
+        return (
+            f"Container '{sName}' has an unsettled journal record "
+            f"({sOperationId}, kind {dictRecord['sKind']}) that is "
+            "neither the live durable task nor a drainable terminal; """,
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testAFailedStartAfterATransferDoesNotFreeTheSuccessor',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""    return (
+        identityOwnership.bEstablishedTheOwnership
+        and containerOwnership.fbOwnershipIdentityStillHolds(
+            recordOwner, identityOwnership,
+        )
+    )""",
+        new="""    return identityOwnership.bEstablishedTheOwnership""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testTheStartTakesTheCardinalityLockNotJustTheIndex',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""    async with _flockObtainContainerMutation(dictLockStore, sName):
+        async with _flockObtainSessionCardinality(dictLockStore):
+            return _tReserveForStartUnderLocks(""",
+        new="""    async with _flockObtainContainerMutation(dictLockStore, sName):
+        if True:
+            return _tReserveForStartUnderLocks(""",
+    ),
+
+    Falsification(
         nodeid='tests/testReconciliation.py::test_break_glass_refuses_when_the_stop_is_not_proven',
         source='vaibify/config/reconciliation.py',
         old="""    try:

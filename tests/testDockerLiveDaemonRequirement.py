@@ -94,3 +94,68 @@ def test_no_workflow_swallows_an_unreachable_docker_daemon():
         + "\n".join(listOffenders)
         + "\nUse the docker-smoke job's retry-then-fail step instead."
     )
+
+
+# ---------------------------------------------------------------------
+# The same defect, one layer up: the falsification re-confirmation.
+# ---------------------------------------------------------------------
+
+def _fmoduleReconfirmationHarness():
+    """Import tools/reconfirmFalsification.py by path."""
+    import importlib.util
+
+    pathTool = (
+        Path(__file__).resolve().parent.parent
+        / "tools" / "reconfirmFalsification.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "reconfirmFalsificationUnderTest", pathTool,
+    )
+    moduleTool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(moduleTool)
+    return moduleTool
+
+
+def test_the_reconfirmation_harness_never_reads_a_skip_as_a_survivor():
+    """A skipped test exits 0; that must not mean "the mutant lived".
+
+    pytest gives a skipped test the same exit code as a passing one, and
+    this harness reads exit 0 under a mutation as SURVIVED. So on a
+    machine with no Docker daemon, five Docker-live entries reported as
+    surviving mutants -- an alarm about guards that were, in fact,
+    hand-confirmed against a live daemon. A false alarm in a
+    verification tool is not harmless: it is what teaches a reader to
+    discount the tool.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    assert moduleTool._fbOutputReportsASkip("1 skipped in 0.10s")
+    assert moduleTool._fbOutputReportsASkip("3 passed, 1 skipped in 1.0s")
+    assert not moduleTool._fbOutputReportsASkip("4 passed in 1.0s")
+    assert not moduleTool._fbOutputReportsASkip(
+        "4 passed in 1.0s (skipped nothing)"
+    )
+    assert moduleTool.I_EXIT_SKIPPED not in (0, 1), (
+        "the skip code must be distinguishable from both a pass and an "
+        "assertion failure, or the harness cannot tell them apart"
+    )
+
+
+def test_the_reconfirmation_harness_demands_a_daemon_for_its_runs():
+    """It sets the same env var the CI jobs do, for the same reason.
+
+    Detecting the skip after the fact is the backstop. Demanding the
+    daemon is the primary: with it set, a Docker-live falsification test
+    FAILS on a machine with no daemon, and the harness reports an error
+    the operator can act on instead of a phantom survivor.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    assert moduleTool.S_REQUIRE_DAEMON_ENV == (
+        moduleLive.S_REQUIRE_DAEMON_ENV
+    ), "the harness and the tests must name the same environment switch"
+    sSource = (
+        Path(__file__).resolve().parent.parent
+        / "tools" / "reconfirmFalsification.py"
+    ).read_text()
+    assert 'dictEnvironment[S_REQUIRE_DAEMON_ENV] = "1"' in sSource, (
+        "the harness must demand a live daemon for the runs it judges"
+    )

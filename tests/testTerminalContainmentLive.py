@@ -103,6 +103,39 @@ def _fnSpawnTrappingDescendant(session, tLiveContainer):
     )
 
 
+# The adversary the process-group prover CANNOT see: a descendant that
+# calls setsid, leaving the recorded session entirely before it starts
+# trapping and sleeping. It writes a DIFFERENT marker so a test can tell
+# it apart from the in-group descendant above.
+S_ESCAPED_MARKER_PATH = "/tmp/escaped"
+S_SETSID_ESCAPE_LINE = (
+    'setsid sh -c "trap \'\' HUP INT QUIT TERM; '
+    f'sleep {int(F_DESCENDANT_SLEEP_SECONDS)}; '
+    f'touch {S_ESCAPED_MARKER_PATH}" >/dev/null 2>&1 &\n'
+)
+
+
+def _fbEscapedMarkerExists(tLiveContainer):
+    """Independently check the setsid descendant's marker file."""
+    _sName, sContainerId, connectionDocker = tLiveContainer
+    iExitCode, _ = connectionDocker.ftupleRunRootShellProbe(
+        sContainerId, f"test -e {S_ESCAPED_MARKER_PATH}",
+    )
+    return iExitCode == 0
+
+
+def _fbEscapedProcessIsAlive(tLiveContainer):
+    """Return True while the setsid descendant is still running."""
+    _sName, sContainerId, connectionDocker = tLiveContainer
+    iExitCode, _sOutput = connectionDocker.ftupleRunRootShellProbe(
+        sContainerId,
+        f"grep -l {S_ESCAPED_MARKER_PATH} /proc/*/cmdline 2>/dev/null "
+        "| head -n 1",
+    )
+    del iExitCode
+    return bool(_sOutput.strip())
+
+
 def _fbLeakedMarkerExists(tLiveContainer):
     """Independently check the descendant's marker file, root exec."""
     sName, sContainerId, connectionDocker = tLiveContainer
@@ -559,3 +592,81 @@ def test_indeterminate_drain_refuses_transfer_and_quarantines(
     assert dictOperations[sOperationId]["sState"] == (
         "NEEDS_RECONCILIATION"
     ), "the indeterminate record must be retained-and-quarantined"
+
+
+# ---------------------------------------------------------------------
+# The characterization: why the terminal boundary was withdrawn.
+#
+# This test is NOT a regression guard. It is the standing demonstration
+# that the process-group prover is insufficient, and it is the gate any
+# future terminal work must pass: re-enabling the terminal means making
+# this scenario provable, not making this test go away. Deleting it
+# would erase the reason the feature is disabled.
+# ---------------------------------------------------------------------
+
+def test_the_process_group_prover_cannot_see_a_setsid_descendant(
+    tLiveContainer,
+):
+    """A setsid child leaves the recorded session; the prover says empty.
+
+    The in-group adversary elsewhere in this file is CONTAINABLE: it
+    traps signals, but it stays in the terminal's session, so the prover
+    sees it and the record quarantines rather than settling. A
+    descendant that calls ``setsid`` first is a different thing
+    entirely -- it is in no session vaibify recorded, so the prover
+    reports the group empty, the record settles CLEAN, and the process
+    goes on writing to the container a release has just handed away.
+
+    Asserted the hard way: the prover's own answer, then the marker the
+    escaped process writes after the record is gone. A test that only
+    checked the prover would leave open the possibility that the
+    process had merely exited.
+    """
+    from vaibify.config import operationJournal
+    sName, sContainerId, connectionDocker = tLiveContainer
+    appState = SimpleNamespace()
+    session = _fsessionStartContainedTerminal(tLiveContainer, appState)
+    iProcessGroup = session.recordContainment.iProcessGroup
+
+    session.fnSendInput(S_SETSID_ESCAPE_LINE.encode("utf-8"))
+    fSpawnedMonotonic = time.monotonic()
+    time.sleep(1.5)
+    session.fnSendInput(b"exit\n")
+
+    fDeadline = time.monotonic() + 10.0
+    while time.monotonic() < fDeadline:
+        if connectionDocker.fdictInspectExec(
+            session.recordContainment.sDockerExecId,
+        ).get("Running") is False:
+            break
+        time.sleep(0.2)
+
+    dictProbe = connectionDocker.fdictProbeProcessGroupMembers(
+        sContainerId, iProcessGroup,
+    )
+    assert dictProbe["bConclusive"], (
+        "the scenario needs a conclusive probe to mean anything"
+    )
+    assert dictProbe["iMemberCount"] == 0, (
+        "the premise of the withdrawal is that setsid leaves the "
+        f"recorded group; the probe still saw {dictProbe}"
+    )
+
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        sName, connectionDocker=connectionDocker,
+    )
+    assert dictResolution["sResolution"] == "SETTLED", (
+        "the record must settle CLEAN -- that is precisely the lie: "
+        "vaibify believes the terminal is finished"
+    )
+
+    fWindowEnd = fSpawnedMonotonic + F_DESCENDANT_SLEEP_SECONDS + 3.0
+    while time.monotonic() < fWindowEnd:
+        if _fbEscapedMarkerExists(tLiveContainer):
+            break
+        time.sleep(0.3)
+    assert _fbEscapedMarkerExists(tLiveContainer), (
+        "the escaped descendant never wrote its marker, so this test "
+        "did not demonstrate anything; check that setsid exists in the "
+        "throwaway image"
+    )

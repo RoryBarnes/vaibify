@@ -190,3 +190,88 @@ def test_resolve_config_path_multiple_projects_exits(mockRegistry,
     ]}
     with pytest.raises(SystemExit):
         fsResolveProjectConfigPath()
+
+
+# ---------------------------------------------------------------------
+# ``--config PATH`` must SELECT the project, not merely be accepted.
+# ---------------------------------------------------------------------
+
+def test_an_explicit_config_path_outranks_the_working_directory(
+    tmp_path, monkeypatch,
+):
+    """The top-level ``--config`` option decides which project is acted on.
+
+    It used to be accepted, recorded, and then ignored: every project
+    command resolved through the working directory, so
+    ``vaibify --config /elsewhere/vaibify.yml start`` started whichever
+    project the CURRENT directory found -- and ``stop`` stopped it.
+    Naming one container and acting on another is the worst answer
+    available, because nothing on screen says so. Found while running
+    the container-acceptance lane, which could not start its own
+    project on a machine that had any other.
+    """
+    from vaibify.cli import configLoader
+
+    sDirectoryElsewhere = tmp_path / "elsewhere"
+    sDirectoryElsewhere.mkdir()
+    (sDirectoryElsewhere / "vaibify.yml").write_text(
+        "projectName: the-explicit-one\n",
+    )
+    sDirectoryHere = tmp_path / "here"
+    sDirectoryHere.mkdir()
+    (sDirectoryHere / "vaibify.yml").write_text(
+        "projectName: the-discovered-one\n",
+    )
+    monkeypatch.chdir(sDirectoryHere)
+
+    configDiscovered = configLoader.fconfigResolveProject()
+    assert configDiscovered.sProjectName == "the-discovered-one"
+
+    try:
+        configLoader.fnSetConfigPath(
+            str(sDirectoryElsewhere / "vaibify.yml"),
+        )
+        configExplicit = configLoader.fconfigResolveProject()
+        assert configExplicit.sProjectName == "the-explicit-one", (
+            "--config was ignored: the command would act on the "
+            "working directory's project instead of the named one"
+        )
+        assert configLoader.fsResolveProjectConfigPath() == str(
+            sDirectoryElsewhere / "vaibify.yml",
+        ), (
+            "the path a command writes back to must be the one it read"
+        )
+    finally:
+        configLoader.fnSetConfigPath(None)
+
+
+def test_an_explicit_project_name_still_outranks_the_config_path(
+    tmp_path, monkeypatch,
+):
+    """``--project`` is the more specific instruction and keeps priority."""
+    from vaibify.cli import configLoader
+
+    sDirectoryElsewhere = tmp_path / "elsewhere"
+    sDirectoryElsewhere.mkdir()
+    (sDirectoryElsewhere / "vaibify.yml").write_text(
+        "projectName: the-explicit-one\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    listLookups = []
+
+    def _fconfigFromRegistry(sProjectName):
+        listLookups.append(sProjectName)
+        return SimpleNamespace(sProjectName=sProjectName)
+
+    monkeypatch.setattr(
+        configLoader, "_fconfigLoadFromRegistry", _fconfigFromRegistry,
+    )
+    try:
+        configLoader.fnSetConfigPath(
+            str(sDirectoryElsewhere / "vaibify.yml"),
+        )
+        configNamed = configLoader.fconfigResolveProject("named-project")
+        assert configNamed.sProjectName == "named-project"
+        assert listLookups == ["named-project"]
+    finally:
+        configLoader.fnSetConfigPath(None)
