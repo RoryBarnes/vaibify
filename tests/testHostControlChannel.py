@@ -458,9 +458,14 @@ def test_break_glass_over_the_socket_clears_only_the_hash_matched_marker(
     fixtureShortControlDirectory, monkeypatch,
 ):
     listStopped = []
+
+    def _fbRecordProvenStop(sContainerName):
+        listStopped.append(sContainerName)
+        return True
+
     monkeypatch.setattr(
-        hostControlChannel, "_fnStopContainerByNameQuietly",
-        listStopped.append,
+        hostControlChannel, "_fbStopContainerByNameProven",
+        _fbRecordProvenStop,
     )
     sJournalPath = operationJournal.fsJournalPathFor(S_PROJECT)
     os.makedirs(os.path.dirname(sJournalPath), exist_ok=True)

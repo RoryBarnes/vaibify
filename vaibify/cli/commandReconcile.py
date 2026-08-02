@@ -119,7 +119,7 @@ def fiRunCrashTimeBreakGlass(sContainerName, sMarkerSha256):
     try:
         reconciliation.fdictExecuteBreakGlass(
             sContainerName, sMarkerSha256,
-            fnStopContainerByName=_fnStopContainerByName,
+            fnStopContainerByName=_fbStopContainerByName,
         )
     except reconciliation.ReconciliationRefusedError as error:
         click.echo(f"Break-glass refused: {error}", err=True)
@@ -131,10 +131,16 @@ def fiRunCrashTimeBreakGlass(sContainerName, sMarkerSha256):
     return 0
 
 
-def _fnStopContainerByName(sContainerName):
-    """Stop the possibly-relevant container before a break-glass."""
-    from vaibify.docker.containerManager import fnStopContainer
-    fnStopContainer(sContainerName)
+def _fbStopContainerByName(sContainerName):
+    """Stop the possibly-relevant container and PROVE it settled.
+
+    Returns True only when the container was stopped or the daemon
+    positively answered that it does not exist; the break-glass refuses
+    on anything else rather than deleting a marker whose writer may
+    still be running.
+    """
+    from vaibify.docker.containerManager import fbStopContainerProvenSettled
+    return fbStopContainerProvenSettled(sContainerName)
 
 
 def _fiRouteToLiveHub(

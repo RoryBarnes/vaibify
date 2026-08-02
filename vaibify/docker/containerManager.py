@@ -608,6 +608,40 @@ def fnStopContainer(sProjectName):
     fnRemoveStopped(sProjectName)
 
 
+def fdictProbeContainerPresence(sProjectName):
+    """Return ``{bAnswered, bPresent}`` for a container NAME.
+
+    ``bAnswered`` False means the daemon did not answer at all (absent
+    CLI, timeout, error) — which is NOT the same as "no such container"
+    and must never be read as one. ``fdictGetContainerStatus`` conflates
+    the two into ``bExists=False``, which is safe for a display surface
+    and unsafe for anything that clears a quarantine.
+    """
+    bAnswered, sOutput = _ftRunProbeCommand([
+        "docker", "ps", "-a", "-q",
+        "--filter", f"name=^{sProjectName}$",
+    ])
+    return {"bAnswered": bAnswered, "bPresent": bool(sOutput.strip())}
+
+
+def fbStopContainerProvenSettled(sProjectName):
+    """Stop the container and return True only when that is PROVEN.
+
+    Two outcomes are settlements: the stop succeeded, or the daemon
+    positively answered that no container by that name exists (nothing
+    to stop). Everything else — a failed stop, an unreachable daemon, a
+    probe that did not answer — is False, and a caller that clears
+    quarantine state on the strength of this must refuse.
+    """
+    try:
+        fnStopContainer(sProjectName)
+        return True
+    except Exception:
+        pass
+    dictPresence = fdictProbeContainerPresence(sProjectName)
+    return dictPresence["bAnswered"] and not dictPresence["bPresent"]
+
+
 def fnRemoveStopped(sProjectName):
     """Remove a stopped container if it still exists."""
     saCommand = ["docker", "rm", sProjectName]

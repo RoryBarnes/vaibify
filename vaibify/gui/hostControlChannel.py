@@ -619,7 +619,7 @@ async def _fdictHandleBreakGlass(app, dictCtx, dictRequest):
     try:
         dictOutcome = await asyncio.to_thread(
             reconciliation.fdictExecuteBreakGlass,
-            sName, sMarkerSha256, _fnStopContainerByNameQuietly,
+            sName, sMarkerSha256, _fbStopContainerByNameProven,
             0, False,
         )
     except reconciliation.ReconciliationRefusedError as error:
@@ -629,10 +629,15 @@ async def _fdictHandleBreakGlass(app, dictCtx, dictRequest):
     return {"bAccepted": True, "bCleared": dictOutcome["bCleared"]}
 
 
-def _fnStopContainerByNameQuietly(sContainerName):
-    """Stop the named container if it is running; tolerate absence."""
-    from vaibify.docker.containerManager import fnStopContainer
-    fnStopContainer(sContainerName)
+def _fbStopContainerByNameProven(sContainerName):
+    """Stop the named container and PROVE it stopped or absent.
+
+    Absence is a settlement; an unreachable daemon is not. The
+    break-glass refuses on anything unproven rather than deleting a
+    marker whose writer may still be running.
+    """
+    from vaibify.docker.containerManager import fbStopContainerProvenSettled
+    return fbStopContainerProvenSettled(sContainerName)
 
 
 async def _fdictHandleMintTransfer(app, dictCtx, dictRequest):

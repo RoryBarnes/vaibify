@@ -4038,7 +4038,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shim that guards every operation in it; a handler homed elsewhere
     # would be an operation the allowlist does not visibly enumerate,
     # which is the property this protocol exists to hold.
-    "hostControlChannel.py": 810,
+    # +5 (2026-08-02): the break-glass stop callback now reports whether
+    # it PROVED the container stopped or absent, so the handler's local
+    # shim documents that contract instead of forwarding blindly.
+    "hostControlChannel.py": 815,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one

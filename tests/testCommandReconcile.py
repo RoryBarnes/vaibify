@@ -168,8 +168,13 @@ def test_the_crash_time_break_glass_clears_the_hash_matched_marker(
     capsys, monkeypatch,
 ):
     listStopped = []
+
+    def _fbRecordProvenStop(sContainerName):
+        listStopped.append(sContainerName)
+        return True
+
     monkeypatch.setattr(
-        commandReconcile, "_fnStopContainerByName", listStopped.append,
+        commandReconcile, "_fbStopContainerByName", _fbRecordProvenStop,
     )
     sJournalPath = operationJournal.fsJournalPathFor(S_PROJECT)
     os.makedirs(os.path.dirname(sJournalPath), exist_ok=True)

@@ -392,6 +392,21 @@ def test_reconciliation_is_the_one_authority_that_clears_a_poisoned_record():
 # The break-glass.
 # ---------------------------------------------------------------------
 
+def _fbRecordProvenStop(listStopped, bProven=True):
+    """Return a stop callback that records the name and reports its proof.
+
+    The break-glass contract is that its stop callback returns True only
+    when the container was positively stopped or positively proven
+    absent. A test double that records the call but reports nothing is
+    reporting "not proven", which must refuse.
+    """
+    def _fbStop(sContainerName):
+        listStopped.append(sContainerName)
+        return bProven
+    return _fbStop
+
+
+
 def test_break_glass_refuses_a_valid_journal():
     _fsJournalDeadHelperRecord()
     sMarkerSha256 = fsComputeJournalFileSha256(S_PROJECT)
@@ -424,7 +439,7 @@ def test_break_glass_refuses_a_hash_mismatch_and_clears_on_the_match():
     listStopped = []
     fdictExecuteBreakGlass(
         S_PROJECT, fsComputeJournalFileSha256(S_PROJECT),
-        fnStopContainerByName=listStopped.append,
+        fnStopContainerByName=_fbRecordProvenStop(listStopped),
     )
     assert listStopped == [S_PROJECT], (
         "the possibly-relevant container must be stopped first"
@@ -445,3 +460,63 @@ def test_break_glass_refuses_while_a_live_process_holds_the_flock():
     assert os.path.exists(fsJournalPathFor(S_PROJECT))
 
 
+
+
+@pytest.mark.falsification
+def test_break_glass_refuses_when_the_stop_is_not_proven():
+    """A failed stop must leave the quarantine standing.
+
+    The break-glass stops the container BECAUSE a malformed record names
+    no parseable helper identity: the container bearing the journal's
+    name is the whole reachable blast surface, and stopping it is what
+    makes deleting the marker safe. The stop failing is therefore the
+    one case the quarantine exists for, and it used to be the case that
+    logged a warning and deleted the marker anyway.
+
+    Both unproven shapes are driven: the callback raising (the daemon
+    refused, the CLI is absent) and the callback returning False (it ran
+    but could prove neither a stop nor an absence). Neither may clear.
+
+    Kills: reconciliation._fnStopContainerOrRefuse swallowing the
+    failure -- `except Exception: logger.warning(...)` in place of the
+    raise -- which is the pre-fix behaviour verbatim.
+    """
+    _fnWriteRawJournalBytes(S_PROJECT, b"\x00the malformed marker")
+    sMarkerSha256 = fsComputeJournalFileSha256(S_PROJECT)
+
+    def _fbStopRaises(sContainerName):
+        raise RuntimeError("docker stop failed: daemon unreachable")
+
+    with pytest.raises(ReconciliationRefusedError) as excInfoRaise:
+        fdictExecuteBreakGlass(
+            S_PROJECT, sMarkerSha256,
+            fnStopContainerByName=_fbStopRaises,
+        )
+    assert "quarantine stands" in str(excInfoRaise.value)
+    assert os.path.exists(fsJournalPathFor(S_PROJECT)), (
+        "a break-glass whose stop failed must not delete the marker"
+    )
+
+    listAttempted = []
+    with pytest.raises(ReconciliationRefusedError) as excInfoUnproven:
+        fdictExecuteBreakGlass(
+            S_PROJECT, sMarkerSha256,
+            fnStopContainerByName=_fbRecordProvenStop(
+                listAttempted, bProven=False,
+            ),
+        )
+    assert "quarantine stands" in str(excInfoUnproven.value)
+    assert listAttempted == [S_PROJECT]
+    assert os.path.exists(fsJournalPathFor(S_PROJECT)), (
+        "an unprovable stop must not delete the marker either"
+    )
+
+    listProven = []
+    fdictExecuteBreakGlass(
+        S_PROJECT, sMarkerSha256,
+        fnStopContainerByName=_fbRecordProvenStop(listProven),
+    )
+    assert listProven == [S_PROJECT]
+    assert not os.path.exists(fsJournalPathFor(S_PROJECT)), (
+        "a PROVEN stop is what earns the clear"
+    )

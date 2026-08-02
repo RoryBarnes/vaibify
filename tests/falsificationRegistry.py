@@ -45,6 +45,34 @@ class Falsification:
 LIST_FALSIFICATIONS = [
 
     Falsification(
+        nodeid='tests/testReconciliation.py::test_break_glass_refuses_when_the_stop_is_not_proven',
+        source='vaibify/config/reconciliation.py',
+        old="""    try:
+        bSettled = fnStopContainerByName(sContainerName)
+    except Exception as error:
+        raise ReconciliationRefusedError(
+            f"The break-glass could not stop container "
+            f"'{sContainerName}' ({error}), so the process the malformed "
+            "record describes may still be running; the quarantine "
+            "stands. Stop or remove the container, then retry."
+        )
+    if not bSettled:
+        raise ReconciliationRefusedError(
+            f"The break-glass could not PROVE container "
+            f"'{sContainerName}' stopped or absent, so the process the "
+            "malformed record describes may still be running; the "
+            "quarantine stands. Stop or remove the container, then retry."
+        )""",
+        new="""    try:
+        fnStopContainerByName(sContainerName)
+    except Exception as error:
+        logger.warning(
+            "Break-glass container stop for '%s' reported: %s",
+            sContainerName, error,
+        )""",
+    ),
+
+    Falsification(
         nodeid='tests/testArchitecturalInvariants.py::testScienceTermScanMatchesSeparatedSpellings',
         source='tests/testArchitecturalInvariants.py',
         old='    regexTerm = re.compile(\n        r"\\b" + _S_TERM_SEPARATOR_PATTERN.join(\n            re.escape(sCharacter) for sCharacter in sTerm\n        ),\n        re.IGNORECASE,\n    )',

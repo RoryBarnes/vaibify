@@ -384,7 +384,7 @@ def fdictExecuteBreakGlass(
             # is stopped, so a misdirected request acts on nothing.
             raise ReconciliationRefusedError(str(error))
         if fnStopContainerByName is not None:
-            _fnStopContainerQuietly(fnStopContainerByName, sContainerName)
+            _fnStopContainerOrRefuse(fnStopContainerByName, sContainerName)
         try:
             operationJournal.fnBreakGlassClearMalformedJournal(
                 sContainerName, sExpectedSha256,
@@ -401,12 +401,36 @@ def fdictExecuteBreakGlass(
     return {"bCleared": True, "sContainerName": sContainerName}
 
 
-def _fnStopContainerQuietly(fnStopContainerByName, sContainerName):
-    """Stop the possibly-relevant container; a not-running one is fine."""
+def _fnStopContainerOrRefuse(fnStopContainerByName, sContainerName):
+    """Refuse the break-glass unless the stop is PROVEN settled.
+
+    The stop is the break-glass's only containment. A malformed record
+    names no parseable helper identity, so the container bearing the
+    journal's name is the entire reachable blast surface: stopping it is
+    what makes deleting the marker safe. The previous implementation
+    logged the failure and deleted the marker anyway, which turned the
+    one case the quarantine exists for — a writer still running — into a
+    claimable container. A failed stop, an unreachable daemon, and a
+    probe that did not answer are all the same answer here: not proven,
+    so the quarantine stands.
+
+    ``fnStopContainerByName`` must return True only when the container
+    was positively stopped or the daemon positively answered that no
+    such container exists.
+    """
     try:
-        fnStopContainerByName(sContainerName)
+        bSettled = fnStopContainerByName(sContainerName)
     except Exception as error:
-        logger.warning(
-            "Break-glass container stop for '%s' reported: %s",
-            sContainerName, error,
+        raise ReconciliationRefusedError(
+            f"The break-glass could not stop container "
+            f"'{sContainerName}' ({error}), so the process the malformed "
+            "record describes may still be running; the quarantine "
+            "stands. Stop or remove the container, then retry."
+        )
+    if not bSettled:
+        raise ReconciliationRefusedError(
+            f"The break-glass could not PROVE container "
+            f"'{sContainerName}' stopped or absent, so the process the "
+            "malformed record describes may still be running; the "
+            "quarantine stands. Stop or remove the container, then retry."
         )

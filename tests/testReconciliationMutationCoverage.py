@@ -329,10 +329,15 @@ def test_break_glass_clears_only_the_malformed_record_it_names():
     with open(sJournalPath, "wb") as fileHandle:
         fileHandle.write(b"\x00a REPLACEMENT malformed marker")
     listStopped = []
+
+    def _fbRecordProvenStop(sContainerName):
+        listStopped.append(sContainerName)
+        return True
+
     with pytest.raises(ReconciliationRefusedError) as excInfo:
         fdictExecuteBreakGlass(
             S_PROJECT, sInspectedSha256,
-            fnStopContainerByName=listStopped.append,
+            fnStopContainerByName=_fbRecordProvenStop,
         )
     assert "replaced" in str(excInfo.value)
     assert os.path.exists(sJournalPath), (
@@ -343,7 +348,7 @@ def test_break_glass_clears_only_the_malformed_record_it_names():
     )
     fdictExecuteBreakGlass(
         S_PROJECT, fsComputeJournalFileSha256(S_PROJECT),
-        fnStopContainerByName=listStopped.append,
+        fnStopContainerByName=_fbRecordProvenStop,
     )
     assert listStopped == [S_PROJECT]
     assert not os.path.exists(sJournalPath)
