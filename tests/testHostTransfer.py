@@ -771,47 +771,66 @@ def testBootstrapRedemptionRefusesATransferCapability():
 
 @pytest.mark.asyncio
 @pytest.mark.falsification
-async def testTransferDrainsTerminalRecordsBeforeCommit():
-    """Case 44 (transfer half): the transfer terminates-and-proves.
+async def testTransferRefusesOverALiveTerminalRecordAndSignalsNothing():
+    """Case 44 (transfer half): the hand-over refuses, it does not drain.
 
-    A live terminal record is fenced, signalled, and PROVEN group-empty
-    before the commit: after a transferred outcome its journal record
-    is settled and no live record remains.
+    The transfer used to FENCE and TERMINATE a live terminal record
+    before committing -- the DRAINING phase. That phase is gone, and
+    with it the wait it forced inside the held lock. The property it
+    protected survives and is stronger: a hand-over must never carry a
+    terminal execution nobody has proven dead, so it refuses outright
+    and names the recovery.
 
-    Kills: dropping the DRAINING terminal drain
-    (``fdictDrainTerminalRecordsForContainer``) from
-    ``_tTransferUnderDrain``.
+    With the terminal disabled such a record can only be inherited from
+    an earlier version, and wave 0's rule for those is that they stay
+    quarantined until reconciliation -- draining one during a transfer
+    would have settled it on the strength of a probe rather than a stop.
+
+    Asserted on the SIGNALS as well as the outcome: a refusal that had
+    already signalled the group would have done the drain's work
+    without the drain's proof.
+
+    Kills: in sessionLifecycle, softening the live-terminal-record
+    refusal at the commit point back to S_TRANSFER_BUSY_RETRY, which
+    invites an immediate retry over a record that will still be there.
     """
     stateApp = _fstateBuildAppState()
-    _tSeedOwnedContainer(stateApp)
+    _, _sOldCredential, sOldLease = _tSeedOwnedContainer(stateApp)
     connectionDocker = _FakeDockerForTerminals(bProvable=True)
-    _recordSeedTerminalRecord(stateApp, connectionDocker)
+    recordTerminal = _recordSeedTerminalRecord(stateApp, connectionDocker)
     sCapability = _fsMintTransferCapability(stateApp)
-    sOutcome, _ = await _tTransfer(stateApp, sCapability)
-    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED
-    assert connectionDocker.listSignals, (
-        "the drain must actually signal the recorded group"
+    sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
+    assert sOutcome == sessionLifecycle.S_TRANSFER_REFUSED, (
+        f"a hand-over must not carry an unproven terminal: {dictPayload}"
     )
-    assert not terminalContainment.fbContainerHasLiveTerminalRecords(
+    assert "reconcile" in dictPayload["sMessage"]
+    assert connectionDocker.listSignals == [], (
+        "the refusal signalled the recorded group, doing the drain's "
+        "work without the drain's proof"
+    )
+    recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
+    assert recordOwner.sLeaseId == sOldLease
+    assert recordOwner.iOwnerGeneration == 1
+    assert terminalContainment.fbContainerHasLiveTerminalRecords(
         stateApp, S_PROJECT_NAME,
-    )
-    assert _dictJournalOperations() == {}, (
-        "the terminal record must settle before the commit"
-    )
+    ), "the record must be retained, not settled by a refused transfer"
+    assert recordTerminal.sOperationId in _dictJournalOperations()
 
 
 @pytest.mark.asyncio
 @pytest.mark.falsification
-async def testQuarantinedDrainRefusesAndRetainsNotRollsBack():
-    """Case 46 (transfer half): a failed drain quarantines, never commits.
+async def testARefusedTransferRollsBackOnlyWhatItMinted():
+    """Case 46 (transfer half): refuse, retain, and roll back the pre-mint.
 
-    When the group cannot be proven empty the transfer REFUSES: the
-    owner keeps its lease and generation, the pre-minted session is
-    discarded, the capability stays ARMED — and the terminal record is
-    retained-and-QUARANTINED, never pretended-rolled-back.
+    The refusal side of the same change. Everything the transfer minted
+    speculatively is discarded; everything it did NOT create is left
+    exactly as it was -- the sitting owner keeps its lease, generation
+    and credential, the terminal record stays, and the capability stays
+    ARMED so the researcher can retry once reconciliation clears it.
 
-    Kills: making ``_tTransferUnderDrain`` ignore
-    ``listQuarantinedOperationIds`` and commit over the failed drain.
+    Kills: dropping the fnDiscardSessionRecord rollback on the
+    live-terminal-record refusal, which leaks a browser session record
+    per refused attempt.
     """
     stateApp = _fstateBuildAppState()
     _, sOldCredential, sOldLease = _tSeedOwnedContainer(stateApp)
@@ -820,17 +839,16 @@ async def testQuarantinedDrainRefusesAndRetainsNotRollsBack():
     sCapability = _fsMintTransferCapability(stateApp)
     sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
     assert sOutcome == sessionLifecycle.S_TRANSFER_REFUSED
-    assert "quarantined" in dictPayload["sMessage"]
+    assert "reconcile" in dictPayload["sMessage"]
     recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
     assert recordOwner.sLeaseId == sOldLease
     assert recordOwner.iOwnerGeneration == 1
     assert browserSession.fbValidateCredential(
         stateApp.dictBrowserSessions, sOldCredential,
     ) is True, "a refused transfer must not revoke the sitting owner"
-    dictOperations = _dictJournalOperations()
-    assert dictOperations[recordTerminal.sOperationId]["sState"] == (
-        operationJournal.S_OPERATION_STATE_NEEDS_RECONCILIATION
-    ), "the unprovable terminal must be retained-and-quarantined"
+    assert recordTerminal.sOperationId in _dictJournalOperations(), (
+        "the unproven terminal record must be retained"
+    )
     assert len(
         stateApp.dictBrowserSessions["dictSessionsByCredential"],
     ) == 1, "the pre-minted session must be rolled back on refusal"
@@ -1126,3 +1144,103 @@ async def testTransferRebindsTheStartResultEntitlementToTheSuccessor():
     assert "sLeaseId" not in dictFailed, (
         "a failure entitlement must convey no container authority"
     )
+
+
+# ---------------------------------------------------------------------
+# Wave 2.4: a busy container refuses IMMEDIATELY, and says what is busy.
+# ---------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.falsification
+async def testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation():
+    """Six steps, so implicit waiting cannot satisfy the test.
+
+    Start and block a mutation; attempt the transfer; assert an
+    IMMEDIATE busy refusal, unchanged owner and generation, no
+    capability consumption, and a message naming the live operation;
+    let the mutation finish; explicitly retry; assert the retry
+    succeeds.
+
+    The immediacy is measured, not assumed. The transfer used to wait
+    up to twenty seconds on the mutation lock and then report "a
+    guarded operation holds its mutation drain" -- true, unactionable,
+    and identical whether the holder was a two-second write or a
+    half-hour rebuild. Waiting also spends the capability's window on an
+    operation of unknown length, so the researcher watches a command
+    that has not answered.
+
+    Naming the operation is only possible because the lock HOLDER
+    registers what it is doing: an asyncio.Lock knows that it is held
+    and nothing else.
+
+    Kills: in sessionLifecycle.ftTransferOwnership, restoring the
+    bounded wait (`await asyncio.wait_for(lockMutation.acquire(),
+    F_TRANSFER_DRAIN_WAIT_SECONDS)`) in place of the immediate refusal.
+    """
+    import time
+
+    stateApp = _fstateBuildAppState()
+    sOldSessionId, _sOldCredential, sOldLease = _tSeedOwnedContainer(
+        stateApp,
+    )
+    dictLaneTuple = _dictBuildBrowserLaneTuple(
+        stateApp, sOldSessionId, sOldLease,
+    )
+    eventRelease = asyncio.Event()
+
+    async def _fnHeldWorker(*tArguments):
+        del tArguments
+        await eventRelease.wait()
+        return "done"
+
+    taskMutation = asyncio.ensure_future(
+        commitCarrier.fdictRunLockHeldMutation(
+            stateApp, S_PROJECT_NAME, S_CONTAINER_ID, dictLaneTuple,
+            "file-write", "/workspace/project.json", _fnHeldWorker,
+        ),
+    )
+    for _ in range(200):
+        await asyncio.sleep(0)
+        if sessionLifecycle._flockObtainContainerMutation(
+            sessionLifecycle._fdictLockStoreForAppState(stateApp),
+            S_PROJECT_NAME,
+        ).locked():
+            break
+    else:
+        raise AssertionError("the mutation never took the drain")
+
+    sCapability = _fsMintTransferCapability(stateApp)
+    fBefore = time.monotonic()
+    sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
+    fElapsed = time.monotonic() - fBefore
+
+    assert sOutcome == sessionLifecycle.S_TRANSFER_BUSY_RETRY, dictPayload
+    assert fElapsed < 1.0, (
+        f"the transfer waited {fElapsed:.1f}s on the busy container "
+        f"instead of refusing at once"
+    )
+    assert "file-write" in dictPayload["sMessage"], (
+        f"the refusal must NAME the live operation: {dictPayload}"
+    )
+    assert "project.json" in dictPayload["sMessage"]
+    recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
+    assert recordOwner.sLeaseId == sOldLease
+    assert recordOwner.iOwnerGeneration == 1
+    assert stateApp.dictBrowserSessions["dictCapabilities"][
+        sCapability
+    ].sState == "ARMED", (
+        "a busy refusal consumed the capability, so the retry it "
+        "invites cannot use it"
+    )
+
+    eventRelease.set()
+    await taskMutation
+
+    sOutcomeRetry, dictRetry = await _tTransfer(stateApp, sCapability)
+    assert sOutcomeRetry == sessionLifecycle.S_TRANSFER_TRANSFERRED, (
+        f"the explicit retry after the operation finished must "
+        f"succeed: {dictRetry}"
+    )
+    assert stateApp.dictContainerOwners[
+        S_PROJECT_NAME
+    ].iOwnerGeneration == 2

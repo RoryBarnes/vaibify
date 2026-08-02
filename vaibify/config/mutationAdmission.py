@@ -36,6 +36,10 @@ __all__ = [
     "fnDeactivateAdmission",
     "fadmissionActiveForContainerId",
     "fnAssertContainerWriteAdmitted",
+    "fnAssertContainerCommandAdmitted",
+    "ftokenEnterAuditedRead",
+    "fnExitAuditedRead",
+    "fbInsideAuditedRead",
     "fnAssertDurableExecAdmitted",
     "fnAssertOperationAdmittedByIdentity",
     "fdictBeginJournaledExec",
@@ -57,6 +61,12 @@ S_ADMISSION_MODE_LOCK_HELD = "lockHeldAsync"
 S_ADMISSION_MODE_DURABLE_TASK = "durableTask"
 
 _OBJECT_MINT_KEY = object()
+
+# Set only by an audited read adapter, around its own exec. See
+# ftokenEnterAuditedRead.
+_contextAuditedRead = contextvars.ContextVar(
+    "vaibifyAuditedRead", default=False,
+)
 
 _contextEnforcedLane = contextvars.ContextVar(
     "vaibifyEnforcedMutationLane", default=False,
@@ -137,6 +147,51 @@ def fnResetEnforcedLane(token):
 def fbLaneEnforced():
     """Return True inside an enforced (request or durable-task) lane."""
     return _contextEnforcedLane.get()
+
+
+def ftokenEnterAuditedRead():
+    """Mark the calling context as serving an AUDITED READ.
+
+    A typed read may use the raw executor internally -- fetching a file
+    means running a program in the container -- but only an audited
+    adapter may CONSTRUCT that program, and an adapter's exec is not a
+    mutation. Without this distinction, guarding the exec primitive
+    would refuse every read that happens to be implemented with one,
+    and the reflex fix would be to stop guarding the primitive.
+
+    The flag is set by the adapter, immediately around its own exec,
+    never by a caller: an adapter that wrapped its whole body would let
+    anything it called in between inherit the exemption.
+    """
+    return _contextAuditedRead.set(True)
+
+
+def fnExitAuditedRead(token):
+    """Leave the audited-read context."""
+    _contextAuditedRead.reset(token)
+
+
+def fbInsideAuditedRead():
+    """Return True while an audited read adapter is running its exec."""
+    return _contextAuditedRead.get()
+
+
+def fnAssertContainerCommandAdmitted(sContainerId, sPrimitiveName):
+    """Refuse arbitrary command execution without a carrier admission.
+
+    Arbitrary command execution is ALWAYS mutating: the primitive
+    cannot know whether the text it is handed reads or deletes, so it
+    must assume the worse. The audited-read exemption is the one
+    carve-out, and it is narrow by construction -- an adapter marks the
+    context around its own exec, having built the command itself.
+
+    Outside an enforced lane (background threads, CLI, direct library
+    use) this is a no-op, the same deliberate remainder the write gate
+    carries.
+    """
+    if fbInsideAuditedRead():
+        return
+    fnAssertContainerWriteAdmitted(sContainerId, sPrimitiveName)
 
 
 def ftokenActivateAdmission(admission):

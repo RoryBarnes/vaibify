@@ -4228,7 +4228,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # smear a single security boundary (who may commit a container
     # mutation, and who releases the drain) across call hops; every
     # piece changes for the same reason (the §8 model).
-    "commitCarrier.py": 980,
+    # +19 (2026-08-02): the lock holder registers WHAT it is doing, so
+    # a busy refusal can name the live operation. An asyncio.Lock knows
+    # only that it is held; the metadata has to live with the holder,
+    # and the holder is the supervisor this module owns.
+    "commitCarrier.py": 999,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the

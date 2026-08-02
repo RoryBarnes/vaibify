@@ -599,12 +599,17 @@ async def ftTransferOwnership(appState, sCapability):
     sName = dictInspect["sContainerName"]
     dictLockStore = _fdictLockStoreForAppState(appState)
     lockMutation = _flockObtainContainerMutation(dictLockStore, sName)
-    try:
-        await asyncio.wait_for(
-            lockMutation.acquire(), F_TRANSFER_DRAIN_WAIT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        return _tOutcomeForDrainTimeout(dictStore, sCapability, sName)
+    if lockMutation.locked():
+        # REFUSE, do not wait. Waiting spends the capability's window on
+        # an operation whose length nobody knows -- a two-second write
+        # and a half-hour rebuild are the same locked lock -- and the
+        # researcher is left staring at a command that has not answered.
+        # An immediate, specific refusal lets them decide.
+        return _tOutcomeForBusyContainer(appState, sCapability, sName)
+    # Uncontended, so this cannot yield: there is no await between the
+    # check above and the acquisition, and a single-threaded event loop
+    # cannot interleave another coroutine into that gap.
+    await lockMutation.acquire()
     try:
         return await _tTransferUnderDrain(
             appState, dictStore, dictLockStore, sCapability, sName,
@@ -647,63 +652,53 @@ def _tOutcomeForCapabilityState(dictStore, sCapability, dictInspect):
     return None
 
 
-def _tOutcomeForDrainTimeout(dictStore, sCapability, sName):
-    """Map a drain-wait timeout to busy-retry or expired (design §6.1).
+def _tOutcomeForBusyContainer(appState, sCapability, sName):
+    """Refuse a transfer into a busy container, naming what holds it.
 
-    Nothing was minted, revoked, or bumped. With TTL remaining the
-    capability stays ARMED so the client retries with the same one;
-    with too little left it is EXPIRED so the client mints afresh.
+    Nothing is minted, revoked, bumped, or CONSUMED: the capability
+    stays ARMED, so the researcher retries with the same one once the
+    named operation finishes. That is the whole difference from waiting
+    -- a wait spends the window and then reports the same thing.
     """
-    dictInspect = browserSession.fdictInspectTransferCapability(
-        dictStore or {}, sCapability,
-    )
-    fRequiredTtl = (
-        F_TRANSFER_DRAIN_WAIT_SECONDS + F_TRANSFER_COMMIT_HEADROOM_SECONDS
-    )
-    if dictInspect and dictInspect["fRemainingTtlSeconds"] >= fRequiredTtl:
-        return (S_TRANSFER_BUSY_RETRY, {
-            "sMessage": f"Container '{sName}' is busy: a guarded "
-                        "operation holds its mutation drain. Retry "
-                        "shortly; the capability remains valid.",
-        })
-    browserSession.fnExpireCapability(dictStore, sCapability)
-    return (S_TRANSFER_EXPIRED, {
-        "sMessage": f"Container '{sName}' stayed busy past the transfer "
-                    "capability's window; mint a fresh one with "
-                    "'vaibify open'.",
+    del sCapability
+    from . import commitCarrier
+    sLiveOperation = commitCarrier.fsDescribeLiveMutationWork(
+        appState, sName,
+    ) or "a guarded operation"
+    return (S_TRANSFER_BUSY_RETRY, {
+        "sMessage": (
+            f"Container '{sName}' is busy: {sLiveOperation} is running "
+            "and holds it. Retry when it finishes; this transfer "
+            "capability stays valid."
+        ),
+        "sLiveOperation": sLiveOperation,
     })
 
 
 async def _tTransferUnderDrain(
     appState, dictStore, dictLockStore, sCapability, sName, iExpectedGen,
 ):
-    """Run the pre-checks, DRAINING, and commit under the held drain."""
-    from . import terminalContainment
+    """Run the pre-checks and commit under the held drain.
+
+    There is no DRAINING phase. It existed to fence and terminate
+    in-process terminal records before a hand-over, and it is gone for
+    two reasons that reinforce each other: the terminal is disabled, so
+    no such record can be created; and a legacy record from an earlier
+    version is an unsettled journal record, which
+    ``_tRefusalBeforePremint`` already refuses over, naming 'vaibify
+    reconcile'. Draining would also have made the transfer WAIT --
+    inside the held lock, on a thread -- which is exactly what a
+    hand-over must not do.
+    """
     tRefusal = _tRefusalBeforePremint(
         appState, dictStore, sCapability, sName, iExpectedGen,
     )
     if tRefusal is not None:
         return tRefusal
-    # Pre-mint everything reversible BEFORE the terminal fence (§6.1).
+    # Pre-mint everything reversible before the commit (§6.1).
     sNewSessionId, sNewCredential = (
         browserSession.ftMintDetachedSessionRecord(dictStore)
     )
-    # DRAINING: fence terminal input (reversible), then terminate and
-    # prove every recorded group empty. A quarantining drain REFUSES
-    # the transfer and retains the quarantine (case 46) — the kills
-    # are not pretended-rolled-back; only the pre-mint is.
-    dictDrain = await asyncio.to_thread(
-        terminalContainment.fdictDrainTerminalRecordsForContainer,
-        appState, sName,
-    )
-    if dictDrain["listQuarantinedOperationIds"]:
-        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
-        return (S_TRANSFER_REFUSED, {
-            "sMessage": f"Container '{sName}' has a terminal whose "
-                        "process group could not be proven dead; it is "
-                        "retained and quarantined. Restart the container "
-                        "or run 'vaibify reconcile', then retry.",
-        })
     async with _flockObtainSessionCardinality(dictLockStore):
         # Final check + commit: SYNCHRONOUS from here to the return —
         # no await may separate the generation check from the commit.
@@ -869,12 +864,17 @@ def _tRefusalAtCommitPoint(
     if terminalContainment.fbContainerHasLiveTerminalRecords(
         appState, sName,
     ):
-        # A terminal opened between the drain and this commit point;
-        # the retry's DRAINING phase will fence and drain it too.
+        # A terminal execution whose process group nobody has proven
+        # dead. With the terminal disabled this can only be a record
+        # inherited from an earlier version, and a hand-over must not
+        # carry one to a successor: the exit is reconciliation, which
+        # stops the container or proves the group empty.
         browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
-        return (S_TRANSFER_BUSY_RETRY, {
-            "sMessage": f"Container '{sName}' opened a new terminal "
-                        "during the transfer; retry shortly.",
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a terminal execution "
+                        "whose process group has not been proven dead. "
+                        "Restart the container or run 'vaibify "
+                        "reconcile', then retry.",
         })
     return None
 

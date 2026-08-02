@@ -36,7 +36,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # somebody classified those rows. Raising it means new call sites
 # shipped unreviewed, which is the state this record exists to make
 # visible.
-I_UNCLASSIFIED_ROW_BUDGET = 288
+I_UNCLASSIFIED_ROW_BUDGET = 287
 
 
 def _fmoduleGenerator():

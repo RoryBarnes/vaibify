@@ -200,12 +200,12 @@ def test_the_directory_adapter_carries_the_path_as_data():
         "the assembled program must be quoted as a single shell "
         "argument"
     )
-    sExecCall = sSource[sSource.index("texecRunInContainerStreamed"):]
+    sExecCall = sSource[sSource.index("_texecRunAuditedRead"):]
     assert "shlex.quote(sProgram)" in sExecCall, (
         "the command handed to the executor must be the quoted "
         "program, not text assembled around the caller's path"
     )
-    sBuild = sSource[:sSource.index("texecRunInContainerStreamed")]
+    sBuild = sSource[:sSource.index("_texecRunAuditedRead")]
     assert "{sDirectoryPath}" not in sBuild, (
         "the path is interpolated into the command being built"
     )

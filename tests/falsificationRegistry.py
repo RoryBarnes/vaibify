@@ -45,6 +45,24 @@ class Falsification:
 LIST_FALSIFICATIONS = [
 
     Falsification(
+        nodeid='tests/testMutationBoundary.py::testAnUnadmittedExecIsRefusedBeforeItRuns',
+        source='vaibify/docker/dockerConnection.py',
+        old="""        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "texecRunInContainerStreamed",
+        )
+        container = self.fcontainerGetById(sContainerId)
+        if sUser is None:
+            sUser = _fsResolveContainerUser(container)
+        dictKwargs = self._fdictBuildExecKwargs(
+            sCommand, sWorkdir, sUser)""",
+        new="""        container = self.fcontainerGetById(sContainerId)
+        if sUser is None:
+            sUser = _fsResolveContainerUser(container)
+        dictKwargs = self._fdictBuildExecKwargs(
+            sCommand, sWorkdir, sUser)""",
+    ),
+
+    Falsification(
         nodeid='tests/testStartReservationFalsification.py::testATransferBeforeTheLaunchRefusesAndChangesNothing',
         source='vaibify/gui/sessionLifecycle.py',
         old="""        return (
@@ -3276,30 +3294,38 @@ def _fdictEntry(sRel):
     recordOwner.iOwnerGeneration = iNewGeneration''',
         new='''    recordOwner.iOwnerGeneration = iNewGeneration''',
     ),
-    # Case 44, transfer half (the DRAINING phase terminates-and-proves
-    # every terminal before the commit):
+    # Case 44, transfer half. The DRAINING phase is DELETED (wave 2.4):
+    # a hand-over must not carry a terminal execution nobody has proven
+    # dead, and draining one would have settled it on the strength of a
+    # probe rather than a stop -- while forcing a wait inside the held
+    # lock. The refusal replaces it.
     Falsification(
-        nodeid='tests/testHostTransfer.py::testTransferDrainsTerminalRecordsBeforeCommit',
+        nodeid='tests/testHostTransfer.py::testTransferRefusesOverALiveTerminalRecordAndSignalsNothing',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''    dictDrain = await asyncio.to_thread(
-        terminalContainment.fdictDrainTerminalRecordsForContainer,
-        appState, sName,
-    )
-    if dictDrain["listQuarantinedOperationIds"]:''',
-        new='''    dictDrain = {"listQuarantinedOperationIds": []}
-    if dictDrain["listQuarantinedOperationIds"]:''',
+        old='''        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a terminal execution "''',
+        new='''        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
+        return (S_TRANSFER_BUSY_RETRY, {
+            "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
-    # Case 46, transfer half (a failed drain refuses and retains the
-    # quarantine; it never commits over it and never rolls it back):
+    # Case 46, transfer half: a refused transfer rolls back only what it
+    # minted, and leaves the record it did not create standing.
     Falsification(
-        nodeid='tests/testHostTransfer.py::testQuarantinedDrainRefusesAndRetainsNotRollsBack',
+        nodeid='tests/testHostTransfer.py::testARefusedTransferRollsBackOnlyWhatItMinted',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''    if dictDrain["listQuarantinedOperationIds"]:
-        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
-        return (S_TRANSFER_REFUSED, {''',
-        new='''    if False:
-        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
-        return (S_TRANSFER_REFUSED, {''',
+        old='''        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a terminal execution "''',
+        new='''        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a terminal execution "''',
+    ),
+    # Wave 2.4: a busy container refuses AT ONCE and names the holder.
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testABusyContainerRefusesTheTransferAtOnceAndNamesTheOperation',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''    if lockMutation.locked():''',
+        new='''    if False and lockMutation.locked():''',
     ),
 
     # ------------------------------------------------------------------
@@ -3436,16 +3462,14 @@ def _fdictEntry(sRel):
     # Kill-confirmation requires a reachable Docker daemon; without
     # one the test skips and the mutant survives vacuously.
     Falsification(
-        nodeid='tests/testTerminalContainmentLive.py::test_transfer_commits_only_after_the_descendant_is_proven_dead',
-        source='vaibify/docker/dockerConnection.py',
-        old='''        return {
-            "bConclusive": True, "iMemberCount": iMemberCount,
-            "sDetail": f"{iMemberCount} live member(s)",
-        }''',
-        new='''        return {
-            "bConclusive": True, "iMemberCount": 0,
-            "sDetail": f"{iMemberCount} live member(s)",
-        }''',
+        nodeid='tests/testTerminalContainmentLive.py::test_transfer_refuses_over_a_live_terminal_against_a_real_container',
+        source='vaibify/gui/sessionLifecycle.py',
+        old='''        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
+        return (S_TRANSFER_REFUSED, {
+            "sMessage": f"Container '{sName}' has a terminal execution "''',
+        new='''        browserSession.fnDiscardSessionRecord(dictStore, sNewCredential)
+        return (S_TRANSFER_BUSY_RETRY, {
+            "sMessage": f"Container '{sName}' has a terminal execution "''',
     ),
     # Case 46, real-container half (a PAUSED container makes every
     # drain probe indeterminate; the optimistic-commit mutant settles
@@ -3454,7 +3478,7 @@ def _fdictEntry(sRel):
     # requires a reachable Docker daemon; without one the test skips
     # and the mutant survives vacuously.
     Falsification(
-        nodeid='tests/testTerminalContainmentLive.py::test_indeterminate_drain_refuses_transfer_and_quarantines',
+        nodeid='tests/testTerminalContainmentLive.py::test_an_indeterminate_drain_quarantines_rather_than_settling',
         source='vaibify/gui/terminalContainment.py',
         old='''    if _fbProbeProvesEmpty(dictProbe):
         return _fdictSettleProvenRecord(recordTerminal, dictProbe)

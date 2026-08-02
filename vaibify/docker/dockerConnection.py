@@ -321,6 +321,9 @@ class DockerConnection:
             appropriate UI surface (e.g. show stdout as command
             output, surface stderr as a distinct error region).
         """
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "texecRunInContainerStreamed",
+        )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveContainerUser(container)
@@ -510,6 +513,23 @@ class DockerConnection:
         sOutput = resultExec.sStdout + resultExec.sStderr
         return (resultExec.iExitCode, sOutput)
 
+    def _texecRunAuditedRead(self, sContainerId, sCommand):
+        """Run an ADAPTER-BUILT command as a read, not a mutation.
+
+        The single place the audited-read exemption is granted, so the
+        list of commands that may skip the mutation gate is the list of
+        adapters in this class that call this method -- checkable by
+        reading one file. ``sCommand`` must have been constructed by the
+        adapter from a path or an identifier, never accepted from a
+        caller; that property is what the audit means, and
+        ``testMutationBoundary`` asserts it of every caller.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            return self.texecRunInContainerStreamed(sContainerId, sCommand)
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,
     ):
@@ -538,9 +558,7 @@ class DockerConnection:
             + repr(sFilePath) + ",'rb').read()))"
         )
         sCommand = "python3 -c " + shlex.quote(sProgram)
-        resultExec = self.texecRunInContainerStreamed(
-            sContainerId, sCommand,
-        )
+        resultExec = self._texecRunAuditedRead(sContainerId, sCommand)
         if resultExec.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot read file from container: {sFilePath}"
@@ -579,7 +597,7 @@ class DockerConnection:
             "sys.stdout.write(chr(10).join(sorted(os.listdir("
             + repr(sDirectoryPath) + "))))"
         )
-        resultExec = self.texecRunInContainerStreamed(
+        resultExec = self._texecRunAuditedRead(
             sContainerId, "python3 -c " + shlex.quote(sProgram),
         )
         if resultExec.iExitCode != 0:

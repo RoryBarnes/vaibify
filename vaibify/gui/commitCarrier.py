@@ -73,6 +73,7 @@ __all__ = [
     "fdictDrainMutationSupervisors",
     "fsetNamesWithLiveMutationWork",
     "fbContainerHasLiveMutationWork",
+    "fsDescribeLiveMutationWork",
 ]
 
 import asyncio
@@ -437,6 +438,13 @@ class MutationSupervisor:
     dictLaneTuple: dict
     fnTerminateWorker: object = None
     sOperationId: str = ""
+    # What the lock holder is DOING, recorded so a refusal can say so.
+    # A bare locked asyncio.Lock cannot explain itself, which is why a
+    # busy transfer used to answer "a guarded operation holds its
+    # mutation drain" -- true, unactionable, and identical whether the
+    # holder was a two-second write or a half-hour rebuild.
+    sOperationKind: str = ""
+    sTarget: str = ""
     taskSupervisor: object = None
     eventCancelRequested: threading.Event = field(
         default_factory=threading.Event,
@@ -468,6 +476,7 @@ async def fdictRunLockHeldMutation(
         sSupervisorId=secrets.token_hex(8), sName=sName,
         sContainerId=sContainerId, dictLaneTuple=dict(dictLaneTuple or {}),
         fnTerminateWorker=fnTerminateWorker,
+        sOperationKind=sOperationKind, sTarget=sTarget,
     )
     dictRegistry = _fdictSupervisorRegistry(appState)
     taskSupervisor = asyncio.get_running_loop().create_task(
@@ -943,6 +952,41 @@ def fsetNamesWithLiveMutationWork(appState):
         if recordTask.taskAsync is None or not recordTask.taskAsync.done():
             setNames.add(sName)
     return setNames
+
+
+def fsDescribeLiveMutationWork(appState, sName):
+    """Return what is holding a container's mutation lock, or ``""``.
+
+    The metadata a busy refusal needs. Registering it is the whole
+    reason a refusal can be specific: an ``asyncio.Lock`` knows only
+    that it is held, so a caller that consulted the lock alone could
+    only ever say "busy" -- and "busy" tells a researcher nothing about
+    whether to wait two seconds or abandon the attempt.
+
+    A durable task with no supervisor entry is described generically,
+    which is honest: the registry records that one is live without
+    recording what it runs.
+    """
+    for supervisor in _fdictSupervisorRegistry(appState).values():
+        if supervisor.sName != sName:
+            continue
+        if supervisor.taskSupervisor is not None and (
+            supervisor.taskSupervisor.done()
+        ):
+            continue
+        if supervisor.sOperationKind:
+            return (
+                f"{supervisor.sOperationKind} on "
+                f"{supervisor.sTarget or sName}"
+                if supervisor.sTarget else supervisor.sOperationKind
+            )
+        return "a guarded operation"
+    recordTask = _fdictDurableTaskRegistry(appState).get(sName)
+    if recordTask is not None and (
+        recordTask.taskAsync is None or not recordTask.taskAsync.done()
+    ):
+        return "a long-running task"
+    return ""
 
 
 def fbContainerHasLiveMutationWork(appState, sName):

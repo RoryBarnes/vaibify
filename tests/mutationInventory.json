@@ -1,5 +1,5 @@
 {
-  "iRowCount": 288,
+  "iRowCount": 287,
   "iUnresolvedSubprocessCount": 26,
   "listRows": [
     {
@@ -1034,7 +1034,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "808667b2740dfebf",
-      "sFunction": "fbaFetchFile",
+      "sFunction": "_texecRunAuditedRead",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -1066,32 +1066,6 @@
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "ftupleRunRootShellProbe",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "9854bce32646937b",
-      "sFunction": "flistDirectoryEntries",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {

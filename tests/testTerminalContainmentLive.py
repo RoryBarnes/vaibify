@@ -495,22 +495,27 @@ def _tRunTransfer(stateApp, sName):
 
 
 @pytest.mark.falsification
-def test_transfer_commits_only_after_the_descendant_is_proven_dead(
+def test_transfer_refuses_over_a_live_terminal_against_a_real_container(
     tLiveContainerWithReapingInit,
 ):
-    """Case 43, transfer-commit half (also case 44's transfer path).
+    """Case 44 (transfer half), real container: refuse, never drain.
 
-    A real detached, signal-trapping descendant is alive when the
-    transfer begins; the DRAINING phase must terminate the recorded
-    session group and PROVE it empty before the commit, so a committed
-    transfer implies the descendant is dead — its marker never appears
-    even after its sleep window — with the journal settled and the
-    successor at generation 2.
+    The transfer used to FENCE and TERMINATE the live terminal before
+    committing, and this test proved the descendant was dead first.
+    That phase is deleted (wave 2.4): a hand-over must not carry a
+    terminal execution nobody has proven dead, and draining one would
+    settle it on the strength of a probe rather than a stop -- while
+    forcing a wait inside the held lock.
 
-    Kills: hardcoding ``fdictProbeProcessGroupMembers``'s member count
-    to zero (the prover that agrees with ``exec_inspect``): the drain
-    then "proves" the live group empty, the transfer commits over it,
-    and the surviving descendant writes its marker after the commit.
+    So the property is stronger and the test asserts the stronger form
+    against a REAL container: with a live terminal and a real detached
+    descendant, the transfer refuses, the old owner is untouched at
+    generation 1, and the record is RETAINED for reconciliation rather
+    than settled.
+
+    Kills: in sessionLifecycle, softening the live-terminal-record
+    refusal at the commit point to S_TRANSFER_BUSY_RETRY, which invites
+    an immediate retry over a record that will still be there.
     Kill-confirmation requires a reachable Docker daemon; without one
     this test skips and the mutant survives vacuously.
     """
@@ -523,71 +528,72 @@ def test_transfer_commits_only_after_the_descendant_is_proven_dead(
     session = _fsessionStartContainedTerminal(tLiveContainer, stateApp)
     _fnSpawnTrappingDescendant(session, tLiveContainer)
     fSpawnedMonotonic = time.monotonic()
+    del fSpawnedMonotonic
     sOutcome, dictPayload = _tRunTransfer(stateApp, sName)
-    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED, dictPayload
-    assert recordOwner.iOwnerGeneration == 2
-    assert browserSession.fbValidateCredential(
-        stateApp.dictBrowserSessions, sOldCredential,
-    ) is False
-    assert not stateApp.dictTerminalExecutionRecords.get(sName), (
-        "the committed transfer left a live terminal record behind"
-    )
-    assert _fdictJournalOperations(sName) == {}, (
-        "a committed transfer implies every terminal record settled"
-    )
-    fWindowEnd = fSpawnedMonotonic + F_DESCENDANT_SLEEP_SECONDS + 1.5
-    while time.monotonic() < fWindowEnd:
-        time.sleep(0.2)
-    assert not _fbLeakedMarkerExists(tLiveContainer), (
-        "the transfer committed while the detached descendant was "
-        "still alive — it survived to write its marker under the "
-        "successor's ownership"
-    )
-
-
-@pytest.mark.falsification
-def test_indeterminate_drain_refuses_transfer_and_quarantines(
-    tLiveContainer,
-):
-    """Case 46, real-container half: indeterminate → retained, refused.
-
-    The container is PAUSED under a live terminal whose descendant
-    traps signals, so the drain can neither deliver a signal nor run a
-    probe: every outcome is indeterminate. The transfer must REFUSE
-    and leave the record retained-and-QUARANTINED — never an
-    optimistic commit, and never a pretended rollback of kills that
-    already happened — with the old owner intact at generation 1.
-
-    Kills: making ``fdictTerminateAndProveRecord`` settle whatever the
-    final probe says (the optimistic commit): the paused container's
-    inconclusive probe then reads as proven-empty, the record settles,
-    and the transfer commits. Kill-confirmation requires a reachable
-    Docker daemon; without one this test skips and the mutant survives
-    vacuously.
-    """
-    import docker
-    from vaibify.gui import browserSession, sessionLifecycle
-    sName, sContainerId, connectionDocker = tLiveContainer
-    stateApp, recordOwner, sOldCredential = _stateBuildTransferAppState(
-        tLiveContainer,
-    )
-    session = _fsessionStartContainedTerminal(tLiveContainer, stateApp)
-    _fnSpawnTrappingDescendant(session, tLiveContainer)
-    sOperationId = session.recordContainment.sOperationId
-    containerLive = docker.from_env().containers.get(sContainerId)
-    containerLive.pause()
-    try:
-        sOutcome, dictPayload = _tRunTransfer(stateApp, sName)
-    finally:
-        containerLive.unpause()
     assert sOutcome == sessionLifecycle.S_TRANSFER_REFUSED, dictPayload
-    assert "quarantined" in dictPayload["sMessage"]
+    assert "reconcile" in dictPayload["sMessage"]
     assert recordOwner.iOwnerGeneration == 1, (
         "a refused transfer must leave the old owner untouched"
     )
     assert browserSession.fbValidateCredential(
         stateApp.dictBrowserSessions, sOldCredential,
     ) is True, "the old session must survive a refused transfer"
+    assert stateApp.dictTerminalExecutionRecords.get(sName), (
+        "the refusal settled the terminal record it did not prove dead"
+    )
+    assert _fdictJournalOperations(sName) != {}, (
+        "the record must be retained for reconciliation"
+    )
+
+
+@pytest.mark.falsification
+def test_an_indeterminate_drain_quarantines_rather_than_settling(
+    tLiveContainer,
+):
+    """Case 46, real container: indeterminate is never proven-empty.
+
+    A PAUSED container under a live terminal whose descendant traps
+    signals: the drain can neither deliver a signal nor run a probe, so
+    every outcome is indeterminate. The record must be retained and
+    QUARANTINED -- never settled on the strength of a probe that could
+    not answer.
+
+    Re-aimed (wave 2.4): this used to drive the property through the
+    transfer's DRAINING phase, which is deleted. The guard it protects
+    is unchanged and still live -- release, the safe reaper, and hub
+    shutdown all settle terminal records through
+    ``fdictTerminateAndProveRecord`` -- so the test now drives that
+    directly, and no longer proves something about the transfer that
+    the transfer no longer does.
+
+    Kills: making ``fdictTerminateAndProveRecord`` settle whatever the
+    final probe says (the optimistic commit): the paused container's
+    inconclusive probe then reads as proven-empty and the record
+    settles. Kill-confirmation requires a reachable Docker daemon;
+    without one this test skips and the mutant survives vacuously.
+    """
+    import docker
+    from vaibify.gui import terminalContainment
+    sName, sContainerId, connectionDocker = tLiveContainer
+    appState = SimpleNamespace()
+    session = _fsessionStartContainedTerminal(tLiveContainer, appState)
+    _fnSpawnTrappingDescendant(session, tLiveContainer)
+    sOperationId = session.recordContainment.sOperationId
+
+    containerLive = docker.from_env().containers.get(sContainerId)
+    containerLive.pause()
+    try:
+        dictOutcome = terminalContainment.fdictTerminateAndProveRecord(
+            session.recordContainment,
+        )
+    finally:
+        containerLive.unpause()
+
+    assert dictOutcome["bProvenEmpty"] is False, (
+        "an indeterminate drain reported the group proven empty, so a "
+        "release or a reap would hand the container away over a live "
+        "descendant"
+    )
     dictOperations = _fdictJournalOperations(sName)
     assert dictOperations[sOperationId]["sState"] == (
         "NEEDS_RECONCILIATION"
