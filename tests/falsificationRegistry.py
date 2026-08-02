@@ -3633,6 +3633,147 @@ def _fdictEntry(sRel):
     # The residual this slice closes: stop was browser-hub, so any
     # same-hub tab could tear down the container another session was
     # working in.
+    # The hung-start kill path, the label-keyed cleanup, and the two
+    # result-delivery paths (design §10b, cases 19/21/22/24/25/28/29/
+    # 33/40/41). Each mutation is the shortcut that would have been
+    # taken if the rule were prose instead of code.
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testInitiatorCancelOfAStaleStartKillsAndFreesTheContainer',
+        source='vaibify/docker/containerManager.py',
+        old="""    except subprocess.TimeoutExpired:
+        processDocker.kill()
+    processDocker.wait()
+    return _fdictTerminationOutcome(processDocker, True, True)""",
+        new="""    except subprocess.TimeoutExpired:
+        pass
+    return _fdictTerminationOutcome(processDocker, True, False)""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testCancelFromANonOwningSessionIsRefused',
+        source='vaibify/gui/startReservation.py',
+        old="""    if recordOwner.sBrowserSessionId not in ("", sBrowserSessionId):
+        return (403, {
+            "sName": sName,""",
+        new="""    if False:
+        return (403, {
+            "sName": sName,""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testCancelAfterPartialCreationRemovesItBeforeClearingTheRecord',
+        source='vaibify/gui/startReservation.py',
+        old="""    dictSettlement = await asyncio.to_thread(
+        containerManager.fdictSettleReservationContainers,
+        reservation.sReservationId,
+        reservation.recordStartTask.bProcessWasSignalled,
+    )
+    await sessionLifecycle.ftSettleFailedStartOwnership(""",
+        new="""    dictSettlement = {
+        "bConclusive": True, "listRemovedContainerIds": [],
+        "sDetail": "cleanup deferred",
+    }
+    await sessionLifecycle.ftSettleFailedStartOwnership(""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testAStaleSettlementCannotDeleteANewerReservation',
+        source='vaibify/gui/startReservation.py',
+        old="""    bReservationStillOurs = recordOwner is not None and (
+        recordOwner.reservation is reservation
+    )""",
+        new="""    bReservationStillOurs = recordOwner is not None and (
+        recordOwner.reservation is not None
+    )""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testAnInconclusiveSettlementQuarantinesInsteadOfReleasing',
+        source='vaibify/gui/startReservation.py',
+        old="""    if dictSettlement["bConclusive"]:
+        _fnSettleJournalQuietly(
+            sName, reservation.recordStartTask.sJournalOperationId,
+        )
+    else:""",
+        new="""    if True:
+        _fnSettleJournalQuietly(
+            sName, reservation.recordStartTask.sJournalOperationId,
+        )
+    else:""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testAFailedStartIsRetrievableAfterOwnershipIsReleased',
+        source='vaibify/gui/startResultStore.py',
+        old="""    recordResult = _fdictStoreFor(appState).get(sReservationId)
+    if recordResult is None:
+        return
+    recordResult.sState = sState""",
+        new="""    recordResult = _fdictStoreFor(appState).get(sReservationId)
+    if recordResult is not None:
+        return
+    recordResult.sState = sState""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testALostSuccessResponseStillYieldsTheOwnerDerivedLease',
+        source='vaibify/gui/startReservation.py',
+        old='            "sLeaseId": recordOwner.sLeaseId,',
+        new='            "sLeaseId": recordResult.sReservationId,',
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testAConcurrentClaimAndStartResolveToOneOwnerRecord',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""            sBrowserSessionId=sBrowserSessionId,
+            dictSessionOwner=getattr(appState, "dictSessionOwner", None),
+            connectionDocker=connectionDocker,
+        )
+        dictPayload.pop("sLeaseId", None)""",
+        new="""            sBrowserSessionId=sBrowserSessionId,
+            dictSessionOwner=None,
+            connectionDocker=connectionDocker,
+        )
+        dictPayload.pop("sLeaseId", None)""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testAKilledStartNeverAutoClearsIntoAClaimableContainer',
+        source='vaibify/config/operationJournal.py',
+        old="""    if not sDockerContainerId:
+        return _fdictProbeOutcome(
+            False, False, False,
+            "label-only start probing is not supported; the verifier is "
+            "unsupported and reconciliation is required",
+        )""",
+        new="""    if not sDockerContainerId:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "label-only start probing is assumed clean",
+        )""",
+    ),
+    Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testTheJournalDirectoryIsIsolatedForTheseTests',
+        source='tests/conftest.py',
+        old="""    monkeypatch.setattr(
+        operationJournal, "_S_JOURNAL_DIRECTORY",
+        str(tmp_path / "operationJournalIsolated"),
+    )""",
+        new="""    monkeypatch.setattr(
+        operationJournal, "_S_JOURNAL_DIRECTORY",
+        operationJournal._S_JOURNAL_DIRECTORY,
+    )""",
+    ),
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testBarrierTransferAdoptsAStillRunningStart',
+        source='vaibify/gui/startReservation.py',
+        old="""    recordTask.admission.dictLiveState["sActiveExecOperationId"] = (
+        reservation.recordStartTask.sJournalOperationId
+    )""",
+        new="""    recordTask.admission.dictLiveState["sActiveExecOperationId"] = """"",
+    ),
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testTransferRebindsTheStartResultEntitlementToTheSuccessor',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""    from . import startResultStore
+    startResultStore.fnRebindStartResultsForTransfer(
+        appState, sName, sNewSessionId,
+    )""",
+        new="""    del appState, sName, sNewSessionId""",
+    ),
+
     Falsification(
         nodeid='tests/testContainerLifecycleGating.py::test_stop_by_a_session_that_does_not_hold_the_lease_is_refused',
         source='vaibify/gui/routeScope.py',

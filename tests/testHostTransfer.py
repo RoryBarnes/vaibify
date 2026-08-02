@@ -987,3 +987,142 @@ async def testOldTupleLockHeldMutationIsRefusedAfterTransfer():
     assert _dictJournalOperations() == {}, (
         "the refusal must precede the journal write"
     )
+
+
+# ---------------------------------------------------------------------
+# Slice 9 — the start axis crossing a transfer (cases 23 start half, 33).
+# ---------------------------------------------------------------------
+
+def _fnAttachRunningStartReservation(stateApp, sOperationId):
+    """Attach a live start reservation with a real journal record."""
+    from vaibify.gui import startReservation
+    recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
+    recordOwner.reservation = startReservation.StartReservation(
+        sReservationId="a" * 32,
+        recordStartTask=startReservation.StartTaskRecord(
+            sStartTaskId="startTask", sJournalOperationId=sOperationId,
+        ),
+    )
+    return recordOwner.reservation
+
+
+@pytest.mark.asyncio
+@pytest.mark.falsification
+async def testBarrierTransferAdoptsAStillRunningStart():
+    """Case 23 (slice-9 start half): a transfer adopts a running START.
+
+    The slice-5 barrier test proved a generic durable task is adopted.
+    A start additionally holds an UNSETTLED write-ahead journal record,
+    which the §8 identity gate refuses a transfer over unless it is the
+    registered task's own — the adoption exception. So this drives the
+    real thing: a start held behind a barrier, its journal record
+    IN_FLIGHT, and a transfer that must complete anyway, retag the task,
+    and leave the start running under the successor generation.
+
+    Kills: in startReservation._fnPublishActiveOperationId, stop
+    publishing the start's journal id onto the durable task's admission
+    — the transfer then reads an unsettled record it cannot attribute
+    and refuses, so a container can never be re-attached while starting.
+    """
+    from vaibify.gui import startReservation
+    stateApp = _fstateBuildAppState()
+    sOldSessionId, _, sOldLease = _tSeedOwnedContainer(stateApp)
+    dictLaneTuple = _dictBuildBrowserLaneTuple(
+        stateApp, sOldSessionId, sOldLease,
+    )
+    sOperationId = operationJournal.fsPrepareOperation(
+        S_PROJECT_NAME, "start", S_PROJECT_NAME,
+    )
+    operationJournal.fnPromoteOperationToInFlight(
+        S_PROJECT_NAME, sOperationId,
+        {"iHolderPid": 1, "sReservationLabel": "a" * 32},
+    )
+    reservation = _fnAttachRunningStartReservation(stateApp, sOperationId)
+    eventBarrier = asyncio.Event()
+    dictLaunch = await commitCarrier.fdictLaunchDurableTask(
+        stateApp, S_PROJECT_NAME, S_CONTAINER_ID, dictLaneTuple,
+        lambda: asyncio.ensure_future(eventBarrier.wait()),
+    )
+    assert dictLaunch["bLaunched"] is True
+    startReservation._fnPublishActiveOperationId(
+        stateApp, S_PROJECT_NAME, reservation,
+    )
+    sCapability = _fsMintTransferCapability(stateApp)
+    sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
+    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED, (
+        f"a still-STARTING container must be adoptable: {dictPayload}"
+    )
+    recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
+    assert recordOwner.reservation is reservation, (
+        "the transfer must PRESERVE the reservation, never cancel it"
+    )
+    assert recordOwner.iOwnerGeneration == 2
+    recordTask = stateApp.dictDurableTaskRecords[S_PROJECT_NAME]
+    assert recordTask.iOwnerGeneration == 2, (
+        "the running start must be retagged to the successor"
+    )
+    assert not recordTask.taskAsync.done(), (
+        "the transfer must not have waited the start out"
+    )
+    eventBarrier.set()
+    await recordTask.taskAsync
+    operationJournal.fnSettleOperation(S_PROJECT_NAME, sOperationId)
+
+
+@pytest.mark.asyncio
+@pytest.mark.falsification
+async def testTransferRebindsTheStartResultEntitlementToTheSuccessor():
+    """Case 33: the successor collects a start result, the revoked cannot.
+
+    A start succeeded (or failed) and its outcome was never collected;
+    then ``vaibify open`` transfers the container. The successor must be
+    able to retrieve it — with a lease derived FRESHLY from the owner
+    record, never a stored one — and the revoked old session must not,
+    on either delivery path.
+
+    Kills: in sessionLifecycle._fnRebindStartResultEntitlement, drop the
+    rebinding call — the successor is then refused its own container's
+    failed-start outcome, and the revoked session keeps the entitlement.
+    """
+    from vaibify.gui import startReservation, startResultStore
+    stateApp = _fstateBuildAppState()
+    stateApp.dictStartResults = startResultStore.fdictCreateStartResultStore()
+    sOldSessionId, _, _ = _tSeedOwnedContainer(stateApp)
+    startResultStore.fnOpenStartResult(
+        stateApp, "b" * 32, S_PROJECT_NAME, sOldSessionId,
+    )
+    startResultStore.fnCloseStartResult(
+        stateApp, "b" * 32, startResultStore.S_RESULT_SUCCEEDED,
+        sContainerId=S_CONTAINER_ID,
+    )
+    sCapability = _fsMintTransferCapability(stateApp)
+    sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
+    assert sOutcome == sessionLifecycle.S_TRANSFER_TRANSFERRED
+    sNewSessionId = dictPayload["sSessionId"]
+
+    iCodeSuccessor, dictSuccessor = startReservation.ftPollStartStatus(
+        stateApp, S_PROJECT_NAME, sNewSessionId,
+    )
+    assert iCodeSuccessor == 200, dictSuccessor
+    assert dictSuccessor["sState"] == "SUCCEEDED"
+    assert dictSuccessor["sLeaseId"] == dictPayload["sLeaseId"], (
+        "the delivered lease must be derived from the CURRENT owner "
+        "record, never replayed from the result"
+    )
+    iCodeRevoked, _ = startReservation.ftPollStartStatus(
+        stateApp, S_PROJECT_NAME, sOldSessionId,
+    )
+    assert iCodeRevoked == 403, (
+        "the revoked predecessor must not retrieve the outcome"
+    )
+    startResultStore.fnCloseStartResult(
+        stateApp, "b" * 32, startResultStore.S_RESULT_FAILED,
+        sSafeError="image missing",
+    )
+    iCodeFailed, dictFailed = startReservation.ftPollStartStatus(
+        stateApp, S_PROJECT_NAME, sNewSessionId,
+    )
+    assert iCodeFailed == 200 and dictFailed["sState"] == "FAILED"
+    assert "sLeaseId" not in dictFailed, (
+        "a failure entitlement must convey no container authority"
+    )
