@@ -373,10 +373,26 @@ var VaibifyContainerManager = (function () {
                render it as somebody else's. Say so and keep the
                lease. Any other failure stays best-effort -- the grace
                reaper cleans up. */
-            if (error && error.iStatus === 409) {
+            var iStatus = (error && error.iStatus) || 0;
+            if (iStatus === 409) {
                 VaibifyApp.fnShowToast(
                     (error.dictDetail && error.dictDetail.sMessage) ||
                     error.message, "warning");
+                return;
+            }
+            /* An AMBIGUOUS failure -- no status at all (timeout,
+               dropped connection) or a server error -- does not say
+               whether the release committed. Forgetting the lease on
+               a maybe stranded this tab exactly as a 409 would: it
+               could no longer act on a container it may still own.
+               Only a CONFIRMED outcome may drop the lease, so keep it
+               and let the grace reaper be the backstop. A definite
+               4xx below means the lease is already worthless. */
+            if (!iStatus || iStatus >= 500) {
+                VaibifyApp.fnShowToast(
+                    "Could not confirm the release of '" + sName +
+                    "'. Keeping this session's claim -- retry, or let " +
+                    "it time out.", "warning");
                 return;
             }
         }

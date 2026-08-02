@@ -468,16 +468,19 @@ container out forever.
 
 The host flock excludes a *second process*, but it cannot distinguish
 two browser tabs talking to the *same* hub process — both originate
-from loopback and both carry the same shared session token. The
+from loopback, and each now carries its own per-bootstrap credential
+(the shared session token was retired in the sweep-A rewrite). The
 exclusivity principal that tells two tabs apart is the **lease**: a
 per-claim, server-minted `secrets.token_urlsafe(32)` value
-(`containerOwnership.fsMintLease`).
+(`containerOwnership.fsMintLease`), bound to the browser session that
+claimed it.
 
 `POST /api/registry/{name}/claim` mints the lease and returns it to the
 claiming tab, which stores it in its own `sessionStorage` (per-tab, and
 surviving a reload). Every subsequent access — the connect handler,
 the pipeline WebSocket, and the terminal WebSocket — presents the lease
-as the `sLeaseId` query parameter. The shared session token and the
+in the `X-Vaibify-Lease` header (a header, not a query parameter, so it
+cannot land in a log). The per-session credential and the
 loopback-origin check remain the *trust boundary* (CSRF / "a browser is
 talking to this hub"); the lease is the *exclusivity* layer above it
 ("which browser session"). The lease is operational exclusivity for
@@ -514,12 +517,17 @@ lease-enforced. This is a considered residual, not an oversight. The hub
 is single-user, so the lease is live-session *coordination*, not an
 authorization boundary against a hostile peer; the container picker
 operates on these routes *before and across* claims, when no lease exists
-yet; and safe owner-gating of `stop`/`settings` depends on the
+yet; and safe owner-gating of `stop`/`settings` depended on the
 ORPHANED_SESSION takeover lifecycle (a crashed owner's container must stay
-stoppable), which is not yet built — so owner-gating them is *deferred*,
-not merely undeclared. When that lifecycle lands, these routes can adopt
-owner-gating; until then the honest posture is to enforce the two
-session-integrity routes and leave the lifecycle routes at `browser-hub`.
+stoppable). **That lifecycle has since landed**, and with it the
+takeover path (`vaibify open`) that makes gating safe, so `stop` and
+`settings` are now lease-enforced under the `container-lifecycle` scope:
+the lease is required when the container is owned and the operation is
+permitted when it is not, which keeps a crashed owner's container
+stoppable without leaving it open to any tab. `build` and `claim`
+remain `browser-hub` by decision — `build` is an image operation with
+no owner, and `claim` is what *establishes* ownership, so neither can
+require a lease it does not yet have.
 
 `OwnerRecord` fields (in-process, dies with the hub process):
 
@@ -709,10 +717,13 @@ old `setAllowedContainers` was append-only and leaked authorization for
 the whole process life). A container is released by exactly four paths:
 
 1. **Explicit release** — `POST /api/registry/{name}/release` with the
-   matching lease (the dashboard's close affordance and the `pagehide`
-   `navigator.sendBeacon`, which carries only the lease as its own
-   proof). `fnReleaseOwnership` verifies the lease, frees the flock,
-   drops the record, and stops the keep-alive.
+   matching lease, from the dashboard's close affordance. There is no
+   unload beacon: `pagehide` fires on reload and navigation, not only
+   on a real close, so treating it as release intent would drop a
+   running container on a mere refresh. The handler stops polling and
+   nothing else. `sessionLifecycle.ftReleaseExplicit` arbitrates —
+   refusing with 409 while a run or a live agent holds the container —
+   then frees the flock, drops the record, and stops the keep-alive.
 2. **WebSocket-disconnect grace** — when the last live connection
    drops, `iLiveConnectionCount` falls to 0 and a bounded grace window
    opens. If no reconnect with the matching lease arrives, the idle
@@ -729,9 +740,11 @@ the whole process life). A container is released by exactly four paths:
 The reaper is **never** allowed to release a container whose pipeline
 is still running (`flistReapIdleOwnerships` takes a `fbPipelineRunning`
 veto), so an in-flight run is never torn down — the dashboard's honesty
-contract. The `pagehide` beacon only *accelerates* trigger 1; it never
-fires on a hard crash and is never load-bearing for correctness, which
-rests on triggers 2–4.
+contract. Correctness rests entirely on triggers 2–4: no unload signal
+is load-bearing, because none is sent. `pagehide` would in any case
+never fire on a hard crash, which is why abandonment is decided by the
+socket closing without a reconnect rather than by anything the
+departing page claims about itself.
 
 ### Idle self-shutdown
 
