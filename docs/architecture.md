@@ -566,6 +566,55 @@ now has three outcomes:
    running), in which case the dead owner is released and the claim is
    granted fresh. The 409 never echoes the other owner's lease.
 
+### Starting a container is a server-owned reservation
+
+Starting a container is not a request-scoped action. A pull can outlast
+any HTTP timeout, the response can be lost, the button can be clicked
+twice, and `docker run` does not name the container it is creating until
+it returns — so a start that has to be killed leaves one the hub can only
+guess at. `POST /api/containers/{sName}/start` therefore *reserves*:
+
+- It arbitrates ownership through the same claim primitive a browser
+  claim uses (host flock, journal quarantine, cross-hub refusal, and the
+  one-container-per-session reverse index all in one place), then attaches
+  a **`StartReservation`** to the owner record and answers `202` with a
+  status-poll location — **never a lease**, because nothing is running yet
+  for a lease to authorize.
+- The reservation is an **orthogonal axis**, not a state: a record can be
+  `ACTIVE` and starting, or `ORPHANED_SESSION` and starting. It holds only
+  live execution state (stable id, the launch process handle, the journal
+  record id, a heartbeat) — no session, lease, or generation copies, and
+  no outcome.
+- While it is live: a repeated start by the initiating session returns the
+  same reservation (the idempotent recovery, never a second launch);
+  another session is refused; `stop` and `settings` answer `409` "still
+  starting"; a connect by the initiator gets a truthful pending refusal;
+  and the record is never reapable, so the idle watchdog cannot free the
+  flock under a running `docker create`.
+- The Docker work is a **create-then-start pair under `Popen`**. The
+  container carries `--label vaibify.reservation=<id>` and its id is
+  written to the write-ahead journal *before* it is started, so cleanup
+  removes exactly that incarnation and no other. Cancelling escalates
+  TERM → bounded wait → KILL and waits for the real exit; only then is the
+  labelled container removed, the reservation compare-and-deleted, and the
+  flock freed. If the daemon's answer is uncertain the container is
+  **quarantined, never made claimable** — killing the CLI does not prove
+  the daemon abandoned the request.
+- Cancellation is a **distinct explicit operation**. A host transfer
+  *adopts* a running start (retagging it as a mode-(c) durable task) and
+  never doubles as a cancel.
+
+The outcome lives in a bounded in-memory ledger that outlives the
+reservation, with **two delivery paths**, because success and failure
+authorize differently. **SUCCEEDED** is bound to the live owner record and
+hands back a **freshly derived** lease, so a `vaibify open` successor can
+collect a start its predecessor requested and a revoked session cannot.
+**FAILED** has no owner left to authorize it — that is the case the ledger
+exists for — so it is a bounded, session-bound retrieval entitlement,
+rebound by a transfer, that yields the safe error and **no container
+authority of any kind**. A new start after a failure must name the
+reservation id it read, so a stale failure can never silently relaunch.
+
 ### The one-live-pipeline-connection invariant
 
 Two tabs of one browser cannot both own a container: only the first

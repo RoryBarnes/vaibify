@@ -470,3 +470,59 @@ def test_connect_by_the_initiator_while_starting_is_a_truthful_refusal(
     )
     assert responseConnect.status_code == 409, responseConnect.text
     assert "still starting" in responseConnect.json()["detail"]
+
+
+def test_an_expiring_session_orphans_a_mid_start_record_never_releases_it(
+    appHub, tmp_path, monkeypatch,
+):
+    """A session expiring mid-start must ORPHAN, never release (§10b).
+
+    Releasing here would free the flock while a ``docker create`` is
+    still running, and a second tab could claim the container out from
+    under it. Orphaning ends the browser session's authority and leaves
+    the start — and the exclusivity protecting it — untouched, which is
+    what a later host transfer reclaims.
+    """
+    import asyncio
+
+    from vaibify.gui import browserSession, sessionLifecycle
+
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path)
+        dictStart = client.post(
+            f"/api/containers/{S_PROJECT_NAME}/start",
+        ).json()
+        assert executor.eventEntered.wait(timeout=5.0)
+        sSessionId = fsSessionIdOnApp(appHub, sCredential)
+        recordSession = appHub.state.dictBrowserSessions[
+            "dictSessionsByCredential"
+        ][sCredential]
+        recordSession.fCreatedMonotonic -= (
+            sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS + 1.0
+        )
+        asyncio.run(
+            sessionLifecycle.fnExpireIdleBrowserSessions(appHub.state),
+        )
+        recordOwner = appHub.state.dictContainerOwners[S_PROJECT_NAME]
+        assert recordOwner.sState == (
+            containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+        ), "an expired session mid-start must orphan its record"
+        assert recordOwner.reservation is not None, (
+            "orphaning must leave the running start untouched"
+        )
+        assert browserSession.fbValidateCredential(
+            appHub.state.dictBrowserSessions, sCredential,
+        ) is False, "the expired session's credential must be revoked"
+        assert recordOwner.sBrowserSessionId == sSessionId, (
+            "orphaning ends the session's authority, not the binding "
+            "a transfer will rebind"
+        )
+        executor.eventRelease.set()
+        fnWaitForSettledResult(client, appHub, dictStart["sReservationId"])
+        assert recordOwner.sState == (
+            containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+        ), "a start completing under an orphan leaves the authority alone"
+        assert recordOwner.reservation is None
