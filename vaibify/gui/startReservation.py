@@ -138,6 +138,12 @@ class StartReservation:
     sReservationId: str
     recordStartTask: StartTaskRecord
     fHeartbeatMonotonic: float = field(default_factory=time.monotonic)
+    # True only when this start CREATED the ownership record. A start
+    # on a container the caller already owns reserves on the existing
+    # record, and a failure must never release ownership the start did
+    # not establish (clicking Start on an already-running container you
+    # own would otherwise drop your own lease and free the flock).
+    bOwnershipCreatedByStart: bool = False
 
 
 def fsMintReservationId():
@@ -180,8 +186,8 @@ async def ftBeginStart(
     sOutcome, dictBody, recordOwner = (
         await sessionLifecycle.ftReserveContainerForStart(
             appState, sName, sBrowserSessionId, iPort, connectionDocker,
-            lambda record: _fnMintReservationOnRecord(
-                appState, sName, record, sBrowserSessionId,
+            lambda record, bCreated: _fnMintReservationOnRecord(
+                appState, sName, record, sBrowserSessionId, bCreated,
             ),
             fsRefusalForPriorOutcome=lambda: _fsRefuseUnacknowledgedFailure(
                 appState, sName, sBrowserSessionId,
@@ -202,7 +208,9 @@ async def ftBeginStart(
     ))
 
 
-def _fnMintReservationOnRecord(appState, sName, recordOwner, sSessionId):
+def _fnMintReservationOnRecord(
+    appState, sName, recordOwner, sSessionId, bOwnershipCreatedByStart,
+):
     """Write the journal record, attach the reservation, open the result.
 
     Runs inside the lifecycle authority's held locks, so the write-ahead
@@ -219,6 +227,7 @@ def _fnMintReservationOnRecord(appState, sName, recordOwner, sSessionId):
             sStartTaskId=secrets.token_hex(8),
             sJournalOperationId=sOperationId,
         ),
+        bOwnershipCreatedByStart=bOwnershipCreatedByStart,
     )
     startResultStore.fnOpenStartResult(
         appState, sReservationId, sName,

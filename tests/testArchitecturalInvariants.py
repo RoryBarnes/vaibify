@@ -3872,7 +3872,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # other transition does — this is the only module that may call the
     # ownership primitives — plus the public cardinality-lock accessor
     # and the start-result entitlement rebinding in the transfer commit.
-    "sessionLifecycle.py": 1238,
+    # +17 (2026-08-01): the failed-start settlement may free the flock
+    # only for a record the start CREATED. A start on a container the
+    # caller already owns reserves on the existing record, and releasing
+    # that dropped a valid owner's lease and flock when the start
+    # refused — one click on an already-running container you own. The
+    # guard belongs here, in the module that owns release, rather than
+    # in the settlement callback that answers cleanliness.
+    "sessionLifecycle.py": 1255,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -3885,7 +3892,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that IS the safety argument (process confirmed exited → labelled
     # container conclusively gone → reservation compare-and-deleted →
     # flock freed) across several files.
-    "startReservation.py": 805,
+    # +9 (2026-08-01): the reservation records whether the start
+    # established the ownership it runs under, which is the fact the
+    # settlement guard above consults.
+    "startReservation.py": 814,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

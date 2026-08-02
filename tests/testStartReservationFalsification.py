@@ -738,3 +738,69 @@ def testTheJournalDirectoryIsIsolatedForTheseTests():
     assert not os.path.expanduser("~/.vaibify/journal") in (
         operationJournal._S_JOURNAL_DIRECTORY
     )
+
+
+@pytest.mark.asyncio
+async def testAFailedStartNeverReleasesOwnershipItDidNotCreate():
+    """A start that JOINS an existing owner must not release it on failure.
+
+    The researcher owns a container and clicks Start on one that is
+    already running. The start refuses — and before this guard, the
+    refusal ran the settlement's release against the *pre-existing*
+    owner record, dropping their lease, freeing the flock, and clearing
+    their cardinality entry while the container went on running. A
+    failed start may only release ownership the start itself
+    established.
+
+    Kills: in sessionLifecycle.ftSettleFailedStartOwnership, drop the
+    ``if not bStartOwnsTheRecord: return`` guard — the failure then
+    releases the owner record the start merely borrowed, and a valid
+    owner silently loses the container they still hold.
+    """
+    stateApp = _fstateBuildAppState()
+    sSessionId = _fsRedeemSession(stateApp)
+    iCode, dictClaim = await sessionLifecycle.ftdictClaimWithCardinality(
+        stateApp, S_PROJECT_NAME, "", 0, sBrowserSessionId=sSessionId,
+    )
+    assert iCode == 200, dictClaim
+    recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
+    sLeasePriorToStart = recordOwner.sLeaseId
+
+    def _fsRefuseAlreadyRunning(sName, reservation, configProject):
+        raise RuntimeError("container already running")
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            startReservation, "_fsExecuteReservedStart",
+            _fsRefuseAlreadyRunning,
+        )
+        monkeypatch.setattr(
+            containerManager, "fdictSettleReservationContainers",
+            lambda sReservationId, bLaunchWasKilled: {
+                "bConclusive": True, "listRemovedContainerIds": [],
+                "sDetail": "no container bearing the reservation label",
+            },
+        )
+        iCodeStart, dictStart = await startReservation.ftBeginStart(
+            stateApp, S_PROJECT_NAME, sSessionId,
+            SimpleNamespace(bNeverSleep=False), iPort=0,
+        )
+        assert iCodeStart == 202, dictStart
+        for _ in range(200):
+            if getattr(
+                stateApp.dictContainerOwners.get(S_PROJECT_NAME),
+                "reservation", None,
+            ) is None:
+                break
+            await asyncio.sleep(0.05)
+
+    assert S_PROJECT_NAME in stateApp.dictContainerOwners, (
+        "a failed start released an owner record it did not create"
+    )
+    recordAfter = stateApp.dictContainerOwners[S_PROJECT_NAME]
+    assert recordAfter.sLeaseId == sLeasePriorToStart, (
+        "the pre-existing owner's lease was rotated by a failed start"
+    )
+    assert stateApp.dictSessionOwner.get(sSessionId) == S_PROJECT_NAME, (
+        "the owner's cardinality entry was dropped by a failed start"
+    )

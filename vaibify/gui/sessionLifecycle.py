@@ -346,9 +346,12 @@ def _tReserveForStartUnderLocks(
         if iStatusCode != 200:
             return (S_START_REFUSED, dictPayload, None)
         recordOwner = dictOwners[sName]
+        bOwnershipCreatedByStart = True
     elif recordOwner.sBrowserSessionId not in ("", sBrowserSessionId):
         return (S_START_REFUSED, _fdictStartInUse(sName), None)
-    fnMintReservation(recordOwner)
+    else:
+        bOwnershipCreatedByStart = False
+    fnMintReservation(recordOwner, bOwnershipCreatedByStart)
     return (S_START_RESERVED, {}, recordOwner)
 
 
@@ -370,13 +373,27 @@ async def ftSettleFailedStartOwnership(appState, sName, fbCommitSettlement):
     then is the flock freed: an inconclusive settlement keeps it, so
     neither this hub nor the next can hand the container to a second
     owner while a late create may still be landing.
+
+    A clean settlement is necessary but NOT sufficient. The release is
+    additionally conditional on this start having CREATED the ownership
+    record: a start on a container the caller already owns reserves on
+    the existing record, and releasing that would drop a valid owner's
+    lease and free a flock nobody asked to give up — the researcher
+    clicks Start on a container they own that is already running, the
+    start refuses, and their ownership silently disappears.
     """
     dictLockStore = _fdictLockStoreForAppState(appState)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
             dictOwners = getattr(appState, "dictContainerOwners", {})
             recordOwner = dictOwners.get(sName)
+            bStartOwnsTheRecord = bool(getattr(
+                getattr(recordOwner, "reservation", None),
+                "bOwnershipCreatedByStart", False,
+            ))
             if not fbCommitSettlement(recordOwner) or recordOwner is None:
+                return
+            if not bStartOwnsTheRecord:
                 return
             containerOwnership.fnReleaseOwnership(
                 dictOwners, sName, recordOwner.sLeaseId,

@@ -3659,6 +3659,14 @@ def _fdictEntry(sRel):
             "sName": sName,""",
     ),
     Falsification(
+        nodeid='tests/testStartReservationFalsification.py::testAFailedStartNeverReleasesOwnershipItDidNotCreate',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""            if not bStartOwnsTheRecord:
+                return
+""",
+        new="",
+    ),
+    Falsification(
         nodeid='tests/testStartReservationFalsification.py::testCancelAfterPartialCreationRemovesItBeforeClearingTheRecord',
         source='vaibify/gui/startReservation.py',
         old="""    dictSettlement = await asyncio.to_thread(
