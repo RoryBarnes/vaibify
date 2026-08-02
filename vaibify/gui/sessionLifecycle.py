@@ -57,7 +57,6 @@ __all__ = [
     "F_SLIDING_IDLE_SECONDS",
     "F_ABSOLUTE_SESSION_CAP_SECONDS",
     "F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS",
-    "F_TRANSFER_DRAIN_WAIT_SECONDS",
     "F_TRANSFER_COMMIT_HEADROOM_SECONDS",
     "S_TRANSFER_TRANSFERRED",
     "S_TRANSFER_BUSY_RETRY",
@@ -128,15 +127,13 @@ F_EXPIRY_WARNING_LEAD_SECONDS = (
     )
 )
 
-# Transfer timing (design §6.1): the drain wait is bounded WELL BELOW
-# the capability TTL (300 s) — never "wait until the capability
-# expires" — and the commit headroom is the TTL margin a transfer
-# needs beyond the drain wait before it is worth attempting at all.
-F_TRANSFER_DRAIN_WAIT_SECONDS = (
-    containerOwnership.ffReadSecondsFromEnvironment(
-        "VAIBIFY_TRANSFER_DRAIN_WAIT_SECONDS", 20.0,
-    )
-)
+# Transfer timing (design §6.1). A transfer no longer WAITS for
+# anything: a busy container is refused at once, so the only TTL a
+# transfer needs is enough to commit in. The drain-wait knob is gone
+# with the phase it bounded -- keeping it would have left the
+# insufficient-TTL check demanding 50 seconds of window for an
+# operation that needs 30, refusing capabilities that would have
+# committed comfortably.
 F_TRANSFER_COMMIT_HEADROOM_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
         "VAIBIFY_TRANSFER_COMMIT_HEADROOM_SECONDS", 30.0,
@@ -639,10 +636,9 @@ def _tOutcomeForCapabilityState(dictStore, sCapability, dictInspect):
             "sMessage": "The transfer capability expired; mint a fresh "
                         "one with 'vaibify open'.",
         })
-    fRequiredTtl = (
-        F_TRANSFER_DRAIN_WAIT_SECONDS + F_TRANSFER_COMMIT_HEADROOM_SECONDS
-    )
-    if dictInspect["fRemainingTtlSeconds"] < fRequiredTtl:
+    if dictInspect["fRemainingTtlSeconds"] < (
+        F_TRANSFER_COMMIT_HEADROOM_SECONDS
+    ):
         browserSession.fnExpireCapability(dictStore, sCapability)
         return (S_TRANSFER_EXPIRED, {
             "sMessage": "Too little of the transfer capability's window "

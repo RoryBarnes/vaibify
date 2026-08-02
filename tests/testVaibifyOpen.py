@@ -256,9 +256,7 @@ def test_open_reports_busy_and_preserves_the_owner(
     from vaibify.gui import sessionLifecycle
     app, iPort = tLiveHub
     recordOwner, sOldSessionId, sOldCredential = _tSeedOwnedContainer(app)
-    monkeypatch.setattr(
-        sessionLifecycle, "F_TRANSFER_DRAIN_WAIT_SECONDS", 0.05,
-    )
+    # No drain wait to shorten: a busy container is refused at once.
     dictHeld = {}
 
     async def fnHoldTheDrain():

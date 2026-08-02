@@ -39,10 +39,12 @@ def fixtureIsolateLockDirectory(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def fixtureShortTransferWaits(monkeypatch):
-    """Bound every transfer/terminal wait so no test sleeps for real."""
-    monkeypatch.setattr(
-        sessionLifecycle, "F_TRANSFER_DRAIN_WAIT_SECONDS", 0.05,
-    )
+    """Bound every transfer/terminal wait so no test sleeps for real.
+
+    A transfer no longer waits on the mutation lock at all -- a busy
+    container is refused at once -- so there is no drain wait left to
+    shorten; only the terminal-drain waits below still bound anything.
+    """
     monkeypatch.setattr(
         sessionLifecycle, "F_TRANSFER_COMMIT_HEADROOM_SECONDS", 5.0,
     )

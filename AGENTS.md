@@ -458,6 +458,44 @@ Enforced by `testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
 `testSetAllowedContainersRemoved`, and
 `test_terminal_plus_pipeline_ws_coexist_in_one_session`.
 
+## Container mutations go through the commit-guard carrier
+
+**Arbitrary command execution is always treated as mutating**, because
+the primitive cannot know whether the text it was handed reads a file
+or deletes a workspace. Inside an enforced lane — an HTTP request
+served by `routeScope.ContainerAwareRoute`, or a carrier-launched
+durable task — an exec or a container write without a live carrier
+admission raises `MutationNotAdmittedError`. Outside one (background
+threads, the CLI, direct library use) the gate is a no-op: that
+remainder is deliberate and named, never a silent claim of coverage.
+
+**A typed read is exempt only inside its adapter.** Reading a file
+means running a program in the container, so guarding the exec would
+refuse reads too. Exactly one private method,
+`DockerConnection._texecRunAuditedRead`, grants the exemption, and
+every command through it must be BUILT by its adapter from a path or an
+identifier. An adapter that forwarded a caller's string would turn the
+read carve-out into a general bypass —
+`tests/testMutationBoundary.py` fails the build on one that does, and
+on a second grant point anywhere.
+
+**`tests/mutationInventory.json` is the record of every reference that
+can reach a container** — direct calls, primitives passed as callables
+(`asyncio.to_thread(connection.fnWriteFile, ...)` is a call site), and
+Docker CLI invocations assembled from scratch. Regenerate it with
+`python tools/generateMutationInventory.py --write`. The drift check
+fails on an added, removed, duplicated, edited, or hand-altered row,
+and the subprocess launches whose command the scan cannot read are
+counted rather than dropped. The semantic classification is unfinished
+and ratcheted: the count may only go down.
+
+**A busy container refuses a hand-over at once, and names what is busy.**
+The lock HOLDER registers its operation kind and target, because an
+`asyncio.Lock` knows only that it is held. A transfer never waits for a
+drain — waiting spends the capability's window on an operation of
+unknown length — and there is no DRAINING phase: a transfer refuses over
+any terminal execution nobody has proven dead.
+
 ## The interactive terminal is disabled
 
 **`/ws/terminal` refuses every caller, and no production path creates a
@@ -789,6 +827,28 @@ without discussion:
   accepting the field produced a container without the requested
   packages and said nothing. Wiring it is the honest fix; refusing is
   the honest interim.
+- `terminalContainment.py` and the `terminal` journal kind survive the
+  terminal being disabled, and must. They are what reconciles a record
+  written by an earlier version — release, the safe reaper and shutdown
+  all settle terminal records through
+  `fdictTerminateAndProveRecord` — and
+  `tests/testTerminalContainmentLive.py` keeps the process-group prover
+  as the standing demonstration that it cannot see a `setsid`
+  descendant. Deleting the module would delete the reason the feature
+  is off. Its in-memory registry is, in production, permanently empty:
+  only `terminalSession` registers, and nothing constructs one.
+- `commitCarrier.fdictRequestDurableTaskCancel` has no caller and
+  refuses everything. Kept deliberately: Python cannot interrupt a
+  worker in `asyncio.to_thread`, so there is no honest generic cancel,
+  and a reader who finds no function at all re-derives that from
+  scratch — or writes one. The refusal is the answer, in the place the
+  question is asked.
+- The poison axis is NOT subsumed by the journal quarantine. A
+  quarantine record survives a crash; it does not fence a socket that
+  is open right now. Poison does both — the pipeline lane is refused at
+  the gate and revalidated per frame — so the two are complementary,
+  not redundant.
+
 ## Discovery commands
 
 Rather than memorizing structural facts, run these when you need them:

@@ -87,7 +87,6 @@ from .pipelineRunner import (
 )
 from .pipelineUtils import fsShellQuote
 from .resourceMonitor import fdictGetContainerStats
-from .terminalSession import TerminalSession
 
 
 STATIC_DIRECTORY = os.path.join(os.path.dirname(__file__), "static")

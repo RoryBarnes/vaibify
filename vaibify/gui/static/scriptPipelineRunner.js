@@ -6,7 +6,6 @@ var VaibifyPipelineRunner = (function () {
     var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
 
     var iPreviousOutputCount = 0;
-    var _iActiveSentinelMonitor = null;
     var _sStreamingViewer = null;
     var dictAcknowledgedAt = {};
     var MAX_PIPELINE_OUTPUT_LINES = 1000;
@@ -290,7 +289,6 @@ var VaibifyPipelineRunner = (function () {
             _fnRefuseInteractiveWithoutTerminal();
             return;
         }
-        _fnMonitorTerminalForSentinel(sSentinel);
     }
 
     /* An interactive step is defined as one a human drives in a shell,
@@ -335,54 +333,6 @@ var VaibifyPipelineRunner = (function () {
         return "xxxx-xxxx".replace(/x/g, function () {
             return Math.floor(Math.random() * 16).toString(16);
         });
-    }
-
-    function _fnMonitorTerminalForSentinel(sSentinel) {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-        }
-        var I_MAX_SENTINEL_CHECKS = 86400;
-        var iCheckCount = 0;
-        _iActiveSentinelMonitor = setInterval(function () {
-            iCheckCount++;
-            if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
-                clearInterval(_iActiveSentinelMonitor);
-                _iActiveSentinelMonitor = null;
-                VaibifyApp.fnShowToast(
-                    "Interactive step timed out after 24 hours",
-                    "error");
-                _fnSendInteractiveComplete(1);
-                return;
-            }
-            var sText = _fsReadAllTerminalText();
-            var oPattern = new RegExp(
-                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
-            );
-            var oMatch = sText.match(oPattern);
-            if (!oMatch) return;
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-            var iExitCode = parseInt(oMatch[1], 10);
-            _fnSendInteractiveComplete(iExitCode);
-        }, 1000);
-    }
-
-    function _fsReadAllTerminalText() {
-        var sText = "";
-        var listPanes = document.querySelectorAll(
-            ".terminal-pane-container .xterm"
-        );
-        listPanes.forEach(function (elTerminal) {
-            try {
-                var elRows = elTerminal.querySelectorAll(
-                    ".xterm-rows > div"
-                );
-                elRows.forEach(function (el) {
-                    sText += el.textContent + "\n";
-                });
-            } catch (e) { /* skip unreadable pane */ }
-        });
-        return sText;
     }
 
     function _fnSendInteractiveComplete(iExitCode) {
@@ -720,9 +670,6 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnShowToast(S_INTERACTIVE_NEEDS_TERMINAL, "error");
             return;
         }
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
     }
 
     function _fnDispatchSingleStep(iIndex, sRunMode) {
@@ -785,24 +732,6 @@ var VaibifyPipelineRunner = (function () {
                 VaibifyUtilities.fsResolveTemplate(sCmd, dictVars));
         });
         return listCmds;
-    }
-
-    function _fnMonitorStepCompletion(sSentinel, iStepIndex) {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-        }
-        _iActiveSentinelMonitor = setInterval(function () {
-            var sText = _fsReadAllTerminalText();
-            var oPattern = new RegExp(
-                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
-            );
-            var oMatch = sText.match(oPattern);
-            if (!oMatch) return;
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-            var iExitCode = parseInt(oMatch[1], 10);
-            fnHandleStandaloneStepComplete(iStepIndex, iExitCode);
-        }, 1000);
     }
 
     function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
@@ -1125,17 +1054,6 @@ var VaibifyPipelineRunner = (function () {
         iPreviousOutputCount = 0;
         dictAcknowledgedAt = {};
         _sStreamingViewer = null;
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-        }
-    }
-
-    function fnCancelSentinelMonitor() {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-        }
     }
 
     function fiGetAcknowledgedAt(iStep) {
@@ -1179,7 +1097,6 @@ var VaibifyPipelineRunner = (function () {
         fnVerifyDependencies: fnVerifyDependencies,
         fnDisplayLogInViewer: fnDisplayLogInViewer,
         fnResetState: fnResetState,
-        fnCancelSentinelMonitor: fnCancelSentinelMonitor,
         fiGetAcknowledgedAt: fiGetAcknowledgedAt,
     };
 })();
