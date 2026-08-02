@@ -1,11 +1,47 @@
-"""Container lifecycle management using subprocess Docker CLI calls."""
+"""Container lifecycle management using subprocess Docker CLI calls.
+
+The GUI's start path is deliberately a CREATE-then-START pair rather
+than a single ``docker run`` (design §10b). ``docker run`` gives the
+hub no identity for the container until the command returns, so a start
+that has to be killed mid-flight leaves a container the hub can only
+GUESS at; create-then-start carries the reservation id as an immutable
+container label and hands back the container id before anything runs,
+so the write-ahead journal records the exact identity a cleanup may
+remove — and no other incarnation. Both halves run under ``Popen`` so a
+hung start can actually be signalled: a blocking ``subprocess.run`` in
+a worker thread cannot be terminated, which made "abort the start"
+unachievable as written.
+"""
 
 import os
+import re
 import subprocess
+import time
 
 from . import fnRunDockerCommand
 from .volumeManager import fsGetCredentialsVolumeName, fsGetVolumeName
 from .x11Forwarding import flistConfigureX11Args
+
+# The immutable label a reservation-owned container carries. Cleanup
+# keys on THIS, never on the container name: a name is reused by the
+# next incarnation, a reservation id never is.
+S_RESERVATION_LABEL_KEY = "vaibify.reservation"
+
+# A reservation id is server-minted hex. Validating it before it reaches
+# a command line is what makes the label value shell-safe and keeps a
+# crafted value from smuggling an extra Docker flag.
+_RE_RESERVATION_ID = re.compile(r"^[0-9a-f]{32}$")
+
+# TERM, then this long, then KILL, then wait for the REAL exit.
+_F_TERMINATE_GRACE_SECONDS = 5.0
+# How long a killed create is watched for a container the daemon may
+# still be finishing. Nothing appearing within it is NOT proof of
+# absence — it makes the settlement inconclusive, never "clean".
+_F_SETTLEMENT_WINDOW_SECONDS = 3.0
+_F_SETTLEMENT_POLL_SECONDS = 0.25
+# Every probe/removal call is bounded, so a wedged daemon cannot pin a
+# worker thread forever; an expired probe reads as "did not answer".
+_F_DOCKER_PROBE_TIMEOUT_SECONDS = 10.0
 
 
 def fnStartContainer(config, sDockerDir, saCommand=None):
@@ -58,6 +94,209 @@ def fsStartContainerDetached(config, sDockerDir):
     return _fsRunDetachedCommand(saFullCommand)
 
 
+def fsCreateContainerForReservation(
+    config, sReservationId, fnRegisterProcess=None,
+):
+    """Create (not start) the container labelled with a reservation id.
+
+    The first half of the create-then-start pair. The returned container
+    id is the identity the caller journals BEFORE the container is
+    started, so a cleanup after a kill removes exactly this incarnation.
+    ``fnRegisterProcess`` receives the live ``Popen`` handle so the
+    reservation's cancel path can signal it (design §10b).
+    """
+    fnValidateReservationIdOrRaise(sReservationId)
+    saRunArgs = flistBuildRunArgs(config, bCreateOnly=True)
+    fnMountSecrets(config, saRunArgs, [])
+    saRunArgs.extend([
+        "--label", f"{S_RESERVATION_LABEL_KEY}={sReservationId}",
+    ])
+    saFullCommand = _flistAssembleDockerCommand(
+        "create", config, saRunArgs, ["sleep", "infinity"],
+    )
+    return _fsRunKillableDockerCommand(saFullCommand, fnRegisterProcess)
+
+
+def fnStartCreatedContainer(sContainerId, fnRegisterProcess=None):
+    """Start an already-created container by its recorded id."""
+    _fsRunKillableDockerCommand(
+        ["docker", "start", sContainerId], fnRegisterProcess,
+    )
+
+
+def fnValidateReservationIdOrRaise(sReservationId):
+    """Raise unless a reservation id is the server-minted hex it claims.
+
+    The id becomes a Docker label value and a filter expression, so it
+    is validated before it can reach a command line at all.
+    """
+    if not _RE_RESERVATION_ID.match(sReservationId or ""):
+        raise ValueError(
+            "A reservation id must be 32 hexadecimal characters; refusing "
+            "to put an unrecognized value on a Docker command line."
+        )
+
+
+def _fsRunKillableDockerCommand(saCommand, fnRegisterProcess=None):
+    """Run one docker command under Popen; return its trimmed stdout.
+
+    ``Popen`` rather than ``subprocess.run`` because the start path must
+    be terminable: a worker thread blocked in ``run`` cannot be
+    signalled, so a hung pull would strand the researcher with a
+    container they can neither reach nor clear.
+    """
+    processDocker = subprocess.Popen(
+        saCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True,
+    )
+    if fnRegisterProcess is not None:
+        fnRegisterProcess(processDocker)
+    sStdout, sStderr = processDocker.communicate()
+    if processDocker.returncode != 0:
+        raise RuntimeError(
+            f"docker {saCommand[1]} failed: {(sStderr or '').strip()}"
+        )
+    return (sStdout or "").strip()
+
+
+def fdictTerminateDockerProcess(
+    processDocker, fGraceSeconds=_F_TERMINATE_GRACE_SECONDS,
+):
+    """TERM, wait the grace, KILL, then wait for the process to REALLY exit.
+
+    Returns what actually happened, because "we sent a signal" is not
+    "the writer stopped": the caller may only clean up after the
+    process is confirmed exited, and ``bExited`` is that confirmation.
+    """
+    if processDocker.poll() is not None:
+        return _fdictTerminationOutcome(processDocker, False, False)
+    processDocker.terminate()
+    try:
+        processDocker.wait(timeout=fGraceSeconds)
+        return _fdictTerminationOutcome(processDocker, True, False)
+    except subprocess.TimeoutExpired:
+        processDocker.kill()
+    processDocker.wait()
+    return _fdictTerminationOutcome(processDocker, True, True)
+
+
+def _fdictTerminationOutcome(processDocker, bTerminated, bKilled):
+    """Return the uniform termination report for one docker process."""
+    return {
+        "bExited": processDocker.poll() is not None,
+        "bTerminated": bTerminated,
+        "bKilled": bKilled,
+        "iReturnCode": processDocker.returncode,
+    }
+
+
+def fdictFindContainersForReservation(sReservationId):
+    """Return ``{bAnswered, listContainerIds}`` for the reservation label.
+
+    ``bAnswered`` False means the daemon did not answer at all (absent
+    CLI, timeout, error) — which is NOT the same as "no such container"
+    and must never be read as one.
+    """
+    fnValidateReservationIdOrRaise(sReservationId)
+    tAnswer = _ftRunProbeCommand([
+        "docker", "ps", "-a", "-q", "--filter",
+        f"label={S_RESERVATION_LABEL_KEY}={sReservationId}",
+    ])
+    bAnswered, sOutput = tAnswer
+    return {
+        "bAnswered": bAnswered,
+        "listContainerIds": sOutput.split() if bAnswered else [],
+    }
+
+
+def _ftRunProbeCommand(saCommand):
+    """Run a bounded read-only docker command; return ``(bAnswered, sOut)``."""
+    try:
+        resultProcess = subprocess.run(
+            saCommand, capture_output=True, text=True,
+            timeout=_F_DOCKER_PROBE_TIMEOUT_SECONDS,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return (False, "")
+    if resultProcess.returncode != 0:
+        return (False, "")
+    return (True, resultProcess.stdout)
+
+
+def fdictSettleReservationContainers(sReservationId, bLaunchWasKilled):
+    """Remove the reservation's container(s) and report CONCLUSIVENESS.
+
+    Design §10b: "reconcile long enough" is not a safety condition.
+    Killing the CLI does not prove the daemon abandoned the request, so
+    a settlement is conclusive only when the daemon answered and the
+    labelled container is definitively gone (or was definitively never
+    created). When a killed create leaves nothing behind, the daemon may
+    still be finishing one, so the answer is INCONCLUSIVE and the caller
+    must keep the container quarantined rather than claimable.
+    """
+    dictFound = fdictFindContainersForReservation(sReservationId)
+    if not dictFound["bAnswered"]:
+        return _fdictSettlement(False, [], (
+            "the Docker daemon did not answer the reservation-label query"
+        ))
+    listContainerIds = dictFound["listContainerIds"]
+    if not listContainerIds and bLaunchWasKilled:
+        listContainerIds = _flistAwaitLateReservationContainer(
+            sReservationId,
+        )
+        if not listContainerIds:
+            return _fdictSettlement(False, [], (
+                "the container create was killed mid-flight and no "
+                "labelled container appeared within the settlement "
+                "window; the daemon may still create one"
+            ))
+    for sContainerId in listContainerIds:
+        _fnForceRemoveContainer(sContainerId)
+    return _fdictConfirmReservationRemoval(sReservationId, listContainerIds)
+
+
+def _flistAwaitLateReservationContainer(sReservationId):
+    """Watch the label for a container a killed create may still produce."""
+    fDeadline = time.monotonic() + _F_SETTLEMENT_WINDOW_SECONDS
+    while time.monotonic() < fDeadline:
+        time.sleep(_F_SETTLEMENT_POLL_SECONDS)
+        dictFound = fdictFindContainersForReservation(sReservationId)
+        if dictFound["bAnswered"] and dictFound["listContainerIds"]:
+            return dictFound["listContainerIds"]
+    return []
+
+
+def _fdictConfirmReservationRemoval(sReservationId, listRemovedIds):
+    """Re-query the label; only a definitively empty answer is conclusive."""
+    dictAfter = fdictFindContainersForReservation(sReservationId)
+    if not dictAfter["bAnswered"]:
+        return _fdictSettlement(False, listRemovedIds, (
+            "the Docker daemon stopped answering before the removal could "
+            "be confirmed"
+        ))
+    if dictAfter["listContainerIds"]:
+        return _fdictSettlement(False, listRemovedIds, (
+            "a container bearing the reservation label survived removal"
+        ))
+    return _fdictSettlement(True, listRemovedIds, (
+        "no container bearing the reservation label remains"
+    ))
+
+
+def _fnForceRemoveContainer(sContainerId):
+    """Force-remove one container by id, tolerating an already-gone id."""
+    _ftRunProbeCommand(["docker", "rm", "-f", sContainerId])
+
+
+def _fdictSettlement(bConclusive, listRemovedIds, sDetail):
+    """Return the uniform settlement verdict for a reservation cleanup."""
+    return {
+        "bConclusive": bConclusive,
+        "listRemovedContainerIds": list(listRemovedIds),
+        "sDetail": sDetail,
+    }
+
+
 def _fsRunDetachedCommand(saCommand):
     """Run a docker command and return stdout (container ID)."""
     resultProcess = subprocess.run(
@@ -71,16 +310,27 @@ def _fsRunDetachedCommand(saCommand):
 
 def _flistAssembleRunCommand(config, saRunArgs, saCommand):
     """Combine docker run prefix, args, image tag, and user command."""
+    return _flistAssembleDockerCommand("run", config, saRunArgs, saCommand)
+
+
+def _flistAssembleDockerCommand(sSubcommand, config, saRunArgs, saCommand):
+    """Combine a docker subcommand, its args, the image tag, and a command."""
     sImageTag = f"{config.sProjectName}:latest"
-    saFullCommand = ["docker", "run"] + saRunArgs + [sImageTag]
+    saFullCommand = ["docker", sSubcommand] + saRunArgs + [sImageTag]
     if saCommand is not None:
         saFullCommand.extend(saCommand)
     return saFullCommand
 
 
-def flistBuildRunArgs(config, bDetached=False):
-    """Build list of docker run arguments from project config."""
-    saRunArgs = ["-d", "-t"] if bDetached else ["--rm", "-it"]
+def flistBuildRunArgs(config, bDetached=False, bCreateOnly=False):
+    """Build list of docker run arguments from project config.
+
+    ``bCreateOnly`` builds the argument list for ``docker create``,
+    which accepts no ``-d`` (there is nothing to detach from yet) and
+    must not carry ``--rm``: a created-but-unstarted container that
+    removed itself would defeat the whole point of recording its id.
+    """
+    saRunArgs = _flistBuildProcessModeArgs(bDetached, bCreateOnly)
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
     _fnAddEntrypointUser(saRunArgs)
@@ -97,6 +347,15 @@ def flistBuildRunArgs(config, bDetached=False):
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     return saRunArgs
+
+
+def _flistBuildProcessModeArgs(bDetached, bCreateOnly):
+    """Return the leading run/create flags for one launch mode."""
+    if bCreateOnly:
+        return ["-t"]
+    if bDetached:
+        return ["-d", "-t"]
+    return ["--rm", "-it"]
 
 
 _T_ENTRYPOINT_CAPABILITIES = (
