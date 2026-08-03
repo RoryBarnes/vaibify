@@ -232,6 +232,13 @@ TUPLE_REVIEWER_PROSE_FIELDS = (
 )
 
 
+_DICT_EMPTY_BINDINGS = {
+    "dictCommandLists": {},
+    "setClientNames": frozenset(),
+    "setSdkBoundNames": frozenset(),
+}
+
+
 class _VisitorCallSites(ast.NodeVisitor):
     """Collect every reference that can reach a container.
 
@@ -255,22 +262,14 @@ class _VisitorCallSites(ast.NodeVisitor):
         self._listFunctionStack = []
         self._listScopeStack = []
         self._setCalledFunctionNodes = set()
-        self._dictLocalCommandLists = {}
-        self._dictSdkBoundNames = set()
-        self._setDockerClientNames = set()
+        self._dictScopeModel = {}
 
     def fnCollect(self, treeModule):
         """Walk a parsed module, direct calls resolved first."""
         for nodeCall in ast.walk(treeModule):
             if isinstance(nodeCall, ast.Call):
                 self._setCalledFunctionNodes.add(id(nodeCall.func))
-        self._dictLocalCommandLists = _fdictCollectCommandLists(treeModule)
-        self._setDockerClientNames = _fsetCollectDockerClientNames(
-            treeModule,
-        )
-        self._dictSdkBoundNames = _fsetCollectSdkBoundNames(
-            treeModule, self._setDockerClientNames,
-        )
+        self._dictScopeModel = fdictBuildScopeModel(treeModule)
         self.visit(treeModule)
 
     def visit_FunctionDef(self, nodeFunction):
@@ -282,19 +281,30 @@ class _VisitorCallSites(ast.NodeVisitor):
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
-    def _fdictCommandListsInScope(self):
-        """Return the list literals visible at the current position.
+    def _fdictBindingsHere(self):
+        """Return the bindings visible at the current position.
 
-        The enclosing function's locals first, the module's after: a
-        name bound in a function shadows a module-level one, which is
-        what Python does and therefore what the record must say.
+        The scope model has already resolved inheritance and shadowing,
+        so this is a lookup, not a walk up the stack -- which is the
+        point of having one model instead of three collectors that each
+        guessed at scoping in their own way.
         """
-        dictVisible = dict(self._dictLocalCommandLists.get(None, {}))
-        for nodeScope in self._listScopeStack:
-            dictVisible.update(
-                self._dictLocalCommandLists.get(id(nodeScope), {}),
-            )
-        return dictVisible
+        keyScope = (
+            id(self._listScopeStack[-1]) if self._listScopeStack else None
+        )
+        return self._dictScopeModel.get(keyScope, _DICT_EMPTY_BINDINGS)
+
+    @property
+    def _setDockerClientNames(self):
+        return self._fdictBindingsHere()["setClientNames"]
+
+    @property
+    def _dictSdkBoundNames(self):
+        return self._fdictBindingsHere()["setSdkBoundNames"]
+
+    def _fdictCommandListsInScope(self):
+        """Return the list literals visible at the current position."""
+        return self._fdictBindingsHere()["dictCommandLists"]
 
     def visit_Call(self, nodeCall):
         sPrimitive = _fsCalledName(nodeCall)
@@ -511,8 +521,8 @@ def _fsConstantSubscriptKey(nodeSubscript):
     return ""
 
 
-def _fsetCollectSdkBoundNames(treeModule, setDockerClientNames):
-    """Return local names bound to an object fetched from the SDK.
+def _fsetSdkBoundNamesInScope(listOwn, setDockerClientNames):
+    """Return names this scope binds to an object fetched from the SDK.
 
     ``volume = dockerClient.volumes.get(name)`` then
     ``volume.remove(force=True)``: the mutation is a method on the
@@ -521,7 +531,7 @@ def _fsetCollectSdkBoundNames(treeModule, setDockerClientNames):
     actually uses -- ``vaibify destroy`` removes a volume exactly so.
     """
     setBound = set()
-    for nodeAssign in ast.walk(treeModule):
+    for nodeAssign in listOwn:
         if not isinstance(nodeAssign, ast.Assign):
             continue
         if not isinstance(nodeAssign.value, ast.Call):
@@ -591,17 +601,24 @@ _TUPLE_DOCKER_CLIENT_CONSTRUCTORS = (
 _S_DOCKER_CONTEXT_KEY = "docker"
 
 
-def _fsetCollectDockerClientNames(treeModule):
-    """Return local names holding a Docker client, by ORIGIN.
+# Roots that are a Docker client wherever they appear, because they are
+# not lexical bindings at all: the gateway's own attribute, and the
+# context mapping's key.
+_TUPLE_SEED_DOCKER_CLIENT_NAMES = ("_clientDocker", _S_DOCKER_CONTEXT_KEY)
 
-    Two origins, both syntactic and both checkable: an assignment from
-    a known constructor (``docker.from_env()``, ``DockerClient(...)``,
-    ``APIClient(...)``), and the gateway's own ``self._clientDocker``.
+
+def _fsetClientNamesInScope(listOwn):
+    """Return names this scope binds to a Docker client, by ORIGIN.
+
+    The origin is an assignment from a known constructor
+    (``docker.from_env()``, ``DockerClient(...)``, ``APIClient(...)``).
     Anything else is not treated as a client, so an unrelated library's
-    ``client`` never enters the record.
+    ``client`` never enters the record -- and, since this is now per
+    scope, neither does an unrelated function's parameter that merely
+    shares a spelling with some other function's client.
     """
-    setNames = {"_clientDocker", _S_DOCKER_CONTEXT_KEY}
-    for nodeAssign in ast.walk(treeModule):
+    setNames = set()
+    for nodeAssign in listOwn:
         if not isinstance(nodeAssign, ast.Assign):
             continue
         if not isinstance(nodeAssign.value, ast.Call):
@@ -658,22 +675,148 @@ def _fdictCollectCommandLists(treeModule):
     Returns ``{scope key: {name: node}}``, where the scope key is the
     id of the enclosing function node, or ``None`` at module level.
     """
+    return {
+        keyScope: dictBindings["dictCommandLists"]
+        for keyScope, dictBindings in fdictBuildScopeModel(treeModule).items()
+    }
+
+
+# A scope's body belongs to IT, not to its parent. Comprehensions have
+# their own scope in Python 3 and cannot contain assignments that matter
+# here, so they are not listed.
+_T_SCOPE_BOUNDARY_NODES = (
+    ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef,
+)
+
+
+def _tSplitScopeNodes(nodeScope):
+    """Return ``(own nodes, directly nested scopes)`` for one scope.
+
+    ``ast.walk`` cannot express this. Skipping a nested ``FunctionDef``
+    inside a walk loop does NOT prune its subtree -- walk keeps yielding
+    the descendants regardless -- so a collector written that way still
+    reads the nested function's assignments as if they were the
+    parent's. That defect made a real call site vanish from the record
+    entirely: with an outer parameter shadowed by an inner local list,
+    the scan borrowed the inner value, judged the outer command
+    readable, and emitted neither a row nor a blind spot.
+    """
+    listOwn = []
+    listNested = []
+    listPending = list(ast.iter_child_nodes(nodeScope))
+    while listPending:
+        nodeChild = listPending.pop()
+        if isinstance(nodeChild, _T_SCOPE_BOUNDARY_NODES):
+            listNested.append(nodeChild)
+            continue
+        listOwn.append(nodeChild)
+        listPending.extend(ast.iter_child_nodes(nodeChild))
+    return (listOwn, listNested)
+
+
+def fdictBuildScopeModel(treeModule):
+    """Map every scope to the bindings VISIBLE inside it.
+
+    One model, three consumers -- the command lists, the Docker client
+    names, and the SDK-bound object names -- because they were three
+    copies of the same mistake: each collected across the whole module,
+    so any function's local spelling leaked into every other's. That is
+    how ``def unrelated(d)`` came to be recorded as a Docker client
+    because a different function had written ``d = docker.from_env()``,
+    which is exactly the name-based classification the origin rule was
+    written to end.
+
+    Bindings are inherited from enclosing scopes (a closure really does
+    see its parent's locals) EXCEPT through a class body, whose names
+    are not visible in its methods. A name REBOUND in a scope --
+    including as a parameter -- shadows the outer one and resolves to
+    nothing unless this scope also gives it a readable value. Shadowing
+    to nothing is the honest answer: it produces a blind spot, which is
+    declared, rather than a confident wrong reading.
+    """
     dictByScope = {}
-    _fnCollectScopeCommandLists(treeModule, None, dictByScope)
+    dictSeedBindings = {
+        "dictCommandLists": {},
+        "setClientNames": set(_TUPLE_SEED_DOCKER_CLIENT_NAMES),
+        "setSdkBoundNames": set(),
+    }
+    listPending = [(None, treeModule, dictSeedBindings)]
+    while listPending:
+        keyScope, nodeScope, dictInherited = listPending.pop()
+        listOwn, listNested = _tSplitScopeNodes(nodeScope)
+        dictVisible = _fdictBindingsVisibleInScope(
+            nodeScope, listOwn, dictInherited,
+        )
+        dictByScope[keyScope] = dictVisible
+        # A class body's names are invisible to its methods, so its
+        # children inherit what the CLASS inherited, not what it bound.
+        dictForChildren = (
+            dictInherited if isinstance(nodeScope, ast.ClassDef)
+            else dictVisible
+        )
+        for nodeNested in listNested:
+            listPending.append((id(nodeNested), nodeNested, dictForChildren))
     return dictByScope
 
 
-def _fnCollectScopeCommandLists(nodeScope, keyScope, dictByScope):
-    """Record one scope's list assignments, then recurse into its children."""
+def _fdictBindingsVisibleInScope(nodeScope, listOwn, dictInherited):
+    """Return the inherited bindings, shadowed and extended by this scope."""
+    setRebound = _fsetNamesBoundInScope(nodeScope, listOwn)
+    dictCommandLists = {
+        sName: nodeValue
+        for sName, nodeValue in dictInherited["dictCommandLists"].items()
+        if sName not in setRebound
+    }
+    setClientNames = dictInherited["setClientNames"] - setRebound
+    setSdkBoundNames = dictInherited["setSdkBoundNames"] - setRebound
+    dictCommandLists.update(_fdictListLiteralsInScope(listOwn))
+    setClientNames |= _fsetClientNamesInScope(listOwn)
+    setSdkBoundNames |= _fsetSdkBoundNamesInScope(listOwn, setClientNames)
+    return {
+        "dictCommandLists": dictCommandLists,
+        "setClientNames": setClientNames,
+        "setSdkBoundNames": setSdkBoundNames,
+    }
+
+
+def _fsetNamesBoundInScope(nodeScope, listOwn):
+    """Return every name this scope binds, however it binds it.
+
+    Parameters count. A function taking ``listCommand`` as an argument
+    binds it to something the scan cannot see, so an outer or
+    module-level list of the same name must not answer for it.
+    """
+    setBound = set()
+    argumentsScope = getattr(nodeScope, "args", None)
+    if isinstance(argumentsScope, ast.arguments):
+        for nodeArgument in (
+            list(getattr(argumentsScope, "posonlyargs", []))
+            + list(argumentsScope.args)
+            + list(argumentsScope.kwonlyargs)
+            + [argumentsScope.vararg, argumentsScope.kwarg]
+        ):
+            if nodeArgument is not None:
+                setBound.add(nodeArgument.arg)
+    for nodeChild in listOwn:
+        if isinstance(nodeChild, ast.Name) and isinstance(
+            nodeChild.ctx, (ast.Store, ast.Del),
+        ):
+            setBound.add(nodeChild.id)
+        elif isinstance(nodeChild, ast.alias):
+            setBound.add((nodeChild.asname or nodeChild.name).split(".")[0])
+    return setBound
+
+
+def _fdictListLiteralsInScope(listOwn):
+    """Return names this scope assigns a readable list literal, once.
+
+    A name assigned more than once in one scope resolves to nothing:
+    two candidate values is not a resolution, and guessing one would be
+    worse than declaring the site unresolved.
+    """
     dictAssigned = {}
     setReassigned = set()
-    for nodeChild in ast.walk(nodeScope):
-        if isinstance(nodeChild, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if nodeChild is not nodeScope:
-                _fnCollectScopeCommandLists(
-                    nodeChild, id(nodeChild), dictByScope,
-                )
-            continue
+    for nodeChild in listOwn:
         if not isinstance(nodeChild, ast.Assign):
             continue
         if not isinstance(nodeChild.value, (ast.List, ast.Tuple)):
@@ -684,7 +827,7 @@ def _fnCollectScopeCommandLists(nodeScope, keyScope, dictByScope):
             if nodeTarget.id in dictAssigned:
                 setReassigned.add(nodeTarget.id)
             dictAssigned[nodeTarget.id] = nodeChild.value
-    dictByScope[keyScope] = {
+    return {
         sName: nodeValue for sName, nodeValue in dictAssigned.items()
         if sName not in setReassigned
     }

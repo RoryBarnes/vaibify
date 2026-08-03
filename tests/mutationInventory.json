@@ -1,6 +1,6 @@
 {
-  "iRowCount": 293,
-  "iUnresolvedSiteCount": 35,
+  "iRowCount": 289,
+  "iUnresolvedSiteCount": 39,
   "listRows": [
     {
       "bInsideGateway": false,
@@ -784,84 +784,6 @@
     },
     {
       "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-cli",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/containerManager.py",
-      "sFingerprint": "6a5d45b326a64bda",
-      "sFunction": "_fsRunDetachedCommand",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "docker rm",
-      "sReferenceKind": "direct-docker-cli"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-cli",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/containerManager.py",
-      "sFingerprint": "1d46756a7205dced",
-      "sFunction": "_fsRunKillableDockerCommand",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "docker rm",
-      "sReferenceKind": "direct-docker-cli"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-cli",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/containerManager.py",
-      "sFingerprint": "d3fd7136b57fd93b",
-      "sFunction": "_ftRunProbeCommand",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "docker rm",
-      "sReferenceKind": "direct-docker-cli"
-    },
-    {
-      "bInsideGateway": true,
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -1456,32 +1378,6 @@
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "docker image",
-      "sReferenceKind": "direct-docker-cli"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-cli",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/imageBuilder.py",
-      "sFingerprint": "ea1329aa4a7d9289",
-      "sFunction": "_fnRunDockerBuildCapturing",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "docker tag",
       "sReferenceKind": "direct-docker-cli"
     },
     {
@@ -7731,6 +7627,33 @@
       "sScopeFingerprint": "8070d737be64d783"
     },
     {
+      "iLine": 302,
+      "iOrdinal": 0,
+      "sBlindSpotKind": "opaque-subprocess-command",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "6a5d45b326a64bda",
+      "sFunction": "_fsRunDetachedCommand",
+      "sScopeFingerprint": "2fa8a4d5f82d746d"
+    },
+    {
+      "iLine": 148,
+      "iOrdinal": 0,
+      "sBlindSpotKind": "opaque-subprocess-command",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "1d46756a7205dced",
+      "sFunction": "_fsRunKillableDockerCommand",
+      "sScopeFingerprint": "91e620aac14e5a0a"
+    },
+    {
+      "iLine": 215,
+      "iOrdinal": 0,
+      "sBlindSpotKind": "opaque-subprocess-command",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "d3fd7136b57fd93b",
+      "sFunction": "_ftRunProbeCommand",
+      "sScopeFingerprint": "877030e7968f6632"
+    },
+    {
       "iLine": 463,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
@@ -7810,6 +7733,15 @@
       "sFingerprint": "adcbb43cef9e8120",
       "sFunction": "texecRunInContainerStreamedWithChunks",
       "sScopeFingerprint": "f0ad85dd026fbe9a"
+    },
+    {
+      "iLine": 306,
+      "iOrdinal": 0,
+      "sBlindSpotKind": "opaque-subprocess-command",
+      "sFile": "docker/imageBuilder.py",
+      "sFingerprint": "ea1329aa4a7d9289",
+      "sFunction": "_fnRunDockerBuildCapturing",
+      "sScopeFingerprint": "97fe0ab9e29c79da"
     },
     {
       "iLine": 208,

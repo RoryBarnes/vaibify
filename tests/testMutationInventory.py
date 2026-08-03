@@ -48,7 +48,11 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # OUT of the blind spot and INTO the record, which is the direction
 # this file wants. DICT_UNRESOLVED_BUDGET fell from 26 to 23 in the
 # same change; read the two numbers together or this one lies.
-I_UNCLASSIFIED_ROW_BUDGET = 293
+#
+# 293 -> 289 on 2026-08-02: four rows withdrawn as false resolutions
+# when the scanner gained a real lexical-scope model. See
+# DICT_UNRESOLVED_BUDGET, which rose by the same four.
+I_UNCLASSIFIED_ROW_BUDGET = 289
 
 
 def _fmoduleGenerator():
@@ -162,8 +166,18 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # Per-kind, because one number let the two trade against each other: an
 # SDK root could go untraceable while an opaque command was resolved,
 # and the total would say the blind spot had not grown.
+#
+# 23 -> 27 on 2026-08-02, and this is the one shape of increase that is
+# not lost ground: giving the scanner a real lexical-scope model
+# WITHDREW four false resolutions. `_fsRunDetachedCommand(saCommand)`
+# and three siblings take their command as a PARAMETER; the old
+# module-wide collector borrowed some other function's `saCommand` and
+# recorded them as `docker rm` and `docker tag`. One of them runs
+# `docker run`. A site the record described wrongly is worse than one
+# it admits it cannot read, so these four moved into the blind spot and
+# the row count fell 293 -> 289 with them.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 23,
+    "opaque-subprocess-command": 27,
     "untraceable-docker-sdk-root": 12,
 }
 
@@ -229,6 +243,151 @@ def testTheRecordedBlindSpotCannotDriftFromTheSource(moduleGenerator):
         f"{dictDrift['listBlindSpotDrift']}. Regenerate with "
         f"python tools/generateMutationInventory.py --write"
     )
+
+
+@pytest.mark.falsification
+def testANestedFunctionsLocalCannotAnswerForItsParent(moduleGenerator):
+    """A scope's bindings stay inside it, in both directions.
+
+    ``ast.walk`` cannot express a scope: skipping a nested FunctionDef
+    inside a walk loop does NOT prune its subtree, so a collector
+    written that way reads the nested function's assignments as the
+    parent's. The consequence was not a wrong label but a DISAPPEARANCE
+    -- with the parent's command arriving as a parameter and an inner
+    function assigning the same name a readable git list, the scan
+    judged the parent readable, found no Docker subcommand, and emitted
+    neither a row nor a blind spot. The site was in no part of the
+    record at all, which is the one outcome this record exists to make
+    impossible.
+
+    Kills: collecting a scope's bindings with ast.walk instead of
+    pruning at scope boundaries.
+    """
+    sSource = textwrap.dedent(
+        """
+        def outer(listCommand):
+            def inner():
+                listCommand = ["git", "status"]
+            subprocess.run(listCommand)
+        """
+    )
+    visitor = moduleGenerator._VisitorCallSites("probe.py")
+    visitor.fnCollect(ast.parse(sSource))
+    assert [
+        dictSite["sFunction"]
+        for dictSite in visitor.listUnresolvedSubprocessSites
+    ] == ["outer"], (
+        "the parent's opaque command was answered by a nested "
+        "function's local, so the site left the record entirely"
+    )
+
+
+def _fnAssertUntraceableRatherThanClient(moduleGenerator, sSource):
+    """Assert a source emits no row and one declared SDK blind spot."""
+    visitor = moduleGenerator._VisitorCallSites("probe.py")
+    visitor.fnCollect(ast.parse(textwrap.dedent(sSource)))
+    assert visitor.listRows == [], (
+        f"a name that is not a Docker client was recorded as one: "
+        f"{[row['sPrimitive'] for row in visitor.listRows]}"
+    )
+    assert [
+        dictSite["sFunction"] for dictSite in visitor.listUnresolvedSdkSites
+    ] == ["funrelated"], "the untraceable root was dropped, not declared"
+
+
+# The reported shape -- a sibling function's parameter mistaken for a
+# client -- is covered TWICE over, by scope confinement and by
+# shadowing, so no single mutation can kill a test written on it: the
+# surviving guard answers correctly on its own. It is split here into
+# the two shapes that each isolate one guard, because a falsification
+# test that no single defect can break proves only that two guards
+# exist, never that either works.
+@pytest.mark.falsification
+def testASiblingScopesClientNameDoesNotEscapeIt(moduleGenerator):
+    """A client bound in one function is not a client in the next.
+
+    Only CONFINEMENT protects this shape: ``funrelated`` binds nothing
+    named ``d``, so shadowing has no part to play. Collecting client
+    origins across the whole module -- which is what the scan did --
+    reinstates exactly the name-based guess the origin rule was written
+    to end.
+
+    The honest fallback matters as much as the refusal: the call is
+    docker-py-SHAPED with an untraceable root, so it belongs in the
+    declared blind spot rather than in silence.
+
+    Kills: collecting a scope's bindings with ast.walk instead of
+    pruning at scope boundaries.
+    """
+    _fnAssertUntraceableRatherThanClient(
+        moduleGenerator,
+        """
+        def fclientMake():
+            d = docker.from_env()
+
+        def funrelated():
+            d.images.remove("thumbnail")
+        """,
+    )
+
+
+@pytest.mark.falsification
+def testAParameterShadowsAModuleLevelClient(moduleGenerator):
+    """A rebound name is not the outer thing that shares its spelling.
+
+    Only SHADOWING protects this shape: the client really is visible
+    from the enclosing scope, and the parameter is what makes it not
+    apply. Inheriting outer bindings without subtracting what a scope
+    rebinds gets this wrong in the dangerous direction -- it reports a
+    confident classification of an object the scan has never seen.
+
+    Kills: inheriting outer bindings without removing the names a scope
+    rebinds.
+    """
+    _fnAssertUntraceableRatherThanClient(
+        moduleGenerator,
+        """
+        d = docker.from_env()
+
+        def funrelated(d):
+            d.images.remove("thumbnail")
+        """,
+    )
+
+
+def testTheScopeModelStillResolvesWhatItShould(moduleGenerator):
+    """The negative control for the two tests above.
+
+    A scope model that resolved NOTHING would pass both of them while
+    destroying the record's usefulness -- every site would become a
+    blind spot and the boundary would know nothing. These three shapes
+    must still resolve: a module-level constant, a function's own
+    local, and a closure genuinely reading its parent's local.
+    """
+    dictExpected = {
+        "module constant": (
+            "LIST_COMMAND = ['docker', 'rm', 'x']\n"
+            "def frun():\n"
+            "    subprocess.run(LIST_COMMAND)\n"
+        ),
+        "own local": (
+            "def frun():\n"
+            "    listCommand = ['docker', 'rm', 'x']\n"
+            "    subprocess.run(listCommand)\n"
+        ),
+        "closure reads parent local": (
+            "def fouter():\n"
+            "    listCommand = ['docker', 'rm', 'x']\n"
+            "    def finner():\n"
+            "        subprocess.run(listCommand)\n"
+        ),
+    }
+    for sShape, sSource in dictExpected.items():
+        visitor = moduleGenerator._VisitorCallSites("probe.py")
+        visitor.fnCollect(ast.parse(sSource))
+        assert [row["sPrimitive"] for row in visitor.listRows] == [
+            "docker rm"
+        ], f"{sShape} no longer resolves"
 
 
 @pytest.mark.falsification

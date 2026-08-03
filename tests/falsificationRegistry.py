@@ -47,6 +47,82 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testMutationInventory.py::'
+            'testANestedFunctionsLocalCannotAnswerForItsParent'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""    listOwn = []
+    listNested = []
+    listPending = list(ast.iter_child_nodes(nodeScope))
+    while listPending:
+        nodeChild = listPending.pop()
+        if isinstance(nodeChild, _T_SCOPE_BOUNDARY_NODES):
+            listNested.append(nodeChild)
+            continue
+        listOwn.append(nodeChild)
+        listPending.extend(ast.iter_child_nodes(nodeChild))
+    return (listOwn, listNested)""",
+        new="""    listOwn = []
+    listNested = []
+    for nodeChild in ast.walk(nodeScope):
+        if nodeChild is nodeScope:
+            continue
+        if isinstance(nodeChild, _T_SCOPE_BOUNDARY_NODES):
+            listNested.append(nodeChild)
+            continue
+        listOwn.append(nodeChild)
+    return (listOwn, listNested)""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testASiblingScopesClientNameDoesNotEscapeIt'
+        ),
+        source='tools/generateMutationInventory.py',
+        # The same mutation as the test above, and deliberately so: one
+        # defect, two symptoms. Losing scope pruning breaks the command
+        # lists AND the client origins, because both now read the same
+        # model. Two entries record that both are actually observed to
+        # die, rather than assuming the second from the first.
+        old="""    listOwn = []
+    listNested = []
+    listPending = list(ast.iter_child_nodes(nodeScope))
+    while listPending:
+        nodeChild = listPending.pop()
+        if isinstance(nodeChild, _T_SCOPE_BOUNDARY_NODES):
+            listNested.append(nodeChild)
+            continue
+        listOwn.append(nodeChild)
+        listPending.extend(ast.iter_child_nodes(nodeChild))
+    return (listOwn, listNested)""",
+        new="""    listOwn = []
+    listNested = []
+    for nodeChild in ast.walk(nodeScope):
+        if nodeChild is nodeScope:
+            continue
+        if isinstance(nodeChild, _T_SCOPE_BOUNDARY_NODES):
+            listNested.append(nodeChild)
+            continue
+        listOwn.append(nodeChild)
+    return (listOwn, listNested)""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAParameterShadowsAModuleLevelClient'
+        ),
+        source='tools/generateMutationInventory.py',
+        old=(
+            '    setClientNames = dictInherited["setClientNames"] '
+            '- setRebound'
+        ),
+        new='    setClientNames = set(dictInherited["setClientNames"])',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
             'testADuplicatedBlindSpotEntryIsCaught'
         ),
         source='tools/generateMutationInventory.py',
