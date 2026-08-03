@@ -156,18 +156,29 @@ def test_fnPruneDanglingImages_exception(mockRun):
     fnPruneDanglingImages()
 
 
-def test_fnCopyDirectorScript_copies(tmp_path):
-    from vaibify.cli.commandBuild import fnCopyDirectorScript
-    sGuiDir = os.path.join(
-        os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)
-        )),
-        "vaibify", "gui",
+def test_build_context_does_not_stage_director(tmp_path):
+    """director.py is no longer staged into the image, by decision.
+
+    This test used to assert the copy happened. It asserts the opposite
+    now because the behaviour changed deliberately, not because the old
+    assertion was inconvenient: the staged file carried package-relative
+    imports with no siblings beside it, so `python director.py --help`
+    raised ImportError, and the generated agent guide told the agent to
+    run it anyway.
+    """
+    from types import SimpleNamespace
+    from vaibify.cli.commandBuild import fnPrepareBuildContext
+    config = SimpleNamespace(
+        sProjectName="probe",
+        listSystemPackages=[],
+        listPythonPackages=[],
+        sPipInstallFlags="",
+        listBinaries=[],
+        listRepositories=[],
     )
-    sDirectorPath = os.path.join(sGuiDir, "director.py")
-    if os.path.isfile(sDirectorPath):
-        fnCopyDirectorScript(str(tmp_path))
-        assert (tmp_path / "director.py").exists()
+    with patch("vaibify.config.containerConfig.fnGenerateContainerConf"):
+        fnPrepareBuildContext(config, str(tmp_path))
+    assert not (tmp_path / "director.py").exists()
 
 
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")

@@ -145,12 +145,27 @@ class TestArchiveGeneration:
         assert "Step One" in sReadme
 
     def test_fbReadmeContainsReproduction(self):
+        """The archived instruction must name a command that exists.
+
+        This assertion used to require "director.py" -- so a test DID
+        cover the reproduction instruction, and what it guaranteed was
+        that the broken one stayed. `python director.py --config ...`
+        could not run even while the file shipped, and no archive ever
+        contained that file. The oracle froze the defect, which is the
+        failure mode the falsification registry's independent-oracle
+        rule exists to name.
+
+        The expected value here is derived from the CLI, not from the
+        generator: `vaibify reproduce` is a registered click command in
+        vaibify/cli/main.py.
+        """
         dictWorkflow = {
             "sWorkflowName": "Test",
             "listSteps": [],
         }
         sReadme = fsGenerateArchiveReadme(dictWorkflow)
-        assert "director.py" in sReadme
+        assert "vaibify reproduce" in sReadme
+        assert "director.py" not in sReadme
 
     def test_fbChecksumFormat(self, tmp_path):
         sTestFile = tmp_path / "test.txt"

@@ -308,7 +308,6 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWritePythonPackages(config, sDockerDir)
     fnWritePipInstallFlags(config, sDockerDir)
     fnWriteBinariesEnv(config, sDockerDir)
-    fnCopyDirectorScript(sDockerDir)
     fnCopyContainerScripts(sDockerDir)
     fnStageCuratedDocs(sDockerDir)
 
@@ -376,16 +375,17 @@ def fnWriteBinariesEnv(config, sDockerDir):
     _fnWriteFile(sPath, sContent)
 
 
-def fnCopyDirectorScript(sDockerDir):
-    """Copy director.py into the Docker build context."""
-    import shutil
-    import pathlib
-    sSourcePath = str(
-        pathlib.Path(__file__).resolve().parents[1]
-        / "gui" / "director.py"
-    )
-    sDestPath = os.path.join(sDockerDir, "director.py")
-    shutil.copy2(sSourcePath, sDestPath)
+# ``director.py`` used to be staged here and installed into the
+# workspace as a "standalone pipeline executor". It never worked: the
+# file carries package-relative imports and the image staged none of
+# its siblings, so `python director.py --help` died with ImportError
+# before parsing an argument. The generated agent guide advertised the
+# command anyway, so an agent following its own instructions was sent
+# to something that could not start. The supported in-container path is
+# `vaibify-do`. Staging it is gone rather than repaired: making it run
+# would have meant shipping 700+ lines of workflow machinery, and an
+# arbitrary shell-command runner is not something to install inside a
+# container to satisfy a document nobody had executed.
 
 
 # The reproducibility modules that ship into the image. Named here

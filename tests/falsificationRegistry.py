@@ -46,6 +46,40 @@ LIST_FALSIFICATIONS = [
 
     Falsification(
         nodeid=(
+            'tests/testEntrypointAdvertisedPaths.py::'
+            'testTheGuideDoesNotAdvertiseTheWithdrawnDirector'
+        ),
+        source='vaibify/containerImage/entrypoint.sh',
+        old='- `/workspace/.vaibify/logs/` — Pipeline execution logs\n',
+        new=(
+            '- `/workspace/.vaibify/logs/` — Pipeline execution logs\n'
+            '- `/workspace/.vaibify/director.py` — Standalone pipeline '
+            'executor\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointAdvertisedPaths.py::'
+            'testEveryStagedModuleImportsAsAFlatName'
+        ),
+        # levelGates.py really does carry package-relative imports, so
+        # staging it reproduces the director defect exactly: a module
+        # installed at /usr/share/vaibify/ that raises ImportError the
+        # first time anything runs it.
+        source='vaibify/cli/commandBuild.py',
+        old=(
+            '    "overleafSync.py", "latexConnector.py", '
+            '"zenodoClient.py",\n'
+        ),
+        new=(
+            '    "overleafSync.py", "latexConnector.py", '
+            '"zenodoClient.py",\n    "levelGates.py",\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
             'tests/testBindMountValidator.py::'
             'test_configured_daemon_endpoint_in_home_is_rejected'
         ),

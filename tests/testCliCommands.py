@@ -165,10 +165,7 @@ def test_fbConfigExists_false_in_tmpdir():
 
 
 @patch("vaibify.config.containerConfig.fnGenerateContainerConf")
-@patch("vaibify.cli.commandBuild.fnCopyDirectorScript")
-def test_fnPrepareBuildContext_writes_files(
-    mockCopy, mockGenerate
-):
+def test_fnPrepareBuildContext_writes_files(mockGenerate):
     config = SimpleNamespace(
         sProjectName="testproj",
         listSystemPackages=["gcc"],

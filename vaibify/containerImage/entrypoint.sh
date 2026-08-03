@@ -782,11 +782,19 @@ fnPrintSummary() {
 # fnCreateVaibifyDirectory: Create .vaibify structure in workspace
 #
 # Projects live in each repository at <repo>/.vaibify/projects/;
-# /workspace/.vaibify/ holds only container-scoped scratch (logs,
-# director.py). Remove any misplaced /workspace/.vaibify/projects/ (or
-# the legacy /workspace/.vaibify/workflows/) left at the workspace root
-# so dashboard and agent discovery both resolve to the repository
+# /workspace/.vaibify/ holds only container-scoped scratch (logs).
+# Remove any misplaced /workspace/.vaibify/projects/ (or the legacy
+# /workspace/.vaibify/workflows/) left at the workspace root so
+# dashboard and agent discovery both resolve to the repository
 # location.
+#
+# director.py was installed here and advertised to the agent as the
+# "standalone pipeline executor". It could not start -- package-relative
+# imports with no siblings staged -- so every invocation, `--help`
+# included, raised ImportError. A stale copy from an earlier image is
+# swept for the same reason the advertisement is gone: an executable
+# sitting where a document once pointed is worse than an absent one.
+# `vaibify-do` is the supported in-container path.
 # ---------------------------------------------------------------------------
 fnCreateVaibifyDirectory() {
     mkdir -p "${WORKSPACE}/.vaibify/logs"
@@ -795,10 +803,7 @@ fnCreateVaibifyDirectory() {
             rm -rf "${WORKSPACE}/.vaibify/${_sStrayDir}"
         fi
     done
-    if [ -f /usr/share/vaibify/director.py ]; then
-        cp /usr/share/vaibify/director.py "${WORKSPACE}/.vaibify/director.py"
-        chmod +x "${WORKSPACE}/.vaibify/director.py"
-    fi
+    rm -f "${WORKSPACE}/.vaibify/director.py"
 }
 
 # ---------------------------------------------------------------------------
@@ -874,7 +879,6 @@ Both actions are read-only and agent-safe. Use them BEFORE asking the researcher
 - `/workspace/` — All repositories and working files
 - `/workspace/<RepoName>/.vaibify/projects/` — Project JSON files (each repository can have its own)
 - `/workspace/.vaibify/logs/` — Pipeline execution logs
-- `/workspace/.vaibify/director.py` — Standalone pipeline executor
 
 ## Project System
 
@@ -889,7 +893,7 @@ Each vaibified repository has a `.vaibify/projects/` directory with JSON files d
 
 Cross-step filename references inside command strings use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`), where `NN` is the 1-based positional index of the step in `listSteps`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
 
-Run a project: `python /workspace/.vaibify/director.py --config <project.json>`
+Run a step: `vaibify-do run-step A09` (see **Acting on the researcher's behalf** above). There is no in-container pipeline executor to invoke directly — running work through `vaibify-do` is what keeps the researcher's dashboard showing the truth.
 
 ## Vaibified Repository Structure
 

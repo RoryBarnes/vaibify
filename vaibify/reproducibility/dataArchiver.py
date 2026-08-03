@@ -299,15 +299,29 @@ def _flistReadmeHeaderLines(sTitle, sTimestamp):
 
 
 def _flistReadmeFooterLines():
-    """Return the static reproduction-instruction lines for the README."""
+    """Return the static reproduction-instruction lines for the README.
+
+    This text goes into a Zenodo archive, so it is permanent, public,
+    and read by someone who was not here. It used to say ``python
+    director.py --config config/project.json`` -- a command that could
+    not run even when the file was shipped (package-relative imports,
+    no siblings staged) and that names a file no archive contains. A
+    reproduction instruction that fails on the first line is worse for
+    a reproducibility tool than none at all, and it fails in public.
+    """
     return [
         "",
         "## Reproduction",
         "",
-        "Install vaibify and run:",
+        "Install vaibify, then from the project repository:",
         "```",
-        "python director.py --config config/project.json",
+        "vaibify reproduce --rerun",
         "```",
+        "",
+        "This verifies the archive's reproducibility envelope and, with "
+        "`--rerun`, re-runs the workflow and re-hashes its outputs "
+        "against `MANIFEST.sha256`. Omit `--rerun` to verify without "
+        "recomputing.",
     ]
 
 
