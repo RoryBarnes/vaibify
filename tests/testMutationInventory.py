@@ -52,7 +52,30 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 293 -> 289 on 2026-08-02: four rows withdrawn as false resolutions
 # when the scanner gained a real lexical-scope model. See
 # DICT_UNRESOLVED_BUDGET, which rose by the same four.
-I_UNCLASSIFIED_ROW_BUDGET = 289
+#
+# 289 -> 307 on 2026-08-03, and this rise is the redesign working rather
+# than debt arriving. Completeness moved off the command decoder and onto
+# the capability, so the 18 launches whose argv the scan cannot read are
+# now ROWS with an UNKNOWN command instead of blind-spot entries alone.
+# Every one of them was a site the record previously could only count.
+# Read this with DICT_UNRESOLVED_BUDGET, which fell 26 -> 18 in the same
+# change for an unrelated reason, and with
+# I_UNDISPOSED_ACQUISITION_BUDGET, which is the record that is now
+# completeness-critical.
+I_UNCLASSIFIED_ROW_BUDGET = 307
+
+
+# Every acquisition of a declared capability that still has no reviewed
+# disposition. A RATCHET on the same terms as the row budget, and the one
+# that carries completeness: a use site can go unrecorded because nobody
+# could decode it, but an acquisition is an import or an attribute load,
+# which the scan reads exactly.
+#
+# Seeded at 66 on 2026-08-03, the count on the day the record was
+# created: 37 process-launch, 11 Docker-client, 17 reflection, 1
+# Unix-socket. None of them is reviewed yet, and the number says so out
+# loud rather than shipping a record that implies a review nobody did.
+I_UNDISPOSED_ACQUISITION_BUDGET = 66
 
 
 def _fmoduleGenerator():
@@ -76,6 +99,13 @@ def _flistScanSource(moduleGenerator, sSource, sPath="synthetic.py"):
     visitor = moduleGenerator._VisitorCallSites(sPath)
     visitor.fnCollect(ast.parse(textwrap.dedent(sSource)))
     return visitor.listRows
+
+
+def _flistScanAcquisitions(moduleGenerator, sSource, sPath="synthetic.py"):
+    """Run the scanner over a synthetic module and return its acquisitions."""
+    visitor = moduleGenerator._VisitorCallSites(sPath)
+    visitor.fnCollect(ast.parse(textwrap.dedent(sSource)))
+    return visitor.listAcquisitions
 
 
 # ---------------------------------------------------------------------
@@ -183,8 +213,19 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # vaibify/gui/ produced NO inventory row, only a blind-spot entry,
 # because completeness was keyed on decoding the command instead of on
 # the capability. That is the hole plan rule R3 exists to close.
+# 26 -> 18 on 2026-08-03: eight of the recorded sites were never
+# subprocess launches. ``asyncio.run(...)`` and ``uvicorn.run(...)`` were
+# matched because the check read the trailing method name and nothing
+# else, which is the same name-based classification the Docker-client
+# origin rule was written to end, one primitive over. Launch detection is
+# now rooted in a name the scope binds to the subprocess module, so a
+# blind spot that had been over-reported by nearly a third is the size it
+# always was. Note the direction of the error: the record was pessimistic
+# here, which is the safe direction, but eight entries claiming a review
+# was owed on code that could not reach a container is still eight
+# reviews aimed at fiction.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 26,
+    "opaque-subprocess-command": 18,
     "untraceable-docker-sdk-root": 12,
 }
 
@@ -249,6 +290,439 @@ def testTheRecordedBlindSpotCannotDriftFromTheSource(moduleGenerator):
         f"the recorded blind spot disagrees with a fresh scan: "
         f"{dictDrift['listBlindSpotDrift']}. Regenerate with "
         f"python tools/generateMutationInventory.py --write"
+    )
+
+
+# ---------------------------------------------------------------------
+# The capability record: what a module HOLDS, not what it was decoded
+# to run. This is the completeness boundary; everything above it about
+# commands is metadata.
+# ---------------------------------------------------------------------
+
+@pytest.mark.falsification
+def testTheAcquisitionRecordMatchesAFreshScanOfTheSource(moduleGenerator):
+    """No added, removed, duplicated, or edited acquisition.
+
+    An acquisition carries a REVIEWED disposition, so it is subject to
+    the same drift question a row is, for a sharper reason: a
+    disposition bound to an acquisition that moved underneath it is a
+    claim about code nobody re-read.
+
+    The mutation this is confirmed against plants a DYNAMIC acquisition
+    -- a ``getattr`` whose member name is a variable -- in
+    ``pipelineUtils.py``, a leaf module holding no capability of any
+    kind. The choice of module is the point: a mutant planted in a
+    module the record already lists as dangerous would be caught by that
+    module's existing entries while the real hole -- a capability
+    arriving somewhere nobody was watching -- stayed open.
+
+    Kills: acquiring reflection dynamically in a module that carries no
+    prior classification.
+    """
+    dictDrift = moduleGenerator.fdictCompareAgainstSource(
+        moduleGenerator.fdictLoadInventory(),
+        moduleGenerator.flistScanPackage(),
+    )
+    assert dictDrift["listAcquisitionDrift"] == [], (
+        f"the recorded capability acquisitions disagree with a fresh "
+        f"scan: {dictDrift['listAcquisitionDrift']}. Regenerate with "
+        f"python tools/generateMutationInventory.py --write and dispose "
+        f"of anything new."
+    )
+
+
+@pytest.mark.falsification
+def testEveryAcquisitionCarriesADisposition(moduleGenerator):
+    """A capability nobody ruled on is the failure, not the use of one.
+
+    FAIL-CLOSED, and the direction of the lookup is what makes it so.
+    The SCAN is the authority on which acquisitions exist and the record
+    answers for each, so an acquisition the record has never heard of
+    counts as undisposed. A check written the other way round -- walking
+    the recorded entries and asking whether each is disposed -- would
+    say nothing at all about a capability that arrived without one,
+    which is the only case that matters.
+
+    The budget is a ratchet and may only fall. It is at 66 because
+    nothing is reviewed yet; that is a statement about the review, not a
+    licence.
+
+    Kills: acquiring a process-launch capability in a module that has
+    none, without disposing of it.
+    """
+    listUndisposed = moduleGenerator.flistUndisposedAcquisitions(
+        moduleGenerator.fdictLoadInventory(),
+    )
+    assert len(listUndisposed) <= I_UNDISPOSED_ACQUISITION_BUDGET, (
+        f"{len(listUndisposed)} capability acquisitions carry no reviewed "
+        f"disposition, over the budget of "
+        f"{I_UNDISPOSED_ACQUISITION_BUDGET}. A new one must be disposed "
+        f"of as it lands: {listUndisposed[:8]}"
+    )
+    if len(listUndisposed) < I_UNDISPOSED_ACQUISITION_BUDGET:
+        pytest.fail(
+            f"{len(listUndisposed)} acquisitions are now disposed of, "
+            f"which is progress -- lower "
+            f"I_UNDISPOSED_ACQUISITION_BUDGET to "
+            f"{len(listUndisposed)} so the ratchet holds the gain."
+        )
+
+
+def testEveryAcquisitionCarriesItsOwnIdentity(moduleGenerator):
+    """Two acquisitions in one scope are distinguishable.
+
+    A disposition is written against one acquisition. Without a unique
+    key and a fingerprint the record could only say how many
+    capabilities a module holds, never which, and a reviewer's ruling
+    would have nothing to attach to.
+    """
+    listAcquisitions = moduleGenerator.flistAcquisitions()
+    listKeys = [
+        moduleGenerator.fsAcquisitionKey(dictAcquisition)
+        for dictAcquisition in listAcquisitions
+    ]
+    assert len(set(listKeys)) == len(listKeys), (
+        f"two acquisitions share an identity: "
+        f"{[sKey for sKey in listKeys if listKeys.count(sKey) > 1]}"
+    )
+    for dictAcquisition in listAcquisitions:
+        assert len(dictAcquisition["sFingerprint"]) == 16, (
+            f"{moduleGenerator.fsAcquisitionKey(dictAcquisition)} has no "
+            f"usable fingerprint"
+        )
+
+
+@pytest.mark.falsification
+def testAnImportedProcessCapabilityIsRecordedWhateverIsDoneWithIt(
+    moduleGenerator,
+):
+    """The three shapes that used to make a use site VANISH.
+
+    A lambda parameter, a comprehension target, and a name reassigned
+    twice each defeat the scan's ability to say what a later call runs.
+    Under a design whose completeness came from decoding that call, each
+    one deleted the site from the record. Under this one the import is
+    the record, and no amount of cleverness downstream can remove it --
+    which is the entire point of moving the boundary onto the capability.
+
+    Kills: recording an acquisition only when the module's use of it can
+    be decoded.
+    """
+    for sShape, sSource in {
+        "lambda parameter shadows the module": (
+            "import subprocess\n"
+            "fnHide = lambda subprocess: subprocess.run(saCommand)\n"
+        ),
+        "comprehension target shadows the module": (
+            "import subprocess\n"
+            "def fnGo(listRunners, saCommand):\n"
+            "    return [subprocess for subprocess in listRunners]\n"
+        ),
+        "the argv is assigned twice": (
+            "import subprocess\n"
+            "def fnGo(bFlag):\n"
+            "    saCommand = ['docker', 'rm', 'a']\n"
+            "    if bFlag:\n"
+            "        saCommand = ['git', 'status']\n"
+            "    subprocess.run(saCommand)\n"
+        ),
+    }.items():
+        listAcquisitions = _flistScanAcquisitions(moduleGenerator, sSource)
+        assert [
+            dictAcquisition["sCapability"]
+            for dictAcquisition in listAcquisitions
+        ] == [moduleGenerator.S_CAPABILITY_PROCESS_LAUNCH], (
+            f"{sShape}: the module's process capability left the record"
+        )
+
+
+@pytest.mark.falsification
+def testAnAcquisitionInsideAClassOrANestedFunctionIsRecorded(
+    moduleGenerator,
+):
+    """An import is not always at the top of a file.
+
+    Collecting acquisitions from module-level statements is the natural
+    way to write this and is wrong twice over: this package imports
+    ``docker`` inside a function five times, to keep the SDK off the
+    import path, and imports ``subprocess`` inside methods. Both would
+    be invisible.
+
+    Kills: collecting acquisitions only from module-level statements.
+    """
+    listAcquisitions = _flistScanAcquisitions(moduleGenerator, """
+        class Runner:
+            def fnGo(self):
+                import subprocess
+                return subprocess
+
+        def fouter():
+            def finner():
+                import docker
+                return docker.from_env()
+            return finner
+    """)
+    assert sorted(
+        (dictAcquisition["sScope"], dictAcquisition["sCapability"])
+        for dictAcquisition in listAcquisitions
+    ) == [
+        ("finner", moduleGenerator.S_CAPABILITY_DOCKER_CLIENT),
+        ("fnGo", moduleGenerator.S_CAPABILITY_PROCESS_LAUNCH),
+    ], (
+        f"a nested acquisition was lost or misplaced: "
+        f"{[(a['sScope'], a['sCapability']) for a in listAcquisitions]}"
+    )
+
+
+@pytest.mark.falsification
+def testReflectionThroughSysModulesIsAnAcquisition(moduleGenerator):
+    """``sys.modules["subprocess"].run(...)`` imports nothing.
+
+    A vocabulary listing ``importlib`` and ``__import__`` and stopping
+    there leaves this outside the record entirely: no import statement
+    appears, and the module object arrives through a mapping the scan is
+    not looking at. Reflection is acquisition, and the module-table
+    lookup is reflection.
+
+    Kills: dropping sys.modules from the dangerous vocabulary.
+    """
+    listAcquisitions = _flistScanAcquisitions(moduleGenerator, """
+        def fnGo(saCommand):
+            return sys.modules["subprocess"].run(saCommand)
+    """)
+    assert [
+        dictAcquisition["sCapability"]
+        for dictAcquisition in listAcquisitions
+    ] == [moduleGenerator.S_CAPABILITY_REFLECTION], (
+        "a module fetched from sys.modules left no acquisition"
+    )
+
+
+@pytest.mark.falsification
+def testEvalAndExecAreAcquisitions(moduleGenerator):
+    """Process authority obtained from a string is still obtained.
+
+    Nothing can read inside the string, and nothing needs to: the
+    capability to evaluate one is the capability, and it is what carries
+    the disposition.
+
+    Kills: dropping eval and exec from the dangerous vocabulary.
+    """
+    listAcquisitions = _flistScanAcquisitions(moduleGenerator, """
+        def fnGo(sCommand):
+            fnLaunch = eval("__import__('subprocess').Popen")
+            exec("import subprocess")
+            return fnLaunch(sCommand)
+    """)
+    assert [
+        dictAcquisition["sCapabilityName"]
+        for dictAcquisition in listAcquisitions
+    ] == ["eval", "exec"], (
+        f"an eval-obtained handle left no acquisition: "
+        f"{[a['sCapabilityName'] for a in listAcquisitions]}"
+    )
+
+
+@pytest.mark.falsification
+def testADynamicAttributeLookupIsAnAcquisition(moduleGenerator):
+    """``getattr(module, sName)`` reaches whatever the caller asks for.
+
+    Narrowed to a NON-LITERAL attribute name, which is the whole
+    distinction: ``getattr(objThing, "sName", None)`` reaches a member
+    the reader can see, and recording it would bury the reflection this
+    is for under several hundred ordinary lookups.
+
+    Kills: dropping dynamic getattr from the dangerous vocabulary.
+    """
+    listAcquisitions = _flistScanAcquisitions(moduleGenerator, """
+        def fnGo(module, sName, objThing):
+            objLiteral = getattr(objThing, "sAttribute", None)
+            return (objLiteral, getattr(module, sName))
+    """)
+    assert [
+        dictAcquisition["sCapabilityName"]
+        for dictAcquisition in listAcquisitions
+    ] == ["getattr(dynamic)"], (
+        f"a dynamic attribute lookup was lost, or a literal one swept "
+        f"in: {[a['sCapabilityName'] for a in listAcquisitions]}"
+    )
+
+
+@pytest.mark.falsification
+def testAMemberOfAnOrdinaryModuleIsAcquiredWhenItIsNamed(moduleGenerator):
+    """``import os`` is not acquisition; ``os.system`` is.
+
+    The narrowing that keeps acquisition useful. 33 modules in this
+    package import ``os`` and 28 import ``asyncio``, so a module-level
+    reading of either would classify most of the package as dangerous
+    and tell a reviewer nothing. The member is the capability.
+
+    Kills: recording the import of an ordinary module instead of the
+    naming of its dangerous member.
+    """
+    assert _flistScanAcquisitions(moduleGenerator, """
+        import os
+        import asyncio
+
+        def fnGo(sPath):
+            return os.path.join(sPath, "output")
+    """) == [], "importing os was read as acquiring a process capability"
+    listAcquisitions = _flistScanAcquisitions(moduleGenerator, """
+        import os
+        import asyncio
+
+        async def fnGo(sCommand, saCommand):
+            os.system(sCommand)
+            os.execv(saCommand[0], saCommand)
+            await asyncio.create_subprocess_exec(*saCommand)
+    """)
+    assert [
+        dictAcquisition["sCapabilityName"]
+        for dictAcquisition in listAcquisitions
+    ] == [
+        "os.system", "os.execv", "asyncio.create_subprocess_exec",
+    ], (
+        f"a dangerous member of an ordinary module was not acquired: "
+        f"{[a['sCapabilityName'] for a in listAcquisitions]}"
+    )
+
+
+@pytest.mark.falsification
+def testAFromImportOfALauncherIsAcquiredAndItsAliasResolves(
+    moduleGenerator,
+):
+    """``from subprocess import run as X`` then ``X([...])``.
+
+    Two claims about the same shape, and they belong together because
+    the second is what the first is FOR: the capability is acquired at
+    the import, and the use site is still decoded through the alias so
+    the metadata does not degrade just because the caller renamed
+    something.
+
+    Kills: reading a from-import of a launcher as neither an acquisition
+    nor a binding.
+    """
+    sSource = """
+        from subprocess import run as fnLaunch
+
+        def fnRemoveIt(sContainerName):
+            fnLaunch(["docker", "rm", sContainerName])
+    """
+    assert [
+        dictAcquisition["sCapability"]
+        for dictAcquisition in _flistScanAcquisitions(
+            moduleGenerator, sSource,
+        )
+    ] == [moduleGenerator.S_CAPABILITY_PROCESS_LAUNCH], (
+        "a launcher imported under another name was not acquired"
+    )
+    assert [
+        dictRow["sPrimitive"]
+        for dictRow in _flistScanSource(moduleGenerator, sSource)
+    ] == ["docker rm"], "the aliased launcher's command was not decoded"
+
+
+@pytest.mark.falsification
+def testALauncherBoundToALocalNameStillResolves(moduleGenerator):
+    """``fnLaunch = subprocess.run`` then ``fnLaunch([...])``.
+
+    The assignment form of the shape above, and a separate guard: the
+    from-import populates the launcher names from an ``ImportFrom``
+    node, this one from an ``Assign``. One mutation cannot break both,
+    so they are two tests.
+
+    Kills: reading an assignment from a subprocess launcher as an
+    ordinary local.
+    """
+    assert [
+        dictRow["sPrimitive"]
+        for dictRow in _flistScanSource(moduleGenerator, """
+            import subprocess
+
+            def fnRemoveIt(sContainerName):
+                fnLaunch = subprocess.run
+                fnLaunch(["docker", "rm", sContainerName])
+        """)
+    ] == ["docker rm"], "a launcher bound to a local name was not followed"
+
+
+@pytest.mark.falsification
+def testAnUnrelatedRunMethodIsNotAProcessLaunch(moduleGenerator):
+    """``runner.run(...)`` is not ``subprocess.run(...)``.
+
+    Matching the trailing method name alone put eight sites in the
+    recorded blind spot that were never process launches -- every
+    ``asyncio.run`` and ``uvicorn.run`` in the package. A record whose
+    entries are nearly a third fiction spends real review effort on code
+    that cannot reach a container, which is how a boundary loses the
+    attention it needs for the sites that can.
+
+    Kills: matching a launcher by its method name without checking that
+    the chain is rooted in the subprocess module.
+    """
+    visitor = moduleGenerator._VisitorCallSites("probe.py")
+    visitor.fnCollect(ast.parse(textwrap.dedent("""
+        def fnGo(runner, coroutine, saCommand):
+            runner.run(saCommand)
+            asyncio.run(coroutine)
+    """)))
+    assert visitor.listRows == [], (
+        f"an unrelated run() was recorded as a process launch: "
+        f"{[dictRow['sPrimitive'] for dictRow in visitor.listRows]}"
+    )
+    assert visitor.listUnresolvedSubprocessSites == [], (
+        "an unrelated run() was declared as an unreadable command"
+    )
+
+
+@pytest.mark.falsification
+def testAnUnrelatedFromEnvIsNotADockerClient(moduleGenerator):
+    """``boto3.from_env()`` spells a constructor this scan knows.
+
+    The Docker-client origin rule checked the constructor's NAME and not
+    the root it hung off, so any library offering a ``from_env`` handed
+    the record a client. The root is what makes it Docker.
+
+    Kills: accepting a client constructor without checking that its
+    chain is rooted in the Docker SDK package.
+    """
+    assert _flistScanSource(moduleGenerator, """
+        def fnGo(sBucket):
+            clientStorage = boto3.from_env()
+            clientStorage.images.remove(sBucket)
+    """) == [], "an unrelated library's client entered the Docker record"
+
+
+@pytest.mark.falsification
+def testAChainedDockerConstructorIsStillTheDockerSdk(moduleGenerator):
+    """``sdkDocker.APIClient(...).containers.remove(...)`` binds no name.
+
+    The client is never assigned, so an origin rule that only reads
+    assignments sees no client and drops the call. The low-level
+    ``APIClient`` is the one that most needs recording: it reaches the
+    daemon's HTTP API directly.
+
+    THE ALIAS IS LOAD-BEARING, and finding out why is the reason this
+    test reads the way it does. Written with the plain spelling
+    ``docker.APIClient()...``, it survived every single mutation: the
+    name ``docker`` is ALSO the route context's mapping key, seeded as a
+    client name for an unrelated reason, so the chain resolved twice
+    over and the test proved only that two guards existed. Importing
+    under another name removes the seed from the question and leaves the
+    constructor path alone to answer.
+
+    Kills: resolving a Docker client only through an assignment.
+    """
+    assert [
+        dictRow["sPrimitive"]
+        for dictRow in _flistScanSource(moduleGenerator, """
+            import docker as sdkDocker
+
+            def fnRemoveIt(sContainerName):
+                sdkDocker.APIClient().containers.remove(sContainerName)
+        """)
+    ] == ["sdk containers.remove"], (
+        "a chained Docker constructor left no row"
     )
 
 
@@ -607,24 +1081,58 @@ def testADockerCommandBoundToALocalNameIsStillSeen(moduleGenerator):
     assert listRows[0]["bMutationCapable"] is True
 
 
-def testAnUnreadableCommandIsDeclaredRatherThanDropped(moduleGenerator):
-    """A command the scan cannot follow is counted, not ignored."""
+@pytest.mark.falsification
+def testAnUnreadableCommandIsARowAndNotOnlyABlindSpot(moduleGenerator):
+    """A command the scan cannot follow is a ROW, not only a count.
+
+    This assertion used to be ``visitor.listRows == []``: an opaque
+    launch produced a blind-spot entry and nothing else. The shipped
+    demonstration that it was wrong is ``gui/director.py``, withdrawn in
+    6e55cbf -- its ``fnExecuteCommand`` ran ``subprocess.Popen(sCommand,
+    shell=True)`` over an arbitrary string, the most permissive command
+    authority anywhere under ``vaibify/gui/``, and produced ZERO
+    inventory rows. Completeness was keyed on DECODING the command, so
+    the sites nobody could decode were the ones that vanished.
+
+    The blind-spot entry stays as well, because the two say different
+    things: the row says the capability is exercised here, the blind spot
+    says the scan could not read what it ran.
+
+    Kills: recording an opaque launch as a blind spot without also
+    emitting a row.
+    """
     visitor = moduleGenerator._VisitorCallSites("synthetic.py")
     visitor.fnCollect(ast.parse(textwrap.dedent("""
-        def fnRunWhatever(saCommandFromElsewhere):
-            subprocess.run(saCommandFromElsewhere, capture_output=True)
+        def fnExecuteCommand(sCommand, sWorkingDirectory):
+            return subprocess.Popen(
+                sCommand, shell=True, cwd=sWorkingDirectory,
+            )
     """)))
-    assert visitor.listRows == []
+    assert [dictRow["sPrimitive"] for dictRow in visitor.listRows] == [
+        moduleGenerator.S_PRIMITIVE_UNKNOWN_COMMAND
+    ], (
+        "the most permissive command authority in the package produced "
+        "no inventory row"
+    )
+    assert visitor.listRows[0]["bMutationCapable"] is True, (
+        "an undecodable command must count as mutation-capable"
+    )
     assert len(visitor.listUnresolvedSubprocessSites) == 1, (
         "an opaque subprocess launch was silently dropped"
     )
     assert visitor.listUnresolvedSubprocessSites[0]["sFunction"] == (
-        "fnRunWhatever"
+        "fnExecuteCommand"
     )
 
 
 def testANameAssignedTwiceIsNotGuessedAt(moduleGenerator):
-    """Two candidate values is not a resolution."""
+    """Two candidate values is not a resolution -- but it is still a row.
+
+    The refusal to guess is unchanged; what changed is what the refusal
+    costs. The site is now recorded with an UNKNOWN command rather than
+    left to the blind-spot count alone, so declining to decode no longer
+    removes a capability use from the record.
+    """
     visitor = moduleGenerator._VisitorCallSites("synthetic.py")
     visitor.fnCollect(ast.parse(textwrap.dedent("""
         def fnAmbiguous(bFlag):
@@ -633,9 +1141,9 @@ def testANameAssignedTwiceIsNotGuessedAt(moduleGenerator):
                 saCommand = ["git", "status"]
             subprocess.run(saCommand)
     """)))
-    assert visitor.listRows == [], (
-        "the scan guessed which of two assignments was live"
-    )
+    assert [dictRow["sPrimitive"] for dictRow in visitor.listRows] == [
+        moduleGenerator.S_PRIMITIVE_UNKNOWN_COMMAND
+    ], "the scan guessed which of two assignments was live"
     assert len(visitor.listUnresolvedSubprocessSites) == 1
 
 

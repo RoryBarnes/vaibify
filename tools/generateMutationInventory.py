@@ -21,6 +21,38 @@ listed too, and marked as reads. A boundary that only enumerates what it
 already believes to be dangerous cannot discover that it was wrong about
 one.
 
+COMPLETENESS RESTS ON THE CAPABILITY, NOT ON DECODING A COMMAND. Four
+earlier versions each taught this scanner one more piece of Python's
+name resolution, and each round a review found another shape that
+vanished from the record. That is not bad luck: it is what happens when
+completeness depends on decoding an expression somebody else writes. The
+demonstration on shipped code is ``gui/director.py``, withdrawn in
+6e55cbf. Its ``fnExecuteCommand`` ran ``subprocess.Popen(sCommand,
+shell=True)`` over an arbitrary string -- the most permissive command
+authority anywhere under ``vaibify/gui/`` -- and produced ZERO inventory
+rows, appearing only as one blind-spot entry.
+
+So there are three records, and they carry different weight:
+
+* **Acquisitions** -- an import or an attribute-acquisition of a member
+  in the closed DANGEROUS vocabulary below. A module is process-capable
+  or Docker-capable by ORIGIN, whatever it later does with the capability
+  and whether or not the scan can read it. This record is
+  completeness-critical and fails closed: every acquisition needs a
+  reviewed disposition.
+* **Use sites** (``listRows``) -- decoded calls and commands. Best-effort
+  metadata. A launch whose argv the scan cannot read is still a row, with
+  the command marked UNKNOWN and treated as mutation-capable, because
+  unknown means mutating.
+* **Dispositions** -- the reviewer's judgement on an acquisition. Human,
+  recorded against a fingerprint, and honest about being a judgement.
+
+THE SCANNER NEVER DECIDES REACHABILITY. It inventories acquisitions
+across the whole package and requires a disposition for each. Whether an
+authority is CLI-only, unreachable, or separately authorized is
+established by an independently reviewed disposition, never by a
+scanner's verdict -- a verdict would pretend to be a proof.
+
 Usage::
 
     python tools/generateMutationInventory.py            # print JSON
@@ -78,6 +110,16 @@ S_REFERENCE_DIRECT_CALL = "direct-call"
 S_REFERENCE_PASSED_CALLABLE = "passed-callable"
 S_REFERENCE_DIRECT_DOCKER_CLI = "direct-docker-cli"
 S_REFERENCE_DIRECT_DOCKER_SDK = "direct-docker-sdk"
+
+# A launch whose argv the scan cannot read. It is a ROW, not merely a
+# declared blind spot: the capability is exercised here whatever the
+# command turns out to be, and R4 says unknown counts as
+# mutation-capable. The withdrawn director's `subprocess.Popen(sCommand,
+# shell=True)` is the shape this exists for -- under the previous design
+# it produced no row at all.
+S_ACCESS_UNKNOWN_COMMAND = "unknown-command"
+S_REFERENCE_UNKNOWN_COMMAND = "unknown-command"
+S_PRIMITIVE_UNKNOWN_COMMAND = "process UNKNOWN"
 
 # The two kinds of site the scan cannot resolve. They are declared
 # separately because they are answered differently: an opaque command
@@ -163,7 +205,92 @@ SET_MUTATION_CAPABLE_ACCESS = frozenset({
     S_ACCESS_SIGNAL,
     S_ACCESS_LIFECYCLE,
     S_ACCESS_DIRECT_DOCKER_SDK,
+    S_ACCESS_UNKNOWN_COMMAND,
 })
+
+
+# ---------------------------------------------------------------------
+# The closed DANGEROUS vocabulary, and how a capability is acquired.
+# ---------------------------------------------------------------------
+#
+# Kept NARROW so that acquisition stays sound. Importing ``os`` is not
+# an acquisition and ``from os import system`` is: 33 modules in this
+# package import ``os`` and 28 import ``asyncio``, so a module-level
+# reading of either would classify most of the package as dangerous and
+# tell a reviewer nothing.
+
+S_CAPABILITY_PROCESS_LAUNCH = "process-launch"
+S_CAPABILITY_DOCKER_CLIENT = "docker-client"
+S_CAPABILITY_REFLECTION = "reflection"
+S_CAPABILITY_UNIX_SOCKET = "unix-socket"
+
+# Modules whose IMPORT is the acquisition, because every reason to import
+# one is the capability itself. ``import docker.errors`` counts even
+# though the member is an exception class: the statement binds the name
+# ``docker``, so ``docker.from_env()`` works immediately afterwards.
+DICT_CAPABILITY_MODULES = {
+    "subprocess": S_CAPABILITY_PROCESS_LAUNCH,
+    "multiprocessing": S_CAPABILITY_PROCESS_LAUNCH,
+    "pty": S_CAPABILITY_PROCESS_LAUNCH,
+    "docker": S_CAPABILITY_DOCKER_CLIENT,
+    "importlib": S_CAPABILITY_REFLECTION,
+}
+
+# Members of ORDINARY modules that are a capability on their own. The
+# import of the module is not the acquisition; naming the member is.
+DICT_CAPABILITY_MEMBERS = {
+    ("asyncio", "create_subprocess_exec"): S_CAPABILITY_PROCESS_LAUNCH,
+    ("asyncio", "create_subprocess_shell"): S_CAPABILITY_PROCESS_LAUNCH,
+    ("concurrent.futures", "ProcessPoolExecutor"): (
+        S_CAPABILITY_PROCESS_LAUNCH
+    ),
+    ("sys", "modules"): S_CAPABILITY_REFLECTION,
+    ("builtins", "__import__"): S_CAPABILITY_REFLECTION,
+    ("socket", "AF_UNIX"): S_CAPABILITY_UNIX_SOCKET,
+}
+
+# ``os``'s process-creating surface. A PREFIX rule rather than a list of
+# spellings, and the difference matters: enumerating spellings loses to
+# whatever the next one is, but ``os`` is the standard library's own
+# closed namespace, where every ``exec*`` and every ``spawn*`` replaces
+# or forks the process and nothing else begins with either word.
+SET_OS_PROCESS_MEMBERS = frozenset({
+    "system", "popen", "fork", "forkpty", "posix_spawn", "posix_spawnp",
+})
+TUPLE_OS_PROCESS_MEMBER_PREFIXES = ("exec", "spawn")
+
+# Reflection obtained without importing anything. Listing only
+# ``importlib`` / ``__import__`` / ``getattr`` would leave
+# ``sys.modules["subprocess"].run(...)`` and an ``eval``-obtained handle
+# outside the record entirely.
+SET_REFLECTION_BUILTINS = frozenset({"eval", "exec", "__import__"})
+S_REFLECTION_DYNAMIC_ATTRIBUTE = "getattr"
+
+# The subprocess module's launchers. Only meaningful once the call is
+# ROOTED in a name bound to the subprocess module, or in a name bound
+# directly to one of these -- matching on the bare spelling recorded
+# ``asyncio.run`` and ``uvicorn.run`` as subprocess launches, which put
+# eight sites in the blind spot that were never process launches at all.
+SET_SUBPROCESS_LAUNCHERS = frozenset({
+    "run", "Popen", "call", "check_call", "check_output",
+})
+
+S_ACQUISITION_IMPORT = "import"
+S_ACQUISITION_IMPORT_FROM = "import-from"
+S_ACQUISITION_ATTRIBUTE = "attribute"
+S_ACQUISITION_REFLECTION_CALL = "reflection-call"
+
+# The reviewer's judgement on one acquisition. ``guarded`` is the default
+# reading of a raw effect -- it says the capability is expected to be
+# exercised behind the mutation boundary. ``forbidden`` says this module
+# may not hold it at all. ``separate-authority`` says it is outside the
+# carrier's scope and owes a rationale.
+SET_ACQUISITION_DISPOSITIONS = frozenset({
+    "guarded", "forbidden", "separate-authority",
+})
+TUPLE_ACQUISITION_REVIEWER_FIELDS = (
+    "sDisposition", "sDispositionRationale",
+)
 
 # The modules that DEFINE the primitives. Their own definitions and
 # internal helpers are the boundary itself, not callers of it.
@@ -236,6 +363,9 @@ _DICT_EMPTY_BINDINGS = {
     "dictCommandLists": {},
     "setClientNames": frozenset(),
     "setSdkBoundNames": frozenset(),
+    "setProcessModuleNames": frozenset(),
+    "setLauncherNames": frozenset(),
+    "setDockerModuleNames": frozenset(),
 }
 
 
@@ -257,6 +387,7 @@ class _VisitorCallSites(ast.NodeVisitor):
     def __init__(self, sRelativePath):
         self.sRelativePath = sRelativePath
         self.listRows = []
+        self.listAcquisitions = []
         self.listUnresolvedSubprocessSites = []
         self.listUnresolvedSdkSites = []
         self._listFunctionStack = []
@@ -280,6 +411,11 @@ class _VisitorCallSites(ast.NodeVisitor):
         self._listFunctionStack.pop()
 
     visit_AsyncFunctionDef = visit_FunctionDef
+    # A class body is a scope in the model, so the visitor has to enter
+    # it as one too. Without this the bindings consulted inside a class
+    # body were the enclosing function's, which is not what Python does
+    # and is not what the model says.
+    visit_ClassDef = visit_FunctionDef
 
     def _fdictBindingsHere(self):
         """Return the bindings visible at the current position.
@@ -306,7 +442,31 @@ class _VisitorCallSites(ast.NodeVisitor):
         """Return the list literals visible at the current position."""
         return self._fdictBindingsHere()["dictCommandLists"]
 
+    def _fbIsProcessLaunchCall(self, nodeCall):
+        """Return True for a call that launches a process, by ORIGIN.
+
+        Rooted in a name this scope binds to the subprocess module, or in
+        a name bound directly to one of its launchers -- never in the
+        spelling of the method. Matching ``run`` wherever it appeared put
+        eight ``asyncio.run`` and ``uvicorn.run`` calls into the recorded
+        blind spot, which is the same name-based classification the
+        Docker-client origin rule was written to end, one primitive over.
+        """
+        dictBindings = self._fdictBindingsHere()
+        nodeFunction = nodeCall.func
+        if isinstance(nodeFunction, ast.Name):
+            return nodeFunction.id in dictBindings["setLauncherNames"]
+        if not isinstance(nodeFunction, ast.Attribute):
+            return False
+        if nodeFunction.attr not in SET_SUBPROCESS_LAUNCHERS:
+            return False
+        listChain = _flistAttributeChain(nodeFunction)
+        return bool(listChain) and listChain[0] in (
+            dictBindings["setProcessModuleNames"]
+        )
+
     def visit_Call(self, nodeCall):
+        self._fnRecordReflectionCall(nodeCall)
         sPrimitive = _fsCalledName(nodeCall)
         if sPrimitive in DICT_PRIMITIVE_ACCESS:
             self.listRows.append(self._fdictBuildRow(
@@ -319,9 +479,109 @@ class _VisitorCallSites(ast.NodeVisitor):
             self._fnRecordDirectDockerSdkCall(nodeCall)
         self.generic_visit(nodeCall)
 
+    def visit_Import(self, nodeImport):
+        """Record an import that acquires a whole-module capability."""
+        for nodeAlias in nodeImport.names:
+            sCapability = DICT_CAPABILITY_MODULES.get(
+                nodeAlias.name.split(".")[0],
+            )
+            if sCapability is not None:
+                self._fnRecordAcquisition(
+                    nodeImport, nodeAlias.name.split(".")[0], sCapability,
+                    S_ACQUISITION_IMPORT,
+                )
+        self.generic_visit(nodeImport)
+
+    def visit_ImportFrom(self, nodeImport):
+        """Record a from-import that acquires a declared capability.
+
+        A RELATIVE import can never be one. ``from ..docker.dockerContext
+        import ...`` reaches this package's own ``docker`` subpackage, not
+        the Docker SDK, and reading the two as the same thing would put
+        five vaibify modules in the record for importing themselves.
+        """
+        if nodeImport.level:
+            self.generic_visit(nodeImport)
+            return
+        sModule = nodeImport.module or ""
+        sModuleCapability = DICT_CAPABILITY_MODULES.get(sModule.split(".")[0])
+        for nodeAlias in nodeImport.names:
+            sCapability = sModuleCapability or _fsCapabilityForMember(
+                sModule, nodeAlias.name,
+            )
+            if sCapability is not None:
+                self._fnRecordAcquisition(
+                    nodeImport, f"{sModule}.{nodeAlias.name}", sCapability,
+                    S_ACQUISITION_IMPORT_FROM,
+                )
+        self.generic_visit(nodeImport)
+
     def visit_Attribute(self, nodeAttribute):
         self._fnRecordPassedCallable(nodeAttribute, nodeAttribute.attr)
+        self._fnRecordMemberAcquisition(nodeAttribute)
         self.generic_visit(nodeAttribute)
+
+    def _fnRecordMemberAcquisition(self, nodeAttribute):
+        """Record an attribute load that names a dangerous member."""
+        sModule, sMember = _ftSplitAttributeIntoModuleAndMember(nodeAttribute)
+        sCapability = _fsCapabilityForMember(sModule, sMember)
+        if sCapability is not None:
+            self._fnRecordAcquisition(
+                nodeAttribute, f"{sModule}.{sMember}", sCapability,
+                S_ACQUISITION_ATTRIBUTE,
+            )
+
+    def _fnRecordReflectionCall(self, nodeCall):
+        """Record ``eval``, ``exec``, ``__import__``, or a dynamic getattr.
+
+        A dynamic ``getattr`` is one whose attribute name is not a
+        literal. ``getattr(objThing, "sName", None)`` reaches a member the
+        reader can see; ``getattr(module, sName)`` reaches whichever
+        member the caller asks for, which is reflection.
+        """
+        if not isinstance(nodeCall.func, ast.Name):
+            return
+        sCalled = nodeCall.func.id
+        if sCalled in SET_REFLECTION_BUILTINS:
+            self._fnRecordAcquisition(
+                nodeCall, sCalled, S_CAPABILITY_REFLECTION,
+                S_ACQUISITION_REFLECTION_CALL,
+            )
+        elif sCalled == S_REFLECTION_DYNAMIC_ATTRIBUTE and _fbIsDynamicLookup(
+            nodeCall,
+        ):
+            self._fnRecordAcquisition(
+                nodeCall, "getattr(dynamic)", S_CAPABILITY_REFLECTION,
+                S_ACQUISITION_REFLECTION_CALL,
+            )
+
+    def _fnRecordAcquisition(
+        self, nodeAcquisition, sCapabilityName, sCapability, sAcquisitionKind,
+    ):
+        """Append one acquisition, identified and awaiting a disposition."""
+        nodeScope = (
+            self._listScopeStack[-1] if self._listScopeStack else None
+        )
+        dictAcquisition = {
+            "sFile": self.sRelativePath,
+            "sScope": (
+                self._listFunctionStack[-1]
+                if self._listFunctionStack else "<module>"
+            ),
+            "sCapability": sCapability,
+            "sCapabilityName": sCapabilityName,
+            "sAcquisitionKind": sAcquisitionKind,
+            "iOrdinal": 0,
+            "iLine": nodeAcquisition.lineno,
+            "sFingerprint": _fsFingerprintNode(nodeAcquisition),
+            "sScopeFingerprint": (
+                _fsFingerprintNode(nodeScope) if nodeScope is not None
+                else _fsFingerprintNode(nodeAcquisition)
+            ),
+        }
+        for sField in TUPLE_ACQUISITION_REVIEWER_FIELDS:
+            dictAcquisition[sField] = S_UNCLASSIFIED
+        self.listAcquisitions.append(dictAcquisition)
 
     def visit_Name(self, nodeName):
         if isinstance(nodeName.ctx, ast.Load):
@@ -342,13 +602,19 @@ class _VisitorCallSites(ast.NodeVisitor):
 
     def _fnRecordDirectDockerInvocation(self, nodeCall):
         """Record a ``docker ...`` subprocess assembled outside a gateway."""
-        if _fbIsSubprocessLaunch(nodeCall) and _fbArgumentIsOpaque(
-            nodeCall, self._fdictCommandListsInScope(),
-        ):
-            # DECLARED, not ignored. The scan cannot see what a command
-            # built somewhere else contains, and a boundary that
-            # silently drops what it cannot read reports coverage it
-            # does not have.
+        if not self._fbIsProcessLaunchCall(nodeCall):
+            return
+        if _fbArgumentIsOpaque(nodeCall, self._fdictCommandListsInScope()):
+            # A ROW and a declared blind spot, which answer different
+            # questions. The row says the capability is exercised here
+            # whatever the command turns out to be -- completeness, the
+            # thing keyed on decoding used to lose. The blind spot says
+            # the scan could not read the command -- honesty about the
+            # metadata, and the input to Phase 2b's per-site disposition.
+            self.listRows.append(self._fdictBuildRow(
+                nodeCall, S_PRIMITIVE_UNKNOWN_COMMAND,
+                S_ACCESS_UNKNOWN_COMMAND, S_REFERENCE_UNKNOWN_COMMAND,
+            ))
             self.listUnresolvedSubprocessSites.append(
                 self._fdictBuildBlindSpot(
                     nodeCall, S_BLIND_SPOT_OPAQUE_COMMAND,
@@ -373,6 +639,7 @@ class _VisitorCallSites(ast.NodeVisitor):
         """Record a docker-py call assembled outside a gateway."""
         sMethod = _fsDockerSdkMethodForCall(
             nodeCall, self._dictSdkBoundNames, self._setDockerClientNames,
+            self._fdictBindingsHere()["setDockerModuleNames"],
         )
         if sMethod is None:
             if _fbLooksLikeAnUnrootedSdkCall(nodeCall):
@@ -550,7 +817,7 @@ def _fsetSdkBoundNamesInScope(listOwn, setDockerClientNames):
 
 
 def _fsDockerSdkMethodForCall(
-    nodeCall, setSdkBoundNames, setDockerClientNames,
+    nodeCall, setSdkBoundNames, setDockerClientNames, setDockerModuleNames,
 ):
     """Return the docker-py method a call invokes, or None.
 
@@ -567,6 +834,7 @@ def _fsDockerSdkMethodForCall(
         return None
     if not _fbChainIsRootedInADockerClient(
         listChain, setSdkBoundNames | setDockerClientNames,
+        setDockerModuleNames,
     ):
         return None
     if any(sPart in SET_DOCKER_SDK_COLLECTIONS for sPart in listChain):
@@ -578,7 +846,9 @@ def _fsDockerSdkMethodForCall(
     return None
 
 
-def _fbChainIsRootedInADockerClient(listChain, setDockerClientNames):
+def _fbChainIsRootedInADockerClient(
+    listChain, setDockerClientNames, setDockerModuleNames,
+):
     """Return True when a call chain starts at a Docker client.
 
     ORIGIN, not spelling. An earlier version accepted any root whose
@@ -587,8 +857,19 @@ def _fbChainIsRootedInADockerClient(listChain, setDockerClientNames):
     ``client.images.remove(...)``. A record whose coverage turns on
     what somebody named a local is a record a rename can silently
     empty.
+
+    The second clause is for a client that is never given a name:
+    ``docker.APIClient().containers.remove(...)`` constructs one inline,
+    so a rule that only reads assignments has nothing to match on. The
+    low-level ``APIClient`` is the one that most needs recording -- it
+    reaches the daemon's HTTP API directly.
     """
-    return listChain[0] in setDockerClientNames
+    if listChain[0] in setDockerClientNames:
+        return True
+    return listChain[0] in setDockerModuleNames and any(
+        sPart in _TUPLE_DOCKER_CLIENT_CONSTRUCTORS
+        for sPart in listChain[1:]
+    )
 
 
 # The constructors that hand back a Docker client. A name is a client
@@ -606,16 +887,24 @@ _S_DOCKER_CONTEXT_KEY = "docker"
 # context mapping's key.
 _TUPLE_SEED_DOCKER_CLIENT_NAMES = ("_clientDocker", _S_DOCKER_CONTEXT_KEY)
 
+# The two module names seeded at module scope, so that a fragment
+# examined on its own -- a synthetic probe, or a snippet quoted in a
+# test -- resolves the same way the real module does. A name may still be
+# SHADOWED out of either set by a scope that rebinds it, which is the
+# whole reason these are seeds rather than a global allow-list.
+_TUPLE_SEED_PROCESS_MODULE_NAMES = ("subprocess",)
+_TUPLE_SEED_DOCKER_MODULE_NAMES = ("docker",)
 
-def _fsetClientNamesInScope(listOwn):
+
+def _fsetClientNamesInScope(listOwn, setDockerModuleNames):
     """Return names this scope binds to a Docker client, by ORIGIN.
 
     The origin is an assignment from a known constructor
-    (``docker.from_env()``, ``DockerClient(...)``, ``APIClient(...)``).
-    Anything else is not treated as a client, so an unrelated library's
-    ``client`` never enters the record -- and, since this is now per
-    scope, neither does an unrelated function's parameter that merely
-    shares a spelling with some other function's client.
+    (``docker.from_env()``, ``docker.DockerClient(...)``,
+    ``docker.APIClient(...)``) rooted in the Docker SDK package. The root
+    matters as much as the constructor name: ``boto3.from_env()`` spells
+    a constructor this list holds, and a check that read only the
+    trailing name recorded an unrelated cloud client as a Docker one.
     """
     setNames = set()
     for nodeAssign in listOwn:
@@ -623,13 +912,24 @@ def _fsetClientNamesInScope(listOwn):
             continue
         if not isinstance(nodeAssign.value, ast.Call):
             continue
-        sCalled = _fsCalledName(nodeAssign.value)
-        if sCalled not in _TUPLE_DOCKER_CLIENT_CONSTRUCTORS:
+        if not _fbIsDockerClientConstructor(
+            nodeAssign.value, setDockerModuleNames,
+        ):
             continue
         for nodeTarget in nodeAssign.targets:
             if isinstance(nodeTarget, ast.Name):
                 setNames.add(nodeTarget.id)
     return setNames
+
+
+def _fbIsDockerClientConstructor(nodeCall, setDockerModuleNames):
+    """Return True for a call that hands back a Docker client."""
+    listChain = _flistAttributeChain(nodeCall.func)
+    if len(listChain) < 2:
+        return False
+    if listChain[-1] not in _TUPLE_DOCKER_CLIENT_CONSTRUCTORS:
+        return False
+    return listChain[0] in setDockerModuleNames
 
 
 def _fbLooksLikeAnUnrootedSdkCall(nodeCall):
@@ -642,11 +942,106 @@ def _fbLooksLikeAnUnrootedSdkCall(nodeCall):
     )
 
 
-def _fbIsSubprocessLaunch(nodeCall):
-    """Return True for a subprocess-launching call of any spelling."""
-    return _fsCalledName(nodeCall) in (
-        "run", "Popen", "call", "check_call", "check_output",
+def _ftSplitAttributeIntoModuleAndMember(nodeAttribute):
+    """Return ``(dotted module, member)`` for a pure attribute chain.
+
+    ``concurrent.futures.ProcessPoolExecutor`` yields
+    ``("concurrent.futures", "ProcessPoolExecutor")``. A chain
+    interrupted by a call or a subscript yields ``("", "")`` -- the
+    prefix is then an expression, not a module path, and reading it as
+    one would classify by spelling.
+    """
+    listParts = []
+    nodeCurrent = nodeAttribute
+    while isinstance(nodeCurrent, ast.Attribute):
+        listParts.append(nodeCurrent.attr)
+        nodeCurrent = nodeCurrent.value
+    if not isinstance(nodeCurrent, ast.Name):
+        return ("", "")
+    listParts.append(nodeCurrent.id)
+    listParts.reverse()
+    return (".".join(listParts[:-1]), listParts[-1])
+
+
+def _fsCapabilityForMember(sModule, sMember):
+    """Return the capability a module member grants, or None."""
+    sCapability = DICT_CAPABILITY_MEMBERS.get((sModule, sMember))
+    if sCapability is not None:
+        return sCapability
+    if sModule != "os":
+        return None
+    if sMember in SET_OS_PROCESS_MEMBERS or sMember.startswith(
+        TUPLE_OS_PROCESS_MEMBER_PREFIXES,
+    ):
+        return S_CAPABILITY_PROCESS_LAUNCH
+    return None
+
+
+def _fbIsDynamicLookup(nodeCall):
+    """Return True when a ``getattr`` names its attribute at runtime."""
+    return len(nodeCall.args) >= 2 and not isinstance(
+        nodeCall.args[1], ast.Constant,
     )
+
+
+def _fsetProcessModuleNamesInScope(listOwn):
+    """Return names this scope binds to a process-launching module."""
+    setNames = set()
+    for nodeChild in listOwn:
+        if not isinstance(nodeChild, ast.Import):
+            continue
+        for nodeAlias in nodeChild.names:
+            sRoot = nodeAlias.name.split(".")[0]
+            if DICT_CAPABILITY_MODULES.get(sRoot) == (
+                S_CAPABILITY_PROCESS_LAUNCH
+            ):
+                setNames.add(nodeAlias.asname or sRoot)
+    return setNames
+
+
+def _fsetDockerModuleNamesInScope(listOwn):
+    """Return names this scope binds to the Docker SDK package."""
+    setNames = set()
+    for nodeChild in listOwn:
+        if not isinstance(nodeChild, ast.Import):
+            continue
+        for nodeAlias in nodeChild.names:
+            sRoot = nodeAlias.name.split(".")[0]
+            if DICT_CAPABILITY_MODULES.get(sRoot) == (
+                S_CAPABILITY_DOCKER_CLIENT
+            ):
+                setNames.add(nodeAlias.asname or sRoot)
+    return setNames
+
+
+def _fsetLauncherNamesInScope(listOwn, setProcessModuleNames):
+    """Return names this scope binds directly to a subprocess launcher.
+
+    Two origins, and both are real here: ``from subprocess import run as
+    fnLaunch`` and ``fnLaunch = subprocess.run``. Either way the launch
+    is later spelled ``fnLaunch(...)``, with no ``subprocess`` in sight.
+    """
+    setNames = set()
+    for nodeChild in listOwn:
+        if isinstance(nodeChild, ast.ImportFrom) and not nodeChild.level:
+            if (nodeChild.module or "") == "subprocess":
+                for nodeAlias in nodeChild.names:
+                    if nodeAlias.name in SET_SUBPROCESS_LAUNCHERS:
+                        setNames.add(nodeAlias.asname or nodeAlias.name)
+            continue
+        if not isinstance(nodeChild, ast.Assign):
+            continue
+        if not isinstance(nodeChild.value, ast.Attribute):
+            continue
+        listChain = _flistAttributeChain(nodeChild.value)
+        if len(listChain) < 2 or listChain[0] not in setProcessModuleNames:
+            continue
+        if listChain[-1] not in SET_SUBPROCESS_LAUNCHERS:
+            continue
+        for nodeTarget in nodeChild.targets:
+            if isinstance(nodeTarget, ast.Name):
+                setNames.add(nodeTarget.id)
+    return setNames
 
 
 def _fdictCollectCommandLists(treeModule):
@@ -739,6 +1134,9 @@ def fdictBuildScopeModel(treeModule):
         "dictCommandLists": {},
         "setClientNames": set(_TUPLE_SEED_DOCKER_CLIENT_NAMES),
         "setSdkBoundNames": set(),
+        "setProcessModuleNames": set(_TUPLE_SEED_PROCESS_MODULE_NAMES),
+        "setLauncherNames": set(),
+        "setDockerModuleNames": set(_TUPLE_SEED_DOCKER_MODULE_NAMES),
     }
     listPending = [(None, treeModule, dictSeedBindings)]
     while listPending:
@@ -767,15 +1165,26 @@ def _fdictBindingsVisibleInScope(nodeScope, listOwn, dictInherited):
         for sName, nodeValue in dictInherited["dictCommandLists"].items()
         if sName not in setRebound
     }
+    setProcessModuleNames = (
+        dictInherited["setProcessModuleNames"] - setRebound
+    ) | _fsetProcessModuleNamesInScope(listOwn)
+    setDockerModuleNames = (
+        dictInherited["setDockerModuleNames"] - setRebound
+    ) | _fsetDockerModuleNamesInScope(listOwn)
     setClientNames = dictInherited["setClientNames"] - setRebound
     setSdkBoundNames = dictInherited["setSdkBoundNames"] - setRebound
     dictCommandLists.update(_fdictListLiteralsInScope(listOwn))
-    setClientNames |= _fsetClientNamesInScope(listOwn)
+    setClientNames |= _fsetClientNamesInScope(listOwn, setDockerModuleNames)
     setSdkBoundNames |= _fsetSdkBoundNamesInScope(listOwn, setClientNames)
     return {
         "dictCommandLists": dictCommandLists,
         "setClientNames": setClientNames,
         "setSdkBoundNames": setSdkBoundNames,
+        "setProcessModuleNames": setProcessModuleNames,
+        "setLauncherNames": (
+            dictInherited["setLauncherNames"] - setRebound
+        ) | _fsetLauncherNamesInScope(listOwn, setProcessModuleNames),
+        "setDockerModuleNames": setDockerModuleNames,
     }
 
 
@@ -860,9 +1269,12 @@ def _fbArgumentIsOpaque(nodeCall, dictLocalCommandLists):
 
 
 def _fsDockerSubcommandForCall(nodeCall, dictLocalCommandLists):
-    """Return the docker subcommand a subprocess call runs, or None."""
-    if not _fbIsSubprocessLaunch(nodeCall):
-        return None
+    """Return the docker subcommand a launch runs, or None.
+
+    Whether the call launches a process at all is the CALLER's question,
+    because answering it needs the scope bindings this function does not
+    have.
+    """
     nodeVector = _fnodeResolveArgumentVector(
         nodeCall, dictLocalCommandLists,
     )
@@ -906,6 +1318,79 @@ def _fsFingerprintNode(nodeReference):
 def flistScanPackage():
     """Return every primitive call site in the package, ordinal-numbered."""
     return _flistNumberOrdinals(_tScanPackage()[0])
+
+
+def flistAcquisitions():
+    """Return every acquisition of a declared capability in the package.
+
+    THE completeness record. A use site can vanish because nobody could
+    decode what it ran; an acquisition cannot, because it is an import or
+    an attribute load and the scan reads those exactly. What the record
+    still cannot see is stated rather than implied: a capability handed
+    to a module as an argument is acquired by whoever constructed it, and
+    is a row THERE -- so a module holding a Docker client it received as
+    a parameter carries no acquisition of its own, by design.
+    """
+    return _flistNumberAcquisitionOrdinals(_tScanPackage()[2])
+
+
+def _flistNumberAcquisitionOrdinals(listAcquisitions):
+    """Give repeated acquisition identities a stable ordinal."""
+    dictCounts = {}
+    for dictAcquisition in sorted(
+        listAcquisitions,
+        key=lambda acquisition: (
+            acquisition["sFile"], acquisition["sScope"],
+            acquisition["sCapability"], acquisition["sCapabilityName"],
+            acquisition["sAcquisitionKind"], acquisition["sFingerprint"],
+            acquisition["iLine"],
+        ),
+    ):
+        tKey = (
+            dictAcquisition["sFile"], dictAcquisition["sScope"],
+            dictAcquisition["sCapability"],
+            dictAcquisition["sCapabilityName"],
+            dictAcquisition["sAcquisitionKind"],
+        )
+        dictAcquisition["iOrdinal"] = dictCounts.get(tKey, 0)
+        dictCounts[tKey] = dictAcquisition["iOrdinal"] + 1
+    return sorted(listAcquisitions, key=fsAcquisitionKey)
+
+
+def fsAcquisitionKey(dictAcquisition):
+    """Return the stable identity of one capability acquisition."""
+    return "|".join((
+        dictAcquisition["sFile"], dictAcquisition["sScope"],
+        dictAcquisition["sCapability"], dictAcquisition["sCapabilityName"],
+        dictAcquisition["sAcquisitionKind"], str(dictAcquisition["iOrdinal"]),
+    ))
+
+
+def flistUndisposedAcquisitions(dictInventory):
+    """Return the acquisition keys carrying no reviewed disposition.
+
+    FAIL-CLOSED, and the direction of the lookup is what makes it so: the
+    scan is the authority on which acquisitions exist, and the record
+    answers for each. An acquisition the record has never heard of counts
+    as undisposed, so a new capability cannot arrive already exempt.
+    """
+    dictRecorded = {
+        fsAcquisitionKey(dictAcquisition): dictAcquisition
+        for dictAcquisition in dictInventory.get("listAcquisitions", [])
+    }
+    listUndisposed = []
+    for dictScanned in flistAcquisitions():
+        sKey = fsAcquisitionKey(dictScanned)
+        dictRecordedEntry = dictRecorded.get(sKey)
+        if dictRecordedEntry is None or dictRecordedEntry.get(
+            "sFingerprint",
+        ) != dictScanned["sFingerprint"]:
+            listUndisposed.append(sKey)
+        elif dictRecordedEntry.get(
+            "sDisposition",
+        ) not in SET_ACQUISITION_DISPOSITIONS:
+            listUndisposed.append(sKey)
+    return sorted(listUndisposed)
 
 
 def flistUnresolvedSites():
@@ -956,9 +1441,10 @@ def fsBlindSpotKey(dictSite):
 
 
 def _tScanPackage():
-    """Return ``(listRows, listUnresolved)`` for the whole package."""
+    """Return ``(rows, unresolved, acquisitions)`` for the whole package."""
     listRows = []
     listUnresolved = []
+    listAcquisitions = []
     for pathModule in sorted(PATH_PACKAGE.rglob("*.py")):
         if "__pycache__" in pathModule.parts:
             continue
@@ -968,7 +1454,8 @@ def _tScanPackage():
         listRows.extend(visitor.listRows)
         listUnresolved.extend(visitor.listUnresolvedSubprocessSites)
         listUnresolved.extend(visitor.listUnresolvedSdkSites)
-    return (listRows, listUnresolved)
+        listAcquisitions.extend(visitor.listAcquisitions)
+    return (listRows, listUnresolved, listAcquisitions)
 
 
 def _flistNumberOrdinals(listRows):
@@ -1055,7 +1542,70 @@ def fdictCompareAgainstSource(dictInventory, listScanned):
             ]
         ),
         "listBlindSpotDrift": _flistBlindSpotDrift(dictInventory),
+        "listAcquisitionDrift": _flistAcquisitionDrift(dictInventory),
     }
+
+
+def _flistAcquisitionDrift(dictInventory):
+    """Return how the recorded acquisitions differ from a fresh scan.
+
+    Compared the same way the rows and the blind spot are -- added,
+    removed, duplicated, edited, plus the count field -- because an
+    acquisition carries a REVIEWED disposition, and a disposition bound
+    to an acquisition that moved underneath it is a claim about code
+    nobody re-read.
+
+    Both fingerprints are compared. ``sFingerprint`` answers "is this the
+    same acquiring statement"; ``sScopeFingerprint`` answers "did what
+    surrounds it change", which is what a reviewer actually looked at
+    when they wrote ``guarded``.
+    """
+    listRecorded = dictInventory.get("listAcquisitions", [])
+    dictRecorded = {
+        fsAcquisitionKey(acquisition): acquisition
+        for acquisition in listRecorded
+    }
+    dictScanned = {
+        fsAcquisitionKey(acquisition): acquisition
+        for acquisition in flistAcquisitions()
+    }
+    listDrift = [
+        f"added {sKey}"
+        for sKey in sorted(set(dictScanned) - set(dictRecorded))
+    ] + [
+        f"removed {sKey}"
+        for sKey in sorted(set(dictRecorded) - set(dictScanned))
+    ] + [
+        f"duplicated {sKey}"
+        for sKey in _flistDuplicatedAcquisitionKeys(listRecorded)
+    ]
+    if len(listRecorded) != len(dictScanned):
+        listDrift.append(
+            f"recorded list holds {len(listRecorded)} acquisitions, scan "
+            f"found {len(dictScanned)}"
+        )
+    if dictInventory.get("iAcquisitionCount") != len(listRecorded):
+        listDrift.append(
+            f"count field says {dictInventory.get('iAcquisitionCount')}, "
+            f"recorded list holds {len(listRecorded)}"
+        )
+    for sKey in sorted(set(dictRecorded) & set(dictScanned)):
+        listDisagreeing = [
+            sField for sField in ("sFingerprint", "sScopeFingerprint")
+            if dictRecorded[sKey].get(sField) != dictScanned[sKey][sField]
+        ]
+        if listDisagreeing:
+            listDrift.append(f"edited {sKey} ({', '.join(listDisagreeing)})")
+    return listDrift
+
+
+def _flistDuplicatedAcquisitionKeys(listAcquisitions):
+    """Return acquisition keys appearing more than once in the record."""
+    dictSeen = {}
+    for dictAcquisition in listAcquisitions:
+        sKey = fsAcquisitionKey(dictAcquisition)
+        dictSeen[sKey] = dictSeen.get(sKey, 0) + 1
+    return sorted(sKey for sKey, iCount in dictSeen.items() if iCount > 1)
 
 
 def _flistBlindSpotDrift(dictInventory):
@@ -1219,17 +1769,48 @@ def _fdictBuildInventory(listScanned, dictExisting):
                 dictRow[sField] = dictPrevious.get(sField, S_UNCLASSIFIED)
         listMerged.append(dictRow)
     listUnresolved = flistUnresolvedSites()
+    listAcquisitions = _flistMergeAcquisitions(dictExisting)
     return {
+        "iAcquisitionCount": len(listAcquisitions),
+        "listAcquisitions": listAcquisitions,
         "iUnresolvedSiteCount": len(listUnresolved),
         "listUnresolvedSites": listUnresolved,
         "sPurpose": (
-            "Every container-mutation call site in vaibify/, one row "
-            "each. Machine-derived identity; reviewer-classified "
-            "meaning. See tools/generateMutationInventory.py."
+            "Every acquisition of a declared capability in vaibify/, and "
+            "every container-mutation call site, one entry each. "
+            "Machine-derived identity; reviewer-classified meaning. See "
+            "tools/generateMutationInventory.py."
         ),
         "iRowCount": len(listMerged),
         "listRows": listMerged,
     }
+
+
+def _flistMergeAcquisitions(dictExisting):
+    """Carry recorded dispositions onto a fresh acquisition scan.
+
+    A disposition survives only while BOTH fingerprints hold. The scope
+    hash is included deliberately: a reviewer writing ``guarded`` on an
+    ``import subprocess`` was ruling on what the enclosing scope does
+    with it, so an edit there has to send the ruling back for re-reading.
+    """
+    dictRecorded = {
+        fsAcquisitionKey(acquisition): acquisition
+        for acquisition in dictExisting.get("listAcquisitions", [])
+    }
+    listMerged = []
+    for dictAcquisition in flistAcquisitions():
+        dictPrevious = dictRecorded.get(fsAcquisitionKey(dictAcquisition))
+        if dictPrevious is not None and all(
+            dictPrevious.get(sField) == dictAcquisition[sField]
+            for sField in ("sFingerprint", "sScopeFingerprint")
+        ):
+            for sField in TUPLE_ACQUISITION_REVIEWER_FIELDS:
+                dictAcquisition[sField] = dictPrevious.get(
+                    sField, S_UNCLASSIFIED,
+                )
+        listMerged.append(dictAcquisition)
+    return listMerged
 
 
 def main():

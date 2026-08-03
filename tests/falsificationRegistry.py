@@ -311,6 +311,190 @@ LIST_FALSIFICATIONS = [
         new="""            "sScopeFingerprint": _fsFingerprintNode(nodeCall),""",
     ),
 
+    # --- The capability record (plan rule R3) -------------------------
+    #
+    # Two of these mutate a vaibify module rather than the scanner, and
+    # deliberately: the claim is that a capability arriving in a module
+    # nobody was watching is caught. Planting it in a module the record
+    # already lists as dangerous would be caught by that module's
+    # existing entries while the real hole stayed open, so the fixture
+    # is pipelineUtils.py -- a leaf holding no capability of any kind.
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testTheAcquisitionRecordMatchesAFreshScanOfTheSource'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        old='from datetime import datetime, timezone\n',
+        new=(
+            'from datetime import datetime, timezone\n\n'
+            '_S_MEMBER_NAME = "sep"\n'
+            '_S_SEPARATOR = getattr(posixpath, _S_MEMBER_NAME)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testEveryAcquisitionCarriesADisposition'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        old='import posixpath\nimport re\nimport time\n',
+        new='import posixpath\nimport re\nimport subprocess\nimport time\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAnUnreadableCommandIsARowAndNotOnlyABlindSpot'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""            self.listRows.append(self._fdictBuildRow(
+                nodeCall, S_PRIMITIVE_UNKNOWN_COMMAND,
+                S_ACCESS_UNKNOWN_COMMAND, S_REFERENCE_UNKNOWN_COMMAND,
+            ))
+            self.listUnresolvedSubprocessSites.append(""",
+        new="""            self.listUnresolvedSubprocessSites.append(""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAnImportedProcessCapabilityIsRecordedWhateverIsDoneWithIt'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""            if sCapability is not None:
+                self._fnRecordAcquisition(
+                    nodeImport, nodeAlias.name.split(".")[0], sCapability,
+                    S_ACQUISITION_IMPORT,
+                )""",
+        new="""            del sCapability""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAnAcquisitionInsideAClassOrANestedFunctionIsRecorded'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""        nodeScope = (
+            self._listScopeStack[-1] if self._listScopeStack else None
+        )
+        dictAcquisition = {""",
+        new="""        if self._listScopeStack:
+            return
+        nodeScope = None
+        dictAcquisition = {""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testReflectionThroughSysModulesIsAnAcquisition'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='    ("sys", "modules"): S_CAPABILITY_REFLECTION,\n',
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::testEvalAndExecAreAcquisitions'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='SET_REFLECTION_BUILTINS = frozenset({"eval", "exec", "__import__"})',
+        new='SET_REFLECTION_BUILTINS = frozenset({"__import__"})',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testADynamicAttributeLookupIsAnAcquisition'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""    return len(nodeCall.args) >= 2 and not isinstance(
+        nodeCall.args[1], ast.Constant,
+    )""",
+        new="""    return False""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAMemberOfAnOrdinaryModuleIsAcquiredWhenItIsNamed'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""        sModule, sMember = _ftSplitAttributeIntoModuleAndMember(nodeAttribute)
+        sCapability = _fsCapabilityForMember(sModule, sMember)""",
+        new="""        sModule, sMember = _ftSplitAttributeIntoModuleAndMember(nodeAttribute)
+        sCapability = None""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAFromImportOfALauncherIsAcquiredAndItsAliasResolves'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""        if isinstance(nodeChild, ast.ImportFrom) and not nodeChild.level:
+            if (nodeChild.module or "") == "subprocess":
+                for nodeAlias in nodeChild.names:
+                    if nodeAlias.name in SET_SUBPROCESS_LAUNCHERS:
+                        setNames.add(nodeAlias.asname or nodeAlias.name)
+            continue""",
+        new="""        if isinstance(nodeChild, ast.ImportFrom):
+            continue""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testALauncherBoundToALocalNameStillResolves'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""        listChain = _flistAttributeChain(nodeChild.value)
+        if len(listChain) < 2 or listChain[0] not in setProcessModuleNames:""",
+        new="""        listChain = []
+        if len(listChain) < 2 or listChain[0] not in setProcessModuleNames:""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAnUnrelatedRunMethodIsNotAProcessLaunch'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""        listChain = _flistAttributeChain(nodeFunction)
+        return bool(listChain) and listChain[0] in (
+            dictBindings["setProcessModuleNames"]
+        )""",
+        new="""        return True""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAnUnrelatedFromEnvIsNotADockerClient'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='    return listChain[0] in setDockerModuleNames\n',
+        new='    return True\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAChainedDockerConstructorIsStillTheDockerSdk'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""    return listChain[0] in setDockerModuleNames and any(
+        sPart in _TUPLE_DOCKER_CLIENT_CONSTRUCTORS
+        for sPart in listChain[1:]
+    )""",
+        new="""    return False""",
+    ),
+
     Falsification(
         nodeid='tests/testMutationBoundary.py::testAnUnadmittedExecIsRefusedBeforeItRuns',
         source='vaibify/docker/dockerConnection.py',

@@ -1,6 +1,867 @@
 {
-  "iRowCount": 289,
-  "iUnresolvedSiteCount": 38,
+  "iAcquisitionCount": 66,
+  "iRowCount": 307,
+  "iUnresolvedSiteCount": 30,
+  "listAcquisitions": [
+    {
+      "iLine": 10,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandBuild.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 520,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandBuild.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fsGitBranch",
+      "sScopeFingerprint": "3ef68c38098f8fbf"
+    },
+    {
+      "iLine": 504,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandBuild.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fsGitRemoteUrl",
+      "sScopeFingerprint": "538029816b3cafef"
+    },
+    {
+      "iLine": 27,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandDestroy.py",
+      "sFingerprint": "6fd3356aab432824",
+      "sScope": "fnRemoveImage",
+      "sScopeFingerprint": "ff5acda51daabaac"
+    },
+    {
+      "iLine": 12,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandDestroy.py",
+      "sFingerprint": "6fd3356aab432824",
+      "sScope": "fnRemoveVolume",
+      "sScopeFingerprint": "7cd704c30a8623dc"
+    },
+    {
+      "iLine": 35,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandReproduce.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 6,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandStart.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 29,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandStatus.py",
+      "sFingerprint": "6fd3356aab432824",
+      "sScope": "fdockerBuildClientOrNone",
+      "sScopeFingerprint": "69104affdbad64ee"
+    },
+    {
+      "iLine": 225,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/configLoader.py",
+      "sFingerprint": "6fd3356aab432824",
+      "sScope": "fbDockerAvailable",
+      "sScopeFingerprint": "47ed5267aa3519b4"
+    },
+    {
+      "iLine": 9,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/main.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 11,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "cli/preflightChecks.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 17,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "config/keepAliveManager.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 32,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "config/processLiveness.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 11,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "config/secretManager.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 557,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "containerImage/vaibifyDo.py",
+      "sFingerprint": "b2e7229682200a98",
+      "sScope": "fnEnableTcpKeepalive",
+      "sScopeFingerprint": "db66685eb3e87d0a"
+    },
+    {
+      "iLine": 4,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/__init__.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 18,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 553,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "08ba220004b4af8e",
+      "sScope": "_fbAgentBridgeRequired",
+      "sScopeFingerprint": "5f8bdc3928e14488"
+    },
+    {
+      "iLine": 513,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "08ba220004b4af8e",
+      "sScope": "_fnAddAgentUpdateEnvs",
+      "sScopeFingerprint": "7b92c97532be00f3"
+    },
+    {
+      "iLine": 515,
+      "iOrdinal": 1,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "981f4fd4b1fee93a",
+      "sScope": "_fnAddAgentUpdateEnvs",
+      "sScopeFingerprint": "7b92c97532be00f3"
+    },
+    {
+      "iLine": 210,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/dockerConnection.py",
+      "sFingerprint": "6fd3356aab432824",
+      "sScope": "_fmoduleGetDocker",
+      "sScopeFingerprint": "981dd0bc2633e81f"
+    },
+    {
+      "iLine": 223,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/dockerConnection.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fnEnsureDockerHost",
+      "sScopeFingerprint": "3a5b326cc5cba4b7"
+    },
+    {
+      "iLine": 117,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker.transport.unixconn.UnixHTTPAdapter",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/dockerConnection.py",
+      "sFingerprint": "1274e8d6d365064a",
+      "sScope": "_fnMountUnixAdapter",
+      "sScopeFingerprint": "e500f51c261547d0"
+    },
+    {
+      "iLine": 14,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/dockerContext.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 4,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/imageBuilder.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 156,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/imageBuilder.py",
+      "sFingerprint": "060d54663a62a6ce",
+      "sScope": "flistDetermineOverlays",
+      "sScopeFingerprint": "384e480af3c3a8b8"
+    },
+    {
+      "iLine": 154,
+      "iOrdinal": 1,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/imageBuilder.py",
+      "sFingerprint": "a3d4f2b68e6ce8f8",
+      "sScope": "flistDetermineOverlays",
+      "sScopeFingerprint": "384e480af3c3a8b8"
+    },
+    {
+      "iLine": 3,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/volumeManager.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 6,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/x11Forwarding.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 84,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/commitCarrier.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 28,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/dockerStatus.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fbCaffeinateRunning",
+      "sScopeFingerprint": "19097fe1a0e03ff7"
+    },
+    {
+      "iLine": 66,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/dockerStatus.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "fsDetectDockerRuntime",
+      "sScopeFingerprint": "151b1099aae4a769"
+    },
+    {
+      "iLine": 46,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker.errors.APIError",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/fileStatusManager.py",
+      "sFingerprint": "ce9b8d3f2c6bb477",
+      "sScope": "<module>",
+      "sScopeFingerprint": "ce9b8d3f2c6bb477"
+    },
+    {
+      "iLine": 46,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker.errors.NotFound",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/fileStatusManager.py",
+      "sFingerprint": "ce9b8d3f2c6bb477",
+      "sScope": "<module>",
+      "sScopeFingerprint": "ce9b8d3f2c6bb477"
+    },
+    {
+      "iLine": 23,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/gitStatus.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 773,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "unix-socket",
+      "sCapabilityName": "socket.AF_UNIX",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/hostControlChannel.py",
+      "sFingerprint": "f99fabd6e43d4352",
+      "sScope": "fdictSendHostControlRequest",
+      "sScopeFingerprint": "6b594556b2cf506a"
+    },
+    {
+      "iLine": 2171,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/pipelineServer.py",
+      "sFingerprint": "378210c9e12bd038",
+      "sScope": "__getattr__",
+      "sScopeFingerprint": "f044fc20c79a8401"
+    },
+    {
+      "iLine": 2166,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "reflection",
+      "sCapabilityName": "importlib",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/pipelineServer.py",
+      "sFingerprint": "856a29a936ceb530",
+      "sScope": "__getattr__",
+      "sScopeFingerprint": "f044fc20c79a8401"
+    },
+    {
+      "iLine": 43,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/pipelineState.py",
+      "sFingerprint": "03d351699a9a82f0",
+      "sScope": "<module>",
+      "sScopeFingerprint": "03d351699a9a82f0"
+    },
+    {
+      "iLine": 641,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "d2a9b36e29f5746a",
+      "sScope": "_fbApplyAgentAutoUpdate",
+      "sScopeFingerprint": "bfe85893c9a5f46f"
+    },
+    {
+      "iLine": 636,
+      "iOrdinal": 1,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "eaf3a2285c4dea75",
+      "sScope": "_fbApplyAgentAutoUpdate",
+      "sScopeFingerprint": "bfe85893c9a5f46f"
+    },
+    {
+      "iLine": 1109,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fbDockerContainerExists",
+      "sScopeFingerprint": "080bd17dd03730e2"
+    },
+    {
+      "iLine": 1146,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "b1f7c52f65c25d30",
+      "sScope": "_fdictBuildYamlFromRequest",
+      "sScopeFingerprint": "220a80388f2e758d"
+    },
+    {
+      "iLine": 555,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fnDockerStopCommand",
+      "sScopeFingerprint": "fecdb8fa2e60623f"
+    },
+    {
+      "iLine": 587,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "d2a9b36e29f5746a",
+      "sScope": "fnGetContainerSettings",
+      "sScopeFingerprint": "feb0e76fb552f520"
+    },
+    {
+      "iLine": 584,
+      "iOrdinal": 1,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "eaf3a2285c4dea75",
+      "sScope": "fnGetContainerSettings",
+      "sScopeFingerprint": "feb0e76fb552f520"
+    },
+    {
+      "iLine": 607,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "b1f7c52f65c25d30",
+      "sScope": "fnSetContainerSettings",
+      "sScopeFingerprint": "08bcc85e314bb9c0"
+    },
+    {
+      "iLine": 16,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/resourceMonitor.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 57,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/fileRoutes.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fnDockerCopy",
+      "sScopeFingerprint": "afee8c4c51fadc6d"
+    },
+    {
+      "iLine": 12,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker.errors.APIError",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/pipelineRoutes.py",
+      "sFingerprint": "ce9b8d3f2c6bb477",
+      "sScope": "<module>",
+      "sScopeFingerprint": "ce9b8d3f2c6bb477"
+    },
+    {
+      "iLine": 12,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker.errors.NotFound",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/pipelineRoutes.py",
+      "sFingerprint": "ce9b8d3f2c6bb477",
+      "sScope": "<module>",
+      "sScopeFingerprint": "ce9b8d3f2c6bb477"
+    },
+    {
+      "iLine": 23,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/sessionRoutes.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 1740,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/syncRoutes.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "_fsReadHostGitUserName",
+      "sScopeFingerprint": "4e8882fa91a0493f"
+    },
+    {
+      "iLine": 100,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/serverLifespan.py",
+      "sFingerprint": "15367af44ba2ef70",
+      "sScope": "fnCancelBackgroundTask",
+      "sScopeFingerprint": "1eaea6e509694e13"
+    },
+    {
+      "iLine": 16,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/setupServer.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 6,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/syncDispatcher.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 16,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "gui/workspacePath.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 10,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/dataArchiver.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 22,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/dependencyPinning.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 19,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "reflection",
+      "sCapabilityName": "importlib",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/dependencyPinning.py",
+      "sFingerprint": "633884f2997ce75c",
+      "sScope": "<module>",
+      "sScopeFingerprint": "633884f2997ce75c"
+    },
+    {
+      "iLine": 15,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/environmentSnapshot.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 18,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/githubAuth.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 50,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/overleafMirror.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 20,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/overleafSync.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 24,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/repoFiles.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 27,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "reflection",
+      "sCapabilityName": "importlib.resources",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "resources.py",
+      "sFingerprint": "1819a6121be5ea4e",
+      "sScope": "<module>",
+      "sScopeFingerprint": "1819a6121be5ea4e"
+    }
+  ],
   "listRows": [
     {
       "bInsideGateway": false,
@@ -287,6 +1148,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fbStopContainerProvenSettled",
       "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "cli/commandReproduce.py",
+      "sFingerprint": "6a5d45b326a64bda",
+      "sFunction": "_fiRunPipInstall",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": false,
@@ -705,6 +1592,32 @@
       "sReferenceKind": "direct-docker-cli"
     },
     {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "docker/__init__.py",
+      "sFingerprint": "dde2639bddac8ec7",
+      "sFunction": "fnRunDockerCommand",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
       "bInsideGateway": true,
       "bMutationCapable": false,
       "iOrdinal": 0,
@@ -781,6 +1694,84 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "docker inspect",
       "sReferenceKind": "direct-docker-cli"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "6a5d45b326a64bda",
+      "sFunction": "_fsRunDetachedCommand",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "1d46756a7205dced",
+      "sFunction": "_fsRunKillableDockerCommand",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "docker/containerManager.py",
+      "sFingerprint": "d3fd7136b57fd93b",
+      "sFunction": "_ftRunProbeCommand",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": true,
@@ -1393,6 +2384,32 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "docker/imageBuilder.py",
+      "sFingerprint": "ea1329aa4a7d9289",
+      "sFunction": "_fnRunDockerBuildCapturing",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
       "sAccess": "direct-docker-cli",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -1457,6 +2474,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "docker volume",
       "sReferenceKind": "direct-docker-cli"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "docker/x11Forwarding.py",
+      "sFingerprint": "689f6e099db90ca9",
+      "sFunction": "_fnRunBestEffort",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": false,
@@ -1561,6 +2604,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fbaFetchFile",
       "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/commitCarrier.py",
+      "sFingerprint": "bd2bac3860733a75",
+      "sFunction": "fdictLaunchGatedHelperProcess",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": false,
@@ -2341,6 +3410,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "ftResultExecuteCommand",
       "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/gitStatus.py",
+      "sFingerprint": "0f21d54d13c56f5f",
+      "sFunction": "fsRunGit",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": false,
@@ -4658,6 +5753,32 @@
     },
     {
       "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/sessionRoutes.py",
+      "sFingerprint": "d7135f01e7151097",
+      "sFunction": "_fnLaunchDetachedHub",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -5149,6 +6270,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "flistGetRunningContainers",
       "sReferenceKind": "passed-callable"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/setupServer.py",
+      "sFingerprint": "cf687253883dc0d5",
+      "sFunction": "ftResultRunBuild",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": false,
@@ -5877,6 +7024,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "ftResultExecuteCommand",
       "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/syncDispatcher.py",
+      "sFingerprint": "83fd16cc4d1a4594",
+      "sFunction": "_ftRunHostLsRemote",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": false,
@@ -7347,6 +8520,136 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/dependencyPinning.py",
+      "sFingerprint": "1ac76c020ddcc959",
+      "sFunction": "_fnRunLockCompile",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/environmentSnapshot.py",
+      "sFingerprint": "be318a5f8eec9638",
+      "sFunction": "_fsRunCheckedCommand",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/overleafMirror.py",
+      "sFingerprint": "f4e70d60aa6f39cc",
+      "sFunction": "_fnRunGit",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/overleafSync.py",
+      "sFingerprint": "7327dd4175eab897",
+      "sFunction": "_fnRunLsRemote",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/overleafSync.py",
+      "sFingerprint": "d92b3a65191b5bcd",
+      "sFunction": "_fnRunSubprocess",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -7451,6 +8754,32 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "reproducibility/repoFiles.py",
+      "sFingerprint": "5579aa69d53a2bc9",
+      "sFunction": "ftRunCommand",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -7528,42 +8857,6 @@
       "sScopeFingerprint": "501ee967103f4237"
     },
     {
-      "iLine": 72,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/commandRun.py",
-      "sFingerprint": "0cb6915f3b11278c",
-      "sFunction": "_fiRunPipeline",
-      "sScopeFingerprint": "9994c8f9f7b6a943"
-    },
-    {
-      "iLine": 77,
-      "iOrdinal": 1,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/commandRun.py",
-      "sFingerprint": "3d5b19266cff67cf",
-      "sFunction": "_fiRunPipeline",
-      "sScopeFingerprint": "9994c8f9f7b6a943"
-    },
-    {
-      "iLine": 116,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/commandRun.py",
-      "sFingerprint": "3c878170a64e168c",
-      "sFunction": "_fiRunSingleStep",
-      "sScopeFingerprint": "e596b0adcb1c46b6"
-    },
-    {
-      "iLine": 162,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/commandStart.py",
-      "sFingerprint": "91b39602fdabaf2a",
-      "sFunction": "_fnServeGuiUnderLock",
-      "sScopeFingerprint": "534438261717e1fd"
-    },
-    {
       "iLine": 98,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
@@ -7589,33 +8882,6 @@
       "sFingerprint": "5ce47d100aa1ff21",
       "sFunction": "fsDescribeVolume",
       "sScopeFingerprint": "8b25cce3146da9b1"
-    },
-    {
-      "iLine": 221,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/main.py",
-      "sFingerprint": "a28af1d5fceb4a37",
-      "sFunction": "fnLaunchHub",
-      "sScopeFingerprint": "69b6820d4f53f67b"
-    },
-    {
-      "iLine": 339,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/main.py",
-      "sFingerprint": "0324299287bd6ede",
-      "sFunction": "gui",
-      "sScopeFingerprint": "e91caed8a0044ed7"
-    },
-    {
-      "iLine": 313,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/main.py",
-      "sFingerprint": "9a8d639b53f0562a",
-      "sFunction": "setup",
-      "sScopeFingerprint": "19c4c3ab51a9450c"
     },
     {
       "iLine": 18,
@@ -7850,16 +9116,7 @@
       "sFingerprint": "5579aa69d53a2bc9",
       "sFunction": "ftRunCommand",
       "sScopeFingerprint": "728e0c7c05a764eb"
-    },
-    {
-      "iLine": 188,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "reproducibility/rerunVerification.py",
-      "sFingerprint": "5882f4153fed60e9",
-      "sFunction": "fbRunWorkflowInContainer",
-      "sScopeFingerprint": "be9c4bfc9dd5a371"
     }
   ],
-  "sPurpose": "Every container-mutation call site in vaibify/, one row each. Machine-derived identity; reviewer-classified meaning. See tools/generateMutationInventory.py."
+  "sPurpose": "Every acquisition of a declared capability in vaibify/, and every container-mutation call site, one entry each. Machine-derived identity; reviewer-classified meaning. See tools/generateMutationInventory.py."
 }
