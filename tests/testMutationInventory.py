@@ -62,7 +62,27 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # change for an unrelated reason, and with
 # I_UNDISPOSED_ACQUISITION_BUDGET, which is the record that is now
 # completeness-critical.
-I_UNCLASSIFIED_ROW_BUDGET = 307
+#
+# 307 -> 308 on 2026-08-03, and this one is worth reading carefully
+# because a RISE in a ratchet is normally the thing a ratchet exists to
+# refuse. The file-pull route's `docker cp` -- one raw, mutation-capable,
+# bidirectional row -- became two TYPED-READ rows through the gateway
+# (flistDirectoryEntries, then fnIterStreamFile). More rows, strictly
+# less authority. That is the shape a carrier migration has, so the
+# number that actually holds the property is
+# I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET below, which fell in the same
+# change and may only ever fall.
+I_UNCLASSIFIED_ROW_BUDGET = 308
+
+
+# Mutation-capable rows that are NOT inside the two gateway modules: the
+# count of places outside the boundary that can change a container. This
+# is the ratchet the migration is judged by, and unlike the row total it
+# cannot be raised by splitting one call into two safer ones.
+#
+# Seeded at 217 on 2026-08-03, down from 218 when the file pull stopped
+# assembling `docker cp`.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 217
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -76,10 +96,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 307
 # Unix-socket. None of them is reviewed yet, and the number says so out
 # loud rather than shipping a record that implies a review nobody did.
 #
-# 66 -> 65: the stop route's own `docker stop` was routed through the
-# lifecycle gateway, so registryRoutes no longer imports subprocess at
-# all. The acquisition did not become disposed of; it stopped existing.
-I_UNDISPOSED_ACQUISITION_BUDGET = 65
+# 66 -> 65 -> 64: the stop route's own `docker stop` and the file pull's
+# own `docker cp` were routed through gateway primitives, so neither
+# registryRoutes nor routes/fileRoutes imports subprocess any more.
+# Neither acquisition became disposed of; both stopped existing.
+I_UNDISPOSED_ACQUISITION_BUDGET = 64
 
 
 def _fmoduleGenerator():
@@ -170,6 +191,34 @@ def testTheUnclassifiedBudgetOnlyEverShrinks(moduleGenerator):
             f"{len(listUnclassified)} rows are now classified, which is "
             f"progress -- lower I_UNCLASSIFIED_ROW_BUDGET to "
             f"{len(listUnclassified)} so the ratchet holds the gain."
+        )
+
+
+def testMutationCapableReachOutsideTheGatewaysOnlyEverShrinks(
+    moduleGenerator,
+):
+    """The count that a safer rewrite cannot inflate.
+
+    The row total rises when one raw mutation becomes two typed reads,
+    which is the migration working and reads on the ratchet like debt
+    arriving. This counts only what can still CHANGE a container from
+    outside the boundary, so routing a site through a gateway lowers it
+    and nothing else does.
+    """
+    listOutside = [
+        dictRow for dictRow in moduleGenerator.fdictLoadInventory()["listRows"]
+        if dictRow["bMutationCapable"] and not dictRow["bInsideGateway"]
+    ]
+    assert len(listOutside) <= I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET, (
+        f"{len(listOutside)} mutation-capable call sites sit outside the "
+        f"gateways, over the budget of "
+        f"{I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET}."
+    )
+    if len(listOutside) < I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET:
+        pytest.fail(
+            f"only {len(listOutside)} mutation-capable sites remain "
+            f"outside the gateways -- lower "
+            f"I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET to hold the gain."
         )
 
 

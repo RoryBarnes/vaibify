@@ -2152,7 +2152,8 @@ _DICT_ROUTE_RE_EXPORTS = {
     # figureRoutes
     "_flistBuildFigureCheckPaths": "routes.figureRoutes",
     # fileRoutes
-    "_fnDockerCopy": "routes.fileRoutes",
+    "_fnRefuseDirectorySource": "routes.fileRoutes",
+    "_fsPullContainerFileToHost": "routes.fileRoutes",
     "_fnValidateHostDestination": "routes.fileRoutes",
     # workflowRoutes
     "_fnRejectDuplicateWorkflowName": "routes.workflowRoutes",

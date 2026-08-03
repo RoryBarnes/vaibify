@@ -429,7 +429,7 @@ def testAgentPullMustLandInTheExportDirectory(
 ):
     """An agent-lane pull may not write arbitrary host paths.
 
-    ``docker cp`` runs on the HOST and the agent authors the bytes, so
+    The pull writes on the HOST and the agent authors the bytes, so
     an unrestricted destination is agent-authored content landing in a
     shell profile or an authorized-keys file -- host code execution out
     of the sandbox.
@@ -438,7 +438,9 @@ def testAgentPullMustLandInTheExportDirectory(
     `if fbRequestRidesAgentLane(requestHttp):` neutralized to
     `if False:`.
     """
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseEscape = clientAgent.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -459,7 +461,9 @@ def testAgentPullIntoTheExportDirectoryIsAllowed(
         sHomeDirectory, ".vaibify", "exports",
         S_CONTAINER_ID, "result.csv",
     )
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseHttp = clientAgent.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -475,7 +479,9 @@ def testBrowserPullIsNotConfinedToTheExportDirectory(
 ):
     """The researcher's own pull keeps its full home-directory range."""
     _fnConnectAsOwner(clientBrowser)
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseHttp = clientBrowser.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={

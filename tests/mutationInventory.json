@@ -1,6 +1,6 @@
 {
-  "iAcquisitionCount": 65,
-  "iRowCount": 307,
+  "iAcquisitionCount": 64,
+  "iRowCount": 308,
   "iUnresolvedSiteCount": 30,
   "listAcquisitions": [
     {
@@ -472,7 +472,7 @@
       "sScopeFingerprint": "6b594556b2cf506a"
     },
     {
-      "iLine": 2171,
+      "iLine": 2172,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -485,7 +485,7 @@
       "sScopeFingerprint": "f044fc20c79a8401"
     },
     {
-      "iLine": 2166,
+      "iLine": 2167,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -613,19 +613,6 @@
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
-    },
-    {
-      "iLine": 57,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import",
-      "sCapability": "process-launch",
-      "sCapabilityName": "subprocess",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "7d8752c4c7ea34c2",
-      "sScope": "_fnDockerCopy",
-      "sScopeFingerprint": "afee8c4c51fadc6d"
     },
     {
       "iLine": 12,
@@ -5012,7 +4999,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -5023,18 +5010,18 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "direct-docker-cli",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "9bbdc642b44a3537",
-      "sFunction": "_fnDockerCopy",
+      "sFingerprint": "83fbd621a08c0dc4",
+      "sFunction": "_fnProbeFirstChunk",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "docker cp",
-      "sReferenceKind": "direct-docker-cli"
+      "sPrimitive": "fnIterStreamFile",
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -5053,8 +5040,34 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "83fbd621a08c0dc4",
-      "sFunction": "_fnProbeFirstChunk",
+      "sFingerprint": "94dafafb2974aa46",
+      "sFunction": "_fnRefuseDirectorySource",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "flistDirectoryEntries",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/fileRoutes.py",
+      "sFingerprint": "ff7098e4bd0a40b4",
+      "sFunction": "_fsPullContainerFileToHost",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",

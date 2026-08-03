@@ -12,8 +12,8 @@ primitive one package away: ``gui/buildRoutes.py`` calls
 ``cli.commandBuild.fnBuildFromConfig``, which reaches
 ``docker/imageBuilder.py``, which shells out to ``docker build``. So the
 population here is the TRANSITIVE import closure seeded at
-``vaibify/gui/`` -- 42 raw-effect acquisitions across 8 packages, not the
-18 that live in the GUI tree.
+``vaibify/gui/`` -- 41 raw-effect acquisitions across 8 packages, not the
+17 that live in the GUI tree.
 
 **That the record cannot be silenced by regenerating it.** The
 inventory's drift check is satisfied by ``--write``; a new
@@ -293,16 +293,6 @@ DICT_NAMED_AUTHORITIES = {
             "memory tiles. Read-only daemon query; the disk half of this "
             "module went through the typed-read exemption instead.",
         ),
-    "gui/routes/fileRoutes.py|_fnDockerCopy|process-launch|subprocess|"
-    "import|0":
-        _fdictAuthority(
-            ["http"],
-            "`docker cp container:path host` behind the file-pull route. "
-            "Recorded mutation-capable because `docker cp` is "
-            "bidirectional as a primitive, even though this call site "
-            "only ever pulls. The second of the three R4 named for "
-            "routing through a gateway primitive.",
-        ),
     "gui/routes/pipelineRoutes.py|<module>|docker-client|"
     "docker.errors.APIError|import-from|0":
         _fdictAuthority([S_LANE_EXCEPTION_TYPE], "Caught, never raised."),
@@ -400,8 +390,9 @@ DICT_NAMED_AUTHORITIES = {
 # never rise. Seeded at 19 on 2026-08-03 -- 13 process-launch, 5
 # Docker-client (all of them exception types), 1 Unix socket. 19 -> 18
 # when the stop route's own `docker stop` went through the lifecycle
-# gateway instead.
-I_GUI_RAW_CAPABILITY_BUDGET = 18
+# gateway instead, 18 -> 17 when the file pull's own `docker cp` went
+# through the gateway's streaming read.
+I_GUI_RAW_CAPABILITY_BUDGET = 17
 
 
 def _fmoduleGenerator():

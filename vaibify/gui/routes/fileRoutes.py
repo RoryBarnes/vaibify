@@ -52,13 +52,60 @@ def _fnValidateHostDestination(sResolvedPath):
             403, "Destination outside home directory")
 
 
-def _fnDockerCopy(sContainerId, sContainerPath, sHostDest):
-    """Run docker cp to copy from container to host."""
-    import subprocess
-    sSource = f"{sContainerId}:{sContainerPath}"
-    subprocess.run(
-        ["docker", "cp", sSource, sHostDest],
-        check=True, capture_output=True,
+def _fsPullContainerFileToHost(
+    connectionDocker, sContainerId, sContainerPath, sHostDestination,
+):
+    """Stream one container file onto the host; return where it landed.
+
+    This replaces a ``docker cp`` the route module assembled itself.
+    ``docker cp`` is bidirectional as a primitive -- the argv decides
+    which way the bytes travel -- so a route holding it holds a container
+    WRITE, whatever this particular call site happened to do with it. The
+    gateway's streaming read cannot travel the other way.
+
+    Two behaviours of ``docker cp`` are reproduced deliberately rather
+    than dropped. A destination that is an existing DIRECTORY receives
+    the source's basename, and the path returned is where the file
+    actually landed rather than what the caller asked for -- the old
+    route reported the directory. A DIRECTORY source is REFUSED, because
+    the gateway's single-file stream would otherwise skip the directory
+    entry, pull the first regular file inside it, and report success.
+    """
+    _fnRefuseDirectorySource(
+        connectionDocker, sContainerId, sContainerPath,
+    )
+    sTargetPath = sHostDestination
+    if os.path.isdir(sTargetPath):
+        sTargetPath = os.path.join(
+            sTargetPath, posixpath.basename(sContainerPath),
+        )
+    with open(sTargetPath, "wb") as fileTarget:
+        for baChunk in connectionDocker.fnIterStreamFile(
+            sContainerId, sContainerPath,
+        ):
+            fileTarget.write(baChunk)
+    return sTargetPath
+
+
+def _fnRefuseDirectorySource(
+    connectionDocker, sContainerId, sContainerPath,
+):
+    """Raise when the pull source names a directory rather than a file.
+
+    Only ``FileNotFoundError`` is read as "not a directory", which is
+    what the typed-read adapter raises for a path that is not one. Any
+    other failure -- an unreachable daemon, a stopped container -- is
+    left to propagate, because reinterpreting it as "this is a file"
+    would answer a question the probe did not manage to ask.
+    """
+    try:
+        connectionDocker.flistDirectoryEntries(
+            sContainerId, sContainerPath,
+        )
+    except FileNotFoundError:
+        return
+    raise IsADirectoryError(
+        f"{sContainerPath} is a directory; a pull names one file"
     )
 
 
@@ -317,15 +364,15 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         if fbRequestRidesAgentLane(requestHttp):
             _fnValidateAgentPullDestination(sHostDest, sContainerId)
         try:
-            await asyncio.to_thread(
-                _pipelineServer._fnDockerCopy,
-                sContainerId,
+            sLandedPath = await asyncio.to_thread(
+                _pipelineServer._fsPullContainerFileToHost,
+                dictCtx["docker"], sContainerId,
                 request.sContainerPath, sHostDest,
             )
         except Exception as error:
             raise HTTPException(
                 status_code=500, detail=str(error))
-        return {"bSuccess": True, "sHostPath": sHostDest}
+        return {"bSuccess": True, "sHostPath": sLandedPath}
 
 
 def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
