@@ -46,6 +46,48 @@ LIST_FALSIFICATIONS = [
 
     Falsification(
         nodeid=(
+            'tests/testBindMountValidator.py::'
+            'test_configured_daemon_endpoint_in_home_is_rejected'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old=(
+            '    _fnRejectDeniedPrefix(sResolved)\n'
+            '    _fnRejectDaemonSocket(sResolved)\n'
+        ),
+        new='    _fnRejectDeniedPrefix(sResolved)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBindMountValidator.py::'
+            'test_docker_host_environment_endpoint_is_rejected'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old=(
+            '    sFromEnvironment = _fsUnixPathFromEndpoint('
+            'os.environ.get("DOCKER_HOST"))\n'
+            '    if sFromEnvironment:\n'
+            '        listEndpoints.append(sFromEnvironment)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBindMountValidator.py::'
+            'test_any_unix_socket_is_rejected_even_when_unconfigured'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old="""    if _fbIsUnixSocket(sResolved):
+        raise BindMountValidationError(
+            f"bindMounts host path '{sResolved}' is a Unix socket; "
+            f"sockets are never mounted into a workflow container"
+        )""",
+        new='    return',
+    ),
+
+    Falsification(
+        nodeid=(
             'tests/testMutationInventory.py::'
             'testANestedFunctionsLocalCannotAnswerForItsParent'
         ),

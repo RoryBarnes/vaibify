@@ -1,11 +1,14 @@
 """Tests for the bind-mount allowlist validator (audit finding H2)."""
 
+import json
 import os
+import socket
 
 import pytest
 
 from vaibify.config.bindMountValidator import (
     BindMountValidationError,
+    flistConfiguredDockerEndpoints,
     fnValidateBindMount,
     fnValidateBindMountList,
 )
@@ -305,3 +308,145 @@ def test_control_socket_directory_mount_is_rejected_in_every_direction(
     os.symlink(sControlDirectory, sSymlinkPath)
     with pytest.raises(BindMountValidationError):
         fnValidateBindMount({"host": sSymlinkPath, "container": "/mnt"})
+
+
+# ---------------------------------------------------------------------
+# The daemon endpoint. Denying the string "/var/run/docker.sock" was
+# never enough: on Colima, Rancher and rootless installs the live
+# endpoint sits INSIDE $HOME, where the general home allow-list admitted
+# it. Verified against a live socket before the fix --
+# ~/.colima/default/docker.sock -> /var/run/docker.sock was ACCEPTED,
+# which hands the container the host daemon and, through it, the host.
+# ---------------------------------------------------------------------
+
+def _fsWriteDockerContext(sHome, sContextName, sEndpoint):
+    """Write a Docker context meta file naming an endpoint, as Docker does."""
+    sMetaDirectory = os.path.join(
+        sHome, ".docker", "contexts", "meta", sContextName,
+    )
+    os.makedirs(sMetaDirectory, exist_ok=True)
+    sMetaPath = os.path.join(sMetaDirectory, "meta.json")
+    with open(sMetaPath, "w", encoding="utf-8") as fileMeta:
+        json.dump(
+            {
+                "Name": sContextName,
+                "Endpoints": {"docker": {"Host": sEndpoint}},
+            },
+            fileMeta,
+        )
+    return sMetaPath
+
+
+@pytest.mark.falsification
+def test_configured_daemon_endpoint_in_home_is_rejected(
+    monkeypatch, tmp_path,
+):
+    """The endpoint Docker names is denied, and so is every ancestor.
+
+    The exact shape that was exploitable: a socket under $HOME, reached
+    through a context file rather than through a hard-coded name. The
+    ancestor cases matter as much as the socket -- mounting the parent
+    directory grants the socket just as completely, which is why the
+    overlap check runs in both directions.
+
+    Kills: dropping the _fnRejectDaemonSocket call from
+    fnValidateBindMount.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    sSocketDirectory = os.path.join(sHome, ".someruntime", "default")
+    os.makedirs(sSocketDirectory)
+    sSocketPath = os.path.join(sSocketDirectory, "docker.sock")
+    _fsWriteDockerContext(sHome, "someruntime", "unix://" + sSocketPath)
+
+    for sHostPath in (
+        sSocketPath,
+        sSocketDirectory,
+        os.path.join(sHome, ".someruntime"),
+    ):
+        with pytest.raises(BindMountValidationError):
+            fnValidateBindMount({"host": sHostPath, "container": "/mnt"})
+
+
+@pytest.mark.falsification
+def test_docker_host_environment_endpoint_is_rejected(monkeypatch, tmp_path):
+    """DOCKER_HOST names the live daemon as authoritatively as a context.
+
+    A separate source, so a separate test: an install can point at its
+    daemon through the environment with no context file written at all,
+    and reading only the on-disk contexts would leave that endpoint
+    mountable.
+
+    Kills: dropping the DOCKER_HOST branch from
+    _flistConfiguredDockerEndpoints.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    sSocketPath = os.path.join(sHome, "runtime", "engine.sock")
+    os.makedirs(os.path.dirname(sSocketPath))
+    monkeypatch.setenv("DOCKER_HOST", "unix://" + sSocketPath)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": sSocketPath, "container": "/mnt"})
+
+
+@pytest.mark.falsification
+def test_any_unix_socket_is_rejected_even_when_unconfigured(
+    monkeypatch, tmp_path,
+):
+    """The fail-closed layer: a socket is refused without being named.
+
+    Layer one can only deny endpoints the configuration mentions. A
+    runtime nobody anticipated, or a daemon whose config was never
+    written, would slip past it -- and the whole reason this fix exists
+    is that a name-matched list did not keep up. Refusing by FILE TYPE
+    needs no list and no foresight.
+
+    Kills: removing the _fbIsUnixSocket branch from
+    _fnRejectDaemonSocket.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    sSocketPath = os.path.join(sHome, "unnamed.sock")
+    socketProbe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sOriginalDirectory = os.getcwd()
+    try:
+        # Bound through a relative name: AF_UNIX paths are capped near
+        # 104 bytes and a pytest tmp_path alone can exceed it.
+        os.chdir(sHome)
+        socketProbe.bind("unnamed.sock")
+        with pytest.raises(BindMountValidationError):
+            fnValidateBindMount({"host": sSocketPath, "container": "/mnt"})
+    finally:
+        os.chdir(sOriginalDirectory)
+        socketProbe.close()
+
+
+def test_ordinary_directories_are_still_accepted(monkeypatch, tmp_path):
+    """The negative control for all three tests above.
+
+    A validator that refused everything would pass each of them while
+    making the product unusable. A data directory under $HOME is the
+    ordinary case and must survive.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    _fsWriteDockerContext(
+        sHome, "someruntime",
+        "unix://" + os.path.join(sHome, ".someruntime", "docker.sock"),
+    )
+    sHostPath = os.path.join(sHome, "datasets", "survey")
+    os.makedirs(sHostPath)
+    fnValidateBindMount({"host": sHostPath, "container": "/data"})
+
+
+def test_a_tcp_endpoint_yields_no_path_to_deny(monkeypatch, tmp_path):
+    """A TCP daemon is out of this validator's reach, and says so.
+
+    Recorded as a fact rather than left to be rediscovered: there is no
+    path to refuse for `tcp://`, so bind-mount validation contributes
+    nothing against it and the container's network isolation is what
+    answers. A reader who assumes "no socket mounted" means "no daemon
+    reachable" is wrong, and this is where that is written down.
+    """
+    _ftConfigureHome(monkeypatch, tmp_path)
+    monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:2375")
+    assert flistConfiguredDockerEndpoints() == []

@@ -5,15 +5,33 @@ path. Any value that escapes the user's home directory, hits a known
 sensitive host path (Docker socket, /etc, /root, ssh/aws/gh config
 dirs), or contains ``..`` segments is rejected before docker run sees
 it. Audit finding H2.
+
+**The daemon socket is the one that ends the security model.** A
+container holding it controls the host Docker daemon, and from there
+the host (``docker run -v /:/host``) -- so the unprivileged container
+user, the network isolation and the mutation boundary all stop
+mattering at once. Denying the literal string ``/var/run/docker.sock``
+did not achieve this: on a Colima, Rancher or rootless install the live
+endpoint sits INSIDE the user's home directory, where the general home
+allow-list admitted it. Verified before this fix, with a live socket:
+``~/.colima/default/docker.sock -> /var/run/docker.sock`` was accepted.
+
+So the denial is by RESOLUTION and by FILE TYPE, never by spelling:
+every endpoint the Docker configuration names, plus any path that IS a
+Unix socket. A name-matched list cannot keep up with the next runtime,
+and this is not a boundary to be caught up with later.
 """
 
+import json
 import os
 import posixpath
+import stat
 
 
 __all__ = [
     "fnValidateBindMount",
     "fnValidateBindMountList",
+    "flistConfiguredDockerEndpoints",
     "BindMountValidationError",
 ]
 
@@ -45,6 +63,15 @@ _LIST_HOME_RELATIVE_DENY_PREFIXES = (
 )
 
 
+# Where Docker keeps the endpoint of every context it knows about. Read
+# as FILES, deliberately: asking the `docker` CLI would give this
+# validator a process-creation capability, and the config directory is
+# the same source the CLI itself reads.
+_S_DOCKER_CONFIG_DIRECTORY = ".docker"
+_S_DOCKER_CONTEXT_META = "contexts/meta"
+_S_UNIX_SCHEME = "unix://"
+
+
 class BindMountValidationError(ValueError):
     """Raised when a vaibify.yml ``bindMounts`` entry is unsafe."""
 
@@ -62,8 +89,122 @@ def fnValidateBindMount(dictMount, sProjectRepoPath=None):
         )
     sResolved = _fsResolveSymlinks(sRaw)
     _fnRejectDeniedPrefix(sResolved)
+    _fnRejectDaemonSocket(sResolved)
     _fnRequireWithinAllowedRoot(sResolved, sProjectRepoPath)
     _fnValidateContainerTarget(dictMount.get("container"))
+
+
+def _fnRejectDaemonSocket(sResolved):
+    """Reject the daemon endpoint, anything containing it, and any socket.
+
+    Three layers, because each covers what the others cannot:
+
+    1. **Every endpoint the Docker configuration names**, resolved from
+       ``DOCKER_HOST`` and from every context Docker has on disk --
+       not only the current one, since which context is current is a
+       runtime detail and denying an inactive endpoint costs nothing.
+       Overlap is bidirectional (:func:`_fbPathsOverlap`), so a mount of
+       ``~/.colima`` is refused for containing ``~/.colima/default/
+       docker.sock`` exactly as the socket itself is.
+    2. **Any path that IS a Unix socket.** This is the fail-closed
+       layer: it needs no list and no name, so a runtime nobody
+       anticipated is covered on the day it ships. Mounting a socket
+       into a workflow container is not something this tool needs to
+       support, and a clear refusal is the right answer if it ever does.
+    3. What layer 1 read from disk is only as good as the config being
+       present -- hence layer 2 as the backstop.
+
+    **The residual, stated rather than implied.** A TCP endpoint
+    (``DOCKER_HOST=tcp://...``) has no path to deny, so no bind-mount
+    rule can fence it; that is the container's network isolation to
+    answer, not this validator's. And a mount of a directory that will
+    LATER contain a socket cannot be seen at validation time.
+    """
+    for sEndpoint in _flistConfiguredDockerEndpoints():
+        if _fbPathsOverlap(sResolved, sEndpoint):
+            raise BindMountValidationError(
+                f"bindMounts host path '{sResolved}' overlaps the Docker "
+                f"daemon endpoint '{sEndpoint}'; a container holding the "
+                f"daemon socket controls the host"
+            )
+    if _fbIsUnixSocket(sResolved):
+        raise BindMountValidationError(
+            f"bindMounts host path '{sResolved}' is a Unix socket; "
+            f"sockets are never mounted into a workflow container"
+        )
+
+
+def _fbIsUnixSocket(sPath):
+    """True when the path exists and is a Unix domain socket."""
+    try:
+        return stat.S_ISSOCK(os.stat(sPath).st_mode)
+    except OSError:
+        return False
+
+
+def flistConfiguredDockerEndpoints():
+    """Return every Unix Docker endpoint this host has configured."""
+    return _flistConfiguredDockerEndpoints()
+
+
+def _flistConfiguredDockerEndpoints():
+    """Return resolved Unix socket paths for every known Docker endpoint."""
+    listEndpoints = []
+    sFromEnvironment = _fsUnixPathFromEndpoint(os.environ.get("DOCKER_HOST"))
+    if sFromEnvironment:
+        listEndpoints.append(sFromEnvironment)
+    listEndpoints.extend(_flistContextEndpoints())
+    return sorted(set(listEndpoints))
+
+
+def _fsUnixPathFromEndpoint(sEndpoint):
+    """Return the resolved socket path of a ``unix://`` endpoint, or ''.
+
+    A TCP or npipe endpoint yields '' -- there is no path to deny, and
+    saying so here keeps the caller from treating absence as safety.
+    """
+    if not isinstance(sEndpoint, str) or not sEndpoint.startswith(
+        _S_UNIX_SCHEME,
+    ):
+        return ""
+    sPath = sEndpoint[len(_S_UNIX_SCHEME):]
+    return _fsResolveSymlinks(sPath) if sPath else ""
+
+
+def _flistContextEndpoints():
+    """Return the endpoints of every Docker context stored on disk."""
+    sMetaRoot = posixpath.join(
+        os.path.realpath(os.path.expanduser("~")),
+        _S_DOCKER_CONFIG_DIRECTORY, _S_DOCKER_CONTEXT_META,
+    )
+    listEndpoints = []
+    try:
+        listContextDirectories = sorted(os.listdir(sMetaRoot))
+    except OSError:
+        return listEndpoints
+    for sContextDirectory in listContextDirectories:
+        sEndpoint = _fsEndpointFromContextMeta(
+            posixpath.join(sMetaRoot, sContextDirectory, "meta.json"),
+        )
+        if sEndpoint:
+            listEndpoints.append(sEndpoint)
+    return listEndpoints
+
+
+def _fsEndpointFromContextMeta(sMetaPath):
+    """Return one context file's Docker endpoint path, or ''."""
+    try:
+        with open(sMetaPath, "r", encoding="utf-8") as fileMeta:
+            dictMeta = json.load(fileMeta)
+    except (OSError, ValueError):
+        return ""
+    dictEndpoints = dictMeta.get("Endpoints")
+    if not isinstance(dictEndpoints, dict):
+        return ""
+    dictDocker = dictEndpoints.get("docker")
+    if not isinstance(dictDocker, dict):
+        return ""
+    return _fsUnixPathFromEndpoint(dictDocker.get("Host"))
 
 
 def _fnValidateContainerTarget(sTarget):
