@@ -341,16 +341,18 @@ collapsing the leaves or deleting the re-exports — breaks real
 callers. `tests/testArchitecturalInvariants.py` encodes both
 invariants as executable rules.
 
-**`posixpath` in `workflowManager.py`, `os.path` in `director.py`.**
-These two modules contain similarly named functions and look like
-natural candidates for deduplication. They are not. `workflowManager`
-manipulates container paths, which are POSIX on every host operating
-system. `director` manipulates host paths, which use the host's native
-separator. Unifying them would either mangle Windows host paths or
-mangle container paths on any host, and the failure would be silent
-until a cross-platform user hit it. The divergence is load-bearing;
-the [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) trap list and
-`tests/testArchitecturalInvariants.py` both guard it.
+**`posixpath` everywhere a container path is handled.**
+`workflowManager` manipulates container paths, which are POSIX on
+every host operating system, so it uses `posixpath` rather than
+`os.path`. A host-side module handling host paths must use `os.path`,
+because those carry the host's native separator. Unifying the two
+would either mangle Windows host paths or mangle container paths on
+any host, and the failure would be silent until a cross-platform user
+hit it. The repository formerly carried a host-side `director.py`
+whose deliberate divergence from `workflowManager` illustrated this;
+it was withdrawn in favour of `vaibify reproduce --rerun`, which
+re-runs a project through the container and therefore reproduces the
+environment as well as the steps.
 
 ## Project = git repo
 
@@ -912,10 +914,6 @@ following files control test generation:
 
 - `commandUtilities.py` — script path extraction from commands.
 - `dependencyScanner.py` — code dependency analysis for scripts.
-- `director.py` — standalone CLI runner. Has intentionally divergent
-  `fbValidateWorkflow` and `fdictBuildGlobalVariables` from
-  `workflowManager` because it operates on the host filesystem. See
-  the tradeoff note above and the `AGENTS.md` trap list.
 - `registryRoutes.py` — project registry API.
 - `terminalSession.py` — PTY bridge for the terminal WebSocket. No
   production path constructs one: the terminal is disabled (see
@@ -1255,15 +1253,10 @@ system — see [vibeCoding.md](vibeCoding.md) for the broader methodology.
    `dataLoaders.py`. This is inherent: the introspection script runs
    inside Docker containers that cannot import from the host Python
    environment. The duplication is a feature, not a bug.
-2. `director.py` has its own `fbValidateWorkflow` and
-   `fdictBuildGlobalVariables` that diverge from `workflowManager.py`.
-   This is intentional: `director.py` operates on the host filesystem
-   with `os.path` and `os.makedirs`, while `workflowManager` uses
-   `posixpath` for container paths.
-3. `scriptFigureViewer.js` was not part of the 2026-01 frontend
+2. `scriptFigureViewer.js` was not part of the 2026-01 frontend
    refactor. It handles PDF rendering, dual-viewer comparison, and
    history management as a single cohesive module.
-4. Re-export blocks across four orchestrator modules
+3. Re-export blocks across four orchestrator modules
    (`pipelineRunner`, `pipelineServer`, `testGenerator`,
    `syncDispatcher`) exist for backward compatibility. Callers should
    eventually migrate to importing from canonical modules directly.

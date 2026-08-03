@@ -88,7 +88,7 @@ order of strength:
    genuine fault line; split along it.
 
 What is **not** sufficient: a line count, surface similarity ("these look
-alike" — they may diverge later, like `director`/`workflowManager`),
+alike" — they may diverge later),
 speculative reuse ("might be needed someday"), or "it would be cleaner."
 When tempted to split for one of those, don't — note it as a candidate
 and wait for a real force.
@@ -134,8 +134,7 @@ exercised. Concretely:
 - After any Python change:
   `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`
 - After changes that touch structural invariants (adding a route,
-  adjusting import graphs, touching `workflowManager.py` or
-  `director.py`):
+  adjusting import graphs, or touching `workflowManager.py`):
   `python -m pytest tests/testArchitecturalInvariants.py -v`
 - After JS changes: see "Required after JS changes" below — the
   Python suite does not execute the frontend at all.
@@ -334,15 +333,14 @@ ugly, show it. This applies to `fileStatusManager.py`,
 `pipelineRoutes.py`, `pipelineState.py`, and every frontend render
 path.
 
-**`director.py` and `workflowManager.py` are different things.**
-`director.py` is a parallel workflow runner that operates on the host
-filesystem using `os.path`. `workflowManager.py` operates on container
-paths using `posixpath`. Similarly named functions
-(`fbValidateWorkflow`, `fdictBuildGlobalVariables`) exist in both and
-are intentionally divergent. Do not "fix" the divergence — it's
-load-bearing. They may share *pure* helpers (e.g.
-`flistValidateOutputFilePaths`) without violating this rule; the
-calling conventions remain divergent.
+**Container paths are `posixpath`, host paths are `os.path`.**
+`workflowManager.py` handles container paths, which are POSIX on every
+host operating system. Any module handling host paths must use
+`os.path`, whose separator is the host's. A helper shared between the
+two lanes must be *pure* (e.g. `flistValidateOutputFilePaths`);
+unifying the path handling itself would silently mangle one lane or
+the other, and the failure would not surface until a cross-platform
+user hit it.
 
 **Do not revert to `/workspace`-as-repo.** Every vaibify workflow
 must live inside a git repository — its "project repo" —
@@ -822,9 +820,6 @@ without discussion:
 
 - `introspectionScript.py` duplicates format-handling logic from
   `dataLoaders.py`. Container scripts cannot import from the host.
-- `director.py` has its own `fbValidateWorkflow` and
-  `fdictBuildGlobalVariables` that diverge from `workflowManager.py`.
-  Host path vs. container path.
 - `scriptFigureViewer.js` was not part of the 2026-01 frontend
   refactor. Kept as a single cohesive module.
 - Re-export blocks exist across `pipelineRunner`, `pipelineServer`,

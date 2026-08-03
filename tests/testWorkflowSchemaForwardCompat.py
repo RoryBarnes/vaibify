@@ -4,8 +4,8 @@
 the end, so a ``project.json`` written by a newer vaibify and opened by an
 older one was silently downgraded and, on the next save, persisted with
 the lower number and every field this build does not understand dropped.
-These pin the fail-closed behaviour at the migrator and at the host-side
-director load path — the "unrecognized future state fails closed" rule.
+These pin the fail-closed behaviour at the migrator and at the container
+load path — the "unrecognized future state fails closed" rule.
 """
 
 import copy
@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from vaibify.gui import director
+from vaibify.gui import workflowManager
 from vaibify.gui import workflowMigrations
 
 
@@ -54,21 +54,37 @@ def test_current_and_older_versions_still_migrate():
     )
 
 
-def test_director_load_refuses_a_future_workflow(tmp_path):
-    """The host-side director load path fails closed on a future schema.
+class _ConnectionServingOneWorkflow:
+    """Return fixed project.json bytes for any fetch, and record the path."""
+
+    def __init__(self, baContent):
+        self.baContent = baContent
+        self.sRequestedPath = None
+
+    def fbaFetchFile(self, sContainerId, sPath):
+        self.sRequestedPath = sPath
+        return self.baContent
+
+
+def test_container_load_refuses_a_future_workflow():
+    """The container load path fails closed on a future schema.
 
     A downgrade via any entry point is the hazard, so the property is
-    asserted at the loader, not only at the migrator.
+    asserted at the loader, not only at the migrator. This replaced the
+    same assertion against the withdrawn host-side director loader; the
+    container loader is now the only one that reads a project.json.
     """
     iFuture = workflowMigrations.I_CURRENT_WORKFLOW_VERSION + 1
-    pathWorkflow = tmp_path / "project.json"
-    pathWorkflow.write_text(
-        json.dumps({
-            workflowMigrations.S_VERSION_KEY: iFuture,
-            "sWorkflowName": "Future",
-            "listSteps": [],
-        }),
-        encoding="utf-8",
-    )
+    baContent = json.dumps({
+        workflowMigrations.S_VERSION_KEY: iFuture,
+        "sWorkflowName": "Future",
+        "listSteps": [],
+    }).encode("utf-8")
+    connectionFake = _ConnectionServingOneWorkflow(baContent)
     with pytest.raises(ValueError):
-        director.fdictLoadWorkflow(str(pathWorkflow))
+        workflowManager.fdictLoadWorkflowFromContainer(
+            connectionFake, "containerId", "/workspace/repo/project.json",
+        )
+    assert connectionFake.sRequestedPath == (
+        "/workspace/repo/project.json"
+    ), "the loader refused before it read the file it was asked for"

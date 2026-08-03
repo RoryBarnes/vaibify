@@ -13,9 +13,8 @@ migration functions that previously ran unconditionally on every
 load. Adding a new migration is two steps: write the migrator and
 append it to ``T_MIGRATORS``, bump ``I_CURRENT_WORKFLOW_VERSION``.
 
-This module imports only from ``pathContract`` (also a leaf), so
-workflowManager and director can both depend on it without forming a
-cycle.
+This module imports only from ``pathContract`` (also a leaf), so any
+loader can depend on it without forming a cycle.
 """
 
 import contextlib

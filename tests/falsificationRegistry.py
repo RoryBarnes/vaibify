@@ -998,42 +998,6 @@ LIST_FALSIFICATIONS = [
         new='    if iRefNumber >= iStepCount:',
     ),
     Falsification(
-        nodeid='tests/testDirectorMutationCoverage.py::test_fnDownloadDatasets_refuses_sibling_prefix_destination',
-        source='vaibify/gui/director.py',
-        old='sParentReal.startswith(sRootReal + os.sep)',
-        new='sParentReal.startswith(sRootReal)',
-    ),
-    Falsification(
-        nodeid='tests/testDirectorMutationCoverage.py::test_fbValidateWorkflow_requires_saPlotFiles',
-        source='vaibify/gui/director.py',
-        old="""("sName", "sDirectory", "saPlotCommands", "saPlotFiles")""",
-        new="""("sName", "sDirectory", "saPlotCommands")""",
-    ),
-    Falsification(
-        nodeid='tests/testDirectorMutationCoverage.py::test_fbValidateWorkflow_requires_saPlotCommands',
-        source='vaibify/gui/director.py',
-        old="""("sName", "sDirectory", "saPlotCommands", "saPlotFiles")""",
-        new="""("sName", "sDirectory", "saPlotFiles")""",
-    ),
-    Falsification(
-        nodeid='tests/testDirectorMutationCoverage.py::test_fnExecuteStep_defaults_to_plot_only',
-        source='vaibify/gui/director.py',
-        old="""dictStep.get("bPlotOnly", True)""",
-        new="""dictStep.get("bPlotOnly", False)""",
-    ),
-    Falsification(
-        nodeid='tests/testDirectorMutationCoverage.py::test_fiResolveCoreCount_floors_at_one_on_single_core',
-        source='vaibify/gui/director.py',
-        old='return max(1, iTotal - 1)',
-        new='return iTotal - 1',
-    ),
-    Falsification(
-        nodeid='tests/testDirectorMutationCoverage.py::test_fnRegisterFiles_small_file_threshold_boundary',
-        source='vaibify/gui/director.py',
-        old='if iFileSize < 1024:',
-        new='if iFileSize < 100:',
-    ),
-    Falsification(
         nodeid='tests/testLevelGatesMutationCoverage.py::test_github_full_count_with_nonempty_diverged_is_not_synced',
         source='vaibify/reproducibility/levelGates.py',
         old="""    if dictStatus.get("listDiverged"):

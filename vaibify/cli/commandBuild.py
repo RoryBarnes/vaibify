@@ -385,7 +385,10 @@ def fnWriteBinariesEnv(config, sDockerDir):
 # `vaibify-do`. Staging it is gone rather than repaired: making it run
 # would have meant shipping 700+ lines of workflow machinery, and an
 # arbitrary shell-command runner is not something to install inside a
-# container to satisfy a document nobody had executed.
+# container to satisfy a document nobody had executed. The module
+# itself was later deleted: it had no entry point on any lane, so the
+# feature had never once run for a user, and `vaibify reproduce
+# --rerun` re-runs a project through the container instead.
 
 
 # The reproducibility modules that ship into the image. Named here

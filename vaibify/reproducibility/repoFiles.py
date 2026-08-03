@@ -117,8 +117,7 @@ class HostRepoFiles:
 
     A thin wrapper over the pathlib/os/fcntl idioms the reproducibility
     modules used before the adapter seam existed, so host-side callers
-    (the reproduce CLI, director, unit tests) keep bit-identical
-    semantics.
+    (the reproduce CLI, unit tests) keep bit-identical semantics.
     """
 
     def __init__(self, sRootPath):

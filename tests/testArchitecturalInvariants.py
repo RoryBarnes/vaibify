@@ -490,24 +490,6 @@ def testWorkflowManagerUsesPosixPath():
     )
 
 
-def testDirectorUsesOsPath():
-    """director.py uses os.path (host filesystem), not posixpath."""
-    sPath = GUI_DIR / "director.py"
-    sSource, treeAst = ftParseFile(sPath)
-    listImports = flistExtractImports(treeAst)
-    setTopNames = {sName for sName, _ in listImports}
-    bImportsPosix = any(
-        sName == "posixpath" or sName.startswith("posixpath.")
-        for sName in setTopNames
-    )
-    assert not bImportsPosix, (
-        "director.py must not import posixpath; host paths use os.path"
-    )
-    assert "os.path." in sSource, (
-        "director.py must actually reference os.path.* for host paths"
-    )
-
-
 def _fbIsRouteSiblingImport(sModulePath, sOwnStem):
     """Return True when sModulePath resolves to a vaibify.gui.routes sibling."""
     sCandidate = sModulePath
@@ -2825,12 +2807,14 @@ SET_RAW_REPO_PATH_NAMES = frozenset({
     "sRepoPath",
 })
 
-# director.py is the host-side parallel runner (host paths are its
-# truth), so its raw host-path arguments into the dual-accept entry
-# points are correct as written.
-SET_REPRO_IO_EXEMPT_FILES = frozenset({
-    "director.py",
-})
+# Empty by design. It held only ``director.py``, the withdrawn
+# host-side runner, whose raw host-path arguments were correct because
+# host paths were its truth. No module under vaibify/gui/ handles host
+# paths any more, so an exemption here would be a hole rather than a
+# carve-out -- a future file reusing an exempt name would skip the scan
+# silently. Adding an entry needs the same justification the deleted
+# one had.
+SET_REPRO_IO_EXEMPT_FILES = frozenset()
 
 
 def _fsCalledFunctionName(nodeCall):

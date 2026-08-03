@@ -176,8 +176,15 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # `docker run`. A site the record described wrongly is worse than one
 # it admits it cannot read, so these four moved into the blind spot and
 # the row count fell 293 -> 289 with them.
+# 27 -> 26 on 2026-08-03: the withdrawn host-side director.py held one
+# opaque site, ``fnExecuteCommand``'s ``subprocess.Popen(sCommand,
+# shell=True)``. Note what that says about the scanner rather than only
+# about the count: the most permissive command authority under
+# vaibify/gui/ produced NO inventory row, only a blind-spot entry,
+# because completeness was keyed on decoding the command instead of on
+# the capability. That is the hole plan rule R3 exists to close.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 27,
+    "opaque-subprocess-command": 26,
     "untraceable-docker-sdk-root": 12,
 }
 

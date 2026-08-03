@@ -1,6 +1,6 @@
 {
   "iRowCount": 289,
-  "iUnresolvedSiteCount": 39,
+  "iUnresolvedSiteCount": 38,
   "listRows": [
     {
       "bInsideGateway": false,
@@ -7762,15 +7762,6 @@
       "sScopeFingerprint": "2e78ccc1b45b0c2a"
     },
     {
-      "iLine": 245,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "gui/director.py",
-      "sFingerprint": "41b253f7cb3048f3",
-      "sFunction": "fnExecuteCommand",
-      "sScopeFingerprint": "d594d6ff709b9a56"
-    },
-    {
       "iLine": 75,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
@@ -7852,7 +7843,7 @@
       "sScopeFingerprint": "57449a74c6e3fa16"
     },
     {
-      "iLine": 301,
+      "iLine": 300,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/repoFiles.py",
