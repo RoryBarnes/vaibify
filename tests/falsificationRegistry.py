@@ -425,10 +425,21 @@ LIST_FALSIFICATIONS = [
             'testAMemberOfAnOrdinaryModuleIsAcquiredWhenItIsNamed'
         ),
         source='tools/generateMutationInventory.py',
-        old="""        sModule, sMember = _ftSplitAttributeIntoModuleAndMember(nodeAttribute)
-        sCapability = _fsCapabilityForMember(sModule, sMember)""",
-        new="""        sModule, sMember = _ftSplitAttributeIntoModuleAndMember(nodeAttribute)
-        sCapability = None""",
+        old="""        sCapability = _fsCapabilityForMember(sModule, sMember)""",
+        new="""        sCapability = None""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testAnAliasedModuleDoesNotHideItsDangerousMember'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""        sModule = _fsResolveModuleAlias(
+            sModule, self._fdictBindingsHere()["dictModuleAliases"],
+        )
+""",
+        new='',
     ),
 
     Falsification(

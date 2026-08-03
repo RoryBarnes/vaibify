@@ -588,6 +588,35 @@ def testAMemberOfAnOrdinaryModuleIsAcquiredWhenItIsNamed(moduleGenerator):
 
 
 @pytest.mark.falsification
+def testAnAliasedModuleDoesNotHideItsDangerousMember(moduleGenerator):
+    """``import os as operatingSystem`` then ``operatingSystem.system``.
+
+    A member is looked up under the module it came FROM, never under the
+    local name the file gave it. Keying on the spelling is the defect
+    the launcher rule and the Docker-client rule each already had, and
+    it fails worse here: an aliased launcher degrades to a declared
+    blind spot, whereas an aliased ``os.system`` would be absent from
+    every record the boundary keeps.
+
+    No module in this package aliases ``os`` today, so this closes a
+    hole nothing has fallen into yet -- which is the only time a hole
+    can be closed cheaply.
+
+    Kills: looking a dangerous member up under the local name of the
+    module it hangs off.
+    """
+    assert [
+        dictAcquisition["sCapabilityName"]
+        for dictAcquisition in _flistScanAcquisitions(moduleGenerator, """
+            import os as operatingSystem
+
+            def fnGo(sCommand):
+                operatingSystem.system(sCommand)
+        """)
+    ] == ["os.system"], "an aliased module hid its dangerous member"
+
+
+@pytest.mark.falsification
 def testAFromImportOfALauncherIsAcquiredAndItsAliasResolves(
     moduleGenerator,
 ):

@@ -266,6 +266,18 @@ TUPLE_OS_PROCESS_MEMBER_PREFIXES = ("exec", "spawn")
 SET_REFLECTION_BUILTINS = frozenset({"eval", "exec", "__import__"})
 S_REFLECTION_DYNAMIC_ATTRIBUTE = "getattr"
 
+# The ordinary modules a dangerous MEMBER hangs off, by their real dotted
+# names. A member is looked up under the module it actually came from,
+# never under whatever local name the file gave it -- ``import os as
+# operatingSystem`` then ``operatingSystem.system(...)`` is os.system,
+# and a lookup keyed on the spelling would not see it at all. That is
+# the same classification-by-spelling defect the launcher and the Docker
+# client each already had; leaving it here would be fixing the instance
+# rather than the class.
+SET_MEMBER_CAPABILITY_MODULE_ROOTS = frozenset(
+    {"os"} | {sModule.split(".")[0] for sModule, _ in DICT_CAPABILITY_MEMBERS}
+)
+
 # The subprocess module's launchers. Only meaningful once the call is
 # ROOTED in a name bound to the subprocess module, or in a name bound
 # directly to one of these -- matching on the bare spelling recorded
@@ -366,6 +378,7 @@ _DICT_EMPTY_BINDINGS = {
     "setProcessModuleNames": frozenset(),
     "setLauncherNames": frozenset(),
     "setDockerModuleNames": frozenset(),
+    "dictModuleAliases": {},
 }
 
 
@@ -524,6 +537,9 @@ class _VisitorCallSites(ast.NodeVisitor):
     def _fnRecordMemberAcquisition(self, nodeAttribute):
         """Record an attribute load that names a dangerous member."""
         sModule, sMember = _ftSplitAttributeIntoModuleAndMember(nodeAttribute)
+        sModule = _fsResolveModuleAlias(
+            sModule, self._fdictBindingsHere()["dictModuleAliases"],
+        )
         sCapability = _fsCapabilityForMember(sModule, sMember)
         if sCapability is not None:
             self._fnRecordAcquisition(
@@ -963,6 +979,35 @@ def _ftSplitAttributeIntoModuleAndMember(nodeAttribute):
     return (".".join(listParts[:-1]), listParts[-1])
 
 
+def _fsResolveModuleAlias(sModule, dictModuleAliases):
+    """Return a dotted module path with its local alias resolved away."""
+    if not sModule:
+        return sModule
+    listParts = sModule.split(".")
+    listParts[0] = dictModuleAliases.get(listParts[0], listParts[0])
+    return ".".join(listParts)
+
+
+def _fdictModuleAliasesInScope(listOwn):
+    """Return this scope's local names for the member-capability modules."""
+    dictAliases = {}
+    for nodeChild in listOwn:
+        if not isinstance(nodeChild, ast.Import):
+            continue
+        for nodeAlias in nodeChild.names:
+            sRoot = nodeAlias.name.split(".")[0]
+            if sRoot not in SET_MEMBER_CAPABILITY_MODULE_ROOTS:
+                continue
+            # Without an alias, ``import concurrent.futures`` binds only
+            # ``concurrent``; with one, the whole dotted path is bound
+            # to the new name.
+            if nodeAlias.asname:
+                dictAliases[nodeAlias.asname] = nodeAlias.name
+            else:
+                dictAliases[sRoot] = sRoot
+    return dictAliases
+
+
 def _fsCapabilityForMember(sModule, sMember):
     """Return the capability a module member grants, or None."""
     sCapability = DICT_CAPABILITY_MEMBERS.get((sModule, sMember))
@@ -1137,6 +1182,9 @@ def fdictBuildScopeModel(treeModule):
         "setProcessModuleNames": set(_TUPLE_SEED_PROCESS_MODULE_NAMES),
         "setLauncherNames": set(),
         "setDockerModuleNames": set(_TUPLE_SEED_DOCKER_MODULE_NAMES),
+        "dictModuleAliases": {
+            sRoot: sRoot for sRoot in SET_MEMBER_CAPABILITY_MODULE_ROOTS
+        },
     }
     listPending = [(None, treeModule, dictSeedBindings)]
     while listPending:
@@ -1185,6 +1233,16 @@ def _fdictBindingsVisibleInScope(nodeScope, listOwn, dictInherited):
             dictInherited["setLauncherNames"] - setRebound
         ) | _fsetLauncherNamesInScope(listOwn, setProcessModuleNames),
         "setDockerModuleNames": setDockerModuleNames,
+        "dictModuleAliases": dict(
+            {
+                sName: sModule
+                for sName, sModule in dictInherited[
+                    "dictModuleAliases"
+                ].items()
+                if sName not in setRebound
+            },
+            **_fdictModuleAliasesInScope(listOwn),
+        ),
     }
 
 
