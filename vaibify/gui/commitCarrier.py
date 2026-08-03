@@ -471,7 +471,17 @@ async def fdictRunLockHeldMutation(
     bounded termination (Docker socket deadline, subprocess TERM/KILL);
     ``fnTerminateWorker`` is the out-of-band cancel hook the worker's
     producer registers.
+
+    A coroutine worker is refused HERE, before a supervisor exists and
+    before anything is journaled. The thread cannot await one, so the
+    work would never run -- but rejecting it downstream, after the
+    journal record is in flight, sends a plain programming error
+    through the failed-worker settlement and marks the container as
+    NEEDING RECONCILIATION for work whose body never executed. A
+    researcher would be told to run 'vaibify reconcile' because someone
+    wrote ``async def``.
     """
+    _fnAssertWorkerIsNotACoroutineFunction(fnWorker)
     _fnAssertAdmissionsOpen(appState)
     supervisor = MutationSupervisor(
         sSupervisorId=secrets.token_hex(8), sName=sName,
@@ -584,6 +594,17 @@ async def _fdictRunAndSettleWorker(supervisor, fnWorker):
     return supervisor.dictOutcome
 
 
+def _fnAssertWorkerIsNotACoroutineFunction(fnWorker):
+    """Refuse a declared coroutine worker before anything is committed."""
+    if inspect.iscoroutinefunction(fnWorker):
+        raise TypeError(
+            f"{getattr(fnWorker, '__name__', fnWorker)!r} is a "
+            "coroutine function, and the commit carrier runs workers in "
+            "a thread: it would never execute. Pass a synchronous "
+            "worker."
+        )
+
+
 def _fnCallWorkerSynchronously(fnWorker, supervisor):
     """Call a worker in the carrier's thread, refusing a coroutine.
 
@@ -595,24 +616,25 @@ def _fnCallWorkerSynchronously(fnWorker, supervisor):
     on. A transfer test written that way once asserted a busy container
     refused a hand-over while no mutation was live at all.
 
-    Checked twice, because the two checks catch different things. The
-    first rejects the declaration (``async def``, and anything else
-    ``iscoroutinefunction`` recognises, including a partial of one).
-    The second rejects an AWAITABLE RESULT, which catches the shapes a
-    declaration check cannot see -- a lambda returning a coroutine, a
-    callable object whose ``__call__`` is async, a sync wrapper that
-    forgot to await.
+    Checked twice, because the two checks catch different things and
+    belong at different points. The declaration check also runs at the
+    public entrance, before anything is journaled, so an ``async def``
+    never becomes a quarantine; it is repeated here because this
+    function is reachable directly. The AWAITABLE RESULT check can only
+    run after the call, and must: it catches the shapes a declaration
+    check cannot see -- a lambda returning a coroutine, a callable
+    object whose ``__call__`` is async, a sync wrapper that forgot to
+    await -- and by then the worker may already have had effects, which
+    is exactly why that case still settles through the failure path.
     """
-    if inspect.iscoroutinefunction(fnWorker):
-        raise TypeError(
-            f"{getattr(fnWorker, '__name__', fnWorker)!r} is a "
-            "coroutine function, and the commit carrier runs workers in "
-            "a thread: it would never execute. Pass a synchronous "
-            "worker."
-        )
+    _fnAssertWorkerIsNotACoroutineFunction(fnWorker)
     resultWorker = fnWorker(supervisor)
     if inspect.isawaitable(resultWorker):
-        resultWorker.close()
+        # A custom awaitable need not have close(); calling it blindly
+        # would raise AttributeError and hide the real diagnosis.
+        fnClose = getattr(resultWorker, "close", None)
+        if callable(fnClose):
+            fnClose()
         raise TypeError(
             f"{getattr(fnWorker, '__name__', fnWorker)!r} returned an "
             "awaitable, which the carrier's thread cannot await: the "

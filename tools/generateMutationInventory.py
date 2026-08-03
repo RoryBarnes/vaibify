@@ -243,10 +243,12 @@ class _VisitorCallSites(ast.NodeVisitor):
         self.sRelativePath = sRelativePath
         self.listRows = []
         self.listUnresolvedSubprocessSites = []
+        self.listUnresolvedSdkSites = []
         self._listFunctionStack = []
         self._setCalledFunctionNodes = set()
         self._dictLocalCommandLists = {}
         self._dictSdkBoundNames = set()
+        self._setDockerClientNames = set()
 
     def fnCollect(self, treeModule):
         """Walk a parsed module, direct calls resolved first."""
@@ -254,7 +256,12 @@ class _VisitorCallSites(ast.NodeVisitor):
             if isinstance(nodeCall, ast.Call):
                 self._setCalledFunctionNodes.add(id(nodeCall.func))
         self._dictLocalCommandLists = _fdictCollectCommandLists(treeModule)
-        self._dictSdkBoundNames = _fsetCollectSdkBoundNames(treeModule)
+        self._setDockerClientNames = _fsetCollectDockerClientNames(
+            treeModule,
+        )
+        self._dictSdkBoundNames = _fsetCollectSdkBoundNames(
+            treeModule, self._setDockerClientNames,
+        )
         self.visit(treeModule)
 
     def visit_FunctionDef(self, nodeFunction):
@@ -333,9 +340,25 @@ class _VisitorCallSites(ast.NodeVisitor):
     def _fnRecordDirectDockerSdkCall(self, nodeCall):
         """Record a docker-py call assembled outside a gateway."""
         sMethod = _fsDockerSdkMethodForCall(
-            nodeCall, self._dictSdkBoundNames,
+            nodeCall, self._dictSdkBoundNames, self._setDockerClientNames,
         )
         if sMethod is None:
+            if _fbLooksLikeAnUnrootedSdkCall(nodeCall):
+                # DECLARED, not dropped. The chain passes through a
+                # docker-py collection but its root is a client this
+                # scan cannot trace -- typically one received as a
+                # function PARAMETER, which would need interprocedural
+                # analysis to resolve. Guessing from the name is what
+                # this scan just stopped doing; saying nothing would
+                # lose coverage to a precision fix.
+                self.listUnresolvedSdkSites.append({
+                    "sFile": self.sRelativePath,
+                    "sFunction": (
+                        self._listFunctionStack[-1]
+                        if self._listFunctionStack else "<module>"
+                    ),
+                    "iLine": nodeCall.lineno,
+                })
             return
         self.listRows.append(self._fdictBuildRow(
             nodeCall, f"sdk {sMethod}", S_ACCESS_DIRECT_DOCKER_SDK,
@@ -424,7 +447,7 @@ def _fsConstantSubscriptKey(nodeSubscript):
     return ""
 
 
-def _fsetCollectSdkBoundNames(treeModule):
+def _fsetCollectSdkBoundNames(treeModule, setDockerClientNames):
     """Return local names bound to an object fetched from the SDK.
 
     ``volume = dockerClient.volumes.get(name)`` then
@@ -440,6 +463,8 @@ def _fsetCollectSdkBoundNames(treeModule):
         if not isinstance(nodeAssign.value, ast.Call):
             continue
         listChain = _flistAttributeChain(nodeAssign.value.func)
+        if not listChain or listChain[0] not in setDockerClientNames:
+            continue
         if not any(
             sPart in SET_DOCKER_SDK_COLLECTIONS for sPart in listChain
         ):
@@ -450,7 +475,9 @@ def _fsetCollectSdkBoundNames(treeModule):
     return setBound
 
 
-def _fsDockerSdkMethodForCall(nodeCall, setSdkBoundNames):
+def _fsDockerSdkMethodForCall(
+    nodeCall, setSdkBoundNames, setDockerClientNames,
+):
     """Return the docker-py method a call invokes, or None.
 
     A collection name alone is not evidence: ``photoLibrary.images
@@ -464,7 +491,9 @@ def _fsDockerSdkMethodForCall(nodeCall, setSdkBoundNames):
     listChain = _flistAttributeChain(nodeCall.func)
     if len(listChain) < 2:
         return None
-    if not _fbChainIsRootedInADockerClient(listChain, setSdkBoundNames):
+    if not _fbChainIsRootedInADockerClient(
+        listChain, setSdkBoundNames | setDockerClientNames,
+    ):
         return None
     if any(sPart in SET_DOCKER_SDK_COLLECTIONS for sPart in listChain):
         return ".".join(listChain[-2:])
@@ -475,23 +504,61 @@ def _fsDockerSdkMethodForCall(nodeCall, setSdkBoundNames):
     return None
 
 
-def _fbChainIsRootedInADockerClient(listChain, setSdkBoundNames):
-    """Return True when a call chain starts at a Docker client."""
-    sRoot = listChain[0]
-    if sRoot in setSdkBoundNames:
-        return True
-    sRootLower = sRoot.lower()
+def _fbChainIsRootedInADockerClient(listChain, setDockerClientNames):
+    """Return True when a call chain starts at a Docker client.
+
+    ORIGIN, not spelling. An earlier version accepted any root whose
+    name contained "docker" or "client", which both missed
+    ``d = docker.from_env()`` and falsely claimed an unrelated
+    ``client.images.remove(...)``. A record whose coverage turns on
+    what somebody named a local is a record a rename can silently
+    empty.
+    """
+    return listChain[0] in setDockerClientNames
+
+
+# The constructors that hand back a Docker client. A name is a client
+# because it was assigned from one of these, or from a subscript keyed
+# "docker" (the route context's own slot) -- never because of how it is
+# spelled.
+_TUPLE_DOCKER_CLIENT_CONSTRUCTORS = (
+    "from_env", "DockerClient", "APIClient",
+)
+_S_DOCKER_CONTEXT_KEY = "docker"
+
+
+def _fsetCollectDockerClientNames(treeModule):
+    """Return local names holding a Docker client, by ORIGIN.
+
+    Two origins, both syntactic and both checkable: an assignment from
+    a known constructor (``docker.from_env()``, ``DockerClient(...)``,
+    ``APIClient(...)``), and the gateway's own ``self._clientDocker``.
+    Anything else is not treated as a client, so an unrelated library's
+    ``client`` never enters the record.
+    """
+    setNames = {"_clientDocker", _S_DOCKER_CONTEXT_KEY}
+    for nodeAssign in ast.walk(treeModule):
+        if not isinstance(nodeAssign, ast.Assign):
+            continue
+        if not isinstance(nodeAssign.value, ast.Call):
+            continue
+        sCalled = _fsCalledName(nodeAssign.value)
+        if sCalled not in _TUPLE_DOCKER_CLIENT_CONSTRUCTORS:
+            continue
+        for nodeTarget in nodeAssign.targets:
+            if isinstance(nodeTarget, ast.Name):
+                setNames.add(nodeTarget.id)
+    return setNames
+
+
+def _fbLooksLikeAnUnrootedSdkCall(nodeCall):
+    """Return True for a docker-py-shaped chain with an untraceable root."""
+    listChain = _flistAttributeChain(nodeCall.func)
+    if len(listChain) < 2:
+        return False
     return any(
-        sMarker in sRootLower for sMarker in _TUPLE_DOCKER_CLIENT_MARKERS
+        sPart in SET_DOCKER_SDK_COLLECTIONS for sPart in listChain[:-1]
     )
-
-
-# What a Docker client is CALLED in this package. A root-name test is a
-# heuristic and is stated as one: a client bound to an unrecognised name
-# would be missed, which is why every gateway primitive is also listed
-# by name in DICT_PRIMITIVE_ACCESS and every direct CLI invocation is
-# matched on its argv.
-_TUPLE_DOCKER_CLIENT_MARKERS = ("docker", "client")
 
 
 def _fbIsSubprocessLaunch(nodeCall):
@@ -610,7 +677,11 @@ def flistScanPackage():
 
 
 def flistUnresolvedSubprocessSites():
-    """Return the subprocess launches the scan could not read.
+    """Return the call sites the scan could not resolve.
+
+    Two kinds, both declared for the same reason: a subprocess whose
+    command is built where the scan cannot follow, and a docker-py
+    chain whose client this scan cannot trace to a constructor.
 
     The scan's DECLARED blind spot: a command assembled somewhere the
     scan cannot follow might be a Docker invocation, and nothing here
@@ -633,6 +704,7 @@ def _tScanPackage():
         visitor.fnCollect(ast.parse(pathModule.read_text(encoding="utf-8")))
         listRows.extend(visitor.listRows)
         listUnresolved.extend(visitor.listUnresolvedSubprocessSites)
+        listUnresolved.extend(visitor.listUnresolvedSdkSites)
     return (listRows, listUnresolved)
 
 

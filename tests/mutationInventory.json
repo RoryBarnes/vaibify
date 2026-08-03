@@ -1,6 +1,6 @@
 {
-  "iRowCount": 295,
-  "iUnresolvedSubprocessCount": 26,
+  "iRowCount": 291,
+  "iUnresolvedSubprocessCount": 38,
   "listRows": [
     {
       "bInsideGateway": false,
@@ -417,84 +417,6 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fnRemoveStopped",
       "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "cli/commandStatus.py",
-      "sFingerprint": "703ae989575e0a65",
-      "sFunction": "flistDescribeContainers",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk containers.list",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "cli/commandStatus.py",
-      "sFingerprint": "b5239abcd9d86b4e",
-      "sFunction": "fsDescribeImage",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk images.get",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "cli/commandStatus.py",
-      "sFingerprint": "5ce47d100aa1ff21",
-      "sFunction": "fsDescribeVolume",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk volumes.get",
-      "sReferenceKind": "direct-docker-sdk"
     },
     {
       "bInsideGateway": false,
@@ -1327,32 +1249,6 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fcontainerGetById",
       "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "c8f72af49eede5a5",
-      "sFunction": "fnWriteFileViaTar",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk container.put_archive",
-      "sReferenceKind": "direct-docker-sdk"
     },
     {
       "bInsideGateway": true,
@@ -7705,6 +7601,21 @@
       "sFunction": "_fnServeGuiUnderLock"
     },
     {
+      "iLine": 67,
+      "sFile": "cli/commandStatus.py",
+      "sFunction": "fsDescribeImage"
+    },
+    {
+      "iLine": 83,
+      "sFile": "cli/commandStatus.py",
+      "sFunction": "fsDescribeVolume"
+    },
+    {
+      "iLine": 98,
+      "sFile": "cli/commandStatus.py",
+      "sFunction": "flistDescribeContainers"
+    },
+    {
       "iLine": 221,
       "sFile": "cli/main.py",
       "sFunction": "fnLaunchHub"
@@ -7723,6 +7634,51 @@
       "iLine": 18,
       "sFile": "docker/__init__.py",
       "sFunction": "fnRunDockerCommand"
+    },
+    {
+      "iLine": 297,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "flistGetRunningContainers"
+    },
+    {
+      "iLine": 327,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "fcontainerGetById"
+    },
+    {
+      "iLine": 426,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "texecRunInContainerStreamedWithChunks"
+    },
+    {
+      "iLine": 431,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "texecRunInContainerStreamedWithChunks"
+    },
+    {
+      "iLine": 463,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "_ftStreamExecLines"
+    },
+    {
+      "iLine": 781,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "fsExecCreate"
+    },
+    {
+      "iLine": 788,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "fsocketExecStart"
+    },
+    {
+      "iLine": 794,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "fnExecResize"
+    },
+    {
+      "iLine": 806,
+      "sFile": "docker/dockerConnection.py",
+      "sFunction": "fdictInspectExec"
     },
     {
       "iLine": 208,

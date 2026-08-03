@@ -4236,7 +4236,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # RUNTIME -- both the declaration and an awaitable result -- because
     # a source-shape check caught only the spelling that had already
     # burned us.
-    "commitCarrier.py": 1039,
+    # +22 (2026-08-02): the coroutine-worker refusal moved to the public
+    # entrance as well, so a programming error cannot journal an
+    # operation and quarantine a container before being caught.
+    "commitCarrier.py": 1061,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the

@@ -36,7 +36,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # somebody classified those rows. Raising it means new call sites
 # shipped unreviewed, which is the state this record exists to make
 # visible.
-I_UNCLASSIFIED_ROW_BUDGET = 295
+I_UNCLASSIFIED_ROW_BUDGET = 291
 
 
 def _fmoduleGenerator():
@@ -146,7 +146,7 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # DECLARED blind spot with a ratchet, not a silence: each one might be a
 # Docker invocation, and the honest position is to say how many the
 # record cannot speak for rather than to imply it covers them.
-I_UNRESOLVED_SUBPROCESS_BUDGET = 26
+I_UNRESOLVED_SUBPROCESS_BUDGET = 38
 
 
 def testTheScanDeclaresWhatItCannotRead(moduleGenerator):
@@ -391,6 +391,7 @@ def testTheScannerFollowsAChainedSdkMutation(moduleGenerator):
     """
     listRows = _flistScanSource(moduleGenerator, """
         def fnRemove(sName):
+            dockerClient = docker.from_env()
             dockerClient.volumes.get(sName).remove(force=True)
     """)
     listMutating = [
@@ -423,6 +424,47 @@ def testAnUnrelatedMappingIsNotMistakenForTheDockerSdk(moduleGenerator):
         def fnUnrelated(dictRegistry, sKey):
             dictRegistry["entries"].images.remove(sKey)
     """) == []
+
+
+def testAClientIsRecognisedByOriginNotBySpelling(moduleGenerator):
+    """``d = docker.from_env()`` is a client; ``client`` alone is not.
+
+    A root test that accepted any name containing "docker" or "client"
+    both missed a client bound to a short name and falsely claimed an
+    unrelated library's. Coverage that turns on what somebody called a
+    local is coverage a rename silently empties.
+    """
+    listRecognised = _flistScanSource(moduleGenerator, """
+        def fnRemove(sName):
+            d = docker.from_env()
+            d.images.remove(sName)
+    """)
+    assert [dictRow["sPrimitive"] for dictRow in listRecognised] == [
+        "sdk images.remove",
+    ], listRecognised
+    assert _flistScanSource(moduleGenerator, """
+        def fnUnrelated(client, image):
+            client.images.remove(image)
+    """) == []
+
+
+def testAnUntraceableClientIsDeclaredRatherThanDropped(moduleGenerator):
+    """A client received as a PARAMETER is counted, not guessed at.
+
+    Origin tracking cannot follow a client across a function boundary
+    without interprocedural analysis. Guessing from the name is what it
+    replaced; saying nothing would lose coverage to a precision fix. So
+    the site joins the declared blind spot and its ratchet.
+    """
+    visitor = moduleGenerator._VisitorCallSites("synthetic.py")
+    visitor.fnCollect(ast.parse(textwrap.dedent("""
+        def fsDescribeImage(dockerClient, config):
+            return dockerClient.images.get(config.sImageName)
+    """)))
+    assert visitor.listRows == []
+    assert len(visitor.listUnresolvedSdkSites) == 1, (
+        "an untraceable docker-py chain was silently dropped"
+    )
 
 
 def testAnUnrelatedLibraryIsNotMistakenForTheDockerSdk(moduleGenerator):

@@ -980,66 +980,16 @@ def test_durable_task_journals_execs_through_create_journal_start():
 # The carrier runs workers in a THREAD, so an async worker is a bug.
 # ---------------------------------------------------------------------
 
-def testNoCarrierWorkerIsAnAsyncFunction():
-    """A coroutine handed to a to_thread carrier never runs.
-
-    ``fdictRunLockHeldMutation`` executes its worker with
-    ``asyncio.to_thread``. Passing an ``async def`` calls it in that
-    thread, gets a coroutine object back, and returns immediately --
-    the work never happens and the lock is released at once. Python
-    says so, as "coroutine ... was never awaited", but only as a
-    warning attached to teardown, which pytest does not fail on.
-
-    That is not hypothetical. A transfer test written this way asserted
-    a busy container refused a hand-over WHILE A MUTATION WAS LIVE, and
-    passed on scheduling luck with no mutation live at all -- in the
-    same commit that described it as a six-step adversarial gate. The
-    structural check is cheaper and more certain than fighting pytest's
-    warning machinery: it reads the worker argument at every call site
-    and fails if it names an ``async def`` in the same module.
-
-    (To see the underlying warning while debugging one of these, run
-    the test with ``-W error``.)
-    """
-    import ast
-    import pathlib
-
-    pathRepository = pathlib.Path(__file__).resolve().parent.parent
-    listOffenders = []
-    for pathModule in sorted(
-        list((pathRepository / "vaibify").rglob("*.py"))
-        + list((pathRepository / "tests").rglob("*.py"))
-    ):
-        if "__pycache__" in pathModule.parts:
-            continue
-        treeAst = ast.parse(pathModule.read_text(encoding="utf-8"))
-        setAsyncNames = {
-            node.name for node in ast.walk(treeAst)
-            if isinstance(node, ast.AsyncFunctionDef)
-        }
-        for nodeCall in ast.walk(treeAst):
-            if not isinstance(nodeCall, ast.Call):
-                continue
-            if getattr(
-                nodeCall.func, "attr", getattr(nodeCall.func, "id", ""),
-            ) != "fdictRunLockHeldMutation":
-                continue
-            # (appState, sName, sContainerId, laneTuple, kind, target,
-            #  fnWorker)
-            if len(nodeCall.args) < 7:
-                continue
-            nodeWorker = nodeCall.args[6]
-            if isinstance(nodeWorker, ast.Name) and (
-                nodeWorker.id in setAsyncNames
-            ):
-                listOffenders.append(
-                    f"{pathModule.name}:{nodeCall.lineno} passes the "
-                    f"async worker {nodeWorker.id!r}"
-                )
-    assert listOffenders == [], (
-        f"the carrier runs workers with asyncio.to_thread, so an async "
-        f"worker never executes: {listOffenders}"
-    )
+# The source-shape check that used to live here is gone. It read the
+# worker argument at every call site and flagged a same-module
+# `async def` passed as the seventh positional argument -- which caught
+# the one spelling that had already burned us and missed keyword
+# arguments, aliases, imported functions, lambdas returning coroutines
+# and async callable objects. The carrier now refuses a coroutine
+# worker at RUNTIME, at the public entrance and again at the call, so
+# the weaker check bought nothing and cost an exemption list: it flagged
+# the tests below, whose whole purpose is to hand the carrier an
+# `async def` and watch it be refused.
 
 
 def testACoroutineWorkerIsRefusedAtRuntime():
@@ -1091,3 +1041,62 @@ def testASynchronousWorkerStillRuns():
         _fnWorker, object(),
     ) == "done"
     assert listRan == ["ran"]
+
+
+def testACoroutineWorkerIsRefusedBeforeAnythingIsJournaled():
+    """An `async def` is a programming error, not a container quarantine.
+
+    The declaration check used to run inside the supervisor, after the
+    operation journal record was prepared and promoted. So a worker
+    somebody wrote with `async def` -- whose body never executed and
+    which therefore touched nothing -- went through the failed-worker
+    settlement and left the container NEEDING RECONCILIATION. The
+    researcher would be told to run 'vaibify reconcile' because of a
+    keyword.
+
+    Asserted on the JOURNAL, not the exception: an early raise that
+    still journaled first would pass a check that only caught TypeError.
+    """
+    async def _fnDrive():
+        appState, _, dictLaneTuple = _ftBuildOwnedAppState()
+
+        async def _fnAsyncWorker(supervisor):
+            del supervisor
+            return "never runs"
+
+        with pytest.raises(TypeError, match="coroutine function"):
+            await commitCarrier.fdictRunLockHeldMutation(
+                appState, S_CONTAINER_NAME, S_CONTAINER_ID,
+                dictLaneTuple, "file-write", "/workspace/project.json",
+                _fnAsyncWorker,
+            )
+        assert operationJournal.fdictReadJournalOutcome(
+            S_CONTAINER_NAME,
+        )["sReadState"] == "absent", (
+            "a coroutine worker journaled an operation before being "
+            "refused, so a keyword quarantined a container"
+        )
+        assert not commitCarrier.fbContainerHasLiveMutationWork(
+            appState, S_CONTAINER_NAME,
+        )
+
+    asyncio.run(_fnDrive())
+
+
+def testAnAwaitableWithoutCloseStillRaisesTypeError():
+    """A custom awaitable need not have close(); the diagnosis survives.
+
+    Calling close() blindly raised AttributeError and buried the real
+    reason the worker was refused.
+    """
+    class _AwaitableWithoutClose:
+        def __await__(self):
+            yield
+            return 1
+
+    def _fnWorker(supervisor):
+        del supervisor
+        return _AwaitableWithoutClose()
+
+    with pytest.raises(TypeError, match="awaitable"):
+        commitCarrier._fnCallWorkerSynchronously(_fnWorker, object())
