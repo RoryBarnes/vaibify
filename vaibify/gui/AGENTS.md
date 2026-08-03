@@ -43,11 +43,13 @@ Enforced by `testLeafModuleHasNoIntraPackageImports`.
 ### Path module separation
 
 `workflowManager.py` uses `posixpath` because it operates on container
-paths. `director.py` uses `os.path` because it operates on the host
-filesystem. The two modules also expose intentionally divergent
-implementations of `fbValidateWorkflow` and
-`fdictBuildGlobalVariables`. This divergence is load-bearing — do not
-unify them.
+paths, which are POSIX on every host operating system. A module that
+operates on the host filesystem must use `os.path`, whose separator is
+the host's. Unifying the two would either mangle Windows host paths or
+mangle container paths on any host, and the failure stays silent until
+a cross-platform user hits it. No module in this subtree handles host
+paths today; if you add one, it takes `os.path` and shares only *pure*
+helpers with `workflowManager`.
 
 Enforced by `testWorkflowManagerUsesPosixPath` and `testDirectorUsesOsPath`.
 
@@ -103,8 +105,8 @@ canonical module.
   containers. Editing it as ordinary Python loses escape sequences
   silently. The duplication with `dataLoaders.py` is deliberate —
   container scripts cannot import from the host environment.
-- `director.py` vs. `workflowManager.py` look similar and will trick
-  you. See "Path module separation" above.
+- A host-path module and `workflowManager.py` will look similar and
+  will trick you. See "Path module separation" above.
 - `pipelineRunner` has a deferred import from `pipelineTestRunner` to
   avoid a load-time cycle. If you add new imports in either module,
   run the full test suite to confirm you haven't closed the cycle.
@@ -211,5 +213,5 @@ python -m pytest tests/testArchitecturalInvariants.py -v
 ```
 
 The second command is the contract check; run it after any change that
-touches route registration, imports, `__all__`, or the
-`workflowManager` / `director` path-module choice.
+touches route registration, imports, `__all__`, or the path-module
+choice described above.

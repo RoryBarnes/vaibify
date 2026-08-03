@@ -40,12 +40,30 @@ SET_GENERIC_FILENAME_EXAMPLES = {
 }
 
 
+# Nested checkouts are not repository content. `.git` was always
+# excluded; agent worktrees under `.claude/worktrees/` must be too, and
+# not merely to quieten the report. They are a false NEGATIVE source:
+# `fbBareFilenameResolves` searches the whole tree, so a reference to a
+# file deleted on this branch still resolves against a worktree that
+# predates the deletion, and the check passes while CI -- which has no
+# worktrees -- fails. Discovered when withdrawing the host-side
+# director module left two live worktrees holding the old docs.
+SET_EXCLUDED_TREE_PARTS = (".git", "worktrees")
+
+
+def fbPathIsInsideExcludedTree(pathCandidate):
+    """Return True when a path lies inside .git or an agent worktree."""
+    return any(
+        sPart in SET_EXCLUDED_TREE_PARTS for sPart in pathCandidate.parts
+    )
+
+
 def flistFindAgentsFiles(pathRoot):
     """Return every AGENTS.md and SKILL.md under the repo."""
     listResults = sorted(pathRoot.rglob("AGENTS.md"))
     if SKILL_ROOT.exists():
         listResults.extend(sorted(SKILL_ROOT.rglob("SKILL.md")))
-    return [p for p in listResults if ".git" not in p.parts]
+    return [p for p in listResults if not fbPathIsInsideExcludedTree(p)]
 
 
 def flistExtractPaths(sContent):
@@ -81,7 +99,7 @@ def fbBareFilenameResolves(pathDoc, sFilename):
     if (REPO_ROOT / sFilename).exists():
         return True
     for pathMatch in REPO_ROOT.rglob(sFilename):
-        if ".git" in pathMatch.parts:
+        if fbPathIsInsideExcludedTree(pathMatch):
             continue
         return True
     return False

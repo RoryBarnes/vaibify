@@ -477,16 +477,45 @@ read carve-out into a general bypass —
 `tests/testMutationBoundary.py` fails the build on one that does, and
 on a second grant point anywhere.
 
-**`tests/mutationInventory.json` is the record of every reference that
-can reach a container** — direct calls, primitives passed as callables
-(`asyncio.to_thread(connection.fnWriteFile, ...)` is a call site),
-Docker CLI invocations assembled from scratch, and docker-py SDK calls
-including one step of propagation onto the object the SDK returned
-(`volume = client.volumes.get(...)` then `volume.remove()`).
-Regenerate with `python tools/generateMutationInventory.py --write`.
+**`tests/mutationInventory.json` carries three records, and only one of
+them is completeness-critical.** Regenerate with `python
+tools/generateMutationInventory.py --write`; drift-check with
+`--check`.
+
+- **Acquisitions** — every import or attribute-load of a member in a
+  closed dangerous vocabulary: `subprocess.*` launchers, `os.system` /
+  `exec*` / `spawn*` / `popen`, `asyncio.create_subprocess_*`,
+  `pty.spawn`, multiprocessing and process pools, Docker client
+  constructors and low-level `APIClient` methods, direct Unix-socket
+  access, and reflection (`eval`, `exec`, `sys.modules[...]`,
+  `importlib`, `__import__`, dynamic `getattr`). **This is the
+  completeness boundary and it fails closed.** Importing `os` is not
+  acquisition; `from os import system` is — 33 GUI modules import `os`,
+  so a module-level reading would be useless.
+- **Use sites** — decoded calls and commands. **Metadata,
+  best-effort.** A launch whose argv the scan cannot read becomes a row
+  with an UNKNOWN command, never a site that disappears.
+- **Dispositions** — the reviewed judgement per module or named
+  function: forbidden, guarded, or separately authorized.
+
+Completeness rests on the ACQUISITION, not on decoding the command,
+because decoding depends on reading an expression somebody else writes.
+The withdrawn host-side director module is the demonstration: its
+`subprocess.Popen(sCommand, shell=True)` was the most permissive command
+authority under `vaibify/gui/` and produced **zero rows** under the old
+design — one blind-spot entry, nothing more.
+
 The drift check fails on an added, removed, duplicated, edited, or
-hand-altered row, and the subprocess launches whose command the scan
-cannot read are counted rather than dropped.
+hand-altered row, on acquisition drift, and on blind-spot drift. Three
+ratchets may only fall: `I_UNCLASSIFIED_ROW_BUDGET`,
+`I_UNDISPOSED_ACQUISITION_BUDGET`, and `DICT_UNRESOLVED_BUDGET`. **The
+scanner never decides reachability** — a human judgement recorded
+against a fingerprint is honest about being a judgement, where a
+scanner's reachability verdict would pretend to be a proof. And a
+fingerprint is an identity, never a warrant: for an opaque site the
+expression is `subprocess.run(listCommand)` both before and after the
+builder filling it is swapped from git to `docker rm`, so a manual
+disposition must name the supporting symbols its review relied on.
 
 **What the boundary does NOT yet do, stated so nobody reads the above
 as more than it is.** `ContainerAwareRoute` opens a generic
