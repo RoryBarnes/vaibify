@@ -4398,4 +4398,191 @@ def _fdictEntry(sRel):
         old='for sPart in pathRelative.parts',
         new='for sPart in pathCandidate.parts',
     ),
+
+    # --- R4: no unauthorised capability anywhere the hub can reach ---
+    #
+    # The unnamed-authority mutation is applied to the SOURCE, not to the
+    # record: an authority arriving in a hub-reachable module is the
+    # event the rule exists for, and mutating the record instead would
+    # only prove the record can be edited. pipelineUtils is the leaf
+    # module -- it holds no capability of any kind, so a subprocess
+    # import there is unambiguously new.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testEveryHubReachableRawCapabilityIsNamedIndividually'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        old='"""Pure utility functions for pipeline execution (leaf module).',
+        new=(
+            'import subprocess\n\n'
+            '"""Pure utility functions for pipeline execution (leaf module).'
+        ),
+    ),
+    # The transitive half. buildRoutes imports imageBuilder directly for
+    # an unrelated helper, so the real chain is only visible with that
+    # shortcut edge set aside -- which is why a one-hop reading of
+    # reachability passes every other check here and still authorises
+    # `docker build` by omission.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testTheRealBuildChainIsReachedThroughItsMiddleModule'
+        ),
+        source='tests/testCapabilityAuthorities.py',
+        old='    while listStack:\n        sModule = listStack.pop()',
+        new='    while False and listStack:\n        sModule = listStack.pop()',
+    ),
+    # The synthetic chain, unrelated to the build chain, driven route ->
+    # helper -> raw authority through the same closure.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testAnUnnamedAuthorityBehindAHelperIsStillReported'
+        ),
+        source='tests/testCapabilityAuthorities.py',
+        old='    setSeen = set(setSeeds)\n    listStack = list(setSeen)',
+        new='    setSeen = set(setSeeds)\n    listStack = []',
+    ),
+    # The one CLASS disposition, kept from stretching. The mutation is on
+    # the record because the record IS the artifact this guard polices:
+    # filing a real client under the exception-type class is the failure
+    # mode, and it can only be written there.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testTheExceptionTypeClassOnlyEverCoversAnException'
+        ),
+        source='tests/testCapabilityAuthorities.py',
+        old=(
+            '    "cli/configLoader.py|fbDockerAvailable|docker-client|'
+            'docker|import|0":\n        _fdictAuthority(\n'
+            '            ["host-cli", "http"],'
+        ),
+        new=(
+            '    "cli/configLoader.py|fbDockerAvailable|docker-client|'
+            'docker|import|0":\n        _fdictAuthority(\n'
+            '            [S_LANE_EXCEPTION_TYPE],'
+        ),
+    ),
+
+    # --- Blind-spot dispositions: a ruling bound to what it read ---
+    #
+    # The gated helper is the one generic command authority under
+    # vaibify/gui/. It is disposed of as an EXCEPTIONAL authority on the
+    # strength of two structural constraints, and these are the mutants
+    # that prove each constraint is real rather than described.
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testTheGatedHelperNeverActsWhenTheJournalRefusesIt'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    "import os, sys, subprocess\\n"\n'
+            '    "sGateLine = sys.stdin.readline()\\n"\n'
+        ),
+        new=(
+            '    "import os, sys, subprocess\\n"\n'
+            '    "subprocess.call(sys.argv[1:])\\n"\n'
+            '    "sGateLine = sys.stdin.readline()\\n"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testTheGatedHelperIsConstrainedByItsHolderIdentity'
+        ),
+        source='vaibify/config/mutationAdmission.py',
+        old='        if dictOwnRecord.get(sIdentityKey) != valueExpected:',
+        new=(
+            '        if False and dictOwnRecord.get(sIdentityKey) != '
+            'valueExpected:'
+        ),
+    ),
+    # A fingerprint proves "same site". It does not preserve "somebody
+    # reviewed this", and the gap is a constant two files away from the
+    # call: "the executable is git and the flags are a module constant"
+    # is a claim about THAT symbol, which the site hashes never see.
+    Falsification(
+        nodeid=(
+            'tests/testBlindSpotDispositions.py::'
+            'testADispositionExpiresWhenItsSupportingSymbolsChange'
+        ),
+        source='vaibify/reproducibility/gitHardening.py',
+        old='LIST_GIT_CREDENTIAL_ISOLATION_CONFIG = [',
+        new=(
+            'LIST_GIT_CREDENTIAL_ISOLATION_CONFIG = [\n'
+            '    "-c", "credential.helper=osxkeychain",'
+        ),
+    ),
+    # --- The lifecycle audit: findings, not a family declaration ---
+    #
+    # The population is resolved from the live application, so the mutant
+    # is a route JOINING the family rather than a list somebody forgot to
+    # extend -- which is the way an unaudited lifecycle route would
+    # actually arrive.
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleRouteAuthority.py::'
+            'testEveryLifecycleRouteHasBeenAuditedIndividually'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    ("POST", "/api/containers/{sName}/build"): '
+            'S_SCOPE_BROWSER_HUB,'
+        ),
+        new=(
+            '    ("POST", "/api/containers/{sName}/build"): '
+            'S_SCOPE_CONTAINER_LIFECYCLE,'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleRouteAuthority.py::'
+            'testTheRecordedLockAndJournalFactsMatchTheSource'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    from vaibify.docker import containerManager\n'
+            '    from vaibify.config.keepAliveManager import fnStopKeepAlive'
+        ),
+        new=(
+            '    from vaibify.gui.sessionLifecycle import '
+            'flockContainerMutationForAppState  # noqa: F401\n'
+            '    from vaibify.docker import containerManager\n'
+            '    from vaibify.config.keepAliveManager import fnStopKeepAlive'
+        ),
+    ),
+    # The pin on a documented refusal that no state transition reaches.
+    # It fires the moment somebody makes it reachable, which is exactly
+    # when the cancel route's recorded transfer behaviour needs re-reading.
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleRouteAuthority.py::'
+            'testTheTransferRefusalForACancellingTaskCannotFire'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old='def _fbDurableTaskStillCurrent(appState, recordTask):',
+        new=(
+            'def _fnCancelDurableTask(recordTask):\n'
+            '    recordTask.sState = "cancelling"\n\n\n'
+            'def _fbDurableTaskStillCurrent(appState, recordTask):'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBlindSpotDispositions.py::'
+            'testEveryGuiBlindSpotCarriesADisposition'
+        ),
+        source='vaibify/gui/workspacePath.py',
+        old='import subprocess',
+        new=(
+            'import subprocess\n\n\n'
+            'def fnLaunchAnythingAtAll(listCommand):\n'
+            '    """A launch whose argv nobody can read."""\n'
+            '    return subprocess.run(listCommand, capture_output=True)'
+        ),
+    ),
 ]
