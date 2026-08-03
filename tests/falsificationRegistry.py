@@ -45,6 +45,37 @@ class Falsification:
 LIST_FALSIFICATIONS = [
 
     Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testADuplicatedBlindSpotEntryIsCaught'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""    ] + [
+        f"duplicated {sKey}"
+        for sKey in _flistDuplicatedBlindSpotKeys(listRecordedSites)
+    ]
+    if len(listRecordedSites) != len(dictScanned):
+        listDrift.append(
+            f"recorded list holds {len(listRecordedSites)} sites, "
+            f"scan found {len(dictScanned)}"
+        )""",
+        new="""    ]""",
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testABlindSpotDispositionDiesWithItsCommandBuilder'
+        ),
+        source='tools/generateMutationInventory.py',
+        old="""            "sScopeFingerprint": (
+                _fsFingerprintNode(nodeScope) if nodeScope is not None
+                else _fsFingerprintNode(nodeCall)
+            ),""",
+        new="""            "sScopeFingerprint": _fsFingerprintNode(nodeCall),""",
+    ),
+
+    Falsification(
         nodeid='tests/testMutationBoundary.py::testAnUnadmittedExecIsRefusedBeforeItRuns',
         source='vaibify/docker/dockerConnection.py',
         old="""        mutationAdmission.fnAssertContainerCommandAdmitted(

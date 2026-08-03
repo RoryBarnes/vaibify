@@ -23,6 +23,7 @@ tree it was written from. A scan that agrees with itself proves nothing.
 
 import ast
 import collections
+import copy
 import importlib.util
 import pathlib
 import textwrap
@@ -37,7 +38,17 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # somebody classified those rows. Raising it means new call sites
 # shipped unreviewed, which is the state this record exists to make
 # visible.
-I_UNCLASSIFIED_ROW_BUDGET = 291
+#
+# 291 -> 293 on 2026-08-02, and this is the one shape of increase that
+# is not new debt: scoping the scanner's command-list resolution per
+# FUNCTION rather than per module resolved three sites that were only
+# opaque because two functions in a module each named a local
+# `listCommand`. Two of them are Docker invocations in a GUI module --
+# `docker stats` and a mutation-capable `docker exec` -- so they moved
+# OUT of the blind spot and INTO the record, which is the direction
+# this file wants. DICT_UNRESOLVED_BUDGET fell from 26 to 23 in the
+# same change; read the two numbers together or this one lies.
+I_UNCLASSIFIED_ROW_BUDGET = 293
 
 
 def _fmoduleGenerator():
@@ -152,7 +163,7 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # SDK root could go untraceable while an opaque command was resolved,
 # and the total would say the blind spot had not grown.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 26,
+    "opaque-subprocess-command": 23,
     "untraceable-docker-sdk-root": 12,
 }
 
@@ -217,6 +228,78 @@ def testTheRecordedBlindSpotCannotDriftFromTheSource(moduleGenerator):
         f"the recorded blind spot disagrees with a fresh scan: "
         f"{dictDrift['listBlindSpotDrift']}. Regenerate with "
         f"python tools/generateMutationInventory.py --write"
+    )
+
+
+@pytest.mark.falsification
+def testADuplicatedBlindSpotEntryIsCaught(moduleGenerator):
+    """A repeated recorded site must not collapse into one slot.
+
+    Keying the comparison by identity closed the count-only hole and
+    opened a narrower one of the same shape: two identical entries
+    occupy one dictionary slot, so the recorded list could hold 39
+    sites while its count field said 38 and the set comparison found
+    nothing wrong. The row check learned this lesson already, which is
+    what ``listDuplicated`` is for over there.
+
+    Kills: dropping the duplicate and length checks from
+    _flistBlindSpotDrift.
+    """
+    dictInventory = copy.deepcopy(moduleGenerator.fdictLoadInventory())
+    dictInventory["listUnresolvedSites"].append(
+        copy.deepcopy(dictInventory["listUnresolvedSites"][0]),
+    )
+    dictDrift = moduleGenerator.fdictCompareAgainstSource(
+        dictInventory, moduleGenerator.flistScanPackage(),
+    )
+    assert any(
+        sDrift.startswith("duplicated")
+        for sDrift in dictDrift["listBlindSpotDrift"]
+    ), (
+        f"a duplicated blind-spot entry passed unnoticed: "
+        f"{dictDrift['listBlindSpotDrift']}"
+    )
+
+
+@pytest.mark.falsification
+def testABlindSpotDispositionDiesWithItsCommandBuilder(moduleGenerator):
+    """Swapping the builder must invalidate a bound manual disposition.
+
+    The call expression of an opaque site is ``subprocess.run(command)``
+    before AND after the function that fills ``command`` is changed from
+    building a git invocation to building ``docker rm``. A disposition
+    bound to that expression alone would survive precisely the edit that
+    makes it false -- which is the whole failure mode a fingerprint
+    exists to prevent, reintroduced one level up.
+
+    So the enclosing scope is fingerprinted too. Its limit is real and
+    stated in the generator: a builder defined in ANOTHER function is
+    still outside this hash.
+
+    Kills: dropping sScopeFingerprint, or removing it from the drift
+    comparison.
+    """
+    sBefore = (
+        "def f():\n"
+        "    command = fbuildGitCommand()\n"
+        "    subprocess.run(command)\n"
+    )
+    sAfter = sBefore.replace("fbuildGitCommand", "fbuildDockerDeleteCommand")
+
+    def ftFingerprintOnly(sSource):
+        visitor = moduleGenerator._VisitorCallSites("probe.py")
+        visitor.fnCollect(ast.parse(sSource))
+        dictSite = visitor.listUnresolvedSubprocessSites[0]
+        return (dictSite["sFingerprint"], dictSite["sScopeFingerprint"])
+
+    tBefore = ftFingerprintOnly(sBefore)
+    tAfter = ftFingerprintOnly(sAfter)
+    assert tBefore[0] == tAfter[0], (
+        "the call expression did change -- rewrite this test's premise"
+    )
+    assert tBefore[1] != tAfter[1], (
+        "the builder was swapped and the scope fingerprint held, so a "
+        "manual disposition would survive the change that invalidates it"
     )
 
 

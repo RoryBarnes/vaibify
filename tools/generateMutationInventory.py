@@ -253,6 +253,7 @@ class _VisitorCallSites(ast.NodeVisitor):
         self.listUnresolvedSubprocessSites = []
         self.listUnresolvedSdkSites = []
         self._listFunctionStack = []
+        self._listScopeStack = []
         self._setCalledFunctionNodes = set()
         self._dictLocalCommandLists = {}
         self._dictSdkBoundNames = set()
@@ -274,10 +275,26 @@ class _VisitorCallSites(ast.NodeVisitor):
 
     def visit_FunctionDef(self, nodeFunction):
         self._listFunctionStack.append(nodeFunction.name)
+        self._listScopeStack.append(nodeFunction)
         self.generic_visit(nodeFunction)
+        self._listScopeStack.pop()
         self._listFunctionStack.pop()
 
     visit_AsyncFunctionDef = visit_FunctionDef
+
+    def _fdictCommandListsInScope(self):
+        """Return the list literals visible at the current position.
+
+        The enclosing function's locals first, the module's after: a
+        name bound in a function shadows a module-level one, which is
+        what Python does and therefore what the record must say.
+        """
+        dictVisible = dict(self._dictLocalCommandLists.get(None, {}))
+        for nodeScope in self._listScopeStack:
+            dictVisible.update(
+                self._dictLocalCommandLists.get(id(nodeScope), {}),
+            )
+        return dictVisible
 
     def visit_Call(self, nodeCall):
         sPrimitive = _fsCalledName(nodeCall)
@@ -316,7 +333,7 @@ class _VisitorCallSites(ast.NodeVisitor):
     def _fnRecordDirectDockerInvocation(self, nodeCall):
         """Record a ``docker ...`` subprocess assembled outside a gateway."""
         if _fbIsSubprocessLaunch(nodeCall) and _fbArgumentIsOpaque(
-            nodeCall, self._dictLocalCommandLists,
+            nodeCall, self._fdictCommandListsInScope(),
         ):
             # DECLARED, not ignored. The scan cannot see what a command
             # built somewhere else contains, and a boundary that
@@ -329,7 +346,7 @@ class _VisitorCallSites(ast.NodeVisitor):
             )
             return
         sSubcommand = _fsDockerSubcommandForCall(
-            nodeCall, self._dictLocalCommandLists,
+            nodeCall, self._fdictCommandListsInScope(),
         )
         if sSubcommand is None:
             return
@@ -371,15 +388,34 @@ class _VisitorCallSites(ast.NodeVisitor):
         ))
 
     def _fdictBuildBlindSpot(self, nodeCall, sBlindSpotKind):
-        """Return one declared-unreadable site, fingerprinted like a row.
+        """Return one declared-unreadable site, with two fingerprints.
 
         A blind spot carries the same identity a row does because it is
         subject to the same drift question. Without a fingerprint the
         record could only be counted, so a checked-in site's file,
         function, or kind could be rewritten by hand and every check
-        stayed green -- and a manual disposition bound to such a site
-        would survive the site changing underneath it.
+        stayed green.
+
+        TWO fingerprints, because they answer different questions and a
+        review found the single one insufficient. ``sFingerprint``
+        hashes the call expression and answers "is this the same
+        site" -- but for an opaque command the expression is
+        ``subprocess.run(listCommand)``, which is IDENTICAL before and
+        after the builder that fills ``listCommand`` is swapped from
+        git to ``docker rm``. A manual disposition bound to that alone
+        would survive the very change that invalidates it.
+
+        ``sScopeFingerprint`` hashes the whole enclosing function, so
+        any edit to how the command is built inside it invalidates the
+        disposition. Its LIMIT, stated rather than papered over: a
+        builder defined in another function is still outside it. The
+        answer for those is to resolve the site mechanically, or for
+        the disposition to NAME the supporting symbols it relied on so
+        they can be fingerprinted too.
         """
+        nodeScope = (
+            self._listScopeStack[-1] if self._listScopeStack else None
+        )
         return {
             "sBlindSpotKind": sBlindSpotKind,
             "sFile": self.sRelativePath,
@@ -390,6 +426,10 @@ class _VisitorCallSites(ast.NodeVisitor):
             "iLine": nodeCall.lineno,
             "iOrdinal": 0,
             "sFingerprint": _fsFingerprintNode(nodeCall),
+            "sScopeFingerprint": (
+                _fsFingerprintNode(nodeScope) if nodeScope is not None
+                else _fsFingerprintNode(nodeCall)
+            ),
         }
 
     def _fdictBuildRow(
@@ -593,33 +633,58 @@ def _fbIsSubprocessLaunch(nodeCall):
 
 
 def _fdictCollectCommandLists(treeModule):
-    """Map local names to the list literals they are assigned.
+    """Map each scope's local names to the list literals assigned there.
 
-    A one-step, same-module constant propagation, which is what most of
-    this package's subprocess calls actually look like:
+    A one-step constant propagation, which is what most of this
+    package's subprocess calls actually look like:
     ``saCommand = ["docker", "rm", ...]`` then ``subprocess.run(
     saCommand, ...)``. Without it, ten real Docker invocations --
     ``rm``, ``tag``, ``exec``, ``stats`` -- were invisible purely
     because the argv had a name.
 
-    A name assigned more than once resolves to nothing: two candidate
-    values is not a resolution, and guessing one would be worse than
-    declaring the site unresolved.
+    Collected PER FUNCTION SCOPE, not per module. Module-wide
+    collection treated two functions that each build their own
+    ``listCommand`` as a reassignment and resolved neither, which is
+    how ``resourceMonitor``'s ``docker stats`` and ``docker exec ... df``
+    -- one of them mutation-capable, both in a GUI module -- came to sit
+    in the blind spot rather than in the record. There was never an
+    ambiguity to be cautious about: they are separate locals in
+    separate scopes.
+
+    Within one scope the caution still holds. A name assigned more than
+    once resolves to nothing: two candidate values is not a resolution,
+    and guessing one would be worse than declaring the site unresolved.
+
+    Returns ``{scope key: {name: node}}``, where the scope key is the
+    id of the enclosing function node, or ``None`` at module level.
     """
+    dictByScope = {}
+    _fnCollectScopeCommandLists(treeModule, None, dictByScope)
+    return dictByScope
+
+
+def _fnCollectScopeCommandLists(nodeScope, keyScope, dictByScope):
+    """Record one scope's list assignments, then recurse into its children."""
     dictAssigned = {}
     setReassigned = set()
-    for nodeAssign in ast.walk(treeModule):
-        if not isinstance(nodeAssign, ast.Assign):
+    for nodeChild in ast.walk(nodeScope):
+        if isinstance(nodeChild, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if nodeChild is not nodeScope:
+                _fnCollectScopeCommandLists(
+                    nodeChild, id(nodeChild), dictByScope,
+                )
             continue
-        if not isinstance(nodeAssign.value, (ast.List, ast.Tuple)):
+        if not isinstance(nodeChild, ast.Assign):
             continue
-        for nodeTarget in nodeAssign.targets:
+        if not isinstance(nodeChild.value, (ast.List, ast.Tuple)):
+            continue
+        for nodeTarget in nodeChild.targets:
             if not isinstance(nodeTarget, ast.Name):
                 continue
             if nodeTarget.id in dictAssigned:
                 setReassigned.add(nodeTarget.id)
-            dictAssigned[nodeTarget.id] = nodeAssign.value
-    return {
+            dictAssigned[nodeTarget.id] = nodeChild.value
+    dictByScope[keyScope] = {
         sName: nodeValue for sName, nodeValue in dictAssigned.items()
         if sName not in setReassigned
     }
@@ -859,10 +924,23 @@ def _flistBlindSpotDrift(dictInventory):
     than it sounds: a manual disposition is bound to a site, and a
     disposition attached to a site that has silently moved is a claim
     about code nobody looked at.
+
+    Keying by identity fixed that but opened a smaller hole of the same
+    shape: a DUPLICATED recorded entry collapsed into one dictionary
+    slot, so the recorded list could carry 39 entries while its count
+    field said 38 and this check said nothing. Both are compared here
+    now -- the same lesson the row check learned when
+    ``listDuplicated`` was added to it.
+
+    ``iLine`` is deliberately NOT compared. Rows omit line numbers from
+    their identity for the same reason: every unrelated edit above a
+    site would move it, and a check that cries drift on every edit
+    teaches a reader to regenerate without looking, which is worse than
+    the narrow hand-edit it would catch.
     """
+    listRecordedSites = dictInventory.get("listUnresolvedSites", [])
     dictRecorded = {
-        fsBlindSpotKey(site): site
-        for site in dictInventory.get("listUnresolvedSites", [])
+        fsBlindSpotKey(site): site for site in listRecordedSites
     }
     dictScanned = {
         fsBlindSpotKey(site): site for site in flistUnresolvedSites()
@@ -872,13 +950,38 @@ def _flistBlindSpotDrift(dictInventory):
     ] + [
         f"removed {sKey}"
         for sKey in sorted(set(dictRecorded) - set(dictScanned))
+    ] + [
+        f"duplicated {sKey}"
+        for sKey in _flistDuplicatedBlindSpotKeys(listRecordedSites)
     ]
+    if len(listRecordedSites) != len(dictScanned):
+        listDrift.append(
+            f"recorded list holds {len(listRecordedSites)} sites, "
+            f"scan found {len(dictScanned)}"
+        )
+    if dictInventory.get("iUnresolvedSiteCount") != len(listRecordedSites):
+        listDrift.append(
+            f"count field says "
+            f"{dictInventory.get('iUnresolvedSiteCount')}, recorded list "
+            f"holds {len(listRecordedSites)}"
+        )
     for sKey in sorted(set(dictRecorded) & set(dictScanned)):
-        if dictRecorded[sKey]["sFingerprint"] != (
-            dictScanned[sKey]["sFingerprint"]
-        ):
-            listDrift.append(f"edited {sKey}")
+        listDisagreeing = [
+            sField for sField in ("sFingerprint", "sScopeFingerprint")
+            if dictRecorded[sKey].get(sField) != dictScanned[sKey][sField]
+        ]
+        if listDisagreeing:
+            listDrift.append(f"edited {sKey} ({', '.join(listDisagreeing)})")
     return listDrift
+
+
+def _flistDuplicatedBlindSpotKeys(listSites):
+    """Return blind-spot keys appearing more than once in the record."""
+    dictSeen = {}
+    for dictSite in listSites:
+        sKey = fsBlindSpotKey(dictSite)
+        dictSeen[sKey] = dictSeen.get(sKey, 0) + 1
+    return sorted(sKey for sKey, iCount in dictSeen.items() if iCount > 1)
 
 
 def _flistDuplicatedKeys(listRows):

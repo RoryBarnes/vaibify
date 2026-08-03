@@ -1,6 +1,6 @@
 {
-  "iRowCount": 291,
-  "iUnresolvedSiteCount": 38,
+  "iRowCount": 293,
+  "iUnresolvedSiteCount": 35,
   "listRows": [
     {
       "bInsideGateway": false,
@@ -3615,6 +3615,58 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "flistGetRunningContainers",
       "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "direct-docker-cli",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/resourceMonitor.py",
+      "sFingerprint": "623ee2940424071a",
+      "sFunction": "_ftRunContainerDiskQuery",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "docker exec",
+      "sReferenceKind": "direct-docker-cli"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "direct-docker-cli",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/resourceMonitor.py",
+      "sFingerprint": "623ee2940424071a",
+      "sFunction": "_ftRunDockerStats",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "docker stats",
+      "sReferenceKind": "direct-docker-cli"
     },
     {
       "bInsideGateway": false,
@@ -7571,20 +7623,13 @@
   ],
   "listUnresolvedSites": [
     {
-      "iLine": 312,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "cli/commandReproduce.py",
-      "sFingerprint": "6a5d45b326a64bda",
-      "sFunction": "_fbRunUvFallback"
-    },
-    {
       "iLine": 293,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandReproduce.py",
       "sFingerprint": "6a5d45b326a64bda",
-      "sFunction": "_fiRunPipInstall"
+      "sFunction": "_fiRunPipInstall",
+      "sScopeFingerprint": "501ee967103f4237"
     },
     {
       "iLine": 72,
@@ -7592,7 +7637,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandRun.py",
       "sFingerprint": "0cb6915f3b11278c",
-      "sFunction": "_fiRunPipeline"
+      "sFunction": "_fiRunPipeline",
+      "sScopeFingerprint": "9994c8f9f7b6a943"
     },
     {
       "iLine": 77,
@@ -7600,7 +7646,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandRun.py",
       "sFingerprint": "3d5b19266cff67cf",
-      "sFunction": "_fiRunPipeline"
+      "sFunction": "_fiRunPipeline",
+      "sScopeFingerprint": "9994c8f9f7b6a943"
     },
     {
       "iLine": 116,
@@ -7608,7 +7655,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandRun.py",
       "sFingerprint": "3c878170a64e168c",
-      "sFunction": "_fiRunSingleStep"
+      "sFunction": "_fiRunSingleStep",
+      "sScopeFingerprint": "e596b0adcb1c46b6"
     },
     {
       "iLine": 162,
@@ -7616,7 +7664,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandStart.py",
       "sFingerprint": "91b39602fdabaf2a",
-      "sFunction": "_fnServeGuiUnderLock"
+      "sFunction": "_fnServeGuiUnderLock",
+      "sScopeFingerprint": "534438261717e1fd"
     },
     {
       "iLine": 98,
@@ -7624,7 +7673,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
       "sFingerprint": "703ae989575e0a65",
-      "sFunction": "flistDescribeContainers"
+      "sFunction": "flistDescribeContainers",
+      "sScopeFingerprint": "39818b36ddc37b24"
     },
     {
       "iLine": 67,
@@ -7632,7 +7682,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
       "sFingerprint": "b5239abcd9d86b4e",
-      "sFunction": "fsDescribeImage"
+      "sFunction": "fsDescribeImage",
+      "sScopeFingerprint": "fc2a3968c1c22388"
     },
     {
       "iLine": 83,
@@ -7640,7 +7691,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
       "sFingerprint": "5ce47d100aa1ff21",
-      "sFunction": "fsDescribeVolume"
+      "sFunction": "fsDescribeVolume",
+      "sScopeFingerprint": "8b25cce3146da9b1"
     },
     {
       "iLine": 221,
@@ -7648,7 +7700,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/main.py",
       "sFingerprint": "a28af1d5fceb4a37",
-      "sFunction": "fnLaunchHub"
+      "sFunction": "fnLaunchHub",
+      "sScopeFingerprint": "69b6820d4f53f67b"
     },
     {
       "iLine": 339,
@@ -7656,7 +7709,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/main.py",
       "sFingerprint": "0324299287bd6ede",
-      "sFunction": "gui"
+      "sFunction": "gui",
+      "sScopeFingerprint": "e91caed8a0044ed7"
     },
     {
       "iLine": 313,
@@ -7664,7 +7718,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/main.py",
       "sFingerprint": "9a8d639b53f0562a",
-      "sFunction": "setup"
+      "sFunction": "setup",
+      "sScopeFingerprint": "19c4c3ab51a9450c"
     },
     {
       "iLine": 18,
@@ -7672,7 +7727,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "docker/__init__.py",
       "sFingerprint": "dde2639bddac8ec7",
-      "sFunction": "fnRunDockerCommand"
+      "sFunction": "fnRunDockerCommand",
+      "sScopeFingerprint": "8070d737be64d783"
     },
     {
       "iLine": 463,
@@ -7680,7 +7736,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "582f6c556ba169b3",
-      "sFunction": "_ftStreamExecLines"
+      "sFunction": "_ftStreamExecLines",
+      "sScopeFingerprint": "557a2728caf5eb2c"
     },
     {
       "iLine": 327,
@@ -7688,7 +7745,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "90dff39c4f3c7960",
-      "sFunction": "fcontainerGetById"
+      "sFunction": "fcontainerGetById",
+      "sScopeFingerprint": "0524d95927d35112"
     },
     {
       "iLine": 806,
@@ -7696,7 +7754,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "7c8e1470ff62ee5c",
-      "sFunction": "fdictInspectExec"
+      "sFunction": "fdictInspectExec",
+      "sScopeFingerprint": "9c5865a393cf0190"
     },
     {
       "iLine": 297,
@@ -7704,7 +7763,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "e469d4d043076500",
-      "sFunction": "flistGetRunningContainers"
+      "sFunction": "flistGetRunningContainers",
+      "sScopeFingerprint": "307cc8fa4deecaa8"
     },
     {
       "iLine": 794,
@@ -7712,7 +7772,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "c5dbda4224d1463b",
-      "sFunction": "fnExecResize"
+      "sFunction": "fnExecResize",
+      "sScopeFingerprint": "75b18a46492cbca3"
     },
     {
       "iLine": 781,
@@ -7720,7 +7781,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "adcbb43cef9e8120",
-      "sFunction": "fsExecCreate"
+      "sFunction": "fsExecCreate",
+      "sScopeFingerprint": "bcdb2d354b818c52"
     },
     {
       "iLine": 788,
@@ -7728,7 +7790,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "ffe6aa1fecacb88b",
-      "sFunction": "fsocketExecStart"
+      "sFunction": "fsocketExecStart",
+      "sScopeFingerprint": "468376d923521926"
     },
     {
       "iLine": 431,
@@ -7736,7 +7799,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "7c8e1470ff62ee5c",
-      "sFunction": "texecRunInContainerStreamedWithChunks"
+      "sFunction": "texecRunInContainerStreamedWithChunks",
+      "sScopeFingerprint": "f0ad85dd026fbe9a"
     },
     {
       "iLine": 426,
@@ -7744,7 +7808,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "adcbb43cef9e8120",
-      "sFunction": "texecRunInContainerStreamedWithChunks"
+      "sFunction": "texecRunInContainerStreamedWithChunks",
+      "sScopeFingerprint": "f0ad85dd026fbe9a"
     },
     {
       "iLine": 208,
@@ -7752,7 +7817,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "docker/x11Forwarding.py",
       "sFingerprint": "689f6e099db90ca9",
-      "sFunction": "_fnRunBestEffort"
+      "sFunction": "_fnRunBestEffort",
+      "sScopeFingerprint": "6535cacbfa91dba8"
     },
     {
       "iLine": 931,
@@ -7760,7 +7826,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/commitCarrier.py",
       "sFingerprint": "bd2bac3860733a75",
-      "sFunction": "fdictLaunchGatedHelperProcess"
+      "sFunction": "fdictLaunchGatedHelperProcess",
+      "sScopeFingerprint": "2e78ccc1b45b0c2a"
     },
     {
       "iLine": 245,
@@ -7768,7 +7835,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/director.py",
       "sFingerprint": "41b253f7cb3048f3",
-      "sFunction": "fnExecuteCommand"
+      "sFunction": "fnExecuteCommand",
+      "sScopeFingerprint": "d594d6ff709b9a56"
     },
     {
       "iLine": 75,
@@ -7776,23 +7844,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/gitStatus.py",
       "sFingerprint": "0f21d54d13c56f5f",
-      "sFunction": "fsRunGit"
-    },
-    {
-      "iLine": 156,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "gui/resourceMonitor.py",
-      "sFingerprint": "623ee2940424071a",
-      "sFunction": "_ftRunContainerDiskQuery"
-    },
-    {
-      "iLine": 51,
-      "iOrdinal": 0,
-      "sBlindSpotKind": "opaque-subprocess-command",
-      "sFile": "gui/resourceMonitor.py",
-      "sFingerprint": "623ee2940424071a",
-      "sFunction": "_ftRunDockerStats"
+      "sFunction": "fsRunGit",
+      "sScopeFingerprint": "60c38e3fe74f1ae9"
     },
     {
       "iLine": 47,
@@ -7800,7 +7853,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/routes/sessionRoutes.py",
       "sFingerprint": "d7135f01e7151097",
-      "sFunction": "_fnLaunchDetachedHub"
+      "sFunction": "_fnLaunchDetachedHub",
+      "sScopeFingerprint": "b5fc552e330adc37"
     },
     {
       "iLine": 187,
@@ -7808,7 +7862,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/setupServer.py",
       "sFingerprint": "cf687253883dc0d5",
-      "sFunction": "ftResultRunBuild"
+      "sFunction": "ftResultRunBuild",
+      "sScopeFingerprint": "559022b10efc78c1"
     },
     {
       "iLine": 1121,
@@ -7816,7 +7871,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/syncDispatcher.py",
       "sFingerprint": "83fd16cc4d1a4594",
-      "sFunction": "_ftRunHostLsRemote"
+      "sFunction": "_ftRunHostLsRemote",
+      "sScopeFingerprint": "d28420a39737fd61"
     },
     {
       "iLine": 192,
@@ -7824,7 +7880,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/dependencyPinning.py",
       "sFingerprint": "1ac76c020ddcc959",
-      "sFunction": "_fnRunLockCompile"
+      "sFunction": "_fnRunLockCompile",
+      "sScopeFingerprint": "7b73ea65a9451384"
     },
     {
       "iLine": 127,
@@ -7832,7 +7889,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/environmentSnapshot.py",
       "sFingerprint": "be318a5f8eec9638",
-      "sFunction": "_fsRunCheckedCommand"
+      "sFunction": "_fsRunCheckedCommand",
+      "sScopeFingerprint": "9cdd08c3f9f31d5a"
     },
     {
       "iLine": 182,
@@ -7840,7 +7898,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafMirror.py",
       "sFingerprint": "f4e70d60aa6f39cc",
-      "sFunction": "_fnRunGit"
+      "sFunction": "_fnRunGit",
+      "sScopeFingerprint": "16f3f77f9dc88425"
     },
     {
       "iLine": 751,
@@ -7848,7 +7907,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafSync.py",
       "sFingerprint": "7327dd4175eab897",
-      "sFunction": "_fnRunLsRemote"
+      "sFunction": "_fnRunLsRemote",
+      "sScopeFingerprint": "bc3693f384db9bea"
     },
     {
       "iLine": 664,
@@ -7856,7 +7916,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafSync.py",
       "sFingerprint": "d92b3a65191b5bcd",
-      "sFunction": "_fnRunSubprocess"
+      "sFunction": "_fnRunSubprocess",
+      "sScopeFingerprint": "57449a74c6e3fa16"
     },
     {
       "iLine": 301,
@@ -7864,7 +7925,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/repoFiles.py",
       "sFingerprint": "5579aa69d53a2bc9",
-      "sFunction": "ftRunCommand"
+      "sFunction": "ftRunCommand",
+      "sScopeFingerprint": "728e0c7c05a764eb"
     },
     {
       "iLine": 188,
@@ -7872,7 +7934,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/rerunVerification.py",
       "sFingerprint": "5882f4153fed60e9",
-      "sFunction": "fbRunWorkflowInContainer"
+      "sFunction": "fbRunWorkflowInContainer",
+      "sScopeFingerprint": "be9c4bfc9dd5a371"
     }
   ],
   "sPurpose": "Every container-mutation call site in vaibify/, one row each. Machine-derived identity; reviewer-classified meaning. See tools/generateMutationInventory.py."
