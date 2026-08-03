@@ -17,6 +17,7 @@ on their own schedule (audit finding F-R-01).
 """
 
 import base64
+import json
 import shlex
 import warnings
 from dataclasses import dataclass
@@ -245,6 +246,7 @@ def _fnEnsureDockerHost():
 _S_TYPED_READ_PATH_SLOT = "<<PATH>>"
 S_TYPED_READ_FILE_BASE64 = "readFileBase64"
 S_TYPED_READ_DIRECTORY = "listDirectory"
+S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -256,6 +258,18 @@ _DICT_TYPED_READ_PROGRAMS = {
         "import os,sys; "
         "sys.stdout.write(chr(10).join(sorted(os.listdir("
         + _S_TYPED_READ_PATH_SLOT + "))))"
+    ),
+    # The three figures `df` reports, computed the way `df` computes
+    # them. Free is f_bavail -- the space available to an unprivileged
+    # user -- because that is what df's Available column has always
+    # meant, and the dashboard's low-disk warning is calibrated to it.
+    S_TYPED_READ_FILESYSTEM_USAGE: (
+        "import json,os,sys; "
+        "st=os.statvfs(" + _S_TYPED_READ_PATH_SLOT + "); "
+        "sys.stdout.write(json.dumps({"
+        "'iTotalBytes': st.f_blocks*st.f_frsize, "
+        "'iUsedBytes': (st.f_blocks-st.f_bfree)*st.f_frsize, "
+        "'iFreeBytes': st.f_bavail*st.f_frsize}))"
     ),
 }
 
@@ -638,6 +652,30 @@ class DockerConnection:
             sEntry for sEntry in resultExec.sStdout.split("\n") if sEntry
         ]
 
+    def fdictReadFilesystemUsage(self, sContainerId, sPath):
+        """Return total/used/free bytes for the filesystem holding a path.
+
+        An AUDITED ADAPTER, on the same terms as the other two: the
+        caller supplies a PATH and this method supplies only the NAME of
+        a declared read operation, so a path cannot become program or
+        shell syntax.
+
+        This replaced ``docker exec -u <user> <id> df -PB1 /`` assembled
+        in a GUI module. That was a container EXEC outside every guarded
+        primitive, and a disk reading is the least of what an exec can
+        do -- which is precisely why the boundary treats arbitrary
+        command execution as mutating and why a read has to be typed
+        rather than trusted.
+        """
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_FILESYSTEM_USAGE, sPath,
+        )
+        if resultExec.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot stat filesystem in container: {sPath}"
+            )
+        return json.loads(resultExec.sStdout.strip())
+
     def fnIterStreamFile(
         self, sContainerId, sFilePath, iChunkSizeBytes=1048576,
     ):
@@ -842,7 +880,7 @@ class DockerConnection:
                 sContainerId, sScript,
             )
         except Exception as error:
-            if _fbErrorMeansContainerGone(error):
+            if fbErrorMeansContainerGone(error):
                 return {
                     "bConclusive": True, "iMemberCount": 0,
                     "sDetail": f"container is gone or stopped: {error}",
@@ -939,7 +977,7 @@ def _fiParseMemberCount(sOutput):
     return -1
 
 
-def _fbErrorMeansContainerGone(error):
+def fbErrorMeansContainerGone(error):
     """Return True when an exec error proves the container has no processes.
 
     A 404 (no such container) or a 409 "is not running" both mean no

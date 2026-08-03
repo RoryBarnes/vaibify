@@ -23,13 +23,13 @@ _I_STALE_IMAGE_THRESHOLD_SECONDS = 30
 _S_EXPECTED_ENTRYPOINT_VERSION = "2"
 
 
-def _fnRegisterMonitor(app):
+def _fnRegisterMonitor(app, dictCtx):
     """Register GET /api/monitor route."""
 
     @app.get("/api/monitor/{sContainerId}")
     async def fnGetMonitorStats(sContainerId: str):
         return await asyncio.to_thread(
-            fdictGetContainerStats, sContainerId,
+            fdictGetContainerStats, dictCtx["docker"], sContainerId,
         )
 
 
@@ -358,7 +358,7 @@ def _fnRegisterDockerStatus(app, dictCtx):
 
 def fnRegisterAll(app, dictCtx):
     """Register all system routes."""
-    _fnRegisterMonitor(app)
+    _fnRegisterMonitor(app, dictCtx)
     _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterUserInfo(app)
     _fnRegisterContainerReady(app, dictCtx)

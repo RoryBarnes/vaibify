@@ -81,8 +81,9 @@ I_UNCLASSIFIED_ROW_BUDGET = 308
 # cannot be raised by splitting one call into two safer ones.
 #
 # Seeded at 217 on 2026-08-03, down from 218 when the file pull stopped
-# assembling `docker cp`.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 217
+# assembling `docker cp`; 217 -> 216 when the dashboard's disk tile
+# stopped assembling `docker exec ... df` and became a typed read.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 216
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -1464,4 +1465,7 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     "read",
     "close",
     "fsResolveDockerHost",
+    # A pure predicate over an exception object. It reads a status code
+    # that a daemon call already returned; it makes no call of its own.
+    "fbErrorMeansContainerGone",
 }

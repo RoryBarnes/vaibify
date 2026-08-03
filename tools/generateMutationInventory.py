@@ -165,6 +165,12 @@ DICT_PRIMITIVE_ACCESS = {
     # PATH, never a command, so it is a typed read even though it uses
     # the raw executor internally.
     "flistDirectoryEntries": S_ACCESS_TYPED_READ,
+    # The audited adapter behind the dashboard's disk tile, on the same
+    # terms: a PATH and a declared operation name, never a command. It
+    # replaced `docker exec -u <user> <id> df -PB1 /` assembled in a GUI
+    # module, which the boundary had to read as an arbitrary command
+    # because a primitive cannot tell a df from an rm -rf.
+    "fdictReadFilesystemUsage": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,
