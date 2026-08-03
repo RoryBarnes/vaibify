@@ -12,8 +12,8 @@ primitive one package away: ``gui/buildRoutes.py`` calls
 ``cli.commandBuild.fnBuildFromConfig``, which reaches
 ``docker/imageBuilder.py``, which shells out to ``docker build``. So the
 population here is the TRANSITIVE import closure seeded at
-``vaibify/gui/`` -- 43 raw-effect acquisitions across 8 packages, not the
-19 that live in the GUI tree.
+``vaibify/gui/`` -- 42 raw-effect acquisitions across 8 packages, not the
+18 that live in the GUI tree.
 
 **That the record cannot be silenced by regenerating it.** The
 inventory's drift check is satisfied by ``--write``; a new
@@ -278,15 +278,6 @@ DICT_NAMED_AUTHORITIES = {
             "cover a client too. Per-site, so the narrower fact is the "
             "one on record.",
         ),
-    "gui/registryRoutes.py|_fnDockerStopCommand|process-launch|subprocess|"
-    "import|0":
-        _fdictAuthority(
-            ["http"],
-            "`docker stop` from the stop route, duplicating the docker "
-            "stop half of containerManager.fnStopContainer. A container "
-            "MUTATION assembled inside a route module -- one of the three "
-            "R4 named for routing through a gateway primitive.",
-        ),
     "gui/registryRoutes.py|_fbDockerContainerExists|process-launch|"
     "subprocess|import|0":
         _fdictAuthority(
@@ -407,8 +398,10 @@ DICT_NAMED_AUTHORITIES = {
 # Raw-effect acquisitions that still live under vaibify/gui/. A RATCHET:
 # every one routed through a gateway primitive lowers it, and it may
 # never rise. Seeded at 19 on 2026-08-03 -- 13 process-launch, 5
-# Docker-client (all of them exception types), 1 Unix socket.
-I_GUI_RAW_CAPABILITY_BUDGET = 19
+# Docker-client (all of them exception types), 1 Unix socket. 19 -> 18
+# when the stop route's own `docker stop` went through the lifecycle
+# gateway instead.
+I_GUI_RAW_CAPABILITY_BUDGET = 18
 
 
 def _fmoduleGenerator():

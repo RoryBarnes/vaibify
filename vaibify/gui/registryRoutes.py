@@ -535,33 +535,29 @@ def _fnRegisterStopContainer(app, dictCtx):
 
 
 def _fnExecuteStop(sContainerName):
-    """Stop and remove a running container (idempotent)."""
-    from vaibify.docker.containerManager import (
-        fdictGetContainerStatus, fnRemoveStopped,
-    )
+    """Stop and remove a running container (idempotent).
+
+    The stop goes through ``containerManager``, the lifecycle gateway,
+    rather than through a ``docker stop`` this module assembles itself.
+    The local copy this replaced was a verbatim duplicate of the gateway
+    primitive's first half, so a route module held a raw container
+    mutation for no reason but that nobody had reconciled the two --
+    which is the shape R4 exists to forbid.
+
+    ``fnStopContainer`` stops AND removes, so the removal is called here
+    only on the branch that does not stop.
+    """
+    from vaibify.docker import containerManager
     from vaibify.config.keepAliveManager import fnStopKeepAlive
-    dictStatus = fdictGetContainerStatus(sContainerName)
+    dictStatus = containerManager.fdictGetContainerStatus(sContainerName)
     if not dictStatus["bExists"]:
         fnStopKeepAlive(sContainerName)
         return
     if dictStatus["bRunning"]:
-        _fnDockerStopCommand(sContainerName)
-    fnRemoveStopped(sContainerName)
+        containerManager.fnStopContainer(sContainerName)
+    else:
+        containerManager.fnRemoveStopped(sContainerName)
     fnStopKeepAlive(sContainerName)
-
-
-def _fnDockerStopCommand(sContainerName):
-    """Run 'docker stop' and raise with the real stderr on failure."""
-    import subprocess
-    resultProcess = subprocess.run(
-        ["docker", "stop", sContainerName],
-        capture_output=True, text=True,
-    )
-    if resultProcess.returncode != 0:
-        raise RuntimeError(
-            f"docker stop failed: "
-            f"{resultProcess.stderr.strip()}"
-        )
 
 
 def _fnRegisterContainerSettings(app, dictCtx):

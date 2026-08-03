@@ -1,5 +1,5 @@
 {
-  "iAcquisitionCount": 66,
+  "iAcquisitionCount": 65,
   "iRowCount": 307,
   "iUnresolvedSiteCount": 30,
   "listAcquisitions": [
@@ -511,7 +511,7 @@
       "sScopeFingerprint": "03d351699a9a82f0"
     },
     {
-      "iLine": 641,
+      "iLine": 637,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "bfe85893c9a5f46f"
     },
     {
-      "iLine": 636,
+      "iLine": 632,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "bfe85893c9a5f46f"
     },
     {
-      "iLine": 1109,
+      "iLine": 1105,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -550,7 +550,7 @@
       "sScopeFingerprint": "080bd17dd03730e2"
     },
     {
-      "iLine": 1146,
+      "iLine": 1142,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -563,20 +563,7 @@
       "sScopeFingerprint": "220a80388f2e758d"
     },
     {
-      "iLine": 555,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import",
-      "sCapability": "process-launch",
-      "sCapabilityName": "subprocess",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/registryRoutes.py",
-      "sFingerprint": "7d8752c4c7ea34c2",
-      "sScope": "_fnDockerStopCommand",
-      "sScopeFingerprint": "fecdb8fa2e60623f"
-    },
-    {
-      "iLine": 587,
+      "iLine": 583,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -589,7 +576,7 @@
       "sScopeFingerprint": "feb0e76fb552f520"
     },
     {
-      "iLine": 584,
+      "iLine": 580,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -602,7 +589,7 @@
       "sScopeFingerprint": "feb0e76fb552f520"
     },
     {
-      "iLine": 607,
+      "iLine": 603,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -4479,32 +4466,6 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-cli",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/registryRoutes.py",
-      "sFingerprint": "e0b7f130f29ef1c8",
-      "sFunction": "_fnDockerStopCommand",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "docker stop",
-      "sReferenceKind": "direct-docker-cli"
-    },
-    {
-      "bInsideGateway": false,
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -4520,7 +4481,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
-      "sFingerprint": "b3f53c378565d9ed",
+      "sFingerprint": "85248c1531f15623",
       "sFunction": "_fnExecuteStop",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -4546,13 +4507,39 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
-      "sFingerprint": "491515308b63b2b9",
+      "sFingerprint": "fb120e1fded46ae6",
       "sFunction": "_fnExecuteStop",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fnRemoveStopped",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "container-lifecycle",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/registryRoutes.py",
+      "sFingerprint": "57ee7a728381dd63",
+      "sFunction": "_fnExecuteStop",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "fnStopContainer",
       "sReferenceKind": "direct-call"
     },
     {

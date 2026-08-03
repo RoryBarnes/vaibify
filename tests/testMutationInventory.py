@@ -75,7 +75,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 307
 # created: 37 process-launch, 11 Docker-client, 17 reflection, 1
 # Unix-socket. None of them is reviewed yet, and the number says so out
 # loud rather than shipping a record that implies a review nobody did.
-I_UNDISPOSED_ACQUISITION_BUDGET = 66
+#
+# 66 -> 65: the stop route's own `docker stop` was routed through the
+# lifecycle gateway, so registryRoutes no longer imports subprocess at
+# all. The acquisition did not become disposed of; it stopped existing.
+I_UNDISPOSED_ACQUISITION_BUDGET = 65
 
 
 def _fmoduleGenerator():
