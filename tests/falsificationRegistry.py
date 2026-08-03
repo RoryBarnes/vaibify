@@ -4118,4 +4118,77 @@ def _fdictEntry(sRel):
         old='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_CONTAINER_LIFECYCLE,',
         new='    ("POST", "/api/containers/{sName}/stop"): S_SCOPE_BROWSER_HUB,',
     ),
+
+    # Migration plan phase 1b (R5): runtime attribution of a container
+    # mutation back to ONE inventory row, or an explicit refusal that
+    # routes the row to manual tracing. Each mutant below was applied by
+    # hand, watched to fail its own test, reverted, and the source
+    # confirmed byte-identical with `shasum -a 256`.
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testTheIndexCoversExactlyTheCheckedInInventoryRows',
+        source='tools/mutationAttribution.py',
+        old='for pathModule in sorted(PATH_PACKAGE.rglob("*.py"))',
+        new='for pathModule in sorted(PATH_PACKAGE.rglob("*.py"))[:20]',
+    ),
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testAnAliasedPrimitiveIsAttributedToItsBindingRow',
+        source='tools/mutationAttribution.py',
+        old="""    if len(listMatched) == 1:
+        return _fdictAcceptAttribution(
+            listMatched[0], S_EVIDENCE_ALIAS_SINGLE_HOP,
+        )""",
+        new="""    if len(listMatched) == 99:
+        return _fdictAcceptAttribution(
+            listMatched[0], S_EVIDENCE_ALIAS_SINGLE_HOP,
+        )""",
+    ),
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testTwoCallsInOneFunctionAttributeToDistinctRows',
+        source='tools/mutationAttribution.py',
+        old="""    listMatched = [
+        dictRow for dictRow in listCandidates
+        if dictRow["sFingerprint"] in setFingerprintsHere
+    ]""",
+        new='    listMatched = list(listCandidates)',
+    ),
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testTwoIdenticalExpressionsRefuseAttributionInsteadOfGuessing',
+        source='tools/mutationAttribution.py',
+        old="""    if len(listMatched) == 1:
+        return _fdictAcceptAttribution(
+            listMatched[0], S_EVIDENCE_FINGERPRINT_EXACT,
+        )""",
+        new="""    if len(listMatched) >= 1:
+        return _fdictAcceptAttribution(
+            listMatched[0], S_EVIDENCE_FINGERPRINT_EXACT,
+        )""",
+    ),
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testASharedHelperUnderTwoCarrierModesKeepsBothModes',
+        source='tools/mutationAttribution.py',
+        old='            dictEntry["setCarrierModes"].add(sCarrierMode)',
+        new='            dictEntry["setCarrierModes"] = {sCarrierMode}',
+    ),
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testAPrimitivePassedIntoAThreadKeepsItsModeButLosesItsRow',
+        source='tools/mutationAttribution.py',
+        old='        "sAttributionEvidence": S_EVIDENCE_UNATTRIBUTED,',
+        new='        "sAttributionEvidence": S_EVIDENCE_FINGERPRINT_EXACT,',
+    ),
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testAnUnobservedRowIsRoutedToManualTracingBesideObservedSiblings',
+        source='tools/mutationAttribution.py',
+        old="""        if sRowKey in setAttributed:
+            continue""",
+        new="""        if dictRow["sPrimitive"] in {
+            sKey.split("|")[2] for sKey in setAttributed
+        }:
+            continue""",
+    ),
+    Falsification(
+        nodeid='tests/testMutationAttribution.py::testTheObservationArtifactCarriesEveryFactR5Names',
+        source='tools/mutationAttribution.py',
+        old='        "sCarrierInvocation": sCarrierInvocation,',
+        new='        "sCarrierInvocationDropped": sCarrierInvocation,',
+    ),
 ]
