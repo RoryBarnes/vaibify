@@ -822,7 +822,7 @@ Every step in a project JSON carries an `sLabel` field — `A09` for the 9th *au
 
 **When you name a step in any output — status reports, tables, summaries, prose, `vaibify-do` arguments — use `sLabel` verbatim.** Never substitute a 0-based or 1-based positional index like `00`, `01`, `Step09`. Read the label straight out of the JSON; do not translate.
 
-The `{StepNN.stem}` tokens you see *inside* command strings (e.g., `python plot.py {Step08.samples}`) are a separate, script-side filename-substitution syntax resolved by the director at run time. They are not how you talk about steps; they are how scripts reference each other's output files. Leave them alone unless you are editing the commands themselves.
+The `{step:<sStepId>.<stem>}` tokens you see *inside* command strings (e.g., `python plot.py {step:generate-samples.samples}`) are a separate, script-side filename-substitution syntax resolved when the step runs. They are not how you talk about steps; they are how scripts reference each other's output files. Leave them alone unless you are editing the commands themselves.
 
 ## Interacting with the vaibify dashboard
 
@@ -891,7 +891,9 @@ Each vaibified repository has a `.vaibify/projects/` directory with JSON files d
 - **Test Commands** (`saTestCommands`): Unit tests for data outputs
 - **Interactive** (`bInteractive`): Steps requiring human judgment
 
-Cross-step filename references inside command strings use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`), where `NN` is the 1-based positional index of the step in `listSteps`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
+Cross-step filename references inside command strings use `{step:<sStepId>.<stem>}` syntax (e.g., `{step:generate-samples.samples}`), keyed on the target step's `sStepId`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
+
+The older positional form `{StepNN.stem}` still parses but is **deprecated**: `NN` is a 1-based index into `listSteps`, so it renumbers whenever a step is inserted, deleted, or reordered, and a reference that used to point at one step silently starts pointing at another. Write the symbolic form in anything new, and prefer converting a positional token when you are already editing that command.
 
 Run a step: `vaibify-do run-step A09` (see **Acting on the researcher's behalf** above). There is no in-container pipeline executor to invoke directly — running work through `vaibify-do` is what keeps the researcher's dashboard showing the truth.
 
@@ -981,7 +983,7 @@ it permanent:
 - Before adding a package, check for version conflicts: `pip install --dry-run <package>`
 - Do not add packages that duplicate functionality already available in the container.
 - Distinguish **code dependencies** (packages — belong in requirements.txt) from **data
-  dependencies** (files from other steps — belong in `{StepNN.stem}` references).
+  dependencies** (files from other steps — belong in `{step:<sStepId>.<stem>}` references).
 
 ## Important
 

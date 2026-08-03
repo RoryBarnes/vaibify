@@ -315,13 +315,18 @@ def _flistReadmeFooterLines():
         "",
         "Install vaibify, then from the project repository:",
         "```",
-        "vaibify reproduce --rerun",
+        "vaibify reproduce",
         "```",
         "",
-        "This verifies the archive's reproducibility envelope and, with "
-        "`--rerun`, re-runs the workflow and re-hashes its outputs "
-        "against `MANIFEST.sha256`. Omit `--rerun` to verify without "
-        "recomputing.",
+        "This verifies the archive's reproducibility envelope without "
+        "recomputing anything. Add `--rerun` to also re-run the "
+        "workflow and re-hash its outputs against `MANIFEST.sha256`.",
+        "",
+        "`--rerun` drives the project's container directly. Close the "
+        "vaibify dashboard first, or run it against a container nobody "
+        "else is using: it does not currently coordinate with a live "
+        "dashboard session, so the two can act on one container at the "
+        "same time.",
     ]
 
 

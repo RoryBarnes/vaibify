@@ -80,6 +80,41 @@ LIST_FALSIFICATIONS = [
 
     Falsification(
         nodeid=(
+            'tests/testEntrypointAdvertisedPaths.py::'
+            'testEveryStagedModuleActuallyImports'
+        ),
+        source='vaibify/cli/commandBuild.py',
+        old='    "credentialRedactor.py",\n',
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBindMountValidator.py::'
+            'test_relocated_docker_config_endpoint_is_rejected'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old=(
+            '    sConfigured = os.environ.get("DOCKER_CONFIG")\n'
+            '    if sConfigured:\n'
+            '        return os.path.realpath(os.path.expanduser('
+            'sConfigured))\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBindMountValidator.py::'
+            'test_a_directory_containing_a_socket_is_rejected'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old='    _fnRejectContainedSocket(sResolved)\n',
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
             'tests/testBindMountValidator.py::'
             'test_configured_daemon_endpoint_in_home_is_rejected'
         ),
@@ -2820,7 +2855,7 @@ def _fdictEntry(sRel):
         # into the image merge with no fresh build.
         nodeid='tests/testBuildInputHash.py::testFreshBuildTriggerCoversEveryHashInput',
         source='.github/workflows/freshImageBuild.yml',
-        old="      - 'vaibify/gui/director.py'\n",
+        old="      - 'vaibify/reproducibility/credentialRedactor.py'\n",
         new="",
     ),
     Falsification(

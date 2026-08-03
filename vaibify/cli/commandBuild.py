@@ -394,6 +394,10 @@ def fnWriteBinariesEnv(config, sDockerDir):
 # without changing the image key.
 T_CONTAINER_SCRIPT_SOURCES = (
     "overleafSync.py", "latexConnector.py", "zenodoClient.py",
+    # zenodoClient's redaction helpers. Staged because it imports them,
+    # and a staged module must be importable from this directory alone
+    # -- it was not, and shipped that way.
+    "credentialRedactor.py",
 )
 
 

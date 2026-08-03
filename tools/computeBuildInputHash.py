@@ -72,7 +72,10 @@ def flistBuildInputPaths():
         setPaths.add(sRelative)
     for sFileName in T_CONTAINER_SCRIPT_SOURCES:
         setPaths.add(f"vaibify/reproducibility/{sFileName}")
-    setPaths.add("vaibify/gui/director.py")
+    # ``vaibify/gui/director.py`` was keyed here while the build staged
+    # it. It is no longer staged (it could not start in the container),
+    # so it is no longer a build input and keying it would make an
+    # unrelated host-side edit invalidate every image.
     for sRelSource, _sDestName in T_STAGED_DOCS:
         setPaths.add(sRelSource)
     return sorted(setPaths)

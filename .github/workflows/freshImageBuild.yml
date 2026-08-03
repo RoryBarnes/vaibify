@@ -34,10 +34,10 @@ on:
       - 'vaibify/containerImage/**'
       - 'vaibify/cli/commandBuild.py'
       - 'vaibify/docker/imageBuilder.py'
-      - 'vaibify/gui/director.py'
       - 'vaibify/reproducibility/overleafSync.py'
       - 'vaibify/reproducibility/latexConnector.py'
       - 'vaibify/reproducibility/zenodoClient.py'
+      - 'vaibify/reproducibility/credentialRedactor.py'
       # The curated docs are hashed as vaibify/docs/<name>.md but are
       # symlinks onto these Sphinx sources, so an edit produces a diff
       # here and never touches the symlink blob. Trigger on the path

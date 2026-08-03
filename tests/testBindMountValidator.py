@@ -450,3 +450,94 @@ def test_a_tcp_endpoint_yields_no_path_to_deny(monkeypatch, tmp_path):
     _ftConfigureHome(monkeypatch, tmp_path)
     monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:2375")
     assert flistConfiguredDockerEndpoints() == []
+
+
+@pytest.mark.falsification
+def test_relocated_docker_config_endpoint_is_rejected(monkeypatch, tmp_path):
+    """DOCKER_CONFIG moves the whole context tree, endpoints included.
+
+    Reading only ``~/.docker`` misses every endpoint of a relocated
+    install. Verified before this was honoured: with DOCKER_CONFIG set,
+    a context naming a socket under $HOME was invisible to the scan and
+    its parent directory was accepted as a mount.
+
+    Kills: reading ~/.docker unconditionally instead of consulting
+    DOCKER_CONFIG in _fsDockerConfigRoot.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    sConfigRoot = os.path.join(sHome, "elsewhere", "dockercfg")
+    sSocketPath = os.path.join(sHome, "runtime", "daemon.sock")
+    os.makedirs(os.path.dirname(sSocketPath))
+    os.makedirs(os.path.join(sConfigRoot, "contexts", "meta", "abc"))
+    with open(
+        os.path.join(sConfigRoot, "contexts", "meta", "abc", "meta.json"),
+        "w", encoding="utf-8",
+    ) as fileMeta:
+        json.dump(
+            {"Name": "custom",
+             "Endpoints": {"docker": {"Host": "unix://" + sSocketPath}}},
+            fileMeta,
+        )
+    monkeypatch.setenv("DOCKER_CONFIG", sConfigRoot)
+    with pytest.raises(BindMountValidationError):
+        fnValidateBindMount({"host": sSocketPath, "container": "/mnt"})
+
+
+@pytest.mark.falsification
+def test_a_directory_containing_a_socket_is_rejected(monkeypatch, tmp_path):
+    """Mounting a directory grants everything beneath it, sockets included.
+
+    The ancestor-direction hole, one layer down. Layer 1 refuses the
+    parent of a CONFIGURED endpoint, but a directory holding an
+    unconfigured socket was accepted -- verified -- because the
+    file-type check looked only at the mount source itself.
+
+    The socket here is deliberately buried beside ordinary data, which
+    is the shape that makes this reachable: nobody mounts a directory
+    believing it contains a daemon socket.
+
+    Kills: removing the _fnRejectContainedSocket call from
+    _fnRejectDaemonSocket.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONFIG", raising=False)
+    sDataDirectory = os.path.join(sHome, "datasets")
+    os.makedirs(os.path.join(sDataDirectory, "sub"))
+    with open(
+        os.path.join(sDataDirectory, "survey.csv"), "w", encoding="utf-8",
+    ) as fileData:
+        fileData.write("value\n1\n")
+    socketProbe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sOriginalDirectory = os.getcwd()
+    try:
+        os.chdir(os.path.join(sDataDirectory, "sub"))
+        socketProbe.bind("stray.sock")
+        with pytest.raises(BindMountValidationError):
+            fnValidateBindMount(
+                {"host": sDataDirectory, "container": "/data"},
+            )
+    finally:
+        os.chdir(sOriginalDirectory)
+        socketProbe.close()
+
+
+def test_an_ordinary_data_tree_is_still_accepted(monkeypatch, tmp_path):
+    """The negative control for the contained-socket scan.
+
+    A scan that refused every directory would satisfy the test above
+    while making bind mounts useless. Nested directories and files with
+    no socket among them must still pass.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONFIG", raising=False)
+    sDataDirectory = os.path.join(sHome, "datasets")
+    os.makedirs(os.path.join(sDataDirectory, "runs", "trial01"))
+    for sRelative in ("survey.csv", "runs/trial01/output.json"):
+        with open(
+            os.path.join(sDataDirectory, sRelative), "w", encoding="utf-8",
+        ) as fileData:
+            fileData.write("{}")
+    fnValidateBindMount({"host": sDataDirectory, "container": "/data"})

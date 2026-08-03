@@ -245,6 +245,86 @@ def _tlistStagedModuleSources():
             if os.path.isfile(sPath)]
 
 
+@pytest.mark.falsification
+def testEveryStagedModuleActuallyImports(tmp_path):
+    """Assemble what the image receives, and import it from there.
+
+    The relative-import check above is a source-shape test, and a
+    source-shape test proves what it inspects and nothing else: a
+    staged file containing ``import missingSibling`` passes it while
+    failing on the first execution exactly as director did. The whole
+    lesson of this file is that inspecting an artifact is not executing
+    it.
+
+    So this stages the real set into a directory and imports each
+    module from there **with the vaibify package made unimportable**.
+    That last part is the difference between proving the container case
+    and proving the checkout case: ``overleafSync`` imports
+    ``vaibify.reproducibility.latexConnector`` with a flat fallback, so
+    in a checkout the package branch always wins and the flat path --
+    the only one the container has -- is never executed. The container
+    installs no vaibify package, which is what
+    ``fnCopyContainerScripts`` means by "flat top-level names".
+
+    Run in a subprocess, because a blocker installed in-process would
+    have to fight the pytest session's already-imported vaibify.
+
+    Kills: staging a module whose flat dependency is not itself staged.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    listStaged = _tlistStagedModuleSources()
+    assert listStaged, "no staged modules found -- the list has drifted"
+    sStagingDirectory = str(tmp_path / "usr-share-vaibify")
+    os.makedirs(sStagingDirectory)
+    for sName, sPath in listStaged:
+        shutil.copy2(sPath, os.path.join(sStagingDirectory, sName))
+
+    listFailures = []
+    for sName, _ in listStaged:
+        sModuleName = os.path.splitext(sName)[0]
+        resultImport = subprocess.run(
+            [sys.executable, "-c", _S_ISOLATED_IMPORT_DRIVER, sModuleName],
+            cwd=sStagingDirectory, capture_output=True, text=True,
+        )
+        if resultImport.returncode != 0:
+            listFailures.append(
+                f"{sName}: {resultImport.stderr.strip().splitlines()[-1]}"
+                if resultImport.stderr.strip() else sName
+            )
+    assert listFailures == [], (
+        f"these modules are staged into the image but cannot be "
+        f"imported the way the container imports them -- flat, with no "
+        f"vaibify package present -- so they fail on first execution "
+        f"inside it: {listFailures}"
+    )
+
+
+# Imports one staged module with `vaibify` made unimportable, modelling
+# /usr/share/vaibify inside a container that has no vaibify install.
+_S_ISOLATED_IMPORT_DRIVER = """
+import importlib, sys
+
+class _BlockVaibify:
+    def find_module(self, sName, sPath=None):
+        return self if sName == "vaibify" or sName.startswith("vaibify.") \\
+            else None
+    def find_spec(self, sName, sPath=None, moduleTarget=None):
+        if sName == "vaibify" or sName.startswith("vaibify."):
+            raise ImportError(
+                "vaibify is not installed in the container; a staged "
+                "module must import as a flat top-level name"
+            )
+        return None
+
+sys.meta_path.insert(0, _BlockVaibify())
+sys.path.insert(0, "")
+importlib.import_module(sys.argv[1])
+"""
+
+
 def _flistRelativeImports(sPath):
     """Return the package-relative import statements a source file uses."""
     import ast

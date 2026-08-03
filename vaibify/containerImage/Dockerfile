@@ -293,6 +293,7 @@ COPY docs-staged /usr/share/vaibify/docs
 COPY overleafSync.py /usr/share/vaibify/overleafSync.py
 COPY latexConnector.py /usr/share/vaibify/latexConnector.py
 COPY zenodoClient.py /usr/share/vaibify/zenodoClient.py
+COPY credentialRedactor.py /usr/share/vaibify/credentialRedactor.py
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chmod 0755 /usr/local/bin/vaibify-do \

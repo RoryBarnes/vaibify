@@ -17,9 +17,19 @@ allow-list admitted it. Verified before this fix, with a live socket:
 ``~/.colima/default/docker.sock -> /var/run/docker.sock`` was accepted.
 
 So the denial is by RESOLUTION and by FILE TYPE, never by spelling:
-every endpoint the Docker configuration names, plus any path that IS a
-Unix socket. A name-matched list cannot keep up with the next runtime,
-and this is not a boundary to be caught up with later.
+every endpoint the Docker configuration names -- from ``DOCKER_HOST``
+and from the context tree, wherever ``DOCKER_CONFIG`` puts it -- plus
+any path that IS a socket or CONTAINS one. A name-matched list cannot
+keep up with the next runtime, and this is not a boundary to be caught
+up with later.
+
+**What this file cannot do, stated so it is not read as more.** A
+``tcp://`` endpoint has no path to deny. A socket created after
+validation and before the container starts is invisible here. Both are
+answered only by asserting against the RUNNING container -- that its
+mounts carry no daemon socket, and that ``/var/run/docker.sock`` is
+absent inside it -- which this module cannot do and which is still
+owed.
 """
 
 import json
@@ -70,6 +80,12 @@ _LIST_HOME_RELATIVE_DENY_PREFIXES = (
 _S_DOCKER_CONFIG_DIRECTORY = ".docker"
 _S_DOCKER_CONTEXT_META = "contexts/meta"
 _S_UNIX_SCHEME = "unix://"
+
+# How many directory entries a mount may hold before the socket scan
+# gives up. Generous, because a researcher's data directory is the
+# ordinary case; bounded, because an unbounded walk of $HOME at
+# validation time is its own problem. Exceeding it REFUSES.
+_I_SOCKET_SCAN_BUDGET = 200_000
 
 
 class BindMountValidationError(ValueError):
@@ -132,6 +148,7 @@ def _fnRejectDaemonSocket(sResolved):
             f"bindMounts host path '{sResolved}' is a Unix socket; "
             f"sockets are never mounted into a workflow container"
         )
+    _fnRejectContainedSocket(sResolved)
 
 
 def _fbIsUnixSocket(sPath):
@@ -140,6 +157,65 @@ def _fbIsUnixSocket(sPath):
         return stat.S_ISSOCK(os.stat(sPath).st_mode)
     except OSError:
         return False
+
+
+def _fnRejectContainedSocket(sResolved):
+    """Reject a directory that CONTAINS a socket, not merely one that is one.
+
+    Mounting a directory grants everything beneath it, so checking only
+    the mount source itself was the ancestor-direction hole the deny
+    list had already been fixed for once: the configured endpoint's
+    parent was refused by layer 1, but a parent holding an
+    *unconfigured* socket was accepted. Verified before this check
+    existed.
+
+    Fail-closed on inability to prove: if the tree is larger than the
+    scan budget, the mount is refused rather than admitted, because
+    "too big to check" is not evidence of safety. The remedy is to name
+    a narrower path, which is better practice for a bind mount anyway.
+
+    Measured cost, so the budget is a judgement and not a guess: this
+    repository (~5k entries) scans in 0.18s; a source tree that exceeds
+    the budget takes 5.6s to reach it and is then refused. A researcher
+    mounting a dataset directory pays well under a second; someone
+    mounting their whole home directory waits, and is told to be more
+    specific.
+
+    **The residual, which no host-side check can close.** A socket
+    created after validation and before the container starts is not
+    visible here. Only an assertion against the running container --
+    its `Mounts`, and `! -S /var/run/docker.sock` inside it -- closes
+    that, and that assertion is still owed.
+    """
+    if not os.path.isdir(sResolved):
+        return
+    iExamined = 0
+    listPending = [sResolved]
+    while listPending:
+        sDirectory = listPending.pop()
+        try:
+            listEntries = list(os.scandir(sDirectory))
+        except OSError:
+            continue
+        for entryChild in listEntries:
+            iExamined += 1
+            if iExamined > _I_SOCKET_SCAN_BUDGET:
+                raise BindMountValidationError(
+                    f"bindMounts host path '{sResolved}' holds more than "
+                    f"{_I_SOCKET_SCAN_BUDGET} entries, so it cannot be "
+                    f"shown to be free of daemon sockets; mount a "
+                    f"narrower path"
+                )
+            if entryChild.is_symlink():
+                continue
+            if _fbIsUnixSocket(entryChild.path):
+                raise BindMountValidationError(
+                    f"bindMounts host path '{sResolved}' contains the "
+                    f"Unix socket '{entryChild.path}'; mounting the "
+                    f"directory would grant it"
+                )
+            if entryChild.is_dir(follow_symlinks=False):
+                listPending.append(entryChild.path)
 
 
 def flistConfiguredDockerEndpoints():
@@ -171,11 +247,28 @@ def _fsUnixPathFromEndpoint(sEndpoint):
     return _fsResolveSymlinks(sPath) if sPath else ""
 
 
+def _fsDockerConfigRoot():
+    """Return the Docker configuration directory, honouring DOCKER_CONFIG.
+
+    Docker lets the whole configuration tree move, so reading only
+    ``~/.docker`` misses every endpoint of a relocated install --
+    verified: with ``DOCKER_CONFIG`` set, a context naming a socket
+    under ``$HOME`` was invisible here and its parent directory was
+    accepted as a mount.
+    """
+    sConfigured = os.environ.get("DOCKER_CONFIG")
+    if sConfigured:
+        return os.path.realpath(os.path.expanduser(sConfigured))
+    return posixpath.join(
+        os.path.realpath(os.path.expanduser("~")),
+        _S_DOCKER_CONFIG_DIRECTORY,
+    )
+
+
 def _flistContextEndpoints():
     """Return the endpoints of every Docker context stored on disk."""
     sMetaRoot = posixpath.join(
-        os.path.realpath(os.path.expanduser("~")),
-        _S_DOCKER_CONFIG_DIRECTORY, _S_DOCKER_CONTEXT_META,
+        _fsDockerConfigRoot(), _S_DOCKER_CONTEXT_META,
     )
     listEndpoints = []
     try:
