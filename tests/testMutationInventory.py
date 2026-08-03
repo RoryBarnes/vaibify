@@ -196,6 +196,53 @@ def testTheScanDeclaresWhatItCannotRead(moduleGenerator):
     )
 
 
+def testTheRecordedBlindSpotCannotDriftFromTheSource(moduleGenerator):
+    """Each declared-unreadable site is compared, not just counted.
+
+    The budget above holds the SIZE of the blind spot. It says nothing
+    about WHICH sites are in it, so a recorded site's file, function or
+    kind could be rewritten by hand and every check stayed green while
+    the totals held. That is the same class of defect as the row drift
+    check this file already carries, and it matters more once a site
+    carries a manual disposition: a disposition bound to a site that
+    moved underneath it is a claim about code nobody re-read.
+
+    Kills: comparing the blind spot by count alone.
+    """
+    dictInventory = moduleGenerator.fdictLoadInventory()
+    dictDrift = moduleGenerator.fdictCompareAgainstSource(
+        dictInventory, moduleGenerator.flistScanPackage(),
+    )
+    assert dictDrift["listBlindSpotDrift"] == [], (
+        f"the recorded blind spot disagrees with a fresh scan: "
+        f"{dictDrift['listBlindSpotDrift']}. Regenerate with "
+        f"python tools/generateMutationInventory.py --write"
+    )
+
+
+def testEveryBlindSpotCarriesItsOwnIdentity(moduleGenerator):
+    """A site the scan cannot read is still identified exactly.
+
+    Fingerprint and ordinal are what make a per-site disposition
+    possible at all -- without them the record can only say how many
+    sites it cannot speak for, never which, and two opaque calls in one
+    function are indistinguishable.
+    """
+    listUnresolved = moduleGenerator.flistUnresolvedSites()
+    listKeys = [
+        moduleGenerator.fsBlindSpotKey(site) for site in listUnresolved
+    ]
+    assert len(set(listKeys)) == len(listKeys), (
+        f"two blind spots share an identity: "
+        f"{[k for k in listKeys if listKeys.count(k) > 1]}"
+    )
+    for dictSite in listUnresolved:
+        assert len(dictSite["sFingerprint"]) == 16, (
+            f"{moduleGenerator.fsBlindSpotKey(dictSite)} has no usable "
+            f"fingerprint"
+        )
+
+
 # ---------------------------------------------------------------------
 # The scanner is checked against what it must not miss.
 # ---------------------------------------------------------------------

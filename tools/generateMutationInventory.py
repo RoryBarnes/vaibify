@@ -322,15 +322,11 @@ class _VisitorCallSites(ast.NodeVisitor):
             # built somewhere else contains, and a boundary that
             # silently drops what it cannot read reports coverage it
             # does not have.
-            self.listUnresolvedSubprocessSites.append({
-                "sBlindSpotKind": S_BLIND_SPOT_OPAQUE_COMMAND,
-                "sFile": self.sRelativePath,
-                "sFunction": (
-                    self._listFunctionStack[-1]
-                    if self._listFunctionStack else "<module>"
+            self.listUnresolvedSubprocessSites.append(
+                self._fdictBuildBlindSpot(
+                    nodeCall, S_BLIND_SPOT_OPAQUE_COMMAND,
                 ),
-                "iLine": nodeCall.lineno,
-            })
+            )
             return
         sSubcommand = _fsDockerSubcommandForCall(
             nodeCall, self._dictLocalCommandLists,
@@ -360,15 +356,11 @@ class _VisitorCallSites(ast.NodeVisitor):
                 # analysis to resolve. Guessing from the name is what
                 # this scan just stopped doing; saying nothing would
                 # lose coverage to a precision fix.
-                self.listUnresolvedSdkSites.append({
-                    "sBlindSpotKind": S_BLIND_SPOT_UNTRACEABLE_SDK_ROOT,
-                    "sFile": self.sRelativePath,
-                    "sFunction": (
-                        self._listFunctionStack[-1]
-                        if self._listFunctionStack else "<module>"
+                self.listUnresolvedSdkSites.append(
+                    self._fdictBuildBlindSpot(
+                        nodeCall, S_BLIND_SPOT_UNTRACEABLE_SDK_ROOT,
                     ),
-                    "iLine": nodeCall.lineno,
-                })
+                )
             return
         self.listRows.append(self._fdictBuildRow(
             nodeCall, f"sdk {sMethod}", S_ACCESS_DIRECT_DOCKER_SDK,
@@ -377,6 +369,28 @@ class _VisitorCallSites(ast.NodeVisitor):
                 SET_MUTATING_SDK_METHODS
             ),
         ))
+
+    def _fdictBuildBlindSpot(self, nodeCall, sBlindSpotKind):
+        """Return one declared-unreadable site, fingerprinted like a row.
+
+        A blind spot carries the same identity a row does because it is
+        subject to the same drift question. Without a fingerprint the
+        record could only be counted, so a checked-in site's file,
+        function, or kind could be rewritten by hand and every check
+        stayed green -- and a manual disposition bound to such a site
+        would survive the site changing underneath it.
+        """
+        return {
+            "sBlindSpotKind": sBlindSpotKind,
+            "sFile": self.sRelativePath,
+            "sFunction": (
+                self._listFunctionStack[-1]
+                if self._listFunctionStack else "<module>"
+            ),
+            "iLine": nodeCall.lineno,
+            "iOrdinal": 0,
+            "sFingerprint": _fsFingerprintNode(nodeCall),
+        }
 
     def _fdictBuildRow(
         self, nodeReference, sPrimitive, sAccess, sReferenceKind,
@@ -703,7 +717,34 @@ def flistUnresolvedSites():
     silently drops what it cannot read claims a completeness it does
     not have, which is the failure this record exists to prevent.
     """
-    return _tScanPackage()[1]
+    return _flistNumberBlindSpotOrdinals(_tScanPackage()[1])
+
+
+def _flistNumberBlindSpotOrdinals(listSites):
+    """Give repeated (file, function, kind) triples a stable ordinal."""
+    dictCounts = {}
+    for dictSite in sorted(
+        listSites,
+        key=lambda site: (
+            site["sFile"], site["sFunction"], site["sBlindSpotKind"],
+            site["sFingerprint"],
+        ),
+    ):
+        tKey = (
+            dictSite["sFile"], dictSite["sFunction"],
+            dictSite["sBlindSpotKind"],
+        )
+        dictSite["iOrdinal"] = dictCounts.get(tKey, 0)
+        dictCounts[tKey] = dictSite["iOrdinal"] + 1
+    return sorted(listSites, key=fsBlindSpotKey)
+
+
+def fsBlindSpotKey(dictSite):
+    """Return the stable identity of one declared-unreadable site."""
+    return "|".join((
+        dictSite["sFile"], dictSite["sFunction"],
+        dictSite["sBlindSpotKind"], str(dictSite["iOrdinal"]),
+    ))
 
 
 def _tScanPackage():
@@ -805,7 +846,39 @@ def fdictCompareAgainstSource(dictInventory, listScanned):
                 f"scanned {len(listScanned)}"
             ]
         ),
+        "listBlindSpotDrift": _flistBlindSpotDrift(dictInventory),
     }
+
+
+def _flistBlindSpotDrift(dictInventory):
+    """Return how the recorded blind spot differs from a fresh scan.
+
+    The blind spot used to be compared by COUNT alone, so a recorded
+    site's file, function, or kind could be rewritten by hand and the
+    check stayed green as long as the total held. That matters more
+    than it sounds: a manual disposition is bound to a site, and a
+    disposition attached to a site that has silently moved is a claim
+    about code nobody looked at.
+    """
+    dictRecorded = {
+        fsBlindSpotKey(site): site
+        for site in dictInventory.get("listUnresolvedSites", [])
+    }
+    dictScanned = {
+        fsBlindSpotKey(site): site for site in flistUnresolvedSites()
+    }
+    listDrift = [
+        f"added {sKey}" for sKey in sorted(set(dictScanned) - set(dictRecorded))
+    ] + [
+        f"removed {sKey}"
+        for sKey in sorted(set(dictRecorded) - set(dictScanned))
+    ]
+    for sKey in sorted(set(dictRecorded) & set(dictScanned)):
+        if dictRecorded[sKey]["sFingerprint"] != (
+            dictScanned[sKey]["sFingerprint"]
+        ):
+            listDrift.append(f"edited {sKey}")
+    return listDrift
 
 
 def _flistDuplicatedKeys(listRows):
