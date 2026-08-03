@@ -319,14 +319,18 @@ def _flistReadmeFooterLines():
         "```",
         "",
         "This verifies the archive's reproducibility envelope without "
-        "recomputing anything. Add `--rerun` to also re-run the "
-        "workflow and re-hash its outputs against `MANIFEST.sha256`.",
+        "recomputing anything, and is the instruction to follow.",
         "",
-        "`--rerun` drives the project's container directly. Close the "
-        "vaibify dashboard first, or run it against a container nobody "
-        "else is using: it does not currently coordinate with a live "
-        "dashboard session, so the two can act on one container at the "
-        "same time.",
+        "To also re-run the workflow and re-hash its outputs against "
+        "`MANIFEST.sha256`, add `--rerun` — but only against a "
+        "container that no vaibify session owns and that has no "
+        "operation in flight. `--rerun` drives the container directly "
+        "and does not yet coordinate with the hub, so it can act on a "
+        "container something else is already using. Closing the "
+        "dashboard is NOT sufficient: work started from it can outlive "
+        "the browser, and a closed tab proves nothing about whether "
+        "the container is quiet. Use a fresh container if you are not "
+        "certain.",
     ]
 
 

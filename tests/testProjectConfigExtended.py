@@ -54,7 +54,17 @@ def test_fbValidateConfig_missing_name():
 
 
 def _fdictConfigWithRepos(listRepos, listMounts=None):
-    """Return a minimal valid config carrying the given repos/mounts."""
+    """Return a minimal valid config carrying the given repos/mounts.
+
+    Mount hosts here are deliberately a neutral ``~/vaibifyTestData``.
+    These tests are about repo destinations colliding with mount
+    targets, and the host path is incidental -- but it stopped being
+    incidental once the validator began scanning a mounted directory
+    for daemon sockets. ``~/Documents`` is TCC-protected on macOS, so
+    the scan cannot read it and the mount is refused there while
+    passing on Linux, where the directory does not exist at all. A
+    fixture that answers differently per machine proves nothing.
+    """
     dictConfig = fdictLoadDefaults()
     dictConfig["projectName"] = "testproj"
     dictConfig["repositories"] = listRepos
@@ -102,7 +112,7 @@ def test_repo_destination_colliding_with_bind_mount_is_rejected():
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
-        [{"host": "~/Documents", "container": "/workspace/data"}],
+        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is False
 
@@ -125,7 +135,7 @@ def test_repo_destination_under_a_workspace_root_mount_is_rejected():
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
-        [{"host": "~/Documents", "container": "/workspace"}],
+        [{"host": "~/vaibifyTestData", "container": "/workspace"}],
     )
     assert fbValidateConfig(dictConfig) is False
 
@@ -134,7 +144,7 @@ def test_repo_destination_under_ancestor_of_custom_workspace_is_rejected():
     """A mount that is an ancestor of a customized workspace still collides."""
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "out"}],
-        [{"host": "~/Documents", "container": "/data"}],
+        [{"host": "~/vaibifyTestData", "container": "/data"}],
     )
     dictConfig["workspaceRoot"] = "/data/workspace"
     # rm -rf /data/workspace/out lives under the /data mount.
@@ -146,7 +156,7 @@ def test_repo_destination_nested_under_bind_mount_is_rejected():
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git",
           "destination": "data/repo"}],
-        [{"host": "~/Documents", "container": "/workspace/data"}],
+        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is False
 
@@ -155,7 +165,7 @@ def test_repo_destination_beside_bind_mount_is_allowed():
     """A sibling destination that does not touch the mount is fine."""
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "code"}],
-        [{"host": "~/Documents", "container": "/workspace/data"}],
+        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is True
 
@@ -192,7 +202,7 @@ def test_repo_name_colliding_with_bind_mount_is_rejected():
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "data", "url": "https://x/r.git"}],
-        [{"host": "~/Documents", "container": "/workspace/data"}],
+        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is False
 

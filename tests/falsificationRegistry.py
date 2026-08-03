@@ -91,6 +91,39 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
+            'test_an_unreadable_subdirectory_refuses_rather_than_passes'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old="""        except OSError as errorScan:
+            raise BindMountValidationError(
+                f"bindMounts host path '{sResolved}' contains "
+                f"'{sDirectory}', which could not be read "
+                f"({errorScan.strerror}), so the tree cannot be shown to "
+                f"be free of daemon sockets"
+            ) from errorScan""",
+        new='        except OSError:\n            continue',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBindMountValidator.py::'
+            'test_an_unstattable_entry_refuses_rather_than_passes'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old="""    except FileNotFoundError:
+        return False
+    except OSError as errorStat:
+        raise BindMountValidationError(
+            f"bindMounts host path '{sPath}' could not be inspected "
+            f"({errorStat.strerror}), so it cannot be shown not to be a "
+            f"daemon socket"
+        ) from errorStat""",
+        new='    except OSError:\n        return False',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBindMountValidator.py::'
             'test_relocated_docker_config_endpoint_is_rejected'
         ),
         source='vaibify/config/bindMountValidator.py',

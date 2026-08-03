@@ -541,3 +541,85 @@ def test_an_ordinary_data_tree_is_still_accepted(monkeypatch, tmp_path):
         ) as fileData:
             fileData.write("{}")
     fnValidateBindMount({"host": sDataDirectory, "container": "/data"})
+
+
+@pytest.mark.falsification
+def test_an_unreadable_subdirectory_refuses_rather_than_passes(
+    monkeypatch, tmp_path,
+):
+    """A tree that cannot be read is not a tree that was found clean.
+
+    The first version of this walk skipped an unreadable directory and
+    carried on, so a permission error admitted a mount whose contents
+    had never been inspected -- while the docstring above it said the
+    tree had been proven free of sockets. A check that fails open is
+    worse than no check, because it is believed.
+
+    Kills: swallowing the os.scandir OSError in
+    _fnRejectContainedSocket instead of refusing.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONFIG", raising=False)
+    sDataDirectory = os.path.join(sHome, "datasets")
+    sSealed = os.path.join(sDataDirectory, "sealed")
+    os.makedirs(sSealed)
+    os.chmod(sSealed, 0o000)
+    try:
+        with pytest.raises(BindMountValidationError) as tRaised:
+            fnValidateBindMount(
+                {"host": sDataDirectory, "container": "/data"},
+            )
+        assert "could not be read" in str(tRaised.value)
+    finally:
+        os.chmod(sSealed, 0o755)
+
+
+@pytest.mark.falsification
+def test_an_unstattable_entry_refuses_rather_than_passes(
+    monkeypatch, tmp_path,
+):
+    """A failed stat means "unknown", and unknown must not read as safe.
+
+    ``_fbIsUnixSocket`` answered False for every OSError, so a
+    permission failure or an I/O error on one entry was indistinguishable
+    from "this is an ordinary file". Absence is still honestly not a
+    socket -- that case stays False, and the other layers decide whether
+    an absent path is acceptable.
+
+    Kills: returning False for every OSError in _fbIsUnixSocket instead
+    of only for FileNotFoundError.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONFIG", raising=False)
+    sHostPath = os.path.join(sHome, "datasets")
+    os.makedirs(sHostPath)
+
+    fnRealStat = os.stat
+
+    def fnStatThatFails(sPath, *listArgs, **dictKwargs):
+        if str(sPath).endswith("datasets"):
+            raise PermissionError(13, "Permission denied")
+        return fnRealStat(sPath, *listArgs, **dictKwargs)
+
+    monkeypatch.setattr(os, "stat", fnStatThatFails)
+    with pytest.raises(BindMountValidationError) as tRaised:
+        fnValidateBindMount({"host": sHostPath, "container": "/data"})
+    assert "could not be inspected" in str(tRaised.value)
+
+
+def test_an_absent_path_is_not_treated_as_unknowable(monkeypatch, tmp_path):
+    """The negative control for the two refusals above.
+
+    Refusing on every stat failure would be easy and wrong: a path that
+    simply does not exist is honestly not a socket, and the allowed-root
+    check is what should answer for it. If this test starts failing with
+    a socket-inspection message, the refusal has become indiscriminate.
+    """
+    _ftConfigureHome(monkeypatch, tmp_path)
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONFIG", raising=False)
+    with pytest.raises(BindMountValidationError) as tRaised:
+        fnValidateBindMount({"host": "/data", "container": "/data"})
+    assert "outside the user's home" in str(tRaised.value)

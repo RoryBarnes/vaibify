@@ -23,13 +23,21 @@ any path that IS a socket or CONTAINS one. A name-matched list cannot
 keep up with the next runtime, and this is not a boundary to be caught
 up with later.
 
-**What this file cannot do, stated so it is not read as more.** A
-``tcp://`` endpoint has no path to deny. A socket created after
-validation and before the container starts is invisible here. Both are
-answered only by asserting against the RUNNING container -- that its
-mounts carry no daemon socket, and that ``/var/run/docker.sock`` is
-absent inside it -- which this module cannot do and which is still
-owed.
+**What this file cannot do.** Three residuals, and they need three
+DIFFERENT controls -- an earlier draft of this docstring filed all of
+them under one, which would have left two of them unowned:
+
+1. *A ``tcp://`` daemon.* There is no path to deny, so no bind-mount
+   rule touches it. It is answered by network isolation or an explicit
+   reachability policy, not by mount inspection.
+2. *A socket created after validation.* Inspecting a running
+   container's mounts narrows the window but does not close it: a
+   socket appearing after that assertion is a TOCTOU residual that
+   only an in-container control (or refusing directory mounts
+   entirely) removes.
+3. *Unix-socket exposure at the moment of inspection.* This is the one
+   a running-container mount assertion actually answers, and it is
+   still owed.
 """
 
 import json
@@ -152,11 +160,25 @@ def _fnRejectDaemonSocket(sResolved):
 
 
 def _fbIsUnixSocket(sPath):
-    """True when the path exists and is a Unix domain socket."""
+    """True when the path is a Unix domain socket; raise if unknowable.
+
+    An absent path is honestly not a socket -- the other layers decide
+    whether absence is acceptable. Anything else (a permission error, a
+    vanished entry, an I/O failure) means the type could not be
+    determined, and returning False there would have admitted a mount
+    on the strength of a failed check. That is precisely the shape of
+    fail-open this module exists to avoid, so it refuses instead.
+    """
     try:
         return stat.S_ISSOCK(os.stat(sPath).st_mode)
-    except OSError:
+    except FileNotFoundError:
         return False
+    except OSError as errorStat:
+        raise BindMountValidationError(
+            f"bindMounts host path '{sPath}' could not be inspected "
+            f"({errorStat.strerror}), so it cannot be shown not to be a "
+            f"daemon socket"
+        ) from errorStat
 
 
 def _fnRejectContainedSocket(sResolved):
@@ -169,9 +191,13 @@ def _fnRejectContainedSocket(sResolved):
     *unconfigured* socket was accepted. Verified before this check
     existed.
 
-    Fail-closed on inability to prove: if the tree is larger than the
-    scan budget, the mount is refused rather than admitted, because
-    "too big to check" is not evidence of safety. The remedy is to name
+    Fail-closed on EVERY inability to prove, not merely on size. Too
+    large, unreadable, untypeable, vanished mid-scan -- each refuses.
+    The first version of this walk skipped an unreadable directory and
+    a failed ``stat`` silently, so a permission error or a race
+    admitted a mount the scan had not actually inspected: a check that
+    fails open is worse than no check, because the docstring above it
+    says the tree was proven clean. The remedy for a refusal is to name
     a narrower path, which is better practice for a bind mount anyway.
 
     Measured cost, so the budget is a judgement and not a guess: this
@@ -182,10 +208,10 @@ def _fnRejectContainedSocket(sResolved):
     specific.
 
     **The residual, which no host-side check can close.** A socket
-    created after validation and before the container starts is not
-    visible here. Only an assertion against the running container --
-    its `Mounts`, and `! -S /var/run/docker.sock` inside it -- closes
-    that, and that assertion is still owed.
+    created after validation is not visible here, and a running-
+    container assertion narrows that window without closing it. See the
+    module docstring, which keeps the three residuals apart because
+    they need three different controls.
     """
     if not os.path.isdir(sResolved):
         return
@@ -195,8 +221,13 @@ def _fnRejectContainedSocket(sResolved):
         sDirectory = listPending.pop()
         try:
             listEntries = list(os.scandir(sDirectory))
-        except OSError:
-            continue
+        except OSError as errorScan:
+            raise BindMountValidationError(
+                f"bindMounts host path '{sResolved}' contains "
+                f"'{sDirectory}', which could not be read "
+                f"({errorScan.strerror}), so the tree cannot be shown to "
+                f"be free of daemon sockets"
+            ) from errorScan
         for entryChild in listEntries:
             iExamined += 1
             if iExamined > _I_SOCKET_SCAN_BUDGET:
@@ -206,7 +237,7 @@ def _fnRejectContainedSocket(sResolved):
                     f"shown to be free of daemon sockets; mount a "
                     f"narrower path"
                 )
-            if entryChild.is_symlink():
+            if _fbEntryIsSymlink(entryChild, sResolved):
                 continue
             if _fbIsUnixSocket(entryChild.path):
                 raise BindMountValidationError(
@@ -214,8 +245,40 @@ def _fnRejectContainedSocket(sResolved):
                     f"Unix socket '{entryChild.path}'; mounting the "
                     f"directory would grant it"
                 )
-            if entryChild.is_dir(follow_symlinks=False):
+            if _fbEntryIsDirectory(entryChild, sResolved):
                 listPending.append(entryChild.path)
+
+
+def _fbEntryIsSymlink(entryChild, sMountRoot):
+    """True when a directory entry is a symlink; raise if unknowable."""
+    try:
+        return entryChild.is_symlink()
+    except OSError as errorType:
+        raise BindMountValidationError(
+            f"bindMounts host path '{sMountRoot}' contains "
+            f"'{entryChild.path}', whose type could not be read "
+            f"({errorType.strerror}), so the tree cannot be shown to be "
+            f"free of daemon sockets"
+        ) from errorType
+
+
+def _fbEntryIsDirectory(entryChild, sMountRoot):
+    """True when a directory entry is a directory; raise if unknowable.
+
+    An entry that vanished mid-scan refuses rather than passes. The
+    honest reading of a disappearance during validation is that the
+    tree changed while being inspected, and a scan of a moving target
+    proves nothing about the tree that will actually be mounted.
+    """
+    try:
+        return entryChild.is_dir(follow_symlinks=False)
+    except OSError as errorType:
+        raise BindMountValidationError(
+            f"bindMounts host path '{sMountRoot}' contains "
+            f"'{entryChild.path}', whose type could not be read "
+            f"({errorType.strerror}), so the tree cannot be shown to be "
+            f"free of daemon sockets"
+        ) from errorType
 
 
 def flistConfiguredDockerEndpoints():
