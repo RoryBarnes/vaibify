@@ -623,3 +623,46 @@ def test_an_absent_path_is_not_treated_as_unknowable(monkeypatch, tmp_path):
     with pytest.raises(BindMountValidationError) as tRaised:
         fnValidateBindMount({"host": "/data", "container": "/data"})
     assert "outside the user's home" in str(tRaised.value)
+
+
+@pytest.mark.falsification
+def test_a_child_that_vanishes_mid_scan_refuses(monkeypatch, tmp_path):
+    """A tree that changes while being read has not been shown clean.
+
+    The subtle one, and it defeated the first attempt. ``os.stat`` on a
+    deleted child raises FileNotFoundError, which the MOUNT-SOURCE rule
+    answers with "not a socket" -- correct there, wrong here. And
+    ``DirEntry.is_dir()`` answers from the cache ``scandir`` filled, so
+    it returns a value for a child that no longer exists rather than
+    raising. Both together meant a vanished child sailed through while
+    the docstring claimed it was refused.
+
+    A scan of a moving target proves nothing about the tree that will
+    actually be mounted, so a child reported by ``scandir`` and gone by
+    the time it is classified must refuse.
+
+    Kills: classifying walked children with _fbIsUnixSocket (whose
+    FileNotFoundError means "absent, and that is fine") instead of
+    _fnAssertChildIsNotSocket.
+    """
+    sHome = str(_ftConfigureHome(monkeypatch, tmp_path))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONFIG", raising=False)
+    sDataDirectory = os.path.join(sHome, "datasets")
+    os.makedirs(sDataDirectory)
+    sDoomed = os.path.join(sDataDirectory, "transient.dat")
+    with open(sDoomed, "w", encoding="utf-8") as fileDoomed:
+        fileDoomed.write("x")
+
+    fnRealScandir = os.scandir
+
+    def fnScandirThenDelete(sPath, *listArgs, **dictKwargs):
+        listEntries = list(fnRealScandir(sPath, *listArgs, **dictKwargs))
+        if os.path.exists(sDoomed):
+            os.remove(sDoomed)
+        return listEntries
+
+    monkeypatch.setattr(os, "scandir", fnScandirThenDelete)
+    with pytest.raises(BindMountValidationError) as tRaised:
+        fnValidateBindMount({"host": sDataDirectory, "container": "/data"})
+    assert "could not be inspected" in str(tRaised.value)

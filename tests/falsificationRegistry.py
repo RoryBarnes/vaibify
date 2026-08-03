@@ -91,6 +91,21 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testBindMountValidator.py::'
+            'test_a_child_that_vanishes_mid_scan_refuses'
+        ),
+        source='vaibify/config/bindMountValidator.py',
+        old='            _fnAssertChildIsNotSocket(entryChild, sResolved)\n',
+        new='''            if _fbIsUnixSocket(entryChild.path):
+                raise BindMountValidationError(
+                    f"bindMounts host path '{sResolved}' contains the "
+                    f"Unix socket '{entryChild.path}'"
+                )
+''',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBindMountValidator.py::'
             'test_an_unreadable_subdirectory_refuses_rather_than_passes'
         ),
         source='vaibify/config/bindMountValidator.py',
@@ -99,7 +114,8 @@ LIST_FALSIFICATIONS = [
                 f"bindMounts host path '{sResolved}' contains "
                 f"'{sDirectory}', which could not be read "
                 f"({errorScan.strerror}), so the tree cannot be shown to "
-                f"be free of daemon sockets"
+                f"be free of daemon sockets. "
+                + _S_UNREADABLE_REMEDY
             ) from errorScan""",
         new='        except OSError:\n            continue',
     ),

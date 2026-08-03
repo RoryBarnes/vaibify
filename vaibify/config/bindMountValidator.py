@@ -95,6 +95,21 @@ _S_UNIX_SCHEME = "unix://"
 # validation time is its own problem. Exceeding it REFUSES.
 _I_SOCKET_SCAN_BUDGET = 200_000
 
+# What to tell a researcher whose mount cannot be traversed. On macOS
+# this is usually the privacy system rather than file permissions:
+# ~/Documents, ~/Desktop and ~/Downloads are protected, so an ordinary
+# terminal gets EPERM listing them. The advice is deliberately the
+# NARROW grant -- access to that one folder, or a different path --
+# because telling a researcher to hand a terminal Full Disk Access in
+# order to mount a data directory trades a large permission for a small
+# convenience, and this file exists to argue against exactly that kind
+# of trade.
+_S_UNREADABLE_REMEDY = (
+    "Grant your terminal access to that specific folder (on macOS: "
+    "System Settings > Privacy & Security > Files and Folders), or "
+    "choose a path vaibify can read."
+)
+
 
 class BindMountValidationError(ValueError):
     """Raised when a vaibify.yml ``bindMounts`` entry is unsafe."""
@@ -160,14 +175,17 @@ def _fnRejectDaemonSocket(sResolved):
 
 
 def _fbIsUnixSocket(sPath):
-    """True when the path is a Unix domain socket; raise if unknowable.
+    """True when the MOUNT SOURCE is a Unix domain socket.
 
-    An absent path is honestly not a socket -- the other layers decide
-    whether absence is acceptable. Anything else (a permission error, a
-    vanished entry, an I/O failure) means the type could not be
-    determined, and returning False there would have admitted a mount
-    on the strength of a failed check. That is precisely the shape of
-    fail-open this module exists to avoid, so it refuses instead.
+    Absence is honestly not a socket here, and the allowed-root check
+    is what should answer for a path that does not exist. Any other
+    failure means the type could not be determined, and returning False
+    there would admit a mount on the strength of a failed check.
+
+    A CHILD found during the walk gets the opposite treatment -- see
+    :func:`_fnAssertChildIsNotSocket`. The two absences mean different
+    things, and one function answering both is what let a vanished
+    child pass.
     """
     try:
         return stat.S_ISSOCK(os.stat(sPath).st_mode)
@@ -178,6 +196,37 @@ def _fbIsUnixSocket(sPath):
             f"bindMounts host path '{sPath}' could not be inspected "
             f"({errorStat.strerror}), so it cannot be shown not to be a "
             f"daemon socket"
+        ) from errorStat
+
+
+def _fnAssertChildIsNotSocket(entryChild, sMountRoot):
+    """Raise unless a walked child is provably not a Unix socket.
+
+    Absence REFUSES here, unlike the mount source. ``scandir`` just
+    reported this entry, so its disappearance means the tree changed
+    while being inspected, and a scan of a moving target proves nothing
+    about the tree that will actually be mounted.
+
+    This is not theoretical: ``os.stat`` on a deleted child raises
+    FileNotFoundError, and ``DirEntry.is_dir()`` answers from its cache
+    without raising at all -- verified. So routing children through the
+    mount-source rule silently passed them while the docstring claimed
+    a vanished entry was refused.
+    """
+    try:
+        if stat.S_ISSOCK(os.stat(entryChild.path).st_mode):
+            raise BindMountValidationError(
+                f"bindMounts host path '{sMountRoot}' contains the Unix "
+                f"socket '{entryChild.path}'; mounting the directory "
+                f"would grant it"
+            )
+    except OSError as errorStat:
+        raise BindMountValidationError(
+            f"bindMounts host path '{sMountRoot}' contains "
+            f"'{entryChild.path}', which could not be inspected "
+            f"({errorStat.strerror}); the tree changed or is unreadable "
+            f"while being checked, so it cannot be shown to be free of "
+            f"daemon sockets"
         ) from errorStat
 
 
@@ -226,7 +275,8 @@ def _fnRejectContainedSocket(sResolved):
                 f"bindMounts host path '{sResolved}' contains "
                 f"'{sDirectory}', which could not be read "
                 f"({errorScan.strerror}), so the tree cannot be shown to "
-                f"be free of daemon sockets"
+                f"be free of daemon sockets. "
+                + _S_UNREADABLE_REMEDY
             ) from errorScan
         for entryChild in listEntries:
             iExamined += 1
@@ -239,12 +289,7 @@ def _fnRejectContainedSocket(sResolved):
                 )
             if _fbEntryIsSymlink(entryChild, sResolved):
                 continue
-            if _fbIsUnixSocket(entryChild.path):
-                raise BindMountValidationError(
-                    f"bindMounts host path '{sResolved}' contains the "
-                    f"Unix socket '{entryChild.path}'; mounting the "
-                    f"directory would grant it"
-                )
+            _fnAssertChildIsNotSocket(entryChild, sResolved)
             if _fbEntryIsDirectory(entryChild, sResolved):
                 listPending.append(entryChild.path)
 
@@ -265,10 +310,10 @@ def _fbEntryIsSymlink(entryChild, sMountRoot):
 def _fbEntryIsDirectory(entryChild, sMountRoot):
     """True when a directory entry is a directory; raise if unknowable.
 
-    An entry that vanished mid-scan refuses rather than passes. The
-    honest reading of a disappearance during validation is that the
-    tree changed while being inspected, and a scan of a moving target
-    proves nothing about the tree that will actually be mounted.
+    ``DirEntry.is_dir`` answers from the cache ``scandir`` filled and
+    does not raise for an entry that has since vanished, so this cannot
+    be the check that catches a changing tree.
+    :func:`_fnAssertChildIsNotSocket` runs first and does catch it.
     """
     try:
         return entryChild.is_dir(follow_symlinks=False)
