@@ -77,6 +77,7 @@ __all__ = [
 ]
 
 import asyncio
+import inspect
 import logging
 import os
 import secrets
@@ -561,7 +562,9 @@ async def _fdictRunAndSettleWorker(supervisor, fnWorker):
     tokenLane = ftokenMarkEnforcedLane()
     tokenAdmission = ftokenActivateAdmission(admission)
     try:
-        resultWorker = await asyncio.to_thread(fnWorker, supervisor)
+        resultWorker = await asyncio.to_thread(
+            _fnCallWorkerSynchronously, fnWorker, supervisor,
+        )
     except BaseException as errorWorker:
         _fnSettleAfterFailedWorker(supervisor, errorWorker)
         raise
@@ -579,6 +582,43 @@ async def _fdictRunAndSettleWorker(supervisor, fnWorker):
         "result": resultWorker,
     }
     return supervisor.dictOutcome
+
+
+def _fnCallWorkerSynchronously(fnWorker, supervisor):
+    """Call a worker in the carrier's thread, refusing a coroutine.
+
+    The carrier runs workers with ``asyncio.to_thread``, so an
+    ``async def`` would be CALLED here, hand back a coroutine object
+    nobody awaits, and return at once: the work never happens, the lock
+    is released immediately, and the only symptom is a
+    "coroutine ... was never awaited" warning that pytest does not fail
+    on. A transfer test written that way once asserted a busy container
+    refused a hand-over while no mutation was live at all.
+
+    Checked twice, because the two checks catch different things. The
+    first rejects the declaration (``async def``, and anything else
+    ``iscoroutinefunction`` recognises, including a partial of one).
+    The second rejects an AWAITABLE RESULT, which catches the shapes a
+    declaration check cannot see -- a lambda returning a coroutine, a
+    callable object whose ``__call__`` is async, a sync wrapper that
+    forgot to await.
+    """
+    if inspect.iscoroutinefunction(fnWorker):
+        raise TypeError(
+            f"{getattr(fnWorker, '__name__', fnWorker)!r} is a "
+            "coroutine function, and the commit carrier runs workers in "
+            "a thread: it would never execute. Pass a synchronous "
+            "worker."
+        )
+    resultWorker = fnWorker(supervisor)
+    if inspect.isawaitable(resultWorker):
+        resultWorker.close()
+        raise TypeError(
+            f"{getattr(fnWorker, '__name__', fnWorker)!r} returned an "
+            "awaitable, which the carrier's thread cannot await: the "
+            "work would never run. Pass a synchronous worker."
+        )
+    return resultWorker
 
 
 def _fnSettleAfterFailedWorker(supervisor, errorWorker):

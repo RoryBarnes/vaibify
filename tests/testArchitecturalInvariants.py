@@ -4232,7 +4232,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a busy refusal can name the live operation. An asyncio.Lock knows
     # only that it is held; the metadata has to live with the holder,
     # and the holder is the supervisor this module owns.
-    "commitCarrier.py": 999,
+    # +40 (2026-08-02): the carrier refuses a coroutine worker at
+    # RUNTIME -- both the declaration and an awaitable result -- because
+    # a source-shape check caught only the spelling that had already
+    # burned us.
+    "commitCarrier.py": 1039,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -4299,7 +4303,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # mode-(c) task is ADOPTED rather than refused, and why -- an
     # external review read the old wording as a claim that transfer
     # blocks every live mutation, which it does not and should not.
-    "sessionLifecycle.py": 1307,
+    # +12 (2026-08-02): the transfer docstring enumerates its three
+    # cases (lock-held refuses, durable adopts, unregistered is
+    # invisible) after an earlier wording claimed the opposite of the
+    # third.
+    "sessionLifecycle.py": 1319,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

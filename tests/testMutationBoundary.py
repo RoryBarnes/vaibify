@@ -14,11 +14,22 @@ primitive was reachable directly from a route.
 **The audited-read exemption.** A typed read is implemented with an
 exec -- fetching a file means running a program in the container -- so
 guarding the exec primitive would refuse reads too, and the reflex fix
-would be to stop guarding it. The carve-out is therefore narrow by
-construction: exactly one private method grants it, and every command
-that travels through it must have been BUILT by its adapter from a path
-or an identifier. A caller's string may never reach it, or the
-exemption becomes the hole.
+would be to stop guarding it. The carve-out is therefore narrow BY
+SIGNATURE: exactly one private method grants it, and it does not accept
+a command. It takes the NAME of a declared operation and a path, and
+builds the program from fixed module source text with the path embedded
+as a Python literal.
+
+That design replaced a source-shape audit which tried to prove no
+caller-derived value reached an arbitrary-command parameter. Two
+independent reviews defeated it in turn -- first with a keyword
+argument, an alias, an f-string, a concatenation and a helper's return
+value, then with two levels of assignment -- and the second round is
+the lesson: enumerating bad shapes cannot win against a parameter that
+accepts arbitrary text, because the next spelling is always one nobody
+listed. Removing the parameter ends the argument. The bypass cases
+those reviews contributed are gone from this file for the same reason:
+none of them can be written any more.
 """
 
 import ast
@@ -28,13 +39,14 @@ import pathlib
 import pytest
 
 from vaibify.config import mutationAdmission
+from vaibify.docker import dockerConnection as dockerConnectionModule
 from vaibify.docker.dockerConnection import DockerConnection
 
 
 PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 
 # The single method that grants the audited-read exemption.
-S_EXEMPTION_METHOD = "_texecRunAuditedRead"
+S_EXEMPTION_METHOD = "_texecRunTypedRead"
 
 
 class _StubContainer:
@@ -104,7 +116,9 @@ def testAnAuditedReadIsExemptButOnlyInsideItsAdapter(fnEnforcedLane):
     stubContainer = _StubContainer()
     connection = _fconnectionWithStubContainer(stubContainer)
 
-    connection._texecRunAuditedRead("cid-1", "python3 -c 'print(1)'")
+    connection._texecRunTypedRead(
+        "cid-1", dockerConnectionModule.S_TYPED_READ_DIRECTORY, "/tmp",
+    )
     assert len(stubContainer.listExecuted) == 1
 
     with pytest.raises(mutationAdmission.MutationNotAdmittedError):
@@ -141,128 +155,128 @@ def testTheExemptionIsGrantedInExactlyOnePlace():
     )
 
 
-def testEveryAuditedReadBuildsItsOwnCommand():
-    """No caller-derived value may travel through the exemption.
+def testTheExemptionCannotCarryACommandAtAll():
+    """The audit is now a property of the SIGNATURE, not of a scan.
 
-    This is the audit, and the first version of it was weaker than this
-    docstring: it caught only a positional argument that was directly a
-    parameter NAME, so a keyword argument, a local alias, an f-string,
-    a concatenation, or a helper's return value all slipped through. A
-    check that is narrower than the guarantee it states is the shape
-    this repository treats as the serious failure -- prose promising
-    what nothing enforces.
+    The previous audit read every call site and tried to prove no
+    caller-derived value reached the exemption. It was defeated by two
+    levels of assignment, and would have been defeated by the next
+    spelling nobody thought of, because enumerating bad shapes is a
+    losing game against a parameter that accepts arbitrary text.
 
-    So the rule is inverted, from "reject the shapes I thought of" to
-    "accept only the shape I can verify": the command argument must be
-    a local name bound, in the same function, to an expression that
-    contains no parameter of that function. Anything else -- including
-    a spelling nobody has thought of yet -- fails and must be justified
-    by making the construction explicit.
+    So the parameter is gone. The exemption takes an operation NAME and
+    a PATH; the command is fixed module source text with the path
+    embedded as a Python literal. There is no shape of caller input
+    that can become a command, which is a guarantee a reader can check
+    by looking at one signature.
+    """
+    import inspect as inspectModule
+
+    tSignature = inspectModule.signature(
+        getattr(DockerConnection, S_EXEMPTION_METHOD),
+    )
+    listParameters = [
+        sName for sName in tSignature.parameters if sName != "self"
+    ]
+    assert listParameters == ["sContainerId", "sOperation", "sPath"], (
+        f"the exemption must take an operation name and a path, never "
+        f"a command; it takes {listParameters}"
+    )
+    for sName in listParameters:
+        assert "command" not in sName.lower(), (
+            f"{sName} reintroduces caller-supplied command text"
+        )
+
+
+def testEveryTypedReadNamesADeclaredOperation():
+    """Every call site picks from the table; none invents a program.
+
+    A constant operation name is what makes the exemption enumerable:
+    the set of programs it can run is the table, and the set of callers
+    is the ones naming a key in it. A computed name would put the
+    program back in the caller's hands.
     """
     sSource = (
         PATH_REPOSITORY / "vaibify" / "docker" / "dockerConnection.py"
     ).read_text()
     treeAst = ast.parse(sSource)
     listViolations = []
-    for nodeFunction in ast.walk(treeAst):
-        if not isinstance(
-            nodeFunction, (ast.FunctionDef, ast.AsyncFunctionDef),
-        ):
-            continue
-        listViolations.extend(
-            _flistExemptionViolations(nodeFunction),
-        )
-    assert listViolations == [], (
-        f"the audited-read exemption must carry only an adapter-built "
-        f"command: {listViolations}"
-    )
-
-
-def _flistExemptionViolations(nodeFunction):
-    """Return the ways one function misuses the read exemption."""
-    setParameters = {
-        nodeArgument.arg for nodeArgument in
-        nodeFunction.args.args + nodeFunction.args.kwonlyargs
-    }
-    dictLocalBindings = _fdictLocalStringBindings(nodeFunction)
-    listViolations = []
-    for nodeCall in ast.walk(nodeFunction):
+    for nodeCall in ast.walk(treeAst):
         if not isinstance(nodeCall, ast.Call):
             continue
         if getattr(nodeCall.func, "attr", "") != S_EXEMPTION_METHOD:
             continue
-        nodeCommand = _fnodeCommandArgument(nodeCall)
-        if nodeCommand is None:
-            listViolations.append(
-                f"{nodeFunction.name}: no command argument found"
-            )
+        if len(nodeCall.args) < 3:
+            listViolations.append("a call site omits the operation name")
             continue
-        listViolations.extend(_flistCommandViolations(
-            nodeFunction.name, nodeCommand, setParameters,
-            dictLocalBindings,
-        ))
-    return listViolations
+        nodeOperation = nodeCall.args[1]
+        if isinstance(nodeOperation, ast.Constant):
+            sOperation = nodeOperation.value
+        elif isinstance(nodeOperation, ast.Name):
+            sOperation = _fsResolveModuleConstant(treeAst, nodeOperation.id)
+        else:
+            sOperation = None
+        if sOperation not in dockerConnectionModule._DICT_TYPED_READ_PROGRAMS:
+            listViolations.append(
+                f"a call site passes the non-declared operation "
+                f"{ast.dump(nodeOperation)[:60]}"
+            )
+    assert listViolations == [], listViolations
 
 
-def _fnodeCommandArgument(nodeCall):
-    """Return the command expression, positional or keyword."""
-    for nodeKeyword in nodeCall.keywords:
-        if nodeKeyword.arg == "sCommand":
-            return nodeKeyword.value
-    if len(nodeCall.args) >= 2:
-        return nodeCall.args[1]
+def _fsResolveModuleConstant(treeModule, sName):
+    """Return a module-level string constant's value, or None."""
+    for nodeAssign in ast.walk(treeModule):
+        if not isinstance(nodeAssign, ast.Assign):
+            continue
+        if not isinstance(nodeAssign.value, ast.Constant):
+            continue
+        for nodeTarget in nodeAssign.targets:
+            if isinstance(nodeTarget, ast.Name) and nodeTarget.id == sName:
+                return nodeAssign.value.value
     return None
 
 
-def _fdictLocalStringBindings(nodeFunction):
-    """Map local names to the expressions assigned to them."""
-    dictBindings = {}
-    for nodeAssign in ast.walk(nodeFunction):
-        if not isinstance(nodeAssign, ast.Assign):
-            continue
-        for nodeTarget in nodeAssign.targets:
-            if isinstance(nodeTarget, ast.Name):
-                dictBindings.setdefault(nodeTarget.id, []).append(
-                    nodeAssign.value,
-                )
-    return dictBindings
+def testAnUndeclaredOperationRefusesInsteadOfRunning():
+    """An unknown operation name raises; it does not fall through."""
+    stubContainer = _StubContainer()
+    connection = _fconnectionWithStubContainer(stubContainer)
+    with pytest.raises(ValueError):
+        connection._texecRunTypedRead("cid-1", "rmDashRf", "/workspace")
+    assert stubContainer.listExecuted == []
 
 
-def _flistCommandViolations(
-    sFunctionName, nodeCommand, setParameters, dictLocalBindings,
-):
-    """Return why one command expression is not adapter-built."""
-    if isinstance(nodeCommand, ast.Constant):
-        return []
-    if not isinstance(nodeCommand, ast.Name):
-        # A call, an f-string, a concatenation: accepted only when it
-        # names no parameter anywhere inside it.
-        listNamed = _flistParameterNamesWithin(nodeCommand, setParameters)
-        return [
-            f"{sFunctionName}: the command expression carries the "
-            f"caller's {sorted(listNamed)}"
-        ] if listNamed else []
-    listBindings = dictLocalBindings.get(nodeCommand.id)
-    if not listBindings:
-        return [
-            f"{sFunctionName}: the command {nodeCommand.id!r} is not "
-            f"built in this function"
+def testTheTypedReadProgramsSubstituteOnlyARepresentedPath():
+    """A path becomes a Python literal, never shell or program syntax.
+
+    The one substitution into a fixed program. Driven with a path that
+    is hostile in both languages: if it were concatenated raw, the
+    program would break out; as a repr it is inert data.
+    """
+    sHostile = "/tmp/a'; import os; os.system('touch /tmp/pwned') #"
+    for sOperation in dockerConnectionModule._DICT_TYPED_READ_PROGRAMS:
+        sProgram = dockerConnectionModule._DICT_TYPED_READ_PROGRAMS[
+            sOperation
+        ].replace(
+            dockerConnectionModule._S_TYPED_READ_PATH_SLOT,
+            repr(sHostile),
+        )
+        # The whole hostile string survives inside ONE literal, and the
+        # program parses to the statements the table declares -- no
+        # os.system call appears among them.
+        treeProgram = ast.parse(sProgram)
+        listCalls = [
+            node.func.attr for node in ast.walk(treeProgram)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
         ]
-    listNamed = set()
-    for nodeBinding in listBindings:
-        listNamed |= _flistParameterNamesWithin(nodeBinding, setParameters)
-    return [
-        f"{sFunctionName}: the command {nodeCommand.id!r} is built from "
-        f"the caller's {sorted(listNamed)}"
-    ] if listNamed else []
-
-
-def _flistParameterNamesWithin(nodeExpression, setParameters):
-    """Return the function parameters an expression reads."""
-    return {
-        node.id for node in ast.walk(nodeExpression)
-        if isinstance(node, ast.Name) and node.id in setParameters
-    }
+        assert "system" not in listCalls, (
+            f"{sOperation} let a hostile path become program syntax"
+        )
+        assert sHostile in [
+            node.value for node in ast.walk(treeProgram)
+            if isinstance(node, ast.Constant)
+        ], f"{sOperation} did not carry the path as one literal"
 
 
 def testTheGatewayIsTheOnlyModuleThatCallsExecRun():
@@ -308,67 +322,3 @@ def testTheCommandGateCoversTheDelegatingPrimitives():
             f"{sWrapper} no longer delegates to {sBase}, so it is "
             f"outside the gate that covers it"
         )
-
-
-# The bypass shapes an external review named as slipping past the first
-# version of the audit. Kept as cases rather than prose: a check that
-# claims to catch a class must be shown catching it.
-_LIST_EXEMPTION_BYPASS_SHAPES = [
-    ("a keyword argument", '''
-def fbaLeak(self, sContainerId, sCallerCommand):
-    self._texecRunAuditedRead(sContainerId, sCommand=sCallerCommand)
-'''),
-    ("a local alias", '''
-def fbaLeak(self, sContainerId, sCallerCommand):
-    sAlias = sCallerCommand
-    self._texecRunAuditedRead(sContainerId, sAlias)
-'''),
-    ("an f-string", '''
-def fbaLeak(self, sContainerId, sCallerCommand):
-    sBuilt = f"cat {sCallerCommand}"
-    self._texecRunAuditedRead(sContainerId, sBuilt)
-'''),
-    ("a concatenation", '''
-def fbaLeak(self, sContainerId, sCallerCommand):
-    self._texecRunAuditedRead(sContainerId, "cat " + sCallerCommand)
-'''),
-    ("a helper's return value", '''
-def fbaLeak(self, sContainerId, sCallerCommand):
-    sBuilt = fsBuildIt(sCallerCommand)
-    self._texecRunAuditedRead(sContainerId, sBuilt)
-'''),
-]
-
-
-@pytest.mark.parametrize(
-    "sShapeName,sSource", _LIST_EXEMPTION_BYPASS_SHAPES,
-    ids=[sName for sName, _ in _LIST_EXEMPTION_BYPASS_SHAPES],
-)
-def testTheAuditCatchesEveryKnownBypassShape(sShapeName, sSource):
-    """Each way a caller's command could reach the exemption is refused."""
-    import textwrap
-
-    nodeFunction = ast.parse(textwrap.dedent(sSource)).body[0]
-    listViolations = _flistExemptionViolations(nodeFunction)
-    assert listViolations, (
-        f"{sShapeName} carried the caller's command through the "
-        f"audited-read exemption unnoticed"
-    )
-
-
-def testTheAuditStillAcceptsAnAdapterBuiltCommand():
-    """The negative control: a real adapter's shape must pass.
-
-    Without this, a check that rejected everything would satisfy the
-    five cases above and quietly forbid the reads the exemption exists
-    to permit.
-    """
-    import textwrap
-
-    nodeFunction = ast.parse(textwrap.dedent('''
-def fbaSafe(self, sContainerId, sFilePath):
-    sProgram = "import os,sys; sys.stdout.write(" + repr("x") + ")"
-    sCommand = "python3 -c " + sProgram
-    self._texecRunAuditedRead(sContainerId, sCommand)
-''')).body[0]
-    assert _flistExemptionViolations(nodeFunction) == []

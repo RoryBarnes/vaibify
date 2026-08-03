@@ -1040,3 +1040,54 @@ def testNoCarrierWorkerIsAnAsyncFunction():
         f"the carrier runs workers with asyncio.to_thread, so an async "
         f"worker never executes: {listOffenders}"
     )
+
+
+def testACoroutineWorkerIsRefusedAtRuntime():
+    """The declaration check: an async worker never silently no-ops."""
+    async def _fnAsyncWorker(supervisor):
+        del supervisor
+        return "never runs"
+
+    with pytest.raises(TypeError, match="coroutine function"):
+        commitCarrier._fnCallWorkerSynchronously(
+            _fnAsyncWorker, object(),
+        )
+
+
+def testAWorkerReturningAnAwaitableIsRefusedAtRuntime():
+    """The result check, for the shapes a declaration check cannot see.
+
+    A lambda returning a coroutine, a callable object with an async
+    ``__call__``, a sync wrapper that forgot to await: none of these is
+    a coroutine FUNCTION, and all of them would have the same effect --
+    the work never runs while the carrier reports success.
+    """
+    async def _fnInner():
+        return 1
+
+    class _CallableWithAsyncCall:
+        async def __call__(self, supervisor):
+            del supervisor
+            return 1
+
+    for fnWorker in (
+        lambda supervisor: _fnInner(),
+        _CallableWithAsyncCall(),
+    ):
+        with pytest.raises(TypeError, match="awaitable|coroutine"):
+            commitCarrier._fnCallWorkerSynchronously(fnWorker, object())
+
+
+def testASynchronousWorkerStillRuns():
+    """The negative control: a refusal that refused everything is useless."""
+    listRan = []
+
+    def _fnWorker(supervisor):
+        del supervisor
+        listRan.append("ran")
+        return "done"
+
+    assert commitCarrier._fnCallWorkerSynchronously(
+        _fnWorker, object(),
+    ) == "done"
+    assert listRan == ["ran"]

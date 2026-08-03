@@ -236,6 +236,30 @@ def _fnEnsureDockerHost():
         pass
 
 
+# The complete set of programs the audited-read exemption will run,
+# as FIXED module source text. The only thing substituted into one is a
+# path, embedded through ``repr`` as a Python literal; the assembled
+# program is then quoted whole as a single shell argument. An adapter
+# chooses a NAME from this table and supplies a path -- it cannot
+# supply a command, so it cannot supply a bad one.
+_S_TYPED_READ_PATH_SLOT = "<<PATH>>"
+S_TYPED_READ_FILE_BASE64 = "readFileBase64"
+S_TYPED_READ_DIRECTORY = "listDirectory"
+
+_DICT_TYPED_READ_PROGRAMS = {
+    S_TYPED_READ_FILE_BASE64: (
+        "import base64,sys; "
+        "sys.stdout.buffer.write(base64.b64encode(open("
+        + _S_TYPED_READ_PATH_SLOT + ",'rb').read()))"
+    ),
+    S_TYPED_READ_DIRECTORY: (
+        "import os,sys; "
+        "sys.stdout.write(chr(10).join(sorted(os.listdir("
+        + _S_TYPED_READ_PATH_SLOT + "))))"
+    ),
+}
+
+
 class DockerConnection:
     """Wraps docker-py client for container operations."""
 
@@ -513,17 +537,35 @@ class DockerConnection:
         sOutput = resultExec.sStdout + resultExec.sStderr
         return (resultExec.iExitCode, sOutput)
 
-    def _texecRunAuditedRead(self, sContainerId, sCommand):
-        """Run an ADAPTER-BUILT command as a read, not a mutation.
+    def _texecRunTypedRead(self, sContainerId, sOperation, sPath):
+        """Run one NAMED read operation against a path, as a read.
 
-        The single place the audited-read exemption is granted, so the
-        list of commands that may skip the mutation gate is the list of
-        adapters in this class that call this method -- checkable by
-        reading one file. ``sCommand`` must have been constructed by the
-        adapter from a path or an identifier, never accepted from a
-        caller; that property is what the audit means, and
-        ``testMutationBoundary`` asserts it of every caller.
+        The single place the audited-read exemption is granted, and it
+        does not accept a command. It accepts the NAME of an operation
+        from :data:`_DICT_TYPED_READ_PROGRAMS` and a path, and builds
+        the command itself from fixed module source text with the path
+        embedded as a Python literal.
+
+        The earlier shape took adapter-built command TEXT, guarded by a
+        source check that no caller-derived value reached it. That check
+        was defeated by two levels of assignment -- and would have been
+        defeated by the next spelling nobody thought of, because it was
+        enumerating bad shapes rather than permitting a good one. An
+        exemption that cannot carry a command cannot carry a bad one:
+        the only thing an adapter chooses is which of a fixed set of
+        programs to run, and an unknown name raises rather than
+        executing anything.
         """
+        sTemplate = _DICT_TYPED_READ_PROGRAMS.get(sOperation)
+        if sTemplate is None:
+            raise ValueError(
+                f"{sOperation!r} is not a declared typed-read "
+                f"operation; the audited-read exemption runs only "
+                f"{sorted(_DICT_TYPED_READ_PROGRAMS)}"
+            )
+        sCommand = "python3 -c " + shlex.quote(
+            sTemplate.replace(_S_TYPED_READ_PATH_SLOT, repr(sPath)),
+        )
         tokenRead = mutationAdmission.ftokenEnterAuditedRead()
         try:
             return self.texecRunInContainerStreamed(sContainerId, sCommand)
@@ -545,20 +587,14 @@ class DockerConnection:
         payload exceeds it, ``ValueError`` is raised so callers cannot
         accidentally pull a multi-GB output file into RAM via the small
         path.
+
+        The command is not built here: this names a declared read
+        operation and :meth:`_texecRunTypedRead` builds it, so a path
+        cannot become program or shell syntax.
         """
-        # Two-layer quoting: repr() makes a valid Python literal, then
-        # shlex.quote wraps the whole program as one shell argument.
-        # The old code embedded repr() into a double-quoted ``bash -c``
-        # string, where $(...) and unbalanced quotes in the path stayed
-        # live — a container-path injection triggered by a file fetch.
-        sProgram = (
-            "import base64,sys; "
-            "sys.stdout.buffer.write("
-            "base64.b64encode(open("
-            + repr(sFilePath) + ",'rb').read()))"
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath,
         )
-        sCommand = "python3 -c " + shlex.quote(sProgram)
-        resultExec = self._texecRunAuditedRead(sContainerId, sCommand)
         if resultExec.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot read file from container: {sFilePath}"
@@ -576,29 +612,23 @@ class DockerConnection:
         """Return the names directly inside a container directory.
 
         An AUDITED ADAPTER, in the sense the mutation boundary means it:
-        the caller supplies a PATH and never a command, and the command
-        this builds is fixed source text with the path carried as data.
+        the caller supplies a PATH and never a command, and this method
+        supplies only the NAME of a declared read operation. The program
+        is fixed source text in :data:`_DICT_TYPED_READ_PROGRAMS`, and
+        :meth:`_texecRunTypedRead` does the substitution and the
+        quoting -- so an adapter cannot pass a command even by mistake.
+
         Callers used to assemble ``f"ls -1 {sPath}"`` themselves and
         hand it to a shell, which made a directory listing an arbitrary
         command execution triggered by a path argument -- and broke on
         any path containing a space.
 
-        The same two-layer quoting as :meth:`fbaFetchFile`: ``repr``
-        makes a valid Python literal, then ``shlex.quote`` wraps the
-        whole program as one shell argument, so nothing in the path
-        reaches the shell as syntax.
-
         A missing or unreadable directory raises ``FileNotFoundError``;
         an empty directory returns an empty list, which is a different
         answer and must stay one.
         """
-        sProgram = (
-            "import os,sys; "
-            "sys.stdout.write(chr(10).join(sorted(os.listdir("
-            + repr(sDirectoryPath) + "))))"
-        )
-        resultExec = self._texecRunAuditedRead(
-            sContainerId, "python3 -c " + shlex.quote(sProgram),
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_DIRECTORY, sDirectoryPath,
         )
         if resultExec.iExitCode != 0:
             raise FileNotFoundError(

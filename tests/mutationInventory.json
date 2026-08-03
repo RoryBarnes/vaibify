@@ -1,5 +1,5 @@
 {
-  "iRowCount": 304,
+  "iRowCount": 295,
   "iUnresolvedSubprocessCount": 26,
   "listRows": [
     {
@@ -1185,96 +1185,18 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "582f6c556ba169b3",
-      "sFunction": "_ftStreamExecLines",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk api.exec_start",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "808667b2740dfebf",
-      "sFunction": "_texecRunAuditedRead",
+      "sFunction": "_texecRunTypedRead",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "texecRunInContainerStreamed",
       "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "90dff39c4f3c7960",
-      "sFunction": "fcontainerGetById",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk containers.get",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "7c8e1470ff62ee5c",
-      "sFunction": "fdictInspectExec",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk api.exec_inspect",
-      "sReferenceKind": "direct-docker-sdk"
     },
     {
       "bInsideGateway": true,
@@ -1327,58 +1249,6 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fnEvictAbsentContainers",
       "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "e469d4d043076500",
-      "sFunction": "flistGetRunningContainers",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk containers.list",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "c5dbda4224d1463b",
-      "sFunction": "fnExecResize",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk api.exec_resize",
-      "sReferenceKind": "direct-docker-sdk"
     },
     {
       "bInsideGateway": true,
@@ -1549,58 +1419,6 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "adcbb43cef9e8120",
-      "sFunction": "fsExecCreate",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk api.exec_create",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "ffe6aa1fecacb88b",
-      "sFunction": "fsocketExecStart",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk api.exec_start",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
       "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
@@ -1665,58 +1483,6 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fcontainerGetById",
       "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "adcbb43cef9e8120",
-      "sFunction": "texecRunInContainerStreamedWithChunks",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk api.exec_create",
-      "sReferenceKind": "direct-docker-sdk"
-    },
-    {
-      "bInsideGateway": true,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "direct-docker-sdk",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "7c8e1470ff62ee5c",
-      "sFunction": "texecRunInContainerStreamedWithChunks",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "sdk api.exec_inspect",
-      "sReferenceKind": "direct-docker-sdk"
     },
     {
       "bInsideGateway": true,
@@ -7964,7 +7730,7 @@
       "sFunction": "_fnRunBestEffort"
     },
     {
-      "iLine": 869,
+      "iLine": 909,
       "sFile": "gui/commitCarrier.py",
       "sFunction": "fdictLaunchGatedHelperProcess"
     },

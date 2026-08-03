@@ -580,14 +580,26 @@ async def ftTransferOwnership(appState, sCapability):
     ``await`` between the final check and the commit. Old sockets are
     actively closed only after the commit.
 
-    A live mode-(c) durable task is ADOPTED, not refused: it is retagged
-    to the successor generation and keeps running. That is deliberate
-    and is the point of the axis — a researcher whose browser died
-    during a six-hour run re-attaches with ``vaibify open`` rather than
-    waiting the run out — but it does mean a transfer is not a barrier
-    against every live mutation. It is a barrier against every
-    UNREGISTERED one, which is why registration is the property that
-    matters.
+    What a transfer does about live work, exactly — the three cases are
+    different and the difference is the whole safety story:
+
+    * a **lock-held** mutation holds the container-mutation lock, so the
+      transfer is REFUSED at once, naming it;
+    * a **registered durable** (mode-(c)) task is ADOPTED — retagged to
+      the successor generation and left running. Deliberate, and the
+      point of the axis: a researcher whose browser died during a
+      six-hour run re-attaches with ``vaibify open`` rather than waiting
+      it out;
+    * an **unregistered** mutation is INVISIBLE here. It holds no lock
+      and appears in no registry, so the transfer cannot see it and
+      commits straight over it, and the departed session's command goes
+      on running in the successor's container.
+
+    The third case is the open hole, not a covered one. Registration is
+    what moves a mutation from the third case into the first or the
+    second; until every mutating path registers, a transfer is a barrier
+    against declared work only. See AGENTS.md, "Container mutations go
+    through the commit-guard carrier".
     """
     dictStore = getattr(appState, "dictBrowserSessions", None)
     dictInspect = browserSession.fdictInspectTransferCapability(

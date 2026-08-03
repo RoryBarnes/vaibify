@@ -177,35 +177,30 @@ def test_no_cli_command_interpolates_a_path_into_a_container_command():
             )
 
 
-def test_the_directory_adapter_carries_the_path_as_data():
-    """The listing adapter builds fixed source text, never caller text.
+def test_the_directory_adapter_cannot_supply_a_command():
+    """The listing adapter names an operation; it does not build one.
 
-    A typed read may use a raw executor internally -- but only an
-    audited adapter may construct its command, and the audit is that
-    the caller's string is embedded through ``repr`` inside a program
-    that is then quoted whole. Asserted on the source because the
-    property is about how the command is BUILT, and a live call would
-    only show that one particular path happened not to break out.
+    The adapter used to assemble a program and hand the text to the
+    exemption, guarded by a source check that no caller value reached
+    it. Two reviews defeated that check in turn, so the exemption
+    stopped accepting command text: an adapter now names one of a fixed
+    set of operations and supplies a path. Asserted on the call itself,
+    because the guarantee is that the adapter CANNOT pass a command --
+    not that this one happens not to.
     """
     import inspect
 
+    from vaibify.docker import dockerConnection
     from vaibify.docker.dockerConnection import DockerConnection
 
     sSource = inspect.getsource(DockerConnection.flistDirectoryEntries)
-    assert "repr(sDirectoryPath)" in sSource, (
-        "the path must be embedded as a Python literal, not "
-        "concatenated into shell text"
+    assert "_texecRunTypedRead(" in sSource
+    assert "shlex.quote" not in sSource, (
+        "the adapter is building a command again"
     )
-    assert "shlex.quote" in sSource, (
-        "the assembled program must be quoted as a single shell "
-        "argument"
+    assert dockerConnection.S_TYPED_READ_DIRECTORY in sSource, (
+        "the adapter must name a declared operation"
     )
-    sExecCall = sSource[sSource.index("_texecRunAuditedRead"):]
-    assert "shlex.quote(sProgram)" in sExecCall, (
-        "the command handed to the executor must be the quoted "
-        "program, not text assembled around the caller's path"
-    )
-    sBuild = sSource[:sSource.index("_texecRunAuditedRead")]
-    assert "{sDirectoryPath}" not in sBuild, (
-        "the path is interpolated into the command being built"
+    assert dockerConnection.S_TYPED_READ_DIRECTORY in (
+        dockerConnection._DICT_TYPED_READ_PROGRAMS
     )

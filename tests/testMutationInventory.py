@@ -36,7 +36,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # somebody classified those rows. Raising it means new call sites
 # shipped unreviewed, which is the state this record exists to make
 # visible.
-I_UNCLASSIFIED_ROW_BUDGET = 304
+I_UNCLASSIFIED_ROW_BUDGET = 295
 
 
 def _fmoduleGenerator():
@@ -380,6 +380,63 @@ def testAnSdkReadIsRecordedAsARead(moduleGenerator):
     """)
     assert len(listRows) == 1, listRows
     assert listRows[0]["bMutationCapable"] is False
+
+
+def testTheScannerFollowsAChainedSdkMutation(moduleGenerator):
+    """``client.volumes.get(name).remove()`` is one expression.
+
+    A chain walk that stopped at the first call recorded the READ and
+    missed the delete -- the shape a review used to defeat the previous
+    version of this scan.
+    """
+    listRows = _flistScanSource(moduleGenerator, """
+        def fnRemove(sName):
+            dockerClient.volumes.get(sName).remove(force=True)
+    """)
+    listMutating = [
+        dictRow["sPrimitive"] for dictRow in listRows
+        if dictRow["bMutationCapable"]
+    ]
+    assert listMutating == ["sdk get.remove"], listRows
+
+
+def testAClientFetchedFromAMappingIsStillTheDockerSdk(moduleGenerator):
+    """``dictCtx["docker"].containers.list(...)`` is a Docker call.
+
+    The root is a subscript, not a name. A root test that only
+    understood names dropped a real read from the record while
+    tightening away the false positives -- coverage lost to a fix.
+    """
+    listRows = _flistScanSource(moduleGenerator, """
+        def fnMountedPaths(dictCtx):
+            for container in dictCtx["docker"].containers.list(all=True):
+                del container
+    """)
+    assert [dictRow["sPrimitive"] for dictRow in listRows] == [
+        "sdk containers.list",
+    ], listRows
+
+
+def testAnUnrelatedMappingIsNotMistakenForTheDockerSdk(moduleGenerator):
+    """A subscript root is only a client when its KEY says so."""
+    assert _flistScanSource(moduleGenerator, """
+        def fnUnrelated(dictRegistry, sKey):
+            dictRegistry["entries"].images.remove(sKey)
+    """) == []
+
+
+def testAnUnrelatedLibraryIsNotMistakenForTheDockerSdk(moduleGenerator):
+    """A collection name alone is not evidence of a Docker call.
+
+    ``photoLibrary.images.remove(image)`` reads exactly like
+    ``dockerClient.images.remove`` to a scan matching on ``images``.
+    False rows dilute a record whose whole value is that every row
+    means something.
+    """
+    assert _flistScanSource(moduleGenerator, """
+        def fnUnrelated(photoLibrary, image):
+            photoLibrary.images.remove(image)
+    """) == []
 
 
 def testANonDockerAttributeCallIsNotRecorded(moduleGenerator):

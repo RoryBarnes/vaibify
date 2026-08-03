@@ -1006,8 +1006,12 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_file_fetch_does_not_execute_injected_payload',
         source='vaibify/docker/dockerConnection.py',
-        old='        sCommand = "python3 -c " + shlex.quote(sProgram)',
-        new='        sCommand = "python3 -c \\"" + sProgram + "\\""',
+        old="""        sCommand = "python3 -c " + shlex.quote(
+            sTemplate.replace(_S_TYPED_READ_PATH_SLOT, repr(sPath)),
+        )""",
+        new="""        sCommand = "python3 -c \\"" + sTemplate.replace(
+            _S_TYPED_READ_PATH_SLOT, sPath,
+        ) + "\\"" """,
     ),
     # The ownerless-connect exception is the viewer's bootstrap; extending
     # it to the hub lets an unclaimed connect run its write path (empty

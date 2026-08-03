@@ -378,15 +378,50 @@ class _VisitorCallSites(ast.NodeVisitor):
 
 
 def _flistAttributeChain(nodeExpression):
-    """Return the dotted name a call's function expression spells."""
+    """Return the dotted name a call's function expression spells.
+
+    Walks THROUGH intervening calls, so
+    ``client.volumes.get(name).remove()`` yields
+    ``client volumes get remove`` rather than stopping at ``remove``.
+    A chain that stopped at the first call recorded the read and missed
+    the delete -- the exact shape a review used to defeat the first
+    version of this scan.
+    """
     listParts = []
     nodeCurrent = nodeExpression
-    while isinstance(nodeCurrent, ast.Attribute):
-        listParts.append(nodeCurrent.attr)
-        nodeCurrent = nodeCurrent.value
+    while True:
+        if isinstance(nodeCurrent, ast.Attribute):
+            listParts.append(nodeCurrent.attr)
+            nodeCurrent = nodeCurrent.value
+        elif isinstance(nodeCurrent, ast.Call):
+            nodeCurrent = nodeCurrent.func
+        else:
+            break
     if isinstance(nodeCurrent, ast.Name):
         listParts.append(nodeCurrent.id)
+    elif isinstance(nodeCurrent, ast.Subscript):
+        # ``dictCtx["docker"].containers.list(...)`` -- the client is
+        # fetched from a mapping, so the root is the KEY. Dropping this
+        # shape lost a real Docker read from the record.
+        sKey = _fsConstantSubscriptKey(nodeCurrent)
+        if sKey:
+            listParts.append(sKey)
     return list(reversed(listParts))
+
+
+def _fsConstantSubscriptKey(nodeSubscript):
+    """Return a subscript's literal string key, or ''."""
+    nodeSlice = nodeSubscript.slice
+    # Python 3.9 wraps a simple slice in ast.Index. Unwrap ONLY that --
+    # ast.Constant also has a ``.value``, so a blanket getattr returns
+    # the string itself and the isinstance below then fails.
+    if nodeSlice.__class__.__name__ == "Index":
+        nodeSlice = nodeSlice.value
+    if isinstance(nodeSlice, ast.Constant) and isinstance(
+        nodeSlice.value, str,
+    ):
+        return nodeSlice.value
+    return ""
 
 
 def _fsetCollectSdkBoundNames(treeModule):
@@ -416,9 +451,20 @@ def _fsetCollectSdkBoundNames(treeModule):
 
 
 def _fsDockerSdkMethodForCall(nodeCall, setSdkBoundNames):
-    """Return the docker-py method a call invokes, or None."""
+    """Return the docker-py method a call invokes, or None.
+
+    A collection name alone is not evidence: ``photoLibrary.images
+    .remove(image)`` reads exactly like ``dockerClient.images.remove``
+    to a scan that matches on ``images``. The chain must ALSO be rooted
+    in something that is a Docker client -- a name this module
+    recognises, or a local bound from one -- so an unrelated library
+    with a colliding collection name does not enter the record and
+    dilute it.
+    """
     listChain = _flistAttributeChain(nodeCall.func)
     if len(listChain) < 2:
+        return None
+    if not _fbChainIsRootedInADockerClient(listChain, setSdkBoundNames):
         return None
     if any(sPart in SET_DOCKER_SDK_COLLECTIONS for sPart in listChain):
         return ".".join(listChain[-2:])
@@ -427,6 +473,25 @@ def _fsDockerSdkMethodForCall(nodeCall, setSdkBoundNames):
     ):
         return ".".join(listChain[-2:])
     return None
+
+
+def _fbChainIsRootedInADockerClient(listChain, setSdkBoundNames):
+    """Return True when a call chain starts at a Docker client."""
+    sRoot = listChain[0]
+    if sRoot in setSdkBoundNames:
+        return True
+    sRootLower = sRoot.lower()
+    return any(
+        sMarker in sRootLower for sMarker in _TUPLE_DOCKER_CLIENT_MARKERS
+    )
+
+
+# What a Docker client is CALLED in this package. A root-name test is a
+# heuristic and is stated as one: a client bound to an unrecognised name
+# would be missed, which is why every gateway primitive is also listed
+# by name in DICT_PRIMITIVE_ACCESS and every direct CLI invocation is
+# matched on its argv.
+_TUPLE_DOCKER_CLIENT_MARKERS = ("docker", "client")
 
 
 def _fbIsSubprocessLaunch(nodeCall):
