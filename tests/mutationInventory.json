@@ -1,6 +1,6 @@
 {
   "iRowCount": 291,
-  "iUnresolvedSubprocessCount": 38,
+  "iUnresolvedSiteCount": 38,
   "listRows": [
     {
       "bInsideGateway": false,
@@ -7569,194 +7569,232 @@
       "sReferenceKind": "direct-call"
     }
   ],
-  "listUnresolvedSubprocessSites": [
+  "listUnresolvedSites": [
     {
       "iLine": 293,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandReproduce.py",
       "sFunction": "_fiRunPipInstall"
     },
     {
       "iLine": 312,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandReproduce.py",
       "sFunction": "_fbRunUvFallback"
     },
     {
       "iLine": 72,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandRun.py",
       "sFunction": "_fiRunPipeline"
     },
     {
       "iLine": 77,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandRun.py",
       "sFunction": "_fiRunPipeline"
     },
     {
       "iLine": 116,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandRun.py",
       "sFunction": "_fiRunSingleStep"
     },
     {
       "iLine": 162,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandStart.py",
       "sFunction": "_fnServeGuiUnderLock"
     },
     {
       "iLine": 67,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
       "sFunction": "fsDescribeImage"
     },
     {
       "iLine": 83,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
       "sFunction": "fsDescribeVolume"
     },
     {
       "iLine": 98,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
       "sFunction": "flistDescribeContainers"
     },
     {
       "iLine": 221,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/main.py",
       "sFunction": "fnLaunchHub"
     },
     {
       "iLine": 313,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/main.py",
       "sFunction": "setup"
     },
     {
       "iLine": 339,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/main.py",
       "sFunction": "gui"
     },
     {
       "iLine": 18,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "docker/__init__.py",
       "sFunction": "fnRunDockerCommand"
     },
     {
       "iLine": 297,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "flistGetRunningContainers"
     },
     {
       "iLine": 327,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "fcontainerGetById"
     },
     {
       "iLine": 426,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "texecRunInContainerStreamedWithChunks"
     },
     {
       "iLine": 431,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "texecRunInContainerStreamedWithChunks"
     },
     {
       "iLine": 463,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "_ftStreamExecLines"
     },
     {
       "iLine": 781,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "fsExecCreate"
     },
     {
       "iLine": 788,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "fsocketExecStart"
     },
     {
       "iLine": 794,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "fnExecResize"
     },
     {
       "iLine": 806,
+      "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFunction": "fdictInspectExec"
     },
     {
       "iLine": 208,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "docker/x11Forwarding.py",
       "sFunction": "_fnRunBestEffort"
     },
     {
-      "iLine": 909,
+      "iLine": 931,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/commitCarrier.py",
       "sFunction": "fdictLaunchGatedHelperProcess"
     },
     {
       "iLine": 245,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/director.py",
       "sFunction": "fnExecuteCommand"
     },
     {
       "iLine": 75,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/gitStatus.py",
       "sFunction": "fsRunGit"
     },
     {
       "iLine": 51,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/resourceMonitor.py",
       "sFunction": "_ftRunDockerStats"
     },
     {
       "iLine": 156,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/resourceMonitor.py",
       "sFunction": "_ftRunContainerDiskQuery"
     },
     {
       "iLine": 47,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/routes/sessionRoutes.py",
       "sFunction": "_fnLaunchDetachedHub"
     },
     {
       "iLine": 187,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/setupServer.py",
       "sFunction": "ftResultRunBuild"
     },
     {
       "iLine": 1121,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/syncDispatcher.py",
       "sFunction": "_ftRunHostLsRemote"
     },
     {
       "iLine": 192,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/dependencyPinning.py",
       "sFunction": "_fnRunLockCompile"
     },
     {
       "iLine": 127,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/environmentSnapshot.py",
       "sFunction": "_fsRunCheckedCommand"
     },
     {
       "iLine": 182,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafMirror.py",
       "sFunction": "_fnRunGit"
     },
     {
       "iLine": 664,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafSync.py",
       "sFunction": "_fnRunSubprocess"
     },
     {
       "iLine": 751,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafSync.py",
       "sFunction": "_fnRunLsRemote"
     },
     {
       "iLine": 301,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/repoFiles.py",
       "sFunction": "ftRunCommand"
     },
     {
       "iLine": 188,
+      "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/rerunVerification.py",
       "sFunction": "fbRunWorkflowInContainer"
     }

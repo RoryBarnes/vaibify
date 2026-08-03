@@ -22,6 +22,7 @@ tree it was written from. A scan that agrees with itself proves nothing.
 """
 
 import ast
+import collections
 import importlib.util
 import pathlib
 import textwrap
@@ -142,42 +143,57 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
     )
 
 
-# The subprocess launches whose command the scan cannot read. This is a
-# DECLARED blind spot with a ratchet, not a silence: each one might be a
-# Docker invocation, and the honest position is to say how many the
-# record cannot speak for rather than to imply it covers them.
-I_UNRESOLVED_SUBPROCESS_BUDGET = 38
+# The sites the scan cannot resolve, budgeted BY KIND. A DECLARED blind
+# spot with a ratchet, not a silence: each one might be a container
+# mutation, and the honest position is to say how many the record cannot
+# speak for rather than to imply it covers them.
+#
+# Per-kind, because one number let the two trade against each other: an
+# SDK root could go untraceable while an opaque command was resolved,
+# and the total would say the blind spot had not grown.
+DICT_UNRESOLVED_BUDGET = {
+    "opaque-subprocess-command": 26,
+    "untraceable-docker-sdk-root": 12,
+}
 
 
 def testTheScanDeclaresWhatItCannotRead(moduleGenerator):
-    """The blind spot is counted, and may only shrink.
+    """The blind spot is counted per kind, and each may only shrink.
 
     A boundary that silently drops the commands it cannot parse reports
     a completeness it does not have -- which is exactly how the first
     version of this inventory came to claim 231 sites when there were
-    288. Resolving a site (by naming its command literally, or by
-    routing it through a gateway) lowers this number; adding an opaque
-    one raises it and fails here.
+    288. Resolving a site (by naming its command literally, by routing
+    it through a gateway, or by constructing the Docker client where it
+    is used) lowers a number; adding an opaque one raises it and fails
+    here.
     """
     dictInventory = moduleGenerator.fdictLoadInventory()
-    listUnresolved = moduleGenerator.flistUnresolvedSubprocessSites()
-    assert len(listUnresolved) <= I_UNRESOLVED_SUBPROCESS_BUDGET, (
-        f"{len(listUnresolved)} subprocess launches build their command "
-        f"where the scan cannot read it, over the budget of "
-        f"{I_UNRESOLVED_SUBPROCESS_BUDGET}. Any of them could be a "
-        f"Docker invocation: {listUnresolved}"
+    listUnresolved = moduleGenerator.flistUnresolvedSites()
+    dictCounted = collections.Counter(
+        dictSite["sBlindSpotKind"] for dictSite in listUnresolved
     )
-    assert dictInventory["iUnresolvedSubprocessCount"] == len(
-        listUnresolved,
-    ), (
+    assert set(dictCounted) <= set(DICT_UNRESOLVED_BUDGET), (
+        f"an unbudgeted blind-spot kind appeared: "
+        f"{set(dictCounted) - set(DICT_UNRESOLVED_BUDGET)}"
+    )
+    for sKind, iBudget in DICT_UNRESOLVED_BUDGET.items():
+        iFound = dictCounted.get(sKind, 0)
+        assert iFound <= iBudget, (
+            f"{iFound} sites of kind {sKind} are unreadable to the scan, "
+            f"over the budget of {iBudget}. Any of them could be a "
+            f"container mutation: "
+            f"{[s for s in listUnresolved if s['sBlindSpotKind'] == sKind]}"
+        )
+        if iFound < iBudget:
+            pytest.fail(
+                f"only {iFound} sites of kind {sKind} are now opaque -- "
+                f"lower DICT_UNRESOLVED_BUDGET to hold the gain."
+            )
+    assert dictInventory["iUnresolvedSiteCount"] == len(listUnresolved), (
         "the recorded blind-spot count disagrees with a fresh scan; "
         "regenerate the inventory"
     )
-    if len(listUnresolved) < I_UNRESOLVED_SUBPROCESS_BUDGET:
-        pytest.fail(
-            f"only {len(listUnresolved)} sites are now opaque -- lower "
-            f"I_UNRESOLVED_SUBPROCESS_BUDGET to hold the gain."
-        )
 
 
 # ---------------------------------------------------------------------

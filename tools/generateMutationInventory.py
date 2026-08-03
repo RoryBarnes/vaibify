@@ -79,6 +79,14 @@ S_REFERENCE_PASSED_CALLABLE = "passed-callable"
 S_REFERENCE_DIRECT_DOCKER_CLI = "direct-docker-cli"
 S_REFERENCE_DIRECT_DOCKER_SDK = "direct-docker-sdk"
 
+# The two kinds of site the scan cannot resolve. They are declared
+# separately because they are answered differently: an opaque command
+# is resolved by naming it literally or routing it through a gateway, a
+# untraceable SDK root by constructing the client where it is used. A
+# single undifferentiated list misdescribed twelve of them.
+S_BLIND_SPOT_OPAQUE_COMMAND = "opaque-subprocess-command"
+S_BLIND_SPOT_UNTRACEABLE_SDK_ROOT = "untraceable-docker-sdk-root"
+
 # Docker CLI subcommands that change something, as opposed to reporting
 # it. ``info``, ``inspect``, ``ps``, and ``context`` are reads.
 SET_MUTATING_DOCKER_SUBCOMMANDS = frozenset({
@@ -315,6 +323,7 @@ class _VisitorCallSites(ast.NodeVisitor):
             # silently drops what it cannot read reports coverage it
             # does not have.
             self.listUnresolvedSubprocessSites.append({
+                "sBlindSpotKind": S_BLIND_SPOT_OPAQUE_COMMAND,
                 "sFile": self.sRelativePath,
                 "sFunction": (
                     self._listFunctionStack[-1]
@@ -352,6 +361,7 @@ class _VisitorCallSites(ast.NodeVisitor):
                 # this scan just stopped doing; saying nothing would
                 # lose coverage to a precision fix.
                 self.listUnresolvedSdkSites.append({
+                    "sBlindSpotKind": S_BLIND_SPOT_UNTRACEABLE_SDK_ROOT,
                     "sFile": self.sRelativePath,
                     "sFunction": (
                         self._listFunctionStack[-1]
@@ -676,12 +686,16 @@ def flistScanPackage():
     return _flistNumberOrdinals(_tScanPackage()[0])
 
 
-def flistUnresolvedSubprocessSites():
+def flistUnresolvedSites():
     """Return the call sites the scan could not resolve.
 
-    Two kinds, both declared for the same reason: a subprocess whose
-    command is built where the scan cannot follow, and a docker-py
-    chain whose client this scan cannot trace to a constructor.
+    Two kinds, carried in one list but each stamped with its
+    ``sBlindSpotKind``: a subprocess whose command is built where the
+    scan cannot follow, and a docker-py chain whose client this scan
+    cannot trace to a constructor. They were briefly merged under a
+    subprocess-only name, which misdescribed twelve of them -- a record
+    that misnames what it cannot read is no better than one that drops
+    it.
 
     The scan's DECLARED blind spot: a command assembled somewhere the
     scan cannot follow might be a Docker invocation, and nothing here
@@ -885,10 +899,10 @@ def _fdictBuildInventory(listScanned, dictExisting):
             for sField in TUPLE_REVIEWER_FIELDS:
                 dictRow[sField] = dictPrevious.get(sField, S_UNCLASSIFIED)
         listMerged.append(dictRow)
-    listUnresolved = flistUnresolvedSubprocessSites()
+    listUnresolved = flistUnresolvedSites()
     return {
-        "iUnresolvedSubprocessCount": len(listUnresolved),
-        "listUnresolvedSubprocessSites": listUnresolved,
+        "iUnresolvedSiteCount": len(listUnresolved),
+        "listUnresolvedSites": listUnresolved,
         "sPurpose": (
             "Every container-mutation call site in vaibify/, one row "
             "each. Machine-derived identity; reviewer-classified "
