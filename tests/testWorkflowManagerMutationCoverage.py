@@ -3,7 +3,7 @@ cache-key, and cross-step reference classification.
 
 Each test closes a specific coverage hole found by mutation testing.
 The guarantees enforced here are load-bearing for the threat model
-(no host write may escape the project repo) and for AICS Level 1 (the
+(no host write may escape the project repo) and for PROOF Level 1 (the
 declared dependency graph must be complete and honest). A silent drift
 in any of these must fail the suite.
 """

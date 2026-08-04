@@ -1,6 +1,6 @@
-"""AICS level readiness route handlers.
+"""PROOF level readiness route handlers.
 
-Exposes the per-workflow Level 2 readiness rollup that the AICS tab
+Exposes the per-workflow Level 2 readiness rollup that the PROOF tab
 consumes, the AI Declaration starter-template generator that the
 "Generate template" button on the new step kind invokes, and the
 AI Declaration add-step route that appends the interactive
@@ -38,7 +38,7 @@ from ...reproducibility.aiDeclarationStep import (
 )
 from ...reproducibility.levelGates import (
     fdictLevel2Gaps,
-    fiAICSLevel,
+    fiProofLevel,
 )
 
 
@@ -145,7 +145,7 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         )
         dictGaps = fdictLevel2Gaps(dictWorkflow, filesRepo)
         return {
-            "iAICSLevel": fiAICSLevel(dictWorkflow, filesRepo),
+            "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictLevel2Gaps": dictGaps,
         }
 
@@ -247,7 +247,7 @@ def _fnRegisterAddStep(app, dictCtx):
 
 
 def fnRegisterAll(app, dictCtx):
-    """Register the AICS level readiness routes."""
+    """Register the PROOF level readiness routes."""
     _fnRegisterLevel2Readiness(app, dictCtx)
     _fnRegisterGenerateTemplate(app, dictCtx)
     _fnRegisterAddStep(app, dictCtx)

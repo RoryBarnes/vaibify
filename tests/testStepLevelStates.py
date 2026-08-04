@@ -15,7 +15,7 @@ non-empty on the step; a step with nothing to reproduce reads
 ``fdictComputeStepLevelWarnings`` consolidates the regression column;
 ``fdictComputeWorkflowScopeLevelStates`` covers the header row, whose
 cells are the workflow-attached requirements only — NOT an aggregate
-of the step rows (that is the scalar ``fiAICSLevel`` gate).
+of the step rows (that is the scalar ``fiProofLevel`` gate).
 """
 
 from vaibify.reproducibility.levelGates import (
@@ -23,7 +23,7 @@ from vaibify.reproducibility.levelGates import (
     fdictComputeStepLevelWarnings,
     fdictComputeWorkflowScopeLevelStates,
     fiLowestNonAttainedLevel,
-    fiStepAICSLevel,
+    fiStepProofLevel,
 )
 
 
@@ -533,7 +533,7 @@ def testNotApplicableRungCannotBlockTheStepLadder():
         "attained", "attained", "not-applicable",
     )
     dictStates["s3"] = _fdictCell("not-applicable", 0, 0)
-    assert fiStepAICSLevel(dictStates) == 3
+    assert fiStepProofLevel(dictStates) == 3
     assert fiLowestNonAttainedLevel(dictStates) == 4
 
 
@@ -575,7 +575,7 @@ def testNoRegressionFlagWithoutStamp():
 
 
 # ------------------------------------------------------------------------
-# fiStepAICSLevel / fiLowestNonAttainedLevel over the new cells
+# fiStepProofLevel / fiLowestNonAttainedLevel over the new cells
 # ------------------------------------------------------------------------
 
 
@@ -589,26 +589,26 @@ def _fdictThreeCells(sStateOne, sStateTwo, sStateThree):
 
 
 def testStepLevelZeroWhenLevelOneNotAttained():
-    assert fiStepAICSLevel(
+    assert fiStepProofLevel(
         _fdictThreeCells("partial", "attained", "attained"),
     ) == 0
 
 
 def testStepLevelThreeWhenAllAttained():
     dictStates = _fdictThreeCells("attained", "attained", "attained")
-    assert fiStepAICSLevel(dictStates) == 3
+    assert fiStepProofLevel(dictStates) == 3
     assert fiLowestNonAttainedLevel(dictStates) == 4
 
 
 def testStepLevelContiguityIgnoresAttainedAboveGap():
     dictStates = _fdictThreeCells("attained", "partial", "attained")
-    assert fiStepAICSLevel(dictStates) == 1
+    assert fiStepProofLevel(dictStates) == 1
     assert fiLowestNonAttainedLevel(dictStates) == 2
 
 
 def testStepLevelHandlesEmptyOrNoneStates():
-    assert fiStepAICSLevel({}) == 0
-    assert fiStepAICSLevel(None) == 0
+    assert fiStepProofLevel({}) == 0
+    assert fiStepProofLevel(None) == 0
     assert fiLowestNonAttainedLevel({}) == 1
 
 
@@ -849,7 +849,7 @@ def testProjectionAgreesWithRealLevel1Blockers():
         dictWorkflow, listLevel1, [], [],
     )
     assert dictStates[0]["s1"] == _fdictCell("partial", 1, 4)
-    assert fiStepAICSLevel(dictStates[0]) == 0
+    assert fiStepProofLevel(dictStates[0]) == 0
 
 
 def testUndeclaredInputBlocksLevel1Cell():

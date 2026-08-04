@@ -1,6 +1,6 @@
 """CLI subcommand: vaibify reproduce.
 
-Read-only verification of the AICS Level 3 reproducibility envelope
+Read-only verification of the PROOF Level 3 reproducibility envelope
 inside a project repository. Walks five tiers in sequence:
 
 * Tier 1 — byte-exact artefact integrity via ``MANIFEST.sha256``.
@@ -383,7 +383,7 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 
 
 def fbVerifyTier4(sProjectRepo):
-    """Verify all seven AICS L3 readiness checks.
+    """Verify all seven PROOF L3 readiness checks.
 
     Reuses the host-side ``levelGates`` verifiers so the CLI and the
     dashboard apply the same rule to every check, and now cover the
@@ -842,7 +842,7 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     help="Skip the given tier (1, 2, 3, or 4). May be repeated.",
 )
 def reproduce(sRepo, bRerun, sWorkflowName, saSkipTier):
-    """Verify a project's AICS L3 reproducibility envelope."""
+    """Verify a project's PROOF L3 reproducibility envelope."""
     sProjectRepo = sRepo or str(Path.cwd())
     setSkipTiers = set(saSkipTier)
     bAllPassed = True

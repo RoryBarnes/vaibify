@@ -2067,12 +2067,12 @@ async def _fbDispatchZenodoAutoArchive(
 
 async def fnMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
-    iAICSLevelBefore,
+    iProofLevelBefore,
 ):
     """Push step's tracked files to Overleaf/Zenodo on L1 transition.
 
     Fires only when this step's transition promoted the workflow to
-    ``iAICSLevel >= 1`` (was below 1, is now at or above) AND the
+    ``iProofLevel >= 1`` (was below 1, is now at or above) AND the
     workflow's bAutoArchive setting is True. Pushes never block the
     caller: failures are logged and the manual sync UI remains the
     recovery path. Returns True when at least one remote was pushed
@@ -2084,12 +2084,12 @@ async def fnMaybeAutoArchive(
     independently of bAutoArchive so the local repo's manifest always
     reflects the latest fully-verified state.
     """
-    from vaibify.reproducibility.levelGates import fiAICSLevel
+    from vaibify.reproducibility.levelGates import fiProofLevel
     filesRepo = _ffilesForWorkflowRepo(
         dictWorkflow, connectionDocker, sContainerId,
     )
-    iLevelNow = fiAICSLevel(dictWorkflow, filesRepo)
-    bPromoted = iAICSLevelBefore < 1 <= iLevelNow
+    iLevelNow = fiProofLevel(dictWorkflow, filesRepo)
+    bPromoted = iProofLevelBefore < 1 <= iLevelNow
     _fnDispatchEnvelopeRefreshIfPromoted(
         dictWorkflow, sContainerId, bPromoted, connectionDocker,
     )

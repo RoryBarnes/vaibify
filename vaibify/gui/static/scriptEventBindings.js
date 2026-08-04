@@ -1020,7 +1020,7 @@ var VaibifyEventBindings = (function () {
                     if (bWorkflowMode) {
                         document.getElementById("panelSteps")
                             .classList.toggle("active",
-                                sPanel !== "aics");
+                                sPanel !== "proof");
                         document.getElementById("panelFiles")
                             .classList.toggle("active",
                                 sPanel === "files");
@@ -1044,11 +1044,11 @@ var VaibifyEventBindings = (function () {
                         elPanelRepos.classList.toggle(
                             "active", sPanel === "repos");
                     }
-                    var elPanelAics = document.getElementById(
-                        "panelAics");
-                    if (elPanelAics) {
-                        elPanelAics.classList.toggle(
-                            "active", sPanel === "aics");
+                    var elPanelProof = document.getElementById(
+                        "panelProof");
+                    if (elPanelProof) {
+                        elPanelProof.classList.toggle(
+                            "active", sPanel === "proof");
                     }
                     if (sPanel === "files") {
                         VaibifyFiles.fnLoadDirectory(
@@ -1057,8 +1057,8 @@ var VaibifyEventBindings = (function () {
                         VaibifyApp.fnLoadLogs();
                     } else if (sPanel === "repos") {
                         VaibifyReposPanel.fnRender();
-                    } else if (sPanel === "aics") {
-                        VaibifyAicsTab.fnRender();
+                    } else if (sPanel === "proof") {
+                        VaibifyProofTab.fnRender();
                     }
                 });
             });

@@ -187,13 +187,13 @@ pattern wholesale.
 
 ## Climbing-the-ladder UX
 
-- The AICS chip in the dashboard header renders a 4-state
+- The PROOF chip in the dashboard header renders a 4-state
   progression: L0 = "Self-Consistent (N steps blocking)" red, L1 =
   "Self-Consistent ✓ · Published (N blocking)" orange, L2 =
   "Published ✓ · Reproducible (env pending)" yellow, L3 =
   "Reproducible ✓" green. Each segment is clickable and scrolls the
-  AICS tab to the corresponding readiness card. Logic lives in
-  `scriptAicsTab.js::_fsFormatBlockerCountSuffix`.
+  PROOF tab to the corresponding readiness card. Logic lives in
+  `scriptProofTab.js::_fsFormatBlockerCountSuffix`.
 - Each step row has two clusters. LEFT: the execution cluster —
   the run checkbox (intent: include this step in the next run) and
   the run light (`_fsBuildStepStatusCell`, FACT and execution-only:
@@ -257,7 +257,7 @@ pattern wholesale.
   step rows: they cover only the requirements that attach to the
   workflow as a whole (L1: project repo present; L2: sync-verify
   freshness + arXiv; L3: the envelope artifacts). The all-steps
-  aggregate is the scalar `iAICSLevel` rendered by the AICS chip, so
+  aggregate is the scalar `iProofLevel` rendered by the PROOF chip, so
   a Workflow-row L1 check above red step rows is a consistent
   display, and the cell tooltips say so. Collapsed the row shows the
   same columns at workflow scope; expanded it renders
@@ -284,7 +284,7 @@ pattern wholesale.
   not inline banner glyphs. Per-file marks read
   `dictOffendingFileMarks` ("stale" → orange ✎, "failed"/"missing" →
   red ⚠) and render only in the expanded detail.
-- The `?` button next to the AICS chip opens
+- The `?` button next to the PROOF chip opens
   `scriptLegendPanel.js`'s legend modal. It lists every glyph per
   level with live counts of active blockers. The only resolution
   paths listed are `run-step` and `verify-step` — there is no
@@ -295,8 +295,8 @@ pattern wholesale.
   (italic). Same color, different secondary affordance so the user
   can scan without expanding the verification panel. Logic in
   `scriptFileOperations.js::_fsRedModifierClass`.
-- `_dictWorkflowState.iCachedAicsLevel` is a scalar (not a Set);
-  mutate it via `VaibifyApp.fnSetCachedAicsLevel(iLevel)`. The
+- `_dictWorkflowState.iCachedProofLevel` is a scalar (not a Set);
+  mutate it via `VaibifyApp.fnSetCachedProofLevel(iLevel)`. The
   shared-Sets-by-reference trap does not apply.
 
 ## Discovery commands

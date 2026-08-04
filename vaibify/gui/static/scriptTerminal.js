@@ -273,7 +273,7 @@ const VaibifyTerminal = (function () {
             // The vendored xterm library failed to load. Degrade to a
             // clear message instead of throwing — an exception here
             // used to propagate out of workflow activation and abort
-            // the AICS/repos/badge initialization that follows it.
+            // the PROOF/repos/badge initialization that follows it.
             VaibifyApp.fnShowToast(
                 "The terminal library failed to load — reload the " +
                 "page to restore terminal access.", "error");

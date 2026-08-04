@@ -55,7 +55,7 @@ const VaibifyApp = (function () {
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
-            iCachedAicsLevel: null,
+            iCachedProofLevel: null,
             iWorkflowEpoch: -1,
             sWorkflowFingerprint: "",
             iFileCheckTimer: null,
@@ -63,7 +63,7 @@ const VaibifyApp = (function () {
             iInflightRequests: 0,
             abortControllerFileCheck: null,
             bDelegatedEventsInitialized: false,
-            iLastRenderedAICSLevel: 0,
+            iLastRenderedProofLevel: 0,
             listUndoStack: [],
             dictContainerSettings: null,
             bAgentRestartNeeded: false,
@@ -103,7 +103,7 @@ const VaibifyApp = (function () {
 
     var DICT_MODE_WORKFLOW = {
         sMode: "workflow",
-        listLeftTabs: ["steps", "aics", "files", "logs"],
+        listLeftTabs: ["steps", "proof", "files", "logs"],
         sDefaultLeftTab: "steps",
         bShowRunMenu: true,
         bShowDagButton: true,
@@ -488,7 +488,7 @@ const VaibifyApp = (function () {
         VaibifyPolling.fnStopDiscoveryPolling();
         VaibifyPolling.fnStopPromptRecordPolling();
         VaibifyReposPanel.fnTeardown();
-        VaibifyAicsTab.fnSetContainerId(null);
+        VaibifyProofTab.fnSetContainerId(null);
     }
 
     function _fnResetUiState() {
@@ -549,7 +549,7 @@ const VaibifyApp = (function () {
             VaibifyTerminal.fnEnsureTab();
         } catch (errorTerminal) {
             // A terminal failure must never abort the rest of
-            // activation (AICS tab, repos panel, badges, pipeline
+            // activation (PROOF tab, repos panel, badges, pipeline
             // recovery below) — that shipped as a raw "Terminal is
             // not defined" toast plus a half-initialized dashboard.
             fnShowToast(
@@ -557,11 +557,11 @@ const VaibifyApp = (function () {
                 fsSanitizeErrorForUser(errorTerminal.message),
                 "error");
         }
-        // The AICS and Repos tabs are container-scoped: without
+        // The PROOF and Repos tabs are container-scoped: without
         // these two calls they sit in their "connect first" empty
         // states for the entire workflow session, which is the mode
         // researchers are actually in.
-        VaibifyAicsTab.fnSetContainerId(sId);
+        VaibifyProofTab.fnSetContainerId(sId);
         VaibifyReposPanel.fnInit(sId);
         // Badges otherwise stay empty until a sync action bumps the
         // epoch mid-session: the per-file remote icons render grey
@@ -696,7 +696,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
         _dictWorkflowState.iL3BlockerCount = 0;
-        _dictWorkflowState.iCachedAicsLevel = null;
+        _dictWorkflowState.iCachedProofLevel = null;
     }
 
     async function fnEnterNoWorkflow(sId) {
@@ -714,7 +714,7 @@ const VaibifyApp = (function () {
             fnShowMainLayout();
             VaibifyTerminal.fnEnsureTab();
             await VaibifyReposPanel.fnInit(sId);
-            VaibifyAicsTab.fnSetContainerId(sId);
+            VaibifyProofTab.fnSetContainerId(sId);
             VaibifyPolling.fnStartDiscoveryPolling(sId);
         } catch (error) {
             fnShowToast(
@@ -982,7 +982,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictPlotStandardExists = {};
         _dictWorkflowState.dictStepStatus = {};
         document.body.classList.remove(
-            "aics-level-1", "aics-level-2", "aics-level-3",
+            "proof-level-1", "proof-level-2", "proof-level-3",
         );
         _fnCancelAllTimers();
         VaibifyFigureViewer.fnReleaseResources();
@@ -1382,13 +1382,13 @@ const VaibifyApp = (function () {
         }
     }
 
-    function _fnMaybeAutoCollapseStepsOnFirstL1(iAICSLevel) {
+    function _fnMaybeAutoCollapseStepsOnFirstL1(iProofLevel) {
         // Collapse the Steps block the first time this workflow
         // reaches L1; a one-shot guard means the user's manual choice
         // wins thereafter. Uses the authoritative server level. When
         // localStorage is unavailable the one-shot cannot be tracked,
         // so auto-collapse is skipped rather than fired every poll.
-        if (typeof iAICSLevel !== "number" || iAICSLevel < 1) return;
+        if (typeof iProofLevel !== "number" || iProofLevel < 1) return;
         var bAlready;
         try {
             bAlready =
@@ -2436,7 +2436,7 @@ const VaibifyApp = (function () {
         "l3-attestation-stale": {
             sIcon: "⚠",
             sLabel: "Files changed since the last successful " +
-                "rebuild — re-run rebuild verification on the AICS " +
+                "rebuild — re-run rebuild verification on the PROOF " +
                 "tab",
             sClass: "step-blocker-glyph-l3-workflow-attestation",
         },
@@ -2645,13 +2645,13 @@ const VaibifyApp = (function () {
             // The Project row covers project-scope requirements
             // only; it is NOT a roll-up of the step rows. The
             // all-steps aggregate renders as the header checkmarks
-            // and the AICS tab.
+            // and the PROOF tab.
             listParts.push(
                 "These requirements apply to the project as a " +
                 "whole, not to any single step. Each step row " +
                 "tracks its own. The overall level is shown by " +
                 "the checkmarks next to the project name and in " +
-                "the AICS tab.");
+                "the PROOF tab.");
         }
         if (dictCell && sState !== "not-applicable") {
             listParts.push(dictCell.iSatisfied + " of " +
@@ -2909,7 +2909,7 @@ const VaibifyApp = (function () {
     }
 
     function fnExpandRequirementRow(sGroupKey, sReqKey) {
-        // Idempotent open (never toggle) for AICS-tab deep links:
+        // Idempotent open (never toggle) for PROOF-tab deep links:
         // .add() into the shared Sets in place — reassigning them
         // would detach the render context (the shared-Set trap).
         _dictUiState.setExpandedRequirementGroups.add(sGroupKey);
@@ -3213,8 +3213,8 @@ const VaibifyApp = (function () {
         VaibifyPolling.fnStartFilePolling(sContainerId);
     }
 
-    function fnSetCachedAicsLevel(iLevel) {
-        _dictWorkflowState.iCachedAicsLevel =
+    function fnSetCachedProofLevel(iLevel) {
+        _dictWorkflowState.iCachedProofLevel =
             typeof iLevel === "number" ? iLevel : null;
     }
 
@@ -3801,8 +3801,8 @@ const VaibifyApp = (function () {
         fnUpdateHighlightState();
     }
 
-    function fiClientAICSLevel() {
-        /* Authoritative source is the server-derived ``iAICSLevel`` on
+    function fiClientProofLevel() {
+        /* Authoritative source is the server-derived ``iProofLevel`` on
            the workflow dict, refreshed on every file-status poll. The
            per-step client gate (``fbStepIsAtLeastLevel1``) reads
            live render state (modified-files, deps badges, in-flight
@@ -3812,7 +3812,7 @@ const VaibifyApp = (function () {
            client never invents a level above what the server granted. */
         var dictWorkflow = _dictWorkflowState.dictWorkflow;
         if (!dictWorkflow || !dictWorkflow.listSteps) return 0;
-        var iServerLevel = dictWorkflow.iAICSLevel || 0;
+        var iServerLevel = dictWorkflow.iProofLevel || 0;
         if (iServerLevel === 0) return 0;
         var listSteps = dictWorkflow.listSteps;
         if (listSteps.length === 0) return 0;
@@ -3823,31 +3823,31 @@ const VaibifyApp = (function () {
     }
 
     function fnUpdateHighlightState() {
-        var iLevel = fiClientAICSLevel();
+        var iLevel = fiClientProofLevel();
         var listLevelClasses = [
-            "aics-level-1", "aics-level-2", "aics-level-3",
+            "proof-level-1", "proof-level-2", "proof-level-3",
         ];
         document.body.classList.remove.apply(
             document.body.classList, listLevelClasses,
         );
         if (iLevel >= 1) {
-            document.body.classList.add("aics-level-" + iLevel);
+            document.body.classList.add("proof-level-" + iLevel);
             VaibifyTerminal.fnUpdateCursorColor("#b39ddb");
         } else {
             VaibifyTerminal.fnUpdateCursorColor("#13aed5");
         }
         fnTriggerLevelTransitionAnimation(
-            iLevel, _dictWorkflowState.iLastRenderedAICSLevel,
+            iLevel, _dictWorkflowState.iLastRenderedProofLevel,
         );
         fnRecolorVisibleDagEdges();
-        _dictWorkflowState.iLastRenderedAICSLevel = iLevel;
+        _dictWorkflowState.iLastRenderedProofLevel = iLevel;
         _fnRefreshAttestationBanner(iLevel);
     }
 
     function _fnRefreshAttestationBanner(iLevel) {
-        /* Show #aicsAttestationBanner when an L3 attestation exists
+        /* Show #proofAttestationBanner when an L3 attestation exists
            but its recorded manifest digest no longer matches the live
-           manifest. Loud failure: clicking opens the AICS tab so the
+           manifest. Loud failure: clicking opens the PROOF tab so the
            researcher can re-verify. The poll is light (single GET)
            and only fires when the workflow is at least L2 so we never
            query an envelope-free repo. */
@@ -3871,7 +3871,7 @@ const VaibifyApp = (function () {
 
     function _fnRenderAttestationBannerFromResponse(dictResp) {
         var elBanner = document.getElementById(
-            "aicsAttestationBanner"
+            "proofAttestationBanner"
         );
         if (!elBanner) return;
         var dictCurrent = dictResp && dictResp.dictCurrentAttestation;
@@ -3887,12 +3887,12 @@ const VaibifyApp = (function () {
             return;
         }
         elBanner.innerHTML = 'L3 attestation expired because the ' +
-            'manifest changed. Click to open the AICS tab and ' +
+            'manifest changed. Click to open the PROOF tab and ' +
             're-run reproduction verification.';
         elBanner.hidden = false;
         elBanner.onclick = function () {
             var elTab = document.querySelector(
-                '.left-tab[data-panel="aics"]'
+                '.left-tab[data-panel="proof"]'
             );
             if (elTab) elTab.click();
         };
@@ -3900,7 +3900,7 @@ const VaibifyApp = (function () {
 
     function _fnHideAttestationBanner() {
         var elBanner = document.getElementById(
-            "aicsAttestationBanner"
+            "proofAttestationBanner"
         );
         if (!elBanner) return;
         elBanner.hidden = true;
@@ -3917,7 +3917,7 @@ const VaibifyApp = (function () {
     function fnTriggerLevelTransitionAnimation(iNewLevel, iOldLevel) {
         /* Fires on any upward promotion across the ladder. The same
            DOM overlay is reused for every rung; the body's
-           `--aics-bloom-color` CSS variable swaps the gradient color
+           `--proof-bloom-color` CSS variable swaps the gradient color
            between purple (L1), green (L2), and pink (L3) without
            forking the element. */
         if (iNewLevel <= iOldLevel) return;
@@ -4442,7 +4442,7 @@ const VaibifyApp = (function () {
     function _fsBlockerAndLevelSnapshot() {
         return JSON.stringify([
             _dictWorkflowState.dictWorkflow
-                ? _dictWorkflowState.dictWorkflow.iAICSLevel
+                ? _dictWorkflowState.dictWorkflow.iProofLevel
                 : null,
             _dictWorkflowState.dictBlockersByStep,
             _dictWorkflowState.dictBlockersByStepLevel2,
@@ -4460,16 +4460,16 @@ const VaibifyApp = (function () {
         // Level-cell wire keys (Scope B/P backend projection). Each
         // key is optional so older payloads degrade to the previous
         // state rather than blanking the cells.
-        if (typeof dictStatus.iAICSLevel === "number" &&
+        if (typeof dictStatus.iProofLevel === "number" &&
             _dictWorkflowState.dictWorkflow) {
-            /* The theme (fiClientAICSLevel) reads this integer off
+            /* The theme (fiClientProofLevel) reads this integer off
              * the workflow dict. Without this copy the level cells
              * update live but the workflow-level promotion only
              * arrives on a full reload — every step showed its L1
              * check while the theme stayed at level 0. */
-            _dictWorkflowState.dictWorkflow.iAICSLevel =
-                dictStatus.iAICSLevel;
-            _fnMaybeAutoCollapseStepsOnFirstL1(dictStatus.iAICSLevel);
+            _dictWorkflowState.dictWorkflow.iProofLevel =
+                dictStatus.iProofLevel;
+            _fnMaybeAutoCollapseStepsOnFirstL1(dictStatus.iProofLevel);
         }
         if (dictStatus.dictStepLevels) {
             _dictWorkflowState.dictStepLevels =
@@ -4866,11 +4866,11 @@ const VaibifyApp = (function () {
         fiGetL3BlockerCount: function () {
             return _dictWorkflowState.iL3BlockerCount || 0;
         },
-        fiGetCachedAicsLevel: function () {
-            var iCached = _dictWorkflowState.iCachedAicsLevel;
+        fiGetCachedProofLevel: function () {
+            var iCached = _dictWorkflowState.iCachedProofLevel;
             return typeof iCached === "number" ? iCached : null;
         },
-        fnSetCachedAicsLevel: fnSetCachedAicsLevel,
+        fnSetCachedProofLevel: fnSetCachedProofLevel,
         fdictBlockerCountsByLevel: fdictBlockerCountsByLevel,
         fdictBlockerGlyphCatalog: fdictBlockerGlyphCatalog,
         fsBlockerHintForStep: fsBlockerHintForStep,

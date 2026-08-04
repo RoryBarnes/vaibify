@@ -351,7 +351,7 @@ def fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
     that writes caller-supplied content into the project repo must
     apply both, and route modules may not import from one another.
     ``.git/hooks/`` is code execution on the next commit; ``.vaibify/``
-    is the metadata-integrity contract the AICS truth system rests on.
+    is the metadata-integrity contract the PROOF truth system rests on.
     """
     sRepo = posixpath.normpath(sProjectRepoPath)
     sRelative = posixpath.relpath(sNormalized, sRepo)

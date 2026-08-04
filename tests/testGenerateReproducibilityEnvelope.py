@@ -1,4 +1,4 @@
-"""Tests for the AICS L3 reproducibility envelope generator."""
+"""Tests for the PROOF L3 reproducibility envelope generator."""
 
 import asyncio
 import subprocess
@@ -301,6 +301,6 @@ def test_all_green_refresh_writes_environment_json(tmp_path):
     ):
         asyncio.run(fileStatusManager.fnMaybeAutoArchive(
             None, "container-id-123",
-            dictWorkflow, 0, iAICSLevelBefore=0,
+            dictWorkflow, 0, iProofLevelBefore=0,
         ))
     assert (tmp_path / _ENVIRONMENT_RELPATH).is_file()

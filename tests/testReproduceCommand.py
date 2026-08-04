@@ -71,7 +71,7 @@ def _fnWriteEnvironment(pathRepo, sImageDigest):
 def _fnWriteL3EnvelopeExtras(pathRepo):
     """Add the Tier 4 envelope artefacts (Dockerfile, reproduce.sh).
 
-    Tier 4 (added 2026-05 with the AICS L3 readiness gate) requires
+    Tier 4 (added 2026-05 with the PROOF L3 readiness gate) requires
     the Dockerfile to be digest-pinned, ``reproduce.sh`` to exist and
     appear in the manifest, and a workflow.json to declare
     ``dictDeterminism``. The fixture seeds these so the happy-path
@@ -134,7 +134,7 @@ def _fnPatchAllSubprocessesSucceeding():
 def test_reproduce_happy_path_exit_zero(fixtureRepo):
     """All four cheap tiers pass with mocks; exit 0.
 
-    Contract change 2026-05 (AICS L3 readiness gate landing):
+    Contract change 2026-05 (PROOF L3 readiness gate landing):
     ``vaibify reproduce`` without ``--rerun`` now reports the
     envelope as "ready" rather than "confirmed" since the rebuild
     has not been attested. The success line text changed accordingly;

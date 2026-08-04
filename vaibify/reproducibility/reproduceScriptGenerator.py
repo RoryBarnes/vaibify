@@ -1,7 +1,7 @@
 """Render ``reproduce.sh`` from a workflow + the L3 envelope.
 
 The output script is the canonical "stock-host reproduction recipe":
-given the project repo plus the AICS L3 envelope
+given the project repo plus the PROOF L3 envelope
 (``.vaibify/environment.json``, ``requirements.lock``,
 ``MANIFEST.sha256``), running ``./reproduce.sh`` on a fresh host
 with Docker installed should reproduce every declared artefact.

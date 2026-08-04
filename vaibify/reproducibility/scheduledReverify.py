@@ -1,6 +1,6 @@
 """Periodic re-verification of workflow manifests against remote mirrors.
 
-This module is the single source of truth for the AICS Level 3
+This module is the single source of truth for the PROOF Level 3
 "authoritative re-verify" loop. The HTTP routes
 ``POST /api/sync/{sId}/{sService}/verify`` and the FastAPI lifespan
 scheduler both delegate here so the verify logic is described once and

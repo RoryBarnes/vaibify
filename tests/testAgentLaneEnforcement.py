@@ -505,7 +505,7 @@ def testSaveAndRunTestRefusesDenylistedPaths(clientBrowser):
 
     Writing ``.git/hooks/pre-commit`` is code execution on the next
     commit; writing under ``.vaibify/`` defeats the metadata-integrity
-    contract the AICS truth system rests on. The generic write route has
+    contract the PROOF truth system rests on. The generic write route has
     carried both guards for months; this one had neither.
 
     The owning lease is held so the 403 comes from the path denylist, not

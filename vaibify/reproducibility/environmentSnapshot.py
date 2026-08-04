@@ -1,11 +1,11 @@
-"""Tier 3 environment manifest capture for the AICS L3 envelope.
+"""Tier 3 environment manifest capture for the PROOF L3 envelope.
 
 Captures the container image digest, host-binary hashes, and system
 tool versions whose output bytes can affect bit-level reproducibility.
 The resulting JSON document is written to
 ``<sProjectRepo>/.vaibify/environment.json`` and joins
 ``MANIFEST.sha256`` (Tier 1) and ``requirements.lock`` (Tier 2) to
-form the AICS L3 verification envelope.
+form the PROOF L3 verification envelope.
 """
 
 import json
@@ -453,7 +453,7 @@ def _fsCurrentTimestamp():
 
 
 # ------------------------------------------------------------------
-# Digest-form validation (consumed by AICS L3 readiness gate)
+# Digest-form validation (consumed by PROOF L3 readiness gate)
 # ------------------------------------------------------------------
 
 
@@ -483,7 +483,7 @@ def fbEnvironmentDigestPinned(filesRepo):
 
     The schema places the digest at either the top-level
     ``sImageDigest`` (legacy layout) or at
-    ``dictContainer.sImageDigest`` (the layout the AICS L3 envelope
+    ``dictContainer.sImageDigest`` (the layout the PROOF L3 envelope
     writes). Two forms pin honestly: a registry digest
     (``image@sha256:<hex>``) or a locally built image's ID
     (``sha256:<64 hex>``), which is itself a content digest. A

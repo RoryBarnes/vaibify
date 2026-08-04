@@ -12,7 +12,7 @@ from ..fileStatusManager import (
     fnMaybeAutoArchive,
     fsWorkflowSlugFromPath,
 )
-from vaibify.reproducibility.levelGates import fiAICSLevel
+from vaibify.reproducibility.levelGates import fiProofLevel
 from ..routeContext import ffilesForWorkflow
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import (
@@ -364,7 +364,7 @@ def _ftRequireCategoryCommands(dictStep, sDictKey, sCategory):
 def _fdictResolveCategoryContext(
     dictCtx, sContainerId, iStepIndex, sCategory,
 ):
-    """Resolve workflow, step, category and pre-run AICS level for a request.
+    """Resolve workflow, step, category and pre-run PROOF level for a request.
 
     Returns a tuple of (dictWorkflow, dictStep, dictCat, listCmds,
     sVerifKey, iLevelBefore). All HTTP errors raise here so the handler
@@ -378,7 +378,7 @@ def _fdictResolveCategoryContext(
     listCmds, dictCat = _ftRequireCategoryCommands(
         dictStep, sDictKey, sCategory,
     )
-    iLevelBefore = fiAICSLevel(
+    iLevelBefore = fiProofLevel(
         dictWorkflow,
         ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
     )
@@ -459,7 +459,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             request.sFilePath,
             dictWorkflow.get("sProjectRepoPath", ""),
         )
-        iLevelBefore = fiAICSLevel(
+        iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
@@ -500,7 +500,7 @@ def _fnRegisterTestRun(app, dictCtx):
         listCmds = _flistResolveTestCommands(dictStep)
         if not listCmds:
             raise HTTPException(400, "No test commands")
-        iLevelBefore = fiAICSLevel(
+        iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )

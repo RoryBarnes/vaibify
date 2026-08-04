@@ -100,7 +100,7 @@ class TestFnUpdateAggregateTestState:
         }
         _fnUpdateAggregateTestState(dictStep)
         # No categories carry commands → aggregate is "unnecessary",
-        # treated as green by fbStepTestsPassing (AICS L1 gate).
+        # treated as green by fbStepTestsPassing (PROOF L1 gate).
         assert dictStep["dictVerification"]["sUnitTest"] == "unnecessary"
 
     def test_partial_untested(self):

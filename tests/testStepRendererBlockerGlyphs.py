@@ -15,7 +15,7 @@ test parses the JS source as text (the frontend has no Python import
 contract) and cross-checks the two universes.
 
 The second contract verifies the unified-schema (Section A of the
-AICS-ladder plan) promise: every Python-side L1/L2/L3 builder must set
+PROOF-ladder plan) promise: every Python-side L1/L2/L3 builder must set
 a non-empty ``sRemediationHint`` field, since Stage 6 drives the
 file-glyph and banner-glyph tooltips from that field.
 

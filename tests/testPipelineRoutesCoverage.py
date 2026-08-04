@@ -1466,7 +1466,7 @@ def _fdictPollLevelPatchReturns(listLevel1, listLevel2, listLevel3):
     dictReturns[sModule + "_flistCollectOutputPaths"] = []
     dictReturns[sModule + "ftGetModTimesAndFingerprint"] = ({}, "")
     dictReturns[sModule + "_fbCheckStaleUserVerification"] = False
-    dictReturns[sGates + "fiAICSLevel"] = 1
+    dictReturns[sGates + "fiProofLevel"] = 1
     dictReturns[sGates + "flistLevel1Blockers"] = listLevel1
     dictReturns[sGates + "flistLevel2Blockers"] = listLevel2
     dictReturns[sGates + "flistLevel3Blockers"] = listLevel3
@@ -1748,7 +1748,7 @@ class TestFnSaveIfLevelHighWaterChanged:
     def test_flag_true_saves_once_and_pops_key(self):
         dictCtx = {"save": MagicMock()}
         dictWorkflow = {"listSteps": []}
-        dictRest = {_S_LEVEL_RATCHET_FLAG_KEY: True, "iAICSLevel": 1}
+        dictRest = {_S_LEVEL_RATCHET_FLAG_KEY: True, "iProofLevel": 1}
         _fnSaveIfLevelHighWaterChanged(
             dictCtx, "cid1", dictWorkflow, dictRest,
         )
@@ -1766,7 +1766,7 @@ class TestFnSaveIfLevelHighWaterChanged:
 
     def test_flag_absent_saves_nothing(self):
         dictCtx = {"save": MagicMock()}
-        dictRest = {"iAICSLevel": 1}
+        dictRest = {"iProofLevel": 1}
         _fnSaveIfLevelHighWaterChanged(
             dictCtx, "cid1", {"listSteps": []}, dictRest,
         )

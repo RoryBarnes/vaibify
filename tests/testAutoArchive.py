@@ -213,9 +213,9 @@ def test_flistStepRemoteFiles_no_sync_status_returns_empty():
 
 # ---------------------------------------------------------------------------
 # fnMaybeAutoArchive — final positional arg renamed from
-# ``bWasFullyVerifiedBefore`` (boolean) to ``iAICSLevelBefore``
+# ``bWasFullyVerifiedBefore`` (boolean) to ``iProofLevelBefore``
 # (integer 0..3). Promotion is now defined as
-# ``iAICSLevelBefore < 1 <= fiAICSLevel(...)``.
+# ``iProofLevelBefore < 1 <= fiProofLevel(...)``.
 # ---------------------------------------------------------------------------
 
 
@@ -237,7 +237,7 @@ def test_fnMaybeAutoArchive_noop_when_already_verified():
         "sUser": "passed"}
     bResult = _fnRunAsync(fnMaybeAutoArchive(
         MagicMock(), "cid", dictWorkflow, 0,
-        iAICSLevelBefore=1,
+        iProofLevelBefore=1,
     ))
     assert bResult is False
 

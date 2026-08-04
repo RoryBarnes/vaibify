@@ -327,7 +327,7 @@ def fdictLoadWorkflowFromContainer(
     workflowMigrations.fnEnsureStepIds(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
-    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+    _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
         connectionDocker, sContainerId, sRepoPath,
     ))
     return dictWorkflow
@@ -895,10 +895,10 @@ def fbDeriveUnnecessaryVerification(dictWorkflow):
     return bAnyChanged
 
 
-def _fnDeriveAICSLevel(dictWorkflow, filesRepo):
-    """Compute and persist the workflow's current AICS level.
+def _fnDeriveProofLevel(dictWorkflow, filesRepo):
+    """Compute and persist the workflow's current PROOF level.
 
-    Writes ``iAICSLevel`` on the dict. Called from the load-after-merge
+    Writes ``iProofLevel`` on the dict. Called from the load-after-merge
     path and from ``fnSaveWorkflowToContainer`` so the integer is
     always current with the per-step verification state. The level
     is not authoritative — the derivation is; treat the persisted
@@ -907,8 +907,8 @@ def _fnDeriveAICSLevel(dictWorkflow, filesRepo):
     conjuncts read container truth; a raw path string keeps host-clone
     semantics for legacy callers.
     """
-    from vaibify.reproducibility.levelGates import fiAICSLevel
-    dictWorkflow["iAICSLevel"] = fiAICSLevel(
+    from vaibify.reproducibility.levelGates import fiProofLevel
+    dictWorkflow["iProofLevel"] = fiProofLevel(
         dictWorkflow, filesRepo,
     )
 
@@ -1165,7 +1165,7 @@ def fnSaveWorkflowToContainer(
     fnMigrateLegacyRemotes(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
-    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+    _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
         connectionDocker, sContainerId, sRepoPath,
     ))
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)

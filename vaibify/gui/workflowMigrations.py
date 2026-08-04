@@ -46,7 +46,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 10
+I_CURRENT_WORKFLOW_VERSION = 11
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -499,12 +499,15 @@ def _fnMigrateV2ToV3(dictWorkflow, sProjectRepoPath):
 
 
 def _fnMigrateV3ToV4(dictWorkflow, sProjectRepoPath):
-    """Replace the legacy ``bVaibified`` flag with the AICS ladder.
+    """Replace the legacy ``bVaibified`` flag with the level ladder.
 
     Drops any persisted ``bVaibified`` key (it was historically derived
     on the frontend and never authoritative; forked or hand-edited
     workflows occasionally carry the field anyway). Drops any
-    pre-existing ``iAICSLevel`` so the post-load derivation hook in
+    pre-existing ``iAICSLevel`` — the spelling this key carried in the
+    v3 era, before the ladder was renamed to PROOF; it is deliberately
+    NOT updated here because this migrator reads documents written on
+    disk under the old name — so the post-load derivation hook in
     ``workflowManager.fdictLoadWorkflowFromContainer`` recomputes the
     integer against the current per-step verification state rather
     than trusting a stale value. The derivation itself runs after
@@ -621,7 +624,7 @@ def _fnMigrateV8ToV9(dictWorkflow, sProjectRepoPath):
     ``saInputDataFiles`` lists repo-relative raw-data files the step
     consumes; ``bNoInputData`` is the explicit "no inputs needed"
     declaration (both empty/False means the step is *undeclared*,
-    which blocks AICS Level 1); ``listRemoteData`` carries per-file
+    which blocks PROOF Level 1); ``listRemoteData`` carries per-file
     provenance records for remote-pulled data.
     """
     for dictStep in dictWorkflow.get("listSteps", []):
@@ -658,6 +661,24 @@ def _fnMigrateV9ToV10(dictWorkflow, sProjectRepoPath):
     fnNormalizeInteractiveFlags(dictWorkflow)
 
 
+def _fnMigrateV10ToV11(dictWorkflow, sProjectRepoPath):
+    """Drop the pre-rename ``iAICSLevel`` spelling of the level key.
+
+    The ladder was renamed from the AI Containment Scale to PROOF, and
+    the derived integer with it. A modern save never writes the level
+    into project.json — ``stateManager.ftSplitMergedDict`` moves it to
+    state.json, and rebuilds that file from an empty dict on every
+    write, so a stale key there is ignored on read and dropped on the
+    next save. A hand-edited or forked project.json is the case this
+    migrator exists for: one that carries the old key at a version the
+    v3→v4 migrator no longer runs on would keep it indefinitely, where
+    it reads as authoritative and is not. The level is recomputed under
+    the new name by the post-load derivation hook, so dropping the old
+    spelling loses nothing.
+    """
+    dictWorkflow.pop("iAICSLevel", None)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -669,4 +690,5 @@ T_MIGRATORS = (
     (7, _fnMigrateV7ToV8),
     (8, _fnMigrateV8ToV9),
     (9, _fnMigrateV9ToV10),
+    (10, _fnMigrateV10ToV11),
 )

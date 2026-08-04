@@ -29,7 +29,7 @@ var VaibifyUtilities = (function () {
     /* --- Level-cell vocabulary (single owner) ---
        Every attained favicon and every L1/L2/L3 level cell in the
        GUI is built here, so the step rows, the Project block, the
-       AICS tab, and the legend samples cannot drift apart. The alt
+       PROOF tab, and the legend samples cannot drift apart. The alt
        text is per-context accessibility language ("attained",
        "met", "passing", …) supplied by the caller. */
 

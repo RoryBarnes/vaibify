@@ -1,6 +1,6 @@
-"""Persist and validate AICS L3 reproduction attestations.
+"""Persist and validate PROOF L3 reproduction attestations.
 
-The L3 gate is the only AICS rung gated on a *recorded* outcome of
+The L3 gate is the only PROOF rung gated on a *recorded* outcome of
 an expensive operation (rebuild + hash compare). The persisted
 record lives at ``<projectRepo>/.vaibify/l3_attestation.json``; every
 attempt is also archived to
@@ -174,7 +174,7 @@ def fdictBuildAttestation(
 ):
     """Return a fully-populated attestation dict (no file IO).
 
-    The shape is fixed by the schema documented in the AICS plan;
+    The shape is fixed by the schema documented in the PROOF plan;
     extracting it as a pure builder keeps the writer thin and lets
     tests assert payload contents without round-tripping through
     disk. ``dictAiProvenance`` is the machine-captured Replay-axis

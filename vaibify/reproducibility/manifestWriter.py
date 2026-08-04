@@ -3,7 +3,7 @@
 The manifest is a single text file at ``<projectRepo>/MANIFEST.sha256``
 containing one ``<hash>  <relpath>`` line per declared artefact. It is
 the byte-exact, human-inspectable record of every artefact a workflow
-involves, used by the AICS Level 3 reproducibility envelope to prove
+involves, used by the PROOF Level 3 reproducibility envelope to prove
 that the inputs and outputs a downstream consumer holds are
 bit-identical to the ones the workflow used.
 

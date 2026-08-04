@@ -1041,10 +1041,10 @@ LIST_FALSIFICATIONS = [
         new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"dictMaxMtimeByStep"})""",
     ),
     Falsification(
-        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_aics_level_change_advances_tag',
+        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_proof_level_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
         old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
-        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iAICSLevel"})""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iProofLevel"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_l2_blocker_count_change_advances_tag',
@@ -2408,7 +2408,7 @@ def _fdictEntry(sRel):
         new='_SET_ETAG_VOLATILE_KEYS = frozenset({"dictRunState"})',
     ),
     Falsification(
-        # Grading supervision on the persisted count makes the AICS
+        # Grading supervision on the persisted count makes the PROOF
         # row gradeable on self-report: the supervised agent edits
         # project.json and the row turns green.
         nodeid='tests/testReplayGate.py::test_supervision_is_not_gradeable_on_the_persisted_count',
@@ -2521,7 +2521,7 @@ def _fdictEntry(sRel):
     Falsification(
         # Writing .git/hooks/pre-commit is code execution on the next
         # commit; writing .vaibify/ defeats the metadata-integrity
-        # contract the AICS truth system rests on.
+        # contract the PROOF truth system rests on.
         nodeid='tests/testAgentLaneEnforcement.py::testSaveAndRunTestRefusesDenylistedPaths',
         source='vaibify/gui/routes/testRoutes.py',
         old='    fnRejectWriteDenylistedPath(sNormalized, sRoot)',

@@ -1,6 +1,6 @@
 """Unit tests for ``flistLevel2Blockers``.
 
-Stage 3 of the AICS-ladder plan introduces a per-step blocker surface
+Stage 3 of the PROOF-ladder plan introduces a per-step blocker surface
 for the Publication gate, parallel to ``flistLevel1Blockers``. The L2
 blockers cover only the GitHub mirror and Zenodo deposit endpoints in
 this stage (arXiv + Overleaf land in Stage 4) plus the

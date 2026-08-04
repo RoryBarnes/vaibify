@@ -1,4 +1,4 @@
-/* Vaibify — AICS tab: the requirements ledger.
+/* Vaibify — PROOF tab: the requirements ledger.
 
    Three expandable sections (Level 1 / 2 / 3), each listing every
    requirement vaibify enforces at that level with its live state for
@@ -9,7 +9,7 @@
    attestation, and the reproduction history. The ``?`` legend panel
    stays a pure symbol key; this tab owns the requirement text. */
 
-var VaibifyAicsTab = (function () {
+var VaibifyProofTab = (function () {
     "use strict";
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
@@ -45,7 +45,7 @@ var VaibifyAicsTab = (function () {
     };
 
     /* --- Requirement catalog ---
-       The single source of truth for what each AICS level demands and
+       The single source of truth for what each PROOF level demands and
        how each requirement is met with vaibify. The tab renders one
        expandable section per level from these lists; sStateKey names
        the wire flag that carries the live verdict (Level 1 rows
@@ -288,20 +288,20 @@ var VaibifyAicsTab = (function () {
     }
 
     function _felGetTabContent() {
-        return document.getElementById("aicsTabContent");
+        return document.getElementById("proofTabContent");
     }
 
     async function fnRender() {
         var elContent = _felGetTabContent();
         if (!elContent) return;
         if (!_sContainerId) {
-            elContent.innerHTML = '<div class="aics-empty">' +
-                'Connect to a project to see AICS status.</div>';
+            elContent.innerHTML = '<div class="proof-empty">' +
+                'Connect to a project to see PROOF status.</div>';
             return;
         }
         if (_dictLastReadiness === null) {
-            elContent.innerHTML = '<div class="aics-empty">' +
-                'Loading AICS readiness…</div>';
+            elContent.innerHTML = '<div class="proof-empty">' +
+                'Loading PROOF readiness…</div>';
         }
         await Promise.all([
             _fnRefreshReadiness(),
@@ -363,14 +363,14 @@ var VaibifyAicsTab = (function () {
         var elContent = _felGetTabContent();
         if (!elContent) return;
         if (_dictLastReadiness && _dictLastReadiness.sError) {
-            elContent.innerHTML = '<div class="aics-empty">' +
+            elContent.innerHTML = '<div class="proof-empty">' +
                 'Could not load readiness: ' +
                 fnEscapeHtml(_dictLastReadiness.sError) +
                 '</div>';
             return;
         }
         if (!_dictLastReadiness) return;
-        var iLevel = _dictLastReadiness.iAICSLevel || 0;
+        var iLevel = _dictLastReadiness.iProofLevel || 0;
         _fnSeedExpandedLevels(iLevel);
         elContent.innerHTML = _fsRenderHeaderCard(iLevel) +
             _fsRenderLevelSection(1) +
@@ -416,7 +416,7 @@ var VaibifyAicsTab = (function () {
             return Boolean((dictWorkflow || {}).sProjectRepoPath);
         }
         if (sKey === "stepsSelfConsistent") {
-            return (_dictLastReadiness.iAICSLevel || 0) >= 1;
+            return (_dictLastReadiness.iProofLevel || 0) >= 1;
         }
         var dictGaps = _dictLastReadiness.dictLevel2Gaps || {};
         if (sKey in dictGaps) return dictGaps[sKey] === true;
@@ -444,20 +444,20 @@ var VaibifyAicsTab = (function () {
         var iMet = listGating.filter(_fbRequirementMet).length;
         var sState = iMet === listGating.length ? "attained"
             : (iMet === 0 ? "none" : "partial");
-        var sHtml = '<div class="aics-card aics-level-section' +
+        var sHtml = '<div class="proof-card proof-level-section' +
             (bOpen ? '' : ' collapsed') + '" data-level="' +
             iLevelSection + '">' +
-            '<div class="aics-card-header aics-level-section-header"' +
+            '<div class="proof-card-header proof-level-section-header"' +
             ' data-level="' + iLevelSection + '">' +
-            '<span class="aics-card-title">' +
+            '<span class="proof-card-title">' +
             _DICT_LEVEL_SECTION_TITLES[iLevelSection] + '</span>' +
-            '<span class="aics-card-summary">' + iMet + ' of ' +
+            '<span class="proof-card-summary">' + iMet + ' of ' +
             listGating.length + ' met</span>' +
             _fsBuildLevelLight(sState,
                 _DICT_LEVEL_SECTION_TITLES[iLevelSection]) +
             '</div>';
         if (bOpen) {
-            sHtml += '<div class="aics-card-body">';
+            sHtml += '<div class="proof-card-body">';
             for (var i = 0; i < listRows.length; i++) {
                 sHtml += _fsRenderRequirementEntry(listRows[i]);
             }
@@ -481,7 +481,7 @@ var VaibifyAicsTab = (function () {
                 dictReq.sLabel + ": " + (bMet ? "met" : "not met"));
         var sLink = "";
         if (!bMet && dictReq.sFixTabPanel) {
-            sLink = ' <a class="aics-gap-fix" data-target-tab="' +
+            sLink = ' <a class="proof-gap-fix" data-target-tab="' +
                 dictReq.sFixTabPanel + '"' +
                 (dictReq.sFixRequirementGroup
                     ? ' data-req-group="' +
@@ -493,14 +493,14 @@ var VaibifyAicsTab = (function () {
                 ' href="#">' +
                 fnEscapeHtml(dictReq.sFixLabel) + '</a>';
         }
-        return '<div class="aics-req-entry state-' +
+        return '<div class="proof-req-entry state-' +
             (bMet ? "satisfied" : "unsatisfied") + '">' +
-            '<div class="aics-req-row">' + sLight +
-            '<span class="aics-req-label">' +
+            '<div class="proof-req-row">' + sLight +
+            '<span class="proof-req-label">' +
             fnEscapeHtml(dictReq.sLabel) + '</span></div>' +
-            '<div class="aics-req-what">' +
+            '<div class="proof-req-what">' +
             fnEscapeHtml(dictReq.sWhat) + '</div>' +
-            '<div class="aics-req-how">' +
+            '<div class="proof-req-how">' +
             fnEscapeHtml(dictReq.sHow) + sLink + '</div></div>';
     }
 
@@ -515,7 +515,7 @@ var VaibifyAicsTab = (function () {
     function _fnBindLevelSectionHeaders() {
         var elContent = _felGetTabContent();
         if (!elContent) return;
-        elContent.querySelectorAll(".aics-level-section-header")
+        elContent.querySelectorAll(".proof-level-section-header")
             .forEach(function (elHeader) {
                 elHeader.addEventListener("click", function () {
                     var iLevel = parseInt(
@@ -530,26 +530,26 @@ var VaibifyAicsTab = (function () {
             });
     }
 
-    function _fnNotifyCachedAicsLevel(iLevel) {
-        // Mirror the AICS-tab's read of /level2/readiness into the
+    function _fnNotifyCachedProofLevel(iLevel) {
+        // Mirror the PROOF-tab's read of /level2/readiness into the
         // application state so per-step level dots can render before
-        // the AICS tab is open.
-        if (VaibifyApp && VaibifyApp.fnSetCachedAicsLevel) {
-            VaibifyApp.fnSetCachedAicsLevel(iLevel);
+        // the PROOF tab is open.
+        if (VaibifyApp && VaibifyApp.fnSetCachedProofLevel) {
+            VaibifyApp.fnSetCachedProofLevel(iLevel);
         }
     }
 
     function _fsRenderHeaderCard(iLevel) {
-        _fnNotifyCachedAicsLevel(iLevel);
+        _fnNotifyCachedProofLevel(iLevel);
         var dictHeader = _DICT_LEVEL_HEADERS[iLevel] ||
             _DICT_LEVEL_HEADERS[0];
-        return '<div class="aics-header-card aics-level-' +
+        return '<div class="proof-header-card proof-level-' +
             iLevel + '-tint">' +
-            '<div class="aics-header-title">' +
+            '<div class="proof-header-title">' +
             fnEscapeHtml(dictHeader.sTitle) + '</div>' +
-            '<div class="aics-header-subtitle">' +
+            '<div class="proof-header-subtitle">' +
             fnEscapeHtml(dictHeader.sSubtitle) + '</div>' +
-            '<div class="aics-header-progress-wrap">' +
+            '<div class="proof-header-progress-wrap">' +
             _fsFormatBlockerCountSuffix(iLevel) +
             '</div></div>';
     }
@@ -557,15 +557,15 @@ var VaibifyAicsTab = (function () {
     function _fsFormatBlockerCountSuffix(iLevel) {
         // Section F: workflow-header progression. Four states (L0..L3),
         // each rendered as two clickable segments separated by ' · '.
-        // Reuses the existing AICS-tab readiness cards as the click
+        // Reuses the existing PROOF-tab readiness cards as the click
         // target so the header is a navigation aid, not a new page.
         var dictCounts = _fdictBlockerCountsByLevel();
         var listSegments = _flistProgressSegments(iLevel, dictCounts);
         if (listSegments.length === 0) return "";
-        var sHtml = '<div class="aics-progress">';
+        var sHtml = '<div class="proof-progress">';
         for (var i = 0; i < listSegments.length; i++) {
             if (i > 0) {
-                sHtml += '<span class="aics-progress-divider"> · </span>';
+                sHtml += '<span class="proof-progress-divider"> · </span>';
             }
             sHtml += listSegments[i];
         }
@@ -611,8 +611,8 @@ var VaibifyAicsTab = (function () {
             ? "Show the blocking steps in the step list"
             : "Jump to the Level " + sLevelKey.charAt(1) +
                 " readiness card";
-        return '<span class="aics-progress-segment ' +
-            'aics-progress-state-' + sColorClass + '" ' +
+        return '<span class="proof-progress-segment ' +
+            'proof-progress-state-' + sColorClass + '" ' +
             'data-progress-target="' + sLevelKey + '" ' +
             'title="' + sTitle + '">' +
             fnEscapeHtml(sLabel) + '</span>';
@@ -627,7 +627,7 @@ var VaibifyAicsTab = (function () {
         var elContent = _felGetTabContent();
         if (!elContent) return;
         var listSegments = elContent.querySelectorAll(
-            ".aics-progress-segment");
+            ".proof-progress-segment");
         Array.prototype.forEach.call(listSegments, function (elSegment) {
             elSegment.addEventListener("click", function () {
                 _fnScrollToReadiness(elSegment.dataset.progressTarget);
@@ -651,7 +651,7 @@ var VaibifyAicsTab = (function () {
         var el = _felGetTabContent();
         if (!el) return;
         var elTarget = el.querySelector(
-            '.aics-level-section[data-level="' + iLevel + '"]');
+            '.proof-level-section[data-level="' + iLevel + '"]');
         if (!elTarget) return;
         elTarget.scrollIntoView({behavior: "smooth", block: "start"});
     }
@@ -659,7 +659,7 @@ var VaibifyAicsTab = (function () {
     function _fnBindGapFixLinks() {
         var elContent = _felGetTabContent();
         if (!elContent) return;
-        elContent.querySelectorAll(".aics-gap-fix").forEach(
+        elContent.querySelectorAll(".proof-gap-fix").forEach(
             function (elLink) {
                 elLink.addEventListener("click", function (event) {
                     event.preventDefault();
@@ -696,7 +696,7 @@ var VaibifyAicsTab = (function () {
         var elContent = _felGetTabContent();
         if (!elContent) return;
         elContent.querySelectorAll(
-            ".btn-aics-generate-template"
+            ".btn-proof-generate-template"
         ).forEach(function (elButton) {
             elButton.addEventListener(
                 "click", _fnHandleGenerateTemplate
@@ -735,8 +735,8 @@ var VaibifyAicsTab = (function () {
         var sInFlight = _bVerifyInFlight ? " in-flight" : "";
         var sLabel = _bVerifyInFlight ? "Verifying…" :
             "Verify Level 3 Reproducibility";
-        return '<div class="aics-verify-row">' +
-            '<button type="button" class="btn-aics-verify-l3' +
+        return '<div class="proof-verify-row">' +
+            '<button type="button" class="btn-proof-verify-l3' +
             sInFlight + '" title="' + fnEscapeHtml(sTooltip) + '"' +
             sDisabled + '>' + fnEscapeHtml(sLabel) +
             '</button></div>';
@@ -746,10 +746,10 @@ var VaibifyAicsTab = (function () {
         if (!_dictLastL3Attestation) return "";
         var dictCurrent = _dictLastL3Attestation.dictCurrentAttestation;
         if (!dictCurrent) {
-            return '<div class="aics-card aics-attestation-card empty">' +
-                '<div class="aics-card-header">' +
-                '<span class="aics-card-title">Level 3 Attestation</span>' +
-                '</div><div class="aics-card-body">' +
+            return '<div class="proof-card proof-attestation-card empty">' +
+                '<div class="proof-card-header">' +
+                '<span class="proof-card-title">Level 3 Attestation</span>' +
+                '</div><div class="proof-card-body">' +
                 'No reproduction attempt on file yet.' +
                 '</div></div>';
         }
@@ -757,13 +757,13 @@ var VaibifyAicsTab = (function () {
         var sStale = _fsRenderStalenessNotice(dictCurrent);
         // sStatus comes from an agent-writable JSON file; it must be
         // escaped in the attribute context too, not just as text.
-        return '<div class="aics-card aics-attestation-card status-' +
+        return '<div class="proof-card proof-attestation-card status-' +
             fnEscapeHtml(sStatus) + '">' +
-            '<div class="aics-card-header">' +
-            '<span class="aics-card-title">Level 3 Attestation</span>' +
-            '<span class="aics-card-summary">' +
+            '<div class="proof-card-header">' +
+            '<span class="proof-card-title">Level 3 Attestation</span>' +
+            '<span class="proof-card-summary">' +
             fnEscapeHtml(sStatus) + '</span>' +
-            '</div><div class="aics-card-body">' +
+            '</div><div class="proof-card-body">' +
             _fsRenderAttestationDetails(dictCurrent) +
             sStale + '</div></div>';
     }
@@ -776,7 +776,7 @@ var VaibifyAicsTab = (function () {
         var iMatched = dictCurrent.iOutputHashesMatched || 0;
         var iTotal = dictCurrent.iOutputHashesTotal || 0;
         var fDuration = dictCurrent.fDurationSeconds || 0;
-        return '<div class="aics-attestation-details">' +
+        return '<div class="proof-attestation-details">' +
             '<div>Timestamp: <code>' +
             fnEscapeHtml(sTimestamp) + '</code></div>' +
             '<div>Manifest digest: <code>' +
@@ -793,7 +793,7 @@ var VaibifyAicsTab = (function () {
         var sLive = _dictLastL3Attestation.sLiveManifestDigest || "";
         var sRecorded = dictCurrent.sManifestDigestAtAttestation || "";
         if (!sLive || !sRecorded || sLive === sRecorded) return "";
-        return '<div class="aics-attestation-stale">' +
+        return '<div class="proof-attestation-stale">' +
             'Manifest digest changed since attestation; ' +
             're-run verification to refresh.</div>';
     }
@@ -804,14 +804,14 @@ var VaibifyAicsTab = (function () {
         if (!listHistory.length) return "";
         var sRows = listHistory.slice(0, 20).map(
             _fsRenderHistoryRow).join("");
-        return '<div class="aics-card aics-history-card">' +
-            '<div class="aics-card-header">' +
-            '<span class="aics-card-title">' +
+        return '<div class="proof-card proof-history-card">' +
+            '<div class="proof-card-header">' +
+            '<span class="proof-card-title">' +
             'Reproduction History</span>' +
-            '<span class="aics-card-summary">' +
+            '<span class="proof-card-summary">' +
             listHistory.length + ' attempt(s)</span>' +
-            '</div><div class="aics-card-body">' +
-            '<table class="aics-history-table">' +
+            '</div><div class="proof-card-body">' +
+            '<table class="proof-history-table">' +
             '<thead><tr><th>Timestamp</th><th>Status</th>' +
             '<th>Manifest</th><th>Duration</th></tr></thead>' +
             '<tbody>' + sRows + '</tbody></table>' +
@@ -822,7 +822,7 @@ var VaibifyAicsTab = (function () {
         // Warning glyph, never an X: a non-passed reproduction
         // attempt is a failed verification, so the glyph reads red.
         if (sStatus === "passed") return "✓";
-        return '<span class="aics-history-fail-glyph">⚠</span>';
+        return '<span class="proof-history-fail-glyph">⚠</span>';
     }
 
     function _fsRenderHistoryRow(dictEntry) {
@@ -845,7 +845,7 @@ var VaibifyAicsTab = (function () {
     function _fnBindVerifyL3Button() {
         var elContent = _felGetTabContent();
         if (!elContent) return;
-        elContent.querySelectorAll(".btn-aics-verify-l3")
+        elContent.querySelectorAll(".btn-proof-verify-l3")
             .forEach(function (elButton) {
                 if (elButton.disabled) return;
                 elButton.addEventListener(

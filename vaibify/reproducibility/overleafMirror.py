@@ -577,7 +577,7 @@ def fnDeleteMirror(sProjectId):
 
 
 # ----------------------------------------------------------------------
-# On-demand SHA-256 hashing of real remote bytes (AICS L3 verification).
+# On-demand SHA-256 hashing of real remote bytes (PROOF L3 verification).
 # This path is intentionally separate from the per-poll partial-clone
 # code: it performs a shallow but FULL clone (no ``--filter=blob:none``)
 # into a private tempdir so file bytes are available for hashing, then

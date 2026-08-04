@@ -466,7 +466,7 @@ LIST_AGENT_ACTIONS = [
                      "reference validation (including the deprecation "
                      "nudge for the positional {StepNN.stem} form). Use "
                      "this to verify a rewire before running a step."},
-    # ---- AICS ladder readiness ----
+    # ---- PROOF ladder readiness ----
     {"sName": "check-l2-readiness", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level2/readiness",

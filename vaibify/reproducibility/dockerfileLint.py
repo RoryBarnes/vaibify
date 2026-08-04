@@ -1,4 +1,4 @@
-"""Lint a Dockerfile for AICS L3-grade reproducibility pinning.
+"""Lint a Dockerfile for PROOF L3-grade reproducibility pinning.
 
 Checks three orthogonal properties: every ``FROM`` line uses a
 ``@sha256:`` digest (not a floating tag); every ``apt-get install``

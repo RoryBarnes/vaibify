@@ -1,6 +1,6 @@
-"""HTTP routes for the AICS Level 3 readiness + attestation surface.
+"""HTTP routes for the PROOF Level 3 readiness + attestation surface.
 
-Three endpoints back the AICS tab's L3 sections:
+Three endpoints back the PROOF tab's L3 sections:
 
 * ``GET .../level3/readiness`` — returns ``fdictL3ReadinessGaps``
   shape for the readiness checklist card.
@@ -59,7 +59,7 @@ from ...reproducibility.determinismGate import (
 from ...reproducibility.levelGates import (
     fbL3ReadinessOK,
     fdictL3ReadinessGaps,
-    fiAICSLevel,
+    fiProofLevel,
 )
 from ...reproducibility.rerunVerification import (
     fdictRerunAndVerifyWorkflow,
@@ -106,7 +106,7 @@ def _fnRegisterReadiness(app, dictCtx):
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         dictGaps = fdictL3ReadinessGaps(dictWorkflow, filesRepo)
         return {
-            "iAICSLevel": fiAICSLevel(dictWorkflow, filesRepo),
+            "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictL3ReadinessGaps": dictGaps,
         }
 
@@ -128,7 +128,7 @@ def _fnRegisterAttestation(app, dictCtx):
 
 
 def _fdictBuildAttestationResponse(sContainerId, filesRepo):
-    """Return the attestation payload shape consumed by the AICS tab."""
+    """Return the attestation payload shape consumed by the PROOF tab."""
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     bHasRepo = bool(fsRepoRootOf(filesRepo))
     dictCurrent = fdictReadAttestation(filesRepo) if bHasRepo else None
@@ -168,7 +168,7 @@ def _fnRegisterVerify(app, dictCtx):
             raise HTTPException(
                 409,
                 "L3 readiness checks must all pass before triggering "
-                "verification; open the AICS tab to see gaps.",
+                "verification; open the PROOF tab to see gaps.",
             )
         return _fdictKickOffVerification(
             sContainerId, filesRepo, dictWorkflow, dictCtx["docker"],

@@ -1,6 +1,6 @@
 """Tests for ``fdictFetchRemoteHashes`` in vaibify.reproducibility.overleafMirror.
 
-The new on-demand hash-fetch path is the AICS L3 hook: it performs a
+The new on-demand hash-fetch path is the PROOF L3 hook: it performs a
 shallow but full-blob clone of an Overleaf project, hashes selected
 files, and unconditionally tears the working copy down. All git calls
 are mocked; the cloned tree is materialised on the host filesystem by

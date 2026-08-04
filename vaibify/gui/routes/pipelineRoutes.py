@@ -1604,12 +1604,12 @@ def _ftComputePollScriptContext(
 def _fdictComputePollLevelGates(
     dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
 ):
-    """Evaluate the AICS level and the three blocker lists for one poll."""
+    """Evaluate the PROOF level and the three blocker lists for one poll."""
     from vaibify.reproducibility.levelGates import (
-        fiAICSLevel, flistLevel1Blockers, flistLevel2Blockers,
+        fiProofLevel, flistLevel1Blockers, flistLevel2Blockers,
         flistLevel3Blockers,
     )
-    dictWorkflow["iAICSLevel"] = fiAICSLevel(
+    dictWorkflow["iProofLevel"] = fiProofLevel(
         dictWorkflow, filesPoll, dictScriptStatus,
     )
     return {
@@ -1648,7 +1648,7 @@ def _fdictAssemblePollResponse(
         "dictWorkflowEnvelopeDetail": _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesPoll,
         ),
-        "iAICSLevel": dictWorkflow["iAICSLevel"],
+        "iProofLevel": dictWorkflow["iProofLevel"],
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": dictScriptStatus,
         "sWorkflowFingerprint": (

@@ -2,7 +2,7 @@
 
 Reports two different things about a project, deliberately kept apart.
 The default output is the ENVIRONMENT — daemon, image, volume,
-container — which is what "is my container ready?" means. ``--aics``
+container — which is what "is my container ready?" means. ``--proof``
 adds the PROJECT's reproducibility level and the blockers below it,
 read from the same gates the dashboard renders. ``--json`` emits both
 as one machine-readable object so a script can assert on a level
@@ -128,7 +128,7 @@ def fdictBuildEnvironmentStatus(dockerClient, config):
 
 
 def fdictBuildLevelSection(config):
-    """Return the project's AICS report, or why it is unavailable."""
+    """Return the project's PROOF report, or why it is unavailable."""
     from .commandUtilsDocker import fconnectionRequireDocker
     from .levelReport import (
         fdictBuildLevelReport, ftLoadContainerLevelInputs,
@@ -149,12 +149,12 @@ def fdictBuildLevelSection(config):
     return dictReport
 
 
-def _fnEmitAicsSection(config):
-    """Print the AICS section, or the honest reason it is missing."""
+def _fnEmitProofSection(config):
+    """Print the PROOF section, or the honest reason it is missing."""
     from .levelReport import fnPrintLevelReport
     dictLevel = fdictBuildLevelSection(config)
     if not dictLevel["bAvailable"]:
-        click.echo(f"AICS level: unavailable ({dictLevel['sReason']})")
+        click.echo(f"PROOF level: unavailable ({dictLevel['sReason']})")
         return
     fnPrintLevelReport(dictLevel)
 
@@ -166,14 +166,14 @@ def _fnEmitAicsSection(config):
     "or only one project exists).",
 )
 @click.option(
-    "--aics", "bAics", is_flag=True, default=False,
-    help="Also report the project's AICS level and its blockers.",
+    "--proof", "bProof", is_flag=True, default=False,
+    help="Also report the project's PROOF level and its blockers.",
 )
 @click.option(
     "--json", "bJson", is_flag=True, default=False,
-    help="Emit environment and AICS status as one JSON object.",
+    help="Emit environment and PROOF status as one JSON object.",
 )
-def status(sProjectName, bAics, bJson):
+def status(sProjectName, bProof, bJson):
     """Show the status of the Vaibify environment."""
     if not fbDockerAvailable():
         click.echo(
@@ -189,7 +189,7 @@ def status(sProjectName, bAics, bJson):
             "dictEnvironment": fdictBuildEnvironmentStatus(
                 dockerClient, config,
             ),
-            "dictAics": fdictBuildLevelSection(config),
+            "dictProof": fdictBuildLevelSection(config),
         }, indent=2))
         return
     fnShowDaemonStatus(dockerClient)
@@ -197,5 +197,5 @@ def status(sProjectName, bAics, bJson):
     fnShowImageStatus(dockerClient, config)
     fnShowVolumeStatus(dockerClient, config)
     fnShowContainerStatus(dockerClient, config)
-    if bAics:
-        _fnEmitAicsSection(config)
+    if bProof:
+        _fnEmitProofSection(config)

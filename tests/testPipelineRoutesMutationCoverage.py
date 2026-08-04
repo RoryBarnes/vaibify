@@ -228,7 +228,7 @@ class TestFileStatusEtagSignals:
         return {
             "dictModTimes": {"a/b": "1"},
             "dictMaxMtimeByStep": {"0": 1},
-            "iAICSLevel": 1,
+            "iProofLevel": 1,
             "iL1BlockerCount": 0,
             "iL2BlockerCount": 0,
             "iL3BlockerCount": 0,
@@ -245,10 +245,10 @@ class TestFileStatusEtagSignals:
         dictChanged = dict(dictBase, dictMaxMtimeByStep={"0": 2})
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
-    def test_aics_level_change_advances_tag(self):
-        """Kills: Add "iAICSLevel" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
+    def test_proof_level_change_advances_tag(self):
+        """Kills: Add "iProofLevel" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
         dictBase = self._fdictBase()
-        dictChanged = dict(dictBase, iAICSLevel=2)
+        dictChanged = dict(dictBase, iProofLevel=2)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_l2_blocker_count_change_advances_tag(self):

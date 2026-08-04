@@ -304,7 +304,7 @@ def test_destroy_also_image(
     mockRemoveImg.assert_called_once()
 
 
-# --- AICS level section (fdictBuildLevelSection / _fnEmitAicsSection) ---
+# --- PROOF level section (fdictBuildLevelSection / _fnEmitProofSection) ---
 
 def _fconfig(sName="proj"):
     return SimpleNamespace(sProjectName=sName)
@@ -351,14 +351,14 @@ def test_level_section_available_marks_the_report():
         return_value=({"listSteps": []}, MagicMock()),
     ), patch(
         "vaibify.cli.levelReport.fdictBuildLevelReport",
-        return_value={"iAICSLevel": 1, "sAICSLevelName": "x"},
+        return_value={"iProofLevel": 1, "sProofLevelName": "x"},
     ):
         dictSection = commandStatus.fdictBuildLevelSection(_fconfig())
     assert dictSection["bAvailable"] is True
-    assert dictSection["iAICSLevel"] == 1
+    assert dictSection["iProofLevel"] == 1
 
 
-def test_status_aics_flag_emits_level_or_reason(capsys):
+def test_status_proof_flag_emits_level_or_reason(capsys):
     from vaibify.cli import commandStatus
     with patch("vaibify.cli.commandStatus.fbDockerAvailable",
                return_value=True), \
@@ -374,9 +374,9 @@ def test_status_aics_flag_emits_level_or_reason(capsys):
          patch("vaibify.cli.commandStatus.fdictBuildLevelSection",
                return_value={"bAvailable": False,
                              "sReason": "no project"}):
-        result = CliRunner().invoke(status, ["--aics"])
+        result = CliRunner().invoke(status, ["--proof"])
     assert result.exit_code == 0, result.output
-    assert "AICS level: unavailable (no project)" in result.output
+    assert "PROOF level: unavailable (no project)" in result.output
 
 
 def test_status_json_flag_emits_one_object():
@@ -391,9 +391,9 @@ def test_status_json_flag_emits_one_object():
          patch("vaibify.cli.commandStatus.fdictBuildEnvironmentStatus",
                return_value={"sProjectName": "proj"}), \
          patch("vaibify.cli.commandStatus.fdictBuildLevelSection",
-               return_value={"bAvailable": True, "iAICSLevel": 2}):
+               return_value={"bAvailable": True, "iProofLevel": 2}):
         result = CliRunner().invoke(status, ["--json"])
     assert result.exit_code == 0, result.output
     dictOut = jsonlib.loads(result.output)
     assert dictOut["dictEnvironment"]["sProjectName"] == "proj"
-    assert dictOut["dictAics"]["iAICSLevel"] == 2
+    assert dictOut["dictProof"]["iProofLevel"] == 2

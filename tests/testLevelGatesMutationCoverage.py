@@ -1,4 +1,4 @@
-"""Mutation-coverage tests for the AICS Level 2 gate in ``levelGates``.
+"""Mutation-coverage tests for the PROOF Level 2 gate in ``levelGates``.
 
 Each test isolates a single fail-closed guard in the L2 sync-cache and
 GitHub-SHA gate path so that a surviving mutant — one that lights a

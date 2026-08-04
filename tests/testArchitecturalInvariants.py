@@ -2625,7 +2625,7 @@ def testTemplateCommandsUseStepTokens():
     """Vaibify-shipped templates only reference paths via {StepNN.*} tokens.
 
     The dashboard's dependency parser only sees `{StepNN.varname}`
-    tokens; hardcoded cross-step paths break the AICS Level 1
+    tokens; hardcoded cross-step paths break the PROOF Level 1
     contract. Enforce the doctrine on every workflow.json under
     `vaibify/templates/`.
     """
@@ -2776,7 +2776,7 @@ def testTemplateCommandsUseSymbolicNotPositionalTokens():
 # ---------------------------------------------------------------------------
 
 SET_REPRO_FILES_ENTRY_POINTS = frozenset({
-    "fiAICSLevel", "fbAtLeastLevel1", "fbAtLeastLevel2",
+    "fiProofLevel", "fbAtLeastLevel1", "fbAtLeastLevel2",
     "fbAtLeastLevel3", "fbL3ReadinessOK", "fdictL3ReadinessGaps",
     "fdictLevel2Gaps", "flistLevel1Blockers", "flistLevel2Blockers",
     "flistLevel3Blockers",

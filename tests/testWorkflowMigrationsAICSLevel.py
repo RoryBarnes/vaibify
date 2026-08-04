@@ -5,6 +5,13 @@ purple-theme flag that occasionally got hand-persisted) and any
 pre-existing ``iAICSLevel`` (so the post-load derivation hook in
 ``workflowManager`` recomputes against current state.json rather
 than trusting a stale persisted integer).
+
+``iAICSLevel`` is the spelling the key carried in the v3 era, before
+the ladder was renamed to PROOF. The literals in this file are
+deliberately NOT renamed: they describe documents written to disk
+under the old name, which is exactly what this migrator reads. The
+rename of the live key is covered by
+``testWorkflowMigrationsProofLevelRename.py``.
 """
 
 from vaibify.gui import workflowMigrations

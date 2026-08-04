@@ -1,4 +1,4 @@
-"""Unit tests for the AICS level high-water ratchet in stateManager.
+"""Unit tests for the PROOF level high-water ratchet in stateManager.
 
 The high-water record answers "when did this step (or the workflow
 header) first attain each level?". The ratchet is ADD-ONLY: regression

@@ -1,4 +1,4 @@
-"""Targeted unit tests for AICS-ladder lines uncovered by Phase 1-3 tests.
+"""Targeted unit tests for PROOF-ladder lines uncovered by Phase 1-3 tests.
 
 Each test exercises one or more lines flagged as missing by the
 coverage run on commits 6f91f9c (Phase 1), eec96c4 (Phase 2),

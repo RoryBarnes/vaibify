@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from .. import stepRename, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..fileStatusManager import fnMaybeAutoArchive
-from vaibify.reproducibility.levelGates import fiAICSLevel
+from vaibify.reproducibility.levelGates import fiProofLevel
 from ..routeContext import ffilesForWorkflow
 from ..pipelineServer import (
     InputDataAddRequest,
@@ -215,7 +215,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
             dictWorkflow, iStepIndex, dictUpdates,
             request.bConfirmDestructive,
         )
-        iLevelBefore = fiAICSLevel(
+        iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
