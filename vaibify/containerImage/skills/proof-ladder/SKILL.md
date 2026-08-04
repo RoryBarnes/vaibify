@@ -1,12 +1,14 @@
 ---
-name: aics-ladder
-description: Raise a vaibify project to AICS Level 1, 2, or 3, audit why a level is red, or explain the reproducibility ladder. Use whenever a researcher asks to reach or check an AICS level, or when a level badge disagrees with your expectation.
+name: proof-ladder
+description: Raise a vaibify project to PROOF Level 1, 2, or 3, audit why a level is red, or explain the reproducibility ladder. Use whenever a researcher asks to reach or check a PROOF level, or when a level badge disagrees with your expectation.
 ---
 
-# Driving a project up the AICS ladder
+# Driving a project up the PROOF ladder
 
-The AI Containment Scale is a five-rung reproducibility ladder
-(L1 Self-Consistent, L2 Published, L3 Reproducible, L4 Archived,
+PROOF is a five-rung reproducibility ladder named for the pillars a
+result must rest on — Provenance, Reproducibility, Openness,
+Oversight, Falsifiability
+(L1 Self-Consistent, L2 Published, L3 Reproducible, L4 Traceable,
 L5 Attested). Vaibify implements L1-L3; L4/L5 are deliberate
 non-goals — if asked, say so honestly and point at `docs/vision.md`
 (see the vaibify-doc-map skill). Walk the gates in order, stopping at
@@ -14,7 +16,7 @@ the requested level.
 
 ## The one authority rule
 
-`iAICSLevel` from `vaibify-do check-l2-readiness` is the ONLY
+`iProofLevel` from `vaibify-do check-l2-readiness` is the ONLY
 authoritative level signal. **Never hand-roll a verification audit**
 by inspecting raw files. Two traps that have produced false
 "not at L1" reports before:
@@ -37,7 +39,7 @@ baseline; the project lives in a git repo (fix: `git init`).
 2. `vaibify-do run-all-tests` — unit, integrity, qualitative,
    quantitative.
 3. `vaibify-do verify-only` — outputs exist and hashes match.
-4. Confirm `iAICSLevel >= 1` via `vaibify-do check-l2-readiness`. If
+4. Confirm `iProofLevel >= 1` via `vaibify-do check-l2-readiness`. If
    it stays 0 after the prior steps succeeded, surface the
    discrepancy — the backend derivation is the ground truth.
 
@@ -94,7 +96,7 @@ from source.
 
 ## Reporting honesty
 
-Report levels only from `iAICSLevel`. When your own reading of files
+Report levels only from `iProofLevel`. When your own reading of files
 disagrees with the backend, say "the backend derives N; my file
 inspection suggested otherwise" and treat the backend as correct
 until proven buggy — do not report your inspection as the level.

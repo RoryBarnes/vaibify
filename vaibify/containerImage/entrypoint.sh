@@ -918,16 +918,18 @@ A test category whose `saCommands` list is empty is reported as
 when computing the L1 all-green gate. Use this rather than fabricating
 trivial tests just to satisfy the dashboard.
 
-## AI Containment Scale (AICS)
+## The PROOF ladder
 
-The AICS is a five-rung reproducibility ladder (L1 Self-Consistent,
-L2 Published, L3 Reproducible; L4/L5 are non-goals). To raise or audit
-a project's level, use the **aics-ladder** skill — it carries the
-ordered L1->L3 gate walkthrough and the known audit traps.
+PROOF is a five-rung reproducibility ladder — Provenance,
+Reproducibility, Openness, Oversight, Falsifiability (L1
+Self-Consistent, L2 Published, L3 Reproducible; L4/L5 are non-goals).
+To raise or audit a project's level, use the **proof-ladder** skill —
+it carries the ordered L1->L3 gate walkthrough and the known audit
+traps.
 
 Two rules that must never be violated, skill or not:
 
-- **`iAICSLevel` from `vaibify-do check-l2-readiness` is the only
+- **`iProofLevel` from `vaibify-do check-l2-readiness` is the only
   authoritative level signal.** Never hand-roll a verification audit
   from raw files; when your file inspection disagrees with the
   backend, the backend wins. (`bVaibified` is retired — ignore it.)
