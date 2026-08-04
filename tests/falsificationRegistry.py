@@ -4628,6 +4628,40 @@ def _fdictEntry(sRel):
             '    ("POST", "/api/newly-invented/{sContainerId}/action"),\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierIntentAudit.py::'
+            'testATypedReadDeclarationThatMutatesIsAViolation'
+        ),
+        source='tools/carrierIntentAudit.py',
+        old=(
+            '        return ("listViolations", _fdictRecordJudgement(\n'
+            '            dictObservation, S_VIOLATION_TYPED_READ_MUTATED,\n'
+            '        ))\n'
+        ),
+        new=(
+            '        return ("listConfirmed", _fdictRecordJudgement(\n'
+            '            dictObservation, "",\n'
+            '        ))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierIntentAudit.py::'
+            'testADeclaredModeObservedOnTheAmbientAdmissionIsAViolation'
+        ),
+        source='tools/carrierIntentAudit.py',
+        old=(
+            '    return ("listViolations", _fdictRecordJudgement(\n'
+            '        dictObservation, S_VIOLATION_MODE_UNDECLARED,\n'
+            '    ))\n'
+        ),
+        new=(
+            '    return ("listConfirmed", _fdictRecordJudgement(\n'
+            '        dictObservation, "",\n'
+            '    ))\n'
+        ),
+    ),
 
     Falsification(
         nodeid=(
