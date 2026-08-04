@@ -4778,6 +4778,51 @@ def _fdictEntry(sRel):
         ),
     ),
 
+    # ------------------------------------------------------------------
+    # Phase 2 group 2: the lock-held migration of the clean route.
+    #
+    # The recorded mutation for the transfer test restores the EXACT
+    # pre-migration code -- a bare asyncio.to_thread holding no lock --
+    # so the kill re-creates the named live exploit rather than an
+    # approximation of it. It kills the mode test too, and correctly:
+    # dropping the drain breaks both the refusal and the observed mode.
+    # Each test also has an isolating mutant, checked by hand: the save
+    # bypass below fails only the mode test, and making
+    # fsDescribeLiveMutationWork return a bare "a guarded operation"
+    # fails only the transfer test (its naming assertion).
+    # ------------------------------------------------------------------
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testATransferArrivingMidCleanIsRefusedAndNamesTheClean'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    return await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"clean-outputs",\n'
+            '        fnDeleteTheOutputs,\n'
+            '    )\n'
+        ),
+        new='    return await asyncio.to_thread(fnDeleteTheOutputs, None)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCleanDeletesUnderTheDrainAndSavesSynchronously'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the cleaned outputs",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
     Falsification(
         nodeid=(
             'tests/testBlindSpotDispositions.py::'

@@ -3984,7 +3984,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +18 (2026-08-02): the pipeline WebSocket refuses a poisoned
     # container at the gate and hands the per-frame backstop the
     # generation admitted at accept, so a transfer fences a live socket.
-    "routes/pipelineRoutes.py": 2826,
+    # +58 (2026-08-04): _fnDeleteOutputsUnderTheDrain, the mode-(b)
+    # carrier call that closes the migration plan's named live exploit —
+    # the clean route's `rm` used to run on a bare asyncio.to_thread,
+    # holding no lock, so a transfer arriving mid-delete saw an idle
+    # container and committed over it. Justified rather than split: the
+    # helper is a single-call extraction from fnCleanOutputs that
+    # carries on its parent's one purpose, so splitting would create the
+    # artificial seam AGENTS.md warns against, and most of the growth is
+    # the docstring recording WHY the drain is held for the worker's
+    # life rather than the request's. NOTE FOR THE NEXT MIGRATION GROUP:
+    # this module has ten workflow saves and several more routes still
+    # awaiting a carrier, so it will keep pressing this ratchet. The
+    # next bump should be a conversation about splitting the file, not
+    # another line here.
+    "routes/pipelineRoutes.py": 2884,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the

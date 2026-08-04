@@ -63,7 +63,16 @@ from ..fileStatusManager import (
 )
 from ..fileIntegrity import flistExtractAllScriptPaths
 from ..testStatusManager import fbRefreshAggregateTestStates
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    ffilesForWorkflow,
+    fnCommitWorkflowSave,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    fnDeclareCarrierMode,
+)
 from ..pathContract import fdictAbsKeysToRepoRelative
 from ..randomnessLint import fnApplyRandomnessLintToWorkflow
 from ..llmInvoker import fsReadFileFromContainer
@@ -373,19 +382,68 @@ def _fnRegisterPipelineClean(app, dictCtx):
 
     @fnAgentAction("clean-outputs")
     @app.post("/api/pipeline/{sContainerId}/clean")
-    async def fnCleanOutputs(sContainerId: str):
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
+    async def fnCleanOutputs(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listCleanCommands = _flistBuildCleanCommands(
             dictWorkflow)
         if listCleanCommands:
-            sCommand = " ; ".join(listCleanCommands)
-            await asyncio.to_thread(
-                dictCtx["docker"].ftResultExecuteCommand,
-                sContainerId, sCommand)
-        dictCtx["save"](sContainerId, dictWorkflow)
+            await _fnDeleteOutputsUnderTheDrain(
+                dictCtx, sContainerId, listCleanCommands, requestHttp,
+            )
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Recording the cleaned outputs",
+        )
         return {"bSuccess": True}
+
+
+async def _fnDeleteOutputsUnderTheDrain(
+    dictCtx, sContainerId, listCleanCommands, requestHttp,
+):
+    """Delete the workflow's outputs holding the container's drain.
+
+    THE NAMED LIVE EXPLOIT this migration exists to close. The delete
+    used to run on a bare ``asyncio.to_thread``: it held no mutation
+    lock and registered no durable work, so an ownership transfer
+    arriving mid-delete saw an unlocked, idle-looking container,
+    committed the hand-over, and the FORMER owner's ``rm`` carried on
+    running — against a workspace that now belonged to somebody else.
+
+    Mode (b) rather than mode (a) because the effect crosses a
+    worker-thread ``await``: a shielded supervisor holds the drain for
+    the WORKER's whole life, not the requesting coroutine's, so
+    cancelling the request cannot release the lock out from under a
+    thread that is still deleting. The supervisor also registers the
+    operation kind and target, which is what lets the refusal say
+    "clean-outputs is running" instead of "busy" — an ``asyncio.Lock``
+    knows only that it is held.
+
+    The worker is synchronous because the carrier runs workers in a
+    thread; it refuses an ``async def`` outright, for the reasons
+    ``commitCarrier._fnCallWorkerSynchronously`` records.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Cleaning the workflow's outputs",
+    )
+    sCommand = " ; ".join(listCleanCommands)
+
+    def fnDeleteTheOutputs(supervisor=None):
+        del supervisor
+        return dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+
+    return await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "clean-outputs",
+        fnDeleteTheOutputs,
+    )
 
 
 def _fnRegisterPipelineWs(app, dictCtx):

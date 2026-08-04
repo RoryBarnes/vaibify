@@ -5366,26 +5366,26 @@
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "lock-held"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "carrier-supervisor"
       ],
       "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "migrate",
+      "sExclusionRationale": "",
       "sFile": "gui/routes/pipelineRoutes.py",
-      "sFingerprint": "9d9f3760cbb6403c",
-      "sFunction": "fnCleanOutputs",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sFingerprint": "e7675e7498e63ca5",
+      "sFunction": "fnDeleteTheOutputs",
+      "sJournalKind": "helper",
+      "sLifetime": "request",
+      "sLogicalOperation": "delete every declared output and plot file of the workflow's automated steps",
+      "sOperationMetadata": "one joined batch of `rm -f <repo path> 2>/dev/null`; the supervisor registers kind 'helper' on target 'clean-outputs', which is the name a busy transfer reports",
       "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,

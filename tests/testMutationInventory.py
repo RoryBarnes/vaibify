@@ -82,7 +82,14 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # should have: the facts originate at the carrier invocation, where they
 # are known by construction, so a migration that leaves rows
 # UNCLASSIFIED has deferred the part only its author could do.
-I_UNCLASSIFIED_ROW_BUDGET = 305
+# 305 -> 304 with group 2's lock-held migration of the clean route. The
+# row did not merely move: it was a `passed-callable` -- a bound
+# primitive handed to asyncio.to_thread, one of the shapes declared
+# structurally UNATTRIBUTABLE because the row is lost inside the
+# executor -- and it is now a direct call inside a carrier's worker,
+# which the scan reads exactly. A migration can recover an
+# unattributable row, not only classify a legible one.
+I_UNCLASSIFIED_ROW_BUDGET = 304
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

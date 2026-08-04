@@ -18,6 +18,7 @@ __all__ = [
     "fdictRequireLaneTupleForCommit",
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
+    "fnCommitWorkflowSave",
     "fnRecordAttributionEvent",
     "fsHashContainerFileOrEmpty",
     "fsRefreshVerifyCacheAfterPush",
@@ -82,6 +83,50 @@ def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
         )
         return ""
     return hashlib.sha256(baCurrent).hexdigest()
+
+
+def fnCommitWorkflowSave(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, sOperationName,
+):
+    """Commit a ``project.json`` save through carrier mode (a) (design §8).
+
+    The hub's most repeated container mutation — roughly fifty route
+    call sites write the workflow back — and the same ``file-write``
+    record every time, so migrating a route that saves means routing its
+    save through here rather than re-deriving the record. The expected
+    hash is the workflow's own serialization fingerprint, which IS the
+    sha256 of the bytes the save path writes
+    (``fsComputeWorkflowFingerprint``), so the journal's probe can
+    compare it against ``sha256sum`` of the file itself.
+
+    The prior hash is read from DISK rather than captured from the dict,
+    because by the time a route saves it has usually already mutated the
+    workflow in memory: hashing it then would record the intended state
+    as the prior one, and the probe would read a write that never landed
+    as a write that did. ``settingsRoutes`` captures its own prior in
+    memory instead, and correctly — it still holds the pre-update dict
+    at that point, and does not need the round-trip.
+    """
+    from . import commitCarrier, workflowManager
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationName,
+    )
+    sWorkflowPath = (dictCtx.get("paths") or {}).get(sContainerId, "")
+    return commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write",
+        sWorkflowPath or "project.json",
+        lambda: dictCtx["save"](sContainerId, dictWorkflow),
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": (
+                workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+            ),
+            "sPriorSha256": fsHashContainerFileOrEmpty(
+                dictCtx, sContainerId, sWorkflowPath,
+            ) if sWorkflowPath else "",
+        },
+    )
 
 
 def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):

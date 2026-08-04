@@ -396,7 +396,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/overleaf/{sContainerId}/pull-manuscript"),
     ("POST", "/api/overleaf/{sContainerId}/push"),
     ("POST", "/api/pipeline/{sContainerId}/acknowledge-step/{iStepIndex}"),
-    ("POST", "/api/pipeline/{sContainerId}/clean"),
     ("POST", "/api/pipeline/{sContainerId}/kill"),
     ("POST", "/api/repos/{sContainerId}/init"),
     ("POST", "/api/repos/{sContainerId}/{sRepoName}/ignore"),

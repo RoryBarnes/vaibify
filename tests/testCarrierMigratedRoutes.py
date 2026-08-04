@@ -32,6 +32,13 @@ shipped a fatal bug under a fully green suite whose fixtures collapsed
 the two.
 """
 
+import asyncio
+import copy
+import json
+import threading
+import time
+
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch
@@ -40,12 +47,18 @@ from tests.testDraftRoutes import (
     DICT_WORKFLOW,
     MockDockerDraft,
     S_CONTAINER_ID,
+    S_PROJECT_REPO,
     S_WORKFLOW_PATH,
     _fnConnect,
 )
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.config import mutationAdmission
-from vaibify.gui import draftManager, pipelineServer
+from vaibify.gui import (
+    browserSession,
+    draftManager,
+    pipelineServer,
+    sessionLifecycle,
+)
 
 
 S_PRIMITIVE_WRITE = "fnWriteFileViaTar"
@@ -326,4 +339,290 @@ def testAnUnmigratedRouteStillReachesThePrimitiveOnTheAmbientMint(
         f"admission: {listExecs}. Either it was migrated without this "
         "file being updated, or the ambient branch has stopped granting "
         "the legacy mint -- which is phase 4, not phase 2."
+    )
+
+
+# ---------------------------------------------------------------------
+# Group 2 — lock-held, mode (b). The named live exploit.
+# ---------------------------------------------------------------------
+
+# A workflow whose steps actually declare outputs, so
+# ``_flistBuildCleanCommands`` produces commands. The draft harness's
+# workflow declares none, and a clean with nothing to delete never
+# reaches the carrier at all -- the test would then pass having
+# exercised the exploit's absence rather than its fix.
+DICT_WORKFLOW_WITH_OUTPUTS = copy.deepcopy(DICT_WORKFLOW)
+DICT_WORKFLOW_WITH_OUTPUTS["listSteps"][0]["saOutputDataFiles"] = [
+    "results.json",
+]
+DICT_WORKFLOW_WITH_OUTPUTS["listSteps"][0]["saPlotFiles"] = ["figure.pdf"]
+DICT_WORKFLOW_WITH_OUTPUTS["sProjectRepoPath"] = S_PROJECT_REPO
+
+def _fbCommandIsTheOutputClean(sCommand):
+    """Return True only for the clean route's own ``rm`` batch.
+
+    Matched on the exact shape ``_flistBuildCleanCommands`` emits --
+    ``rm -f <quoted path> 2>/dev/null`` -- and NOT on ``2>/dev/null``
+    alone. That looser marker was tried first and matched the connect
+    handler's ``git rev-parse ... 2>/dev/null``, so the double blocked
+    on connect, the ledger filled before the clean ever started, and
+    the test reported the delete had already finished. A marker that
+    catches unrelated traffic turns a timing assertion into noise.
+    """
+    return sCommand.startswith("rm -f ") and "2>/dev/null" in sCommand
+
+
+class DockerDoubleThatBlocksTheClean(DockerDoubleThatCallsTheRealGates):
+    """The gate-faithful double, with the clean's ``rm`` held open.
+
+    The block is a ``threading.Event`` and the worker waiting on it is
+    SYNCHRONOUS, because the carrier runs workers with
+    ``asyncio.to_thread``. An ``async def`` worker would be called in
+    that thread, hand back a coroutine nobody awaits, and return at once
+    -- the delete would never block, the drain would drop immediately,
+    and a transfer attempted "mid-delete" would find an idle container
+    and succeed. The test would then report a refusal it never obtained.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.eventCleanStarted = threading.Event()
+        self.eventCleanMayFinish = threading.Event()
+        self.listCleanCommandsRun = []
+        self.listCleanAdmissionModes = []
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        if not _fbCommandIsTheOutputClean(sCommand):
+            return super().ftResultExecuteCommand(
+                sContainerId, sCommand, sWorkdir,
+            )
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, S_PRIMITIVE_EXEC,
+        )
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            sContainerId,
+        )
+        self.listCleanAdmissionModes.append(
+            "" if admission is None else admission.sMode,
+        )
+        self.eventCleanStarted.set()
+        self.eventCleanMayFinish.wait(10)
+        self.listCleanCommandsRun.append(sCommand)
+        return (0, "")
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(
+                DICT_WORKFLOW_WITH_OUTPUTS,
+            ).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+def _tBuildAsgiHubWithBlockedClean():
+    """Return ``(app, connectionDocker)`` for the in-loop ASGI driver.
+
+    Driven with httpx over ASGI rather than ``TestClient`` because the
+    transfer and the in-flight request must share ONE event loop:
+    ``TestClient`` runs the app in its own portal thread, and the
+    container mutation lock is an ``asyncio.Lock`` bound to the loop
+    that created it, so a transfer attempted from a second loop would be
+    testing loop plumbing rather than the drain.
+    """
+    connectionDocker = DockerDoubleThatBlocksTheClean()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        lambda: connectionDocker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace",
+            sTerminalUserArg="testuser",
+        )
+    return (app, connectionDocker)
+
+
+async def _tConnectOverAsgi(clientAsync):
+    """Connect to the container and return its lease value."""
+    response = await clientAsync.post(
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": S_WORKFLOW_PATH},
+    )
+    assert response.status_code == 200, response.text
+    return response.json().get("sLeaseId", "")
+
+
+def _fsContainerNameFor(app):
+    """Return the owner-map key for the connected container."""
+    listNames = list(app.state.dictContainerOwners)
+    assert len(listNames) == 1, (
+        f"expected exactly one owned container, found {listNames}"
+    )
+    return listNames[0]
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testATransferArrivingMidCleanIsRefusedAndNamesTheClean():
+    """The exploit, closed: a hand-over cannot land under a live delete.
+
+    Before this migration ``fnCleanOutputs`` ran its ``rm`` on a bare
+    ``asyncio.to_thread``. It held no mutation lock and registered no
+    durable work, so a transfer arriving mid-delete saw an unlocked,
+    idle-looking container, committed the hand-over, and the FORMER
+    owner's delete kept running against a workspace that now belonged to
+    somebody else. Nothing in the suite could observe that, because
+    nothing was there to observe.
+
+    Four assertions, in the order they matter:
+
+    1. the transfer is REFUSED, not queued and not committed;
+    2. the refusal NAMES the live operation, because an ``asyncio.Lock``
+       knows only that it is held, and "busy" cannot tell a researcher
+       whether to wait two seconds or give up;
+    3. the worker has NOT committed at the moment of refusal -- without
+       this the test would pass equally against a delete that had
+       already finished, which is what asserting on a return value
+       instead of on STATE buys you;
+    4. the refusal is IMMEDIATE, because waiting would spend the
+       capability's window on an operation of unknown length.
+
+    Kills: replacing ``_fnDeleteOutputsUnderTheDrain``'s
+    fdictRunLockHeldMutation call with the bare ``asyncio.to_thread``
+    the route used before the migration.
+    """
+    app, connectionDocker = _tBuildAsgiHubWithBlockedClean()
+    # A route error is a 500 RESPONSE here, not an exception raised
+    # into this test body. What is under test is the transfer's
+    # behaviour while a delete is live; the same route also commits a
+    # workflow save through a second carrier, and letting that carrier's
+    # refusal escape through ``await taskClean`` made a defect in it
+    # fail this test as well -- a kill that lands on two shapes isolates
+    # neither of them.
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    ) as clientAsync:
+        sLease = await _tConnectOverAsgi(clientAsync)
+        clientAsync.headers["X-Vaibify-Lease"] = sLease
+        sName = _fsContainerNameFor(app)
+
+        taskClean = asyncio.ensure_future(
+            clientAsync.post(f"/api/pipeline/{S_CONTAINER_ID}/clean"),
+        )
+        await asyncio.to_thread(
+            connectionDocker.eventCleanStarted.wait, 10,
+        )
+        assert connectionDocker.listCleanCommandsRun == [], (
+            "the delete finished before the transfer was attempted, so "
+            "the container was not busy when it mattered and this test "
+            "would prove nothing"
+        )
+
+        sCapability = browserSession.fsMintTransferCapability(
+            app.state.dictBrowserSessions, sName,
+            app.state.dictContainerOwners[sName].iOwnerGeneration,
+        )
+        fBefore = time.monotonic()
+        sOutcome, dictPayload = await sessionLifecycle.ftTransferOwnership(
+            app.state, sCapability,
+        )
+        fElapsed = time.monotonic() - fBefore
+
+        assert sOutcome == sessionLifecycle.S_TRANSFER_BUSY_RETRY, (
+            f"a transfer committed over a live delete: {dictPayload}"
+        )
+        assert "clean-outputs" in dictPayload["sMessage"], (
+            "the refusal must NAME what holds the container, and that "
+            "name comes from the operation the lock HOLDER registered: "
+            f"{dictPayload}"
+        )
+        assert connectionDocker.listCleanCommandsRun == [], (
+            "the delete had already committed when the transfer was "
+            "refused, so the refusal proves nothing about work in flight"
+        )
+        assert fElapsed < 2.0, (
+            f"the transfer waited {fElapsed:.1f}s on the busy container "
+            "instead of refusing at once"
+        )
+        assert app.state.dictContainerOwners[sName].sLeaseId == sLease, (
+            "the lease rotated despite the refusal, so the transfer "
+            "partly committed"
+        )
+
+        # Release, then retry: the refusal must be a "not yet", not a
+        # dead end, and the capability stays ARMED precisely so the
+        # researcher reuses it. Asserted on the DELETE finishing rather
+        # than on the route's status code, because the same route also
+        # commits a workflow save through a second carrier -- keying
+        # this on the response made a defect in THAT carrier fail this
+        # test too, and a kill that lands on two shapes isolates
+        # neither.
+        connectionDocker.eventCleanMayFinish.set()
+        await taskClean
+        assert len(connectionDocker.listCleanCommandsRun) == 1
+
+        sOutcomeRetry, dictRetry = await (
+            sessionLifecycle.ftTransferOwnership(app.state, sCapability)
+        )
+        assert sOutcomeRetry == sessionLifecycle.S_TRANSFER_TRANSFERRED, (
+            "the transfer stayed refused after the delete settled, so "
+            f"the busy refusal was a dead end, not a 'not yet': "
+            f"{dictRetry}"
+        )
+        assert app.state.dictContainerOwners[sName].sLeaseId != sLease, (
+            "ownership moved but the lease did not rotate, so the "
+            "departed session still holds a credential that works"
+        )
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testTheCleanDeletesUnderTheDrainAndSavesSynchronously():
+    """The clean's two mutations run under the two modes it declares.
+
+    ``fnCleanOutputs`` declares BOTH ``mode-b-lock-held`` and
+    ``mode-a-synchronous``, which is a real shape rather than
+    indecision: the delete crosses a worker-thread ``await`` and needs
+    the drain held for the worker's whole life, while the workflow save
+    recording the clean is one synchronous write. Asserting a single
+    mode for the whole route would have let either carrier be dropped.
+
+    Kills: replacing ``fnCleanOutputs``'s fnCommitWorkflowSave call with
+    a direct ``dictCtx["save"]``.
+    """
+    app, connectionDocker = _tBuildAsgiHubWithBlockedClean()
+    connectionDocker.eventCleanMayFinish.set()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    ) as clientAsync:
+        clientAsync.headers["X-Vaibify-Lease"] = (
+            await _tConnectOverAsgi(clientAsync)
+        )
+        connectionDocker.listAdmittedPrimitives.clear()
+        response = await clientAsync.post(
+            f"/api/pipeline/{S_CONTAINER_ID}/clean",
+        )
+        assert response.status_code == 200, response.text
+
+    assert connectionDocker.listCleanAdmissionModes == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    ], (
+        "the output delete did not run under the lock-held carrier: "
+        f"{connectionDocker.listCleanAdmissionModes}"
+    )
+    setWriteModes = {
+        dictReached["sMode"]
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+    }
+    assert setWriteModes == {
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    }, (
+        "the workflow save recording the clean did not commit "
+        f"synchronously through the carrier: {setWriteModes}"
     )
