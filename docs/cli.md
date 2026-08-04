@@ -211,17 +211,17 @@ remove it with `docker volume rm`.
 ### `vaibify status`
 
 Report the state of the container, image, and workspace volume — and,
-on request, the project's AICS level and everything blocking the next
+on request, the project's PROOF level and everything blocking the next
 one.
 
 ```bash
-vaibify status [--aics] [--json] [--project/-p NAME]
+vaibify status [--proof] [--json] [--project/-p NAME]
 ```
 
 | Option             | Description                                  |
 |--------------------|----------------------------------------------|
-| `--aics`           | Also print the AICS level and its blockers   |
-| `--json`           | Emit environment and AICS status as one JSON object |
+| `--proof`           | Also print the PROOF level and its blockers   |
+| `--json`           | Emit environment and PROOF status as one JSON object |
 
 The level and the blockers come from the same gates the dashboard
 renders, read straight from the container, so no browser and no running
@@ -229,7 +229,7 @@ hub is needed:
 
 ```bash
 vaibify status --json | python -c \
-  "import json,sys; print(json.load(sys.stdin)['dictAics']['iAICSLevel'])"
+  "import json,sys; print(json.load(sys.stdin)['dictProof']['iProofLevel'])"
 ```
 
 One criterion is honestly absent. The dashboard polls file modification
@@ -409,7 +409,7 @@ vaibify generate-standards --workflow JSON --step-label A09
 
 ### `vaibify reproduce`
 
-Verify a project's AICS L3 reproducibility envelope: manifest
+Verify a project's PROOF L3 reproducibility envelope: manifest
 integrity, hash-pinned dependency install, pinned container image,
 the seven L3 artifact-coherence checks, and — with `--rerun` — a full
 re-run of the workflow with a post-run hash compare and an L3
@@ -610,7 +610,7 @@ There is no Settings → Publish pane. This section previously said the
 publishing machinery was "already available" through one; it never
 existed, and `vaibify/reproducibility/githubWorkflow.py` — the GitHub
 Actions generator behind that claim — has no caller anywhere in the
-product. Zenodo archiving is real and reachable, but through the AICS
+product. Zenodo archiving is real and reachable, but through the PROOF
 Level 2 workflow in the dashboard, not a publish pane.
 
 ### `vaibify publish workflow` *(coming soon)*

@@ -616,7 +616,7 @@ cannot introspect arbitrary script source. A cross-step reference hidden
 inside a script literal (e.g. `path = "../OtherStep/output.json"`) is
 invisible to the parser, so the dependency edge does not exist in the
 graph, `bUpstreamModified` cannot fire correctly, and the workflow
-cannot honestly reach AICS Level 1.
+cannot honestly reach PROOF Level 1.
 
 A step's script *may* read its own step-directory files via hardcoded
 relative paths. The boundary is the step. Anything from another step

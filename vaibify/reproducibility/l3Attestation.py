@@ -19,7 +19,7 @@ Schema versioning
 always see the current shape. The list is empty at v1 because no
 migration is needed yet. Two extension points are anticipated:
 
-* **L4 ("Archived")** will add input-provenance keys
+* **L4 ("Traceable")** will add input-provenance keys
   (e.g. ``listInputDigests``, ``sCommitSha``) that pin not just
   outputs but also the inputs that produced them. An L4 record bumps
   ``iSchemaVersion`` to 2; the migrator at index 0 fills the new

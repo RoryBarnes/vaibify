@@ -998,19 +998,19 @@ This state machine is load-bearing for the dashboard's honesty
 guarantee: the GUI must always reflect the true state of the project.
 See the relevant trap in [../AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md).
 
-## Two AICS-level truth systems
+## Two PROOF-level truth systems
 
-The backend computes the reproducibility ladder (AICS L1–L3) in two
+The backend computes the reproducibility ladder (PROOF L1–L3) in two
 deliberately different shapes, and misreading one as the other is the
 most likely way to misjudge the dashboard:
 
-1. **The scalar aggregate** — `levelGates.fiAICSLevel` /
+1. **The scalar aggregate** — `levelGates.fiProofLevel` /
    `fbAtLeastLevelN`. Strictly additive over the whole project: L1
    requires every step's L1 blockers clear, L2 requires L1, L3
    requires L2. This is "what level is this project at," and it is
-   what the AICS chip in the dashboard header renders. (Historical
+   what the PROOF chip in the dashboard header renders. (Historical
    note: an early boolean `bVaibified` predated the ladder and meant
-   what `fiAICSLevel >= 1` means now; the v4 project migration drops
+   what `fiProofLevel >= 1` means now; the v4 project migration drops
    the key on load, which is the excision mechanism — do not remove
    the migration.)
 
@@ -1055,7 +1055,7 @@ below "none" on the ladder and never stamps a high-water mark.
 
 ## The Replay axis (AI provenance)
 
-The AICS ladder measures the state of the artifact; the Replay axis
+The PROOF ladder measures the state of the artifact; the Replay axis
 measures the provenance of the process — which AI models did the
 work, under what standing instructions, and whether the development
 dialogue is preserved. States, each requiring the ones below it:
