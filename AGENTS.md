@@ -517,20 +517,63 @@ expression is `subprocess.run(listCommand)` both before and after the
 builder filling it is swapped from git to `docker rm`, so a manual
 disposition must name the supporting symbols its review relied on.
 
-**What the boundary does NOT yet do, stated so nobody reads the above
-as more than it is.** `ContainerAwareRoute` opens a generic
-`S_ADMISSION_MODE_REQUEST` admission for every authorized
-container-scoped request, so the primitive gate passes for anything
-reached during that request whether or not the route chose a carrier
-mode. The gate therefore catches DIRECT primitive reach, not undeclared
-intent. Until a route selects its mode explicitly, a mutation it starts
-with `asyncio.to_thread` holds no mutation lock and registers no
-durable work, so a transfer arriving mid-flight sees an unlocked
-container and commits — and the old owner's command keeps running.
-Nine background-task launches sit in modules that register neither
-lock-held nor durable work. The semantic classification of the
-inventory is unfinished and ratcheted: the count may only go down, and
-it is the input to that migration, not a substitute for it.
+**A route declares its carrier mode, and the declaration authorizes
+NOTHING.** `routeScope.fnDeclareCarrierMode` stamps one or more of
+`typed-read`, `mode-a-synchronous`, `mode-b-lock-held`,
+`mode-c-durable`, `lifecycle-transaction`, `separate-authority` onto a
+handler. Several are allowed, because a handler that writes
+synchronously and then starts durable work is a real shape;
+`typed-read` may not be combined with anything, or the carrier-mode
+rule would absorb every typed-read violation.
+
+The modes are behavioural protocols, not labels. **No decorator mints
+an admission.** A declared route takes the enforced branch, which has
+NO admission, so its handler must open one through a carrier around
+each logical mutation; forget one and the primitive raises
+`MutationNotAdmittedError` in CI. **That refusal is the proof**, and a
+decorator that pre-admitted the handler would delete it — the
+`bAgentSafe` mistake one level up. `testDeclaringMintsNoAdmission`
+drives a declared route over real HTTP with the owner map keyed by a
+name ≠ the container id and asserts the real gate refuses.
+
+`_fbServeOnAmbientAdmission` grants the legacy mint on **membership of
+`SET_ROUTES_AWAITING_CARRIER_MODE`, not on the absence of a
+declaration**: declared → enforced, awaiting → ambient, neither →
+enforced, failing closed. The list may only shrink (R6), is seeded with
+all **130** governed routes, and is held against an independently
+edited copy in `tests/testCarrierModeDeclaration.py` so shrinking takes
+one edit and growing takes two.
+
+**130, not 132.** `fdictResolveRouteScope` classifies 132 authorized
+container-scoped routes, but `/ws/pipeline/{sContainerId}` and
+`/ws/terminal/{sContainerId}` are `APIWebSocketRoute`s and
+`app.router.route_class` governs `APIRoute` only, so
+`ContainerAwareRoute` never serves them — they are gated by
+`webSocketAuthorization`. Seeding them would record an HTTP admission
+they never receive, and nothing could ever migrate them out of it.
+
+**What the boundary still does NOT do, stated so nobody reads the above
+as more than it is.** Every route is still *awaiting*: nothing has been
+migrated, so in practice all 130 take the ambient branch and the gate
+catches DIRECT primitive reach, not undeclared intent. A mutation a
+route starts with `asyncio.to_thread` holds no mutation lock and
+registers no durable work, so a transfer arriving mid-flight sees an
+unlocked container and commits — and the old owner's command keeps
+running. Nine background-task launches register neither lock-held nor
+durable work. **There is no production observation point**: nothing
+under `vaibify/` records a carrier observation, so
+`tools/carrierIntentAudit.py` compares only what the suite drove, and
+an empty violation list is not compliance —
+`flistSelectDeclarationsNeverObserved` keeps that visible. An
+observation records what its entry point DECLARED, never *which* entry
+point it was, so a violation cannot be narrowed between two routes
+sharing a declaration; migrating one route at a time is what bounds the
+diagnosis. And 20 mutation-capable rows are structurally unattributable
+— a primitive bound into `asyncio.to_thread` loses its row, though its
+mode survives — so they must be traced by hand and will never be
+observed. The semantic classification of the inventory is unfinished
+and ratcheted: the count may only go down, and it is the input to that
+migration, not a substitute for it.
 
 **A busy container refuses a hand-over at once, and names what is busy.**
 The lock HOLDER registers its operation kind and target, because an
