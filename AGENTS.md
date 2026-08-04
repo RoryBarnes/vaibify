@@ -470,12 +470,19 @@ remainder is deliberate and named, never a silent claim of coverage.
 **A typed read is exempt only inside its adapter.** Reading a file
 means running a program in the container, so guarding the exec would
 refuse reads too. Exactly one private method,
-`DockerConnection._texecRunAuditedRead`, grants the exemption, and
-every command through it must be BUILT by its adapter from a path or an
-identifier. An adapter that forwarded a caller's string would turn the
-read carve-out into a general bypass —
+`DockerConnection._texecRunTypedRead`, grants the exemption. It takes
+an operation NAME from a fixed table and builds the command itself; it
+never accepts one. An adapter that forwarded a caller's string would
+turn the read carve-out into a general bypass —
 `tests/testMutationBoundary.py` fails the build on one that does, and
-on a second grant point anywhere.
+on a second grant point anywhere, pinning the name through
+`S_EXEMPTION_METHOD`.
+
+(This paragraph named `_texecRunAuditedRead` until 2026-08-04, a symbol
+that exists nowhere in the repository. The enforcement was always
+correct — the test reads the real name — but a security contract whose
+stated grant point cannot be grepped is one an agent will conclude does
+not exist, and two separate tracks reported it before it was fixed.)
 
 **`tests/mutationInventory.json` carries three records, and only one of
 them is completeness-critical.** Regenerate with `python
@@ -1030,6 +1037,19 @@ correct approach.
   so two identical-order runs failing in *different* tests cannot be
   an ordering problem — that pattern means something outside pytest is
   editing the sources.
+- The carrier migration's only proof was unobservable in the tests that
+  would have to observe it. "Forget a carrier and the primitive raises
+  loudly" is true of the real `DockerConnection` and false of every
+  route test: **27 test files define a `fnWriteFile` mock and not one
+  references `mutationAdmission`.** A migrated route with its carrier
+  call deleted outright still passed its whole route-test file. The fix
+  is `tests/testCarrierMigratedRoutes.py` — a double calling the same
+  gates, under the same primitive names, at the same points the real
+  connection calls them, recording the live admission MODE at each. Assert
+  the mode, never merely that nothing raised: "no exception" is equally
+  true of a route riding the ambient mint. Every future migration group
+  needs an entry there; one verified against the ordinary route tests is
+  not verified.
 - An external review is evidence, not a verdict. A 2026-07-26 review
   correctly identified the browser/container execution hole and the
   doc drift, and was wrong about the falsification suite being
