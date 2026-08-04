@@ -9,6 +9,11 @@ from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
 from .. import workflowManager
+from ..routeContext import fdictRequireLaneTupleForCommit
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    fnDeclareCarrierMode,
+)
 from ..pipelineServer import (
     WORKSPACE_ROOT,
     WorkflowSettingsRequest,
@@ -36,6 +41,7 @@ def _fnRegisterSettingsPut(app, dictCtx):
     """Register PUT /api/settings route."""
 
     @app.put("/api/settings/{sContainerId}")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnUpdateSettings(
         sContainerId: str,
         request: WorkflowSettingsRequest,
@@ -66,13 +72,9 @@ def _fnCommitSettingsUpdate(
     """
     from .. import commitCarrier
     appState = requestHttp.app.state
-    dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
-        appState, sContainerId, requestHttp,
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The settings save",
     )
-    if dictLaneTuple is None:
-        raise HTTPException(
-            403, "The settings save cannot be bound to this "
-            "container's owner record; claim or connect first.")
     sPriorFingerprint = workflowManager.fsComputeWorkflowFingerprint(
         dictWorkflow)
     for sKey, value in dictUpdates.items():

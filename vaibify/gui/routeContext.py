@@ -15,16 +15,73 @@ lives here, beneath them.
 
 __all__ = [
     "RouteContext",
+    "fdictRequireLaneTupleForCommit",
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
     "fnRecordAttributionEvent",
+    "fsHashContainerFileOrEmpty",
     "fsRefreshVerifyCacheAfterPush",
 ]
 
 import asyncio
+import hashlib
 import logging
 
+from fastapi import HTTPException
+
 logger = logging.getLogger("vaibify")
+
+
+def fdictRequireLaneTupleForCommit(
+    requestHttp, sContainerId, sOperationName,
+):
+    """Return the lane tuple binding a request to its container's owner.
+
+    Every route migrated onto the commit-guard carrier needs the same
+    refusal first: the carrier will not mint an admission for a request
+    it cannot bind to the owner record, so a route that called it with
+    ``None`` would raise a ``KeyError`` deep inside the carrier instead
+    of telling the caller what to do. Answering 403 here keeps the
+    diagnosis actionable — the request does not hold the container, so
+    claim or connect.
+    """
+    from . import commitCarrier
+    dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
+        requestHttp.app.state, sContainerId, requestHttp,
+    )
+    if dictLaneTuple is None:
+        raise HTTPException(
+            403,
+            f"{sOperationName} cannot be bound to this container's owner "
+            "record; claim or connect first.",
+        )
+    return dictLaneTuple
+
+
+def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
+    """Return a container file's sha256 hex, or ``''`` when it is absent.
+
+    The prior-content half of a ``file-write`` journal record: an atomic
+    write leaves its target matching either the intended bytes or the
+    bytes that were there before, and the journal spells "the file did
+    not exist" as the empty string. Anything this cannot read also
+    answers ``''``, which is the fail-safe direction — a wrongly-empty
+    prior can only make the probe QUARANTINE a record it might have
+    settled, never settle one it should have quarantined.
+    """
+    try:
+        baCurrent = dictCtx["docker"].fbaFetchFile(sContainerId, sPath)
+    except FileNotFoundError:
+        return ""
+    except Exception as error:
+        logger.warning(
+            "Could not read %s in container %s for the write-ahead "
+            "record's prior hash; recording it as absent, which reads "
+            "as unproven rather than settled: %s",
+            sPath, sContainerId, error,
+        )
+        return ""
+    return hashlib.sha256(baCurrent).hexdigest()
 
 
 def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):

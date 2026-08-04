@@ -41,6 +41,7 @@ from fastapi.testclient import TestClient
 from tests import attributionShapes
 from tests.testCarrierModeDeclaration import (
     DICT_OWNER_HEADERS,
+    SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE,
     S_CONTAINER_ID,
     S_CONTAINER_NAME,
     fappBuildOwnedApplication,
@@ -347,19 +348,60 @@ def testADeclaredRouteTheSuiteNeverDroveIsReportedRatherThanPassed():
 
 
 def testTheDeclarationIndexReadsTheLiveApplication():
-    """The index is resolved from the app, not from a maintained list.
+    """The index is resolved from the app, and pays for every migration.
 
-    Empty today because nothing has been migrated, and asserting that
-    emptiness is the point: it is the measurement phase 2 shrinks the
-    allow-list against, and it must come from the application so that a
-    route declaring appears in it without anyone remembering.
+    Resolved from the application rather than from a maintained list, so
+    a route that declares appears here without anyone remembering to
+    write it down. It was asserted EMPTY while nothing had been
+    migrated; that measurement is now expressed as the conservation law
+    it always stood for, which holds at every point of the migration
+    instead of only at its start.
+
+    Phase 2's per-group gate is "the allow-list shrinks by exactly as
+    many routes as declared", and this is where that is mechanical: the
+    declared keys and the still-awaiting keys must partition the SEEDED
+    population exactly. Removing a route from the allow-list without
+    declaring it fails here (the sum falls short), and so does declaring
+    one without removing it (the two records overlap). The seeded set is
+    the independently-edited second copy of the ratchet, so this counts
+    against a record that cannot be adjusted in the same edit as the
+    source.
     """
     dictIndex = carrierIntentAudit.fdictBuildRouteDeclarationIndex(
         fappCreateHubApplication(),
     )
-    assert dictIndex == {}, (
-        "routes have begun declaring carrier modes; the allow-list must "
-        f"have shrunk by exactly as many: {sorted(dictIndex)}"
+    listOutsideTheClosedSet = [
+        (tKey, tupleDeclarations)
+        for tKey, tupleDeclarations in dictIndex.items()
+        if not set(tupleDeclarations) <= (
+            routeScope._SET_VALID_CARRIER_DECLARATIONS
+        )
+    ]
+    assert listOutsideTheClosedSet == [], (
+        "the index reported declarations outside R2's closed set: "
+        f"{listOutsideTheClosedSet}. The index must report what the "
+        "application's endpoints actually carry, so a value the stamp "
+        "would have refused means it is no longer reading them."
+    )
+    setDeclared = set(dictIndex)
+    setAwaiting = set(routeScope.SET_ROUTES_AWAITING_CARRIER_MODE)
+    setOverlap = setDeclared & setAwaiting
+    assert setOverlap == set(), (
+        f"routes both declare a carrier mode and are still recorded as "
+        f"awaiting one: {sorted(setOverlap)}. A migration removes the "
+        "route from SET_ROUTES_AWAITING_CARRIER_MODE in the change that "
+        "declares it."
+    )
+    setUnaccounted = SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE - (
+        setDeclared | setAwaiting
+    )
+    assert setUnaccounted == set(), (
+        f"routes left the allow-list without declaring a carrier mode: "
+        f"{sorted(setUnaccounted)}. Shrinking the allow-list is what "
+        "moves a route onto the enforced branch, so a route dropped "
+        "without a declaration is served enforced while nothing records "
+        "what it was migrated TO -- and the count phase 4 reads stops "
+        "meaning what it says."
     )
 
 

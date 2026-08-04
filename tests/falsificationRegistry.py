@@ -4663,6 +4663,121 @@ def _fdictEntry(sRel):
         ),
     ),
 
+    # ------------------------------------------------------------------
+    # Phase 2 group 1: the routes migrated onto the enforced branch.
+    #
+    # Each mutant deletes ONE route's carrier call, and each was
+    # confirmed to kill ONLY its own test. The first attempt at these
+    # kills failed to kill at all: it was run against
+    # tests/testDraftRoutes.py, whose Docker mock answers a write by
+    # storing bytes and never calls the admission gate, so deleting the
+    # carrier outright left 17 tests passing. The double in
+    # testCarrierMigratedRoutes.py calls the same gates the real
+    # DockerConnection calls, which is why these kills are kills.
+    # ------------------------------------------------------------------
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDraftSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/draftRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+            '        fnWriteTheDraft,\n'
+        ),
+        new=(
+            '    fnWriteTheDraft()\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDraftDeleteCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/draftRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+            '        fnRemoveTheDraft,\n'
+        ),
+        new=(
+            '    fnRemoveTheDraft()\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheFileSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sNormalized,'
+            '\n'
+            '        fnWriteTheFile,\n'
+        ),
+        new=(
+            '    fnWriteTheFile()\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sNormalized,'
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSettingsSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/settingsRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        appState, dictLaneTuple["sContainerName"], '
+            'sContainerId,\n'
+            '        dictLaneTuple, "file-write",\n'
+        ),
+        new=(
+            '    dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        appState, dictLaneTuple["sContainerName"], '
+            'sContainerId,\n'
+            '        dictLaneTuple, "file-write",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnmigratedRouteStillReachesThePrimitiveOnTheAmbientMint'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    if ftupleResolveCarrierDeclaration(route.endpoint):\n'
+            '        return False\n'
+            '    return fbRouteAwaitsCarrierMode(route.methods, route.path)\n'
+        ),
+        new=(
+            '    if ftupleResolveCarrierDeclaration(route.endpoint):\n'
+            '        return False\n'
+            '    return False\n'
+        ),
+    ),
+
     Falsification(
         nodeid=(
             'tests/testBlindSpotDispositions.py::'

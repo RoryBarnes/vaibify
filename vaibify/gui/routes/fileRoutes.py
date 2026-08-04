@@ -14,6 +14,14 @@ from typing import List
 from ..actionCatalog import fnAgentAction
 from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    fsHashContainerFileOrEmpty,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    fnDeclareCarrierMode,
+)
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     FileUploadRequest,
@@ -448,9 +456,11 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("write-file")
     @app.put("/api/file/{sContainerId}/{sFilePath:path}")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnWriteFile(
         sContainerId: str, sFilePath: str,
-        request: FileWriteRequest, sWorkdir: str = "",
+        request: FileWriteRequest, requestHttp: Request,
+        sWorkdir: str = "",
     ):
         dictCtx["require"]()
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
@@ -464,24 +474,67 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         _fnRaiseConflictIfBaseHashMismatch(
             dictCtx, sContainerId, sNormalized, request.sBaseHash,
         )
-        baContent = request.sContent.encode("utf-8")
+        _fnCommitFileWrite(
+            dictCtx, sContainerId, sNormalized,
+            request.sContent.encode("utf-8"), requestHttp,
+        )
+        return {"bSuccess": True, "sPath": sNormalized}
+
+
+def _fnCommitFileWrite(
+    dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+):
+    """Commit the editor's file save through carrier mode (a) (design §8).
+
+    The Supervised-mode attribution append runs INSIDE the same effect
+    because it is itself a container write: outside the carrier's
+    admission the boundary refuses it, and the recorder swallows its
+    own failures by contract, so supervision would go quietly blind
+    rather than loudly wrong. The journal record's postcondition names
+    the saved file; the audit append rides along best-effort exactly as
+    it does today.
+    """
+    from .. import commitCarrier
+    from ..routeContext import fnRecordAttributionEvent
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The file save",
+    )
+    sPriorSha256 = fsHashContainerFileOrEmpty(
+        dictCtx, sContainerId, sNormalized,
+    )
+
+    def fnWriteTheFile():
         try:
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sNormalized, baContent
             )
+        except PermissionError:
+            # A carrier refusal is the migration's only proof that a
+            # mutation was carried; flattening it into a generic 500
+            # would hide exactly what this boundary exists to surface.
+            raise
         except Exception as error:
             raise HTTPException(
                 500,
                 f"Write failed: "
                 f"{_fsSanitizeServerError(str(error))}",
             )
-        from ..routeContext import fnRecordAttributionEvent
         fnRecordAttributionEvent(
             dictCtx, sContainerId,
             dictCtx["workflows"].get(sContainerId) or {},
             "write-file", sNormalized,
         )
-        return {"bSuccess": True, "sPath": sNormalized}
+
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sNormalized,
+        fnWriteTheFile,
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
+            "sPriorSha256": sPriorSha256,
+        },
+    )
 
 
 def fnRegisterAll(app, dictCtx, sWorkspaceRoot):

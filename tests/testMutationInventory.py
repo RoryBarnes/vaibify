@@ -72,7 +72,17 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # number that actually holds the property is
 # I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET below, which fell in the same
 # change and may only ever fall.
-I_UNCLASSIFIED_ROW_BUDGET = 308
+#
+# 308 -> 305 on 2026-08-04, the first fall from the migration itself
+# rather than from the record getting more honest. Phase 2's group 1
+# moved four routes onto the enforced branch; three call sites moved
+# from a handler into a carrier's effect closure and one new typed read
+# appeared (the prior-content hash a file-write record carries), and all
+# four were classified in the same change. That is the shape every group
+# should have: the facts originate at the carrier invocation, where they
+# are known by construction, so a migration that leaves rows
+# UNCLASSIFIED has deferred the part only its author could do.
+I_UNCLASSIFIED_ROW_BUDGET = 305
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

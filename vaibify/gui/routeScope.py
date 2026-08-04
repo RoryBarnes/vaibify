@@ -325,7 +325,6 @@ S_CARRIER_DECLARATION_SEPARATOR = "+"
 # three records still add back up to the resolved population, so
 # neither can quietly leave it.
 SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
-    ("DELETE", "/api/draft/{sContainerId}/{sFilePath:path}"),
     ("DELETE", "/api/overleaf/{sContainerId}/mirror"),
     ("DELETE", "/api/steps/{sContainerId}/{iStepIndex}"),
     ("DELETE", "/api/steps/{sContainerId}/{iStepIndex}/generated-test"),
@@ -451,9 +450,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/zenodo/{sContainerId}/archive"),
     ("POST", "/api/zenodo/{sContainerId}/download"),
     ("POST", "/api/zenodo/{sContainerId}/metadata"),
-    ("PUT", "/api/draft/{sContainerId}/{sFilePath:path}"),
-    ("PUT", "/api/file/{sContainerId}/{sFilePath:path}"),
-    ("PUT", "/api/settings/{sContainerId}"),
     ("PUT", "/api/steps/{sContainerId}/{iStepIndex}"),
     ("PUT", "/api/workflow/{sContainerId}/project-context"),
 })
