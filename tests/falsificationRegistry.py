@@ -4571,6 +4571,64 @@ def _fdictEntry(sRel):
         ),
     ),
 
+    # ------------------------------------------------------------------
+    # Phase 1c: the carrier-mode declaration mechanism.
+    #
+    # The two audit mutants below are deliberately separate branches of
+    # _ftJudgeOneObservation, and each was confirmed to kill ONLY its own
+    # test: a shape protected by two guards survives every single
+    # mutation and proves nothing about either.
+    # ------------------------------------------------------------------
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testDeclaringMintsNoAdmission'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    if ftupleResolveCarrierDeclaration(route.endpoint):\n'
+            '        return False\n'
+            '    return fbRouteAwaitsCarrierMode(route.methods, route.path)\n'
+        ),
+        new='    del route\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testARouteNeitherDeclaredNorAwaitingFailsClosed'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    setKeys = {(sMethod, sPath) for sMethod in '
+            '(setMethods or ())}\n'
+            '    if not setKeys:\n'
+            '        return False\n'
+            '    return setKeys <= SET_ROUTES_AWAITING_CARRIER_MODE\n'
+        ),
+        new='    del setMethods, sPath\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testEveryContainerScopedRouteEitherDeclaresOrIsRecordedAsAwaiting'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old='    ("POST", "/api/pipeline/{sContainerId}/kill"),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testTheAwaitingAllowListMayOnlyShrink'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old='SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({\n',
+        new=(
+            'SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({\n'
+            '    ("POST", "/api/newly-invented/{sContainerId}/action"),\n'
+        ),
+    ),
+
     Falsification(
         nodeid=(
             'tests/testBlindSpotDispositions.py::'

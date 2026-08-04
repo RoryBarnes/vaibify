@@ -4447,6 +4447,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # responsibility — reconciling the dashboard with origin — not a
     # second concern.
     "routes/gitRoutes.py": 845,
+    # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
+    # carrier-mode declaration joined it (migration plan phase 1c). 130
+    # of the ~145 added lines are ONE data record,
+    # SET_ROUTES_AWAITING_CARRIER_MODE, and it is deliberately here
+    # rather than in a module of its own for two reasons. It is read by
+    # exactly one function, _fbServeOnAmbientAdmission, whose branch a
+    # reader must understand together with the record — moving it away
+    # costs the hop and buys nothing. And it is TEMPORARY by
+    # construction: R6 makes it shrink by one on every phase-2
+    # migration, and phase 4 deletes it together with the ambient
+    # branch, at which point this entry goes with it. Creating a module
+    # in order to delete it is churn, not a seam.
+    "routeScope.py": 946,
 }
 
 
