@@ -4386,4 +4386,16 @@ def _fdictEntry(sRel):
         old='        "sCarrierInvocation": sCarrierInvocation,',
         new='        "sCarrierInvocationDropped": sCarrierInvocation,',
     ),
+    Falsification(
+        nodeid='tests/testSkillIntegrity.py::testThePathCheckerRefusesToPassOnAnEmptyScan',
+        source='tools/checkAgentDocsPaths.py',
+        old='    if not listDocs:',
+        new='    if False:',
+    ),
+    Falsification(
+        nodeid='tests/testSkillIntegrity.py::testTheTreeExclusionIsRelativeToTheRepositoryRoot',
+        source='tools/checkAgentDocsPaths.py',
+        old='for sPart in pathRelative.parts',
+        new='for sPart in pathCandidate.parts',
+    ),
 ]
