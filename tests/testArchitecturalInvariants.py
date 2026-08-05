@@ -4218,7 +4218,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-08-01): the session-lifecycle evaluator joins the
     # serverLifespan re-export block (its registration and its loop),
     # like the sweep and the idle watchdog beside it.
-    "pipelineServer.py": 2437,
+    # +52 (2026-08-05): the run-dispatch gate over the carrier's
+    # live-work registry. Not a second responsibility: this module
+    # already owns two dispatch refusals for the same socket —
+    # _fbRefuseWhilePipelineTaskLive and the remote-overwrite gate —
+    # and this is the third source of the SAME refusal, emitting the
+    # same runRefused event through the same builder. It exists
+    # because the first of those sees only pipeline actions dispatched
+    # over this socket, so an HTTP route holding the container's
+    # mutation lock left a Run Step blocking on the lock instead of
+    # being refused. Splitting the three apart would put one refusal's
+    # reasons a call hop away from its siblings while they still share
+    # the event, the loop and the ordering between them.
+    "pipelineServer.py": 2489,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

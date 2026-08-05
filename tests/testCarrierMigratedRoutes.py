@@ -40,13 +40,16 @@ import json
 import posixpath
 import threading
 import time
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 from unittest.mock import patch
 
+from vaibify.gui import commitCarrier
 from vaibify.reproducibility import repoFiles
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
@@ -1527,3 +1530,305 @@ def testEveryMigratedTestRouteStillAnswersTwoHundred(
         f"/api/steps/{S_CONTAINER_ID}/0/{sRoute}", json=dictBody,
     )
     assert response.status_code == 200, response.text
+
+
+# ---------------------------------------------------------------------
+# The dispatch gate that consumes the carrier's live-work registry.
+#
+# These live here rather than beside the other dispatch-guard tests
+# because what they exercise is the CARRIER's registry, and the only
+# machinery that can put a real mode-(b) supervisor into it is the
+# blocked-clean hub above. A test that faked the supervisor would be
+# asserting against its own fixture.
+# ---------------------------------------------------------------------
+
+def _tDurableContextFor(app, sName, sLease, sSessionToken):
+    """Return the durable context the production WebSocket path passes.
+
+    The lane tuple is built by the REAL builder over a stand-in
+    connection rather than assembled here, and that is a correction
+    rather than a preference: the hand-written version omitted
+    ``sContainerName``, which no assertion in this file would ever have
+    checked, and the durable launch raised ``KeyError`` from inside
+    ``fbLaneTupleStillCurrent``. A fixture that invents the shape of
+    the thing under test can only ever drift away from it.
+    """
+    connectionStandIn = SimpleNamespace(
+        headers={},
+        query_params={"sToken": sSessionToken, "sLeaseId": sLease},
+    )
+    return {
+        "appState": app.state,
+        "sName": sName,
+        "dictLaneTuple": commitCarrier.fdictBuildLaneTupleFromWebSocket(
+            app.state, sName, connectionStandIn,
+        ),
+    }
+
+
+async def _tlistDriveOneRunThroughTheMessageLoop(
+    connectionDocker, dictDurableContext,
+):
+    """Send one ``runSelected`` frame; return ``(listSent, listStarted)``.
+
+    Drives the REAL message loop, so the gate under test is the one
+    production uses. ``fnDispatchAction`` is recorded rather than run:
+    the claim is that a refused run STARTS NOTHING, and a test that
+    only counted refusal events would pass against a gate that emitted
+    one and dispatched anyway.
+    """
+    from tests.testPipelineServerTaskEviction import (
+        _FakeDispatchWebSocket,
+    )
+    listStarted = []
+
+    async def fnRecordDispatch(sAction, *args, **kwargs):
+        listStarted.append(sAction)
+
+    websocketFake = _FakeDispatchWebSocket([
+        json.dumps({"sAction": "runSelected", "listStepIndices": [0]}),
+    ])
+    dictPipelineTasks = {}
+    with patch.object(
+        pipelineServer, "fnDispatchAction", fnRecordDispatch,
+    ):
+        with pytest.raises(WebSocketDisconnect):
+            await pipelineServer.fnPipelineMessageLoop(
+                websocketFake, connectionDocker, S_CONTAINER_ID,
+                DICT_WORKFLOW_WITH_OUTPUTS,
+                {S_CONTAINER_ID: S_WORKFLOW_PATH}, "/workspace",
+                dictPipelineTasks=dictPipelineTasks,
+                dictDurableContext=dictDurableContext,
+            )
+        # A dispatch that WAS admitted runs as a task the loop does not
+        # await, so without draining it here "nothing started" and "it
+        # started but has not been scheduled yet" are indistinguishable
+        # -- and the not-refused direction would pass vacuously.
+        taskStarted = dictPipelineTasks.get(S_CONTAINER_ID)
+        if taskStarted is not None:
+            await taskStarted
+    return (websocketFake.listSent, listStarted)
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testARunArrivingUnderALiveCarrierWorkerIsRefusedAndNamesIt():
+    """A Run Step under a live mode-(b) worker refuses, naming the worker.
+
+    ``_fbRefuseWhilePipelineTaskLive`` consults ``dictPipelineTasks``,
+    which records only pipeline actions dispatched over this WebSocket,
+    so an HTTP route holding the container's mutation lock is invisible
+    to it. Before this gate a Run Step arriving during a test suite, a
+    plot conversion or a clean was not refused: it reached
+    ``fdictLaunchDurableTask``, blocked on the lock for as long as that
+    work took, and the researcher saw an unexplained wait with no way
+    to tell a slow container from a wedged one.
+
+    The refusal must NAME the holder. "Busy" cannot tell a researcher
+    whether to wait two seconds or abandon the attempt, which is the
+    entire reason the lock holder registers an operation kind and
+    target — an ``asyncio.Lock`` knows only that it is held. So the
+    assertion is on the message CONTENT, not on the event's presence: a
+    gate that answered "busy" forever would satisfy the latter
+    perfectly.
+
+    The remedy is asserted too. The Kill button stops a pipeline action
+    and does nothing to a carrier worker, so a refusal that offered it
+    here would send the researcher to a control that cannot help.
+
+    Kills: passing no description to ``_fdictBusyRefusalEvent`` at the
+    carrier-work gate, so the refusal falls back to the generic
+    pipeline-action wording.
+    """
+    app, connectionDocker = _tBuildAsgiHubWithBlockedClean()
+    sSessionToken = fsBootstrapCredential(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": sSessionToken},
+    ) as clientAsync:
+        sLease = await _tConnectOverAsgi(clientAsync)
+        clientAsync.headers["X-Vaibify-Lease"] = sLease
+        sName = _fsContainerNameFor(app)
+
+        taskClean = asyncio.ensure_future(
+            clientAsync.post(f"/api/pipeline/{S_CONTAINER_ID}/clean"),
+        )
+        await asyncio.to_thread(
+            connectionDocker.eventCleanStarted.wait, 10,
+        )
+        assert connectionDocker.listCleanCommandsRun == [], (
+            "the clean finished before the run was attempted, so the "
+            "container was not busy when it mattered"
+        )
+
+        listSent, listStarted = await (
+            _tlistDriveOneRunThroughTheMessageLoop(
+                connectionDocker,
+                _tDurableContextFor(
+                    app, sName, sLease, sSessionToken,
+                ),
+            )
+        )
+
+        connectionDocker.eventCleanMayFinish.set()
+        await taskClean
+
+    listRefusals = [
+        dictEvent for dictEvent in listSent
+        if dictEvent.get("sType") == "runRefused"
+    ]
+    assert len(listRefusals) == 1, (
+        f"the run was not refused while a carrier worker held the "
+        f"container's mutation lock; it would have blocked on the lock "
+        f"instead. Events sent: {listSent}"
+    )
+    assert "clean-outputs" in listRefusals[0]["sMessage"], (
+        "the refusal does not name what holds the container: "
+        f"{listRefusals[0]['sMessage']!r}. A researcher told only "
+        "'busy' cannot tell a two-second write from a half-hour "
+        "rebuild."
+    )
+    assert "Kill button" not in listRefusals[0]["sMessage"], (
+        "the refusal offers the Kill button, which stops a pipeline "
+        "action and has no effect on a carrier worker: "
+        f"{listRefusals[0]['sMessage']!r}"
+    )
+    assert listRefusals[0]["listStepIndices"] == [0], (
+        "the refusal must carry the refused indices so the browser can "
+        "reset the lights it optimistically set to queued"
+    )
+    assert listStarted == [], (
+        f"a refused run reached the dispatcher anyway: {listStarted}"
+    )
+
+
+class DockerDoubleProbingTheGateMidSynchronousWrite(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """Ask the run gate what is busy DURING a mode-(a) container write.
+
+    The false-refusal direction, and it has to be asked from inside the
+    write: a synchronous commit runs to completion on the event loop, so
+    by the time any later statement could look, the admission is gone
+    and the question answers itself. Here the probe happens while the
+    mode-(a) admission is live and the effect closure is mid-flight,
+    which is the only moment the wrong answer could be given.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.dictDurableContext = None
+        self.listGateAnswersDuringWrite = []
+
+    def fnWriteFile(
+        self, sContainerId, sPath, baContent,
+        iMode=None, iUid=None, iGid=None,
+    ):
+        if self.dictDurableContext is not None:
+            self.listGateAnswersDuringWrite.append((
+                mutationAdmission.fadmissionActiveForContainerId(
+                    sContainerId,
+                ),
+                pipelineServer._fsDescribeBlockingMutationWork(
+                    self.dictDurableContext,
+                ),
+            ))
+        return super().fnWriteFile(
+            sContainerId, sPath, baContent,
+            iMode=iMode, iUid=iUid, iGid=iGid,
+        )
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testASynchronousSaveNeverMakesTheRunGateRefuse():
+    """A mode-(a) save in flight must not refuse a Run Step.
+
+    The direction that turns a safety gate into a defect. This
+    repository has already shipped a Run-Step-always-refused bug once —
+    the terminal socket held the only budgeted slot, every Run Step was
+    closed 4409, and the researcher was told the server was
+    unreachable. A gate that refused on ANY carrier activity would
+    reproduce it exactly: draft saves, file saves, settings saves and
+    every workflow save are mode-(a) commits, and they happen
+    constantly.
+
+    They take no lock and register no supervisor, so they must be
+    invisible here. Asserted from INSIDE the write, with the mode-(a)
+    admission live, because that is the only instant at which a gate
+    reading "is any admission active" rather than "is the drain held"
+    would answer wrongly.
+
+    Kills: making ``_fsDescribeBlockingMutationWork`` answer from
+    ``mutationAdmission.fbLaneEnforced()`` — "some admission is live"
+    — before consulting the lock holder. That is the confusion the
+    test exists for, and it is not hypothetical-looking: both
+    questions are about carrier state, and only one of them means the
+    container is actually held.
+
+    Note what does NOT kill it, because it was tried and bounds the
+    claim: degrading the gate to
+    ``fbContainerHasLiveMutationWork`` + a generic "a guarded
+    operation" string. That mutant is real, but it lands on the
+    refusal test above (which asserts the holder is NAMED), not here —
+    this test only ever sees an empty answer either way. One mutant on
+    two tests would have isolated neither.
+    """
+    connectionDocker = DockerDoubleProbingTheGateMidSynchronousWrite()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        lambda: connectionDocker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace",
+            sTerminalUserArg="testuser",
+        )
+    sSessionToken = fsBootstrapCredential(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": sSessionToken},
+    ) as clientAsync:
+        sLease = await _tConnectOverAsgi(clientAsync)
+        clientAsync.headers["X-Vaibify-Lease"] = sLease
+        sName = _fsContainerNameFor(app)
+        connectionDocker.dictDurableContext = _tDurableContextFor(
+            app, sName, sLease, sSessionToken,
+        )
+        response = await clientAsync.put(
+            f"/api/settings/{S_CONTAINER_ID}",
+            json={"iNumberOfCores": DICT_WORKFLOW["iNumberOfCores"] + 1},
+        )
+        assert response.status_code == 200, response.text
+
+        listStarted = (await _tlistDriveOneRunThroughTheMessageLoop(
+            connectionDocker, connectionDocker.dictDurableContext,
+        ))[1]
+
+    listProbed = connectionDocker.listGateAnswersDuringWrite
+    assert listProbed, (
+        "the settings save reached no container write, so nothing was "
+        "asked of the gate while a mode-(a) admission was live"
+    )
+    listLive = [
+        tAnswer for tAnswer in listProbed if tAnswer[0] is not None
+    ]
+    assert listLive, (
+        "no write happened under a live admission, so this proves "
+        f"nothing about the gate during one: {listProbed}"
+    )
+    listRefusing = [tAnswer for tAnswer in listLive if tAnswer[1]]
+    assert listRefusing == [], (
+        "a synchronous commit made the run gate report the container "
+        f"busy: {listRefusing}. Every draft, file and settings save "
+        "would refuse the researcher's next Run Step."
+    )
+    assert listStarted == ["runSelected"], (
+        "a run was refused with no carrier worker holding the drain at "
+        f"all: {listStarted}"
+    )

@@ -5108,4 +5108,58 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
+    # The run-dispatch gate over the carrier's live-work registry. The
+    # two mutants are deliberately opposite in direction -- one makes
+    # the refusal uninformative, the other makes it fire when it must
+    # not -- because a gate like this has two ways to be wrong and only
+    # one of them looks like a failure. A third mutant (degrade to
+    # fbContainerHasLiveMutationWork plus a generic string) was tried
+    # and lands on the naming test, not the false-refusal one; it is
+    # recorded in that test's docstring rather than here, since a
+    # second entry for the same kill would double-count one guard.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARunArrivingUnderALiveCarrierWorkerIsRefusedAndNamesIt'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '                await fnCallback(\n'
+            '                    _fdictBusyRefusalEvent(\n'
+            '                        sAction, dictRequest, sBusyWork,\n'
+            '                    ),\n'
+            '                )\n'
+        ),
+        new=(
+            '                await fnCallback(\n'
+            '                    _fdictBusyRefusalEvent(\n'
+            '                        sAction, dictRequest,\n'
+            '                    ),\n'
+            '                )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testASynchronousSaveNeverMakesTheRunGateRefuse'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    return commitCarrier.fsDescribeLiveMutationWork(\n'
+            '        dictDurableContext["appState"], '
+            'dictDurableContext["sName"],\n'
+            '    )\n'
+        ),
+        new=(
+            '    from vaibify.config import mutationAdmission\n'
+            '    if mutationAdmission.fbLaneEnforced():\n'
+            '        return "a guarded operation"\n'
+            '    return commitCarrier.fsDescribeLiveMutationWork(\n'
+            '        dictDurableContext["appState"], '
+            'dictDurableContext["sName"],\n'
+            '    )\n'
+        ),
+    ),
 ]
