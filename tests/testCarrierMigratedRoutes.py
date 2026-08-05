@@ -827,3 +827,32 @@ def testThePlotStandardizationSavesSynchronously(tclientGatedWithPlots):
     _fnAssertWritesRanUnder(
         connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
     )
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sAction", ["ignore", "untrack"])
+def testTheRepoSidecarRewriteRunsUnderTheDrain(tclientGated, sAction):
+    """POST /api/repos/.../{ignore,untrack} rewrites under mode (b).
+
+    Both are a read-modify-write of the tracked-repos sidecar across two
+    container round-trips. They used to run on a bare
+    ``asyncio.to_thread``, so a hand-over landing between the read and
+    the write let the FORMER owner's write clobber the successor's --
+    and silently, because the sidecar would simply be wrong about which
+    repositories the researcher tracks rather than failing.
+
+    Parametrized rather than duplicated because the two routes share one
+    helper and one carrier call: they are the same shape, and two
+    hand-written copies would drift. The mutant below is in that shared
+    helper, so it fails both parametrizations -- which is one defect
+    landing on one shape, not on two.
+
+    Kills: replacing ``_fnRewriteTheSidecarUnderTheDrain``'s
+    fdictRunLockHeldMutation call with a bare
+    ``asyncio.to_thread(fnRewriteTheSidecar, None)``.
+    """
+    client, connectionDocker = tclientGated
+    client.post(f"/api/repos/{S_CONTAINER_ID}/somerepo/{sAction}")
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )

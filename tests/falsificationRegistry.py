@@ -4865,6 +4865,25 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRepoSidecarRewriteRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    return await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            'sOperationTarget,\n'
+            '        fnRewriteTheSidecar,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await asyncio.to_thread(fnRewriteTheSidecar, None)\n'
+        ),
+    ),
 
     Falsification(
         nodeid=(

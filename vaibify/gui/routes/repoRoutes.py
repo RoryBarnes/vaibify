@@ -11,14 +11,21 @@ import asyncio
 import re
 from typing import List
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
 from .. import syncDispatcher, trackedReposManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fnBumpSyncEpoch
-from ..routeContext import fsRefreshVerifyCacheAfterPush
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    fsRefreshVerifyCacheAfterPush,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_B_LOCK_HELD,
+    fnDeclareCarrierMode,
+)
 
 
 _PATTERN_REPO_NAME = re.compile(r"^\.?[A-Za-z0-9_][A-Za-z0-9_.-]*$")
@@ -413,16 +420,71 @@ def _fnRegisterTrack(app, dictCtx):
         )
 
 
+async def _fnRewriteTheSidecarUnderTheDrain(
+    dictCtx, sContainerId, sRepoName, fnRewrite, sOperationTarget,
+    requestHttp,
+):
+    """Rewrite the tracked-repos sidecar holding the container's drain.
+
+    Track, ignore and untrack are all one shape: read the sidecar, edit
+    the two lists, write it back. That is a read-modify-write across two
+    container round-trips, so an ownership hand-over landing between the
+    read and the write would let the FORMER owner's write clobber the
+    successor's, and the losing edit would be invisible -- the sidecar
+    would simply be wrong about which repositories the researcher tracks.
+
+    Mode (b) rather than mode (a) because the rewrite belongs in a
+    worker thread. Mode (a) runs its effect on the calling thread, which
+    is the event loop's: two blocking docker round-trips there stall
+    every other request the hub is serving. The drain is the same drain
+    either way; what mode (b) adds is that it is held for the WORKER's
+    life rather than the requesting coroutine's.
+
+    ``fnRewrite`` must not raise for an expected refusal. A worker that
+    raises is settled through the failure path, which marks the journal
+    record NEEDS RECONCILIATION and QUARANTINES the container -- correct
+    for an effect whose state nobody knows, and badly wrong for a "no
+    such repository". Validation therefore happens in the handler,
+    before the carrier.
+
+    Journalled as ``helper`` and not ``file-write`` even though a file
+    is what changes. A ``file-write`` record is probed by comparing the
+    target's hash against ``sExpectedSha256``, and the sidecar's bytes
+    are computed inside the manager from state only it has read -- so
+    the record would carry no expected hash, and a crashed one would
+    probe as "missing its expected hash" while looking like it had a
+    postcondition. A ``helper`` record claims only what is true here.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationTarget,
+    )
+
+    def fnRewriteTheSidecar(supervisor=None):
+        del supervisor
+        return fnRewrite(dictCtx["docker"], sContainerId, sRepoName)
+
+    return await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", sOperationTarget,
+        fnRewriteTheSidecar,
+    )
+
+
 def _fnRegisterIgnore(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/ignore route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/ignore")
-    async def fnIgnoreRepo(sContainerId: str, sRepoName: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnIgnoreRepo(
+        sContainerId: str, sRepoName: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
-        await asyncio.to_thread(
+        await _fnRewriteTheSidecarUnderTheDrain(
+            dictCtx, sContainerId, sRepoName,
             trackedReposManager.fnAddIgnored,
-            dictCtx["docker"], sContainerId, sRepoName,
+            "ignore-repository", requestHttp,
         )
         return {"bSuccess": True}
 
@@ -431,12 +493,16 @@ def _fnRegisterUntrack(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/untrack route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/untrack")
-    async def fnUntrackRepo(sContainerId: str, sRepoName: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnUntrackRepo(
+        sContainerId: str, sRepoName: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
-        await asyncio.to_thread(
+        await _fnRewriteTheSidecarUnderTheDrain(
+            dictCtx, sContainerId, sRepoName,
             trackedReposManager.fnRemoveTracked,
-            dictCtx["docker"], sContainerId, sRepoName,
+            "untrack-repository", requestHttp,
         )
         return {"bSuccess": True}
 

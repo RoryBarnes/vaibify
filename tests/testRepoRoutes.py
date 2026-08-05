@@ -157,8 +157,45 @@ def fixtureDocker():
 
 
 @pytest.fixture
-def fixtureClient(fixtureDocker):
-    """FastAPI TestClient wired to the fake docker."""
+def fixtureClient(fixtureDocker, monkeypatch):
+    """FastAPI TestClient wired to the fake docker.
+
+    The two sidecar-rewriting routes are migrated onto the commit-guard
+    carrier, which binds a request to its container's owner record and
+    holds the container's mutation lock. None of that exists in a bare
+    ``FastAPI()`` over a fake docker, so both are stood down here: the
+    lane tuple resolves to a fixed stand-in and the carrier runs the
+    worker directly.
+
+    What that costs is stated plainly, because a permissive mock left
+    unexplained is how this suite acquired ~20 of them. These tests
+    prove what the routes DO to the sidecar; they prove nothing about
+    the admission the mutation runs under, and a route whose carrier
+    call was deleted outright would still pass every one of them. That
+    guarantee is asserted in ``tests/testCarrierMigratedRoutes.py``,
+    against a double that calls the real gates.
+    """
+    from vaibify.gui import commitCarrier
+    from vaibify.gui.routes import repoRoutes
+
+    monkeypatch.setattr(
+        repoRoutes, "fdictRequireLaneTupleForCommit",
+        lambda requestHttp, sContainerId, sOperationName: {
+            "sContainerName": "fake-container",
+        },
+    )
+
+    async def _fdictRunWorkerWithoutTheDrain(
+        appState, sName, sContainerId, dictLaneTuple, sOperationKind,
+        sTarget, fnWorker, dictHolderIdentity=None,
+        fnTerminateWorker=None,
+    ):
+        return {"bCommitted": True, "result": fnWorker(None)}
+
+    monkeypatch.setattr(
+        commitCarrier, "fdictRunLockHeldMutation",
+        _fdictRunWorkerWithoutTheDrain,
+    )
     app = FastAPI()
     dictCtx = {
         "docker": fixtureDocker,
