@@ -560,14 +560,28 @@ container-scoped routes, but `/ws/pipeline/{sContainerId}` and
 they never receive, and nothing could ever migrate them out of it.
 
 **What the boundary still does NOT do, stated so nobody reads the above
-as more than it is.** Every route is still *awaiting*: nothing has been
-migrated, so in practice all 130 take the ambient branch and the gate
-catches DIRECT primitive reach, not undeclared intent. A mutation a
+as more than it is.** **14 of 130 routes are migrated; 116 still
+await** and take the ambient branch, where the gate catches DIRECT
+primitive reach, not undeclared intent. For those 116, a mutation the
 route starts with `asyncio.to_thread` holds no mutation lock and
 registers no durable work, so a transfer arriving mid-flight sees an
 unlocked container and commits — and the old owner's command keeps
 running. Nine background-task launches register neither lock-held nor
-durable work. **There is no production observation point**: nothing
+durable work.
+
+The migrated set is real rather than nominal, and worth knowing when
+reasoning about which paths are already enforced: the four synchronous
+single-writes (draft PUT/DELETE, file PUT, settings PUT), the four
+tracked-repo mutations (init, track, ignore, untrack), the plot
+standardization and `plot-standards` read, and the four
+probe-plus-run routes (clean, run-tests, run-test-category,
+save-and-run-test). A run arriving while any of those holds the drain
+is now refused at dispatch and told which operation holds it, rather
+than queued — `_fsDescribeBlockingMutationWork` in `pipelineServer.py`,
+which does NOT offer the Kill button, because Kill stops a pipeline
+action and does nothing to a carrier worker.
+
+**There is no production observation point**: nothing
 under `vaibify/` records a carrier observation, so
 `tools/carrierIntentAudit.py` compares only what the suite drove, and
 an empty violation list is not compliance —
