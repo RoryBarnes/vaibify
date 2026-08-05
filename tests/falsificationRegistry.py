@@ -4887,6 +4887,15 @@ def _fdictEntry(sRel):
 
     Falsification(
         nodeid=(
+            'tests/testTypeAloneStopsTheSwallow.py::'
+            'testARefusalIsNotCaughtByABareExceptOsError'
+        ),
+        source='vaibify/config/mutationAdmission.py',
+        old='class ControlPlaneRefusalError(Exception):',
+        new='class ControlPlaneRefusalError(PermissionError):',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
             'testTheRepoTrackRunsUnderTheDrain'
         ),

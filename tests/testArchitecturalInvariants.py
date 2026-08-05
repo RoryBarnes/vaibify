@@ -4237,7 +4237,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-08-02): the coroutine-worker refusal moved to the public
     # entrance as well, so a programming error cannot journal an
     # operation and quarantine a container before being caught.
-    "commitCarrier.py": 1061,
+    # +4 (2026-08-05): CommitRefusedError reparented off PermissionError
+    # onto ControlPlaneRefusalError, which is an import line and a
+    # three-line docstring pointing at the base. No responsibility
+    # moved in or out -- the module is still the §8 commit boundary --
+    # and the rationale lives once, on the base class, rather than
+    # being restated here.
+    "commitCarrier.py": 1065,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the

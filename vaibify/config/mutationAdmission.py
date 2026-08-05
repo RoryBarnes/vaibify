@@ -27,6 +27,7 @@ __all__ = [
     "S_ADMISSION_MODE_SYNCHRONOUS",
     "S_ADMISSION_MODE_LOCK_HELD",
     "S_ADMISSION_MODE_DURABLE_TASK",
+    "ControlPlaneRefusalError",
     "MutationNotAdmittedError",
     "MutationAdmission",
     "fnReRaiseControlPlaneRefusal",
@@ -77,7 +78,39 @@ _contextActiveAdmissions = contextvars.ContextVar(
 )
 
 
-class MutationNotAdmittedError(PermissionError):
+class ControlPlaneRefusalError(Exception):
+    """Base for "I declined to act", as distinct from "the I/O failed".
+
+    Both refusals below used to subclass ``PermissionError``, which
+    reads well and was wrong in the way that matters. A
+    ``PermissionError`` IS an ``OSError``, so all 85 ``except OSError``
+    and ``except PermissionError`` clauses under ``vaibify/`` caught
+    them — including a dozen written to answer conservatively when a
+    file cannot be read. A refusal delivered to one of those handlers
+    does not surface as an error at all: it becomes "not verified",
+    "hash unavailable", ``None``. That is how a carrier refusal came to
+    silently DOWNGRADE a workflow's reproducibility badge (fixed at the
+    twelve call sites in 8dcb07c; fixed at the type here).
+
+    Deliberately NOT plain ``Exception`` on each class separately. The
+    predicate that re-raises these has to name something, and naming
+    two unrelated classes is a list that goes stale the moment a third
+    refusal is added — the shape that produced this bug twice already.
+    One base means one ``isinstance`` check that is right by default,
+    and it also closed a live gap: the guard checked only
+    ``MutationNotAdmittedError``, so ``CommitRefusedError`` was never
+    re-raised by it.
+
+    Nothing in production catches either class by name, and nothing
+    depended on the ``OSError`` ancestry; the two host-filesystem
+    handlers that catch ``PermissionError``
+    (``registryRoutes._fnCreateHostFolder``, ``_flistScanHostEntries``)
+    guard ``os.makedirs`` and ``os.scandir``, which cannot reach a
+    container.
+    """
+
+
+class MutationNotAdmittedError(ControlPlaneRefusalError):
     """A container mutation was attempted without a carrier admission."""
 
 
@@ -107,16 +140,19 @@ def fnReRaiseControlPlaneRefusal(error):
             fnReRaiseControlPlaneRefusal(error)
             return None
 
-    NOTE the shape of this fix, because the obvious alternative does not
-    work: narrowing ``except Exception`` to ``except OSError`` changes
-    nothing, since the refusal IS an ``OSError``. The durable fix is for
-    the refusal not to be one — see the class comment above — and until
-    that is decided this guard has to be repeated at each site, which is
-    why the sites are covered by a behavioural test
-    (``tests/testLevelGatesRefusalPropagation.py``) rather than by a
-    convention.
+    KEPT AS DEFENCE IN DEPTH, not because it is load-bearing. Since
+    :class:`ControlPlaneRefusalError` no longer descends from
+    ``OSError``, an ``except OSError`` clause does not catch a refusal
+    at all and these calls are redundant for the handlers that catch
+    ``OSError``/``ValueError``. They stay because they still bite on a
+    genuinely broad handler — ``except Exception``, or a bare
+    ``except:`` — which the type change cannot help with, and because
+    they document at each site that a refusal must not be absorbed
+    there. ``tests/testTypeAloneStopsTheSwallow.py`` proves the TYPE
+    closes the ``except OSError`` case on its own, so nobody has to
+    trust that these calls are doing it.
     """
-    if isinstance(error, MutationNotAdmittedError):
+    if isinstance(error, ControlPlaneRefusalError):
         raise error
 
 
