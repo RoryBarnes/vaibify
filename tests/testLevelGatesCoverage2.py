@@ -22,6 +22,13 @@ class FakeRepo:
     Only ``sRootPath`` plus the two hash methods the gate helpers
     touch are modelled; a truthy ``bRaiseHash`` makes both hash
     methods raise so the conservative error branches run.
+
+    The raised type is ``OSError`` and that now matters. These gates
+    answer conservatively for an I/O failure and PROPAGATE anything
+    else, so a stand-in ``RuntimeError`` -- which is what this double
+    raised until the handlers were narrowed -- would be asserting that
+    a programming error is silently absorbed, which is the opposite of
+    the contract.
     """
 
     def __init__(self, sRootPath="/repo", dictHashes=None, bRaiseHash=False):
@@ -29,14 +36,24 @@ class FakeRepo:
         self._dictHashes = dictHashes or {}
         self._bRaiseHash = bRaiseHash
 
+    def fbIsFile(self, sRelPath):
+        """Report no file present: this double models hashing only.
+
+        Needed since the gates stopped absorbing ``AttributeError``. An
+        incomplete double used to vanish into the conservative branch,
+        so the test passed while exercising the missing-attribute path
+        instead of the one it names.
+        """
+        return False
+
     def fdictHashFiles(self, listRelPaths):
         if self._bRaiseHash:
-            raise RuntimeError("hash adapter unavailable")
+            raise OSError("hash adapter unavailable")
         return self._dictHashes
 
     def fdictHashAbsolutePaths(self, listAbsolutePaths):
         if self._bRaiseHash:
-            raise RuntimeError("hash adapter unavailable")
+            raise OSError("hash adapter unavailable")
         return self._dictHashes
 
 
@@ -80,7 +97,7 @@ def test_sync_fingerprint_is_deterministic_for_the_same_state(tmp_path):
 
 def test_sync_fingerprint_tolerates_read_error(monkeypatch, tmp_path):
     def fnRaise(filesRepo, sService):
-        raise RuntimeError("cache read blew up")
+        raise OSError("cache read blew up")
 
     monkeypatch.setattr(
         lg.scheduledReverify, "fdictReadCachedSyncStatus", fnRaise,
@@ -253,6 +270,25 @@ def test_live_hashes_none_when_adapter_raises():
     assert lg._fdictLiveHashesOrNone(
         FakeRepo(bRaiseHash=True), ["fig.pdf"],
     ) is None
+
+
+def test_live_hashes_propagates_a_programming_error():
+    """A non-I/O failure is a bug, and must not become a quiet None.
+
+    The conservative None means "the files could not be read". Handing
+    that same answer to an ``AttributeError`` or a ``RuntimeError``
+    reports a workflow as unverified because of a defect in vaibify,
+    with nothing raised and nothing logged -- and it is what let a
+    carrier refusal downgrade a reproducibility level silently.
+    """
+    class RepoWithABug:
+        sRootPath = "/repo"
+
+        def fdictHashFiles(self, listRelPaths):
+            raise RuntimeError("a defect, not an unreadable file")
+
+    with pytest.raises(RuntimeError):
+        lg._fdictLiveHashesOrNone(RepoWithABug(), ["fig.pdf"])
 
 
 def test_live_hashes_extracts_sha_entries():

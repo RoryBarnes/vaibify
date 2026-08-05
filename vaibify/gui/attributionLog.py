@@ -63,6 +63,8 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+
 _S_ATTRIBUTION_DIRECTORY = ".vaibify/promptRecord/attribution"
 S_ATTRIBUTION_EVENTS_PATH = _S_ATTRIBUTION_DIRECTORY + "/events.jsonl"
 S_ATTRIBUTION_FLAGS_PATH = _S_ATTRIBUTION_DIRECTORY + "/flags.jsonl"
@@ -121,7 +123,8 @@ def _flistLoadJsonlRecords(filesRepo, sRelPath):
         return []
     try:
         sText = filesRepo.fsReadText(sRelPath)
-    except (OSError, FileNotFoundError):
+    except (OSError, FileNotFoundError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return []
     listRecords = []
     for sLine in sText.splitlines():

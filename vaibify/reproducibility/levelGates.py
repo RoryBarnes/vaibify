@@ -23,6 +23,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+
 from . import replayGate
 from . import scheduledReverify
 from .aiDeclarationStep import fbStepIsAiDeclaration
@@ -100,6 +102,16 @@ __all__ = [
 
 
 F_MAX_STALE_HOURS = 24.0
+
+# Every gate here answers conservatively when a file cannot be read: an
+# unreadable manifest means "not verified", not a crash. That is right
+# for I/O and catastrophic for a carrier REFUSAL, which is an OSError by
+# inheritance — a container-backed filesRepo reaches the exec primitive
+# for fbIsFile, fdictHashFiles and fdictStatMtimes, so a missing carrier
+# call surfaced as a workflow that quietly LOST a reproducibility level.
+# fnReRaiseControlPlaneRefusal is called first in every handler below
+# that catches OSError or broader; see its docstring for why narrowing
+# the handlers instead does not work.
 
 
 # Per-call memoization scope for the L1/L2/L3 chain.
@@ -256,7 +268,8 @@ def _fsSyncStatusFingerprint(filesRepo):
             dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
                 filesRepo, sService,
             )
-        except Exception:
+        except (OSError, ValueError) as error:
+            fnReRaiseControlPlaneRefusal(error)
             dictStatus = None
         listEntries.append((sService, dictStatus or {}))
     if not any(d for _s, d in listEntries):
@@ -1230,7 +1243,8 @@ def fbVerifyManifestComplete(filesRepo, dictWorkflow):
         )
     except FileNotFoundError:
         return False
-    except (OSError, ValueError):
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return False
     return not listMissing
 
@@ -1270,7 +1284,8 @@ def fbVerifyReproduceScript(filesRepo, dictWorkflow):
         return False
     try:
         listEntries = flistParseManifestLines(filesRepo)
-    except (FileNotFoundError, OSError, ValueError):
+    except (FileNotFoundError, OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return False
     setPaths = {dictEntry["sPath"] for dictEntry in listEntries}
     return S_REPRODUCE_SCRIPT_FILENAME in setPaths
@@ -1608,7 +1623,8 @@ def _fdictLiveHashesOrNone(filesRepo, listRelPaths):
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     try:
         dictEntries = filesRepo.fdictHashFiles(listRelPaths)
-    except Exception:
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return None
     return {
         sPath: dictEntry.get("sSha256")
@@ -1654,7 +1670,8 @@ def _fdictRecomputeSupervisionEvidence(dictWorkflow, filesRepo):
         return fdictSummarizeSupervisionEvidence(
             ffilesEnsureRepoFiles(filesRepo), dictWorkflow,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return None
 
 
@@ -2156,7 +2173,8 @@ def _fsBinaryStateFingerprint(dictWorkflow, filesRepo):
     dictCaptured = _fdictCapturedBinaryHashes(filesRepo)
     try:
         dictLive = filesRepo.fdictHashAbsolutePaths(listPaths)
-    except Exception:
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         dictLive = {}
     listEntries = [
         (sPath, dictLive.get(sPath), dictCaptured.get(sPath))
@@ -2340,7 +2358,8 @@ def _fsetDriftedBinaryPaths(dictWorkflow, filesRepo):
         return set()
     try:
         dictLive = filesRepo.fdictHashAbsolutePaths(listPaths)
-    except Exception:
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return set()
     setDrifted = set()
     for sPath in listPaths:
@@ -2359,7 +2378,8 @@ def _fdictCapturedBinaryHashes(filesRepo):
     )
     try:
         dictEnv = fdictReadEnvironmentJson(filesRepo) or {}
-    except Exception:
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return {}
     dictResult = {}
     for dictCapture in _flistResolveCapturedBinaries(dictEnv):
@@ -2386,7 +2406,8 @@ def _fdictReadManifestPathHashes(filesRepo):
     """Return ``{sPath: sExpected}`` for every manifest entry, or {}."""
     try:
         listEntries = flistParseManifestLines(filesRepo)
-    except (FileNotFoundError, OSError, ValueError):
+    except (FileNotFoundError, OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return {}
     return {d["sPath"]: d["sExpected"] for d in listEntries}
 

@@ -4887,6 +4887,25 @@ def _fdictEntry(sRel):
 
     Falsification(
         nodeid=(
+            'tests/testLevelGatesRefusalPropagation.py::'
+            'testAGateNeverSwallowsAnAdmissionRefusal'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        dictEntries = filesRepo.fdictHashFiles(listRelPaths)\n'
+            '    except (OSError, ValueError) as error:\n'
+            '        fnReRaiseControlPlaneRefusal(error)\n'
+            '        return None\n'
+        ),
+        new=(
+            '        dictEntries = filesRepo.fdictHashFiles(listRelPaths)\n'
+            '    except (OSError, ValueError):\n'
+            '        return None\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
             'tests/testBlindSpotDispositions.py::'
             'testEveryGuiBlindSpotCarriesADisposition'
         ),

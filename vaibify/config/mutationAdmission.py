@@ -29,6 +29,7 @@ __all__ = [
     "S_ADMISSION_MODE_DURABLE_TASK",
     "MutationNotAdmittedError",
     "MutationAdmission",
+    "fnReRaiseControlPlaneRefusal",
     "ftokenMarkEnforcedLane",
     "fnResetEnforcedLane",
     "fbLaneEnforced",
@@ -78,6 +79,45 @@ _contextActiveAdmissions = contextvars.ContextVar(
 
 class MutationNotAdmittedError(PermissionError):
     """A container mutation was attempted without a carrier admission."""
+
+
+def fnReRaiseControlPlaneRefusal(error):
+    """Re-raise ``error`` if it is a refusal rather than an I/O outcome.
+
+    :class:`MutationNotAdmittedError` subclasses ``PermissionError`` and
+    is therefore an ``OSError``, so EVERY ``except OSError`` in the
+    codebase catches it — not only the broad ``except Exception`` ones.
+    That is the whole hazard: a caller written to answer conservatively
+    when a file cannot be read ("not verified", "hash unavailable")
+    gives exactly that answer to a refusal, and the refusal disappears.
+    No exception, no log line, a wrong answer on the dashboard.
+
+    It has bitten twice already in different shapes. ``fileRoutes`` and
+    ``draftRoutes`` each hand-wrote ``except PermissionError: raise``
+    ahead of their generic handler, and :mod:`levelGates` swallowed it
+    at nine sites while three more sat in its callees
+    (``scheduledReverify``, ``environmentSnapshot``, ``attributionLog``)
+    — where a swallowed refusal downgraded a workflow's reproducibility
+    level silently.
+
+    Call this FIRST in any handler that catches ``OSError`` or broader
+    around a call that can reach a container primitive::
+
+        except (OSError, ValueError) as error:
+            fnReRaiseControlPlaneRefusal(error)
+            return None
+
+    NOTE the shape of this fix, because the obvious alternative does not
+    work: narrowing ``except Exception`` to ``except OSError`` changes
+    nothing, since the refusal IS an ``OSError``. The durable fix is for
+    the refusal not to be one — see the class comment above — and until
+    that is decided this guard has to be repeated at each site, which is
+    why the sites are covered by a behavioural test
+    (``tests/testLevelGatesRefusalPropagation.py``) rather than by a
+    convention.
+    """
+    if isinstance(error, MutationNotAdmittedError):
+        raise error
 
 
 class MutationAdmission:
