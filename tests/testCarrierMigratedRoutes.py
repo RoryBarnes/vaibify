@@ -1983,6 +1983,125 @@ def testTheRepositoryPushRunsUnderTheDrain(
     )
 
 
+class DockerDoubleWhereThePushedRepoIsTheProjectRepo(
+    DockerDoubleServingATokenedTrackedRepo,
+):
+    """The tokened-repo double, over a workflow ROOTED at that repository.
+
+    The ordinary fixture's workflow lives at ``/workspace`` while the
+    pushed repository is ``/workspace/ExampleRepo``, so
+    ``_fsAfterRepoPushSuccess``'s exact-equality gate skips the
+    post-push verify entirely. That is the common production shape
+    inverted: a researcher pushing their own project repo takes the
+    branch, and no fixture in this suite arranged for it — measured by
+    putting an unconditional raise in that branch and watching all 1827
+    push/sync/verify tests still pass.
+    """
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        """Report the repository as the project repo's git top level.
+
+        Necessary, not decorative: the workflow loader OVERWRITES
+        ``sProjectRepoPath`` with what ``git rev-parse --show-toplevel``
+        answers, so serving the field in the document alone left the
+        workflow rooted at ``/workspace`` and the verify gate shut. The
+        first version of this fixture did exactly that and reported the
+        verify as never reached.
+        """
+        if "git rev-parse --show-toplevel" in sCommand:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+            self._fnRecordLiveAdmission(
+                sContainerId, S_PRIMITIVE_EXEC, sCommand,
+            )
+            return (0, "/workspace/" + S_PUSH_REPO_NAME + "\n")
+        return super().ftResultExecuteCommand(
+            sContainerId, sCommand, sWorkdir,
+        )
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath != S_WORKFLOW_PATH:
+            return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+        dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+        dictWorkflow["sProjectRepoPath"] = (
+            "/workspace/" + S_PUSH_REPO_NAME
+        )
+        dictWorkflow["dictRemotes"] = {
+            "github": {
+                "sOwner": "exampleowner", "sRepo": "examplerepo",
+                "sBranch": "main", "sCommittedSha": "abc123",
+            },
+        }
+        return json.dumps(dictWorkflow).encode("utf-8")
+
+
+@pytest.mark.falsification
+def testThePostPushVerifyRewritesTheSyncCacheUnderItsOwnDrain():
+    """The verify that follows a push carries its own mode-(b) admission.
+
+    ``fsRefreshVerifyCacheAfterPush`` hashes the project repo and
+    REWRITES ``syncStatus.json`` inside the container. It runs AFTER the
+    push's carrier has settled and released the drain, so it cannot ride
+    that admission and needs one of its own — and on the enforced branch
+    an uncarried write is refused at the primitive, which would break
+    the push for exactly the researchers who push their own project
+    repo.
+
+    Asserted by instrumenting the verify worker rather than by matching
+    command text: the verify's own container work depends on the remote
+    and the repository contents, so a text marker would be a claim about
+    the fixture. What is under test is the admission live when the
+    worker runs.
+
+    The verify is best-effort by contract — a failure becomes a warning
+    on the response and never a failed push — so this deliberately does
+    not assert the verify SUCCEEDS. It asserts it was admitted.
+
+    Kills: dropping the ``requestHttp=requestHttp`` argument from
+    ``_fsAfterRepoPushSuccess``'s ``fsRefreshVerifyCacheAfterPush``
+    call, which silently returns the verify to the legacy unenforced
+    ``to_thread`` lane — the worker then runs under ``''``, no
+    admission, and every write it makes is refused.
+    """
+    from vaibify.gui import routeContext
+
+    listVerifyAdmissions = []
+
+    def fnRecordThenVerify(dictWorkflow, sService, filesRepo):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            S_CONTAINER_ID,
+        )
+        listVerifyAdmissions.append(
+            "" if admission is None else admission.sMode,
+        )
+        return {"sService": sService}
+
+    client, _connectionDocker = _tConnectGatedClient(
+        DockerDoubleWhereThePushedRepoIsTheProjectRepo(),
+    )
+    with patch.object(
+        routeContext, "fdictRunRemoteVerifyBlocking", fnRecordThenVerify,
+    ):
+        response = client.post(
+            f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}/push-staged",
+            json={"sCommitMessage": "[vaibify] Update repository"},
+        )
+    assert response.status_code == 200, response.text
+    assert listVerifyAdmissions == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    ], (
+        "the post-push verify did not run under a lock-held carrier: "
+        f"{listVerifyAdmissions}. An empty list means the verify was "
+        "never reached at all — check that the fixture's workflow is "
+        "still rooted at the repository being pushed, which is the only "
+        "reason the exact-equality gate opens; a mode of '' means it "
+        "ran on the legacy to_thread lane with no admission."
+    )
+
+
 class DockerDoubleThatBlocksTheRepoPush(
     DockerDoubleServingATokenedTrackedRepo,
 ):

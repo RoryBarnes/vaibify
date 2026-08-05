@@ -4991,6 +4991,24 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
+            'testThePostPushVerifyRewritesTheSyncCacheUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    return await fsRefreshVerifyCacheAfterPush(\n'
+            '        dictCtx, sContainerId, dictWorkflow, "github",\n'
+            '        requestHttp=requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await fsRefreshVerifyCacheAfterPush(\n'
+            '        dictCtx, sContainerId, dictWorkflow, "github",\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
             'testALivePushNamesItsRemoteWithoutLeakingItsToken'
         ),
         source='vaibify/gui/routes/repoRoutes.py',
