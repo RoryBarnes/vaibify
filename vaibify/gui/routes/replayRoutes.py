@@ -39,7 +39,11 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, Request
 
 from ..actionCatalog import fnAgentAction
-from ..routeContext import fnRejectAgentTokenLane
+from ..routeContext import fnCommitWorkflowSave, fnRejectAgentTokenLane
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    fnDeclareCarrierMode,
+)
 from ..personalLayerManager import (
     fdictComputeHashCommitment,
     fdictValidateHashCommitment,
@@ -123,7 +127,10 @@ def _fnRegisterDeclareAiModel(app, dictCtx):
 
     @fnAgentAction("declare-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/declare")
-    async def fnDeclareAiModel(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnDeclareAiModel(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -134,7 +141,10 @@ def _fnRegisterDeclareAiModel(app, dictCtx):
             list(dictProvenance.get(S_DECLARED_MODELS_KEY) or []),
             dictModel,
         )
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI-model declaration",
+        )
         return {
             "listDeclaredModels": dictProvenance[S_DECLARED_MODELS_KEY],
         }
@@ -145,7 +155,10 @@ def _fnRegisterRemoveAiModel(app, dictCtx):
 
     @fnAgentAction("remove-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/remove")
-    async def fnRemoveAiModel(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnRemoveAiModel(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -161,7 +174,10 @@ def _fnRegisterRemoveAiModel(app, dictCtx):
         if len(listRemaining) == len(listModels):
             raise HTTPException(404, "No such declared model.")
         dictProvenance[S_DECLARED_MODELS_KEY] = listRemaining
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI-model removal",
+        )
         return {"listDeclaredModels": listRemaining}
 
 
@@ -425,7 +441,10 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
 
     @fnAgentAction("configure-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/configure")
-    async def fnConfigurePromptRecord(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnConfigurePromptRecord(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         # Late-bound so an install of vaibify[replay] (or a test
         # patch) takes effect without restarting the hub.
         from .. import transcriptSanitizer
@@ -448,7 +467,10 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
                 timezone.utc,
             ).isoformat()
         dictRecord.setdefault("bFirstCaptureReviewed", False)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The Prompt Record setting",
+        )
         return {"dictPromptRecord": dictRecord}
 
 
@@ -494,7 +516,10 @@ def _fnRegisterPromptRecordApprove(app, dictCtx):
         "/api/workflow/{sContainerId}/prompt-record/"
         "approve-first-capture"
     )
-    async def fnApproveFirstCapture(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnApproveFirstCapture(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -503,7 +528,10 @@ def _fnRegisterPromptRecordApprove(app, dictCtx):
         if dictRecord.get("bEnabled") is not True:
             raise HTTPException(409, "The Prompt Record is not enabled.")
         dictRecord["bFirstCaptureReviewed"] = True
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The first-capture approval",
+        )
         return {"dictPromptRecord": dictRecord}
 
 
@@ -577,7 +605,10 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
     """
 
     @app.post("/api/workflow/{sContainerId}/supervision/configure")
-    async def fnConfigureSupervision(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnConfigureSupervision(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -602,7 +633,10 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
                 timezone.utc,
             ).isoformat()
         dictProvenance["dictSupervision"] = dictSupervision
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The Supervised-mode setting",
+        )
         return {"dictSupervision": dictSupervision}
 
 
@@ -634,7 +668,10 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
 
     @fnAgentAction("declare-personal-layer")
     @app.post("/api/workflow/{sContainerId}/personal-layer/declare")
-    async def fnDeclarePersonalLayer(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnDeclarePersonalLayer(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -681,7 +718,10 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
             except ValueError as error:
                 raise HTTPException(400, str(error))
         dictProvenance[S_PERSONAL_LAYER_KEY] = dictLayer
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The personal-layer declaration",
+        )
         return {"dictPersonalLayer": dictLayer}
 
 

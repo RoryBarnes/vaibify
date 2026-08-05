@@ -18,7 +18,7 @@ __all__ = ["fnRegisterAll"]
 
 import os
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
@@ -27,7 +27,11 @@ from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
 )
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import ffilesForWorkflow, fnCommitWorkflowSave
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    fnDeclareCarrierMode,
+)
 from ...reproducibility.aiDeclarationStep import (
     S_DEFAULT_DECLARATION_DIRECTORY,
     S_DEFAULT_DECLARATION_FILENAME,
@@ -228,9 +232,11 @@ def _fnRegisterAddStep(app, dictCtx):
         "/api/workflow/{sContainerId}"
         "/ai-declaration/add-step"
     )
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnAddAiDeclarationStep(
         sContainerId: str,
         request: AiDeclarationAddStepRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -239,7 +245,10 @@ def _fnRegisterAddStep(app, dictCtx):
         _fnRefuseDuplicateAiDeclarationStep(dictWorkflow)
         dictStep = _fdictBuildStepFromAddRequest(dictWorkflow, request)
         dictWorkflow.setdefault("listSteps", []).append(dictStep)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI Declaration step",
+        )
         return {
             "iIndex": len(dictWorkflow["listSteps"]) - 1,
             "dictStep": dictStep,

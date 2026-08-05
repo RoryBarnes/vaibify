@@ -29,7 +29,51 @@ def _fdictClosedWeightsBody(**dictOverrides):
 
 
 @pytest.fixture
-def fixtureHarness():
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the commit-guard carrier down for this module's bare app.
+
+    Six of these routes now commit their ``project.json`` save through
+    carrier mode (a), which binds the request to its container's owner
+    record and writes a journal record against the hub's application
+    state. A bare ``FastAPI()`` has neither, so the lane tuple resolves
+    to a fixed stand-in and the carrier runs its effect directly.
+
+    What that costs is stated plainly, because an unexplained
+    permissive mock is how this suite acquired about twenty of them.
+    These tests prove what the routes DO -- what lands in
+    ``dictAiProvenance``, what the response says, which bodies are
+    refused -- and NOTHING about the admission the save runs under; a
+    route whose carrier call was deleted outright would pass every one
+    of them. That guarantee is asserted in
+    ``tests/testCarrierMigratedRoutes.py``, against a double that calls
+    the real gates.
+
+    Requested BY the harness rather than autouse, so a test that builds
+    its own client still meets the real refusal.
+    """
+    from vaibify.gui import commitCarrier, routeContext
+
+    monkeypatch.setattr(
+        routeContext, "fdictRequireLaneTupleForCommit",
+        lambda requestHttp, sContainerId, sOperationName: {
+            "sContainerName": "fake-container",
+        },
+    )
+
+    def _fdictCommitWithoutTheJournal(
+        appState, sName, sContainerId, dictLaneTuple, sOperationKind,
+        sTarget, fnEffect, dictHolderIdentity,
+    ):
+        return {"bCommitted": True, "result": fnEffect()}
+
+    monkeypatch.setattr(
+        commitCarrier, "fdictCommitSynchronousMutation",
+        _fdictCommitWithoutTheJournal,
+    )
+
+
+@pytest.fixture
+def fixtureHarness(fixtureCarrierStoodDown):
     """Return ``(clientTest, dictWorkflow, dictSaved)`` for the routes."""
     app = FastAPI()
     dictWorkflow = {"listSteps": []}

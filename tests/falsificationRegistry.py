@@ -5254,4 +5254,28 @@ def _fdictEntry(sRel):
             '_fbServiceHasStoredCredential(sService),\n'
         ),
     ),
+
+    # --- The seven declaration saves, carrier mode (a) (2026-08-05) ---
+    # One entry for a parametrized family, matching the convention the
+    # two push families already use: the invariant requires exactly one
+    # entry per marked FUNCTION. The registered mutant reverts the
+    # ai-models/declare call site; the other six call sites were each
+    # kill-confirmed by hand on 2026-08-05 and each killed only its own
+    # parameter case, which is what establishes that sharing
+    # fnCommitWorkflowSave did not collapse seven guards into one
+    # untested claim.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeclarationSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The AI-model declaration",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
 ]

@@ -2276,3 +2276,148 @@ async def testALivePushNamesItsRemoteWithoutLeakingItsToken(caplog):
     assert S_SYNTHETIC_PUSH_TOKEN not in caplog.text, (
         "the remote's access token reached the hub log"
     )
+
+
+# ---------------------------------------------------------------------
+# Group 1 continued -- the seven declaration saves, mode (a).
+#
+# All seven do the same thing: edit the workflow dict, then persist
+# project.json. They therefore share ONE helper,
+# ``routeContext.fnCommitWorkflowSave``, and the isolation question is
+# what that sharing does to a kill-confirm. The parametrization answers
+# it: the mutant for a route is that route's OWN call site reverted to
+# ``dictCtx["save"](...)``, which kills exactly its own parameter case.
+# A defect in the shared helper legitimately kills all seven, and
+# should -- that is ONE guard being reported once per route that
+# depends on it, not seven guards none of which is proven.
+# ---------------------------------------------------------------------
+
+DICT_DECLARED_MODEL = {
+    "sVendor": "ExampleVendor",
+    "sModelId": "example-model-1",
+    "sUseStartDate": "2026-01-01",
+    "sUseEndDate": "2026-02-01",
+    "bOpenWeights": False,
+}
+
+
+def _fdictWorkflowWithDeclarationsAlreadyMade():
+    """Return the draft workflow with the state two routes need present.
+
+    ``ai-models/remove`` answers 404 with nothing declared and
+    ``approve-first-capture`` answers 409 with the Prompt Record off, so
+    both would return before reaching a container primitive and their
+    assertions would be vacuous. Seeded in the workflow the container
+    SERVES rather than by calling the sibling routes first: driving
+    ``ai-models/declare`` as setup for ``ai-models/remove`` would let
+    one broken carrier fail two parameter cases, which is the shape
+    that proves two guards exist and neither works.
+    """
+    dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+    dictWorkflow["dictAiProvenance"] = {
+        "listDeclaredModels": [copy.deepcopy(DICT_DECLARED_MODEL)],
+        "dictPromptRecord": {
+            "bEnabled": True,
+            "sEnabledAtUtc": "2026-01-01T00:00:00+00:00",
+            "bFirstCaptureReviewed": False,
+        },
+    }
+    return dictWorkflow
+
+
+class DockerDoubleServingADeclaredWorkflow(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gated double over a workflow that already carries declarations.
+
+    Only the FIRST read of ``project.json`` is redirected; once a save
+    has landed, the parent's in-memory file wins, so the double keeps
+    telling the truth about what was written.
+    """
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
+            self._dictFiles[sPath] = json.dumps(
+                _fdictWorkflowWithDeclarationsAlreadyMade(),
+            ).encode("utf-8")
+        return DockerDoubleThatCallsTheRealGates.fbaFetchFile(
+            self, sContainerId, sPath, iMaxBytes,
+        )
+
+
+@pytest.fixture
+def tclientDeclared():
+    """The gated client over a workflow with declarations already made."""
+    return _tConnectGatedClient(DockerDoubleServingADeclaredWorkflow())
+
+
+# Each body is chosen to REACH the save on a workflow in the fixture's
+# state, with no prerequisite call to a sibling route. The two
+# ``bEnabled: False`` bodies take the DISABLING direction on purpose:
+# enabling the Prompt Record requires the detect-secrets scanner on the
+# host, which would make the verdict depend on the developer's install.
+T_DECLARATION_SAVE_ROUTES = [
+    ("ai-models/declare", dict(DICT_DECLARED_MODEL)),
+    ("ai-models/remove", {
+        "sVendor": DICT_DECLARED_MODEL["sVendor"],
+        "sModelId": DICT_DECLARED_MODEL["sModelId"],
+    }),
+    ("prompt-record/configure", {"bEnabled": False}),
+    ("prompt-record/approve-first-capture", None),
+    ("supervision/configure", {"bEnabled": False}),
+    ("personal-layer/declare", {"sStatus": "none"}),
+    ("ai-declaration/add-step", {}),
+]
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sSuffix,dictBody", T_DECLARATION_SAVE_ROUTES)
+def testTheDeclarationSaveCommitsThroughTheSynchronousCarrier(
+    tclientDeclared, sSuffix, dictBody,
+):
+    """Each declaration route persists project.json under mode (a).
+
+    Mode (a) is not interchangeable here. The synchronous carrier writes
+    a ``file-write`` journal record whose expected hash IS the
+    workflow's own serialization fingerprint, so a crash inside the
+    commit window can be adjudicated afterwards by hashing the file on
+    disk. A lock-held worker would journal a ``helper`` record, which
+    proves nothing about the bytes.
+
+    Kills: reverting this route's ``fnCommitWorkflowSave(...)`` call to
+    ``dictCtx["save"](sContainerId, dictWorkflow)``. On the enforced
+    branch that save reaches the write primitive with no admission open
+    at all, so the recorded mode is ``''``.
+
+    The status code is deliberately NOT asserted, so that a lost
+    carrier is reported as the admission it ran under rather than as a
+    generic 500. Measured, so the claim is bounded: each of the seven
+    mutants killed its own parameter case here AND its own case in the
+    happy-path test below, and no sibling's. The happy-path pair is not
+    a second guard -- it is the same defect surfacing as a broken
+    feature, which is why it carries no falsification mark.
+    """
+    client, connectionDocker = tclientDeclared
+    client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/{sSuffix}", json=dictBody,
+    )
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+@pytest.mark.parametrize("sSuffix,dictBody", T_DECLARATION_SAVE_ROUTES)
+def testEveryMigratedDeclarationRouteStillAnswersTwoHundred(
+    tclientDeclared, sSuffix, dictBody,
+):
+    """The happy path, kept where it cannot distort a kill-confirm.
+
+    Not a falsification claim: just the assertion that a researcher can
+    still record a declaration, which the tests above deliberately do
+    not make.
+    """
+    client, _connectionDocker = tclientDeclared
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/{sSuffix}", json=dictBody,
+    )
+    assert response.status_code == 200, response.text
