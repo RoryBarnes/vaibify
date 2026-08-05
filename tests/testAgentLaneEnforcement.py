@@ -557,11 +557,22 @@ def testFigureProbeValidatesTheWorkdirFallback(clientBrowser):
     omission turned ``test -f`` into an existence oracle over arbitrary
     container paths.
 
+    The owning lease is held so the 403 comes from the path guard, not
+    the container-owner gate. It did not used to be: this test called
+    ``_fresponseConnect``, which connects without holding the lease, so
+    EVERY container-scoped request answered 403 "You do not hold this
+    container's lease" and the assertion passed no matter what the path
+    logic did. Deleting the fallback validation outright left it green,
+    and so did deleting the handler's primary validation -- the test
+    measured the authorization gate and reported it as a path guard.
+    The sibling denylist test three functions above already carried this
+    lesson in its own docstring; it was not applied here.
+
     Kills: figureRoutes._flistBuildFigureCheckPaths: the fallback
     validation `fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))`
     replaced by the bare `sFallback)`.
     """
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     responseHttp = clientBrowser.head(
         f"/api/figure/{S_CONTAINER_ID}/shadow",
         params={"sWorkdir": "/etc"},
