@@ -22,7 +22,16 @@ var VaibifyPlotStandards = (function () {
             }
             VaibifyApp.fnRenderStepList();
         } catch (error) {
-            /* Silently ignore - buttons remain hidden */
+            /* Never silent. Swallowing this left the standardization
+               buttons hidden, which does not mean "could not check" --
+               it reads as "this step has no standards", so the panel
+               stated something it had not established. It would also
+               hide a backend refusal, which is the one signal the
+               commit-guard migration depends on being loud. */
+            VaibifyApp.fnShowToast(
+                "Could not check plot standards for this step: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
         }
     }
 

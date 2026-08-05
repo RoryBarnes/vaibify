@@ -105,6 +105,23 @@ def _fdictMakeContext(ftResult=(0, "")):
     return {"docker": mockDocker}
 
 
+def _fdictMakeContextWithProbe(dictExistsByPath):
+    """Build a dictCtx whose existence probe answers per PATH.
+
+    Keyed by path rather than by call order because that is the
+    property the typed reads have and the batched command did not: the
+    old parser matched stdout lines to plots positionally, so a
+    reordered or short answer silently attributed one plot's result to
+    another. A double keyed by call order would have reproduced that
+    hazard instead of testing it away.
+    """
+    dictCtx = _fdictMakeContext()
+    dictCtx["docker"].fbContainerPathIsFile = MagicMock(
+        side_effect=lambda _sCid, sPath: dictExistsByPath[sPath],
+    )
+    return dictCtx
+
+
 class TestFlistConvertToStandards:
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
@@ -192,7 +209,10 @@ class TestFdictCheckStandardsExist:
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
     def test_detects_existing_standards(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=(0, "Y\nY\n"))
+        dictCtx = _fdictMakeContextWithProbe({
+            "/out/plot1_standard.png": True,
+            "/out/plot2_standard.png": True,
+        })
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
         dictResult = _fnRunAsync(
@@ -204,7 +224,10 @@ class TestFdictCheckStandardsExist:
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
     def test_detects_missing_standards(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=(0, "Y\nN\n"))
+        dictCtx = _fdictMakeContextWithProbe({
+            "/out/plot1_standard.png": True,
+            "/out/plot2_standard.png": False,
+        })
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
         dictResult = _fnRunAsync(
@@ -215,25 +238,48 @@ class TestFdictCheckStandardsExist:
 
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
-    def test_handles_short_output(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=(0, "Y\n"))
+    def test_answers_per_plot_not_by_output_position(self, _mock):
+        """Each plot gets its OWN answer, keyed by its own path.
+
+        Replaces two tests that fed the batched command a short or
+        empty stdout and asserted the parser degraded to False. There
+        is no shared stdout to truncate now -- each plot is a separate
+        typed read -- so the property worth asserting is that the
+        answers cannot slide across plots, which is exactly what the
+        positional line-index parsing could do.
+        """
+        dictCtx = _fdictMakeContextWithProbe({
+            "/out/plot1_standard.png": False,
+            "/out/plot2_standard.png": True,
+        })
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
         dictResult = _fnRunAsync(
             _fdictCheckStandardsExist(
                 dictCtx, "ctr1", listPlots))
-        assert dictResult["plot1.pdf"] is True
-        assert dictResult["plot2.pdf"] is False
+        assert dictResult["plot1.pdf"] is False
+        assert dictResult["plot2.pdf"] is True
 
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
-    def test_handles_empty_result(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=None)
+    def test_a_failed_probe_propagates_rather_than_reading_as_absent(
+        self, _mock,
+    ):
+        """"vaibify could not look" must not be shown as "not there".
+
+        The batched command answered N for every plot when the exec
+        itself failed, so an unreachable container told the researcher
+        their standards were missing. The typed read raises instead.
+        """
+        dictCtx = _fdictMakeContext()
+        dictCtx["docker"].fbContainerPathIsFile.side_effect = OSError(
+            "cannot probe path in container",
+        )
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
-        dictResult = _fnRunAsync(
-            _fdictCheckStandardsExist(
-                dictCtx, "ctr1", listPlots))
-        assert dictResult["plot1.pdf"] is False
+        with pytest.raises(OSError):
+            _fnRunAsync(
+                _fdictCheckStandardsExist(
+                    dictCtx, "ctr1", listPlots))
 
 
 # ── Route handler tests ──────────────────────────────────────────

@@ -356,7 +356,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("GET", "/api/steps/{sContainerId}/validate"),
     ("GET", "/api/steps/{sContainerId}/{iStepIndex}"),
     ("GET", "/api/steps/{sContainerId}/{iStepIndex}/falsification"),
-    ("GET", "/api/steps/{sContainerId}/{iStepIndex}/plot-standards"),
     ("GET", "/api/sync/{sContainerId}/check/{sService}"),
     ("GET", "/api/sync/{sContainerId}/files"),
     ("GET", "/api/sync/{sContainerId}/has-credential/{sService}"),

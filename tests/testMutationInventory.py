@@ -89,7 +89,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # executor -- and it is now a direct call inside a carrier's worker,
 # which the scan reads exactly. A migration can recover an
 # unattributable row, not only classify a legible one.
-I_UNCLASSIFIED_ROW_BUDGET = 302
+I_UNCLASSIFIED_ROW_BUDGET = 301
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -100,7 +100,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 302
 # Seeded at 217 on 2026-08-03, down from 218 when the file pull stopped
 # assembling `docker cp`; 217 -> 216 when the dashboard's disk tile
 # stopped assembling `docker exec ... df` and became a typed read.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 216
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 215
 
 
 # Every acquisition of a declared capability that still has no reviewed

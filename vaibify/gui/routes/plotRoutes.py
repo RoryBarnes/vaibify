@@ -22,6 +22,7 @@ from ..routeContext import (
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_TYPED_READ,
     fnDeclareCarrierMode,
 )
 
@@ -45,15 +46,27 @@ def _fsFindPlotPath(listPlots, sFileName):
     return ""
 
 
+def _fsStandardPathForPlot(sResolved, sBasename):
+    """Return the container path of one plot's standard PNG.
+
+    "The standard for this plot" is a thing the panel, the workflow and
+    the conversion all name, and the code had no representation for it:
+    the same three lines were derived independently everywhere it was
+    needed. One derivation means the lookup and the existence check
+    cannot disagree about where a standard lives.
+    """
+    sBase = posixpath.splitext(sBasename)[0]
+    return posixpath.join(
+        posixpath.dirname(sResolved), _fsPlotStandardPath(sBase),
+    )
+
+
 def _fsFindStandardForFile(listPlots, sFileName):
     """Return the standard PNG path for a given plot filename."""
     for sResolved, sBasename in listPlots:
         if (sBasename == sFileName
                 or sResolved.endswith(sFileName)):
-            sBase = posixpath.splitext(sBasename)[0]
-            sDir = posixpath.dirname(sResolved)
-            return posixpath.join(
-                sDir, _fsPlotStandardPath(sBase))
+            return _fsStandardPathForPlot(sResolved, sBasename)
     return ""
 
 
@@ -158,37 +171,38 @@ async def _flistConvertPlotsUnderTheDrain(
 async def _fdictCheckStandardsExist(
     dictCtx, sContainerId, listPlots,
 ):
-    """Check which standard PNGs exist in the container."""
+    """Return ``{basename: bool}`` for each plot's standard PNG.
+
+    One TYPED READ per plot, concurrently, rather than one batched
+    ``test -f … && echo Y || echo N`` through the general exec
+    primitive. The batch was cheaper by one round-trip and cost the
+    route its honesty: a primitive handed command text cannot tell an
+    existence check from a delete, so the whole route had to be treated
+    as mutating and would be refused on the enforced branch.
+
+    N round-trips are affordable HERE specifically, and the reason is a
+    measurement rather than an intuition: the panel calls this on step
+    EXPANSION — a deliberate click — never on a poll, and it returns
+    early when the step declares no plots, so N is one step's plot
+    count. ``gather`` puts them in flight together, so the wall cost is
+    one round-trip plus change.
+
+    A failed READ now propagates instead of being reported as "no
+    standard exists". The old batch answered ``N`` for every plot when
+    the exec itself failed, which told the researcher their standards
+    were missing when the truth was that vaibify could not look.
+    """
     if not listPlots:
         return {}
-    listPaths = []
-    listBasenames = []
-    for sResolved, sBasename in listPlots:
-        sBase = posixpath.splitext(sBasename)[0]
-        sDir = posixpath.dirname(sResolved)
-        sStandardPath = posixpath.join(
-            sDir, _fsPlotStandardPath(sBase))
-        listPaths.append(sStandardPath)
-        listBasenames.append(sBasename)
-    sCheckCommand = " && ".join(
-        f'test -f {fsShellQuote(sPath)} && echo "Y"'
-        f' || echo "N"'
-        for sPath in listPaths
-    )
-    tResult = await asyncio.to_thread(
-        dictCtx["docker"].ftResultExecuteCommand,
-        sContainerId, sCheckCommand,
-    )
-    sOutput = tResult[1] if tResult else ""
-    listLines = sOutput.strip().split("\n")
-    dictResult = {}
-    for iIdx, sBasename in enumerate(listBasenames):
-        if iIdx < len(listLines):
-            dictResult[sBasename] = (
-                listLines[iIdx].strip() == "Y")
-        else:
-            dictResult[sBasename] = False
-    return dictResult
+    listBasenames = [sBasename for _sResolved, sBasename in listPlots]
+    listExists = await asyncio.gather(*[
+        asyncio.to_thread(
+            dictCtx["docker"].fbContainerPathIsFile,
+            sContainerId, _fsStandardPathForPlot(sResolved, sBasename),
+        )
+        for sResolved, sBasename in listPlots
+    ])
+    return dict(zip(listBasenames, listExists))
 
 
 def _fnRegisterStandardizePlots(app, dictCtx):
@@ -276,6 +290,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
     @app.get(
         "/api/steps/{sContainerId}/{iStepIndex}/plot-standards"
     )
+    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fnCheckPlotStandards(
         sContainerId: str, iStepIndex: int,
     ):

@@ -5389,28 +5389,28 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A typed read: the adapter hands a PATH and a declared operation name to the audited-read carve-out, never a command, so it reaches no mutation-capable primitive and there is nothing for a carrier to admit. The route declares typed-read and tests/testCarrierMigratedRoutes.py asserts its gated-primitive ledger is empty while its typed-probe ledger is not.",
       "sFile": "gui/routes/plotRoutes.py",
-      "sFingerprint": "9d9f3760cbb6403c",
+      "sFingerprint": "2d018c4dc15b696c",
       "sFunction": "_fdictCheckStandardsExist",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask, per plot file of one step, whether its standard PNG exists in the container",
+      "sOperationMetadata": "one typed-read path probe per plot, issued concurrently; it replaced a batched `test -f <path> && echo Y || echo N` through the general exec primitive, which the gate had to treat as mutating and which reported every plot's standard as absent whenever the exec itself failed",
+      "sPrimitive": "fbContainerPathIsFile",
       "sReferenceKind": "passed-callable"
     },
     {
@@ -9097,7 +9097,7 @@
       "sScopeFingerprint": "6535cacbfa91dba8"
     },
     {
-      "iLine": 931,
+      "iLine": 935,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/commitCarrier.py",

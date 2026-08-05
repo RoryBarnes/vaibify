@@ -87,6 +87,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
     def __init__(self):
         super().__init__()
         self.listAdmittedPrimitives = []
+        self.listTypedPathProbes = []
 
     def _fnRecordLiveAdmission(
         self, sContainerId, sPrimitiveName, sCommand="",
@@ -164,6 +165,27 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         return MockDockerDraft.fbaFetchFile(
             self, sContainerId, sPath, iMaxBytes,
         )
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        """Probe a path the way the real typed-read adapter does.
+
+        Recorded in a SEPARATE ledger from the gated primitives, which
+        is what lets a ``typed-read`` route be asserted without
+        vacuity: the gated ledger must be EMPTY (it reached no
+        mutation-capable primitive) while this one must be NON-empty
+        (it did real container work rather than returning early).
+        Folding both into one ledger would force a choice between the
+        two halves.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.append(sPath)
+        return False
 
 
 def _tConnectGatedClient(connectionDocker):
@@ -861,6 +883,45 @@ def testTheRepoSidecarRewriteRunsUnderTheDrain(tclientGated, sAction):
     client.post(f"/api/repos/{S_CONTAINER_ID}/somerepo/{sAction}")
     _fnAssertWritesRanUnder(
         connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testThePlotStandardsCheckReachesNoMutatingPrimitive(
+    tclientGatedWithPlots,
+):
+    """GET .../plot-standards is a read, and now proves it is one.
+
+    It built ``test -f <path> && echo Y || echo N`` for every plot and
+    ran the batch through the general exec primitive. That is a read by
+    any reading, and the gate cannot know it: command text carries no
+    such distinction, so the route was mutation-capable by
+    construction and could not honestly declare ``typed-read``. It is
+    now one typed read per plot.
+
+    TWO assertions, because either alone is satisfiable by a defect.
+    The gated ledger must be EMPTY -- no mutation-capable primitive was
+    reached -- and the typed-probe ledger must be NON-EMPTY, or a route
+    that returned early without touching the container at all would
+    pass the first assertion perfectly.
+
+    Kills: restoring the batched ``test -f … && echo Y`` command
+    through ``ftResultExecuteCommand``.
+    """
+    client, connectionDocker = tclientGatedWithPlots
+    response = client.get(
+        f"/api/steps/{S_CONTAINER_ID}/0/plot-standards",
+    )
+    assert response.status_code == 200, response.text
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared typed-read reached a mutation-capable "
+        "primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )
+    assert connectionDocker.listTypedPathProbes, (
+        "the route reached no typed read either, so it did no "
+        "container work at all and the empty gated ledger above "
+        "asserts nothing"
     )
 
 

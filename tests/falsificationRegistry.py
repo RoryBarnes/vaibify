@@ -4887,6 +4887,46 @@ def _fdictEntry(sRel):
 
     Falsification(
         nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePlotStandardsCheckReachesNoMutatingPrimitive'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        old=(
+            '    listExists = await asyncio.gather(*[\n'
+            '        asyncio.to_thread(\n'
+            '            dictCtx["docker"].fbContainerPathIsFile,\n'
+            '            sContainerId, _fsStandardPathForPlot('
+            'sResolved, sBasename),\n'
+            '        )\n'
+            '        for sResolved, sBasename in listPlots\n'
+            '    ])\n'
+            '    return dict(zip(listBasenames, listExists))\n'
+        ),
+        new=(
+            '    sCheckCommand = " && ".join(\n'
+            '        f\'test -f {fsShellQuote('
+            '_fsStandardPathForPlot(s, b))}\'\n'
+            '        f\' && echo "Y" || echo "N"\'\n'
+            '        for s, b in listPlots\n'
+            '    )\n'
+            '    tResult = await asyncio.to_thread(\n'
+            '        dictCtx["docker"].ftResultExecuteCommand,\n'
+            '        sContainerId, sCheckCommand,\n'
+            '    )\n'
+            '    listLines = (tResult[1] if tResult else "").strip()'
+            '.split("\\n")\n'
+            '    return {\n'
+            '        sBasename: (\n'
+            '            listLines[iIdx].strip() == "Y" '
+            'if iIdx < len(listLines)\n'
+            '            else False\n'
+            '        )\n'
+            '        for iIdx, sBasename in enumerate(listBasenames)\n'
+            '    }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/testTypeAloneStopsTheSwallow.py::'
             'testARefusalIsNotCaughtByABareExceptOsError'
         ),
