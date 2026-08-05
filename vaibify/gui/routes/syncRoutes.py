@@ -21,6 +21,7 @@ from ..pipelineRunner import fsShellQuote
 from ..routeContext import (
     fdictRunRemoteVerifyBlocking,
     ffilesForWorkflow,
+    fnRejectAgentTokenLane,
     fsRefreshVerifyCacheAfterPush,
 )
 from ..pipelineServer import (
@@ -1666,7 +1667,10 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         return dictResult
 
     @app.get("/api/sync/{sContainerId}/has-credential/{sService}")
-    async def fnHasCredential(sContainerId: str, sService: str):
+    async def fnHasCredential(
+        sContainerId: str, sService: str, requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
         syncDispatcher.fnValidateServiceName(sService)
         return {

@@ -658,3 +658,55 @@ def test_host_log_tail_browser_lane_keeps_raw_view(clientBrowser, tmp_path):
         assert len(dictBody["listLines"]) == 1
     finally:
         hostIncidents.fnResetHostIncidents()
+
+
+# ── has-credential answers about the HOST keyring ────────────────
+
+
+def _fresponseHasCredential(client):
+    """GET the has-credential probe with the host keyring reporting True.
+
+    The patch target is the authority the route consults, so a 200
+    carries the real answer rather than a fixture default. Patching it
+    to ``True`` is what makes a leak visible: an unguarded agent lane
+    would learn that the researcher stores an Overleaf token.
+    """
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists", return_value=True,
+    ):
+        return client.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/overleaf",
+        )
+
+
+@pytest.mark.falsification
+def test_has_credential_refuses_the_agent_lane(clientAgent):
+    """The agent must not learn whether the host keyring holds a token.
+
+    The route reads the RESEARCHER'S machine and ignores the container
+    id in its own path, so no agent token can authorize it -- yet it is
+    a GET, which the catalog's agent-lane gate never sees, and it
+    carried no guard of its own. The agent lane is authorized for this
+    container here (``clientAgent`` writes the owner record), so a 403
+    can only come from the handler's own refusal.
+
+    Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call from
+    ``fnHasCredential`` in ``syncRoutes.py`` -- the request then answers
+    200 with ``bHasCredential`` true, which is the leak.
+    """
+    responseHttp = _fresponseHasCredential(clientAgent)
+    assert responseHttp.status_code == 403
+    assert "bHasCredential" not in responseHttp.text
+
+
+def test_has_credential_still_answers_the_browser_lane(clientBrowser):
+    """The researcher's own browser still gets the answer it needs.
+
+    The sync panel reads this probe to decide whether to prompt for a
+    token, so a guard that refused both lanes would be a regression,
+    not a fix.
+    """
+    _fnConnectAsOwner(clientBrowser)
+    responseHttp = _fresponseHasCredential(clientBrowser)
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"bHasCredential": True}

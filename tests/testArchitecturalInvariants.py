@@ -3561,7 +3561,7 @@ _REGEX_HOST_FILESYSTEM_CLAIM = re.compile(
 # confines what the agent may reach. Both consult the same lane
 # authority the middleware used rather than re-reading raw headers.
 _T_AGENT_LANE_GUARD_NAMES = (
-    "_fnRejectAgentTokenLane",
+    "fnRejectAgentTokenLane",
     "fbRequestRidesAgentLane",
 )
 
@@ -3620,7 +3620,7 @@ def testHostFilesystemRoutesRejectTheAgentLane():
     which the agent-safe read and push actions then expose.
 
     Catalog exclusion is metadata, not a gate. This invariant fails when
-    a THIRD such route appears without ``_fnRejectAgentTokenLane`` (which
+    a THIRD such route appears without ``fnRejectAgentTokenLane`` (which
     refuses the lane) or ``fbRequestRidesAgentLane`` (which confines it),
     so the promise can never again outrun its enforcement.
     """
@@ -3647,7 +3647,7 @@ def testHostFilesystemRoutesRejectTheAgentLane():
     assert listOffenders == [], (
         "A route whose documentation promises the agent cannot reach "
         "host files must enforce that promise at the route. Call "
-        "_fnRejectAgentTokenLane(requestHttp) as the handler's first "
+        "fnRejectAgentTokenLane(requestHttp) as the handler's first "
         "statement, or confine the agent with fbRequestRidesAgentLane:"
         "\n  " + "\n  ".join(listOffenders)
     )
@@ -4047,7 +4047,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # existing blocking dispatcher. Extends the push flow this module
     # already owns; the carrier machinery itself lives in
     # commitCarrier.py.
-    "routes/syncRoutes.py": 2508,
+    # +4 (2026-08-05): has-credential rejects the in-container agent
+    # lane. The route reads the researcher's HOST keyring and is a GET,
+    # so the catalog's agent-lane gate never sees it. Four lines: the
+    # shared guard's import, the Request parameter, the call. NOTE this
+    # is the fourth route module to reach its cap; whether to split
+    # syncRoutes along the credential/DAG seam is the researcher's
+    # decision, not a line this bump settles.
+    "routes/syncRoutes.py": 2512,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.

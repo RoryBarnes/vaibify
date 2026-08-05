@@ -20,6 +20,7 @@ __all__ = [
     "ffilesForWorkflow",
     "fnCommitWorkflowSave",
     "fnRecordAttributionEvent",
+    "fnRejectAgentTokenLane",
     "fsHashContainerFileOrEmpty",
     "fsRefreshVerifyCacheAfterPush",
 ]
@@ -30,7 +31,31 @@ import logging
 
 from fastapi import HTTPException
 
+from .actionCatalog import S_SESSION_HEADER_NAME
+
 logger = logging.getLogger("vaibify")
+
+
+def fnRejectAgentTokenLane(requestHttp):
+    """Raise HTTP 403 when the request rides the in-container agent lane.
+
+    The agent authenticates REST calls with the per-container
+    ``X-Vaibify-Session`` header; a browser session never sends that
+    header (it presents the hub credential separately). Its presence
+    therefore marks the agent lane — the same discriminator the
+    ``/api/session-token`` guard uses — and a route that reads HOST
+    state must fail it closed.
+
+    Header PRESENCE is the trigger, not whether the token authorizes
+    this container: a route reading the researcher's own machine has no
+    honest answer for an agent, so there is nothing for a valid token to
+    unlock. Shared by every such route, because a second copy is how one
+    of them would come to differ from the others.
+    """
+    if requestHttp.headers.get(S_SESSION_HEADER_NAME.lower(), ""):
+        raise HTTPException(
+            403, "The in-container agent must not read host state.",
+        )
 
 
 def fdictRequireLaneTupleForCommit(

@@ -712,8 +712,12 @@ WebSocket actions are outside it — every WS catalog entry is
 agent-safe today and `testEveryWebSocketActionIsAgentSafe` fails CI if
 a user-only one appears, but that is a tripwire, not enforcement. And
 routes that read host state need their own refusal at the handler
-(`_fnRejectAgentTokenLane`), because a host-file read is a capability
-question the catalog alone cannot express.
+(`routeContext.fnRejectAgentTokenLane`), because a host read is a
+capability question the catalog alone cannot express. That includes
+routes that read no file at all: `has-credential` asks the host
+keyring whether a service token exists, which is one bit about the
+researcher's own machine, and a GET is never state-mutating so the
+catalog gate never sees it.
 
 ### The four release triggers
 

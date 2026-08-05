@@ -2140,7 +2140,7 @@ def _fdictEntry(sRel):
         nodeid='tests/testReplayRoutes.py::test_hash_route_rejects_agent_token_lane',
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
-            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"]()\n'
             '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
         ),
@@ -2448,7 +2448,7 @@ def _fdictEntry(sRel):
         nodeid='tests/testReplayRoutes.py::test_context_import_rejects_agent_token_lane',
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
-            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"]()\n'
             '        dictWorkflow = fdictRequireWorkflow('
         ),
@@ -5224,6 +5224,34 @@ def _fdictEntry(sRel):
             '        dictDurableContext["appState"], '
             'dictDurableContext["sName"],\n'
             '    )\n'
+        ),
+    ),
+
+    Falsification(
+        # has-credential reads the researcher's HOST keyring and
+        # ignores the container id in its own path. It is a GET, so
+        # the catalog's agent-lane gate never sees it; without the
+        # handler's own refusal an in-container agent learns whether
+        # the researcher stores an Overleaf token.
+        nodeid=(
+            'tests/testAgentLaneEnforcement.py::'
+            'test_has_credential_refuses_the_agent_lane'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"]()\n'
+            '        syncDispatcher.fnValidateServiceName(sService)\n'
+            '        return {\n'
+            '            "bHasCredential": '
+            '_fbServiceHasStoredCredential(sService),\n'
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        syncDispatcher.fnValidateServiceName(sService)\n'
+            '        return {\n'
+            '            "bHasCredential": '
+            '_fbServiceHasStoredCredential(sService),\n'
         ),
     ),
 ]

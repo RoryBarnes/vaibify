@@ -38,7 +38,8 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
 
-from ..actionCatalog import S_SESSION_HEADER_NAME, fnAgentAction
+from ..actionCatalog import fnAgentAction
+from ..routeContext import fnRejectAgentTokenLane
 from ..personalLayerManager import (
     fdictComputeHashCommitment,
     fdictValidateHashCommitment,
@@ -342,7 +343,7 @@ def _fnRegisterContextImport(app, dictCtx):
     async def fnImportProjectContext(
         sContainerId: str, request: dict, requestHttp: Request,
     ):
-        _fnRejectAgentTokenLane(requestHttp)
+        fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -684,23 +685,6 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
         return {"dictPersonalLayer": dictLayer}
 
 
-def _fnRejectAgentTokenLane(requestHttp):
-    """Raise HTTP 403 when the request rides the in-container agent lane.
-
-    The agent authenticates REST calls with the per-container
-    ``X-Vaibify-Session`` header; a browser session never sends that
-    header (it presents the hub token separately). Its presence
-    therefore marks the agent lane — the same discriminator the
-    ``/api/session-token`` guard uses — and a host-reading route must
-    fail it closed.
-    """
-    if requestHttp.headers.get(S_SESSION_HEADER_NAME.lower(), ""):
-        raise HTTPException(
-            403, "The in-container agent must not read or hash "
-            "host files.",
-        )
-
-
 def _fnRegisterHashPersonalLayerFile(app, dictCtx):
     """Register POST .../personal-layer/hash (researcher-only).
 
@@ -716,7 +700,7 @@ def _fnRegisterHashPersonalLayerFile(app, dictCtx):
     async def fnHashPersonalLayerFile(
         sContainerId: str, request: dict, requestHttp: Request,
     ):
-        _fnRejectAgentTokenLane(requestHttp)
+        fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
         fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
         sLabel = str(request.get("sLabel") or "").strip()
