@@ -5278,4 +5278,51 @@ def _fdictEntry(sRel):
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # --- The six step-CRUD saves, carrier mode (a) (2026-08-05) ---
+    # One entry for the parametrized family, same convention as above.
+    # The registered mutant reverts the create call site. All six were
+    # kill-confirmed by hand on 2026-08-05 and each killed only its own
+    # parameter case (create additionally kills the warning-flag test
+    # below, which must drive create to reach the flag at all).
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepEditCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The step creation",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    # The create route's SECOND save. Registered separately because it
+    # is a separate call site, and because this mutant is what proves
+    # the family above does NOT cover it: reverting the warning-flag
+    # save kills ONLY this test and none of the six parameter cases.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheHundredStepWarningSaveIsCarriedToo'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '            fnCommitWorkflowSave(\n'
+            '                dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '                "The hundred-step warning flag",\n'
+            '            )\n'
+            '        return {\n'
+            '            "iIndex": iIndex,\n'
+        ),
+        new=(
+            '            dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '        return {\n'
+            '            "iIndex": iIndex,\n'
+        ),
+    ),
 ]

@@ -326,7 +326,6 @@ S_CARRIER_DECLARATION_SEPARATOR = "+"
 # neither can quietly leave it.
 SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("DELETE", "/api/overleaf/{sContainerId}/mirror"),
-    ("DELETE", "/api/steps/{sContainerId}/{iStepIndex}"),
     ("DELETE", "/api/steps/{sContainerId}/{iStepIndex}/generated-test"),
     ("DELETE", "/api/workflow/{sContainerId}/determinism"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
@@ -397,13 +396,8 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/pipeline/{sContainerId}/acknowledge-step/{iStepIndex}"),
     ("POST", "/api/pipeline/{sContainerId}/kill"),
     ("POST", "/api/steps/{sContainerId}/align-directories"),
-    ("POST", "/api/steps/{sContainerId}/create"),
-    ("POST", "/api/steps/{sContainerId}/declare-no-input-data"),
-    ("POST", "/api/steps/{sContainerId}/insert/{iPosition}"),
-    ("POST", "/api/steps/{sContainerId}/reorder"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/generate-test"),
-    ("POST", "/api/steps/{sContainerId}/{iStepIndex}/input-data"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/rename"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/scan-dependencies"),

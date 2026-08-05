@@ -5,13 +5,17 @@ __all__ = ["fnRegisterAll"]
 import asyncio
 import posixpath
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from .. import stepRename, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..fileStatusManager import fnMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiAICSLevel
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import ffilesForWorkflow, fnCommitWorkflowSave
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    fnDeclareCarrierMode,
+)
 from ..pipelineServer import (
     InputDataAddRequest,
     ReorderRequest,
@@ -141,8 +145,10 @@ def _fnRegisterStepCreate(app, dictCtx):
 
     @fnAgentAction("create-step")
     @app.post("/api/steps/{sContainerId}/create")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnCreateStep(
-        sContainerId: str, request: StepCreateRequest
+        sContainerId: str, request: StepCreateRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -150,13 +156,19 @@ def _fnRegisterStepCreate(app, dictCtx):
         _fnRaiseIfAtStepCap(dictWorkflow)
         dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         dictWorkflow["listSteps"].append(dictStep)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step creation",
+        )
         iIndex = len(dictWorkflow["listSteps"]) - 1
         iCount = len(dictWorkflow["listSteps"])
         bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
         if bShouldWarn:
             dictWorkflow["bWarnedHundredSteps"] = True
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fnCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The hundred-step warning flag",
+            )
         return {
             "iIndex": iIndex,
             "dictStep": fdictStepWithLabel(dictWorkflow, iIndex),
@@ -169,9 +181,10 @@ def _fnRegisterStepInsert(app, dictCtx):
 
     @fnAgentAction("insert-step")
     @app.post("/api/steps/{sContainerId}/insert/{iPosition}")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnInsertStep(
         sContainerId: str, iPosition: int,
-        request: StepCreateRequest,
+        request: StepCreateRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -180,12 +193,18 @@ def _fnRegisterStepInsert(app, dictCtx):
         dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         workflowManager.fnInsertStep(
             dictWorkflow, iPosition, dictStep)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step insertion",
+        )
         iCount = len(dictWorkflow["listSteps"])
         bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
         if bShouldWarn:
             dictWorkflow["bWarnedHundredSteps"] = True
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fnCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The hundred-step warning flag",
+            )
         return {
             "iIndex": iPosition,
             "dictStep": fdictStepWithLabel(dictWorkflow, iPosition),
@@ -339,7 +358,10 @@ def _fnRegisterStepDelete(app, dictCtx):
 
     @fnAgentAction("delete-step")
     @app.delete("/api/steps/{sContainerId}/{iStepIndex}")
-    async def fnDeleteStep(sContainerId: str, iStepIndex: int):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnDeleteStep(
+        sContainerId: str, iStepIndex: int, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -348,7 +370,10 @@ def _fnRegisterStepDelete(app, dictCtx):
                 dictWorkflow, iStepIndex)
         except IndexError as error:
             raise HTTPException(404, str(error))
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step deletion",
+        )
         return {
             "bSuccess": True,
             "listSteps": flistStepsWithLabels(dictWorkflow),
@@ -360,8 +385,10 @@ def _fnRegisterStepReorder(app, dictCtx):
 
     @fnAgentAction("reorder-steps")
     @app.post("/api/steps/{sContainerId}/reorder")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnReorderSteps(
-        sContainerId: str, request: ReorderRequest
+        sContainerId: str, request: ReorderRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -373,7 +400,10 @@ def _fnRegisterStepReorder(app, dictCtx):
             )
         except IndexError as error:
             raise HTTPException(400, str(error))
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step reorder",
+        )
         return {"listSteps": flistStepsWithLabels(dictWorkflow)}
 
 
@@ -382,9 +412,10 @@ def _fnRegisterInputDataAdd(app, dictCtx):
 
     @fnAgentAction("add-input-data-file")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/input-data")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnAddInputDataFile(
         sContainerId: str, iStepIndex: int,
-        request: InputDataAddRequest,
+        request: InputDataAddRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -403,7 +434,10 @@ def _fnRegisterInputDataAdd(app, dictCtx):
         bAdded = sPath not in listInputs
         if bAdded:
             listInputs.append(sPath)
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fnCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The input-data declaration",
+            )
         return {
             "bAdded": bAdded,
             "dictStep": fdictStepWithLabel(dictWorkflow, iStepIndex),
@@ -551,7 +585,10 @@ def _fnRegisterDeclareNoInputData(app, dictCtx):
 
     @fnAgentAction("declare-no-input-data")
     @app.post("/api/steps/{sContainerId}/declare-no-input-data")
-    async def fnDeclareNoInputData(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnDeclareNoInputData(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -566,7 +603,10 @@ def _fnRegisterDeclareNoInputData(app, dictCtx):
             dictStep["bNoInputData"] = True
             listDeclared.append(iIndex)
         if listDeclared:
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fnCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The no-input-data declaration",
+            )
         return {"listDeclaredStepIndices": listDeclared}
 
 

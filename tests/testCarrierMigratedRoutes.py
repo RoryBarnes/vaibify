@@ -2421,3 +2421,170 @@ def testEveryMigratedDeclarationRouteStillAnswersTwoHundred(
         f"/api/workflow/{S_CONTAINER_ID}/{sSuffix}", json=dictBody,
     )
     assert response.status_code == 200, response.text
+
+
+# ---------------------------------------------------------------------
+# Group 1 continued -- the six step-CRUD saves, mode (a).
+#
+# The same shape as the declaration family above, and for the same
+# reason: every one of these routes edits the workflow dict and then
+# persists project.json through the shared
+# ``routeContext.fnCommitWorkflowSave``, so the isolation question is
+# again what that sharing does to a kill-confirm. The parametrization
+# answers it the same way -- the mutant for a route is that route's OWN
+# call site reverted to ``dictCtx["save"](...)``, which kills exactly
+# its own parameter case, while a defect in the shared helper
+# legitimately kills all six.
+#
+# Each body REACHES the save against the draft harness's one-step
+# workflow with no prerequisite call to a sibling route. That matters
+# for two of them specifically: ``input-data`` and
+# ``declare-no-input-data`` both SKIP their save when the state they
+# record is already present, so arranging that state by driving a
+# sibling first is what would let one broken carrier fail two
+# parameter cases.
+# ---------------------------------------------------------------------
+
+def _fdictNewStepBody(sName):
+    """Return a create/insert body whose slug is unique in the harness."""
+    return {
+        "sName": sName,
+        "sDirectory": "",
+        "bPlotOnly": False,
+        "saPlotCommands": [],
+        "saPlotFiles": [],
+    }
+
+
+T_STEP_SAVE_ROUTES = [
+    ("POST", "create", _fdictNewStepBody("Carried Step")),
+    ("POST", "insert/0", _fdictNewStepBody("Inserted Step")),
+    ("DELETE", "0", None),
+    ("POST", "reorder", {"iFromIndex": 0, "iToIndex": 0}),
+    ("POST", "0/input-data", {"sPath": "data/observations.csv"}),
+    ("POST", "declare-no-input-data", None),
+]
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sMethod,sSuffix,dictBody", T_STEP_SAVE_ROUTES)
+def testTheStepEditCommitsThroughTheSynchronousCarrier(
+    tclientGated, sMethod, sSuffix, dictBody,
+):
+    """Each step-CRUD route persists project.json under mode (a).
+
+    Mode (a) is not interchangeable here, for the reason the declaration
+    family states: the synchronous carrier writes a ``file-write``
+    journal record whose expected hash IS the workflow's serialization
+    fingerprint, so a crash inside the commit window can be adjudicated
+    afterwards by hashing the file on disk. A lock-held worker would
+    journal a ``helper`` record, which proves nothing about the bytes.
+
+    Kills: reverting this route's ``fnCommitWorkflowSave(...)`` call to
+    ``dictCtx["save"](sContainerId, dictWorkflow)``. On the enforced
+    branch that save reaches the write primitive with no admission open
+    at all, so the recorded mode is ``''``.
+
+    The status code is deliberately NOT asserted, so a lost carrier is
+    reported as the admission it ran under rather than as a generic 500;
+    the happy path is pinned separately below.
+    """
+    client, connectionDocker = tclientGated
+    client.request(
+        sMethod, f"/api/steps/{S_CONTAINER_ID}/{sSuffix}", json=dictBody,
+    )
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+@pytest.mark.parametrize("sMethod,sSuffix,dictBody", T_STEP_SAVE_ROUTES)
+def testEveryMigratedStepRouteStillAnswersTwoHundred(
+    tclientGated, sMethod, sSuffix, dictBody,
+):
+    """The happy path, kept where it cannot distort a kill-confirm.
+
+    Not a falsification claim: just the assertion that a researcher can
+    still add, insert, delete, reorder and annotate steps, which the
+    test above deliberately does not make.
+    """
+    client, _connectionDocker = tclientGated
+    response = client.request(
+        sMethod, f"/api/steps/{S_CONTAINER_ID}/{sSuffix}", json=dictBody,
+    )
+    assert response.status_code == 200, response.text
+
+
+def _fdictWorkflowOneStepBelowTheWarning():
+    """Return the draft workflow padded to 99 steps.
+
+    The hundred-step warning fires on the step that CROSSES the
+    threshold, so the served workflow has to sit exactly one below it.
+    Padded here rather than by calling ``create`` ninety-nine times: a
+    setup that drives the route under test would make its own carrier a
+    prerequisite of its own assertion.
+    """
+    dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+    dictStepTemplate = dictWorkflow["listSteps"][0]
+    dictWorkflow["listSteps"] = [
+        dict(
+            copy.deepcopy(dictStepTemplate),
+            sName=f"Filler {iStep}", sDirectory=f"Filler{iStep}",
+        )
+        for iStep in range(99)
+    ]
+    return dictWorkflow
+
+
+class DockerDoubleServingNinetyNineSteps(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gated double over a workflow one step below the warning."""
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
+            self._dictFiles[sPath] = json.dumps(
+                _fdictWorkflowOneStepBelowTheWarning(),
+            ).encode("utf-8")
+        return DockerDoubleThatCallsTheRealGates.fbaFetchFile(
+            self, sContainerId, sPath, iMaxBytes,
+        )
+
+
+@pytest.mark.falsification
+def testTheHundredStepWarningSaveIsCarriedToo():
+    """The create route's SECOND save is carried, not just the first.
+
+    ``fnCreateStep`` saves twice when the workflow crosses a hundred
+    steps: once for the step itself, and once more for the
+    ``bWarnedHundredSteps`` flag. That flag's save is a separate call
+    site, so a migration that carried only the obvious one would leave a
+    write reaching the primitive unadmitted -- and it would be invisible
+    to the parametrized test above, whose one-step workflow never
+    crosses the threshold. This is the same class as the two-mode routes
+    elsewhere in this file: one handler, two carriers, and only a test
+    that drives BOTH can tell a missing one from a present one.
+
+    Kills: reverting the ``bShouldWarn`` branch's
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = _tConnectGatedClient(
+        DockerDoubleServingNinetyNineSteps(),
+    )
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/create",
+        json=_fdictNewStepBody("Hundredth Step"),
+    )
+    assert response.json()["bShouldWarnHundredSteps"] is True, response.text
+    listWrites = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+    ]
+    assert len(listWrites) >= 2, (
+        "the crossing create must write project.json twice -- once for "
+        f"the step and once for the warning flag; it wrote {listWrites}"
+    )
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
