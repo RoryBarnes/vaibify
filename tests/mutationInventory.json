@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 64,
-  "iRowCount": 309,
+  "iRowCount": 311,
   "iUnresolvedSiteCount": 30,
   "listAcquisitions": [
     {
@@ -8694,6 +8694,58 @@
       "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A typed read: the adapter hands a PATH and a declared operation name to the audited-read carve-out, never a command, so it reaches no mutation-capable primitive and there is nothing for a carrier to admit. It was `test -f`/`test -d` through the general exec primitive until 2026-08-04, which the gate had to treat as mutating -- so under an enforced lane an existence check was refused, and the level gate above it read the refusal as 'unverified' and downgraded the workflow's badge.",
+      "sFile": "reproducibility/repoFiles.py",
+      "sFingerprint": "7776befb5de8696c",
+      "sFunction": "fbIsDir",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask whether a repo-relative path is an existing directory inside the container",
+      "sOperationMetadata": "path in, boolean out; same absent-versus-unreadable split as the file probe",
+      "sPrimitive": "fbContainerPathIsDirectory",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A typed read: the adapter hands a PATH and a declared operation name to the audited-read carve-out, never a command, so it reaches no mutation-capable primitive and there is nothing for a carrier to admit. It was `test -f`/`test -d` through the general exec primitive until 2026-08-04, which the gate had to treat as mutating -- so under an enforced lane an existence check was refused, and the level gate above it read the refusal as 'unverified' and downgraded the workflow's badge.",
+      "sFile": "reproducibility/repoFiles.py",
+      "sFingerprint": "6e23ccf376050e9f",
+      "sFunction": "fbIsFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "ask whether a repo-relative path is an existing file inside the container",
+      "sOperationMetadata": "path in, boolean out; a failed READ raises OSError and an ABSENT path returns False, because collapsing the two would reintroduce the silent downgrade one layer down",
+      "sPrimitive": "fbContainerPathIsFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
         "UNCLASSIFIED"
       ],
       "listExecutionLanes": [
@@ -8946,7 +8998,7 @@
       "sScopeFingerprint": "877030e7968f6632"
     },
     {
-      "iLine": 477,
+      "iLine": 518,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -8955,7 +9007,7 @@
       "sScopeFingerprint": "557a2728caf5eb2c"
     },
     {
-      "iLine": 341,
+      "iLine": 382,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -8964,7 +9016,7 @@
       "sScopeFingerprint": "0524d95927d35112"
     },
     {
-      "iLine": 844,
+      "iLine": 922,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -8973,7 +9025,7 @@
       "sScopeFingerprint": "9c5865a393cf0190"
     },
     {
-      "iLine": 311,
+      "iLine": 352,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -8982,7 +9034,7 @@
       "sScopeFingerprint": "307cc8fa4deecaa8"
     },
     {
-      "iLine": 832,
+      "iLine": 910,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -8991,7 +9043,7 @@
       "sScopeFingerprint": "75b18a46492cbca3"
     },
     {
-      "iLine": 819,
+      "iLine": 897,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9000,7 +9052,7 @@
       "sScopeFingerprint": "bcdb2d354b818c52"
     },
     {
-      "iLine": 826,
+      "iLine": 904,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9009,7 +9061,7 @@
       "sScopeFingerprint": "468376d923521926"
     },
     {
-      "iLine": 445,
+      "iLine": 486,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9018,7 +9070,7 @@
       "sScopeFingerprint": "f0ad85dd026fbe9a"
     },
     {
-      "iLine": 440,
+      "iLine": 481,
       "iOrdinal": 1,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9099,7 +9151,7 @@
       "sScopeFingerprint": "7b73ea65a9451384"
     },
     {
-      "iLine": 127,
+      "iLine": 128,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/environmentSnapshot.py",

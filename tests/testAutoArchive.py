@@ -3,6 +3,10 @@
 import asyncio
 from unittest.mock import MagicMock, patch
 
+from tests.dockerConnectionDoubles import (
+    fconnectionDoubleWithNoContainerPaths,
+)
+
 from vaibify.gui.fileStatusManager import (
     flistStepRemoteFiles,
     fnMaybeAutoArchive,
@@ -225,7 +229,7 @@ def test_fnMaybeAutoArchive_noop_when_setting_off():
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "passed"}
     bResult = _fnRunAsync(fnMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0, 0,
+        fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
     ))
     assert bResult is False
 
@@ -236,7 +240,7 @@ def test_fnMaybeAutoArchive_noop_when_already_verified():
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "passed"}
     bResult = _fnRunAsync(fnMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0,
+        fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0,
         iAICSLevelBefore=1,
     ))
     assert bResult is False
@@ -248,7 +252,7 @@ def test_fnMaybeAutoArchive_noop_when_step_not_now_verified():
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "untested"}
     bResult = _fnRunAsync(fnMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0, 0,
+        fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
     ))
     assert bResult is False
 
@@ -264,7 +268,7 @@ def test_fnMaybeAutoArchive_pushes_overleaf_on_transition():
         return_value=(0, "ok"),
     ) as mockPush:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is True
     assert mockPush.called
@@ -282,7 +286,7 @@ def test_fnMaybeAutoArchive_pushes_zenodo_on_transition():
         return_value=(0, "ok"),
     ) as mockArchive:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is True
     assert mockArchive.called
@@ -306,7 +310,7 @@ def test_fnMaybeAutoArchive_pushes_both_remotes():
         return_value=(0, "ok"),
     ) as mockZenodo:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is True
     assert mockOverleaf.called
@@ -324,7 +328,7 @@ def test_fnMaybeAutoArchive_swallows_overleaf_failure():
         side_effect=RuntimeError("network down"),
     ):
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is False
 
@@ -339,7 +343,7 @@ def test_fnMaybeAutoArchive_no_remotes_configured_returns_false():
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
     ) as mockPush:
         bResult = _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         ))
     assert bResult is False
     assert not mockPush.called

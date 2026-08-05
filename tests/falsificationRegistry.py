@@ -4887,6 +4887,25 @@ def _fdictEntry(sRel):
 
     Falsification(
         nodeid=(
+            'tests/testMutationBoundary.py::'
+            'testAnExistenceProbeSurvivesAnEnforcedLane'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '        return self.connectionDocker.fbContainerPathIsFile(\n'
+            '            self.sContainerId, self._fsAbsolute(sRelPath),\n'
+            '        )\n'
+        ),
+        new=(
+            '        iExitCode, _s = self._ftExec(\n'
+            '            "test -f " + fsShellQuotePosix('
+            'self._fsAbsolute(sRelPath)),\n'
+            '        )\n'
+            '        return iExitCode == 0\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/testLevelGatesRefusalPropagation.py::'
             'testAGateNeverSwallowsAnAdmissionRefusal'
         ),

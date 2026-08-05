@@ -39,6 +39,7 @@ import pytest
 from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
+from vaibify.docker.dockerConnection import DockerConnection
 
 
 S_OUTPUT_FILENAME = "result.txt"
@@ -102,6 +103,15 @@ class LocalShellContainer:
         os.makedirs(os.path.dirname(sPath), exist_ok=True)
         with open(sPath, "wb") as fileHandle:
             fileHandle.write(baContent)
+
+    # The existence probes are typed reads, and these are the REAL
+    # implementations borrowed off DockerConnection: they need only
+    # ``texecRunInContainerStreamed``, which this class runs for real,
+    # so the shipped program text executes against the real tree like
+    # everything else here. Nothing answers a canned value.
+    _texecRunTypedRead = DockerConnection._texecRunTypedRead
+    fbContainerPathIsFile = DockerConnection.fbContainerPathIsFile
+    fbContainerPathIsDirectory = DockerConnection.fbContainerPathIsDirectory
 
 
 # ----------------------------------------------------------------------

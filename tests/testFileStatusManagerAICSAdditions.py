@@ -8,6 +8,10 @@ inside ``fnMaybeAutoArchive``.
 import asyncio
 from unittest.mock import MagicMock, patch
 
+from tests.dockerConnectionDoubles import (
+    fconnectionDoubleWithNoContainerPaths,
+)
+
 import pytest
 
 from vaibify.gui.fileStatusManager import (
@@ -117,7 +121,7 @@ def test_auto_archive_returns_false_on_invalid_step_index():
     dictWorkflow["bAutoArchive"] = True
     # iAICSLevelBefore=0 → promoted; iStepIndex=999 is out of range.
     bResult = _fnRunAsync(fnMaybeAutoArchive(
-        MagicMock(), "ctr", dictWorkflow, 999, 0,
+        fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 999, 0,
     ))
     assert bResult is False
 
@@ -127,7 +131,7 @@ def test_auto_archive_negative_step_index_returns_false():
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     dictWorkflow["bAutoArchive"] = True
     bResult = _fnRunAsync(fnMaybeAutoArchive(
-        MagicMock(), "ctr", dictWorkflow, -1, 0,
+        fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, -1, 0,
     ))
     assert bResult is False
 
@@ -140,7 +144,7 @@ def test_auto_archive_promoted_runs_envelope_refresh():
         "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
     ) as mockGenerate:
         _fnRunAsync(fnMaybeAutoArchive(
-            MagicMock(), "ctr", dictWorkflow, 0, 0,
+            fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 0, 0,
         ))
     assert mockGenerate.called
 

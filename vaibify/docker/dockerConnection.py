@@ -247,6 +247,8 @@ _S_TYPED_READ_PATH_SLOT = "<<PATH>>"
 S_TYPED_READ_FILE_BASE64 = "readFileBase64"
 S_TYPED_READ_DIRECTORY = "listDirectory"
 S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
+S_TYPED_READ_FILE_EXISTS = "fileExists"
+S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -271,7 +273,46 @@ _DICT_TYPED_READ_PROGRAMS = {
         "'iUsedBytes': (st.f_blocks-st.f_bfree)*st.f_frsize, "
         "'iFreeBytes': st.f_bavail*st.f_frsize}))"
     ),
+    # Existence probes, replacing `test -f` / `test -d` assembled by a
+    # repo-files adapter and run through the general exec primitive.
+    # They are reads by any reading, but the primitive cannot know that
+    # from command text, so under an enforced lane every one of them was
+    # refused -- and a level gate that catches OSError turned the
+    # refusal into "not verified", quietly downgrading a workflow's
+    # reproducibility level. `os.path.isfile`/`isdir` follow symlinks
+    # exactly as `test -f`/`test -d` do, so the answer is unchanged.
+    # The result travels as stdout rather than an exit code because a
+    # non-zero exit is how this layer spells "the read itself failed",
+    # and "the file is absent" must not be the same answer.
+    S_TYPED_READ_FILE_EXISTS: (
+        "import os,sys; "
+        "sys.stdout.write('1' if os.path.isfile("
+        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+    ),
+    S_TYPED_READ_DIRECTORY_EXISTS: (
+        "import os,sys; "
+        "sys.stdout.write('1' if os.path.isdir("
+        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+    ),
 }
+
+
+def _fbInterpretPathProbe(resultExec, sPath):
+    """Return the yes/no answer a declared path probe printed.
+
+    Shared by the two existence adapters, and deliberately takes the
+    RESULT rather than the operation name: threading the name through a
+    helper would make the call to the exemption pass a variable, and
+    ``testEveryTypedReadNamesADeclaredOperation`` fails on that -- a
+    computed name would put the choice of program back in a caller's
+    hands, which is the property that makes the exemption enumerable.
+    """
+    if resultExec.iExitCode != 0:
+        raise OSError(
+            f"Cannot probe path in container: {sPath} "
+            f"({resultExec.sStderr.strip()})"
+        )
+    return resultExec.sStdout.strip() == "1"
 
 
 class DockerConnection:
@@ -651,6 +692,43 @@ class DockerConnection:
         return [
             sEntry for sEntry in resultExec.sStdout.split("\n") if sEntry
         ]
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        """Return True iff the container path is an existing file.
+
+        An AUDITED ADAPTER on the same terms as the other three: the
+        caller supplies a PATH, this method supplies only the NAME of a
+        declared read operation, and the program is fixed source text.
+
+        It replaced ``"test -f " + fsShellQuotePosix(sPath)`` assembled
+        by ``ContainerRepoFiles`` and run through the general exec
+        primitive. That made an existence check indistinguishable from
+        an arbitrary command, so under an enforced lane it was refused
+        -- and its caller, a level gate catching ``OSError``, read the
+        refusal as "unverified" and downgraded the workflow's badge.
+
+        A failed READ raises ``OSError``; an ABSENT path returns False.
+        Collapsing the two would put the old bug back one layer down.
+        """
+        return _fbInterpretPathProbe(
+            self._texecRunTypedRead(
+                sContainerId, S_TYPED_READ_FILE_EXISTS, sPath,
+            ),
+            sPath,
+        )
+
+    def fbContainerPathIsDirectory(self, sContainerId, sPath):
+        """Return True iff the container path is an existing directory.
+
+        The ``test -d`` half of :meth:`fbContainerPathIsFile`; see there
+        for why these are typed reads rather than execs.
+        """
+        return _fbInterpretPathProbe(
+            self._texecRunTypedRead(
+                sContainerId, S_TYPED_READ_DIRECTORY_EXISTS, sPath,
+            ),
+            sPath,
+        )
 
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path.

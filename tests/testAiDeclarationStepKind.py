@@ -17,7 +17,9 @@ Covers the contract that a step with ``sStepKind == "ai-declaration"``:
 """
 
 import json
-from unittest.mock import MagicMock
+from tests.dockerConnectionDoubles import (
+    fconnectionDoubleWithNoContainerPaths,
+)
 
 import pytest
 
@@ -114,7 +116,7 @@ def test_save_then_load_round_trips_step_kind(tmp_path):
     sWorkflowPath = sRepo + "/.vaibify/workflows/w.json"
     dictPaths = {}
 
-    mockDocker = MagicMock()
+    mockDocker = fconnectionDoubleWithNoContainerPaths()
 
     def _fWrite(_sCid, sPath, baBody):
         dictPaths[sPath] = baBody
@@ -161,7 +163,7 @@ def test_workflow_json_on_disk_preserves_declaration_file(tmp_path):
     sWorkflowPath = "/workspace/Project/.vaibify/workflows/w.json"
     dictWritten = {}
 
-    mockDocker = MagicMock()
+    mockDocker = fconnectionDoubleWithNoContainerPaths()
     mockDocker.fnWriteFile.side_effect = (
         lambda _cid, sPath, baBody: dictWritten.setdefault(sPath, baBody)
     )

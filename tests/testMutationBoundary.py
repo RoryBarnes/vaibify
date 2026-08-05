@@ -128,6 +128,47 @@ def testAnAuditedReadIsExemptButOnlyInsideItsAdapter(fnEnforcedLane):
     )
 
 
+@pytest.mark.falsification
+def testAnExistenceProbeSurvivesAnEnforcedLane(fnEnforcedLane):
+    """A repo-files existence check is a read and must be admitted as one.
+
+    ``ContainerRepoFiles.fbIsFile`` assembled ``test -f <quoted path>``
+    and ran it through the general exec primitive. The gate cannot tell
+    that from ``rm -rf`` -- command text carries no such distinction --
+    so under an enforced lane every existence check was REFUSED. The
+    damage was not a visible error: the level gates that call it catch
+    ``OSError``, and ``MutationNotAdmittedError`` is one, so a refused
+    probe was read as "this file is not there" and the workflow's
+    reproducibility badge silently dropped.
+
+    Driven through ``ContainerRepoFiles`` rather than through the
+    connection method directly, because the adapter is what had to
+    change and a test of the gateway alone would pass with the adapter
+    still shelling out.
+
+    Kills: reverting ``ContainerRepoFiles.fbIsFile`` to
+    ``self._ftExec("test -f " + fsShellQuotePosix(...))``.
+    """
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+
+    stubContainer = _StubContainer()
+    connection = _fconnectionWithStubContainer(stubContainer)
+    filesRepo = ContainerRepoFiles(connection, "cid-1", "/workspace/repo")
+
+    assert filesRepo.fbIsFile("MANIFEST.sha256") is False
+    assert filesRepo.fbIsDir(".vaibify") is False
+    assert len(stubContainer.listExecuted) == 2, (
+        "the probes did not reach the container at all, so this proves "
+        "nothing about how they were admitted"
+    )
+
+    with pytest.raises(mutationAdmission.MutationNotAdmittedError):
+        connection.texecRunInContainerStreamed("cid-1", "rm -rf /workspace")
+    assert len(stubContainer.listExecuted) == 2, (
+        "the exemption leaked past the probes into general execution"
+    )
+
+
 def testTheExemptionIsGrantedInExactlyOnePlace():
     """One grant point, so the exempt set is one file's worth of reading.
 
