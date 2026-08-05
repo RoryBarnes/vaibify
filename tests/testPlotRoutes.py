@@ -111,7 +111,6 @@ class TestFlistConvertToStandards:
     @patch("vaibify.gui.routes.plotRoutes._fsBuildConvertCommand",
            side_effect=lambda sR, sO, sB: f"convert {sB}")
     @patch("vaibify.gui.routes.plotRoutes._flistVerifyConverted",
-           new_callable=AsyncMock,
            return_value=["plot1_standard.png"])
     def test_converts_all_plots(
         self, mockVerify, mockBuild, mockStdPath,
@@ -119,9 +118,8 @@ class TestFlistConvertToStandards:
         dictCtx = _fdictMakeContext()
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
-        listResult = _fnRunAsync(
-            _flistConvertToStandards(
-                dictCtx, "ctr1", listPlots, ""))
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "")
         assert listResult == ["plot1_standard.png"]
         dictCtx["docker"].ftResultExecuteCommand.assert_called_once()
         sCommand = (dictCtx["docker"]
@@ -134,7 +132,6 @@ class TestFlistConvertToStandards:
     @patch("vaibify.gui.routes.plotRoutes._fsBuildConvertCommand",
            side_effect=lambda sR, sO, sB: f"convert {sB}")
     @patch("vaibify.gui.routes.plotRoutes._flistVerifyConverted",
-           new_callable=AsyncMock,
            return_value=["plot2_standard.png"])
     def test_filters_to_target(
         self, mockVerify, mockBuild, mockStdPath,
@@ -142,9 +139,8 @@ class TestFlistConvertToStandards:
         dictCtx = _fdictMakeContext()
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
-        listResult = _fnRunAsync(
-            _flistConvertToStandards(
-                dictCtx, "ctr1", listPlots, "plot2.pdf"))
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "plot2.pdf")
         sCommand = (dictCtx["docker"]
                      .ftResultExecuteCommand.call_args[0][1])
         assert "convert plot1.pdf" not in sCommand
@@ -153,9 +149,8 @@ class TestFlistConvertToStandards:
     def test_returns_empty_when_no_commands(self):
         dictCtx = _fdictMakeContext()
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
-        listResult = _fnRunAsync(
-            _flistConvertToStandards(
-                dictCtx, "ctr1", listPlots, "nonexistent.pdf"))
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "nonexistent.pdf")
         assert listResult == []
 
 
@@ -164,20 +159,16 @@ class TestFlistVerifyConverted:
         dictCtx = _fdictMakeContext(ftResult=(0, ""))
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
         listConverted = ["plot1_standard.png"]
-        listResult = _fnRunAsync(
-            _flistVerifyConverted(
-                dictCtx, "ctr1", listPlots,
-                listConverted, ""))
+        listResult = _flistVerifyConverted(
+            dictCtx, "ctr1", listPlots, listConverted, "")
         assert listResult == ["plot1_standard.png"]
 
     def test_excludes_missing_files(self):
         dictCtx = _fdictMakeContext(ftResult=(1, ""))
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
         listConverted = ["plot1_standard.png"]
-        listResult = _fnRunAsync(
-            _flistVerifyConverted(
-                dictCtx, "ctr1", listPlots,
-                listConverted, ""))
+        listResult = _flistVerifyConverted(
+            dictCtx, "ctr1", listPlots, listConverted, "")
         assert listResult == []
 
     def test_filters_by_target(self):
@@ -186,10 +177,8 @@ class TestFlistVerifyConverted:
                       ("/out/plot2.pdf", "plot2.pdf")]
         listConverted = ["plot1_standard.png",
                           "plot2_standard.png"]
-        listResult = _fnRunAsync(
-            _flistVerifyConverted(
-                dictCtx, "ctr1", listPlots,
-                listConverted, "plot2.pdf"))
+        listResult = _flistVerifyConverted(
+            dictCtx, "ctr1", listPlots, listConverted, "plot2.pdf")
         assert listResult == ["plot2_standard.png"]
 
 
@@ -253,12 +242,14 @@ class TestFdictCheckStandardsExist:
 class TestRouteStandardizePlots:
     @patch("vaibify.gui.routes.plotRoutes._flistResolvePlotPaths",
            return_value=[("/out/fig.pdf", "fig.pdf")])
-    @patch("vaibify.gui.routes.plotRoutes._flistConvertToStandards",
+    @patch("vaibify.gui.routes.plotRoutes."
+           "_flistConvertPlotsUnderTheDrain",
            new_callable=AsyncMock,
            return_value=["fig_standard.png"])
+    @patch("vaibify.gui.routes.plotRoutes.fnCommitWorkflowSave")
     @patch("vaibify.gui.routes.plotRoutes.fdictRequireWorkflow")
     def test_standardize_success(
-        self, mockRequire, mockConvert, mockResolve,
+        self, mockRequire, mockSave, mockConvert, mockResolve,
     ):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
@@ -288,7 +279,10 @@ class TestRouteStandardizePlots:
         assert dictData["listStandardizedBasenames"] == [
             "fig.pdf"]
         assert "sTimestamp" in dictData
-        dictCtx["save"].assert_called_once()
+        # The save goes through the mode-(a) carrier now, not straight
+        # to dictCtx["save"]; what this asserts is unchanged -- the
+        # route records the standardization exactly once.
+        mockSave.assert_called_once()
 
     @patch("vaibify.gui.routes.plotRoutes._flistResolvePlotPaths",
            return_value=[])
@@ -319,7 +313,8 @@ class TestRouteStandardizePlots:
 
     @patch("vaibify.gui.routes.plotRoutes._flistResolvePlotPaths",
            return_value=[("/out/fig.pdf", "fig.pdf")])
-    @patch("vaibify.gui.routes.plotRoutes._flistConvertToStandards",
+    @patch("vaibify.gui.routes.plotRoutes."
+           "_flistConvertPlotsUnderTheDrain",
            new_callable=AsyncMock, return_value=[])
     @patch("vaibify.gui.routes.plotRoutes.fdictRequireWorkflow")
     def test_standardize_conversion_failure_raises_500(

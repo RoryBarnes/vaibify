@@ -15,6 +15,15 @@ from ..pipelineServer import (
     _fsBuildConvertCommand,
 )
 from ..fileStatusManager import _flistResolvePlotPaths
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    fnCommitWorkflowSave,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    fnDeclareCarrierMode,
+)
 
 
 def _flistStandardizedBasenames(listPlots, sTargetFile):
@@ -48,10 +57,17 @@ def _fsFindStandardForFile(listPlots, sFileName):
     return ""
 
 
-async def _flistConvertToStandards(
+def _flistConvertToStandards(
     dictCtx, sContainerId, listPlots, sTargetFile,
 ):
-    """Convert plot files to standard PNGs inside the container."""
+    """Convert plot files to standard PNGs inside the container.
+
+    Synchronous because the only caller is the lock-held carrier's
+    worker, which already runs in a thread: an ``async def`` here would
+    be CALLED in that thread and hand back a coroutine nobody awaits,
+    so no plot would ever be converted and the route would report
+    success for having done nothing.
+    """
     listCommands = []
     listConverted = []
     for sResolved, sBasename in listPlots:
@@ -66,21 +82,25 @@ async def _flistConvertToStandards(
     if not listCommands:
         return []
     sFullCommand = " && ".join(listCommands)
-    await asyncio.to_thread(
-        dictCtx["docker"].ftResultExecuteCommand,
+    dictCtx["docker"].ftResultExecuteCommand(
         sContainerId, sFullCommand,
     )
-    return await _flistVerifyConverted(
+    return _flistVerifyConverted(
         dictCtx, sContainerId, listPlots,
         listConverted, sTargetFile,
     )
 
 
-async def _flistVerifyConverted(
+def _flistVerifyConverted(
     dictCtx, sContainerId, listPlots, listConverted,
     sTargetFile,
 ):
-    """Return only the basenames whose standard PNGs exist."""
+    """Return only the basenames whose standard PNGs exist.
+
+    Runs inside the same worker as the conversion that produced them,
+    so the check and the effect it checks cannot be separated by an
+    ownership hand-over landing between them.
+    """
     listVerified = []
     for sConverted, (sResolved, sBasename) in zip(
         listConverted, listPlots,
@@ -89,14 +109,50 @@ async def _flistVerifyConverted(
             continue
         sDir = posixpath.dirname(sResolved)
         sFullPath = posixpath.join(sDir, sConverted)
-        iExitCode, _ = await asyncio.to_thread(
-            dictCtx["docker"].ftResultExecuteCommand,
+        iExitCode, _ = dictCtx["docker"].ftResultExecuteCommand(
             sContainerId,
             f"test -f {fsShellQuote(sFullPath)}",
         )
         if iExitCode == 0:
             listVerified.append(sConverted)
     return listVerified
+
+
+async def _flistConvertPlotsUnderTheDrain(
+    dictCtx, sContainerId, listPlots, sTargetFile, requestHttp,
+):
+    """Convert this step's plots to standards holding the drain.
+
+    Mode (b) rather than mode (a) for the same reason ``clean-outputs``
+    is: the effect is a batch of ``convert``/``gs`` invocations that can
+    run for many seconds and crosses a worker-thread ``await``, so the
+    drain has to be held for the WORKER's life rather than the
+    requesting coroutine's. The supervisor also records the operation
+    name, which is what lets a hand-over refusal say
+    "standardize-plots is running" instead of "busy".
+
+    The verification execs run inside the same worker deliberately:
+    each is a ``test -f`` against a file the conversion just wrote, and
+    a report that a standard exists is only worth having if nothing
+    could have replaced it in between.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Standardizing the step's plots",
+    )
+
+    def fnConvertThePlots(supervisor=None):
+        del supervisor
+        return _flistConvertToStandards(
+            dictCtx, sContainerId, listPlots, sTargetFile,
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "standardize-plots",
+        fnConvertThePlots,
+    )
+    return dictOutcome["result"]
 
 
 async def _fdictCheckStandardsExist(
@@ -143,6 +199,9 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/standardize-plots"
     )
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
     async def fnStandardizePlots(
         sContainerId: str, iStepIndex: int,
         request: Request,
@@ -159,8 +218,8 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         if not listPlots:
             raise HTTPException(
                 400, "No plot files in this step")
-        listConverted = await _flistConvertToStandards(
-            dictCtx, sContainerId, listPlots, sTargetFile)
+        listConverted = await _flistConvertPlotsUnderTheDrain(
+            dictCtx, sContainerId, listPlots, sTargetFile, request)
         if not listConverted:
             raise HTTPException(
                 500, "Conversion failed: no standard PNGs "
@@ -173,7 +232,10 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         sTimestamp = datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M UTC")
         dictVerification["sLastStandardized"] = sTimestamp
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, request,
+            "Recording the standardized plots",
+        )
         return {
             "bSuccess": True,
             "listConverted": listConverted,

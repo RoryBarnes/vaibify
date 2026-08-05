@@ -89,7 +89,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # executor -- and it is now a direct call inside a carrier's worker,
 # which the scan reads exactly. A migration can recover an
 # unattributable row, not only classify a legible one.
-I_UNCLASSIFIED_ROW_BUDGET = 304
+I_UNCLASSIFIED_ROW_BUDGET = 302
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

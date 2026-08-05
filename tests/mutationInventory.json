@@ -5418,52 +5418,52 @@
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "lock-held"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "carrier-supervisor"
       ],
       "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "migrate",
+      "sExclusionRationale": "",
       "sFile": "gui/routes/plotRoutes.py",
-      "sFingerprint": "9d9f3760cbb6403c",
+      "sFingerprint": "918d74e178023140",
       "sFunction": "_flistConvertToStandards",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sJournalKind": "helper",
+      "sLifetime": "request",
+      "sLogicalOperation": "convert every declared plot file of one step into the standard PNG the dashboard compares against",
+      "sOperationMetadata": "one joined batch of pdftoppm-or-ghostscript invocations writing <stem>_standard.png beside each plot; the supervisor registers kind 'helper' on target 'standardize-plots', which is the name a busy transfer reports",
       "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "lock-held"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "carrier-supervisor"
       ],
       "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "migrate",
+      "sExclusionRationale": "",
       "sFile": "gui/routes/plotRoutes.py",
-      "sFingerprint": "9d9f3760cbb6403c",
+      "sFingerprint": "51c3e35afdccaf53",
       "sFunction": "_flistVerifyConverted",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sJournalKind": "helper",
+      "sLifetime": "request",
+      "sLogicalOperation": "confirm each standard PNG the conversion just wrote is present, so the route reports only what exists",
+      "sOperationMetadata": "one `test -f <standard png>` per converted plot, run inside the SAME worker as the conversion so nothing can replace a standard between the write and the check",
       "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,

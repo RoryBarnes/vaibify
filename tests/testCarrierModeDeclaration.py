@@ -189,7 +189,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/save-and-run-test"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/scan-dependencies"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"),
-    ("POST", "/api/steps/{sContainerId}/{iStepIndex}/standardize-plots"),
     ("POST", "/api/sync/{sContainerId}/arxiv/configure"),
     ("POST", "/api/sync/{sContainerId}/setup"),
     ("POST", "/api/sync/{sContainerId}/track"),

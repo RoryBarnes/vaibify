@@ -4825,6 +4825,49 @@ def _fdictEntry(sRel):
 
     Falsification(
         nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePlotConversionRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"standardize-plots",\n'
+            '        fnConvertThePlots,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"standardize-plots",\n'
+            '        fnConvertThePlots, {"sDockerContainerId": '
+            'sContainerId},\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePlotStandardizationSavesSynchronously'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, request,\n'
+            '            "Recording the standardized plots",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
             'tests/testBlindSpotDispositions.py::'
             'testEveryGuiBlindSpotCarriesADisposition'
         ),

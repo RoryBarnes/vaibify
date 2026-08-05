@@ -82,14 +82,26 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         super().__init__()
         self.listAdmittedPrimitives = []
 
-    def _fnRecordLiveAdmission(self, sContainerId, sPrimitiveName):
-        """Record the admission mode live at one primitive's gate."""
+    def _fnRecordLiveAdmission(
+        self, sContainerId, sPrimitiveName, sCommand="",
+    ):
+        """Record the admission mode live at one primitive's gate.
+
+        The command text is recorded alongside because a route that
+        declares two modes reaches the SAME primitive under both: a
+        mode-(b) worker runs the operation's own commands, and the
+        mode-(a) workflow save runs a ``mkdir -p`` before its write.
+        Asserting "every exec ran under lock-held" would therefore be
+        false for a correctly migrated route, and relaxing it to "some
+        exec did" would pass for one whose worker never ran.
+        """
         admission = mutationAdmission.fadmissionActiveForContainerId(
             sContainerId,
         )
         self.listAdmittedPrimitives.append({
             "sPrimitive": sPrimitiveName,
             "sMode": "" if admission is None else admission.sMode,
+            "sCommand": sCommand,
         })
 
     def fnWriteFile(
@@ -120,7 +132,9 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         mutationAdmission.fnAssertContainerCommandAdmitted(
             sContainerId, S_PRIMITIVE_EXEC,
         )
-        self._fnRecordLiveAdmission(sContainerId, S_PRIMITIVE_EXEC)
+        self._fnRecordLiveAdmission(
+            sContainerId, S_PRIMITIVE_EXEC, sCommand,
+        )
         return MockDockerDraft.ftResultExecuteCommand(
             self, sContainerId, sCommand, sWorkdir,
         )
@@ -146,16 +160,24 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         )
 
 
-@pytest.fixture
-def tclientGated():
+def _tConnectGatedClient(connectionDocker):
     """Return ``(client, docker)`` connected, with the ledger cleared.
 
     Cleared AFTER connect on purpose: the connect handler legitimately
     mutates under the owner-establishing admission, and leaving its
     entries in the ledger would let a route that reached no primitive at
     all pass an assertion about modes.
+
+    ``raise_server_exceptions=False`` for the same reason the clean
+    route's ASGI driver passes ``raise_app_exceptions=False``: a refused
+    mutation must be a 500 RESPONSE here, not an exception raised into
+    the test body. With the default, a route declaring two modes cannot
+    have its carriers proven separately — dropping the SAVE's carrier
+    raised out of ``client.post`` before the assertion about the
+    CONVERSION's admission could run, so one defect failed both tests
+    and neither carrier was isolated. Verified: the same mutant now
+    fails only the mode-(a) test.
     """
-    connectionDocker = DockerDoubleThatCallsTheRealGates()
     with patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         lambda: connectionDocker,
@@ -166,10 +188,96 @@ def tclientGated():
         )
     client = TestClient(
         app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+        raise_server_exceptions=False,
     )
     _fnConnect(client)
     connectionDocker.listAdmittedPrimitives.clear()
     return (client, connectionDocker)
+
+
+@pytest.fixture
+def tclientGated():
+    """The gated client over the draft harness's plotless workflow."""
+    return _tConnectGatedClient(DockerDoubleThatCallsTheRealGates())
+
+
+def _fnAssertSelectedRanUnder(
+    connectionDocker, fbSelect, sExpectedMode, sDescription,
+):
+    """Assert the selected gate crossings all happened under one mode.
+
+    Narrower than :func:`_fnAssertEveryPrimitiveRanUnder` on purpose,
+    and the reason is structural rather than stylistic. A route that
+    declares TWO modes reaches the same primitives under BOTH: its
+    mode-(b) worker runs the operation's commands, and the mode-(a)
+    workflow save runs its own ``cp``/``mv`` around the write. So "every
+    exec ran under lock-held" is FALSE for a correctly migrated route,
+    while "some exec did" passes for one whose worker never ran.
+
+    Selecting the crossings that belong to one carrier is also what
+    makes the kill-confirms isolate: with the save's carrier removed the
+    conversion still runs correctly under the drain, so only the
+    mode-(a) test may fail. Nothing here asserts the response status for
+    the same reason -- a refused mutation surfaces as a 500, which would
+    drag either carrier's defect onto every test of the route.
+    """
+    listSelected = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if fbSelect(dictReached)
+    ]
+    assert listSelected, (
+        f"the route made no {sDescription} at all, so this asserts "
+        "nothing about how it was admitted; either the request returned "
+        "before doing that container work, or a carrier earlier in the "
+        "handler refused and the handler never got this far. The full "
+        f"ledger is {connectionDocker.listAdmittedPrimitives}"
+    )
+    listWrongMode = [
+        dictReached for dictReached in listSelected
+        if dictReached["sMode"] != sExpectedMode
+    ]
+    assert listWrongMode == [], (
+        f"a {sDescription} ran under an admission that is not "
+        f"{sExpectedMode!r}: {listWrongMode}. Under "
+        f"{mutationAdmission.S_ADMISSION_MODE_REQUEST!r} the route is "
+        "still riding the legacy ambient mint; under '' it reached the "
+        "primitive with no admission at all."
+    )
+
+
+def _fnAssertExecsNamingRanUnder(
+    connectionDocker, sCommandMarker, sExpectedMode,
+):
+    """Assert every exec whose command names the marker ran under a mode.
+
+    The marker must be specific to the operation under test. A loose one
+    was tried in the clean-outputs test and matched the connect
+    handler's ``git rev-parse ... 2>/dev/null``, which turned a timing
+    assertion into noise; here it would silently fold the workflow
+    save's commands into a claim about the worker's.
+    """
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
+            and sCommandMarker in dictReached["sCommand"]
+        ),
+        sExpectedMode,
+        f"container command naming {sCommandMarker!r}",
+    )
+
+
+def _fnAssertWritesRanUnder(connectionDocker, sExpectedMode):
+    """Assert every container file write ran under one admission mode."""
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+        ),
+        sExpectedMode,
+        "container file write",
+    )
 
 
 def _fnAssertEveryPrimitiveRanUnder(connectionDocker, sExpectedMode):
@@ -625,4 +733,97 @@ async def testTheCleanDeletesUnderTheDrainAndSavesSynchronously():
     }, (
         "the workflow save recording the clean did not commit "
         f"synchronously through the carrier: {setWriteModes}"
+    )
+
+
+class DockerDoubleServingAWorkflowWithPlots(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double, over a workflow that declares a plot.
+
+    The draft harness's workflow declares no plot files, and
+    ``standardize-plots`` refuses a step with none -- so against that
+    workflow the route would 400 before reaching any container work and
+    every assertion below would be about a refusal rather than about a
+    conversion.
+    """
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(
+                DICT_WORKFLOW_WITH_OUTPUTS,
+            ).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@pytest.fixture
+def tclientGatedWithPlots():
+    """The gated client over a workflow whose first step has a plot."""
+    return _tConnectGatedClient(DockerDoubleServingAWorkflowWithPlots())
+
+
+# The stem the conversion writes and the verification checks --
+# ``figure.pdf`` becomes ``figure_standard.png``. Specific to this
+# route's own commands: the workflow save that follows names
+# ``state.json``, so a claim about the worker's admission cannot
+# silently absorb the save's.
+S_STANDARD_PLOT_STEM = "figure_standard"
+
+
+def _fresponsePostStandardizePlots(client):
+    """Drive the plot-standardization route for the first step."""
+    return client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/standardize-plots",
+        json={"sFileName": ""},
+    )
+
+
+@pytest.mark.falsification
+def testThePlotConversionRunsUnderTheDrain(tclientGatedWithPlots):
+    """POST .../standardize-plots converts under a mode-(b) admission.
+
+    The conversion is a batch of ``convert``/``gs`` invocations that can
+    run for many seconds against files the researcher is about to
+    accept as the step's standards, and it used to run on a bare
+    ``asyncio.to_thread`` -- holding no mutation lock, registering no
+    operation, so a hand-over arriving mid-conversion saw an idle
+    container, committed, and the FORMER owner's converter kept writing
+    PNGs into a workspace that had changed hands.
+
+    The ``test -f`` verification execs are asserted here too, and that
+    is the point of running them inside the same worker: a report that a
+    standard exists is only worth having if nothing could have replaced
+    it between the write and the check.
+
+    Kills: passing the plot conversion to
+    ``commitCarrier.fdictCommitSynchronousMutation`` instead of
+    ``fdictRunLockHeldMutation`` -- the exec then runs under
+    ``mode-a-synchronous``, which is a real admission, so "it did not
+    raise" would not catch it.
+    """
+    client, connectionDocker = tclientGatedWithPlots
+    _fresponsePostStandardizePlots(client)
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_STANDARD_PLOT_STEM,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testThePlotStandardizationSavesSynchronously(tclientGatedWithPlots):
+    """POST .../standardize-plots records the run under mode (a).
+
+    The second of the route's two declared modes. Split from the
+    conversion assertion rather than folded into it because a single
+    test covering both is killed by a defect in either carrier, which
+    proves neither: with the save's carrier removed the conversion still
+    runs correctly under the drain, and only this test fails.
+
+    Kills: replacing ``fnStandardizePlots``'s ``fnCommitWorkflowSave``
+    call with a direct ``dictCtx["save"]``.
+    """
+    client, connectionDocker = tclientGatedWithPlots
+    _fresponsePostStandardizePlots(client)
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
     )
