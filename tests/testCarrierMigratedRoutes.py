@@ -64,6 +64,12 @@ from vaibify.gui import (
 S_PRIMITIVE_WRITE = "fnWriteFileViaTar"
 S_PRIMITIVE_EXEC = "texecRunInContainerStreamed"
 
+# The owner map, the host flock and the journal are all keyed by
+# container NAME, while these routes address the container by id. The
+# draft harness keeps the two deliberately distinct, so a journal
+# assertion has to name this rather than reuse S_CONTAINER_ID.
+S_CONTAINER_NAME = "test-container"
+
 
 class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
     """The draft double, plus the admission checks the real one makes.
@@ -855,4 +861,92 @@ def testTheRepoSidecarRewriteRunsUnderTheDrain(tclientGated, sAction):
     client.post(f"/api/repos/{S_CONTAINER_ID}/somerepo/{sAction}")
     _fnAssertWritesRanUnder(
         connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheRepoTrackRunsUnderTheDrain(tclientGated):
+    """POST /api/repos/.../track resolves and records under mode (b).
+
+    Unlike ignore and untrack, tracking first READS the repository's
+    git status to decide whether it exists, then writes the sidecar. On
+    a bare ``asyncio.to_thread`` that read-then-decide-then-write chain
+    spanned a hand-over exactly as the others did.
+
+    Asserted on the EXEC and not the write, because against this double
+    the repository is absent, so the route refuses with a 404 before
+    writing anything. That is the more interesting half: it proves the
+    DECIDING read happened inside the drain, which is what stops a
+    hand-over landing between "does it exist" and "record it".
+
+    Kills: passing ``_fobjRunRepoWorkerUnderTheDrain``'s worker to
+    ``fdictCommitSynchronousMutation`` instead of
+    ``fdictRunLockHeldMutation``.
+
+    Deliberately NOT "delete the carrier call", which was tried first:
+    that also fails ``testAnExpectedRefusalLeavesTheContainerUsable``,
+    since without an admission the route 500s before its refusal can
+    be observed. One mutant on two tests proves neither. Swapping the
+    MODE leaves the refusal path intact and lands on this test alone.
+    """
+    client, connectionDocker = tclientGated
+    client.post(f"/api/repos/{S_CONTAINER_ID}/somerepo/track")
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "/workspace/somerepo",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testAnExpectedRefusalLeavesTheContainerUsable(tclientGated):
+    """A 404 from inside a carrier worker must not quarantine anything.
+
+    THE hazard of migrating a route whose refusals live below the
+    container boundary. A carrier worker that RAISES is settled through
+    the failure path, which marks its journal record NEEDS
+    RECONCILIATION -- correct for an effect whose state nobody knows,
+    and catastrophic for "no such repository": an ordinary 404 would
+    take the researcher's container out of service until they ran
+    ``vaibify reconcile``, for asking about a directory that is not
+    there.
+
+    So the assertion is on the JOURNAL, not on the status code. A test
+    that only checked for 404 would pass just as happily against a
+    handler that quarantined the container on its way to returning one,
+    which is precisely the bug.
+
+    ``init`` is the driver rather than ``track`` because its refusals
+    are raised by helpers BELOW the worker's entry, which is the shape
+    the capture has to survive. Against this double the one that fires
+    is the 409 from ``_fbDirectoryIsGitRepo`` -- the double answers
+    every ``test -d`` affirmatively, so the directory reads as an
+    existing git repository. Any 4xx exercises the same path; what
+    matters is that it was raised inside the carrier's worker.
+
+    Kills: removing the ``status_code >= 500`` branch from
+    ``_fdictCarryARefusalBackInsteadOfRaising`` so every HTTPException
+    is re-raised inside the worker.
+    """
+    from vaibify.config import operationJournal
+
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/repos/{S_CONTAINER_ID}/init",
+        json={"sDirectory": "AbsentProject", "bCreateIfMissing": False},
+    )
+    assert 400 <= response.status_code < 500, (
+        f"expected a declined refusal, got {response.status_code}: "
+        f"{response.text}"
+    )
+
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        S_CONTAINER_NAME,
+    )
+    assert dictResolution["sResolution"] != (
+        operationJournal.S_RESOLUTION_QUARANTINED
+    ), (
+        "an expected 404 quarantined the container: "
+        f"{dictResolution}. The researcher now has to run 'vaibify "
+        "reconcile' because they asked about a directory that does not "
+        "exist."
     )

@@ -4887,6 +4887,50 @@ def _fdictEntry(sRel):
 
     Falsification(
         nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRepoTrackRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            'sOperationTarget,\n'
+            '        fnRunTheEffect,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            'sOperationTarget,\n'
+            '        fnRunTheEffect, {"sDockerContainerId": '
+            'sContainerId},\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnExpectedRefusalLeavesTheContainerUsable'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    except HTTPException as errorHttp:\n'
+            '        if errorHttp.status_code >= 500:\n'
+            '            raise\n'
+            '        return {"errorRefused": errorHttp, "objResult": None}\n'
+        ),
+        new=(
+            '    except HTTPException:\n'
+            '        raise\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/testMutationBoundary.py::'
             'testAnExistenceProbeSurvivesAnEnforcedLane'
         ),

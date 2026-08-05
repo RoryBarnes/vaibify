@@ -398,14 +398,19 @@ def _fnRegisterInit(app, dictCtx):
 
     @fnAgentAction("init-project-repo")
     @app.post("/api/repos/{sContainerId}/init")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnInitProjectRepo(
         sContainerId: str, request: InitRepoRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
-        return await asyncio.to_thread(
-            _fnDoInitProjectRepo,
-            dictCtx["docker"], sContainerId,
-            request.sDirectory, request.bCreateIfMissing,
+        return await _fobjRunRepoWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fnDoInitProjectRepo(
+                dictCtx["docker"], sContainerId,
+                request.sDirectory, request.bCreateIfMissing,
+            ),
+            "init-project-repo", requestHttp,
         )
 
 
@@ -413,11 +418,74 @@ def _fnRegisterTrack(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/track route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/track")
-    async def fnTrackRepo(sContainerId: str, sRepoName: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnTrackRepo(
+        sContainerId: str, sRepoName: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
-        return await asyncio.to_thread(
-            _fnDoTrackRepo, dictCtx, sContainerId, sRepoName,
+        return await _fobjRunRepoWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fnDoTrackRepo(dictCtx, sContainerId, sRepoName),
+            "track-repository", requestHttp,
         )
+
+
+def _fdictCarryARefusalBackInsteadOfRaising(fnEffect):
+    """Run a worker's effect, carrying a DECLINED refusal back as a value.
+
+    A carrier worker that raises is settled through the failure path,
+    which marks its journal record NEEDS RECONCILIATION and QUARANTINES
+    the container until the researcher runs ``vaibify reconcile``. That
+    is exactly right for an effect whose state nobody knows, and badly
+    wrong for "no such repository": an ordinary 404 would take a working
+    container out of service.
+
+    The split is by STATUS, not by exception type, and the line is
+    4xx/5xx because that is the line between the two meanings. A 4xx
+    from these routes is a refusal decided BEFORE anything was written
+    -- the directory already exists, the repo is not there, the name is
+    invalid -- so the container is untouched and there is nothing to
+    reconcile. A 5xx is raised MID-EFFECT (``mkdir`` failed, ``git
+    init`` failed halfway), which is precisely the unknown state the
+    quarantine exists for, so it is left to propagate and poison.
+
+    Returns ``{"errorRefused": HTTPException|None, "objResult": ...}``.
+    """
+    try:
+        return {"errorRefused": None, "objResult": fnEffect()}
+    except HTTPException as errorHttp:
+        if errorHttp.status_code >= 500:
+            raise
+        return {"errorRefused": errorHttp, "objResult": None}
+
+
+async def _fobjRunRepoWorkerUnderTheDrain(
+    sContainerId, fnEffect, sOperationTarget, requestHttp,
+):
+    """Run one repo mutation under the drain; re-raise a 4xx refusal here.
+
+    The refusal is re-raised OUTSIDE the carrier deliberately: by then
+    the supervisor has settled its journal record normally, so the
+    researcher gets their 404 and their container stays usable.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationTarget,
+    )
+
+    def fnRunTheEffect(supervisor=None):
+        del supervisor
+        return _fdictCarryARefusalBackInsteadOfRaising(fnEffect)
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", sOperationTarget,
+        fnRunTheEffect,
+    )
+    dictCarried = dictOutcome["result"]
+    if dictCarried["errorRefused"] is not None:
+        raise dictCarried["errorRefused"]
+    return dictCarried["objResult"]
 
 
 async def _fnRewriteTheSidecarUnderTheDrain(
