@@ -226,7 +226,12 @@ def _fnRegisterStepUpdate(app, dictCtx):
         except IndexError as error:
             raise HTTPException(404, str(error))
         dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
+        # ``fnMaybeAutoArchive`` is synchronous so a carrier worker can
+        # run it; this route is still awaiting a carrier mode, so it
+        # keeps the event loop free exactly as the chain's own
+        # ``to_thread`` wrappers used to.
+        await asyncio.to_thread(
+            fnMaybeAutoArchive,
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )

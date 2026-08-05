@@ -33,16 +33,24 @@ the two.
 """
 
 import asyncio
+import contextlib
 import copy
+import hashlib
 import json
+import posixpath
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 
+from vaibify.reproducibility import repoFiles
+from vaibify.reproducibility.aiDeclarationStep import (
+    S_AI_DECLARATION_STEP_KIND,
+)
 from tests.testDraftRoutes import (
     DICT_WORKFLOW,
     MockDockerDraft,
@@ -1011,3 +1019,511 @@ def testAnExpectedRefusalLeavesTheContainerUsable(tclientGated):
         "reconcile' because they asked about a directory that does not "
         "exist."
     )
+
+
+# ---------------------------------------------------------------------
+# Group 2, continued — the test-execution routes, and the level probe
+# hidden inside them.
+# ---------------------------------------------------------------------
+
+# The three test-execution routes probe ``fiAICSLevel`` before and after
+# running. On an ordinary fixture that probe clears without touching a
+# general exec, so a migration that left it OUTSIDE the carrier would
+# pass every test in this suite and then be REFUSED in the field — for
+# exactly the researchers furthest along the reproducibility ladder.
+# The chain that makes it reach one is precise, and every conjunct
+# below is required:
+#
+#   _fbComputeLevel2 -> fbWorkflowFullySyncedWithArxiv
+#     -> _fbArxivTarballMatchesPushManifest   (needs a pushed-figure list)
+#     -> _fbArxivHashesCoverPushList
+#     -> _fdictLiveHashesOrNone
+#     -> filesRepo.fdictHashFiles             <- ONE general exec
+#
+# and ``fbAtLeastLevel3`` evaluates L2 first, so L3 inherits it. Stop
+# short of any conjunct — no attested declaration, no declared models,
+# no personal layer, no Overleaf-recorded commit, no pushed figure —
+# and L2 fails EARLY, the hash is never reached, and the false green
+# returns. Established by instrumenting the adapter and watching the
+# call happen, not by reading the gate.
+
+_BA_PUBLISHED_FIGURE = b"%PDF-1.4 canonical figure bytes\n"
+S_PUBLISHED_FIGURE_SHA = hashlib.sha256(
+    _BA_PUBLISHED_FIGURE,
+).hexdigest()
+S_PUBLISHED_FIGURE_RELPATH = "A/plot.pdf"
+S_ARXIV_IDENTIFIER = "2401.00001"
+S_OVERLEAF_PUSH_COMMIT = "commitabc"
+
+
+def _fsFreshIsoTimestamp():
+    """Return an ISO-8601 UTC timestamp one hour old.
+
+    One hour rather than "now" because the sync caches are checked for
+    staleness, and a timestamp in the future would be as suspicious to
+    that check as one a week old.
+    """
+    dtThen = datetime.now(timezone.utc) - timedelta(hours=1)
+    return dtThen.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _fdictAllGreenSyncCache():
+    """Return the per-service verify cache both L2 sync gates demand."""
+    return {
+        "github": {
+            "sService": "github",
+            "sLastVerified": _fsFreshIsoTimestamp(),
+            "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "sCommittedShaVerified": "abc123",
+        },
+        "zenodo": {
+            "sService": "zenodo",
+            "sLastVerified": _fsFreshIsoTimestamp(),
+            "iTotalFiles": 1, "iMatching": 1, "listDiverged": [],
+            "sZenodoDoi": "10.1000/example",
+            "sEndpointVerified": "sandbox",
+        },
+    }
+
+
+def _fdictGreenStepNamed(sName):
+    """Return a step every L1 per-step criterion accepts."""
+    return {
+        "sName": sName, "sDirectory": sName,
+        "bPlotOnly": False, "bRunEnabled": True, "bInteractive": False,
+        "saDataCommands": [], "saPlotCommands": [],
+        "dictRunStats": {},
+        "saOutputDataFiles": [sName + "/data.csv"],
+        "saPlotFiles": [sName + "/plot.pdf"],
+        "bNoInputData": True,
+        "saTestCommands": ["pytest -q"],
+        "dictTests": {
+            "dictIntegrity": {
+                "saCommands": ["pytest -q"], "sFilePath": "",
+            },
+        },
+        "dictVerification": {
+            "sUser": "passed", "sUnitTest": "passed",
+            "sIntegrity": "passed", "sQualitative": "passed",
+            "sQuantitative": "passed",
+        },
+    }
+
+
+def _fdictPublishedWorkflow():
+    """Return a workflow that reaches L2, arXiv conjunct included.
+
+    Built to the same recipe ``tests/testLevelGateL2Arxiv.py`` pins for
+    the gate itself, so this fixture and the gate's own tests fail
+    together if the criteria move, rather than this one quietly
+    degrading into a workflow that no longer reaches the hash.
+    """
+    dictDeclaration = _fdictGreenStepNamed("Decl")
+    dictDeclaration["sStepKind"] = S_AI_DECLARATION_STEP_KIND
+    return {
+        "sWorkflowName": "Published", "sPlotDirectory": "Plot",
+        "sFigureType": "pdf", "iNumberOfCores": 4,
+        "sProjectRepoPath": S_PROJECT_REPO,
+        "sPath": S_WORKFLOW_PATH,
+        "listSteps": [_fdictGreenStepNamed("A"), dictDeclaration],
+        "dictRemotes": {
+            "github": {
+                "sOwner": "u", "sRepo": "r", "sBranch": "main",
+                "sCommittedSha": "abc123",
+            },
+            "zenodo": {
+                "sRecordId": "1", "sService": "sandbox",
+                "sDoi": "10.1000/example",
+            },
+            "overleaf": {
+                "sProjectId": "ol1234",
+                "sLastPushCommit": S_OVERLEAF_PUSH_COMMIT,
+            },
+            "arxiv": {
+                "sArxivId": S_ARXIV_IDENTIFIER, "sArxivVersion": "v1",
+            },
+        },
+        "dictAiProvenance": {
+            "listDeclaredModels": [{
+                "sVendor": "ExampleVendor",
+                "sModelId": "example-model-1",
+                "sUseStartDate": "2026-01-01",
+                "sUseEndDate": "2026-02-01",
+            }],
+            "dictPersonalLayer": {"sStatus": "none"},
+        },
+    }
+
+
+class DockerDoubleServingAPublishedWorkflow(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double over a container that has REACHED L2.
+
+    Only two container files are needed, which was measured rather than
+    guessed: the level chain reads ``.vaibify/syncStatus.json`` and
+    ``.vaibify/overleafPushManifest.json``, probes ``MANIFEST.sha256``
+    (absent is fine), and reaches the container exactly ONCE more — the
+    hash. Everything else it needs is in the workflow document.
+
+    The embedded repo script is answered with the figure's real sha so
+    the arXiv conjunct CLOSES and the workflow is genuinely L2. A double
+    that returned nothing would still reach the hash and the tests below
+    would still pass, but the fixture would then be quietly asserting
+    against a workflow stuck below L2, and the next reader would believe
+    something untrue about it.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._dictFiles[
+            posixpath.join(S_PROJECT_REPO, ".vaibify/syncStatus.json")
+        ] = json.dumps(_fdictAllGreenSyncCache()).encode("utf-8")
+        self._dictFiles[
+            posixpath.join(
+                S_PROJECT_REPO, ".vaibify/overleafPushManifest.json",
+            )
+        ] = json.dumps({
+            S_OVERLEAF_PUSH_COMMIT: {
+                S_PUBLISHED_FIGURE_RELPATH: "figures/plot.pdf",
+            },
+        }).encode("utf-8")
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(_fdictPublishedWorkflow()).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        """Answer the typed probe from the in-memory tree.
+
+        The parent answers ``False`` for everything, which is right for
+        its plotless fixture and wrong here: the sync-cache probe must
+        say the cache exists, or the L2 gates stop before the arXiv
+        conjunct and the hash is never reached.
+        """
+        super().fbContainerPathIsFile(sContainerId, sPath)
+        return sPath in self._dictFiles
+
+    def fbContainerPathIsDirectory(self, sContainerId, sPath):
+        """The ``test -d`` half of the typed-read pair.
+
+        ``ContainerRepoFiles`` requires it and no draft-harness double
+        defines it; a bare ``MagicMock`` here would answer truthy for
+        every path, which is the polarity trap
+        ``tests/dockerConnectionDoubles.py`` records.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        return sPath in self._setDirs
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        if sCommand.startswith("python3 -c "):
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+            self._fnRecordLiveAdmission(
+                sContainerId, S_PRIMITIVE_EXEC, sCommand,
+            )
+            return (0, json.dumps({
+                S_PUBLISHED_FIGURE_RELPATH: {
+                    "sSha256": S_PUBLISHED_FIGURE_SHA,
+                },
+            }))
+        return super().ftResultExecuteCommand(
+            sContainerId, sCommand, sWorkdir,
+        )
+
+
+@contextlib.contextmanager
+def _tlistRecordEveryRepoHash(connectionDocker):
+    """Record the live admission at every ``fdictHashFiles`` call.
+
+    Instrumenting the ADAPTER rather than matching command text, because
+    ``fdictHashFiles`` and ``fdictHashAbsolutePaths`` build the same
+    ``python3 -c "import base64; exec(...)"`` shape and differ only
+    inside a base64 payload — a text marker could not tell the arXiv
+    conjunct's hash from any other embedded script, and a test that
+    cannot name what it observed is not evidence that the observation
+    was the one required.
+
+    Each record also carries the length of the double's gated ledger at
+    the moment of the call, which is what lets the pre-run probe and the
+    post-save auto-archive be asserted SEPARATELY: they hash the same
+    path under the same mode, so nothing about the call itself
+    distinguishes them, but the workflow save's write lands between.
+    """
+    listCalls = []
+    fnRealHash = repoFiles.ContainerRepoFiles.fdictHashFiles
+
+    def fnRecordThenHash(self, listRelPaths):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            self.sContainerId,
+        )
+        listCalls.append({
+            "listRelPaths": list(listRelPaths),
+            "sMode": "" if admission is None else admission.sMode,
+            "iLedgerLength": len(
+                connectionDocker.listAdmittedPrimitives,
+            ),
+        })
+        return fnRealHash(self, listRelPaths)
+
+    with patch.object(
+        repoFiles.ContainerRepoFiles, "fdictHashFiles", fnRecordThenHash,
+    ):
+        yield listCalls
+
+
+@pytest.fixture
+def tclientPublished():
+    """The gated client over a container whose workflow has reached L2.
+
+    The arXiv client is stubbed for the duration, and not merely for
+    speed: the gate's last two conjuncts fetch the e-print's tarball
+    and resolve its latest version over the NETWORK. Unstubbed, this
+    fixture made real requests to arXiv — a test whose verdict depends
+    on somebody else's server, and on the developer having one.
+    """
+    with patch(
+        "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
+        return_value={
+            S_PUBLISHED_FIGURE_RELPATH: S_PUBLISHED_FIGURE_SHA,
+        },
+    ), patch(
+        "vaibify.reproducibility.arxivClient.fsResolveLatestVersion",
+        return_value="v1",
+    ):
+        yield _tConnectGatedClient(
+            DockerDoubleServingAPublishedWorkflow(),
+        )
+
+
+def _fiIndexOfTheWorkflowSave(connectionDocker):
+    """Return the ledger index of the workflow save's container write."""
+    for iIndex, dictReached in enumerate(
+        connectionDocker.listAdmittedPrimitives,
+    ):
+        if dictReached["sPrimitive"] == S_PRIMITIVE_WRITE:
+            return iIndex
+    return len(connectionDocker.listAdmittedPrimitives)
+
+
+def _fnAssertHashCallRanUnder(dictCall, sExpectedMode, sDescription):
+    """Assert one recorded ``fdictHashFiles`` call's live admission."""
+    assert dictCall["sMode"] == sExpectedMode, (
+        f"the {sDescription} hashed the repository under "
+        f"{dictCall['sMode']!r}, not {sExpectedMode!r}: {dictCall}. "
+        "Under '' the probe ran OUTSIDE the carrier, which the enforced "
+        "branch refuses for every workflow at Level 2 or above."
+    )
+
+
+def _fdictRequireHashCall(listHashCalls, iIndex, sDescription):
+    """Return one recorded hash call, or fail saying what was missing.
+
+    Selected POSITIONALLY because three separate level probes hash the
+    SAME path under one request and nothing about a call distinguishes
+    them: the route's pre-run probe runs first, ``fnSaveWorkflowToContainer``
+    derives the level again inside the mode-(a) save, and the
+    auto-archive probes a third time afterwards. Order is the only
+    discriminator, so the tests below pin it.
+    """
+    assert listHashCalls, (
+        f"the {sDescription} never reached fdictHashFiles, so this "
+        "asserts nothing about how the level probe was admitted. Either "
+        "the fixture stopped being a Level 2 workflow (check the arXiv "
+        "conjunct: an attested declaration, declared models, a declared "
+        "personal layer, and an Overleaf-recorded commit with a pushed "
+        "figure are ALL required), or the probe moved. Recorded calls: "
+        f"{listHashCalls}"
+    )
+    return listHashCalls[iIndex]
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sRoute,dictBody,sExecMarker", [
+    ("run-tests", None, "pytest -q"),
+    ("run-test-category", {"sCategory": "integrity"}, "pytest -q"),
+    ("save-and-run-test", {
+        "sFilePath": "A/tests/testOne.py",
+        "sContent": "def testOne():\n    assert True\n",
+    }, "A/tests/testOne.py"),
+])
+def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
+    tclientPublished, sRoute, dictBody, sExecMarker,
+):
+    """Each test-execution route probes AND runs in one mode-(b) worker.
+
+    Every one of them brackets its run with ``fiAICSLevel`` to decide
+    whether the step's transition promoted the workflow, and on a
+    published workflow that probe is not a cheap dictionary read: it
+    hashes every Overleaf-pushed figure through the general exec
+    primitive. Left on the request coroutine it holds no admission at
+    all, so the enforced branch refuses it — and no fixture below Level
+    2 can see that, which is why this one goes to the trouble of being
+    Level 2.
+
+    Probe and run are asserted together because they are one guarantee
+    and one worker: the probe must run under the SAME lock-held
+    admission as the run it brackets, so a hand-over cannot land
+    between "what level was this before" and the test that changes it.
+
+    Parametrized over all three routes rather than written out three
+    times, and that is forced rather than stylistic: they share
+    ``_ftProbeLevelThenRunUnderTheDrain``, so no mutation of that helper
+    can fail one and spare another. Three separate tests would have
+    reported one guard as three, and every mutant would have killed all
+    of them.
+
+    ``save-and-run-test`` additionally writes the researcher's edited
+    test file inside the same worker as the run — a hand-over landing
+    between the write and the pytest would attribute a result to
+    content the successor now owns — which is why its exec marker is
+    the file path rather than the step's command.
+
+    Kills: passing ``_ftProbeLevelThenRunUnderTheDrain``'s worker to
+    ``commitCarrier.fdictCommitSynchronousMutation`` instead of
+    ``fdictRunLockHeldMutation``.
+
+    Deliberately NOT "hoist ``fiAICSLevel`` out of the worker", which is
+    the defect this test exists for: that mutant refuses the request
+    outright, so the save and the auto-archive never happen and it lands
+    on the two tests below as well. A mutant that kills three tests
+    isolates none of them. The mode swap leaves the request intact and
+    fails here alone — and the ``sMode`` assertion catches the hoist
+    too, since a hoisted probe records ``''``.
+
+    Nothing here asserts the response status, for the reason
+    :func:`_fnAssertSelectedRanUnder` gives: a refused mutation anywhere
+    in the handler surfaces as a 500, so a status assertion would drag
+    every later carrier's defect onto this test. Verified — with it in
+    place, both mutants below killed this test too. The happy path is
+    pinned separately by
+    :func:`testEveryMigratedTestRouteStillAnswersTwoHundred`.
+    """
+    client, connectionDocker = tclientPublished
+    with _tlistRecordEveryRepoHash(connectionDocker) as listHashCalls:
+        client.post(
+            f"/api/steps/{S_CONTAINER_ID}/0/{sRoute}", json=dictBody,
+        )
+    _fnAssertHashCallRanUnder(
+        _fdictRequireHashCall(
+            listHashCalls, 0, f"pre-run AICS level probe on {sRoute}",
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        f"pre-run AICS level probe on {sRoute}",
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, sExecMarker,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheAutoArchiveProbeRunsUnderItsOwnDrain(tclientPublished):
+    """POST .../run-tests carries its post-save auto-archive too.
+
+    ``fnMaybeAutoArchive`` re-reads the AICS level — the same general
+    exec — then writes the L3 envelope and pushes to Overleaf and
+    Zenodo. It is reached from all three test-execution routes, so
+    migrating them without carrying it would refuse every run on a
+    published workflow at the archive rather than at the probe: the same
+    defect, one line later.
+
+    Asserted on the hashes AFTER the workflow save's write, which is
+    what separates this from the pre-run probe: both hash the same path
+    under the same mode, and the save is the only event between them.
+
+    Kills: passing ``_fnAutoArchiveUnderTheDrain``'s worker to
+    ``commitCarrier.fdictCommitSynchronousMutation`` instead of
+    ``fdictRunLockHeldMutation``.
+
+    Deliberately a mode swap rather than "delete the carrier call",
+    which was tried first: an uncarried archive REFUSES on this fixture,
+    and a refusal also empties the hash ledger the sibling test above
+    reads, so one defect killed two tests and neither was isolated. The
+    swap leaves the archive running and only its admission wrong.
+    """
+    client, connectionDocker = tclientPublished
+    with _tlistRecordEveryRepoHash(connectionDocker) as listHashCalls:
+        client.post(f"/api/steps/{S_CONTAINER_ID}/0/run-tests")
+    dictLast = _fdictRequireHashCall(
+        listHashCalls, -1, "post-save auto-archive level probe",
+    )
+    assert dictLast["iLedgerLength"] > _fiIndexOfTheWorkflowSave(
+        connectionDocker,
+    ), (
+        "the last repository hash happened BEFORE the workflow save's "
+        "write, so it was the save's own level derivation and the "
+        f"auto-archive never probed at all: {listHashCalls}"
+    )
+    _fnAssertHashCallRanUnder(
+        dictLast, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "post-save auto-archive level probe",
+    )
+
+
+@pytest.mark.falsification
+def testTheTestResultSaveCommitsSynchronously(tclientPublished):
+    """POST .../run-tests records the result under a mode-(a) admission.
+
+    The third of the route's carriers, split from the two above for the
+    reason the plot route's pair is split: a single test covering all
+    three is killed by a defect in any one and proves none.
+
+    Mode (a) is not interchangeable with mode (b) here. The synchronous
+    carrier is the one that writes a ``file-write`` journal record with
+    the workflow's own serialization fingerprint as the expected hash,
+    so a crash mid-save can be adjudicated afterwards by hashing the
+    file; a lock-held worker would hold the drain and journal a
+    ``helper`` record that proves nothing about the bytes.
+
+    Kills: running ``fnRunTests``'s save through
+    ``_ftProbeLevelThenRunUnderTheDrain`` instead of
+    ``fnCommitWorkflowSave``, which commits the same bytes under
+    ``lockHeldAsync``.
+
+    Deliberately not "drop the carrier entirely": an unadmitted save
+    refuses, which stops the auto-archive from ever running and so kills
+    the sibling test above as well.
+    """
+    client, connectionDocker = tclientPublished
+    client.post(f"/api/steps/{S_CONTAINER_ID}/0/run-tests")
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+@pytest.mark.parametrize("sRoute,dictBody", [
+    ("run-tests", None),
+    ("run-test-category", {"sCategory": "integrity"}),
+    ("save-and-run-test", {
+        "sFilePath": "A/tests/testOne.py",
+        "sContent": "def testOne():\n    assert True\n",
+    }),
+])
+def testEveryMigratedTestRouteStillAnswersTwoHundred(
+    tclientPublished, sRoute, dictBody,
+):
+    """The happy path, pinned where it cannot distort a kill-confirm.
+
+    The falsification tests above deliberately ignore the status code,
+    because a refused mutation anywhere in a handler becomes a 500 and
+    would make every carrier's defect fail every one of them. Something
+    still has to notice a route that has stopped working outright, and
+    this is it: not a falsification claim, just the assertion that three
+    migrated routes on a published workflow still succeed.
+    """
+    client, _connectionDocker = tclientPublished
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/{sRoute}", json=dictBody,
+    )
+    assert response.status_code == 200, response.text

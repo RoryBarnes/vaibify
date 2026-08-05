@@ -13,7 +13,16 @@ from ..fileStatusManager import (
     fsWorkflowSlugFromPath,
 )
 from vaibify.reproducibility.levelGates import fiAICSLevel
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    ffilesForWorkflow,
+    fnCommitWorkflowSave,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    fnDeclareCarrierMode,
+)
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import (
     fbDeriveUnnecessaryVerification,
@@ -145,7 +154,7 @@ def _fsPrefixWithWorkflowEnv(sCommand, sWorkflowSlug):
     )
 
 
-async def _fdictRunAllTestCategories(
+def _fdictRunAllTestCategories(
     dictCtx, sContainerId, dictStep, sRepoRoot="", sWorkflowSlug="",
 ):
     """Run every resolved test group and return {group: result}."""
@@ -158,7 +167,7 @@ async def _fdictRunAllTestCategories(
     dictCategoryResults = {}
     dictGroups = fdictResolveTestCommandGroups(dictStep)
     for sCategory, listCommands in dictGroups.items():
-        dictResult = await _fdictRunOneTestCategory(
+        dictResult = _fdictRunOneTestCategory(
             dictCtx, sContainerId, sDir, listCommands, sWorkflowSlug,
         )
         iExitCode = 0 if dictResult["bPassed"] else 1
@@ -172,15 +181,19 @@ async def _fdictRunAllTestCategories(
     return dictCategoryResults
 
 
-async def _fdictRunOneTestCategory(
+def _fdictRunOneTestCategory(
     dictCtx, sContainerId, sDirectory, listCommands, sWorkflowSlug="",
 ):
-    """Execute one group's commands and return its result dict."""
+    """Execute one group's commands and return its result dict.
+
+    Synchronous because it runs inside a mode-(b) carrier worker, which
+    the carrier calls in a thread; the ``asyncio.to_thread`` this used
+    to wrap the exec in is what the carrier now owns.
+    """
     sCatCmd = " && ".join(
         [f"cd {fsShellQuote(sDirectory)}"] + list(listCommands))
     sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
-    resultExec = await asyncio.to_thread(
-        dictCtx["docker"].texecRunInContainerStreamed,
+    resultExec = dictCtx["docker"].texecRunInContainerStreamed(
         sContainerId, sCatCmd,
     )
     return {
@@ -190,6 +203,87 @@ async def _fdictRunOneTestCategory(
         "sStderr": resultExec.sStderr,
         "iExitCode": resultExec.iExitCode,
     }
+
+
+async def _ftProbeLevelThenRunUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, requestHttp, sTarget,
+    fnRunTheTests,
+):
+    """Return ``(iLevelBefore, result)`` from ONE lock-held worker.
+
+    The AICS level probe runs INSIDE the worker, beside the run it
+    brackets, rather than on the request coroutine before it — and that
+    placement is the point of this helper rather than tidiness.
+    ``fiAICSLevel`` reaches the general exec primitive as soon as a
+    workflow is L2: ``fbWorkflowFullySyncedWithArxiv`` hashes every
+    Overleaf-pushed figure through ``filesRepo.fdictHashFiles``, which
+    the container adapter answers with one ``python3 -c`` exec, and
+    ``fbAtLeastLevel3`` evaluates L2 first, so L3 inherits it. A probe
+    left outside the carrier is therefore admitted on every fixture
+    whose workflow sits below L2 and REFUSED in the field, for exactly
+    the researchers furthest along the reproducibility ladder.
+
+    Running the test commands under the drain is the ordinary mode-(b)
+    reason: they are project-authored, can run for minutes, and cross a
+    worker-thread boundary, so a hand-over arriving mid-run would
+    otherwise see an idle container and commit while the former owner's
+    pytest kept writing into the workspace.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sTarget,
+    )
+
+    def fnProbeThenRun(supervisor=None):
+        del supervisor
+        iLevelBefore = fiAICSLevel(
+            dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+        )
+        return (iLevelBefore, fnRunTheTests())
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", sTarget, fnProbeThenRun,
+    )
+    return dictOutcome["result"]
+
+
+async def _fnAutoArchiveUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex, iLevelBefore,
+    requestHttp,
+):
+    """Run the post-run auto-archive under its own lock-held carrier.
+
+    A second carrier invocation rather than a continuation of the run's
+    worker, because the workflow save that records the result commits
+    between them through mode (a), and folding the archive into the run
+    would put a remote push inside the same drain as the pytest that
+    justified it.
+
+    Mode (b) rather than mode (c): ``fnMaybeAutoArchive`` re-reads the
+    AICS level (the same general exec as the pre-run probe) and then
+    writes the L3 envelope and pushes to Overleaf and Zenodo, so it
+    mutates and can run long — but it is awaited in the handler today,
+    and making it durable would change what the researcher sees when
+    the response arrives.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Archiving the step's verified files",
+    )
+
+    def fnArchive(supervisor=None):
+        del supervisor
+        return fnMaybeAutoArchive(
+            dictCtx["docker"], sContainerId, dictWorkflow,
+            iStepIndex, iLevelBefore,
+        )
+
+    await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "auto-archive", fnArchive,
+    )
 
 
 def _fnRegisterTestGenerate(app, dictCtx):
@@ -304,10 +398,17 @@ def _fnPersistTestEdit(connectionDocker, sContainerId, sFilePath, sContent):
     )
 
 
-async def _fresultRunSaveAndRunTest(
+def _fresultRunSaveAndRunTest(
     connectionDocker, sContainerId, dictStep, dictWorkflow, sFilePath,
 ):
-    """Build the pytest command and run it; return the streamed result."""
+    """Write the edited test file, then run it; return the exec result.
+
+    The write and the run are one step deliberately, and both happen
+    inside the caller's lock-held worker: a hand-over landing between
+    them would leave the FORMER owner's pytest reporting on a file the
+    SUCCESSOR now owns, and the reported result would be attributed to
+    the wrong content.
+    """
     sTestCmd = _fsBuildPytestCommand(
         _fsAbsoluteStepWorkdir(
             dictStep, dictWorkflow.get("sProjectRepoPath", ""),
@@ -318,8 +419,7 @@ async def _fresultRunSaveAndRunTest(
         sTestCmd,
         fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
     )
-    return await asyncio.to_thread(
-        connectionDocker.texecRunInContainerStreamed,
+    return connectionDocker.texecRunInContainerStreamed(
         sContainerId, sTestCmd,
     )
 
@@ -361,14 +461,22 @@ def _ftRequireCategoryCommands(dictStep, sDictKey, sCategory):
     return listCmds, dictCat
 
 
-def _fdictResolveCategoryContext(
+def _ftResolveCategoryContext(
     dictCtx, sContainerId, iStepIndex, sCategory,
 ):
-    """Resolve workflow, step, category and pre-run AICS level for a request.
+    """Resolve workflow, step, category and commands for a request.
 
-    Returns a tuple of (dictWorkflow, dictStep, dictCat, listCmds,
-    sVerifKey, iLevelBefore). All HTTP errors raise here so the handler
-    body stays linear.
+    Returns ``(dictWorkflow, dictStep, dictCat, listCmds, sVerifKey)``.
+    All HTTP errors raise here, on the request coroutine, so the handler
+    body stays linear AND so no expected 4xx can be raised from inside a
+    carrier worker — a worker that raises settles through the failure
+    path, which marks the container as needing reconciliation, and an
+    unknown category name is not a reason to take a researcher's
+    container out of service.
+
+    The pre-run AICS level is deliberately NOT probed here any more: it
+    reaches a general exec on an L2 workflow, so it belongs inside the
+    carrier worker with the run it brackets.
     """
     sDictKey, sVerifKey = _ftResolveCategoryKeys(sCategory)
     dictWorkflow = fdictRequireWorkflow(
@@ -378,13 +486,7 @@ def _fdictResolveCategoryContext(
     listCmds, dictCat = _ftRequireCategoryCommands(
         dictStep, sDictKey, sCategory,
     )
-    iLevelBefore = fiAICSLevel(
-        dictWorkflow,
-        ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
-    )
-    return (
-        dictWorkflow, dictStep, dictCat, listCmds, sVerifKey, iLevelBefore,
-    )
+    return (dictWorkflow, dictStep, dictCat, listCmds, sVerifKey)
 
 
 def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds):
@@ -398,13 +500,16 @@ def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds):
     )
 
 
-async def _ftRunCategoryCommands(
+def _ftRunCategoryCommands(
     connectionDocker, sContainerId, dictStep, dictWorkflow, listCmds,
 ):
-    """Run the category commands; return (resultExec, bPassed, sOutput)."""
+    """Run the category commands; return (resultExec, bPassed, sOutput).
+
+    Synchronous: it runs inside a mode-(b) carrier worker, which the
+    carrier already calls in a thread.
+    """
     sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds)
-    resultExec = await asyncio.to_thread(
-        connectionDocker.texecRunInContainerStreamed,
+    resultExec = connectionDocker.texecRunInContainerStreamed(
         sContainerId, sFullCmd,
     )
     bPassed = resultExec.iExitCode == 0
@@ -447,9 +552,13 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/save-and-run-test"
     )
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
     async def fnSaveAndRunTest(
         sContainerId: str, iStepIndex: int,
         request: SaveAndRunTestRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -459,25 +568,31 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             request.sFilePath,
             dictWorkflow.get("sProjectRepoPath", ""),
         )
-        iLevelBefore = fiAICSLevel(
-            dictWorkflow,
-            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
-        )
-        _fnPersistTestEdit(
-            dictCtx["docker"], sContainerId,
-            sFilePath, request.sContent,
-        )
-        resultExec = await _fresultRunSaveAndRunTest(
-            dictCtx["docker"], sContainerId, dictStep,
-            dictWorkflow, sFilePath,
+
+        def fnWriteThenRunTheTest():
+            _fnPersistTestEdit(
+                dictCtx["docker"], sContainerId,
+                sFilePath, request.sContent,
+            )
+            return _fresultRunSaveAndRunTest(
+                dictCtx["docker"], sContainerId, dictStep,
+                dictWorkflow, sFilePath,
+            )
+
+        iLevelBefore, resultExec = await _ftProbeLevelThenRunUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "save-and-run-test", fnWriteThenRunTheTest,
         )
         bPassed = resultExec.iExitCode == 0
         _fnRecordTestResult(dictStep, bPassed, dictWorkflow, iStepIndex)
         _fnRegisterTestCommand(dictStep, bPassed, sFilePath)
-        dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
-            dictCtx["docker"], sContainerId, dictWorkflow,
-            iStepIndex, iLevelBefore,
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Recording the test result",
+        )
+        await _fnAutoArchiveUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex,
+            iLevelBefore, requestHttp,
         )
         return _fdictBuildSaveRunResponse(bPassed, resultExec)
 
@@ -489,8 +604,12 @@ def _fnRegisterTestRun(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
     )
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
     async def fnRunTests(
-        sContainerId: str, iStepIndex: int
+        sContainerId: str, iStepIndex: int,
+        requestHttp: Request,
     ):
         from ..workflowManager import flistBuildTestCommands
         dictCtx["require"]()
@@ -500,15 +619,20 @@ def _fnRegisterTestRun(app, dictCtx):
         listCmds = _flistResolveTestCommands(dictStep)
         if not listCmds:
             raise HTTPException(400, "No test commands")
-        iLevelBefore = fiAICSLevel(
-            dictWorkflow,
-            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
-        )
-        dictCategoryResults = await _fdictRunAllTestCategories(
-            dictCtx, sContainerId, dictStep,
-            sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
-            sWorkflowSlug=fsWorkflowSlugFromPath(
-                dictWorkflow.get("sPath", "")),
+
+        def fnRunEveryCategory():
+            return _fdictRunAllTestCategories(
+                dictCtx, sContainerId, dictStep,
+                sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
+                sWorkflowSlug=fsWorkflowSlugFromPath(
+                    dictWorkflow.get("sPath", "")),
+            )
+
+        (iLevelBefore, dictCategoryResults) = (
+            await _ftProbeLevelThenRunUnderTheDrain(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "run-tests", fnRunEveryCategory,
+            )
         )
         if not dictCategoryResults:
             raise HTTPException(
@@ -523,10 +647,13 @@ def _fnRegisterTestRun(app, dictCtx):
         )
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
-        dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
-            dictCtx["docker"], sContainerId, dictWorkflow,
-            iStepIndex, iLevelBefore,
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Recording the test results",
+        )
+        await _fnAutoArchiveUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex,
+            iLevelBefore, requestHttp,
         )
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
@@ -536,27 +663,41 @@ def _fnRegisterTestRun(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/run-test-category"
     )
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
     async def fnRunTestCategory(
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
         dictCtx["require"]()
         sCategory = (await request.json()).get("sCategory", "")
-        (dictWorkflow, dictStep, dictCat, listCmds, sVerifKey,
-         iLevelBefore) = _fdictResolveCategoryContext(
+        (dictWorkflow, dictStep, dictCat, listCmds,
+         sVerifKey) = _ftResolveCategoryContext(
             dictCtx, sContainerId, iStepIndex, sCategory,
         )
-        resultExec, bPassed, sOutput = await _ftRunCategoryCommands(
-            dictCtx["docker"], sContainerId, dictStep,
-            dictWorkflow, listCmds,
+
+        def fnRunTheCategory():
+            return _ftRunCategoryCommands(
+                dictCtx["docker"], sContainerId, dictStep,
+                dictWorkflow, listCmds,
+            )
+
+        iLevelBefore, tRun = await _ftProbeLevelThenRunUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, request,
+            "run-test-category", fnRunTheCategory,
         )
+        resultExec, bPassed, sOutput = tRun
         _fnRecordCategoryOutcome(
             dictStep, dictCat, sVerifKey, bPassed, sOutput,
         )
-        dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
-            dictCtx["docker"], sContainerId, dictWorkflow,
-            iStepIndex, iLevelBefore,
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, request,
+            "Recording the category test result",
+        )
+        await _fnAutoArchiveUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex,
+            iLevelBefore, request,
         )
         return _fdictBuildRunCategoryResponse(bPassed, resultExec)
 

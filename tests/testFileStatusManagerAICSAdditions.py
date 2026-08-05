@@ -5,7 +5,6 @@ fired on the L1 promotion edge) and the previously-untested branches
 inside ``fnMaybeAutoArchive``.
 """
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
 from tests.dockerConnectionDoubles import (
@@ -18,11 +17,6 @@ from vaibify.gui.fileStatusManager import (
     _fnRefreshEnvelopeIfLevel1,
     fnMaybeAutoArchive,
 )
-
-
-def _fnRunAsync(coroutine):
-    """Run an async coroutine synchronously."""
-    return asyncio.run(coroutine)
 
 
 def _fdictBuildL1ReadyWorkflow():
@@ -120,9 +114,9 @@ def test_auto_archive_returns_false_on_invalid_step_index():
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     dictWorkflow["bAutoArchive"] = True
     # iAICSLevelBefore=0 → promoted; iStepIndex=999 is out of range.
-    bResult = _fnRunAsync(fnMaybeAutoArchive(
+    bResult = fnMaybeAutoArchive(
         fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 999, 0,
-    ))
+    )
     assert bResult is False
 
 
@@ -130,9 +124,9 @@ def test_auto_archive_negative_step_index_returns_false():
     """A negative iStepIndex also returns False."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     dictWorkflow["bAutoArchive"] = True
-    bResult = _fnRunAsync(fnMaybeAutoArchive(
+    bResult = fnMaybeAutoArchive(
         fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, -1, 0,
-    ))
+    )
     assert bResult is False
 
 
@@ -143,9 +137,9 @@ def test_auto_archive_promoted_runs_envelope_refresh():
     with patch(
         "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
     ) as mockGenerate:
-        _fnRunAsync(fnMaybeAutoArchive(
+        fnMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 0, 0,
-        ))
+        )
     assert mockGenerate.called
 
 

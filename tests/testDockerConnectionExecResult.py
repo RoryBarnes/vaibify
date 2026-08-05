@@ -256,6 +256,17 @@ async def test_save_and_run_test_route_exposes_stderr_separately():
     mockRequest.sFilePath = "tests/test_one.py"
     mockRequest.sContent = "def test_x(): assert 1 == 2"
 
+    # The handler is on the enforced branch now, so its container work
+    # happens inside carrier workers. This test is about the exec
+    # RESULT reaching the response, not about the admission, so the
+    # carrier is run inline; the admission is asserted over real HTTP
+    # in tests/testCarrierMigratedRoutes.py.
+    async def _fdictRunWorkerInline(
+        appState, sName, sContainerId, dictLaneTuple, sKind, sTarget,
+        fnWorker, *args, **kwargs,
+    ):
+        return {"bCommitted": True, "result": fnWorker(None)}
+
     with patch(
         "vaibify.gui.routes.testRoutes.fdictRequireWorkflow",
         return_value=dictWorkflow,
@@ -263,8 +274,18 @@ async def test_save_and_run_test_route_exposes_stderr_separately():
         "vaibify.gui.routes.testRoutes._fnRecordTestResult",
     ), patch(
         "vaibify.gui.routes.testRoutes._fnRegisterTestCommand",
+    ), patch(
+        "vaibify.gui.commitCarrier.fdictRunLockHeldMutation",
+        _fdictRunWorkerInline,
+    ), patch(
+        "vaibify.gui.routes.testRoutes.fdictRequireLaneTupleForCommit",
+        return_value={"sContainerName": "test-container"},
+    ), patch(
+        "vaibify.gui.routes.testRoutes.fnCommitWorkflowSave",
     ):
-        dictResult = await fnHandler("cid-1", 0, mockRequest)
+        dictResult = await fnHandler(
+            "cid-1", 0, mockRequest, MagicMock(),
+        )
 
     assert dictResult["bPassed"] is False
     assert dictResult["iExitCode"] == 1

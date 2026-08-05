@@ -6002,14 +6002,14 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/testRoutes.py",
-      "sFingerprint": "aec4c940be62d170",
+      "sFingerprint": "b0d01d8482df30a7",
       "sFunction": "_fdictRunOneTestCategory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "texecRunInContainerStreamed",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -6054,14 +6054,14 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/testRoutes.py",
-      "sFingerprint": "944cf822ac5d6d02",
+      "sFingerprint": "50bcae78af3f8a8f",
       "sFunction": "_fresultRunSaveAndRunTest",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "texecRunInContainerStreamed",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -6080,14 +6080,14 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/testRoutes.py",
-      "sFingerprint": "944cf822ac5d6d02",
+      "sFingerprint": "1deb63f8f9052857",
       "sFunction": "_ftRunCategoryCommands",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "texecRunInContainerStreamed",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,

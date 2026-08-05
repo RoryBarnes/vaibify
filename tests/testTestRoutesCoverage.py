@@ -16,6 +16,49 @@ from vaibify.gui.routes.testRoutes import (
 )
 
 
+@pytest.fixture(autouse=True)
+def fnRunCarrierWorkersInline():
+    """Run this module's carrier workers inline, with no app state.
+
+    These tests call the route handlers DIRECTLY against a MagicMock
+    ``app``, so there is no owner record, no lease and no journal —
+    everything the carrier needs to bind a request to a container. The
+    stub keeps the handlers' own logic under test by CALLING the worker
+    it is handed, rather than by short-circuiting past it: a regression
+    in what the worker does still fails here.
+
+    What it does NOT prove, stated so nobody reads a green run as more
+    than it is: nothing about the ADMISSION. Whether these routes reach
+    the container under a carrier's mode or under the legacy ambient
+    mint is asserted in ``tests/testCarrierMigratedRoutes.py``, over
+    real HTTP against a double that calls the real gates. A stub cannot
+    answer that question about itself.
+    """
+    async def _fdictRunWorkerInline(
+        appState, sName, sContainerId, dictLaneTuple, sKind, sTarget,
+        fnWorker, *args, **kwargs,
+    ):
+        return {"bCommitted": True, "result": fnWorker(None)}
+
+    def _fnSaveInline(
+        dictCtx, sContainerId, dictWorkflow, requestHttp, sOperationName,
+    ):
+        return {"bCommitted": True,
+                "result": dictCtx["save"](sContainerId, dictWorkflow)}
+
+    with patch(
+        "vaibify.gui.commitCarrier.fdictRunLockHeldMutation",
+        _fdictRunWorkerInline,
+    ), patch(
+        "vaibify.gui.routes.testRoutes.fdictRequireLaneTupleForCommit",
+        return_value={"sContainerName": "test-container"},
+    ), patch(
+        "vaibify.gui.routes.testRoutes.fnCommitWorkflowSave",
+        _fnSaveInline,
+    ):
+        yield
+
+
 def _fnSetExecResult(
     mockDocker, iExitCode=0, sStdout="OK", sStderr="",
 ):
@@ -710,7 +753,7 @@ class TestSaveAndRunTestRoute:
         ) as mockRecord, patch(
             "vaibify.gui.routes.testRoutes._fnRegisterTestCommand",
         ) as mockRegister:
-            dictResult = await fnHandler("cid-1", 0, mockRequest)
+            dictResult = await fnHandler("cid-1", 0, mockRequest, MagicMock())
 
         assert dictResult["bPassed"] is True
         assert dictResult["iExitCode"] == 0
@@ -750,7 +793,7 @@ class TestSaveAndRunTestRoute:
         ), patch(
             "vaibify.gui.routes.testRoutes._fnRegisterTestCommand",
         ):
-            dictResult = await fnHandler("cid-1", 0, mockRequest)
+            dictResult = await fnHandler("cid-1", 0, mockRequest, MagicMock())
 
         assert dictResult["bPassed"] is False
         assert dictResult["iExitCode"] == 1
@@ -803,7 +846,7 @@ class TestRunTestsRoute:
         ):
             from fastapi import HTTPException
             with pytest.raises(HTTPException) as excInfo:
-                await fnHandler("cid-1", 0)
+                await fnHandler("cid-1", 0, MagicMock())
             assert excInfo.value.status_code == 400
 
     @pytest.mark.asyncio
@@ -834,7 +877,6 @@ class TestRunTestsRoute:
             return_value=["pytest"],
         ), patch(
             "vaibify.gui.routes.testRoutes._fdictRunAllTestCategories",
-            new_callable=AsyncMock,
             return_value=dictCatResults,
         ), patch(
             "vaibify.gui.routes.testRoutes._fnRecordTestResult",
@@ -845,7 +887,7 @@ class TestRunTestsRoute:
             "vaibify.gui.routes.testRoutes.flistBuildTestCommands",
             create=True,
         ):
-            dictResult = await fnHandler("cid-1", 0)
+            dictResult = await fnHandler("cid-1", 0, MagicMock())
 
         assert dictResult["bAllPassed"] is True
         dictCtx["save"].assert_called_once()
@@ -877,7 +919,6 @@ class TestRunTestsRoute:
             return_value=["pytest"],
         ), patch(
             "vaibify.gui.routes.testRoutes._fdictRunAllTestCategories",
-            new_callable=AsyncMock,
             return_value=dictCatResults,
         ), patch(
             "vaibify.gui.routes.testRoutes._fnRecordTestResult",
@@ -888,7 +929,7 @@ class TestRunTestsRoute:
             "vaibify.gui.routes.testRoutes.flistBuildTestCommands",
             create=True,
         ):
-            dictResult = await fnHandler("cid-1", 0)
+            dictResult = await fnHandler("cid-1", 0, MagicMock())
 
         bPassedArg = mockRecord.call_args[0][1]
         assert bPassedArg is False
@@ -941,14 +982,13 @@ class TestFdictRunAllTestCategories:
 
         with patch(
             "vaibify.gui.routes.testRoutes._fdictRunOneTestCategory",
-            new_callable=AsyncMock,
             side_effect=[
                 {"bPassed": True, "sOutput": "ok"},
                 {"bPassed": False, "sOutput": "fail"},
                 None,
             ],
         ):
-            dictResults = await _fdictRunAllTestCategories(
+            dictResults = _fdictRunAllTestCategories(
                 dictCtx, "cid-1", dictStep)
 
         assert dictStep["dictVerification"]["sIntegrity"] == "passed"
@@ -966,10 +1006,9 @@ class TestFdictRunAllTestCategories:
 
         with patch(
             "vaibify.gui.routes.testRoutes._fdictRunOneTestCategory",
-            new_callable=AsyncMock,
             return_value=None,
         ):
-            dictResults = await _fdictRunAllTestCategories(
+            dictResults = _fdictRunAllTestCategories(
                 dictCtx, "cid-1", dictStep)
 
         assert dictResults == {}
@@ -992,7 +1031,7 @@ class TestFdictRunOneTestCategory:
         dictCtx = _fdictBuildContext()
         _fnSetExecResult(
             dictCtx["docker"], 0, "ok", "")
-        dictResult = await _fdictRunOneTestCategory(
+        dictResult = _fdictRunOneTestCategory(
             dictCtx, "cid-1", "/ws", ["pytest test.py"])
         assert dictResult["bPassed"] is True
         assert dictResult["sOutput"] == "ok"
@@ -1003,7 +1042,7 @@ class TestFdictRunOneTestCategory:
         dictCtx = _fdictBuildContext()
         _fnSetExecResult(
             dictCtx["docker"], 2, "error", "")
-        dictResult = await _fdictRunOneTestCategory(
+        dictResult = _fdictRunOneTestCategory(
             dictCtx, "cid-1", "/ws", ["pytest test.py"])
         assert dictResult["bPassed"] is False
         assert dictResult["iExitCode"] == 2
@@ -1012,7 +1051,7 @@ class TestFdictRunOneTestCategory:
     async def test_chains_every_command_after_the_directory_change(self):
         dictCtx = _fdictBuildContext()
         _fnSetExecResult(dictCtx["docker"], 0, "ok", "")
-        await _fdictRunOneTestCategory(
+        _fdictRunOneTestCategory(
             dictCtx, "cid-1", "/ws", ["pytest a.py", "pytest b.py"])
         sCommand = (
             dictCtx["docker"]
@@ -1112,7 +1151,7 @@ class TestRunTestsResolvesRepoRoot:
             "_fdictBuildTestResponse",
             return_value={"bPassed": True},
         ):
-            await fnHandler("cid-1", 0)
+            await fnHandler("cid-1", 0, MagicMock())
         sCmd = (
             dictCtx["docker"]
             .texecRunInContainerStreamed.call_args[0][1]
@@ -1229,7 +1268,7 @@ class TestSaveAndRunTestResolvesRepoRoot:
         ), patch(
             "vaibify.gui.routes.testRoutes._fnRegisterTestCommand",
         ):
-            await fnHandler("cid-1", 0, mockRequest)
+            await fnHandler("cid-1", 0, mockRequest, MagicMock())
         sCmd = (
             dictCtx["docker"]
             .texecRunInContainerStreamed.call_args[0][1]
@@ -1288,9 +1327,8 @@ class TestRunTestsNeverReportsUnexecutedAsPassed:
             return_value=[],
         ), patch(
             "vaibify.gui.routes.testRoutes.fnMaybeAutoArchive",
-            new_callable=AsyncMock,
         ):
-            return await fnHandler("cid-1", 0)
+            return await fnHandler("cid-1", 0, MagicMock())
 
     @pytest.mark.asyncio
     async def test_legacy_step_actually_executes_its_commands(self):

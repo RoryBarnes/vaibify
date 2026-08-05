@@ -5030,4 +5030,82 @@ def _fdictEntry(sRel):
             '    return subprocess.run(listCommand, capture_output=True)'
         ),
     ),
+
+    # The three test-execution routes. Each mutant below was confirmed
+    # to kill EXACTLY ONE of the three tests -- a clean diagonal. The
+    # obvious mutants (delete the carrier call) were tried first and
+    # rejected: an unadmitted mutation refuses, and a refusal empties
+    # the hash ledger every later test reads, so one defect killed two
+    # or three tests and none of them was isolated. All three are mode
+    # SWAPS for that reason, which is also the sharper claim -- the
+    # route reached the container under a real admission, just the
+    # wrong one, so "it did not raise" would not catch any of them.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", sTarget, '
+            'fnProbeThenRun,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", sTarget, '
+            'fnProbeThenRun,\n'
+            '        {"iHolderPid": __import__("os").getpid(),\n'
+            '         "iHolderProcessGroup": __import__("os").getpgrp()},\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheAutoArchiveProbeRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '    await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", "auto-archive", '
+            'fnArchive,\n'
+            '    )\n'
+        ),
+        new=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", "auto-archive", '
+            'fnArchive,\n'
+            '        {"iHolderPid": __import__("os").getpid(),\n'
+            '         "iHolderProcessGroup": __import__("os").getpgrp()},\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheTestResultSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the test results",\n'
+            '        )\n'
+        ),
+        new=(
+            '        await _ftProbeLevelThenRunUnderTheDrain(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "run-tests-save",\n'
+            '            lambda: dictCtx["save"](sContainerId, dictWorkflow),\n'
+            '        )\n'
+        ),
+    ),
 ]
