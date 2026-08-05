@@ -4479,6 +4479,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # responsibility — reconciling the dashboard with origin — not a
     # second concern.
     "routes/gitRoutes.py": 845,
+    # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
+    # two Repos-panel pushes were migrated onto carrier mode (b)
+    # (migration plan phase 2). The added lines are one worker, one
+    # carrier invocation, one shared post-push tail extracted from the
+    # two handlers that had it duplicated, and the function that names
+    # a push for the journal and the busy refusal without naming its
+    # credential. All of it is the Repos panel acting on a repository
+    # it already owns — the same cohesive responsibility, not a second
+    # concern arriving. There is no seam to split on: the push helpers
+    # thread the panel's own sidecar and remote through, and a
+    # sibling route module may not import them.
+    "routes/repoRoutes.py": 824,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

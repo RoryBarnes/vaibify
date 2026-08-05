@@ -178,8 +178,48 @@ def fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo):
     return dictStatus
 
 
+async def _fnRunPostPushVerifyBlocking(
+    sContainerId, dictWorkflow, sService, filesRepo, requestHttp,
+):
+    """Run the post-push verify, under the drain on a migrated route.
+
+    The verify hashes the project repo and REWRITES ``syncStatus.json``
+    inside the container, so it is a second mutation arriving after the
+    push's own carrier has already settled — and on a route served by
+    the enforced branch an uncarried write is refused at the primitive.
+    It gets its own mode-(b) invocation rather than sharing the push's,
+    because the push's supervisor released the drain when its worker
+    terminated, which is the property that makes mode (b) worth having.
+
+    A caller that passes no request is a route still awaiting migration
+    or the direct library lane; those keep the legacy ``to_thread`` —
+    an unenforced lane named in the carrier's documented remainder,
+    never a pretend-guarded one. The two lanes are not a divergence to
+    tidy away: this helper is shared by three push routes that migrate
+    one at a time.
+    """
+    def fnVerifyWorker(supervisor=None):
+        del supervisor
+        return fdictRunRemoteVerifyBlocking(
+            dictWorkflow, sService, filesRepo,
+        )
+
+    if requestHttp is None:
+        await asyncio.to_thread(fnVerifyWorker)
+        return
+    from . import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, f"The post-push {sService} verify",
+    )
+    await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper",
+        "post-push-verify " + sService, fnVerifyWorker,
+    )
+
+
 async def fsRefreshVerifyCacheAfterPush(
-    dictCtx, sContainerId, dictWorkflow, sService,
+    dictCtx, sContainerId, dictWorkflow, sService, requestHttp=None,
 ):
     """Re-verify one service's remote right after a successful push.
 
@@ -204,9 +244,8 @@ async def fsRefreshVerifyCacheAfterPush(
         return ""
     try:
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        await asyncio.to_thread(
-            fdictRunRemoteVerifyBlocking, dictWorkflow, sService,
-            filesRepo,
+        await _fnRunPostPushVerifyBlocking(
+            sContainerId, dictWorkflow, sService, filesRepo, requestHttp,
         )
     except Exception as error:
         logger.warning(

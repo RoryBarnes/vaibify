@@ -37,6 +37,7 @@ import contextlib
 import copy
 import hashlib
 import json
+import logging
 import posixpath
 import threading
 import time
@@ -1831,4 +1832,328 @@ async def testASynchronousSaveNeverMakesTheRunGateRefuse():
     assert listStarted == ["runSelected"], (
         "a run was refused with no carrier worker holding the drain at "
         f"all: {listStarted}"
+    )
+
+
+# ---------------------------------------------------------------------
+# Group 2, continued — the routes that push to a remote.
+#
+# The first group whose carrier boundary meets a live credential. What
+# is different about them is not the mode: it is that the operation's
+# natural NAME is a remote URL, the carrier writes that name into a
+# journal file on disk and into the refusal a second session is shown,
+# and a token-authenticated git remote reads
+# https://x-access-token:<token>@github.com/owner/repo.git. vaibify
+# stores that string verbatim, because it is what
+# ``git config --get remote.origin.url`` returns.
+# ---------------------------------------------------------------------
+
+S_PUSH_REPO_NAME = "ExampleRepo"
+
+# Synthetic: a real GitHub PAT prefix in front of a fixed letter run, so
+# it matches the shape the redactor must catch and matches no credential
+# that exists. The suite already carries several of these
+# (tests/testGithubMirror.py, tests/testCredentialRedactor.py).
+S_SYNTHETIC_PUSH_TOKEN = "ghp_" + "E" * 36
+S_TOKENED_PUSH_REMOTE = (
+    "https://x-access-token:" + S_SYNTHETIC_PUSH_TOKEN
+    + "@github.com/exampleowner/examplerepo.git"
+)
+# What must SURVIVE redaction. Asserting only "the token is absent"
+# would pass against a target that named nothing at all, which is the
+# vacuous version of the test below.
+S_PUSH_REMOTE_HOST_AND_PATH = "github.com/exampleowner/examplerepo.git"
+
+# Emitted by both push commands and by nothing else the double answers.
+S_PUSH_COMMAND_MARKER = "rev-parse --short HEAD"
+
+T_PUSH_ROUTES = (
+    ("push-staged", {"sCommitMessage": "[vaibify] Update repository"}),
+    ("push-files", {
+        "sCommitMessage": "[vaibify] Update repository",
+        "listFilePaths": ["results.json"],
+    }),
+)
+
+
+def _fbCommandReadsTheTrackedSidecar(sCommand):
+    """Return True for the tracked-repos sidecar read, and nothing else."""
+    return sCommand.startswith("cat ") and "tracked_repos.json" in sCommand
+
+
+class DockerDoubleServingATokenedTrackedRepo(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double over a tracked repo with a tokened origin.
+
+    The draft harness answers the sidecar read with an empty string, so
+    against it every push refuses "not tracked" before reaching a push
+    at all — a fixture that would let the assertions below pass having
+    exercised the refusal rather than the push.
+    """
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        if not _fbCommandReadsTheTrackedSidecar(sCommand):
+            return super().ftResultExecuteCommand(
+                sContainerId, sCommand, sWorkdir,
+            )
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, S_PRIMITIVE_EXEC,
+        )
+        self._fnRecordLiveAdmission(
+            sContainerId, S_PRIMITIVE_EXEC, sCommand,
+        )
+        return (0, json.dumps({
+            "iSchemaVersion": 1,
+            "listTracked": [{
+                "sName": S_PUSH_REPO_NAME,
+                "sUrl": S_TOKENED_PUSH_REMOTE,
+            }],
+            "listIgnored": [],
+        }))
+
+
+@pytest.fixture
+def tclientTokenedRepo():
+    """The gated client over a container tracking a tokened repository."""
+    return _tConnectGatedClient(DockerDoubleServingATokenedTrackedRepo())
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sRoute,dictBody", T_PUSH_ROUTES)
+def testTheRepositoryPushRunsUnderTheDrain(
+    tclientTokenedRepo, sRoute, dictBody,
+):
+    """POST /api/repos/.../push-{staged,files} pushes under mode (b).
+
+    A push commits, contacts a remote, and runs for as long as the
+    network takes. It used to run on a bare ``asyncio.to_thread``,
+    holding no mutation lock and registering no operation, so an
+    ownership hand-over arriving mid-push saw an idle-looking container,
+    committed, and the FORMER owner's git process kept pushing into a
+    workspace that had changed hands.
+
+    BOTH container round-trips are asserted, and in ONE test rather
+    than two. The sidecar read that DECIDES the push is as much part of
+    the guarantee as the push — outside the drain it spans a hand-over,
+    so a successor's sidecar could decide the former owner's push — but
+    every mutant that moves one of them out of the worker moves the
+    other with it. Two tests would have reported one guard as two.
+
+    Parametrized rather than duplicated because both routes go through
+    one helper and one carrier call: they are the same shape, and the
+    mutant below is in that shared helper.
+
+    Kills: passing ``_fdictPushRepositoryUnderTheDrain``'s worker to
+    ``commitCarrier.fdictCommitSynchronousMutation`` instead of
+    ``fdictRunLockHeldMutation``. Deliberately a mode swap and not
+    "delete the carrier call": an uncarried push is refused before the
+    sidecar is even read, so the ledger is empty for a second reason
+    and the assertion below can no longer distinguish "ran under the
+    wrong admission" from "never ran".
+
+    THIS MUTANT ALSO KILLS
+    :func:`testALivePushNamesItsRemoteWithoutLeakingItsToken`, AND NO
+    MUTANT OF THIS GUARD DOES NOT. Stated rather than papered over,
+    because the usual remedy — pick a mutant that lands on one test —
+    has no candidate here. That test's subject is the description a
+    LIVE mode-(b) supervisor publishes while it holds the drain, so
+    any defect that stops the push running under such a supervisor
+    removes the thing it observes, and it then fails on its
+    precondition ("a transfer committed over a live push"), never on
+    its redaction claim. The reverse does NOT hold, which is what
+    keeps the pair worth having: dropping the redaction leaves the
+    mode untouched and kills that test alone — verified, 26 passed,
+    1 failed.
+    """
+    client, connectionDocker = tclientTokenedRepo
+    client.post(
+        f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}/{sRoute}",
+        json=dictBody,
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "tracked_repos.json",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_PUSH_COMMAND_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+class DockerDoubleThatBlocksTheRepoPush(
+    DockerDoubleServingATokenedTrackedRepo,
+):
+    """The tokened-repo double, with the ``git push`` held open.
+
+    Synchronous ``threading.Event``s for the reason
+    :class:`DockerDoubleThatBlocksTheClean` records: the carrier runs
+    workers with ``asyncio.to_thread``, so an ``async def`` would hand
+    back a coroutine nobody awaits and the push would never block.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.eventPushStarted = threading.Event()
+        self.eventPushMayFinish = threading.Event()
+        self.listPushCommandsRun = []
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        if S_PUSH_COMMAND_MARKER not in sCommand:
+            return super().ftResultExecuteCommand(
+                sContainerId, sCommand, sWorkdir,
+            )
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, S_PRIMITIVE_EXEC,
+        )
+        self.eventPushStarted.set()
+        self.eventPushMayFinish.wait(10)
+        self.listPushCommandsRun.append(sCommand)
+        return (0, "abc1234")
+
+
+def _tBuildAsgiHubWithBlockedPush():
+    """Return ``(app, connectionDocker)`` with the push held open.
+
+    httpx over ASGI rather than ``TestClient`` for the reason
+    :func:`_tBuildAsgiHubWithBlockedClean` gives: the transfer and the
+    in-flight request must share ONE event loop, because the container
+    mutation lock is an ``asyncio.Lock`` bound to the loop that made it.
+    """
+    connectionDocker = DockerDoubleThatBlocksTheRepoPush()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        lambda: connectionDocker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace",
+            sTerminalUserArg="testuser",
+        )
+    return (app, connectionDocker)
+
+
+def _fsReadWholeJournalForTheContainer():
+    """Return the container's raw write-ahead journal file as text."""
+    from vaibify.config import operationJournal
+    try:
+        with open(
+            operationJournal.fsJournalPathFor(S_CONTAINER_NAME),
+            "r", encoding="utf-8",
+        ) as fileJournal:
+            return fileJournal.read()
+    except FileNotFoundError:
+        return ""
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testALivePushNamesItsRemoteWithoutLeakingItsToken(caplog):
+    """The busy refusal names the remote; journal and logs hold no token.
+
+    A migrated push registers what it is doing so a transfer, a Run
+    Step, or a second tab can be told WHICH push holds the container —
+    "a guarded operation" cannot tell a researcher whether to wait two
+    seconds or abandon the attempt. The description worth having names
+    the remote, and a remote is exactly where a credential hides: a
+    token-authenticated clone's origin URL carries the token in its
+    user-info segment, and vaibify copies that URL verbatim into the
+    tracked-repos sidecar because it is what ``git config --get
+    remote.origin.url`` returns.
+
+    Three surfaces are asserted, because they fail independently: the
+    refusal message a second session reads, the write-ahead journal FILE
+    (on disk under ``~/.vaibify/journal``, outliving the process), and
+    the hub log.
+
+    THE JOURNAL AND THE REFUSAL CARRY DIFFERENT TEXT, AND THAT IS THE
+    DESIGN. The journal record's target is fixed by
+    ``fsPrepareOperation`` before the worker runs, so it can only name
+    what is known WITHOUT a container round-trip — the repository. The
+    remote is discovered by the sidecar read inside the worker, and
+    refines the SUPERVISOR's ``sTarget``, which is mutable for exactly
+    this purpose and which a busy refusal reads live. So the on-disk
+    record is credential-free by construction, and the redaction guards
+    the in-memory description; both are asserted, and the journal's
+    assertion is the standing guard against a later change that moves
+    the URL forward into the prepare-time target.
+
+    Both directions matter. The remote's host and path must be PRESENT
+    in the refusal, or a route that named nothing would pass every leak
+    assertion while telling the researcher nothing; the token must be
+    ABSENT everywhere.
+
+    Kills: removing the ``fsRedactCredentials`` call from
+    ``_fsDescribePushTarget``, so the sidecar's stored URL — token and
+    all — becomes the lock holder's registered target.
+    """
+    caplog.set_level(logging.DEBUG)
+    app, connectionDocker = _tBuildAsgiHubWithBlockedPush()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    ) as clientAsync:
+        sLease = await _tConnectOverAsgi(clientAsync)
+        clientAsync.headers["X-Vaibify-Lease"] = sLease
+        sName = _fsContainerNameFor(app)
+
+        taskPush = asyncio.ensure_future(clientAsync.post(
+            f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}"
+            "/push-staged",
+            json={"sCommitMessage": "[vaibify] Update repository"},
+        ))
+        await asyncio.to_thread(
+            connectionDocker.eventPushStarted.wait, 10,
+        )
+        assert connectionDocker.listPushCommandsRun == [], (
+            "the push finished before the refusal was asked for, so "
+            "the container was not busy when it mattered"
+        )
+
+        sCapability = browserSession.fsMintTransferCapability(
+            app.state.dictBrowserSessions, sName,
+            app.state.dictContainerOwners[sName].iOwnerGeneration,
+        )
+        sOutcome, dictPayload = await sessionLifecycle.ftTransferOwnership(
+            app.state, sCapability,
+        )
+        sJournalWhileLive = _fsReadWholeJournalForTheContainer()
+
+        connectionDocker.eventPushMayFinish.set()
+        await taskPush
+
+    assert sOutcome == sessionLifecycle.S_TRANSFER_BUSY_RETRY, (
+        f"a transfer committed over a live push: {dictPayload}"
+    )
+    sRefusal = dictPayload["sMessage"]
+    assert S_PUSH_REMOTE_HOST_AND_PATH in sRefusal, (
+        "the refusal does not name the remote the push is contacting, "
+        "so the leak assertions below are vacuous — a target naming "
+        f"nothing passes them all: {sRefusal!r}"
+    )
+    assert S_SYNTHETIC_PUSH_TOKEN not in sRefusal, (
+        "the busy refusal shown to a second session carries the "
+        f"remote's access token: {sRefusal!r}"
+    )
+    assert sJournalWhileLive, (
+        "no write-ahead record existed while the push was in flight, "
+        "so the journal assertions below assert nothing"
+    )
+    assert "github-push " + S_PUSH_REPO_NAME in sJournalWhileLive, (
+        "the journal record does not name the push at all, so its leak "
+        f"assertion is vacuous: {sJournalWhileLive!r}"
+    )
+    assert S_SYNTHETIC_PUSH_TOKEN not in sJournalWhileLive, (
+        "the write-ahead journal FILE records the remote's access "
+        "token; it sits on disk under ~/.vaibify/journal and outlives "
+        f"the process: {sJournalWhileLive!r}"
+    )
+    assert S_SYNTHETIC_PUSH_TOKEN not in caplog.text, (
+        "the remote's access token reached the hub log"
     )

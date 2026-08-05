@@ -238,12 +238,32 @@ def test_after_push_gate_is_exact_equality_not_ordering():
     )
 
 
+async def _fdictRunPushWorkerWithoutTheDrain(
+    appState, sName, sContainerId, dictLaneTuple, sOperationKind,
+    sTarget, fnWorker, dictHolderIdentity=None, fnTerminateWorker=None,
+):
+    """Run a carrier worker inline, standing the drain down.
+
+    The push routes are migrated onto carrier mode (b), so on a bare
+    ``FastAPI()`` with no owner map they refuse before their handler
+    body runs. What this test claims is the WARNING contract, not the
+    admission — the admission is asserted in
+    ``tests/testCarrierMigratedRoutes.py`` against a double that calls
+    the real gates — so the carrier is stood down here exactly as
+    ``tests/testRepoRoutes.py::fixtureCarrierStoodDown`` stands it
+    down, rather than the fixture being taught to mint a lease.
+    """
+    return {"bCommitted": True, "result": fnWorker(None)}
+
+
 def test_push_files_response_carries_verify_warning():
     """The per-file push shares the warning contract: a failed
     post-push check must reach the response, or the panel toasts a
     success while L2 silently stays unknown.
 
-    Kills: repoRoutes.py push-files 'if sWarning:' attach -> inverted.
+    Kills: repoRoutes.py the post-push success gate in
+    _fdictFinishRepoPush -> inverted, so a successful push returns
+    before the warning is ever attached.
     """
     sWarning = "Pushed, but the github status check failed"
     app = FastAPI()
@@ -254,7 +274,13 @@ def test_push_files_response_carries_verify_warning():
     }
     repoRoutes.fnRegisterAll(app, dictCtx)
     with patch(
-        "vaibify.gui.routes.repoRoutes._fnRequireTracked",
+        "vaibify.gui.routes.repoRoutes._fnRequireTrackedInSidecar",
+    ), patch(
+        "vaibify.gui.routes.repoRoutes.fdictRequireLaneTupleForCommit",
+        return_value={"sContainerName": "fake-container"},
+    ), patch(
+        "vaibify.gui.commitCarrier.fdictRunLockHeldMutation",
+        _fdictRunPushWorkerWithoutTheDrain,
     ), patch(
         "vaibify.gui.syncDispatcher.ftResultPushToGithub",
         return_value=(0, "ok"),
@@ -266,7 +292,7 @@ def test_push_files_response_carries_verify_warning():
             "/api/repos/cid/alpha/push-files",
             json={"sCommitMessage": "m", "listFilePaths": ["a.txt"]},
         )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json()["sPostPushVerifyWarning"] == sWarning
 
 

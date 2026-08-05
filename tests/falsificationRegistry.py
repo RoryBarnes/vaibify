@@ -1922,8 +1922,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_files_response_carries_verify_warning',
         source='vaibify/gui/routes/repoRoutes.py',
-        old='        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)\n        fnBumpSyncEpoch(dictCtx, sContainerId)\n        if dictResult.get("bSuccess"):',
-        new='        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)\n        fnBumpSyncEpoch(dictCtx, sContainerId)\n        if not dictResult.get("bSuccess"):',
+        old='    fnBumpSyncEpoch(dictCtx, sContainerId)\n    if not dictResult.get("bSuccess"):\n        return dictResult',
+        new='    fnBumpSyncEpoch(dictCtx, sContainerId)\n    if dictResult.get("bSuccess"):\n        return dictResult',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_unattested_blocker_requires_a_declaration_step',
@@ -4958,6 +4958,52 @@ def _fdictEntry(sRel):
             'sOperationTarget,\n'
             '        fnRunTheEffect, {"sDockerContainerId": '
             'sContainerId},\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRepositoryPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper",\n'
+            '        _fsDescribePushTarget(sRepoName, ""), '
+            'fnPushUnderTheSupervisor,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper",\n'
+            '        _fsDescribePushTarget(sRepoName, ""), '
+            'fnPushUnderTheSupervisor,\n'
+            '        {"sDockerContainerId": sContainerId},\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testALivePushNamesItsRemoteWithoutLeakingItsToken'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    return (\n'
+            '        "github-push " + sRepoName + " -> "\n'
+            '        + fsRedactCredentials(sRemoteUrl)\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (\n'
+            '        "github-push " + sRepoName + " -> "\n'
+            '        + sRemoteUrl\n'
             '    )\n'
         ),
     ),
