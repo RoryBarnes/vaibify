@@ -56,6 +56,7 @@ import asyncio
 import logging
 import os
 import secrets
+from typing import Optional
 import threading
 import time
 from dataclasses import dataclass, field
@@ -157,7 +158,7 @@ class StartReservation:
     # frees ownership only when both still hold. See
     # containerOwnership.OwnershipIdentity for why a Boolean cannot
     # answer this.
-    identityOwnership: object = None
+    identityOwnership: Optional["OwnershipIdentity"] = None
 
 
 def fsMintReservationId():

@@ -397,11 +397,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/commitCarrier.py::DurableTaskRecord.admission",
-      "sDebtClass": "legacy-annotation-mismatch",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/commitCarrier.py::_fRunEffectAdmitted",
       "sDebtClass": "legacy-name",
       "sReason": ""
@@ -433,11 +428,6 @@
     },
     {
       "sIdentity": "vaibify/gui/containerOwnership.py::ConnectionRecord.connection",
-      "sDebtClass": "legacy-annotation-mismatch",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/containerOwnership.py::OwnerRecord.fileHandleLock",
       "sDebtClass": "legacy-annotation-mismatch",
       "sReason": ""
     },
@@ -1872,11 +1862,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/startReservation.py::StartReservation.identityOwnership",
-      "sDebtClass": "legacy-annotation-mismatch",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/startReservation.py::_tDeliverFailedResult",
       "sDebtClass": "legacy-name",
       "sReason": ""
@@ -1909,16 +1894,6 @@
     {
       "sIdentity": "vaibify/gui/stepRename.py::_fnMoveStepDirectory",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/terminalContainment.py::TerminalExecutionRecord.connectionDocker",
-      "sDebtClass": "legacy-annotation-mismatch",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/terminalContainment.py::TerminalExecutionRecord.dictRegistry",
-      "sDebtClass": "legacy-annotation-mismatch",
       "sReason": ""
     },
     {
@@ -2253,6 +2228,6 @@
     "legacy-yield": 3,
     "legacy-literal-return": 0,
     "legacy-return-annotation": 0,
-    "legacy-annotation-mismatch": 6
+    "legacy-annotation-mismatch": 1
   }
 }

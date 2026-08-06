@@ -64,6 +64,7 @@ import logging
 import os
 import secrets
 import time
+from typing import IO, Optional
 from dataclasses import dataclass, field
 
 from vaibify.config import pidFileRegistry
@@ -233,7 +234,7 @@ class OwnerRecord:
     """
 
     sLeaseId: str
-    fileHandleLock: object
+    fileHandleLock: Optional[IO]
     sAgentToken: str = ""
     sContainerId: str = ""
     sBrowserSessionId: str = ""

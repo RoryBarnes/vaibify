@@ -3891,7 +3891,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # single clearer. Poison and fencing are one act, and the fence
     # needs the lane on ConnectionRecord, so both live beside the
     # record they act on.
-    "containerOwnership.py": 897,
+    "containerOwnership.py": 898,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4223,7 +4223,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-08-02): the coroutine-worker refusal moved to the public
     # entrance as well, so a programming error cannot journal an
     # operation and quarantine a container before being caught.
-    "commitCarrier.py": 1061,
+    "commitCarrier.py": 1062,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -4320,7 +4320,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # re-derive the reservation's state to act.
     # +13 (2026-08-02): the quarantine path poisons through the single
     # writer and fences the container's pipeline socket.
-    "startReservation.py": 972,
+    "startReservation.py": 973,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

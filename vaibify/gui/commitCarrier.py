@@ -81,6 +81,7 @@ import inspect
 import logging
 import os
 import secrets
+from typing import Optional
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -737,7 +738,7 @@ class DurableTaskRecord:
     sContainerId: str
     iOwnerGeneration: int
     taskAsync: object
-    admission: object
+    admission: Optional["MutationAdmission"]
     sState: str = "running"
 
 

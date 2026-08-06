@@ -64,6 +64,7 @@ __all__ = [
 import logging
 import re
 import secrets
+from typing import Optional
 import shlex
 import threading
 import time
@@ -125,8 +126,8 @@ class TerminalExecutionRecord:
     sContainerId: str
     sDockerExecId: str
     iOwnerGeneration: int
-    connectionDocker: object
-    dictRegistry: object
+    connectionDocker: "DockerConnection"
+    dictRegistry: Optional[dict]
     session: object = None
     iProcessGroup: int = 0
     sState: str = S_RECORD_STATE_LIVE
