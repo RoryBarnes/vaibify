@@ -6146,6 +6146,32 @@
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
+        "lock-held"
+      ],
+      "listExecutionLanes": [
+        "http"
+      ],
+      "listLockOwners": [
+        "carrier-supervisor"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "migrate",
+      "sExclusionRationale": "",
+      "sFile": "gui/routes/workflowRoutes.py",
+      "sFingerprint": "005ffd817b51bf6e",
+      "sFunction": "_fsProbeThenWriteNewWorkflow",
+      "sJournalKind": "helper",
+      "sLifetime": "request",
+      "sLogicalOperation": "write the blank project.json for a newly created project, under the same held drain as the probes that licensed it",
+      "sOperationMetadata": "filename validated against the workflow-filename alphabet; the repo directory proved to exist and to be a git repo, and the destination path proved absent, inside this same drain",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
         "UNCLASSIFIED"
       ],
       "listExecutionLanes": [
@@ -6191,32 +6217,6 @@
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/routes/workflowRoutes.py",
-      "sFingerprint": "8f7011eb0da5abdc",
-      "sFunction": "fnCreateWorkflow",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
       "sReferenceKind": "direct-call"
     },
     {

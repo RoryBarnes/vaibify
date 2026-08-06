@@ -94,7 +94,10 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # asyncio.to_thread and is now a direct call inside the carrier's effect
 # closure, so the scan reads it and its facts were recorded in the same
 # change that created them.
-I_UNCLASSIFIED_ROW_BUDGET = 300
+# 300 -> 299 with the project-create route's mode-(b) migration: the
+# blank project.json write moved out of the handler into the carrier's
+# worker and was classified in the same change.
+I_UNCLASSIFIED_ROW_BUDGET = 299
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

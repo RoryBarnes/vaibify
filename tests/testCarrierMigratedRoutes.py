@@ -2543,6 +2543,111 @@ def testEveryMigratedStepRouteStillAnswersTwoHundred(
     assert response.status_code == 200, response.text
 
 
+class DockerDoubleWithNothingAtTheNewProjectPath(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gated double, reporting the new project's path absent.
+
+    The draft harness answers an unrecognized command ``(0, "")``, and
+    the create route reads a zero exit from ``test -e`` as "a project
+    already exists here" -- so without this the route would 409 before
+    writing anything and the assertion below would be vacuous. The gate
+    still runs through the parent; only the ANSWER is corrected, so the
+    correction cannot accidentally exempt the command from the gate.
+    """
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        tResult = DockerDoubleThatCallsTheRealGates.ftResultExecuteCommand(
+            self, sContainerId, sCommand, sWorkdir,
+        )
+        if sCommand.startswith("test -e"):
+            return (1, "")
+        return tResult
+
+
+@pytest.mark.falsification
+def testTheProjectCreationRunsUnderTheDrain():
+    """POST /api/workflows/create probes AND writes under one mode-(b) drain.
+
+    Both halves matter, and the probes are the half a migration is
+    likely to leave behind. The route's ``mkdir -p`` is an obvious
+    mutation; the duplicate-name search, the repo-directory test and the
+    "does this project already exist" test are container COMMANDS, which
+    the gate treats as mutating because a primitive handed command text
+    cannot know what the text does. A carrier around only the write
+    would leave every one of those refused.
+
+    Holding one drain across the whole sequence is also the point rather
+    than a convenience: the existence probe is what licenses the write,
+    so a lock dropped between them lets a second session create the same
+    project in the gap.
+
+    Kills: replacing ``_fdictCreateWorkflowUnderTheDrain``'s
+    fdictRunLockHeldMutation call with a direct call to its worker.
+    """
+    client, connectionDocker = _tConnectGatedClient(
+        DockerDoubleWithNothingAtTheNewProjectPath(),
+    )
+    response = client.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json={
+            "sWorkflowName": "Carried Project",
+            "sFileName": "carriedProject",
+            "sRepoDirectory": "repo",
+        },
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "mkdir -p",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testARefusedProjectCreationLeavesTheContainerUsable(tclientGated):
+    """A project file already there is a 409, not a quarantine.
+
+    Kills: dropping the ``errorRefusal`` return in
+    ``_fdictCreateWorkflowUnderTheDrain``'s worker so every
+    ``HTTPException`` propagates out of the carrier's thread.
+
+    The refusals the create route raises are all EXPECTED 4xx, and they
+    are raised from inside the carrier's worker thread. A worker that
+    lets one propagate poisons its journal record and marks the
+    container as needing reconciliation, so a researcher who picked a
+    filename that was already in use would be told to run ``vaibify
+    reconcile``. The proof that it did not is the NEXT mutation
+    succeeding against the same container.
+
+    Uses the ORDINARY gated double, whose ``test -e`` answers zero --
+    "something is already at that path" -- which is exactly the refusal
+    the sibling test above had to correct away to reach the write.
+    """
+    client, _connectionDocker = tclientGated
+    responseRefused = client.post(
+        f"/api/workflows/{S_CONTAINER_ID}/create",
+        json={
+            "sWorkflowName": "Occupied Project",
+            "sFileName": "occupiedProject",
+            "sRepoDirectory": "repo",
+        },
+    )
+    assert responseRefused.status_code == 409, responseRefused.text
+    responseAfter = client.put(
+        f"/api/settings/{S_CONTAINER_ID}",
+        json={"iNumberOfCores": DICT_WORKFLOW["iNumberOfCores"] + 1},
+    )
+    assert responseAfter.status_code == 200, (
+        "the refused create quarantined the container: a later mutation "
+        f"answered {responseAfter.status_code} -- {responseAfter.text}"
+    )
+
+
 def _fdictWorkflowOneStepBelowTheWarning():
     """Return the draft workflow padded to 99 steps.
 

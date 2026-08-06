@@ -5355,4 +5355,49 @@ def _fdictEntry(sRel):
         ),
         new='    fnWriteTheUpload()\n',
     ),
+
+    # --- Project creation, carrier mode (b) (2026-08-05) ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectCreationRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '    dictOutcome = await '
+            'commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, '
+            'dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"create-project",\n'
+            '        fnProbeThenCreate,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new='    return fnProbeThenCreate()\n',
+    ),
+
+    # The separate guard inside that route: an expected 4xx must be
+    # RETURNED from the worker, never raised out of it. Raising poisons
+    # the journal record and quarantines the container, so a researcher
+    # who picked a filename already in use is told to reconcile. This
+    # mutant kills ONLY the refusal test, which is what establishes the
+    # two guards are separately proven rather than jointly assumed.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARefusedProjectCreationLeavesTheContainerUsable'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '        except HTTPException as errorRefusal:\n'
+            '            if errorRefusal.status_code >= 500:\n'
+            '                raise\n'
+            '            return {"errorRefusal": errorRefusal}\n'
+        ),
+        new=(
+            '        except HTTPException:\n'
+            '            raise\n'
+        ),
+    ),
 ]

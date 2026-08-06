@@ -418,7 +418,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/workflow/{sContainerId}/project-context/import"),
     ("POST", "/api/workflow/{sContainerId}/project-context/template"),
     ("POST", "/api/workflow/{sContainerId}/prompt-record/capture"),
-    ("POST", "/api/workflows/{sContainerId}/create"),
     ("POST", "/api/workflows/{sContainerId}/request-creation"),
     ("POST", "/api/zenodo/{sContainerId}/archive"),
     ("POST", "/api/zenodo/{sContainerId}/download"),

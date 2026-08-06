@@ -13,7 +13,14 @@ from .. import browserSession
 from .. import containerOwnership
 from .. import workflowManager
 from ..actionCatalog import fnAgentAction
-from ..routeScope import fnRouteScope, fsLeaseFromRequest, S_SCOPE_OWNER_ESTABLISHING
+from ..routeContext import fdictRequireLaneTupleForCommit
+from ..routeScope import (
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_SCOPE_OWNER_ESTABLISHING,
+    fnDeclareCarrierMode,
+    fnRouteScope,
+    fsLeaseFromRequest,
+)
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     CreateWorkflowRequest,
@@ -194,31 +201,95 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
     """Register POST /api/workflows/{id}/create route."""
 
     @app.post("/api/workflows/{sContainerId}/create")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnCreateWorkflow(
-        sContainerId: str, request: CreateWorkflowRequest
+        sContainerId: str, request: CreateWorkflowRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
-        _fnRejectDuplicateWorkflowName(
-            dictCtx["docker"], sContainerId, request.sWorkflowName,
-        )
-        sRepoDirectory = _fsValidateRepoDirectory(
-            dictCtx["docker"], sContainerId, request.sRepoDirectory,
-        )
+        # Validated out here because it reaches no container at all: a
+        # bad filename is a 400 without a journal record ever existing.
         sFileName = _fsValidateAndNormalizeFileName(request.sFileName)
-        sWorkflowDir = _fsEnsureWorkflowDir(
-            dictCtx["docker"], sContainerId, sRepoDirectory,
+        dictOutcome = await _fdictCreateWorkflowUnderTheDrain(
+            dictCtx, sContainerId, request, sFileName, requestHttp,
         )
-        sFullPath = posixpath.join(sWorkflowDir, sFileName)
-        _fnAssertWorkflowAbsent(dictCtx["docker"], sContainerId, sFullPath)
-        sContent = json.dumps(
-            _fdictBlankWorkflowContent(request), indent=2,
-        ) + "\n"
-        dictCtx["docker"].fnWriteFile(
-            sContainerId, sFullPath, sContent.encode("utf-8"),
-        )
+        if dictOutcome.get("errorRefusal") is not None:
+            raise dictOutcome["errorRefusal"]
         return _fdictCreateWorkflowResponse(
-            sFullPath, request.sWorkflowName,
+            dictOutcome["sFullPath"], request.sWorkflowName,
         )
+
+
+async def _fdictCreateWorkflowUnderTheDrain(
+    dictCtx, sContainerId, request, sFileName, requestHttp,
+):
+    """Probe, make the directory, and write project.json under one drain.
+
+    Every probe in the sequence reaches the general exec primitive -- a
+    duplicate-name search, a directory test, a ``git rev-parse``, an
+    existence test -- which the gate treats as mutating because a
+    primitive handed command text cannot know what the text does. A
+    probe left outside the carrier would be refused on the enforced
+    branch. The two that GUARD the write belong inside the SAME held
+    drain as the write in any case: with the lock dropped between the
+    "this name is free" check and the write, a second session creates
+    the same project in the gap and one of the two silently wins.
+
+    Refusals are RETURNED, never raised out of the worker. An expected
+    4xx raised from a carrier worker poisons its journal record and
+    quarantines the container, so a researcher who picked a name that
+    was already taken would be told to run ``vaibify reconcile``. A 5xx
+    is re-raised and does poison, which is correct: nobody knows then
+    whether the file landed.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Creating the project",
+    )
+
+    def fnProbeThenCreate(supervisor=None):
+        del supervisor
+        try:
+            return {
+                "sFullPath": _fsProbeThenWriteNewWorkflow(
+                    dictCtx["docker"], sContainerId, request, sFileName,
+                ),
+            }
+        except HTTPException as errorRefusal:
+            if errorRefusal.status_code >= 500:
+                raise
+            return {"errorRefusal": errorRefusal}
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "create-project",
+        fnProbeThenCreate,
+    )
+    return dictOutcome["result"]
+
+
+def _fsProbeThenWriteNewWorkflow(
+    connectionDocker, sContainerId, request, sFileName,
+):
+    """Return the container path of the project.json this writes."""
+    _fnRejectDuplicateWorkflowName(
+        connectionDocker, sContainerId, request.sWorkflowName,
+    )
+    sRepoDirectory = _fsValidateRepoDirectory(
+        connectionDocker, sContainerId, request.sRepoDirectory,
+    )
+    sWorkflowDir = _fsEnsureWorkflowDir(
+        connectionDocker, sContainerId, sRepoDirectory,
+    )
+    sFullPath = posixpath.join(sWorkflowDir, sFileName)
+    _fnAssertWorkflowAbsent(connectionDocker, sContainerId, sFullPath)
+    sContent = json.dumps(
+        _fdictBlankWorkflowContent(request), indent=2,
+    ) + "\n"
+    connectionDocker.fnWriteFile(
+        sContainerId, sFullPath, sContent.encode("utf-8"),
+    )
+    return sFullPath
 
 
 def _fnRegisterWorkflowCreationRequest(app, dictCtx):
