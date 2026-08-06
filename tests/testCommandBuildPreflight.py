@@ -14,9 +14,9 @@ from vaibify.cli.commandBuild import (
     _fiSumDfSizeBytes,
     _flistArchMismatchResults,
     _fnHandleBuildError,
-    _fpreflightArch,
-    _fpreflightDisk,
-    _fpreflightMemory,
+    _flistPreflightArch,
+    _flistPreflightDisk,
+    _flistPreflightMemory,
     _fsBuildErrorHint,
     _fsNormalizeArch,
     flistRunBuildPreflight,
@@ -199,10 +199,10 @@ def test_fsDockerVmArch_returns_empty_on_nonzero(mockRun):
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="amd64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
-def test_fpreflightArch_warns_on_arm_host_amd_vm(
+def test_flistPreflightArch_warns_on_arm_host_amd_vm(
     mockHost, mockVm, mockColima,
 ):
-    listResults = _fpreflightArch(_configWithGpu(False))
+    listResults = _flistPreflightArch(_configWithGpu(False))
     assert len(listResults) == 1
     assert listResults[0].sLevel == "warn"
     assert "QEMU emulation" in listResults[0].sMessage
@@ -211,10 +211,10 @@ def test_fpreflightArch_warns_on_arm_host_amd_vm(
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="amd64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
-def test_fpreflightArch_fails_when_gpu_on_arm_host(
+def test_flistPreflightArch_fails_when_gpu_on_arm_host(
     mockHost, mockVm, mockColima,
 ):
-    listResults = _fpreflightArch(_configWithGpu(True))
+    listResults = _flistPreflightArch(_configWithGpu(True))
     assert len(listResults) == 1
     assert listResults[0].sLevel == "fail"
     assert "amd64-only" in listResults[0].sMessage
@@ -222,20 +222,20 @@ def test_fpreflightArch_fails_when_gpu_on_arm_host(
 
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="arm64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
-def test_fpreflightArch_no_result_when_arches_match(mockHost, mockVm):
-    assert _fpreflightArch(_configWithGpu(False)) == []
+def test_flistPreflightArch_no_result_when_arches_match(mockHost, mockVm):
+    assert _flistPreflightArch(_configWithGpu(False)) == []
 
 
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="amd64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="amd64")
-def test_fpreflightArch_no_result_intel_amd_match(mockHost, mockVm):
-    assert _fpreflightArch(_configWithGpu(False)) == []
+def test_flistPreflightArch_no_result_intel_amd_match(mockHost, mockVm):
+    assert _flistPreflightArch(_configWithGpu(False)) == []
 
 
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
-def test_fpreflightArch_skipped_when_vm_unknown(mockHost, mockVm):
-    assert _fpreflightArch(_configWithGpu(False)) == []
+def test_flistPreflightArch_skipped_when_vm_unknown(mockHost, mockVm):
+    assert _flistPreflightArch(_configWithGpu(False)) == []
 
 
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=False)
@@ -311,25 +311,25 @@ def test_fdiDockerDfBytes_returns_negative_on_nonzero(mockRun):
 
 
 @patch("vaibify.cli.commandBuild._fdiDockerDfBytes", return_value=-1)
-def test_fpreflightDisk_emits_info_when_unparseable(mockBytes):
-    listResults = _fpreflightDisk()
+def test_flistPreflightDisk_emits_info_when_unparseable(mockBytes):
+    listResults = _flistPreflightDisk()
     assert len(listResults) == 1
     assert listResults[0].sLevel == "info"
 
 
 @patch("vaibify.cli.commandBuild._fdiDockerDfBytes",
        return_value=5 * (2 ** 30))
-def test_fpreflightDisk_no_warning_when_below_threshold(mockBytes):
-    assert _fpreflightDisk() == []
+def test_flistPreflightDisk_no_warning_when_below_threshold(mockBytes):
+    assert _flistPreflightDisk() == []
 
 
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
 @patch("vaibify.cli.commandBuild._fdiDockerDfBytes",
        return_value=80 * (2 ** 30))
-def test_fpreflightDisk_warns_when_threshold_exceeded(
+def test_flistPreflightDisk_warns_when_threshold_exceeded(
     mockBytes, mockColima,
 ):
-    listResults = _fpreflightDisk()
+    listResults = _flistPreflightDisk()
     assert len(listResults) == 1
     assert listResults[0].sLevel == "warn"
     assert "docker system prune" in listResults[0].sRemediation
@@ -339,10 +339,10 @@ def test_fpreflightDisk_warns_when_threshold_exceeded(
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=False)
 @patch("vaibify.cli.commandBuild._fdiDockerDfBytes",
        return_value=80 * (2 ** 30))
-def test_fpreflightDisk_warn_no_colima_advice_when_not_colima(
+def test_flistPreflightDisk_warn_no_colima_advice_when_not_colima(
     mockBytes, mockColima,
 ):
-    listResults = _fpreflightDisk()
+    listResults = _flistPreflightDisk()
     assert "colima" not in listResults[0].sRemediation
 
 
@@ -351,41 +351,41 @@ def test_fpreflightDisk_warn_no_colima_advice_when_not_colima(
 # -------------------------------------------------------------------
 
 @patch("subprocess.run")
-def test_fpreflightMemory_warns_below_4gb(mockRun):
+def test_flistPreflightMemory_warns_below_4gb(mockRun):
     mockRun.return_value = _resultProcess(
         iReturnCode=0, sStdout=str(2 * (2 ** 30)),
     )
-    listResults = _fpreflightMemory()
+    listResults = _flistPreflightMemory()
     assert len(listResults) == 1
     assert listResults[0].sLevel == "warn"
     assert "OOM" in listResults[0].sMessage
 
 
 @patch("subprocess.run")
-def test_fpreflightMemory_silent_above_4gb(mockRun):
+def test_flistPreflightMemory_silent_above_4gb(mockRun):
     mockRun.return_value = _resultProcess(
         iReturnCode=0, sStdout=str(8 * (2 ** 30)),
     )
-    assert _fpreflightMemory() == []
+    assert _flistPreflightMemory() == []
 
 
 @patch("subprocess.run", side_effect=FileNotFoundError)
-def test_fpreflightMemory_silent_when_docker_missing(mockRun):
-    assert _fpreflightMemory() == []
+def test_flistPreflightMemory_silent_when_docker_missing(mockRun):
+    assert _flistPreflightMemory() == []
 
 
 @patch("subprocess.run")
-def test_fpreflightMemory_silent_on_garbage_output(mockRun):
+def test_flistPreflightMemory_silent_on_garbage_output(mockRun):
     mockRun.return_value = _resultProcess(
         iReturnCode=0, sStdout="not-an-int",
     )
-    assert _fpreflightMemory() == []
+    assert _flistPreflightMemory() == []
 
 
 @patch("subprocess.run")
-def test_fpreflightMemory_silent_on_nonzero_returncode(mockRun):
+def test_flistPreflightMemory_silent_on_nonzero_returncode(mockRun):
     mockRun.return_value = _resultProcess(iReturnCode=1)
-    assert _fpreflightMemory() == []
+    assert _flistPreflightMemory() == []
 
 
 # -------------------------------------------------------------------
@@ -417,9 +417,9 @@ def test_fnHandleBuildError_appends_oom_hint(capsys):
 # Aggregator + CLI integration
 # -------------------------------------------------------------------
 
-@patch("vaibify.cli.commandBuild._fpreflightMemory", return_value=[])
-@patch("vaibify.cli.commandBuild._fpreflightDisk", return_value=[])
-@patch("vaibify.cli.commandBuild._fpreflightArch", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightMemory", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightDisk", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightArch", return_value=[])
 @patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(1, _S_DAEMON_UNREACHABLE_STDERR),
@@ -439,9 +439,9 @@ def test_flistRunBuildPreflight_short_circuits_on_daemon_fail(
     mockMem.assert_not_called()
 
 
-@patch("vaibify.cli.commandBuild._fpreflightMemory", return_value=[])
-@patch("vaibify.cli.commandBuild._fpreflightDisk", return_value=[])
-@patch("vaibify.cli.commandBuild._fpreflightArch", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightMemory", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightDisk", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightArch", return_value=[])
 @patch(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(0, ""),
@@ -459,8 +459,8 @@ def test_flistRunBuildPreflight_runs_all_when_daemon_ok(
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir", return_value="/docker")
-@patch("vaibify.cli.commandBuild._fpreflightMemory", return_value=[])
-@patch("vaibify.cli.commandBuild._fpreflightDisk", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightMemory", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightDisk", return_value=[])
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="amd64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
@@ -487,8 +487,8 @@ def test_build_warns_but_proceeds_on_arch_mismatch(
 @patch("vaibify.cli.commandBuild.fnBuildFromConfig")
 @patch("vaibify.cli.commandBuild.fconfigResolveProject")
 @patch("vaibify.cli.commandBuild.fsDockerDir", return_value="/docker")
-@patch("vaibify.cli.commandBuild._fpreflightMemory", return_value=[])
-@patch("vaibify.cli.commandBuild._fpreflightDisk", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightMemory", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightDisk", return_value=[])
 @patch("vaibify.cli.commandBuild.fsDockerVmArch", return_value="amd64")
 @patch("vaibify.cli.commandBuild.fsHostArch", return_value="arm64")
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)

@@ -1065,16 +1065,16 @@ def test_fdictCheckHostKeyring_present_token_returns_connected():
     assert dictResult["bConnected"] is True
 
 
-def test_fbValidateOverleafOnHost_missing_token_skips_network():
+def test_ftValidateOverleafOnHost_missing_token_skips_network():
     """No token stored => return early, never invoke git/askpass."""
-    from vaibify.gui.syncDispatcher import _fbValidateOverleafOnHost
+    from vaibify.gui.syncDispatcher import _ftValidateOverleafOnHost
     with patch(
         "vaibify.config.secretManager.fbSecretExists",
         return_value=False,
     ), patch(
         "vaibify.gui.syncDispatcher.fsWriteAskpassScript",
     ) as mockAskpass:
-        bPass, sDetail = _fbValidateOverleafOnHost("projid")
+        bPass, sDetail = _ftValidateOverleafOnHost("projid")
     assert bPass is False
     assert "No Overleaf token" in sDetail
     mockAskpass.assert_not_called()

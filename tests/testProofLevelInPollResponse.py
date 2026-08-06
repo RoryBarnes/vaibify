@@ -22,7 +22,7 @@ def _fdictCommonPatches(dictCommon=None):
         "fdictCollectOutputPathsByStep",
         "fnCollectMarkerPathsByStep",
         "_fbCheckStaleUserVerification",
-        "_flistDetectAndInvalidate",
+        "_fdictDetectAndInvalidate",
         "_fdictComputeMaxMtimeByStep",
         "_fdictComputeMaxPlotMtimeByStep",
         "_fdictComputeMaxDataMtimeByStep",

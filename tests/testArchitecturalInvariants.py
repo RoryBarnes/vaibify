@@ -2475,7 +2475,7 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
     from the marker's recorded blob SHA. After one poll cycle, all four
     test axes must drop to ``untested``.
     """
-    from vaibify.gui.fileStatusManager import _flistDetectAndInvalidate
+    from vaibify.gui.fileStatusManager import _fdictDetectAndInvalidate
 
     class _FakeDocker:
         def ftResultExecuteCommand(self, sId, sCmd):
@@ -2494,7 +2494,7 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         "save": _fnSave,
         "dictPreviousModTimes": {"cid": {sLivePath: sMtime}},
     }
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
         dictMarkersByStep={0: dictMarker},

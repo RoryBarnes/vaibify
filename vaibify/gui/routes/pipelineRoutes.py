@@ -50,7 +50,7 @@ from ..fileStatusManager import (
     ftGetModTimesAndFingerprint,
     _flistResolveTestSourcePaths,
     _flistCollectOutputPaths,
-    _flistDetectAndInvalidate,
+    _fdictDetectAndInvalidate,
     _fnClearStepModificationState,
     _fnUpdateModTimeBaseline,
     fbReconcileUpstreamFlags,
@@ -928,7 +928,7 @@ def _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow,
     )
     dictMtimeCache = _fdictLoadMtimeCacheForPoll(dictWorkflow)
-    listInvalidated = _flistDetectAndInvalidate(
+    listInvalidated = _fdictDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
         dictMarkersByStep=dictMarkersByStep,
         dictCache=dictMtimeCache,

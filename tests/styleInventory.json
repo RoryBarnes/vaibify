@@ -22,21 +22,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/cli/commandBuild.py::_fpreflightArch",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/commandBuild.py::_fpreflightDisk",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/commandBuild.py::_fpreflightMemory",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/cli/commandBuild.py::build",
       "sDebtClass": "cli-verb",
       "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
@@ -120,11 +105,6 @@
       "sIdentity": "vaibify/cli/commandRegister.py::register",
       "sDebtClass": "cli-verb",
       "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandReproduce.py::_fiRunPipInstall",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
     },
     {
       "sIdentity": "vaibify/cli/commandReproduce.py::reproduce",
@@ -732,26 +712,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/dockerStatus.py::fsDetectDockerRuntime",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/fileStatusManager.py::_fbStepIsPencilStale",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/fileStatusManager.py::_flistDetectAndInvalidate",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/fileStatusManager.py::_flistSplitOutputPaths",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/fileStatusManager.py::_fnArchiveZenodoForAutoArchive",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -832,16 +792,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_fiRunSetupIfNeeded",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_flistAppendAndMaybeDrainBatch",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/pipelineRunner.py::_fnRunOneStep",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -854,11 +804,6 @@
     {
       "sIdentity": "vaibify/gui/pipelineRunner.py::_ftBuildBatchingEmitter.faDrainPending",
       "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::fiRunStepCommands",
-      "sDebtClass": "legacy-literal-return",
       "sReason": ""
     },
     {
@@ -1104,16 +1049,6 @@
     {
       "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fnRegisterDraftWrite.fnWriteDraft",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fsRequireProjectRepoAndWorkflowPath",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fsResolveDraftFile",
-      "sDebtClass": "legacy-literal-return",
       "sReason": ""
     },
     {
@@ -1607,11 +1542,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fbRunOverleafValidation",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterArxivConfigure.fnConfigureArxiv",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -1782,11 +1712,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fdictResolveCategoryContext",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/routes/testRoutes.py::_fnRegisterTestGenerate.fnDeleteGeneratedTest",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -1947,11 +1872,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/staleOutputDetector.py::_flistOffendingForPair",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/startReservation.py::StartReservation.identityOwnership",
       "sDebtClass": "legacy-annotation-mismatch",
       "sReason": ""
@@ -1992,11 +1912,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/syncDispatcher.py::_fbValidateOverleafOnHost",
-      "sDebtClass": "legacy-literal-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/terminalContainment.py::TerminalExecutionRecord.connectionDocker",
       "sDebtClass": "legacy-annotation-mismatch",
       "sReason": ""
@@ -2029,11 +1944,6 @@
     {
       "sIdentity": "vaibify/gui/testGenerator.py::_ftolStdFromN",
       "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/testGenerator.py::fsBuildStepContext",
-      "sDebtClass": "legacy-literal-return",
       "sReason": ""
     },
     {
@@ -2341,7 +2251,7 @@
     "legacy-name": 143,
     "legacy-fn-return": 249,
     "legacy-yield": 3,
-    "legacy-literal-return": 18,
+    "legacy-literal-return": 0,
     "legacy-return-annotation": 0,
     "legacy-annotation-mismatch": 6
   }

@@ -346,7 +346,7 @@ class TestFdictFetchOutputStatus:
             return_value=True,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -412,7 +412,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value=dictInvalidated,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -480,7 +480,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -561,7 +561,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -639,7 +639,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -719,7 +719,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -1444,7 +1444,7 @@ class TestWorkflowDiscoveryRoute:
 _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
     "fdictCollectOutputPathsByStep",
     "fnCollectMarkerPathsByStep",
-    "_flistDetectAndInvalidate",
+    "_fdictDetectAndInvalidate",
     "_fdictLoadMarkersForPoll",
     "_fdictLoadMtimeCacheForPoll",
     "_fdictComputeMaxMtimeByStep",

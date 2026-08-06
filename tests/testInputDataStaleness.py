@@ -14,10 +14,10 @@ import pytest
 
 from vaibify.gui import mtimeCache
 from vaibify.gui.fileStatusManager import (
-    _fbStepIsPencilStale,
+    _ftStepIsPencilStale,
     _fdictBuildStepStatusEntry,
     _fdictComputeMaxInputMtimeByStep,
-    _flistDetectAndInvalidate,
+    _fdictDetectAndInvalidate,
     _fnInvalidateStepFiles,
     fdictCollectInputPathsByStep,
 )
@@ -177,7 +177,7 @@ def test_input_mtime_change_invalidates_declaring_step(tmp_path):
     sAbsInput = os.path.join(sRepoRoot, "data", "raw.csv")
     dictWorkflow = _fdictOneStepWorkflow(sRepoRoot, ["data/raw.csv"])
     dictCtx = _fdictBuildCtx({"cid": {sAbsInput: "100"}})
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, {sAbsInput: "200"},
         dictVars={"sRepoRoot": sRepoRoot},
     )
@@ -200,7 +200,7 @@ def test_shared_input_invalidates_all_declaring_steps_and_only_those(
         ],
     }
     dictCtx = _fdictBuildCtx({"cid": {sAbsShared: "100"}})
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, {sAbsShared: "200"},
         dictVars={"sRepoRoot": sRepoRoot},
     )
@@ -276,7 +276,7 @@ def test_input_content_drift_with_same_mtime_invalidates(tmp_path):
     dictWorkflow = _fdictOneStepWorkflow(sRepoRoot, ["data/raw.csv"])
     dictNewModTimes = {sAbsLive: str(int(fSharedMtime))}
     dictCtx = _fdictBuildCtx({"cid": dict(dictNewModTimes)})
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": sRepoRoot},
         dictMarkersByStep={
@@ -298,7 +298,7 @@ def test_fresh_clone_matching_input_content_stays_passed(tmp_path):
     )
     dictWorkflow = _fdictOneStepWorkflow(sRepoRoot, ["data/raw.csv"])
     dictCtx = _fdictBuildCtx()
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow,
         {sAbsLive: str(int(os.path.getmtime(sAbsLive)))},
         dictVars={"sRepoRoot": sRepoRoot},
@@ -317,7 +317,7 @@ def test_missing_declared_input_counts_as_hash_drift(tmp_path):
     sRepoRoot = str(tmp_path)
     dictWorkflow = _fdictOneStepWorkflow(sRepoRoot, ["data/raw.csv"])
     dictCtx = _fdictBuildCtx()
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, {},
         dictVars={"sRepoRoot": sRepoRoot},
         dictMarkersByStep={
@@ -336,7 +336,7 @@ def test_missing_declared_input_counts_as_hash_drift(tmp_path):
 
 def test_pencil_stale_reports_input_file_newer_than_marker():
     dictStep = _fdictBuildStep("step1", ["data/raw.csv"])
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, {}, [],
         {"/workspace/repo/data/raw.csv": "500"},
         iMarkerMtime=100,
@@ -352,7 +352,7 @@ def test_pencil_stale_reports_input_file_newer_than_marker():
 
 def test_pencil_not_stale_when_input_older_than_marker():
     dictStep = _fdictBuildStep("step1", ["data/raw.csv"])
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, {}, [],
         {"/workspace/repo/data/raw.csv": "50"},
         iMarkerMtime=100,

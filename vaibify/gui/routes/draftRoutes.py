@@ -34,7 +34,7 @@ class DraftWriteRequest(BaseModel):
     sWorkdir: str = ""
 
 
-def _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
+def _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     """Return ``(sProjectRepoPath, sWorkflowPath)`` or raise HTTP 400.
 
     The workflow path lives in ``dictCtx["paths"]`` because the
@@ -56,7 +56,7 @@ def _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     return sProjectRepoPath, sWorkflowPath
 
 
-def _fsResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
+def _ftResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
     """Return the absolute draft path inside the project repo.
 
     Validates that the computed draft path lives under the per-workflow
@@ -64,7 +64,7 @@ def _fsResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
     for the workflow.
     """
     sProjectRepoPath, sWorkflowPath = (
-        _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
+        _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
     )
     sDraftDir = draftManager.fsDraftDirectory(
         sProjectRepoPath, sWorkflowPath,
@@ -118,7 +118,7 @@ def _fnRegisterDraftWrite(app, dictCtx):
     ):
         dictCtx["require"]()
         _fnRejectOversize(request.sContent)
-        sDraftDir, sDraftPath = _fsResolveDraftFile(
+        sDraftDir, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, request.sWorkdir,
         )
         _fnEnsureDraftDir(dictCtx, sContainerId, sDraftDir)
@@ -149,7 +149,7 @@ def _fnRegisterDraftRead(app, dictCtx):
         sWorkdir: str = "",
     ):
         dictCtx["require"]()
-        _, sDraftPath = _fsResolveDraftFile(
+        _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
         try:
@@ -178,7 +178,7 @@ def _fnRegisterDraftDelete(app, dictCtx):
         sWorkdir: str = "",
     ):
         dictCtx["require"]()
-        _, sDraftPath = _fsResolveDraftFile(
+        _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
         sCommand = "rm -f " + _fsQuotePath(sDraftPath)
@@ -201,7 +201,7 @@ def _fnRegisterDraftList(app, dictCtx):
     async def fnListDrafts(sContainerId: str):
         dictCtx["require"]()
         sProjectRepoPath, sWorkflowPath = (
-            _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
+            _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
         )
         sDraftDir = draftManager.fsDraftDirectory(
             sProjectRepoPath, sWorkflowPath,

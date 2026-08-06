@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from vaibify.gui.pipelineRunner import (
     _fiCheckDependencies,
-    _fiRunSetupIfNeeded,
+    _ftRunSetupIfNeeded,
     _fnRunOneStep,
     _fsMissingDependencyFile,
     _ftRunSingleCommand,
-    fiRunStepCommands,
+    ftRunStepCommands,
 )
 
 
@@ -94,11 +94,11 @@ def test_ftRunSingleCommand_cpu_line_not_emitted_as_output():
 
 
 # ---------------------------------------------------------------
-# fiRunStepCommands: early return on setup failure (line 225)
+# ftRunStepCommands: early return on setup failure (line 225)
 # ---------------------------------------------------------------
 
 
-def test_fiRunStepCommands_returns_on_setup_failure():
+def test_ftRunStepCommands_returns_on_setup_failure():
     """If data commands fail, plot commands should not run."""
     mockDocker = MagicMock()
     # mkdir Plot still uses the blocking exec; data/plot commands
@@ -112,7 +112,7 @@ def test_fiRunStepCommands_returns_on_setup_failure():
         "saPlotCommands": ["python plot.py"],
         "bPlotOnly": False,
     }
-    iExitCode, fCpu = _fnRunAsync(fiRunStepCommands(
+    iExitCode, fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", dictStep, "/ws", {}, fnCallback,
     ))
     assert iExitCode == 5
@@ -121,7 +121,7 @@ def test_fiRunStepCommands_returns_on_setup_failure():
     assert not any("plot.py" in sCmd for sCmd in listCalls)
 
 
-def test_fiRunStepCommands_runs_plot_when_setup_succeeds():
+def test_ftRunStepCommands_runs_plot_when_setup_succeeds():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictStep = {
@@ -130,7 +130,7 @@ def test_fiRunStepCommands_runs_plot_when_setup_succeeds():
         "saPlotCommands": ["python plot.py"],
         "bPlotOnly": True,
     }
-    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+    iExitCode, _fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", dictStep, "/ws", {}, fnCallback,
     ))
     assert iExitCode == 0
@@ -153,7 +153,7 @@ def _flistAllExecutedCommands(mockDocker):
 
 
 # ---------------------------------------------------------------
-# fiRunStepCommands: sRunMode gates data vs plot sections.
+# ftRunStepCommands: sRunMode gates data vs plot sections.
 # ---------------------------------------------------------------
 
 
@@ -170,10 +170,10 @@ def _flistExecutedCommands(mockDocker):
     return _flistAllExecutedCommands(mockDocker)
 
 
-def test_fiRunStepCommands_plotsOnly_skips_data_and_tests():
+def test_ftRunStepCommands_plotsOnly_skips_data_and_tests():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
-    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+    iExitCode, _fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", _fdictStepForRunMode(),
         "/ws", {}, fnCallback, sRunMode="plotsOnly",
     ))
@@ -183,10 +183,10 @@ def test_fiRunStepCommands_plotsOnly_skips_data_and_tests():
     assert any("plot.py" in sCmd for sCmd in listCalls)
 
 
-def test_fiRunStepCommands_dataOnly_skips_plots():
+def test_ftRunStepCommands_dataOnly_skips_plots():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
-    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+    iExitCode, _fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", _fdictStepForRunMode(),
         "/ws", {}, fnCallback, sRunMode="dataOnly",
     ))
@@ -196,10 +196,10 @@ def test_fiRunStepCommands_dataOnly_skips_plots():
     assert not any("plot.py" in sCmd for sCmd in listCalls)
 
 
-def test_fiRunStepCommands_full_runs_both_sections():
+def test_ftRunStepCommands_full_runs_both_sections():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
-    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+    iExitCode, _fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", _fdictStepForRunMode(),
         "/ws", {}, fnCallback, sRunMode="full",
     ))

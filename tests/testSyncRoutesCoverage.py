@@ -2354,12 +2354,12 @@ def test_fdictComputePostArchiveZenodoDigests_missing_sha_yields_empty():
 
 
 @pytest.mark.asyncio
-async def test_fbRunOverleafValidation_empty_project_returns_false():
+async def test_ftRunOverleafValidation_empty_project_returns_false():
     from vaibify.gui.routes.syncRoutes import (
-        _fbRunOverleafValidation,
+        _ftRunOverleafValidation,
     )
     from unittest.mock import MagicMock as _MM
-    bPass, sDetail = await _fbRunOverleafValidation(
+    bPass, sDetail = await _ftRunOverleafValidation(
         _MM(), _MM(), "cid", "",
     )
     assert bPass is False

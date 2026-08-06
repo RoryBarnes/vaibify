@@ -260,7 +260,7 @@ def _fbPipelineIsRunning(dictCtx, sContainerId):
     Raw read — does not reconcile a vanished runner. Async callers
     must resolve liveness via ``pipelineState.fdictReadReconciledState``
     and pass the resulting boolean down through
-    ``_flistDetectAndInvalidate``; this helper survives as the sync
+    ``_fdictDetectAndInvalidate``; this helper survives as the sync
     fallback for code paths (and tests) that don't have an event loop
     on hand.
     """
@@ -1016,7 +1016,7 @@ def _fnAppendUserStale(listStale, listBuckets, iEpoch, dictModTimes):
         ), "user", sCategory)
 
 
-def _fbStepIsPencilStale(
+def _ftStepIsPencilStale(
     dictStep, dictStepScripts, listStepOutputPaths, dictModTimes,
     iMarkerMtime=None, setResolvedPlotPaths=None,
     listStepInputPaths=None,
@@ -1050,7 +1050,7 @@ def _fdictBuildArtifactBuckets(
     setResolvedPlotPaths, listStepInputPaths=None,
 ):
     """Return {category: [paths]} for each artifact bucket."""
-    listDataFiles, listPlotFiles = _flistSplitOutputPaths(
+    listDataFiles, listPlotFiles = _ftSplitOutputPaths(
         dictStep, listStepOutputPaths, setResolvedPlotPaths,
     )
     return {
@@ -1068,7 +1068,7 @@ def _fbPathIsPlot(sPath, setResolvedPlotPaths, bByBasename):
     return sKey in setResolvedPlotPaths
 
 
-def _flistSplitOutputPaths(
+def _ftSplitOutputPaths(
     dictStep, listOutputPaths, setResolvedPlotPaths=None,
 ):
     """Split a step's output-path list into (data_files, plot_files)."""
@@ -1097,7 +1097,7 @@ def _fdictBuildStepStatusEntry(
 ):
     """Compute {sStatus, listStaleArtifacts} for a single step.
 
-    The mtime-based verdict (``_fbStepIsPencilStale``) is the source
+    The mtime-based verdict (``_ftStepIsPencilStale``) is the source
     of "may be stale". The optional manifest short-circuit refines it
     to "is/isn't actually drifted": if the project repo carries a
     ``MANIFEST.sha256`` that matches every output of this step, an
@@ -1109,7 +1109,7 @@ def _fdictBuildStepStatusEntry(
         sResolved for sResolved, _sBase
         in _flistResolvePlotPaths(dictStep, dictResolvedVars)
     }
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictStepScripts, listOutputs, dictModTimes,
         iMarkerMtime=iMarkerMtime,
         setResolvedPlotPaths=setPlotPaths,
@@ -1428,7 +1428,7 @@ def _fdictUnionChangedFiles(dictMtimeChanged, dictHashStaleAbs):
     return dictResult
 
 
-def _flistDetectAndInvalidate(
+def _fdictDetectAndInvalidate(
     dictCtx, sContainerId, dictWorkflow, dictNewModTimes,
     dictVars=None, dictMarkersByStep=None, dictCache=None,
     bPipelineRunning=None,

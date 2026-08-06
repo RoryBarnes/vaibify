@@ -1081,13 +1081,13 @@ def fbValidateOverleafCredentials(
     Returns ``(bSuccess, sStderr)``.
     """
     fnValidateOverleafProjectId(sProjectId)
-    return _fbValidateOverleafOnHost(sProjectId)
+    return _ftValidateOverleafOnHost(sProjectId)
 
 
 _S_OVERLEAF_HOST = "git.overleaf.com"
 
 
-def _fbValidateOverleafOnHost(sProjectId):
+def _ftValidateOverleafOnHost(sProjectId):
     """Run git ls-remote from the host with a transient askpass helper."""
     from vaibify.config.secretManager import fbSecretExists
     if not fbSecretExists("overleaf_token", "keyring"):

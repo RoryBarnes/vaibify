@@ -95,7 +95,7 @@ def _fdictMaybeAdvisory(
     fProducerMax = _fMaxMtime(dictMtimesByIndex.get(iProducer, {}))
     if fProducerMax <= 0:
         return None
-    listOffending, fAgeDelta = _flistOffendingForPair(
+    listOffending, fAgeDelta = _ftOffendingForPair(
         dictConsumerMtimes, fProducerMax, fMarginSeconds,
     )
     if not listOffending:
@@ -124,7 +124,7 @@ def _fdictBuildAdvisoryEntry(
     }
 
 
-def _flistOffendingForPair(
+def _ftOffendingForPair(
     dictConsumerMtimes, fProducerMax, fMarginSeconds,
 ):
     """Return (offending_paths, max_age_delta) for one consumer/producer pair."""

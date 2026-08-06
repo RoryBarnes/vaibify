@@ -112,7 +112,7 @@ def _ftRunStepWithVariables(dictVariables):
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {"sDirectory": "/ws/step"}
     with patch(
-        "vaibify.gui.pipelineRunner.fiRunStepCommands",
+        "vaibify.gui.pipelineRunner.ftRunStepCommands",
         new=AsyncMock(return_value=(0, 1.0)),
     ), patch(
         "vaibify.gui.pipelineRunner._fsetSnapshotDirectory",

@@ -11,7 +11,7 @@ from .. import pipelineServer as _pipelineServer
 from ..dockerStatus import (
     fdictGetDockerStatus,
     fdictRetryDockerConnection,
-    fsDetectDockerRuntime,
+    fdictDetectDockerRuntime,
 )
 from ..resourceMonitor import fdictGetContainerStats
 
@@ -38,7 +38,7 @@ def _fnRegisterRuntimeInfo(app, dictCtx):
 
     @app.get("/api/runtime")
     async def fnGetRuntimeInfo():
-        return await asyncio.to_thread(fsDetectDockerRuntime)
+        return await asyncio.to_thread(fdictDetectDockerRuntime)
 
 
 def _fnRegisterUserInfo(app):

@@ -19,7 +19,7 @@ logger = logging.getLogger("vaibify")
 __all__ = [
     "fdictGetDockerStatus",
     "fdictRetryDockerConnection",
-    "fsDetectDockerRuntime",
+    "fdictDetectDockerRuntime",
 ]
 
 
@@ -61,7 +61,7 @@ def _fdictSleepWarningForContext(sContext):
     return {"sRuntime": sContext, "sSleepWarning": sSleepDefault}
 
 
-def fsDetectDockerRuntime():
+def fdictDetectDockerRuntime():
     """Detect the Docker runtime (colima, desktop, orbstack, etc.)."""
     import subprocess
     try:

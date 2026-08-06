@@ -5,7 +5,7 @@ silently restored from a ``.bak`` file via ``shutil.copy2`` (which
 preserves mtime). The dashboard's mtime-based delta detection cannot
 see that change, but the marker's recorded content hashes can.
 
-These tests exercise :func:`fileStatusManager._flistDetectAndInvalidate`
+These tests exercise :func:`fileStatusManager._fdictDetectAndInvalidate`
 with a marker + on-disk file pair whose mtimes match but whose contents
 diverge. Both ``sUnitTest = "passed"`` and ``sUnitTest =
 "passed-from-marker"`` initial states must invalidate to ``untested``.
@@ -16,7 +16,7 @@ import os
 import pytest
 
 from vaibify.gui import mtimeCache
-from vaibify.gui.fileStatusManager import _flistDetectAndInvalidate
+from vaibify.gui.fileStatusManager import _fdictDetectAndInvalidate
 
 
 def _fsWrite(sRoot, sRelPath, sContent):
@@ -137,7 +137,7 @@ def test_shutil_copy_drift_invalidates_step(tmp_path, sUnitTestState):
         _fnSeedShutilCopyScenario(tmp_path, sUnitTestState)
     )
     dictCache = {}
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
         dictMarkersByStep={0: dictMarker},
@@ -161,7 +161,7 @@ def test_matching_content_does_not_invalidate(tmp_path):
     sAbsLive = os.path.join(str(tmp_path), "step1", "out.json")
     dictNewModTimes = {sAbsLive: "1700000000"}
     dictCtx = _fdictBuildCtx({"cid": dict(dictNewModTimes)})
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
         dictMarkersByStep={0: dictMarker},
@@ -185,7 +185,7 @@ def test_marker_with_mismatched_label_is_ignored(tmp_path):
     sAbsLive = os.path.join(str(tmp_path), "step1", "out.json")
     dictNewModTimes = {sAbsLive: "1700000000"}
     dictCtx = _fdictBuildCtx({"cid": dict(dictNewModTimes)})
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
         dictMarkersByStep={0: dictMarker},
@@ -205,7 +205,7 @@ def test_marker_without_hashes_is_no_op(tmp_path):
     sAbsLive = os.path.join(str(tmp_path), "step1", "out.json")
     dictNewModTimes = {sAbsLive: "1700000000"}
     dictCtx = _fdictBuildCtx({"cid": dict(dictNewModTimes)})
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
         dictMarkersByStep={0: dictMarker},
@@ -226,7 +226,7 @@ def test_guard_fix_passed_from_marker_invalidates_on_mtime_change(tmp_path):
     dictOldModTimes = {sAbsLive: "1690000000"}
     dictNewModTimes = {sAbsLive: "1700000000"}
     dictCtx = _fdictBuildCtx({"cid": dict(dictOldModTimes)})
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
         dictMarkersByStep={},

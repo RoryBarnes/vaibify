@@ -416,8 +416,8 @@
       "sDispositionRationale": "UNCLASSIFIED",
       "sFile": "gui/dockerStatus.py",
       "sFingerprint": "7d8752c4c7ea34c2",
-      "sScope": "fsDetectDockerRuntime",
-      "sScopeFingerprint": "151b1099aae4a769"
+      "sScope": "fdictDetectDockerRuntime",
+      "sScopeFingerprint": "be8905e18ed16a62"
     },
     {
       "iLine": 46,
@@ -1167,7 +1167,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/commandReproduce.py",
       "sFingerprint": "6a5d45b326a64bda",
-      "sFunction": "_fiRunPipInstall",
+      "sFunction": "_ftRunPipInstall",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -3325,7 +3325,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/dockerStatus.py",
       "sFingerprint": "16b7cc66bef708cd",
-      "sFunction": "fsDetectDockerRuntime",
+      "sFunction": "fdictDetectDockerRuntime",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -4027,7 +4027,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineRunner.py",
       "sFingerprint": "483d7ccb276e69f1",
-      "sFunction": "fiRunStepCommands",
+      "sFunction": "ftRunStepCommands",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -8853,8 +8853,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandReproduce.py",
       "sFingerprint": "6a5d45b326a64bda",
-      "sFunction": "_fiRunPipInstall",
-      "sScopeFingerprint": "501ee967103f4237"
+      "sFunction": "_ftRunPipInstall",
+      "sScopeFingerprint": "ed88caa4f3a0f77f"
     },
     {
       "iLine": 98,

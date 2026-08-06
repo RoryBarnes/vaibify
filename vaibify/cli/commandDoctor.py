@@ -27,12 +27,12 @@ __all__ = ["doctor", "flistRunDoctorChecks"]
 def _flistBuildOnlyChecks(config):
     """Run build-only pre-flight helpers and return their results."""
     from .commandBuild import (
-        _fpreflightArch, _fpreflightDisk, _fpreflightMemory,
+        _flistPreflightArch, _flistPreflightDisk, _flistPreflightMemory,
     )
     listResults = []
-    listResults.extend(_fpreflightArch(config))
-    listResults.extend(_fpreflightDisk())
-    listResults.extend(_fpreflightMemory())
+    listResults.extend(_flistPreflightArch(config))
+    listResults.extend(_flistPreflightDisk())
+    listResults.extend(_flistPreflightMemory())
     return listResults
 
 

@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 
 from vaibify.gui.pipelineRunner import (
-    fiRunStepCommands,
-    _fiRunSetupIfNeeded,
+    ftRunStepCommands,
+    _ftRunSetupIfNeeded,
     _ftRunCommandList,
     _ftRunSingleCommand,
     fnRunAllSteps,
@@ -159,25 +159,25 @@ def test_ftRunCommandList_runs_all():
 
 
 # -----------------------------------------------------------------------
-# _fiRunSetupIfNeeded
+# _ftRunSetupIfNeeded
 # -----------------------------------------------------------------------
 
 
-def test_fiRunSetupIfNeeded_plot_only():
+def test_ftRunSetupIfNeeded_plot_only():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictStep = {"bPlotOnly": True}
-    iResult, fCpu = _fnRunAsync(_fiRunSetupIfNeeded(
+    iResult, fCpu = _fnRunAsync(_ftRunSetupIfNeeded(
         mockDocker, "cid", dictStep, "/work", {}, fnCallback,
     ))
     assert iResult == 0
 
 
-def test_fiRunSetupIfNeeded_runs_data():
+def test_ftRunSetupIfNeeded_runs_data():
     mockDocker = _fMockDocker(0, "")
     fnCallback, _ = _fMockCallback()
     dictStep = {"bPlotOnly": False, "saDataCommands": ["cmd1"]}
-    iResult, fCpu = _fnRunAsync(_fiRunSetupIfNeeded(
+    iResult, fCpu = _fnRunAsync(_ftRunSetupIfNeeded(
         mockDocker, "cid", dictStep, "/work", {}, fnCallback,
     ))
     assert iResult == 0
@@ -487,11 +487,11 @@ def test_fbVerifyStepOutputs_partial_missing_reports_first_gap():
 
 
 # -----------------------------------------------------------------------
-# fiRunStepCommands
+# ftRunStepCommands
 # -----------------------------------------------------------------------
 
 
-def test_fiRunStepCommands_plot_only():
+def test_ftRunStepCommands_plot_only():
     mockDocker = _fMockDocker(0, "")
     fnCallback, _ = _fMockCallback()
     dictStep = {
@@ -500,7 +500,7 @@ def test_fiRunStepCommands_plot_only():
         "saPlotCommands": ["python plot.py"],
         "saPlotFiles": [],
     }
-    iResult, fCpu = _fnRunAsync(fiRunStepCommands(
+    iResult, fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", dictStep, "/work",
         {"sPlotDirectory": "Plot"}, fnCallback,
     ))

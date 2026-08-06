@@ -6,7 +6,7 @@ from vaibify.gui.pipelineServer import (
     _fbAnyDataFileChanged,
     _fbAnyMtimeNewerThan,
     _fbAnyPlotFileChanged,
-    _fbStepIsPencilStale,
+    _ftStepIsPencilStale,
     _fdictBuildScriptStatus,
     _fdictFindChangedFiles,
     _fiParseUtcTimestamp,

@@ -1239,7 +1239,7 @@ _S_OVERLEAF_REMEDIATION = (
 _I_OVERLEAF_STDERR_MAX = 200
 
 
-async def _fbRunOverleafValidation(
+async def _ftRunOverleafValidation(
     syncDispatcher, connectionDocker, sContainerId, sProjectId,
 ):
     """Run Overleaf credential validation in a worker thread.
@@ -1275,7 +1275,7 @@ async def _ftRunServiceValidation(
         )
         return (bPass, "")
     if sService == "overleaf":
-        return await _fbRunOverleafValidation(
+        return await _ftRunOverleafValidation(
             syncDispatcher, connectionDocker,
             sContainerId, sProjectId,
         )

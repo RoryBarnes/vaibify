@@ -20,7 +20,7 @@ __all__ = [
     "fsBuildPrompt",
     "fsBuildQualitativeTestCode",
     "fsBuildQuantitativeTestCode",
-    "fsBuildStepContext",
+    "ftBuildStepContext",
     "fsConftestContent",
     "fsBuildConftestSource",
     "fsConftestPath",
@@ -201,7 +201,7 @@ def fsQualitativeStandardsPath(sStepDirectory):
 # ---------------------------------------------------------------------------
 
 
-def fsBuildStepContext(
+def ftBuildStepContext(
     connectionDocker, sContainerId, dictStep, dictVariables,
 ):
     """Gather script source code and data file previews for a step.
@@ -318,7 +318,7 @@ def fdictGenerateTest(
 ):
     """Orchestrate test generation: gather context, call LLM, save."""
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
-    sScripts, sPreviews = fsBuildStepContext(
+    sScripts, sPreviews = ftBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables
     )
     sPrompt = fsBuildPrompt(
@@ -692,7 +692,7 @@ def fdictGenerateAllTestsDeterministic(
             iStepIndex,
         )
     fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
-    sScripts, _sPreviews = fsBuildStepContext(
+    sScripts, _sPreviews = ftBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
     bScriptStochastic = fbStepProducesStochasticOutputs(
@@ -935,7 +935,7 @@ def _fdictGenerateAllTestsViaLlm(
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
     sDataFiles = ", ".join(dictStep.get("saOutputDataFiles", []))
-    sScripts, sPreviews = fsBuildStepContext(
+    sScripts, sPreviews = ftBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
     if not bUseApi:

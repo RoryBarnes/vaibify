@@ -975,7 +975,7 @@ LIST_FALSIFICATIONS = [
     return 0""",
     ),
     Falsification(
-        nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fiRunStepCommands_full_returns_plot_exit_code',
+        nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
         source='vaibify/gui/pipelineRunner.py',
         old='return (iPlotExit, fCpuTime + fPlotCpu)',
         new='return (iExitCode, fCpuTime + fPlotCpu)  # mutant',

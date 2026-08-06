@@ -361,7 +361,7 @@ def _ftRequireCategoryCommands(dictStep, sDictKey, sCategory):
     return listCmds, dictCat
 
 
-def _fdictResolveCategoryContext(
+def _ftResolveCategoryContext(
     dictCtx, sContainerId, iStepIndex, sCategory,
 ):
     """Resolve workflow, step, category and pre-run PROOF level for a request.
@@ -543,7 +543,7 @@ def _fnRegisterTestRun(app, dictCtx):
         dictCtx["require"]()
         sCategory = (await request.json()).get("sCategory", "")
         (dictWorkflow, dictStep, dictCat, listCmds, sVerifKey,
-         iLevelBefore) = _fdictResolveCategoryContext(
+         iLevelBefore) = _ftResolveCategoryContext(
             dictCtx, sContainerId, iStepIndex, sCategory,
         )
         resultExec, bPassed, sOutput = await _ftRunCategoryCommands(

@@ -737,7 +737,7 @@ def _flistArchMismatchResults(config, sHost, sVm):
     return [_fpreflightArchQemuWarn(sHost, sVm)]
 
 
-def _fpreflightArch(config):
+def _flistPreflightArch(config):
     """Return list of PreflightResult records for arch checks."""
     sHost = fsHostArch()
     sVm = fsDockerVmArch()
@@ -848,7 +848,7 @@ def _fpreflightDiskWarn(iBytes):
     )
 
 
-def _fpreflightDisk():
+def _flistPreflightDisk():
     """Return list of PreflightResult records for Docker disk usage."""
     iBytes = _fdiDockerDfBytes()
     if iBytes < 0:
@@ -893,7 +893,7 @@ def _fsMemoryRemediation():
     return "Increase the memory allocation of your Docker VM."
 
 
-def _fpreflightMemory():
+def _flistPreflightMemory():
     """Return list of PreflightResult records for Docker VM memory."""
     iBytes = _fiDockerVmMemoryBytes()
     if iBytes < 0:
@@ -918,9 +918,9 @@ def flistRunBuildPreflight(config):
     if any(r.sLevel == "fail" and r.sName == "docker-daemon"
            for r in listResults):
         return listResults
-    listResults.extend(_fpreflightArch(config))
-    listResults.extend(_fpreflightDisk())
-    listResults.extend(_fpreflightMemory())
+    listResults.extend(_flistPreflightArch(config))
+    listResults.extend(_flistPreflightDisk())
+    listResults.extend(_flistPreflightMemory())
     resultColimaVersion = fpreflightColimaVersion()
     if resultColimaVersion is not None:
         listResults.append(resultColimaVersion)

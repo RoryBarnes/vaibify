@@ -273,7 +273,7 @@ def fbVerifyTier2(sProjectRepo):
         f"2/{_S_TIER_DENOMINATOR}",
         "Reproducing Python env (requirements.lock)",
     )
-    iReturnCode, sStderr = _fiRunPipInstall(pathLock)
+    iReturnCode, sStderr = _ftRunPipInstall(pathLock)
     if iReturnCode == 0:
         _fnPrintPass("hashes verified")
         return True
@@ -284,7 +284,7 @@ def fbVerifyTier2(sProjectRepo):
     return False
 
 
-def _fiRunPipInstall(pathLock):
+def _ftRunPipInstall(pathLock):
     """Invoke ``pip install --require-hashes`` and return (returncode, stderr)."""
     saCommand = [
         sys.executable, "-m", "pip", "install",

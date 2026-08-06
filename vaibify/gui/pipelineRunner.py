@@ -300,7 +300,7 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
             return
         if dictBatch["bDisabled"]:
             return
-        listToSend, bFirstLine = _flistAppendAndMaybeDrainBatch(
+        listToSend, bFirstLine = _ftAppendAndMaybeDrainBatch(
             dictBatch, lockBuffer, sLine,
         )
         if listToSend:
@@ -373,7 +373,7 @@ async def _faTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
     )
 
 
-def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
+def _ftAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
     """Append ``sLine``; return ``(drained_lines, bFirstLine)``.
 
     ``bFirstLine`` is True when this call started a fresh batch — the
@@ -553,7 +553,7 @@ def _fParseCpuTime(sOutput):
 # Step running helpers
 # ---------------------------------------------------------------------------
 
-async def fiRunStepCommands(
+async def ftRunStepCommands(
     connectionDocker, sContainerId, dictStep,
     sWorkdir, dictVariables, fnStatusCallback,
     iStepNumber=0, sRunMode="full",
@@ -577,7 +577,7 @@ async def fiRunStepCommands(
     )
     iExitCode, fCpuTime = 0, 0.0
     if sRunMode != "plotsOnly":
-        iExitCode, fCpuTime = await _fiRunSetupIfNeeded(
+        iExitCode, fCpuTime = await _ftRunSetupIfNeeded(
             connectionDocker, sContainerId, dictStep,
             sStepDirectory, dictVariables, fnStatusCallback,
         )
@@ -598,7 +598,7 @@ async def fiRunStepCommands(
     return (iPlotExit, fCpuTime + fPlotCpu)
 
 
-async def _fiRunSetupIfNeeded(
+async def _ftRunSetupIfNeeded(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
 ):
@@ -1021,7 +1021,7 @@ async def _fiExecuteAndRecord(
         connectionDocker, sContainerId, sStepDir,
         _fiDiscoveryMaxDepthForStep(dictStep),
     )
-    iExitCode, fCpuTime = await fiRunStepCommands(
+    iExitCode, fCpuTime = await ftRunStepCommands(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber, sRunMode=sRunMode,
