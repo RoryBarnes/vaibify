@@ -471,8 +471,13 @@ remainder is deliberate and named, never a silent claim of coverage.
 means running a program in the container, so guarding the exec would
 refuse reads too. Exactly one private method,
 `DockerConnection._texecRunTypedRead`, grants the exemption. It takes
-an operation NAME from a fixed table and builds the command itself; it
-never accepts one. An adapter that forwarded a caller's string would
+an operation NAME from a fixed table, plus a path **or a flat sequence
+of paths**, and builds the command itself; it never accepts one. The
+sequence form was added on 2026-08-05 for the batched file-existence
+probe: the alternative was up to 1000 container round-trips on a
+debounced UI path. It widens what the adapter may be *given*, never
+what it may be *told to run* — `repr()` of a validated list of strings
+is as inert as `repr()` of one. An adapter that forwarded a caller's string would
 turn the read carve-out into a general bypass —
 `tests/testMutationBoundary.py` fails the build on one that does, and
 on a second grant point anywhere, pinning the name through
@@ -560,9 +565,9 @@ container-scoped routes, but `/ws/pipeline/{sContainerId}` and
 they never receive, and nothing could ever migrate them out of it.
 
 **What the boundary still does NOT do, stated so nobody reads the above
-as more than it is.** **31 of 130 routes are migrated; 99 still
+as more than it is.** **53 of 130 routes are migrated; 77 still
 await** and take the ambient branch, where the gate catches DIRECT
-primitive reach, not undeclared intent. **46 of those 99 are
+primitive reach, not undeclared intent. **46 of those 77 are
 `container-read` and will stay there by decision (2026-08-05)** — the
 migration was scoped to the mutating routes, so this list bottoms out
 at 46 rather than empty, and phase 4 does not happen. For the rest, a
