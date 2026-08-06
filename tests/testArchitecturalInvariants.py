@@ -3873,6 +3873,29 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 # cohesive-but-large file today. The grandfathered numbers are known
 # debt: they may go DOWN (split or trim), never up. Raising one is a
 # deliberate act that should be justified, not a reflex.
+#
+# RULING 2026-08-05, for the carrier migration only. Five route modules
+# reached their entries within a few lines of each other, and between
+# them held 32 of the 57 routes still to migrate: syncRoutes (15),
+# reproducibilityRoutes (8), gitRoutes (6), pipelineRoutes (3). Each
+# migration adds a handful of lines to a module it does not otherwise
+# change, so the ratchet had begun rising by accretion -- a few lines at
+# a time, each individually justified, which is how a size limit stops
+# meaning anything.
+#
+# The researcher's decision was to raise the affected entries ONCE,
+# deliberately, rather than split. The reasoning is the one AGENTS.md
+# already gives: these modules are cohesive, and splitting a file to
+# satisfy a NUMBER is the premature-abstraction failure the guidance
+# warns about -- the work here is many small tasks across a few
+# concepts, not a new responsibility arriving. A split may still be
+# right later; it should be triggered by a real seam, not by this.
+#
+# What this ruling does NOT license: a new module over the cap, a rise
+# for any reason other than adding carrier plumbing to an existing
+# route, or letting these entries drift upward again afterwards. When
+# the migration stops, these numbers are debt like every other entry
+# here and may only fall.
 # ---------------------------------------------------------------------
 
 I_MODULE_LINE_CAP = 800
