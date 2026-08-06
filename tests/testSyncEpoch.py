@@ -20,7 +20,8 @@ from vaibify.gui.routes import gitRoutes, pipelineRoutes, syncRoutes
 def fixtureCarrierStoodDown(monkeypatch):
     """Stand the carrier down for the migrated routes driven bare here.
 
-    ``add-file``, ``verify`` and the whole git panel now do their
+    ``add-file``, ``verify``, the bulk GitHub push and the whole git
+    panel now do their
     container work through carrier mode (b); this module builds a bare
     ``FastAPI()`` with no owner record for any of them to bind to.
     Requested only by the tests that reach a carrier. See
@@ -89,7 +90,7 @@ def test_helpers_count_from_zero_per_container():
     assert pipelineServer.fiGetSyncEpoch(dictCtx, "other") == 0
 
 
-def test_push_bumps_sync_epoch():
+def test_push_bumps_sync_epoch(fixtureCarrierStoodDown):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     with patch(
@@ -114,7 +115,7 @@ def test_push_bumps_sync_epoch():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_push_bumps_epoch_even_on_failure():
+def test_push_bumps_epoch_even_on_failure(fixtureCarrierStoodDown):
     """A failed push may still have created a local commit."""
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)

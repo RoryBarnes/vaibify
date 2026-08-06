@@ -4144,7 +4144,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # thread and cannot await the ``to_thread`` hops these chains used
     # to make. Two routes remain awaiting here — the GitHub and
     # Overleaf pushes — after which this entry may start falling.
-    "routes/syncRoutes.py": 2977,
+    # +90 (2026-08-06): the GitHub and Overleaf pushes, the last two
+    # awaiting routes in this module. The GitHub push's whole sequence
+    # — dedupe probe, token-owner binding, push, commit-state reads —
+    # collapsed into one synchronous worker under one drain, and its
+    # bookkeeping save became a mode-(a) commit; the Overleaf push's
+    # digest and provenance halves joined one drain and its save the
+    # same mode-(a) commit. The now-dead ``_fdictHandlePushExecFailure``
+    # coroutine was removed, which is why the rise is smaller than the
+    # additions. **No route in this module is awaiting any longer, so
+    # this entry may only fall from here.**
+    "routes/syncRoutes.py": 3067,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.

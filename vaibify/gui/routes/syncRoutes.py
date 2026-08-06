@@ -15,6 +15,7 @@ import time
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from .. import containerGit, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
@@ -351,22 +352,44 @@ async def _ftRunOverleafPushCall(
 
 async def _fnFinalizeOverleafPush(
     dictCtx, sContainerId, dictWorkflow, sProjectId,
-    listFilePaths, sTargetDirectory,
+    listFilePaths, sTargetDirectory, requestHttp,
 ):
-    """Run the post-push bookkeeping: sync status, digests, provenance, save."""
+    """Run the post-push bookkeeping: sync status, digests, provenance, save.
+
+    Two carriers. The digest refresh and the provenance record share
+    ONE mode-(b) drain because the provenance manifest is what the L2
+    figure-freeze blockers read and the digests are what the Overleaf
+    cells compare against: a hand-over landing between them would leave
+    the successor with figures recorded as frozen at a commit whose
+    content fingerprints were never written. The digest half runs on
+    the researcher's own machine (it refreshes the host mirror clone),
+    the provenance half reaches the container -- the drain covers both
+    because they are one bookkeeping act, not because both mutate.
+
+    The ``project.json`` save is then mode (a): one write, no ``await``
+    between the workflow's last in-memory edit and the bytes landing,
+    and the drain the pair above held was already released.
+    """
     workflowManager.fnUpdateSyncStatus(
         dictWorkflow, listFilePaths, "Overleaf")
-    await asyncio.to_thread(
-        _fnPersistPostPushDigests,
-        dictWorkflow, sProjectId,
-        listFilePaths, sTargetDirectory,
+
+    def fnRecordTheBookkeeping(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fnPersistDigestsThenProvenance(
+                dictCtx, sContainerId, dictWorkflow, sProjectId,
+                listFilePaths, sTargetDirectory,
+            ),
+        )
+
+    await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnRecordTheBookkeeping, "overleaf-push-provenance",
+        requestHttp,
     )
-    await asyncio.to_thread(
-        _fnRecordPushProvenance,
-        dictCtx, sContainerId, dictWorkflow,
-        listFilePaths, sTargetDirectory,
+    fnCommitWorkflowSave(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        "The Overleaf push bookkeeping save",
     )
-    dictCtx["save"](sContainerId, dictWorkflow)
 
 
 def _fnRecordPushProvenance(
@@ -410,13 +433,35 @@ def _fnRecordPushProvenance(
             "sProjectId", dictWorkflow.get("sOverleafProjectId", ""),
         )
         dictOverleaf["sLastPushCommit"] = sHeadSha
-    except Exception:
+    except Exception as error:
+        fnReRaiseControlPlaneRefusal(error)
         logger.warning(
             "Overleaf push provenance recording failed for "
             "container %s; figures will read not-frozen until the "
             "next successful push",
             sContainerId, exc_info=True,
         )
+
+
+def _fnPersistDigestsThenProvenance(
+    dictCtx, sContainerId, dictWorkflow, sProjectId,
+    listFilePaths, sTargetDirectory,
+):
+    """Refresh the mirror digests, then record the push provenance.
+
+    The two halves of the Overleaf push's bookkeeping, in the order
+    they must run, called from one carrier worker. Synchronous because
+    a mode-(b) worker runs in a thread and cannot await: the two
+    ``to_thread`` hops became direct calls, which is the same work on
+    the same thread rather than two round-trips onto two of them.
+    """
+    _fnPersistPostPushDigests(
+        dictWorkflow, sProjectId, listFilePaths, sTargetDirectory,
+    )
+    _fnRecordPushProvenance(
+        dictCtx, sContainerId, dictWorkflow,
+        listFilePaths, sTargetDirectory,
+    )
 
 
 async def _fdictRunOverleafPushFlow(
@@ -473,14 +518,14 @@ async def _fdictHandleOverleafPushRequest(
         return dictResult
     await _fnFinalizeOverleafPush(
         dictCtx, sContainerId, dictWorkflow, sProjectId,
-        request.listFilePaths, sTargetDirectory,
+        request.listFilePaths, sTargetDirectory, requestHttp,
     )
     # AFTER finalize: the verify's comparison set is the push manifest
     # + sLastPushCommit that finalize just recorded. Same shared hop
     # as the GitHub push routes — the requirement row reads the verify
     # cache, which would otherwise stay stale until the next sweep.
     sVerifyWarning = await fsRefreshVerifyCacheAfterPush(
-        dictCtx, sContainerId, dictWorkflow, "overleaf",
+        dictCtx, sContainerId, dictWorkflow, "overleaf", requestHttp,
     )
     if sVerifyWarning:
         dictResult["sPostPushVerifyWarning"] = sVerifyWarning
@@ -658,6 +703,9 @@ def _fnRegisterOverleafPush(app, dictCtx):
 
     @fnAgentAction("push-to-overleaf")
     @app.post("/api/overleaf/{sContainerId}/push")
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
     async def fnOverleafPush(
         sContainerId: str, request: SyncPushRequest,
         requestHttp: Request,
@@ -999,31 +1047,15 @@ def _fdictResolveInterruptedPush(dictCtx, sContainerId, sWorkdir):
     }
 
 
-async def _fdictHandlePushExecFailure(
-    dictCtx, sContainerId, sWorkdir, sOperation,
-):
-    """Log the raised exec and resolve the outcome via the repo probe."""
-    logger.error(
-        "GitHub %s exec raised for container %s; probing outcome",
-        sOperation, sContainerId, exc_info=True,
-    )
-    return await asyncio.to_thread(
-        _fdictResolveInterruptedPush, dictCtx, sContainerId, sWorkdir,
-    )
-
-
 def _fdictProbeAfterRaisedPushExec(
     dictCtx, sContainerId, sWorkdir, sOperation,
 ):
-    """The synchronous sibling of the coroutine above, for a carrier worker.
+    """Log a raised push exec and resolve the outcome via the repo probe.
 
-    A mode-(b) worker runs in a thread and cannot await, so a migrated
-    route needs this shape. The four duplicated lines are deliberate
-    and transient: moving the ``logger.error`` into a ``to_thread``
-    call would run it in a worker where ``sys.exc_info()`` is empty, so
-    the traceback on this rare path would be silently dropped -- and
-    the coroutine disappears when the last route using it, the GitHub
-    push, is migrated in turn.
+    Synchronous because both callers are mode-(b) workers running in a
+    thread, which cannot await. The ``logger.error`` runs here rather
+    than around a ``to_thread`` hop so ``sys.exc_info()`` is still
+    populated and the traceback on this rare path is not dropped.
     """
     logger.error(
         "GitHub %s exec raised for container %s; probing outcome",
@@ -1097,20 +1129,35 @@ def _fdictAttachCommitStateToResult(
 
 def _fsApplyPushBookkeeping(
     dictCtx, sContainerId, dictWorkflow, listFilePaths, sCommitHash,
+    requestHttp,
 ):
     """Record sync status and commit hash; never fail the push response.
 
     The push itself already landed, so an exception here must not
     convert success into a 500. Returns "" on success or a warning
     string for the response's ``sBookkeepingWarning`` field.
+
+    Carrier mode (a): the save is one ``project.json`` write with no
+    ``await`` between the workflow's last in-memory edit and the bytes
+    landing, so it commits synchronously rather than holding a drain
+    the push's own worker already released.
+
+    A refusal is re-raised out of the broad handler rather than
+    absorbed into the warning. ``MutationNotAdmittedError`` means the
+    carrier call was forgotten, and reporting that as "badges may lag"
+    would hide the migration's only proof behind a toast.
     """
     try:
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, listFilePaths, "Github")
         _fnStoreCommitHash(dictWorkflow, listFilePaths, sCommitHash)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The GitHub push bookkeeping save",
+        )
         return ""
-    except Exception:
+    except Exception as error:
+        fnReRaiseControlPlaneRefusal(error)
         logger.error(
             "GitHub push bookkeeping failed for container %s",
             sContainerId, exc_info=True,
@@ -1121,20 +1168,36 @@ def _fsApplyPushBookkeeping(
         )
 
 
-def _fdictFinishSuccessfulPush(
-    dictCtx, sContainerId, dictWorkflow, listFilePaths, sWorkdir,
-    dictResult,
+def _fdictRunGithubPushBlocking(
+    dictCtx, sContainerId, sWorkdir, request,
 ):
-    """Attach commit hash, remote state, and non-fatal bookkeeping."""
+    """Run the push and verify its commit state; never raise for a refusal.
+
+    Synchronous because a mode-(b) worker runs in a thread and cannot
+    await: the chain's three ``to_thread`` hops became direct calls,
+    which is the same work on the same thread rather than three
+    round-trips onto three of them.
+
+    A failed push comes back as ``bSuccess: False`` and a raised exec
+    is resolved by the repository probe, so the worker never poisons
+    its journal record for an outcome the researcher can read.
+    """
+    from .. import syncDispatcher
+    try:
+        iExit, sOut = syncDispatcher.ftResultPushToGithub(
+            dictCtx["docker"], sContainerId,
+            request.listFilePaths, request.sCommitMessage, sWorkdir,
+        )
+        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
+    except Exception:  # noqa: BLE001 — resolved by probe, never raised
+        dictResult = _fdictProbeAfterRaisedPushExec(
+            dictCtx, sContainerId, sWorkdir, "push",
+        )
+    if not dictResult["bSuccess"]:
+        return _fdictLogIncompletePush(sContainerId, dictResult)
     dictResult = _fdictAttachCommitStateToResult(
         dictCtx, sContainerId, sWorkdir, dictResult,
     )
-    sWarning = _fsApplyPushBookkeeping(
-        dictCtx, sContainerId, dictWorkflow, listFilePaths,
-        dictResult.get("sCommitHash", ""),
-    )
-    if sWarning:
-        dictResult["sBookkeepingWarning"] = sWarning
     logger.info(
         "GitHub push succeeded: container=%s commit=%s",
         sContainerId, dictResult.get("sCommitHash", "") or "<unknown>",
@@ -1142,31 +1205,7 @@ def _fdictFinishSuccessfulPush(
     return dictResult
 
 
-async def _fdictRunGithubPush(
-    dictCtx, sContainerId, dictWorkflow, sWorkdir, request,
-):
-    """Run the push, resolving exec failures into honest results."""
-    from .. import syncDispatcher
-    try:
-        iExit, sOut = await asyncio.to_thread(
-            syncDispatcher.ftResultPushToGithub,
-            dictCtx["docker"], sContainerId,
-            request.listFilePaths, request.sCommitMessage, sWorkdir,
-        )
-        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
-    except Exception:
-        dictResult = await _fdictHandlePushExecFailure(
-            dictCtx, sContainerId, sWorkdir, "push",
-        )
-    if not dictResult["bSuccess"]:
-        return _fdictLogIncompletePush(sContainerId, dictResult)
-    return await asyncio.to_thread(
-        _fdictFinishSuccessfulPush, dictCtx, sContainerId,
-        dictWorkflow, request.listFilePaths, sWorkdir, dictResult,
-    )
-
-
-async def _fsGitHeadShaForDedupeKey(dictCtx, sContainerId, sWorkdir):
+def _fsGitHeadShaForDedupeKey(dictCtx, sContainerId, sWorkdir):
     """Return the pre-push HEAD sha used in the dedupe key, or "".
 
     A missing or unreadable HEAD degrades to an empty string so the
@@ -1175,16 +1214,98 @@ async def _fsGitHeadShaForDedupeKey(dictCtx, sContainerId, sWorkdir):
     cheap docker exec.
     """
     try:
-        return await asyncio.to_thread(
-            containerGit.fsGitHeadShaInContainer,
+        return containerGit.fsGitHeadShaInContainer(
             dictCtx["docker"], sContainerId, sWorkspace=sWorkdir,
         )
-    except Exception:
+    except Exception as error:
+        fnReRaiseControlPlaneRefusal(error)
         logger.info(
             "pre-push HEAD probe failed for %s; skipping push dedupe",
             sContainerId, exc_info=True,
         )
         return ""
+
+
+def _fdictPushToGithubBlocking(
+    dictCtx, sContainerId, sWorkdir, request, sPayloadHash, fNow,
+):
+    """Probe, dedupe, bind the token to the remote, then push.
+
+    One worker for the whole sequence because every step of it reaches
+    the container and the push is the irreversible one: splitting the
+    dedupe probe or the token binding into their own carriers would
+    open a window where an ownership hand-over lands between the sha
+    the dedupe key was built from and the push that key is meant to
+    suppress.
+
+    Returns ``{"tDedupeKey", "bDeduped", "dictResult"}`` so the caller
+    can tell a replayed result from a fresh push without re-deriving
+    the key on the event loop.
+    """
+    sCommitSha = _fsGitHeadShaForDedupeKey(
+        dictCtx, sContainerId, sWorkdir,
+    )
+    tDedupeKey = (sContainerId, sCommitSha, sPayloadHash)
+    dictCached = _fdictLookupRecentPush(tDedupeKey, fNow)
+    if dictCached is not None:
+        logger.info(
+            "GitHub push dedupe HIT: container=%s commit=%s",
+            sContainerId, sCommitSha or "<unknown>",
+        )
+        dictCached["bDedupedFromRecent"] = True
+        return {
+            "tDedupeKey": tDedupeKey,
+            "bDeduped": True,
+            "dictResult": dictCached,
+        }
+    _fnAssertGithubTokenBoundToRemote(
+        dictCtx["docker"], sContainerId, sWorkdir,
+    )
+    logger.info(
+        "GitHub push requested: container=%s files=%d",
+        sContainerId, len(request.listFilePaths or []),
+    )
+    return {
+        "tDedupeKey": tDedupeKey,
+        "bDeduped": False,
+        "dictResult": _fdictRunGithubPushBlocking(
+            dictCtx, sContainerId, sWorkdir, request,
+        ),
+    }
+
+
+async def _fdictPushToGithubUnderTheDrain(
+    dictCtx, sContainerId, sWorkdir, request, sPayloadHash, fNow,
+    requestHttp,
+):
+    """Run the whole push sequence holding the container's drain.
+
+    Mode (b) rather than mode (a): the chain stages files, contacts a
+    remote, and then probes the repository, so it runs for as long as
+    the network takes and belongs in a worker thread. Holding the drain
+    for the WORKER's life is what makes an ownership hand-over or a Run
+    Step arriving mid-push refuse and say what is running, instead of
+    landing underneath a git process that is still writing.
+
+    Only the token-owner binding raises here, and it raises 409 with
+    the container untouched — it read the remote URL and asked GitHub
+    who the token belongs to, nothing more — so the default 4xx
+    carry-back is the whole judgement and no 5xx is named. A raise from
+    inside the worker would settle through the failure path and
+    quarantine a working container over a mismatched credential.
+    """
+    def fnPushToGithub(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictPushToGithubBlocking(
+                dictCtx, sContainerId, sWorkdir, request,
+                sPayloadHash, fNow,
+            ),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnPushToGithub, "github-push", requestHttp,
+    )
 
 
 def _fnRegisterGithubPush(app, dictCtx):
@@ -1200,8 +1321,12 @@ def _fnRegisterGithubPush(app, dictCtx):
 
     @fnAgentAction("push-to-github")
     @app.post("/api/github/{sContainerId}/push")
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
     async def fnGithubPush(
         sContainerId: str, request: SyncPushRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
@@ -1209,40 +1334,31 @@ def _fnRegisterGithubPush(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
         _fnValidateGithubPushPaths(request.listFilePaths, sWorkdir)
-        sCommitSha = await _fsGitHeadShaForDedupeKey(
-            dictCtx, sContainerId, sWorkdir,
-        )
-        sPayloadHash = _fsHashPushPayload(request.listFilePaths)
-        tDedupeKey = (sContainerId, sCommitSha, sPayloadHash)
         fNow = time.monotonic()
-        dictCached = _fdictLookupRecentPush(tDedupeKey, fNow)
-        if dictCached is not None:
-            logger.info(
-                "GitHub push dedupe HIT: container=%s commit=%s",
-                sContainerId, sCommitSha or "<unknown>",
-            )
-            dictCached["bDedupedFromRecent"] = True
-            return dictCached
-        await asyncio.to_thread(
-            _fnAssertGithubTokenBoundToRemote,
-            dictCtx["docker"], sContainerId, sWorkdir,
+        dictPushed = await _fdictPushToGithubUnderTheDrain(
+            dictCtx, sContainerId, sWorkdir, request,
+            _fsHashPushPayload(request.listFilePaths), fNow, requestHttp,
         )
-        logger.info(
-            "GitHub push requested: container=%s files=%d",
-            sContainerId, len(request.listFilePaths or []),
-        )
-        dictResult = await _fdictRunGithubPush(
-            dictCtx, sContainerId, dictWorkflow, sWorkdir, request,
-        )
+        dictResult = dictPushed["dictResult"]
+        if dictPushed["bDeduped"]:
+            return dictResult
         if dictResult.get("bSuccess"):
+            sBookkeepingWarning = _fsApplyPushBookkeeping(
+                dictCtx, sContainerId, dictWorkflow,
+                request.listFilePaths,
+                dictResult.get("sCommitHash", ""), requestHttp,
+            )
+            if sBookkeepingWarning:
+                dictResult["sBookkeepingWarning"] = sBookkeepingWarning
             sVerifyWarning = await fsRefreshVerifyCacheAfterPush(
                 dictCtx, sContainerId, dictWorkflow, "github",
+                requestHttp,
             )
             if sVerifyWarning:
                 dictResult["sPostPushVerifyWarning"] = sVerifyWarning
             # Record AFTER attaching: the dedupe cache deep-copies,
             # and a replayed response must carry the same warning.
-            _fnRecordRecentPush(tDedupeKey, dictResult, fNow)
+            _fnRecordRecentPush(dictPushed["tDedupeKey"], dictResult, fNow)
         fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictResult
 

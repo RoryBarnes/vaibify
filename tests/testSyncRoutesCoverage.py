@@ -239,7 +239,7 @@ def test_overleaf_push_triggers_post_push_verify(clientHttp):
         listCallOrder.append("finalize")
 
     async def _fsFakeRefresh(
-        dictCtx, sContainerId, dictWorkflow, sService,
+        dictCtx, sContainerId, dictWorkflow, sService, requestHttp=None,
     ):
         listCallOrder.append("refresh:" + sService)
         return ""

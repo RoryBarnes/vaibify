@@ -5358,3 +5358,468 @@ def testTheZenodoArchiveRecordCommitsSynchronously(tclientSyncBound):
         mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
         f"write to {S_WORKFLOW_PATH}",
     )
+
+
+# ---------------------------------------------------------------------
+# The two repository pushes (phase 2, group 1).
+#
+# Both are multi-stage and both carry a credential. The GitHub push
+# reads the project repo's origin URL to bind the token's owner to it,
+# and a token-authenticated clone spells that URL
+# ``https://x-access-token:<token>@github.com/...`` -- so the push is
+# the one route family where a journal target, a refusal message or a
+# log line built from container output would publish a live credential.
+# ---------------------------------------------------------------------
+
+# A realistic GitHub personal-access token shape: the ``ghp_`` prefix
+# and 36 following characters the redactor's ``{20,}`` bound is written
+# for. Deliberately NOT a short placeholder -- a stub like "tok" would
+# pass a leak assertion for having no recognisable shape rather than
+# for being redacted, which is the vacuous form of this test.
+S_PLANTED_TOKEN = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+S_TOKENED_REMOTE_URL = (
+    "https://x-access-token:" + S_PLANTED_TOKEN
+    + "@github.com/owner/repo.git"
+)
+
+# Emitted by ``syncDispatcher.ftResultPushToGithub`` and by nothing
+# else the push request runs. Quote-free for the reason
+# S_SYNC_DIGEST_MARKER states.
+S_GITHUB_PUSH_MARKER = "rev-parse --short HEAD"
+
+# Emitted by the HEAD-sha read ``_fnRecordPushProvenance`` makes and by
+# nothing the Overleaf push itself runs, so it names the provenance
+# carrier rather than the upload's.
+S_OVERLEAF_PROVENANCE_MARKER = "rev-parse HEAD"
+
+
+# The push dedupe cache is a module global keyed on
+# ``(container, HEAD sha, payload digest)``, and every test here drives
+# the same container with the same payload against a double whose HEAD
+# sha does not move -- so without a reset the second test to push would
+# be answered from the first one's cache and its assertion would fail
+# on its own emptiness. ``conftest``'s autouse
+# ``fnClearPushDedupeCache`` already does exactly that; a second copy
+# here would be the duplication that starts a divergence.
+
+
+@contextlib.contextmanager
+def _tlistCaptureEveryJournalPayload():
+    """Capture every byte payload the write-ahead journal ever stores.
+
+    Stronger than reading the file afterwards, and necessarily so: a
+    settled operation is REMOVED from the payload, so a push that
+    succeeds leaves an empty journal and an after-the-fact read would
+    assert nothing. ``_fsReadWholeJournalForTheContainer`` is the right
+    tool for a test that freezes a push mid-flight and reads the record
+    while it is live; this one runs the push to completion, so it
+    watches the writer instead of the file.
+    """
+    from vaibify.config import operationJournal
+    listPayloads = []
+    fnReal = operationJournal._fnWriteJournalBytesAtomically
+
+    def fnCaptureThenWrite(sPath, byteContent):
+        listPayloads.append(bytes(byteContent).decode("utf-8", "replace"))
+        return fnReal(sPath, byteContent)
+
+    with patch.object(
+        operationJournal, "_fnWriteJournalBytesAtomically",
+        fnCaptureThenWrite,
+    ):
+        yield listPayloads
+
+
+@contextlib.contextmanager
+def _tlistRecordEveryGithubPush():
+    """Record the live admission at each ``ftResultPushToGithub`` call.
+
+    Instrumenting the DISPATCHER as well as asserting on the command
+    text, because the two answer different questions: the marker proves
+    the exec crossed the gate under mode (b), and this proves the push
+    was REACHED at all. A route whose worker refused early would leave
+    the marker assertion failing on its own emptiness, which reads as
+    "no push" rather than "the wrong admission".
+    """
+    from vaibify.gui import syncDispatcher
+    listCalls = []
+    fnReal = syncDispatcher.ftResultPushToGithub
+
+    def ftRecordThenPush(connectionDocker, sContainerId, *aArgs):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            sContainerId,
+        )
+        listCalls.append("" if admission is None else admission.sMode)
+        return fnReal(connectionDocker, sContainerId, *aArgs)
+
+    with patch.object(
+        syncDispatcher, "ftResultPushToGithub", ftRecordThenPush,
+    ):
+        yield listCalls
+
+
+@contextlib.contextmanager
+def _fnGithubPushHostSidePlanted():
+    """Plant a tokened remote URL and bind the token to its owner.
+
+    Everything patched here runs on the researcher's own machine or on
+    the network: the keyring lookup, GitHub's ``/user`` endpoint, and
+    the isolation probe. What is left REAL is every call that crosses
+    into the container -- the push exec, the commit-state reads and the
+    workflow save -- because those are the subject of these tests.
+
+    The remote URL is returned from the CONTAINER read the route makes,
+    so the credential enters the handler exactly the way a real one
+    does rather than being handed to it as a literal.
+    """
+    from vaibify.gui import containerGit
+    from vaibify.reproducibility import githubAuth, githubMirror
+    with patch.object(
+        containerGit, "fsRemoteUrlInContainer",
+        lambda *aArgs, **dictKwargs: S_TOKENED_REMOTE_URL,
+    ), patch.object(
+        githubMirror, "_fsResolveTokenSafely",
+        lambda sOwner, sRepo: S_PLANTED_TOKEN,
+    ), patch.object(
+        githubAuth, "_ftFetchLoginFresh",
+        lambda sToken: ("owner", ""),
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+        lambda sContainerId: None,
+    ):
+        yield
+
+
+def _fresponsePostGithubPush(client):
+    """Push one file through the migrated GitHub push route."""
+    return client.post(
+        f"/api/github/{S_CONTAINER_ID}/push",
+        json={
+            "listFilePaths": [S_SYNC_PUSHABLE_FILE],
+            "sCommitMessage": "carrier probe",
+        },
+    )
+
+
+@pytest.mark.falsification
+def testTheGithubPushRunsUnderTheDrain(tclientSyncBound):
+    """POST /api/github/{id}/push stages and pushes under mode (b).
+
+    The push is irreversible at the remote and the sequence around it
+    is not atomic: the dedupe probe reads HEAD, the binding check reads
+    the origin URL, and the push then rewrites the local ref. Holding
+    the drain for the WORKER's life is what makes an ownership
+    hand-over arriving mid-push refuse and say what is running, rather
+    than land underneath a git process that is still writing.
+
+    Kills: reverting ``_fdictPushToGithubUnderTheDrain`` to
+    ``await asyncio.to_thread(_fdictPushToGithubBlocking, ...)``, which
+    reaches the exec primitive with no admission and records ``''``.
+    """
+    client, connectionDocker = tclientSyncBound
+    with _fnGithubPushHostSidePlanted(), (
+        _tlistRecordEveryGithubPush()
+    ) as listCalls:
+        _fresponsePostGithubPush(client)
+    assert listCalls, (
+        "the route never reached the GitHub push, so this asserts "
+        "nothing about the admission it runs under"
+    )
+    assert listCalls == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+    ] * len(listCalls), (
+        f"the GitHub push ran under a non-lock-held admission: "
+        f"{listCalls}"
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_GITHUB_PUSH_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheGithubPushBookkeepingSaveCommitsSynchronously(
+    tclientSyncBound,
+):
+    """The push's ``project.json`` save runs under mode (a).
+
+    The push handler's SECOND carrier. The record it writes is the
+    commit hash and the per-file sync status the dashboard's GitHub
+    badges read, so a save refused at the primitive would leave a
+    landed push the workflow cannot name -- the researcher would see a
+    successful push and stale badges.
+
+    Selected on the workflow path rather than on every write, so this
+    test names one carrier rather than "some write happened".
+
+    The isolation is ONE-DIRECTIONAL. Removing THIS carrier fails only
+    this test. Removing the PUSH carrier fails both, because the push
+    runs first and an unadmitted exec 500s the handler before the save
+    is reached.
+
+    Kills: reverting ``_fsApplyPushBookkeeping``'s
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = tclientSyncBound
+    with _fnGithubPushHostSidePlanted():
+        _fresponsePostGithubPush(client)
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testTheBookkeepingSaveRefusalIsNotAbsorbedIntoAWarning(
+    tclientSyncBound,
+):
+    """A refused bookkeeping save must escape its broad handler.
+
+    ``_fsApplyPushBookkeeping`` catches ``Exception`` and answers
+    "badges may lag until the next refresh", which is right for a
+    genuine save failure and catastrophic for a carrier refusal: a
+    route whose ``fnCommitWorkflowSave`` call was deleted would answer
+    200 with a friendly toast, and the migration's only proof would
+    reach the researcher as a cosmetic lag.
+
+    Drives the refusal directly rather than by deleting the carrier,
+    because the guard being asserted is the
+    ``fnReRaiseControlPlaneRefusal`` call and not the carrier itself.
+
+    Kills: deleting the ``fnReRaiseControlPlaneRefusal(error)`` line
+    from ``_fsApplyPushBookkeeping``.
+    """
+    client, _connectionDocker = tclientSyncBound
+
+    def fnRefuseTheSave(*aArgs, **dictKwargs):
+        raise mutationAdmission.MutationNotAdmittedError(
+            "no carrier admission is live",
+        )
+
+    # The benign push FIRST, in this same fixture, so the assertion
+    # below cannot pass on a refusal from somewhere else. Without it a
+    # 403 at the ownership gate -- a client that never held the lease --
+    # would also carry no ``sBookkeepingWarning``, and the test would
+    # be green while measuring the wrong refusal entirely.
+    with _fnGithubPushHostSidePlanted():
+        responseBenign = _fresponsePostGithubPush(client)
+    assert responseBenign.status_code == 200, (
+        "the benign push was itself refused, so this fixture cannot "
+        f"tell a save refusal from any other: {responseBenign.text}"
+    )
+
+    from vaibify.gui.routes import syncRoutes as moduleSync
+    moduleSync._DICT_RECENT_PUSH_RESULTS.clear()
+    with _fnGithubPushHostSidePlanted(), patch(
+        "vaibify.gui.routes.syncRoutes.fnCommitWorkflowSave",
+        fnRefuseTheSave,
+    ):
+        responseHttp = _fresponsePostGithubPush(client)
+    assert "sBookkeepingWarning" not in responseHttp.text, (
+        "a refused save was absorbed into the bookkeeping warning; the "
+        "researcher would be told the badges may lag while the real "
+        "answer is that a carrier call is missing"
+    )
+    assert responseHttp.status_code == 500, (
+        "the refusal must escape the handler, not be turned into a "
+        f"successful push: {responseHttp.status_code}"
+    )
+
+
+@pytest.mark.falsification
+def testThePushedTokenReachesNoJournalRecordOrResponse(tclientSyncBound):
+    """A token in the origin URL never leaves the container's boundary.
+
+    The push route is where credential redaction actually bites: the
+    binding check READS ``git remote get-url origin`` inside the
+    container, and a token-authenticated clone spells that URL with the
+    credential in its user-info segment. Two sinks that outlive or
+    leave the request are asserted here, and they fail independently --
+    the journal is written by the carrier, the response body by the
+    handler.
+
+    The journal is the one this migration ADDED, which is why the
+    operation targets the push carriers pass are compile-time constants
+    (``"github-push"``, the workflow path) rather than anything derived
+    from the request or from container output.
+
+    Note what this does NOT assert: that the redactor is correct.
+    ``fsRedactUrlCredentials`` leaves a bare-user-info token
+    (``https://<token>@host/``) completely intact -- verified -- so the
+    union form ``fsRedactCredentials`` is the only safe one, and
+    ``credentialRedactor``'s own tests own that distinction.
+
+    Kills: passing the remote URL as the ``sOperationTarget`` of
+    ``_fdictPushToGithubUnderTheDrain`` instead of the constant
+    ``"github-push"``.
+    """
+    client, _connectionDocker = tclientSyncBound
+    with _fnGithubPushHostSidePlanted(), (
+        _tlistCaptureEveryJournalPayload()
+    ) as listPayloads:
+        responseHttp = _fresponsePostGithubPush(client)
+    assert S_PLANTED_TOKEN not in responseHttp.text, (
+        "the planted token reached the HTTP response body"
+    )
+    assert listPayloads, (
+        "the push wrote no journal payload at all, so the leak "
+        "assertion below would pass vacuously; either no carrier was "
+        "reached or the journal writer moved"
+    )
+    for sPayload in listPayloads:
+        assert S_PLANTED_TOKEN not in sPayload, (
+            "the planted token reached a journal record on disk; a "
+            "journal record outlives the request and is read by "
+            f"'vaibify reconcile'. Payload: {sPayload}"
+        )
+
+
+@pytest.mark.falsification
+def testThePushedTokenReachesNoLogLine(tclientSyncBound, caplog):
+    """The push's log lines never carry the origin URL's credential.
+
+    Separated from the journal/response assertion because the sinks
+    fail independently and a single test would not say which one
+    leaked. The hub log is the sink a researcher is most likely to
+    paste into an issue.
+
+    Kills: adding the remote URL to any ``logger.info`` in the push
+    chain -- e.g. logging the bound remote alongside "GitHub push
+    requested".
+    """
+    client, _connectionDocker = tclientSyncBound
+    with caplog.at_level(logging.DEBUG, logger="vaibify"), (
+        _fnGithubPushHostSidePlanted()
+    ):
+        _fresponsePostGithubPush(client)
+    assert S_PLANTED_TOKEN not in caplog.text, (
+        "the planted token reached a hub log line"
+    )
+
+
+@contextlib.contextmanager
+def _tlistRecordEveryOverleafPush():
+    """Record the live admission at each ``ftResultPushToOverleaf`` call."""
+    from vaibify.gui import syncDispatcher
+    listCalls = []
+    fnReal = syncDispatcher.ftResultPushToOverleaf
+
+    def ftRecordThenPush(connectionDocker, sContainerId, *aArgs, **dictKw):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            sContainerId,
+        )
+        listCalls.append("" if admission is None else admission.sMode)
+        return fnReal(connectionDocker, sContainerId, *aArgs, **dictKw)
+
+    with patch.object(
+        syncDispatcher, "ftResultPushToOverleaf", ftRecordThenPush,
+    ):
+        yield listCalls
+
+
+def _fresponsePostOverleafPush(client):
+    """Push one figure through the migrated Overleaf push route."""
+    with _fnOverleafHostMirrorStubbed():
+        return client.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/push",
+            json={
+                "listFilePaths": [S_SYNC_PUSHABLE_FILE],
+                "sCommitMessage": "carrier probe",
+            },
+        )
+
+
+@pytest.mark.falsification
+def testTheOverleafPushRunsUnderTheDrain(tclientSyncBound):
+    """POST /api/overleaf/{id}/push uploads under a mode-(b) admission.
+
+    The push streams the researcher's selected figures into an Overleaf
+    project over the network from inside the container, so it runs for
+    as long as the transfer takes. This carrier predates the route's
+    declaration -- ``_ftRunOverleafPushCall`` already ran under the
+    drain while the route rode the ambient mint -- and the assertion
+    matters MORE now, not less: with the ambient mint withdrawn, this
+    carrier is the only thing admitting the exec.
+
+    Kills: reverting ``_ftRunOverleafPushCall`` to its
+    ``await asyncio.to_thread(fnPushWorker)`` branch.
+    """
+    client, _connectionDocker = tclientSyncBound
+    with _tlistRecordEveryOverleafPush() as listCalls:
+        _fresponsePostOverleafPush(client)
+    assert listCalls, (
+        "the route never reached the Overleaf push, so this asserts "
+        "nothing about the admission it runs under"
+    )
+    assert listCalls == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+    ] * len(listCalls), (
+        f"the Overleaf push ran under a non-lock-held admission: "
+        f"{listCalls}"
+    )
+
+
+@pytest.mark.falsification
+def testTheOverleafPushProvenanceRunsUnderItsOwnDrain(tclientSyncBound):
+    """The push's provenance record holds a SECOND mode-(b) drain.
+
+    A second invocation rather than an extension of the push's, because
+    the push's supervisor released the drain when its worker
+    terminated -- which is the property that makes mode (b) worth
+    having. The digest refresh and the provenance manifest share this
+    one drain deliberately: the manifest is what the L2 figure-freeze
+    blockers read and the digests are what the Overleaf cells compare
+    against, so a hand-over between them would leave the successor with
+    figures recorded frozen at a commit whose fingerprints were never
+    written.
+
+    Selected on the HEAD-sha read the provenance recorder makes, which
+    the push itself never runs.
+
+    The isolation is ONE-DIRECTIONAL, in the same direction as the
+    Zenodo trio and for the same reason: an unadmitted exec 500s the
+    handler before anything later is reached. So all three Overleaf
+    push tests failing means the UPLOAD, two means the PROVENANCE, and
+    one means the save. Verified.
+
+    Kills: reverting ``_fnFinalizeOverleafPush``'s bookkeeping pair to
+    the two ``await asyncio.to_thread(...)`` hops it replaced.
+    """
+    client, connectionDocker = tclientSyncBound
+    _fresponsePostOverleafPush(client)
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_OVERLEAF_PROVENANCE_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheOverleafPushBookkeepingSaveCommitsSynchronously(
+    tclientSyncBound,
+):
+    """The Overleaf push's ``project.json`` save runs under mode (a).
+
+    The push handler's THIRD carrier. It persists the per-file sync
+    status and the ``sLastPushCommit`` stamp the figure-freeze blockers
+    key on, so a refused save would leave figures reading not-frozen
+    after a push that did freeze them.
+
+    Kills: reverting ``_fnFinalizeOverleafPush``'s
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = tclientSyncBound
+    _fresponsePostOverleafPush(client)
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )

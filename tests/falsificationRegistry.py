@@ -6772,4 +6772,151 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # ---------------- phase 2 group 1: the two repository pushes -----
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGithubPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnPushToGithub, "github-push", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (await asyncio.to_thread(fnPushToGithub))'
+            '["objResult"]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGithubPushBookkeepingSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The GitHub push bookkeeping save",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBookkeepingSaveRefusalIsNotAbsorbedIntoAWarning'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    except Exception as error:\n'
+            '        fnReRaiseControlPlaneRefusal(error)\n'
+            '        logger.error(\n'
+            '            "GitHub push bookkeeping failed for container %s",\n'
+        ),
+        new=(
+            '    except Exception as error:\n'
+            '        del error\n'
+            '        logger.error(\n'
+            '            "GitHub push bookkeeping failed for container %s",\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePushedTokenReachesNoJournalRecordOrResponse'
+        ),
+        # INTRINSIC COLLATERAL, recorded so a re-confirmation run does
+        # not read it as drift: routing container-derived text into the
+        # journal target necessarily ADDS a container read to the push
+        # path, and the ~18 other push tests drive doubles that do not
+        # answer it. There is no lower-collateral realization -- a
+        # constant cannot carry a runtime token, so the mutant must
+        # make the target container-derived, which is the defect.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        sContainerId, fnPushToGithub, "github-push", '
+            'requestHttp,\n'
+        ),
+        new=(
+            '        sContainerId, fnPushToGithub,\n'
+            '        containerGit.fsRemoteUrlInContainer(\n'
+            '            dictCtx["docker"], sContainerId, sWorkdir,\n'
+            '        ), requestHttp,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePushedTokenReachesNoLogLine'
+        ),
+        # Mutated where the URL is ALREADY in scope, so the mutant
+        # adds no container call and breaks nothing: it is a pure
+        # logging change, and it kills this test alone.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)\n'
+        ),
+        new=(
+            '    logger.info("binding token to remote %s", sRemoteUrl)\n'
+            '    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    dictCommit = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        appState, dictLaneTuple["sContainerName"], '
+            'sContainerId,\n'
+            '        dictLaneTuple, "helper", "overleaf-push", '
+            'fnPushWorker,\n'
+            '    )\n'
+            '    return dictCommit["result"]\n'
+        ),
+        new='    return await asyncio.to_thread(fnPushWorker)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafPushProvenanceRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnRecordTheBookkeeping, '
+            '"overleaf-push-provenance",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new='    await asyncio.to_thread(fnRecordTheBookkeeping, None)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafPushBookkeepingSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    fnCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The Overleaf push bookkeeping save",\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
 ]
