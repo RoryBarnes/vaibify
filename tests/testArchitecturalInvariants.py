@@ -4021,7 +4021,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # awaiting a carrier, so it will keep pressing this ratchet. The
     # next bump should be a conversation about splitting the file, not
     # another line here.
-    "routes/pipelineRoutes.py": 2884,
+    # +42 (2026-08-06): the conversation happened, and the 2026-08-05
+    # ruling atop this table is its outcome — raise once for carrier
+    # plumbing, do not split to satisfy a number. This bump is
+    # acknowledge-step's mode-(b) helper, whose docstring is most of it:
+    # `_fdictGetModTimes` LOOKS like a read and WRITES a scratch path
+    # file into the container before it stats, so a route that carried
+    # only its workflow save would have been refused at the probe, and
+    # that is the trap worth recording where the next reader will meet
+    # it.
+    "routes/pipelineRoutes.py": 2926,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the

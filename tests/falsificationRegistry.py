@@ -6208,4 +6208,198 @@ def _fdictEntry(sRel):
             '        return repr(objPaths)\n'
         ),
     ),
+
+    # --- Group 6 (2026-08-06): the step panel's probe-and-record
+    # routes, and the three POSTs that turn out to be reads. ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheAcknowledgeStepProbeRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Back to the bare to_thread the route used before: the stat
+        # probe's scratch-file write then reaches the primitive with no
+        # admission, which is the exploit shape -- a hand-over arriving
+        # mid-probe sees an unlocked container.
+        #
+        # RECORDED COLLATERAL, intrinsic rather than drift: this also
+        # fails testTheAcknowledgeStepSaveCommitsThroughTheSynchronous-
+        # Carrier, because the probe runs FIRST and its refusal 500s the
+        # handler before the save happens. No mutation can separate a
+        # downstream carrier from an upstream refusal in a straight-line
+        # handler; the reverse direction DOES isolate.
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"acknowledge-step",\n'
+            '        fnStatTheOutputs,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new='    return await asyncio.to_thread(fnStatTheOutputs)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheAcknowledgeStepSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the acknowledged step",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGeneratedTestRemovalCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testTheGeneratedTestRemovalSaveCommitsThroughItsOwnCarrier for
+        # the same straight-line reason as the acknowledge-step pair --
+        # the rm runs first and its refusal 500s the handler.
+        old=(
+            '    return commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"delete-generated-tests",\n'
+            '        lambda: _fnRemoveTestDirectory(\n'
+            '            dictCtx["docker"], sContainerId, dictStep,\n'
+            '            sProjectRepoPath=dictWorkflow.get('
+            '"sProjectRepoPath", ""),\n'
+            '        ),\n'
+            '        {\n'
+            '            "iHolderPid": os.getpid(),\n'
+            '            "iHolderProcessGroup": os.getpgrp(),\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fnRemoveTestDirectory(\n'
+            '        dictCtx["docker"], sContainerId, dictStep,\n'
+            '        sProjectRepoPath=dictWorkflow.get('
+            '"sProjectRepoPath", ""),\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGeneratedTestRemovalSaveCommitsThroughItsOwnCarrier'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the deleted tests",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheScriptScanIsATypedReadAndNotAnExec'
+        ),
+        source='vaibify/gui/routes/scriptRoutes.py',
+        # A directory listing written as command text again. It is not
+        # merely refused: it is INDISTINGUISHABLE at the primitive from
+        # an rm, which is why the typed-read adapter exists.
+        old=(
+            '    try:\n'
+            '        listEntries = connectionDocker.flistDirectoryEntries(\n'
+            '            sContainerId, sDirectory,\n'
+            '        )\n'
+            '    except FileNotFoundError:\n'
+            '        return []\n'
+        ),
+        new=(
+            '    _iExitCode, sOutput = '
+            'connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, "ls -1 " + sDirectory,\n'
+            '    )\n'
+            '    listEntries = [s for s in sOutput.split("\\n") if s]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDependencyScanReachesNoMutatingPrimitive'
+        ),
+        source='vaibify/gui/routes/scriptRoutes.py',
+        # Reading a script with `cat` through the general exec, which is
+        # how a file read becomes an arbitrary command. Note what this
+        # mutant also exposes: _fsReadContainerFile's bare
+        # `except Exception` SWALLOWS the resulting refusal and answers
+        # None, so the route reports "no dependencies found" rather than
+        # failing. The response assertion is what catches it.
+        #
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testDependencyScanRoutes' test_scan_dependencies_finds_upstream_match
+        # and test_scan_dependencies_reports_unmatched. Both assert on
+        # what the scan DETECTED, and the mutant stops it reading the
+        # script at all, so no mutation can break the read without
+        # breaking them.
+        old=(
+            '        baContent = await asyncio.to_thread(\n'
+            '            dictCtx["docker"].fbaFetchFile,\n'
+            '            sContainerId, sFilePath,\n'
+            '        )\n'
+            '        return baContent.decode("utf-8")\n'
+        ),
+        new=(
+            '        _iExitCode, sOutput = await asyncio.to_thread(\n'
+            '            dictCtx["docker"].ftResultExecuteCommand,\n'
+            '            sContainerId, "cat " + sFilePath,\n'
+            '        )\n'
+            '        return sOutput\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheComparePlotRouteOpensNoContainerConnectionAtAll'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        # The route grows a container touch. Its typed-read declaration
+        # takes it off the ambient mint, so the touch has no admission
+        # to make and the enforced branch refuses -- which is what makes
+        # the empty gated ledger a standing guard, not a snapshot.
+        #
+        # RECORDED COLLATERAL, intrinsic: also fails testPlotRoutes'
+        # test_compare_success and test_compare_no_standard_raises_404.
+        # Adding a container call to a handler those tests drive with a
+        # context that has no docker connection cannot leave them
+        # standing, so the collateral is the mutation's shape rather
+        # than a weakness in the isolation.
+        old=(
+            '        listPlots = _flistResolvePlotPaths(dictStep, dictVars)\n'
+            '        sPlotPath = _fsFindPlotPath(listPlots, sFileName)\n'
+            '        sStandardPath = _fsFindStandardForFile(\n'
+            '            listPlots, sFileName)\n'
+        ),
+        new=(
+            '        listPlots = _flistResolvePlotPaths(dictStep, dictVars)\n'
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "test -f " + sFileName,\n'
+            '        )\n'
+            '        sPlotPath = _fsFindPlotPath(listPlots, sFileName)\n'
+            '        sStandardPath = _fsFindStandardForFile(\n'
+            '            listPlots, sFileName)\n'
+        ),
+    ),
 ]

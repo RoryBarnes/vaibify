@@ -9,11 +9,11 @@ import posixpath
 from fastapi import HTTPException
 
 from .. import workflowManager
-from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     DependencyScanRequest,
     fdictRequireWorkflow,
 )
+from ..routeScope import S_CARRIER_TYPED_READ, fnDeclareCarrierMode
 
 
 def _fnRegisterScriptRoutes(app, dictCtx):
@@ -45,6 +45,7 @@ def _fnRegisterScriptRoutes(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"
     )
+    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fnScanScripts(
         sContainerId: str, iStepIndex: int
     ):
@@ -55,19 +56,10 @@ def _fnRegisterScriptRoutes(app, dictCtx):
         sDirectory = _fsAbsoluteStepDirectory(
             dictStep, dictWorkflow,
         )
-        iExit, sOutput = await asyncio.to_thread(
-            dictCtx["docker"].ftResultExecuteCommand,
-            sContainerId,
-            f"find {fsShellQuote(sDirectory)} -maxdepth 1"
-            f" -name '*.py' "
-            f"-printf '%f\\n' 2>/dev/null || "
-            f"ls {fsShellQuote(sDirectory)}/*.py 2>/dev/null"
-            f" | xargs -n1 basename 2>/dev/null",
+        listFiles = await asyncio.to_thread(
+            _flistPythonScriptsInDirectory,
+            dictCtx["docker"], sContainerId, sDirectory,
         )
-        listFiles = [
-            s.strip() for s in sOutput.strip().splitlines()
-            if s.strip()
-        ] if iExit == 0 and sOutput.strip() else []
         return workflowManager.fdictAutoDetectScripts(
             listFiles)
 
@@ -75,6 +67,7 @@ def _fnRegisterScriptRoutes(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/scan-dependencies"
     )
+    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fnScanDependencies(
         sContainerId: str,
         iStepIndex: int,
@@ -87,6 +80,36 @@ def _fnRegisterScriptRoutes(app, dictCtx):
             dictCtx, sContainerId, iStepIndex,
             request.saDataCommands, dictWorkflow,
         )
+
+
+def _flistPythonScriptsInDirectory(
+    connectionDocker, sContainerId, sDirectory,
+):
+    """Return the ``.py`` names directly inside a step directory.
+
+    A TYPED READ, where the panel used to send
+    ``find … -printf … || ls …/*.py | xargs -n1 basename`` through the
+    general exec primitive. That pipeline was a directory listing
+    written as arbitrary command text, so the primitive — which cannot
+    tell a listing from a delete — had to treat "scan this step for
+    scripts" as a mutation; and it silently listed nothing for any step
+    directory containing a space, because the ``ls`` branch was globbed
+    by the shell after the quoting was lost.
+
+    A directory that does not exist answers "no scripts", which is the
+    answer the panel already showed for that case.
+    """
+    if not sDirectory:
+        return []
+    try:
+        listEntries = connectionDocker.flistDirectoryEntries(
+            sContainerId, sDirectory,
+        )
+    except FileNotFoundError:
+        return []
+    return [
+        sEntry for sEntry in listEntries if sEntry.endswith(".py")
+    ]
 
 
 async def _fdictScanDependencies(

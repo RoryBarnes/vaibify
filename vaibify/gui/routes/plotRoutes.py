@@ -261,6 +261,15 @@ def _fnRegisterStandardizePlots(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"
     )
+    # typed-read, and here it is the STRONGEST of the six rather than a
+    # near-miss: this route resolves two container PATHS out of the
+    # workflow document and returns them. It opens no connection at all
+    # — not a write, not an exec, not even a typed read — so it reaches
+    # no mutation-capable primitive, which is exactly what the
+    # declaration asserts. The viewer fetches the two files afterwards
+    # through the ``container-read`` figure route, under that route's
+    # own authority.
+    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fnComparePlot(
         sContainerId: str, iStepIndex: int,
         request: Request,

@@ -260,10 +260,21 @@ class TestPipelineWsRoute:
 # ── Lines 236-257: acknowledge step route ────────────────────────
 
 class TestAcknowledgeStepRoute:
-    def test_acknowledge_step_success(self):
-        """Cover lines 236-257."""
+    def test_acknowledge_step_success(self, monkeypatch):
+        """Cover lines 236-257.
+
+        The carrier is stood down because this builds a bare
+        ``FastAPI()`` with no owner record and no lease; see
+        ``tests/carrierStandDown.py`` for what that costs. The route's
+        ADMISSION is asserted in ``tests/testCarrierMigratedRoutes.py``,
+        never here.
+        """
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+
+        from tests.carrierStandDown import fnStandCarrierDown
+        from vaibify.gui.routes import pipelineRoutes
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
 
         app = FastAPI()
         dictWorkflow = {

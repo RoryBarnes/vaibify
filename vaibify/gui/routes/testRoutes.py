@@ -3,6 +3,7 @@
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import os
 import posixpath
 
 from fastapi import HTTPException, Request
@@ -286,6 +287,44 @@ async def _fnAutoArchiveUnderTheDrain(
     )
 
 
+def _fnCommitTestDirectoryRemoval(
+    dictCtx, sContainerId, dictWorkflow, dictStep, requestHttp,
+):
+    """Delete the step's ``tests`` directory through carrier mode (a).
+
+    Mode (a) rather than (b), matching the draft DELETE this most
+    resembles: the effect is ONE ``rm -rf`` and it already ran on the
+    request coroutine, so a mode-(b) supervisor would move it into a
+    thread — a concurrency change this migration has no reason to make.
+    What changes is only that the removal now carries an admission,
+    where before it reached the exec primitive directly.
+
+    The kind is ``helper`` rather than ``file-write``: a file-write
+    record is probed by comparing the target's sha256 against an
+    expected and a prior hash, and a removed DIRECTORY has neither, so
+    recording it as one would hand the probe a question it cannot
+    answer. The helper probe asks instead whether this hub process is
+    still alive, which is the honest question about an ``rm`` issued
+    from it.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Deleting the step's generated tests",
+    )
+    return commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "delete-generated-tests",
+        lambda: _fnRemoveTestDirectory(
+            dictCtx["docker"], sContainerId, dictStep,
+            sProjectRepoPath=dictWorkflow.get("sProjectRepoPath", ""),
+        ),
+        {
+            "iHolderPid": os.getpid(),
+            "iHolderProcessGroup": os.getpgrp(),
+        },
+    )
+
+
 def _fnRegisterTestGenerate(app, dictCtx):
     """Register test generation and deletion routes."""
 
@@ -327,18 +366,17 @@ def _fnRegisterTestGenerate(app, dictCtx):
     @app.delete(
         "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
     )
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnDeleteGeneratedTest(
-        sContainerId: str, iStepIndex: int,
+        sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        _fnRemoveTestDirectory(
-            dictCtx["docker"], sContainerId, dictStep,
-            sProjectRepoPath=dictWorkflow.get(
-                "sProjectRepoPath", ""),
+        _fnCommitTestDirectoryRemoval(
+            dictCtx, sContainerId, dictWorkflow, dictStep, requestHttp,
         )
         dictStep["dictTests"] = {
             "dictQualitative": {
@@ -362,7 +400,10 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictVerification["sQuantitative"] = "untested"
         dictVerification["sIntegrity"] = "untested"
         fbDeriveUnnecessaryVerification(dictWorkflow)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Recording the deleted tests",
+        )
         return {"bSuccess": True}
 
 

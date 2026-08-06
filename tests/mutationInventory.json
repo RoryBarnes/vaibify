@@ -5742,18 +5742,18 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/scriptRoutes.py",
-      "sFingerprint": "3e6c450421443506",
-      "sFunction": "_fsReadContainerFile",
+      "sFingerprint": "914317b093f4e3e7",
+      "sFunction": "_flistPythonScriptsInDirectory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fbaFetchFile",
-      "sReferenceKind": "passed-callable"
+      "sPrimitive": "flistDirectoryEntries",
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -5764,17 +5764,17 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/scriptRoutes.py",
-      "sFingerprint": "9d9f3760cbb6403c",
-      "sFunction": "fnScanScripts",
+      "sFingerprint": "3e6c450421443506",
+      "sFunction": "_fsReadContainerFile",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "fbaFetchFile",
       "sReferenceKind": "passed-callable"
     },
     {

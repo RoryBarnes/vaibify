@@ -113,7 +113,12 @@ I_UNCLASSIFIED_ROW_BUDGET = 299
 # paths interpolated raw and became a typed read. Strictly less
 # authority for the same answer, which is the shape this ratchet exists
 # to record.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 214
+# 214 -> 213 on 2026-08-06 when ``scan-scripts`` stopped sending
+# ``find … -printf … || ls …/*.py | xargs -n1 basename`` through the
+# general exec primitive and became a directory typed read. Same
+# answer, no command text, and it fixes a step directory containing a
+# space listing nothing.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 213
 
 
 # Every acquisition of a declared capability that still has no reviewed

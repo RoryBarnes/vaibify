@@ -499,6 +499,43 @@ def _fnRegisterPipelineWs(app, dictCtx):
         )
 
 
+async def _fdictRebaselineModTimesUnderTheDrain(
+    dictCtx, sContainerId, listPaths, requestHttp,
+):
+    """Stat the step's outputs under the drain; return their mtimes.
+
+    This LOOKS like a read and is not. ``_fdictGetModTimes`` batches its
+    stat by WRITING the path list into the container as a scratch file
+    (``fnWriteFileViaTar``) and then running ``xargs … stat`` through the
+    general exec primitive, so acknowledging a step reaches both
+    mutation-capable primitives. A carrier around only the workflow save
+    would leave the probe refused, which is the shape that makes a
+    "read-only-looking" route the easiest one to migrate wrongly.
+
+    Mode (b) rather than (a): the probe already ran in a worker thread,
+    and the write-then-exec pair must not be split by an ownership
+    hand-over — a successor that landed between them would find the
+    former owner's path file and answer the stat from it.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Re-baselining the step's outputs",
+    )
+
+    def fnStatTheOutputs(supervisor=None):
+        del supervisor
+        return _fdictGetModTimes(
+            dictCtx["docker"], sContainerId, listPaths,
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "acknowledge-step",
+        fnStatTheOutputs,
+    )
+    return dictOutcome["result"]
+
+
 def _fnRegisterAcknowledgeStep(app, dictCtx):
     """Register POST endpoint to acknowledge step completion."""
 
@@ -507,10 +544,13 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         "/api/pipeline/{sContainerId}"
         "/acknowledge-step/{iStepIndex}"
     )
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
     async def fnAcknowledgeStep(
-        sContainerId: str, iStepIndex: int,
+        sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
-        from .. import syncDispatcher as _syncDispatcher
+        from .. import syncDispatcher as _syncDispatcher  # noqa: F401
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -520,13 +560,15 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         dictVars = dictCtx["variables"](sContainerId)
         listPaths = _flistCollectOutputPaths(
             dictWorkflow, dictVars)
-        dictModTimes = await asyncio.to_thread(
-            _fdictGetModTimes,
-            dictCtx["docker"], sContainerId, listPaths,
+        dictModTimes = await _fdictRebaselineModTimesUnderTheDrain(
+            dictCtx, sContainerId, listPaths, requestHttp,
         )
         _fnUpdateModTimeBaseline(
             dictCtx, sContainerId, dictModTimes)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Recording the acknowledged step",
+        )
         return {"bSuccess": True}
 
 

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui.routes.testRoutes import (
     _fbNeedsClaudeFallback,
@@ -17,15 +18,22 @@ from vaibify.gui.routes.testRoutes import (
 
 
 @pytest.fixture(autouse=True)
-def fnRunCarrierWorkersInline():
-    """Run this module's carrier workers inline, with no app state.
+def fnRunCarrierWorkersInline(monkeypatch):
+    """Run this module's carrier effects inline, with no app state.
 
     These tests call the route handlers DIRECTLY against a MagicMock
     ``app``, so there is no owner record, no lease and no journal —
     everything the carrier needs to bind a request to a container. The
-    stub keeps the handlers' own logic under test by CALLING the worker
-    it is handed, rather than by short-circuiting past it: a regression
-    in what the worker does still fails here.
+    shared stand-down keeps the handlers' own logic under test by
+    CALLING the effect or worker it is handed, rather than by
+    short-circuiting past it: a regression in what the worker does
+    still fails here.
+
+    The module's own three patches were folded into
+    ``tests/carrierStandDown.py``; the private copy had already fallen
+    behind, patching only the mode-(b) entry point, so the first
+    mode-(a) carrier added to a route in this file failed with an
+    unpatched journal rather than with anything about the route.
 
     What it does NOT prove, stated so nobody reads a green run as more
     than it is: nothing about the ADMISSION. Whether these routes reach
@@ -34,29 +42,8 @@ def fnRunCarrierWorkersInline():
     real HTTP against a double that calls the real gates. A stub cannot
     answer that question about itself.
     """
-    async def _fdictRunWorkerInline(
-        appState, sName, sContainerId, dictLaneTuple, sKind, sTarget,
-        fnWorker, *args, **kwargs,
-    ):
-        return {"bCommitted": True, "result": fnWorker(None)}
-
-    def _fnSaveInline(
-        dictCtx, sContainerId, dictWorkflow, requestHttp, sOperationName,
-    ):
-        return {"bCommitted": True,
-                "result": dictCtx["save"](sContainerId, dictWorkflow)}
-
-    with patch(
-        "vaibify.gui.commitCarrier.fdictRunLockHeldMutation",
-        _fdictRunWorkerInline,
-    ), patch(
-        "vaibify.gui.routes.testRoutes.fdictRequireLaneTupleForCommit",
-        return_value={"sContainerName": "test-container"},
-    ), patch(
-        "vaibify.gui.routes.testRoutes.fnCommitWorkflowSave",
-        _fnSaveInline,
-    ):
-        yield
+    from vaibify.gui.routes import testRoutes
+    fnStandCarrierDown(monkeypatch, testRoutes)
 
 
 def _fnSetExecResult(
@@ -687,7 +674,7 @@ class TestDeleteGeneratedTestRoute:
         ), patch(
             "vaibify.gui.routes.testRoutes._fnRemoveTestDirectory",
         ):
-            dictResult = await fnHandler("cid-1", 0)
+            dictResult = await fnHandler("cid-1", 0, MagicMock())
 
         assert dictResult["bSuccess"] is True
         assert dictStep["saTestCommands"] == []

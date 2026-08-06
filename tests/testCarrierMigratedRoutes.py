@@ -4193,3 +4193,271 @@ def testTheExistenceBatchIsATypedReadAndNotAnExec(tclientGated):
         "a route recorded typed-read reached a mutation-capable "
         f"container primitive: {connectionDocker.listAdmittedPrimitives}"
     )
+
+
+# ---------------------------------------------------------------------
+# Group 6 — the step panel's probe-and-record routes, and the three
+# POSTs that turn out to be reads.
+# ---------------------------------------------------------------------
+
+# The scratch file ``_fdictGetModTimes`` writes into the container
+# before it stats. Named here so the acknowledge-step assertions can
+# separate the PROBE's write from the workflow SAVE's: both go through
+# the same primitive, and a write carries no command text to tell them
+# apart by.
+S_POLL_PATHFILE = "/tmp/vaibifyPoll.list"
+
+
+@pytest.mark.falsification
+def testTheAcknowledgeStepProbeRunsUnderTheDrain(tclientGatedWithPlots):
+    """Acknowledging a step stats its outputs under mode (b).
+
+    The probe LOOKS like a read and is not, which is the whole reason
+    this route was easy to migrate wrongly: ``_fdictGetModTimes``
+    batches its stat by WRITING the requested path list into the
+    container as a scratch file and then running ``xargs … stat``
+    through the general exec primitive. A migration that carried only
+    the workflow save would leave both of those refused, and the
+    researcher's "I have seen this output" click would 500.
+
+    Selected on the PATHFILE write rather than on "any write", because
+    the workflow save that follows is also a write through the same
+    primitive; selecting loosely would let the save's admission answer
+    for the probe's.
+
+    Nothing here asserts the response STATUS, for the reason
+    :func:`_fnAssertSelectedRanUnder` records: a refused mutation
+    surfaces as a 500, so a status assertion would drag the SAVE's
+    defect onto this test as well and neither carrier would isolate.
+    Verified — with the status assertion in place, removing the save's
+    carrier failed this test too.
+
+    Kills: passing ``_fdictRebaselineModTimesUnderTheDrain``'s worker to
+    ``asyncio.to_thread`` instead of ``fdictRunLockHeldMutation``.
+    """
+    client, connectionDocker = tclientGatedWithPlots
+    client.post(
+        f"/api/pipeline/{S_CONTAINER_ID}/acknowledge-step/0",
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_POLL_PATHFILE
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        f"write of the stat path file {S_POLL_PATHFILE}",
+    )
+
+
+@pytest.mark.falsification
+def testTheAcknowledgeStepSaveCommitsThroughTheSynchronousCarrier(
+    tclientGatedWithPlots,
+):
+    """Acknowledging a step records the new baseline under mode (a).
+
+    The route's OTHER carrier. The probe and the save are two
+    mutations: the probe writes a scratch list and execs a stat, while
+    the save rewrites ``project.json`` with bytes the journal's hash
+    probe can adjudicate afterwards.
+
+    The isolation is ONE-DIRECTIONAL and worth stating. Removing the
+    PROBE's carrier fails both tests, because the probe runs first: its
+    unadmitted write raises at the primitive and the save never
+    happens. Removing the SAVE's carrier fails only this one. So both
+    failing points at the probe; this one alone points at the save.
+
+    Kills: reverting ``fnAcknowledgeStep``'s ``fnCommitWorkflowSave``
+    to ``dictCtx["save"](sContainerId, dictWorkflow)``.
+    """
+    client, connectionDocker = tclientGatedWithPlots
+    client.post(
+        f"/api/pipeline/{S_CONTAINER_ID}/acknowledge-step/0",
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testTheGeneratedTestRemovalCommitsThroughTheSynchronousCarrier(
+    tclientGated,
+):
+    """Deleting a step's generated tests runs its ``rm -rf`` carried.
+
+    An ``rm -rf`` of the directory the researcher's tests live in,
+    which reached the exec primitive directly. Mode (a) rather than
+    (b) deliberately: it is one command and it already ran on the
+    request coroutine, so a supervisor would have moved it into a
+    thread — a concurrency change this migration has no reason to make.
+
+    Selected on the ``rm -rf`` command text, so the workflow save that
+    follows cannot answer for it.
+
+    Kills: replacing ``_fnCommitTestDirectoryRemoval``'s
+    ``fdictCommitSynchronousMutation`` call with a direct call to
+    ``_fnRemoveTestDirectory``.
+
+    No status assertion, for the reason the acknowledge-step pair
+    records: it would carry the SAVE's defect onto this test too.
+    """
+    client, connectionDocker = tclientGated
+    client.delete(
+        f"/api/steps/{S_CONTAINER_ID}/0/generated-test",
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "rm -rf",
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+@pytest.mark.falsification
+def testTheGeneratedTestRemovalSaveCommitsThroughItsOwnCarrier(
+    tclientGated,
+):
+    """Deleting generated tests records the reset step under mode (a).
+
+    The same one-directional isolation the acknowledge-step pair has,
+    and in the same direction: the ``rm -rf`` runs first, so losing ITS
+    carrier fails both tests, while losing the save's fails only this
+    one.
+
+    Kills: reverting ``fnDeleteGeneratedTest``'s
+    ``fnCommitWorkflowSave`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = tclientGated
+    client.delete(
+        f"/api/steps/{S_CONTAINER_ID}/0/generated-test",
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testTheScriptScanIsATypedReadAndNotAnExec(tclientGated):
+    """POST .../scan-scripts lists the step directory as a typed read.
+
+    It is a POST that reads. It used to send
+    ``find … -printf … || ls …/*.py | xargs -n1 basename`` through the
+    general exec primitive, which the gate must treat as mutating
+    because command text carries no distinction between listing a
+    directory and emptying one — so on the enforced branch the step
+    editor's "detect scripts" button would simply have stopped working.
+    The shell pipeline also lost its quoting on the ``ls`` branch, so a
+    step directory containing a space listed nothing at all.
+
+    Both halves are asserted, because either alone is satisfiable by a
+    defect: the gated ledger must be EMPTY, which is what ``typed-read``
+    claims, and the typed-probe ledger must be NON-EMPTY, or a route
+    that returned before touching the container would pass the first.
+
+    Kills: restoring the ``find … || ls …`` command through
+    ``ftResultExecuteCommand``.
+    """
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/scan-scripts",
+    )
+    assert response.status_code == 200, response.text
+    assert connectionDocker.listTypedPathProbes, (
+        "the route reached no typed read at all, so the empty-ledger "
+        "assertion below would pass for a request that returned early"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared typed-read reached a mutation-capable "
+        f"container primitive: {connectionDocker.listAdmittedPrimitives}"
+    )
+
+
+@pytest.mark.falsification
+def testTheDependencyScanReachesNoMutatingPrimitive(tclientGated):
+    """POST .../scan-dependencies reads scripts and mutates nothing.
+
+    The second POST-that-reads. It fetches each command's script
+    through ``fbaFetchFile`` — already a typed read — and everything
+    after that is pure: parsing the source for load calls and matching
+    the filenames against upstream steps' declared outputs.
+
+    The non-vacuity half is asserted on the RESPONSE rather than on the
+    typed-probe ledger, because ``fbaFetchFile`` does not record into
+    it. A detected filename can only have come from source bytes the
+    route read out of the container, so its presence proves the read
+    happened.
+
+    Kills: routing ``_fsReadContainerFile`` through
+    ``ftResultExecuteCommand`` with a ``cat`` — which is how a file read
+    becomes an arbitrary command again.
+    """
+    client, connectionDocker = tclientGated
+    connectionDocker._dictFiles[f"{S_PROJECT_REPO}/stepA/analyze.py"] = (
+        b'import numpy as np\n'
+        b'daSamples = np.loadtxt("upstream.dat")\n'
+    )
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/scan-dependencies",
+        json={"saDataCommands": ["python analyze.py"]},
+    )
+    assert response.status_code == 200, response.text
+    listUnmatched = response.json()["listUnmatchedFiles"]
+    assert [
+        dictItem for dictItem in listUnmatched
+        if dictItem["sFileName"] == "upstream.dat"
+    ], (
+        "the route detected no load call, so it never read the script "
+        f"out of the container: {response.text}"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared typed-read reached a mutation-capable "
+        f"container primitive: {connectionDocker.listAdmittedPrimitives}"
+    )
+
+
+@pytest.mark.falsification
+def testTheComparePlotRouteOpensNoContainerConnectionAtAll(
+    tclientGatedWithPlots,
+):
+    """POST .../compare-plot resolves two paths and touches nothing.
+
+    The strongest ``typed-read`` in the migration, and the one whose
+    assertion needs the most care: "it reached no primitive" is ALSO
+    true of a route that refused. So the response is checked first —
+    both paths must come back non-empty, which is only possible if the
+    handler ran to the end.
+
+    What holds the declaration honest afterwards is the enforced branch
+    itself. If this route ever grows a container touch it has no
+    admission to make it under, so it will 500 rather than quietly
+    mutating, which is what makes the empty-ledger assertion a standing
+    guard rather than a snapshot.
+
+    Kills: reaching ``ftResultExecuteCommand`` from the handler, e.g.
+    probing the standard's existence before answering.
+    """
+    client, connectionDocker = tclientGatedWithPlots
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/compare-plot",
+        json={"sFileName": "figure.pdf"},
+    )
+    assert response.status_code == 200, response.text
+    dictBody = response.json()
+    assert dictBody["sPlotPath"] and dictBody["sStandardPath"], (
+        "the route answered with an empty path, so it did not run to "
+        f"the end and the empty ledger below asserts nothing: {dictBody}"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared typed-read reached a mutation-capable "
+        f"container primitive: {connectionDocker.listAdmittedPrimitives}"
+    )
