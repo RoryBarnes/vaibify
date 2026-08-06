@@ -1,0 +1,2348 @@
+{
+  "sSchemaVersion": "1",
+  "listRows": [
+    {
+      "sIdentity": "vaibify/cli/actionCommands.py::do",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/actionCommands.py::fnCoerceFieldValue",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandBuild.py::_fImportBuildOrExit",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandBuild.py::_fdiDockerDfBytes",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandBuild.py::_fpreflightArch",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandBuild.py::_fpreflightDisk",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandBuild.py::_fpreflightMemory",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandBuild.py::build",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandCat.py::cat",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandConfig.py::config",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandConfig.py::configEdit",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandConfig.py::configExport",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandConfig.py::configImport",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandDestroy.py::destroy",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandDoctor.py::doctor",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandGenerateStandards.py::generate_standards",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandInit.py::init",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandLs.py::ls",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandOpen.py::open_container",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandPublish.py::publish",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandPublish.py::publishArchive",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandPublish.py::publishWorkflow",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandReconcile.py::reconcile",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandRegister.py::register",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandReproduce.py::_fiRunPipInstall",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandReproduce.py::reproduce",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandRevoke.py::revoke",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandRun.py::run",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandSessions.py::sessions",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandSessions.py::stop",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightBindMountFormats",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightBindMounts",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightColimaSharedRoots",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightPorts",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStart.py::_fnAcquireGuiSessionSlotOrExit",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStart.py::_fnAcquireProjectLockOrExit",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStart.py::start",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandStatus.py::status",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandVerifyStep.py::verify_step",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/commandWorkflow.py::workflow",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/hubSession.py::_fobjParseResponseBody",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/hubSession.py::_fobjRequireOkResponse",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::_DefaultContainerIdFilter.filter",
+      "sDebtClass": "interface-method",
+      "sReason": "logging.Filter override; the name is the protocol"
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::_fnAcquireHubSessionSlotOrExit",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::connect",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::gui",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::pull",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::push",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::setup",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::stop",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/cli/main.py::verify",
+      "sDebtClass": "cli-verb",
+      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
+    },
+    {
+      "sIdentity": "vaibify/config/containerLock.py::fnAcquireContainerLock",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/config/processLiveness.py::_fdtNormalizeToNaiveLocal",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/config/processLiveness.py::fdtParseClaimIso",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/config/processLiveness.py::fdtReadProcessStartClock",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/config/processLiveness.py::fdtReadProcessStartClockCached",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/config/registryManager.py::_fnOpenRegistryLock",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/config/secretManager.py::_fnLoadKeyringModule",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/config/sessionRegistry.py::fnAcquireSessionSlot",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fnCoerceScalar",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fnHandleHttpError",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fnRecvExact",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fnStreamWsEvents",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnParseArguments",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnRunWebsocket",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnSendHttp",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._texecRunTypedRead",
+      "sDebtClass": "security-pinned",
+      "sReason": "the typed-read exemption grant point; its literal name is pinned by S_EXEMPTION_METHOD in tests/testMutationBoundary.py and an AGENTS.md paragraph (ruling R10)"
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.fnIterStreamFile",
+      "sDebtClass": "legacy-yield",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.ftupleRunRootShellProbe",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.texecRunInContainerStreamed",
+      "sDebtClass": "security-pinned",
+      "sReason": "texec family: sibling of the pinned typed-read grant point; rename only with the mutation-boundary contract (ruling R10)"
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.texecRunInContainerStreamedWithChunks",
+      "sDebtClass": "security-pinned",
+      "sReason": "texec family: sibling of the pinned typed-read grant point; rename only with the mutation-boundary contract (ruling R10)"
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe._baDrainAll",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe.read",
+      "sDebtClass": "interface-method",
+      "sReason": "file-like protocol method consumed by tarfile"
+    },
+    {
+      "sIdentity": "vaibify/docker/imageBuilder.py::_ferrorBuildFailed",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/actionCatalog.py::fnAgentAction",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/actionCatalog.py::fnAgentAction._fnDecorator",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/attributionLog.py::fdtParseTimestampAsUtc",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/attributionLog.py::fnAppendFlag",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/browserSession.py::_tCreateSessionRecordLocked",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/browserSession.py::_tMintSessionForCapability",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/browserSession.py::fnRevokeSessionById",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/buildRoutes.py::_fnRegisterBuildContainer.fnBuildContainer",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/buildRoutes.py::_fnRegisterBuildProgress.fnGetBuildProgress",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/commitCarrier.py::DurableTaskRecord.admission",
+      "sDebtClass": "legacy-annotation-mismatch",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/commitCarrier.py::_fRunEffectAdmitted",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/commitCarrier.py::_fnBuildSupervisorEviction",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/commitCarrier.py::_fnCallWorkerSynchronously",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/commitCarrier.py::ftupleOpenEstablishingAdmission",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/commitCarrier.py::ftupleOpenRequestAdmission",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/conftestManager.py::fnWriteConftestMarkersBatch",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/containerOwnership.py::ConnectionRecord.connection",
+      "sDebtClass": "legacy-annotation-mismatch",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/containerOwnership.py::OwnerRecord.fileHandleLock",
+      "sDebtClass": "legacy-annotation-mismatch",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/containerOwnership.py::_fnRecordNewOwner",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/containerOwnership.py::_ftdictClaimUnowned",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/containerOwnership.py::fnReleaseOwnership",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/containerOwnership.py::ftdictClaim",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fApplyAggregate",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractArrayValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractDataframeValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractHdf5Value",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractTabularValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadBamValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadBedValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCefValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCgnsValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvAggregate",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvByRowIndex",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvNegativeRow",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadExcelValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFastaValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFastqValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFitsValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFixedwidthValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFortranValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadGffValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadHdf5Value",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadImageValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadIpacValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadJsonValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadJsonlValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadKeyvalueValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadMatlabValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadMultitableValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadNpzValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadNumpyValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadParquetValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadPcapValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadRdataValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSafetensorsValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSamValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSasValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSpssValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadStataValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSyslogValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadTabularWithComments",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadTfrecordValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadVcfValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadVotableValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadVtkValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadWhitespaceValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_fNavigateJsonValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::_freaderOpenCsv",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dataLoaders.py::fLoadValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/diskSpace.py::fnCheckWorkspaceFreeBytes",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/dockerStatus.py::fsDetectDockerRuntime",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::_fbStepIsPencilStale",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::_flistDetectAndInvalidate",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::_flistSplitOutputPaths",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::_fnArchiveZenodoForAutoArchive",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::_fnPushOverleafForAutoArchive",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::fnCollectMarkerPathsByStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::fnCollectScriptPathsByStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::fnMaybeAutoArchive",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/fileStatusManager.py::fnSweepAllContainerCaches",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/hostControlChannel.py::_fbyteReadResponseLine",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/hostControlChannel.py::_ftupleParseDarwinPeerCredentials",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/hostControlChannel.py::_ftupleParseLinuxPeerCredentials",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/hostControlChannel.py::fituplePeerUidGid",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/hostIncidents.py::HostIncidentHandler.emit",
+      "sDebtClass": "interface-method",
+      "sReason": "logging.Handler override; the name is the protocol"
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineLogger.py::_fnEnsureLogsDirectory",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_actxWebSocketHeartbeat",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_fParseCpuTime",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_faFlushBatchFromLoop",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_faTimerFlush",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_fiRunSetupIfNeeded",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_flistAppendAndMaybeDrainBatch",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_fnRunOneStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_fnStartHeartbeatThread",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::_ftBuildBatchingEmitter.faDrainPending",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::fiRunStepCommands",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::fnRunAllSteps",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::fnRunFromStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::fnRunSelectedSteps",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineRunner.py::fnVerifyOnly",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_fnRegisterLastResortExceptionHandler.fnHandleUnexpectedRouteException",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_fnRegisterStaticFiles.fnBootstrapSession",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_fnRegisterStaticFiles.fnRedeemTransferCapability",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_fnRegisterStaticFiles.fnServeIndex",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnFiles",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnVariables",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnWorkflowDir",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::fnPipelineMessageLoop.fnStartDispatchTask",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineServer.py::fnValidatePathWithinRoot",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/pipelineTestRunner.py::fnRunAllTests",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnCreateHostFolder",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterAddProject.fnAddProject",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterContainerSettings.fnGetContainerSettings",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterContainerSettings.fnSetContainerSettings",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterCreateHostDirectory.fnCreateHostDirectory",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterCreateProject.fnCreateProject",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterGetRegistry.fnGetRegistry",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterGetTemplateConfig.fnGetTemplateConfig",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterGetTemplates.fnGetTemplates",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterHostDirectories.fnGetHostDirectories",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterRemoveProject.fnRemoveProject",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterStartContainer.fnCancelStartContainer",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterStartContainer.fnGetStartStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterStartContainer.fnStartContainer",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterStopContainer.fnStopContainer",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_ftupleDiscoverAllContainers",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/registryRoutes.py::_ftupleSplitContainers",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.files",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.get",
+      "sDebtClass": "interface-method",
+      "sReason": "dict-compatible accessor kept for mapping-style callers"
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.pop",
+      "sDebtClass": "interface-method",
+      "sReason": "dict-compatible accessor kept for mapping-style callers"
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.require",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.save",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.setdefault",
+      "sDebtClass": "interface-method",
+      "sReason": "dict-compatible accessor kept for mapping-style callers"
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.variables",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.workflowDir",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeScope.py::ContainerAwareRoute.get_route_handler",
+      "sDebtClass": "interface-method",
+      "sReason": "fastapi APIRoute override; the name is the protocol"
+    },
+    {
+      "sIdentity": "vaibify/gui/routeScope.py::ContainerAwareRoute.get_route_handler.fnAuthorizedHandler",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeScope.py::fnContainerOwner",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeScope.py::fnRouteScope",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routeScope.py::fnRouteScope._fnDecorator",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fnRegisterDraftDelete.fnDeleteDraft",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fnRegisterDraftList.fnListDrafts",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fnRegisterDraftRead.fnReadDraft",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fnRegisterDraftWrite.fnWriteDraft",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fsRequireProjectRepoAndWorkflowPath",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/draftRoutes.py::_fsResolveDraftFile",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/falsificationRoutes.py::_fnRegisterRun.fnRunFalsification",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/falsificationRoutes.py::_fnRegisterView.fnFalsificationGet",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/figureRoutes.py::_fnRegisterFigure.fnCheckFigure",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/figureRoutes.py::_fnRegisterFigure.fnServeFigure",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_fnProbeFirstChunk",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_fnRegisterFileDownload.fnDownloadFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_fnRegisterFileExistenceBatch.fnCheckFilesExist",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_fnRegisterFilePull.fnPullFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_fnRegisterFileUpload.fnUploadFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_fnRegisterFileWrite.fnWriteFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_fnRegisterFiles.fnListDirectory",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_ttIterStreamOrRaiseHttp",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterCommitCanonical.fnCommitCanonical",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterFetchProjectRepo.fnFetchProjectRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterGitBadges.fnGitBadges",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterGitStatus.fnGitStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterManifestCheck.fnManifestCheck",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterPullProjectRepo.fnPullProjectRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterReconcileRemoteState.fnReconcileRemoteState",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterRefreshRemotes.fnRefreshRemotes",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterUntrackAiDeclaration.fnUntrackAiDeclaration",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_tCollectGitBadgeInputs",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/levelRoutes.py::_fnRegisterAddStep.fnAddAiDeclarationStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/levelRoutes.py::_fnRegisterGenerateTemplate.fnGenerateTemplate",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/levelRoutes.py::_fnRegisterLevel2Readiness.fnLevel2Readiness",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fbApplyRandomnessLint.fnReadFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnApplyAllMarkerCategories",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnApplyExternalTestResults",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnApplyMarkerCategory",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnClearStaleMarkerCategories",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterAcknowledgeStep.fnAcknowledgeStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterFileStatus.fnGetFileStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterHostLogTail.fnGetHostLogTail",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterManifestText.fnGetManifestText",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterPipelineClean.fnCleanOutputs",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterPipelineKill.fnKillRunningTasks",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterPipelineState.fnGetPipelineState",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnRegisterWorkflowDiscovery.fnGetWorkflowDiscovery",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fnUpdateShaCache",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/plotRoutes.py::_fnRegisterStandardizePlots.fnCheckPlotStandards",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/plotRoutes.py::_fnRegisterStandardizePlots.fnComparePlot",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/plotRoutes.py::_fnRegisterStandardizePlots.fnStandardizePlots",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterContextImport.fnImportProjectContext",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterContextTemplate.fnGenerateContextTemplate",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterDeclareAiModel.fnDeclareAiModel",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterDeclarePersonalLayer.fnDeclarePersonalLayer",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterHashPersonalLayerFile.fnHashPersonalLayerFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterPromptRecordApprove.fnApproveFirstCapture",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterPromptRecordCapture.fnCapturePromptRecord",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterPromptRecordConfigure.fnConfigurePromptRecord",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterPromptRecordStatus.fnPromptRecordStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterReadProjectContext.fnReadProjectContext",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterRemoveAiModel.fnRemoveAiModel",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterSupervisionConfigure.fnConfigureSupervision",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/replayRoutes.py::_fnRegisterUpdateProjectContext.fnUpdateProjectContext",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnDoInitProjectRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnDoTrackRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterDirtyFiles.fnDirtyFiles",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterIgnore.fnIgnoreRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterInit.fnInitProjectRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterPushFiles.fnPushFiles",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterPushStaged.fnPushStaged",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterStatus.fnRepoStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterTrack.fnTrackRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/repoRoutes.py::_fnRegisterUntrack.fnUntrackRepo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterAttestation.fnL3AttestationGet",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterCaptureBinary.fnCaptureBinary",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterDeclareBinaries.fnDeclareBinaries",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterDeclareDeterminism.fnDeclareDeterminism",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterDeleteDeterminism.fnDeleteDeterminism",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterGenerateScript.fnL3GenerateReproduceScript",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterReadiness.fnL3Readiness",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterRegenerateEnvelope.fnRegenerateEnvelope",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterVerify.fnL3Verify",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRegisterVerifyDependencyLock.fnVerifyDependencyLock",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/scriptRoutes.py::_fnRegisterScriptRoutes.fnGetScripts",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/scriptRoutes.py::_fnRegisterScriptRoutes.fnScanDependencies",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/scriptRoutes.py::_fnRegisterScriptRoutes.fnScanScripts",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fnAwaitChildReady",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fnLaunchDetachedHub",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/settingsRoutes.py::_fnRegisterLogRoutes.fnGetLogContent",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/settingsRoutes.py::_fnRegisterLogRoutes.fnListLogs",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/settingsRoutes.py::_fnRegisterSettingsGet.fnGetSettings",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/settingsRoutes.py::_fnRegisterSettingsPut.fnUpdateSettings",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterAlignDirectories.fnAlignStepDirectories",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterDeclareNoInputData.fnDeclareNoInputData",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterInputDataAdd.fnAddInputDataFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepCreate.fnCreateStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepDelete.fnDeleteStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepGet.fnGetStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepInsert.fnInsertStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepRename.fnRenameStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepReorder.fnReorderSteps",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepUpdate.fnUpdateStep",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepsList.fnGetSteps",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepsList.fnResolveCommands",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepsList.fnResolveStepLabel",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/stepRoutes.py::_fnRegisterStepsList.fnValidateReferences",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fbRunOverleafValidation",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterArxivConfigure.fnConfigureArxiv",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterDag.fnGetDag",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterDagExport.fnExportDag",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterDatasetDownload.fnDownloadDataset",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubAddFile.fnGithubAddFile",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubIdentity.fnGithubIdentity",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubPush.fnGithubPush",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafDiff.fnOverleafDiff",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafMirrorDelete.fnDeleteMirror",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafMirrorRefresh.fnRefreshMirror",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafMirrorTree.fnGetMirrorTree",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafPush.fnOverleafPush",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterPullManuscript.fnPullManuscript",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterRemoteVerify.fnVerifyRemote",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterRemoteVerifyStatus.fnGetRemoteVerifyStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterReverifySchedule.fnGetReverifySchedule",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterSyncRoutes.fnCheckConnection",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterSyncRoutes.fnGetSyncFiles",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterSyncRoutes.fnGetSyncStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterSyncRoutes.fnHasCredential",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterSyncRoutes.fnSetTracking",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterSyncRoutes.fnSetupConnection",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterZenodoArchive.fnZenodoArchive",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterZenodoDeposit.fnGetZenodoDeposit",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterZenodoMetadata.fnGetZenodoMetadata",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterZenodoMetadata.fnSetZenodoMetadata",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_ftRunOverleafPushCall.fnPushWorker",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fnRegisterContainerIsolation.fnContainerIsolation",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fnRegisterContainerReady.fnContainerReady",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fnRegisterDockerStatus.fnGetDockerStatus",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fnRegisterDockerStatus.fnPostDockerStatusRetry",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fnRegisterMonitor.fnGetMonitorStats",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fnRegisterRuntimeInfo.fnGetRuntimeInfo",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fnRegisterUserInfo.fnGetUser",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fdictResolveCategoryContext",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fnRegisterTestGenerate.fnDeleteGeneratedTest",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fnRegisterTestGenerate.fnGenerateTest",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fnRegisterTestRun.fnRunTestCategory",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fnRegisterTestRun.fnRunTests",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fnRegisterTestSaveAndRun.fnSaveAndRunTest",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fresultRunSaveAndRunTest",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/workflowRoutes.py::_fnRegisterConnect.fnConnect",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/workflowRoutes.py::_fnRegisterWorkflowCreate.fnCreateWorkflow",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/workflowRoutes.py::_fnRegisterWorkflowCreationRequest.fnRequestProjectCreation",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/workflowRoutes.py::_fnRegisterWorkflowSearch.fnFindWorkflows",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/serverLifespan.py::_alifespanShared",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/serverLifespan.py::_fIdleTimeoutSeconds",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/serverMiddleware.py::ActivityTrackingMiddleware.dispatch",
+      "sDebtClass": "interface-method",
+      "sReason": "BaseHTTPMiddleware override; the name is the protocol"
+    },
+    {
+      "sIdentity": "vaibify/gui/serverMiddleware.py::SecurityHeadersMiddleware.dispatch",
+      "sDebtClass": "interface-method",
+      "sReason": "BaseHTTPMiddleware override; the name is the protocol"
+    },
+    {
+      "sIdentity": "vaibify/gui/serverMiddleware.py::SessionTokenMiddleware.dispatch",
+      "sDebtClass": "interface-method",
+      "sReason": "BaseHTTPMiddleware override; the name is the protocol"
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tCommitTransfer",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tOutcomeForBusyContainer",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tOutcomeForCapabilityState",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tRefusalAtCommitPoint",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tRefusalBeforePremint",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tReserveForStartUnderLocks",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tTransferUnderDrain",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/sessionLifecycle.py::ftdictClaimWithCardinality",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/setupServer.py::_fnRegisterIndexRoute.fnServeSetupIndex",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/setupServer.py::_fnRegisterReadRoutes.fnListTemplates",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/setupServer.py::_fnRegisterReadRoutes.fnValidate",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/setupServer.py::_fnRegisterSessionTokenRoute.fnGetSessionToken",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/setupServer.py::_fnRegisterWriteRoutes.fnBuild",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/setupServer.py::_fnRegisterWriteRoutes.fnSave",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/staleOutputDetector.py::_fLookupMtime",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/staleOutputDetector.py::_fMaxMtime",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/staleOutputDetector.py::_fParseMtime",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/staleOutputDetector.py::_flistOffendingForPair",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/startReservation.py::StartReservation.identityOwnership",
+      "sDebtClass": "legacy-annotation-mismatch",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/startReservation.py::_tDeliverFailedResult",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/startReservation.py::_tDeliverPendingResult",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/startReservation.py::_tDeliverSucceededResult",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/startReservation.py::_tMarkCancelRequested",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/startReservation.py::_tRecoverLeaseWithoutAResult",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/stateManager.py::_ftupleTryLoadStateFile",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/stepRename.py::_fnMoveStepDirectory",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/syncDispatcher.py::_fbValidateOverleafOnHost",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/terminalContainment.py::TerminalExecutionRecord.connectionDocker",
+      "sDebtClass": "legacy-annotation-mismatch",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/terminalContainment.py::TerminalExecutionRecord.dictRegistry",
+      "sDebtClass": "legacy-annotation-mismatch",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/terminalContainment.py::fnDrainSessionRecord",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/testGenerator.py::_ftolForStochasticKind",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/testGenerator.py::_ftolMeanFromCv",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/testGenerator.py::_ftolPercentileFromN",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/testGenerator.py::_ftolStdFromN",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/testGenerator.py::fsBuildStepContext",
+      "sDebtClass": "legacy-literal-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/transcriptSanitizer.py::_fFractionalShannonEntropy",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/webSocketAuthorization.py::ffbBuildPerFrameCredentialCheck",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::_fdepCacheGet",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::_fnRmRfDirectory",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::fnCleanStepScratchDirs",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::fnDeleteStep.fnRemap",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::fnInsertStep.fnRemap",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::fnReorderStep.fnRemap",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::fsRemapStepReferences.fnReplace",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowManager.py::fsResolveVariables.fnReplace",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowMigrations.py::_fnTemporaryProjectRepoPath",
+      "sDebtClass": "legacy-yield",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowMigrations.py::fnApplyMigrations",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowMigrations.py::fnMigrateArchiveToTracking",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/workflowMigrations.py::fnRewritePositionalToSymbolic.fnReplace",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterBuildRoute.fnBuildContainer",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterConfigRoutes.fnGetDefaults",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterConfigRoutes.fnGetExistingConfig",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterConfigRoutes.fnSaveConfig",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterConfigRoutes.fnValidateConfig",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterStaticFiles.fnServeIndex",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterTemplateRoutes.fnGetTemplateConfig",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterTemplateRoutes.fnGetTemplates",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/aiDeclarationStep.py::fnWriteDeclarationTemplate",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/aiProvenanceStamp.py::_sHashProjectContext",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request",
+      "sDebtClass": "interface-method",
+      "sReason": "urllib HTTPRedirectHandler override; the name is the protocol"
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/githubMirror.py::_fobjectBuildRequest",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/githubMirror.py::_fobjectOpenRequest",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/l3Attestation.py::fnInvalidateAttestation",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/levelGates.py::fnLevelComputationContext",
+      "sDebtClass": "legacy-yield",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/overleafMirror.py::_fnCountMirrorFiles",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/overleafMirror.py::_fnRunGit",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/overleafMirror.py::_fresultSyntheticGitFailure",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/overleafSync.py::_fnBuildParser",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/overleafSync.py::_fnRunSubprocess",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/repoFiles.py::ContainerRepoFiles.fnWithLock",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/repoFiles.py::HostRepoFiles.fnWithLock",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/repoFiles.py::_fnAcquireHostLock",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/reproduceScriptGenerator.py::fnGenerateReproduceScript",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/reproducibility/scheduledReverify.py::fnRunReverifyOnce",
+      "sDebtClass": "legacy-fn-return",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/templates/workflow/PlotHistogram/plotHistogram.py::fliaCountPerBin",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_daLoadCsv",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_daLoadNpy",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_daLoadWhitespace",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_dictLoadJson",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_dictLoadKeyValueText",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_dictLoadNpz",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listColumnStats",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listGlobalAggregates",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listPerColumnFirstLast",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromArray",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromFile",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromJson",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromJsonList",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpz",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpz1d",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpz2d",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpzScalar",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromScalarJson",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromTextOrKv",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/testing/standards.py::fLoadValue",
+      "sDebtClass": "legacy-name",
+      "sReason": ""
+    }
+  ],
+  "dictBudgets": {
+    "legacy-name": 143,
+    "legacy-fn-return": 249,
+    "legacy-yield": 3,
+    "legacy-literal-return": 18,
+    "legacy-return-annotation": 0,
+    "legacy-annotation-mismatch": 6
+  }
+}
