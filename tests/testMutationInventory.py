@@ -89,7 +89,12 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # executor -- and it is now a direct call inside a carrier's worker,
 # which the scan reads exactly. A migration can recover an
 # unattributable row, not only classify a legible one.
-I_UNCLASSIFIED_ROW_BUDGET = 301
+# 301 -> 300 with the file upload's mode-(a) migration, the same
+# recovery again: the upload's write was a `passed-callable` handed to
+# asyncio.to_thread and is now a direct call inside the carrier's effect
+# closure, so the scan reads it and its facts were recorded in the same
+# change that created them.
+I_UNCLASSIFIED_ROW_BUDGET = 300
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

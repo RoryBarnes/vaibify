@@ -5325,4 +5325,34 @@ def _fdictEntry(sRel):
             '            "iIndex": iIndex,\n'
         ),
     ),
+
+    # --- The file upload, carrier mode (a) (2026-08-05) ---
+    # Measured while confirming this: with the carrier call removed the
+    # twelve upload tests in tests/testFileEndpointsAndMiddleware.py
+    # ALL still passed, and only the test below failed. That is the
+    # finding tests/testCarrierMigratedRoutes.py exists for, reproduced
+    # on a fresh route rather than taken on trust.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheFileUploadCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, '
+            'dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "file-write", '
+            'sNormalized,\n'
+            '        fnWriteTheUpload,\n'
+            '        {\n'
+            '            "sDockerContainerId": sContainerId,\n'
+            '            "sExpectedSha256": '
+            'hashlib.sha256(baContent).hexdigest(),\n'
+            '            "sPriorSha256": sPriorSha256,\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new='    fnWriteTheUpload()\n',
+    ),
 ]

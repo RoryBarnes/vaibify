@@ -472,7 +472,7 @@
       "sScopeFingerprint": "6b594556b2cf506a"
     },
     {
-      "iLine": 2172,
+      "iLine": 2224,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -485,7 +485,7 @@
       "sScopeFingerprint": "f044fc20c79a8401"
     },
     {
-      "iLine": 2167,
+      "iLine": 2219,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -654,7 +654,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 1740,
+      "iLine": 1744,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -5132,26 +5132,26 @@
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "synchronous"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sCarrierDisposition": "migrate",
+      "sExclusionRationale": "",
       "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "2463619afb7b870a",
-      "sFunction": "fnUploadFile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
+      "sFingerprint": "ba1b6078ff0f6339",
+      "sFunction": "fnWriteTheFile",
+      "sJournalKind": "file-write",
+      "sLifetime": "request",
+      "sLogicalOperation": "save the editor's file content into the project repo, and append the Supervised-mode attribution event for it",
+      "sOperationMetadata": "repo-relative path validated within the project repo; expected sha256 is the saved content's, prior sha256 is what is on disk now",
       "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -5171,11 +5171,11 @@
       "sExclusionRationale": "",
       "sFile": "gui/routes/fileRoutes.py",
       "sFingerprint": "ba1b6078ff0f6339",
-      "sFunction": "fnWriteTheFile",
+      "sFunction": "fnWriteTheUpload",
       "sJournalKind": "file-write",
       "sLifetime": "request",
-      "sLogicalOperation": "save the editor's file content into the project repo, and append the Supervised-mode attribution event for it",
-      "sOperationMetadata": "repo-relative path validated within the project repo; expected sha256 is the saved content's, prior sha256 is what is on disk now",
+      "sLogicalOperation": "land an uploaded file's bytes at a validated destination inside the project repo",
+      "sOperationMetadata": "destination validated within the project repo and refused on the write denylist; expected sha256 is the uploaded content's, prior sha256 is what is on disk now",
       "sPrimitive": "fnWriteFile",
       "sReferenceKind": "direct-call"
     },

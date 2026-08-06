@@ -217,10 +217,11 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("upload-file")
     @app.post("/api/files/{sContainerId}/upload")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnUploadFile(
         sContainerId: str, request: FileUploadRequest,
+        requestHttp: Request,
     ):
-        import asyncio
         dictCtx["require"]()
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
             dictCtx, sContainerId)
@@ -230,16 +231,68 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         sNormalized = fnValidatePathWithinRoot(
             sDestPath, sProjectRepoPath)
         fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
+        # Decoded on the request coroutine, before the carrier, so a
+        # malformed body is a 400 rather than a worker failure that
+        # poisons a journal record and quarantines the container.
         try:
             baContent = base64.b64decode(request.sContentBase64)
-            await asyncio.to_thread(
-                dictCtx["docker"].fnWriteFile,
-                sContainerId, sNormalized, baContent,
-            )
         except Exception as error:
             raise HTTPException(
-                status_code=500, detail=str(error))
+                400,
+                "sContentBase64 is not valid base64: "
+                f"{_fsSanitizeServerError(str(error))}",
+            )
+        _fnCommitUploadedFile(
+            dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+        )
         return {"bSuccess": True, "sPath": sNormalized}
+
+
+def _fnCommitUploadedFile(
+    dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+):
+    """Commit an uploaded file through carrier mode (a) (design §8).
+
+    Deliberately NOT folded into :func:`_fnCommitFileWrite`, which the
+    editor save uses. The two write the same journal record but differ
+    in what else they do: the editor save appends a Supervised-mode
+    attribution event and this one does not, and giving the shared
+    helper a channel parameter would either start recording an
+    attribution event the upload path never recorded (a behaviour
+    change smuggled into a migration) or add a flag whose only job is
+    to say which caller it is. Two call sites is not the rule of three.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The file upload",
+    )
+    sPriorSha256 = fsHashContainerFileOrEmpty(
+        dictCtx, sContainerId, sNormalized,
+    )
+
+    def fnWriteTheUpload():
+        try:
+            dictCtx["docker"].fnWriteFile(
+                sContainerId, sNormalized, baContent,
+            )
+        except PermissionError:
+            # A carrier refusal is the migration's only proof that a
+            # mutation was carried; flattening it into a generic 500
+            # would hide exactly what this boundary exists to surface.
+            raise
+        except Exception as error:
+            raise HTTPException(500, str(error))
+
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sNormalized,
+        fnWriteTheUpload,
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
+            "sPriorSha256": sPriorSha256,
+        },
+    )
 
 
 def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):

@@ -379,7 +379,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/containers/{sName}/stop"),
     ("POST", "/api/files/{sContainerId}/exist"),
     ("POST", "/api/files/{sContainerId}/pull"),
-    ("POST", "/api/files/{sContainerId}/upload"),
     ("POST", "/api/git/{sContainerId}/commit-canonical"),
     ("POST", "/api/git/{sContainerId}/fetch-project-repo"),
     ("POST", "/api/git/{sContainerId}/pull-project-repo"),

@@ -453,6 +453,34 @@ def testTheFileSaveCommitsThroughTheSynchronousCarrier(tclientGated):
     )
 
 
+@pytest.mark.falsification
+def testTheFileUploadCommitsThroughTheSynchronousCarrier(tclientGated):
+    """POST /api/files/upload lands its bytes under a mode-(a) admission.
+
+    A separate shape from the editor save above even though both end in
+    ``fnWriteFile``: the upload carries its own carrier call, so a
+    migration that declared the route and reused nothing would reach the
+    write primitive with no admission at all.
+
+    Kills: replacing ``_fnCommitUploadedFile``'s
+    fdictCommitSynchronousMutation call with a direct call to its effect
+    closure.
+    """
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/files/{S_CONTAINER_ID}/upload",
+        json={
+            "sFilename": "observations.csv",
+            "sDestination": posixpath.join(S_PROJECT_REPO, "data"),
+            "sContentBase64": "YSxiCjEsMgo=",
+        },
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
 def testAnUnmigratedRouteStillReachesThePrimitiveOnTheAmbientMint(
     tclientGated,
 ):
