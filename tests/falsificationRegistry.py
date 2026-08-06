@@ -6399,6 +6399,66 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
+            'testTheTestGenerationRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # Back to the bare to_thread the generator used before: the
+        # tests directory, the conftest marker and three test files are
+        # then written with nothing holding the container.
+        #
+        # RECORDED COLLATERAL, intrinsic rather than drift: also fails
+        # testTheGeneratedTestsAreRecordedSynchronously, because the
+        # generation runs FIRST and its refusal 500s the handler before
+        # the save. No mutation can separate a downstream carrier from
+        # an upstream refusal in a straight-line handler; the reverse
+        # direction DOES isolate.
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnGenerateTheTests, "generate-tests", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictCarried = await asyncio.to_thread(fnGenerateTheTests)\n'
+            '    return dictCarried["objResult"]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGeneratedTestsAreRecordedSynchronously'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '    fnCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "Recording the generated tests",\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnOutOfRangeStepIsRefusedBeforeTheContainerIsTouched'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # Ruling 6's separation, deleted: the bad index then travels
+        # into the carrier, where _ftExtractStepInfo's IndexError
+        # settles as a FAILED worker and quarantines the container over
+        # a typo in the URL.
+        old=(
+            '        _fnRequireStepIndexBeforeGenerating('
+            'dictWorkflow, iStepIndex)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
             'testTheScriptScanIsATypedReadAndNotAnExec'
         ),
         source='vaibify/gui/routes/scriptRoutes.py',

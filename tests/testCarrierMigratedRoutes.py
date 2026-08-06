@@ -4682,3 +4682,149 @@ def testTheKillReconcileWriteKeepsTheRunnersRealCauseOfDeath():
         "the reconcile lost the failure reason a researcher reads to "
         f"find out why their run stopped: {dictPersisted}"
     )
+
+
+# ---------------------------------------------------------------------
+# Group 11 -- generating a step's tests: the pre-flight, the drain, the
+# save.
+# ---------------------------------------------------------------------
+
+# The introspection program the deterministic generator writes into
+# /tmp and runs. Its stdout has to parse as JSON or the generator
+# raises, so the double answers this ONE command with an empty report
+# rather than with the parent's blanket "".
+S_INTROSPECT_COMMAND_MARKER = "_vaibify_introspect_"
+
+# The directory the generator creates and writes its three test files
+# into, for the step the draft harness's workflow declares.
+S_GENERATED_TESTS_DIRECTORY = posixpath.join(
+    S_PROJECT_REPO, "stepA", "tests",
+)
+
+
+class DockerDoubleForTestGeneration(DockerDoubleThatCallsTheRealGates):
+    """The gate-faithful double, with the introspection program answered.
+
+    Only the introspection run is special-cased. The parent answers
+    every command with ``(0, "")``, which the generator rejects as
+    unparseable and turns into a 500 -- a real outcome, and the one
+    this route now QUARANTINES on, but not the one that lets the save
+    downstream be reached and asserted.
+    """
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        tExec = super().ftResultExecuteCommand(
+            sContainerId, sCommand, sWorkdir,
+        )
+        if (
+            S_INTROSPECT_COMMAND_MARKER in sCommand
+            and sCommand.startswith("python3 ")
+        ):
+            return (0, "[]")
+        return tExec
+
+
+@pytest.fixture
+def tclientGatedForGeneration():
+    """The gated client over the test-generation double."""
+    return _tConnectGatedClient(DockerDoubleForTestGeneration())
+
+
+def _fresponsePostGenerateTest(client, iStepIndex=0):
+    """Drive the deterministic test generator for one step."""
+    return client.post(
+        f"/api/steps/{S_CONTAINER_ID}/{iStepIndex}/generate-test",
+        json={"bDeterministic": True, "bForceOverwrite": False},
+    )
+
+
+@pytest.mark.falsification
+def testTheTestGenerationRunsUnderTheDrain(tclientGatedForGeneration):
+    """POST .../generate-test writes its test files under mode (b).
+
+    The generator makes a tests directory, writes an introspection
+    program into /tmp and runs it, then writes a conftest marker and
+    three test files. It used to do all that on a bare
+    ``asyncio.to_thread``: a hand-over arriving part-way left a
+    container holding half a generated test suite that belonged to
+    somebody else.
+
+    Selected on writes INTO the step's tests directory, so the workflow
+    save that follows -- also a write, through the same primitive, but
+    under mode (a) -- cannot answer for this carrier.
+
+    Kills: passing ``_fdictRunTestGeneration``'s worker to
+    ``asyncio.to_thread`` instead of ``fobjRunWorkerUnderTheDrain``.
+    """
+    client, connectionDocker = tclientGatedForGeneration
+    _fresponsePostGenerateTest(client)
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"].startswith(
+                S_GENERATED_TESTS_DIRECTORY,
+            )
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        f"write under {S_GENERATED_TESTS_DIRECTORY}",
+    )
+
+
+@pytest.mark.falsification
+def testTheGeneratedTestsAreRecordedSynchronously(
+    tclientGatedForGeneration,
+):
+    """POST .../generate-test records the new tests under mode (a).
+
+    The route's OTHER carrier. The isolation is one-directional and
+    saying so is the honest reading: removing the GENERATION's carrier
+    fails both, because it runs first and its refusal 500s the handler
+    before the save is reached. Only this one failing means the save.
+
+    Kills: reverting ``_fnApplyGeneratedTests``'s
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = tclientGatedForGeneration
+    _fresponsePostGenerateTest(client)
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testAnOutOfRangeStepIsRefusedBeforeTheContainerIsTouched(
+    tclientGatedForGeneration,
+):
+    """A bad step index answers 404 and reaches no container primitive.
+
+    Ruling 6's pre-flight, asserted where it matters. The step index
+    comes from the URL, and inside the carrier its ``IndexError``
+    would settle as a FAILED worker -- marking the container as
+    needing reconciliation and refusing the researcher's next
+    mutation, over a typo. Both halves are asserted because either
+    alone is weak: the 404 without the empty ledger would pass for a
+    route that generated first and answered second, and the empty
+    ledger without the 404 would pass for a route that refused for
+    some other reason entirely.
+
+    Kills: removing the ``_fnRequireStepIndexBeforeGenerating`` call
+    from ``fnGenerateTest``.
+    """
+    client, connectionDocker = tclientGatedForGeneration
+    response = _fresponsePostGenerateTest(client, iStepIndex=99)
+    assert response.status_code == 404, response.text
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "an out-of-range step index reached a container primitive "
+        "before it was refused, so the refusal happened inside a "
+        "carrier and the container was marked: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )

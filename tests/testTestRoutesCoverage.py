@@ -1,6 +1,7 @@
 """Tests for vaibify.gui.routes.testRoutes — covers uncovered lines."""
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -44,6 +45,16 @@ def fnRunCarrierWorkersInline(monkeypatch):
     """
     from vaibify.gui.routes import testRoutes
     fnStandCarrierDown(monkeypatch, testRoutes)
+
+
+def _frequestBuildStoodDownRequest():
+    """Return the minimal request a stood-down carrier still reaches for.
+
+    ``fobjRunWorkerUnderTheDrain`` reads ``requestHttp.app.state``
+    before the stand-down's replacement discards it, so the attribute
+    chain has to exist even though nothing consults it.
+    """
+    return SimpleNamespace(app=SimpleNamespace(state=None))
 
 
 def _fnSetExecResult(
@@ -108,6 +119,7 @@ class TestFdictRunTestGeneration:
         dictResult = await _fdictRunTestGeneration(
             dictCtx, "cid-1", 0, dictWorkflow,
             mockGenerate, mockRequest,
+            _frequestBuildStoodDownRequest(),
         )
         assert dictResult == dictExpected
         mockGenerate.assert_called_once()
@@ -130,6 +142,7 @@ class TestFdictRunTestGeneration:
         await _fdictRunTestGeneration(
             dictCtx, "cid-1", 0, dictWorkflow,
             mockGenerate, mockRequest,
+            _frequestBuildStoodDownRequest(),
         )
         assert mockGenerate.call_args[1]["sUser"] == "defaultuser"
 
@@ -152,6 +165,7 @@ class TestFdictRunTestGeneration:
             await _fdictRunTestGeneration(
                 dictCtx, "cid-1", 0, dictWorkflow,
                 mockGenerate, mockRequest,
+                _frequestBuildStoodDownRequest(),
             )
         assert excInfo.value.status_code == 500
         assert "Generation failed" in excInfo.value.detail
@@ -256,7 +270,10 @@ class TestGenerateTestRoute:
             "vaibify.gui.routes.testRoutes.fdictGenerateAllTests",
             create=True,
         ):
-            dictResult = await fnHandler("cid-1", 0, mockRequest)
+            dictResult = await fnHandler(
+                "cid-1", 0, mockRequest,
+                _frequestBuildStoodDownRequest(),
+            )
 
         assert dictResult["bNeedsOverwriteConfirm"] is True
         assert dictResult["listModifiedFiles"] == ["a.py"]
@@ -316,7 +333,10 @@ class TestGenerateTestRoute:
             "vaibify.gui.routes.testRoutes.fdictGenerateAllTests",
             create=True,
         ):
-            dictResult = await fnHandler("cid-1", 0, mockRequest)
+            dictResult = await fnHandler(
+                "cid-1", 0, mockRequest,
+                _frequestBuildStoodDownRequest(),
+            )
 
         assert dictResult["bGenerated"] is True
         mockApply.assert_called_once()
@@ -360,7 +380,10 @@ class TestGenerateTestRoute:
             "vaibify.gui.routes.testRoutes.fdictGenerateAllTests",
             create=True,
         ):
-            dictResult = await fnHandler("cid-1", 0, mockRequest)
+            dictResult = await fnHandler(
+                "cid-1", 0, mockRequest,
+                _frequestBuildStoodDownRequest(),
+            )
 
         assert dictResult["bNeedsFallback"] is True
 
@@ -941,7 +964,8 @@ class TestFnApplyGeneratedTests:
             return_value=["pytest test_i.py", "pytest test_q.py"],
         ):
             _fnApplyGeneratedTests(
-                dictCtx, "cid-1", dictWorkflow, 0, dictResult)
+                dictCtx, "cid-1", dictWorkflow, 0, dictResult,
+                _frequestBuildStoodDownRequest())
 
         assert "dictIntegrity" in dictStep["dictTests"]
         assert "dictQualitative" in dictStep["dictTests"]

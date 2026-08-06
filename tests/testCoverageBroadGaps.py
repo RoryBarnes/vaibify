@@ -1347,8 +1347,18 @@ class TestPipelineServerBuildGenerateResponse:
         assert dictResponse["dictIntegrity"]["saCommands"] == ["cmd1"]
         assert dictResponse["dictQuantitative"] == {}
 
-    def test_fnApplyGeneratedTests(self):
+    def test_fnApplyGeneratedTests(self, monkeypatch):
+        """The save happens; how it is ADMITTED is asserted elsewhere.
+
+        Stood down through the shared helper because this builds no
+        owner record and no app state. That the save now runs under a
+        mode-(a) carrier is asserted over real HTTP in
+        ``tests/testCarrierMigratedRoutes.py``.
+        """
+        from tests.carrierStandDown import fnStandCarrierDown
+        from vaibify.gui.routes import testRoutes
         from vaibify.gui.pipelineServer import _fnApplyGeneratedTests
+        fnStandCarrierDown(monkeypatch, testRoutes)
         dictWorkflow = {
             "listSteps": [
                 {"sName": "Build", "saTestCommands": []},
@@ -1359,9 +1369,10 @@ class TestPipelineServerBuildGenerateResponse:
             "dictQualitative": {"saCommands": []},
         }
         mockSave = MagicMock()
-        dictCtx = {"save": mockSave}
+        dictCtx = {"save": mockSave, "paths": {}}
         _fnApplyGeneratedTests(
-            dictCtx, "ctn1", dictWorkflow, 0, dictResult
+            dictCtx, "ctn1", dictWorkflow, 0, dictResult,
+            SimpleNamespace(app=SimpleNamespace(state=None)),
         )
         mockSave.assert_called_once()
         dictStep = dictWorkflow["listSteps"][0]

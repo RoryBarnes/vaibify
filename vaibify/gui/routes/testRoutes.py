@@ -14,10 +14,13 @@ from ..fileStatusManager import (
     fsWorkflowSlugFromPath,
 )
 from vaibify.reproducibility.levelGates import fiAICSLevel
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
     fnCommitWorkflowSave,
+    fobjRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
@@ -52,29 +55,71 @@ from ..testStatusManager import (
 )
 
 
+def _fnRequireStepIndexBeforeGenerating(dictWorkflow, iStepIndex):
+    """Refuse an out-of-range step index BEFORE any carrier opens.
+
+    Read out of the generator's failure modes, not guessed from its
+    shape. ``fdictGenerateAllTests`` touches the container in both
+    branches, and the only failure preceding that touch is
+    ``_ftExtractStepInfo``'s ``IndexError``: LLM errors are caught per
+    category and returned as ``sError``, context reads answer ``""``,
+    and "no model configured" already answered ``bNeedsFallback``. A
+    bad index arrives from the URL, so inside the carrier it would
+    QUARANTINE an untouched container over a typo.
+    """
+    listSteps = dictWorkflow.get("listSteps", [])
+    if iStepIndex < 0 or iStepIndex >= len(listSteps):
+        raise HTTPException(
+            404, f"Step index {iStepIndex} out of range",
+        )
+
+
 async def _fdictRunTestGeneration(
     dictCtx, sContainerId, iStepIndex,
-    dictWorkflow, fdictGenerate, request,
+    dictWorkflow, fdictGenerate, request, requestHttp,
 ):
-    """Invoke the test generator and return its result dict."""
+    """Invoke the test generator under the drain; return its result dict.
+
+    Mode (b): the generator makes a directory, writes a conftest
+    marker, runs an introspection program over every declared output
+    and writes three test files -- around an LLM round-trip on the
+    non-deterministic branch. A hand-over landing part-way leaves a
+    container holding half a test suite belonging to somebody else.
+
+    The pre-flight above having taken the one refusal decided before a
+    write, every failure reaching the ``except`` is AT or after one, so
+    its 500 propagates and marks the record for reconciliation, which
+    is right because nobody knows what landed. A refusal is re-raised
+    as itself first: "not admitted" reported as "Generation failed" is
+    the shape that silently downgraded a reproducibility badge once.
+    """
     dictVars = dictCtx["variables"](sContainerId)
     sUser = dictCtx["containerUsers"].get(
         sContainerId, dictCtx.get("sTerminalUser")
     )
-    try:
-        return await asyncio.to_thread(
-            fdictGenerate,
-            dictCtx["docker"], sContainerId, iStepIndex,
-            dictWorkflow, dictVars,
-            request.bUseApi, request.sApiKey,
-            sUser=sUser,
-            bDeterministic=request.bDeterministic,
-            bForceOverwrite=request.bForceOverwrite,
-        )
-    except Exception as error:
-        raise HTTPException(
-            500, f"Generation failed: "
-            f"{_fsSanitizeServerError(str(error))}")
+
+    def fnGenerateTheTests(supervisor=None):
+        del supervisor
+        try:
+            return fdictCarryARefusalBackInsteadOfRaising(
+                lambda: fdictGenerate(
+                    dictCtx["docker"], sContainerId, iStepIndex,
+                    dictWorkflow, dictVars,
+                    request.bUseApi, request.sApiKey,
+                    sUser=sUser,
+                    bDeterministic=request.bDeterministic,
+                    bForceOverwrite=request.bForceOverwrite,
+                ),
+            )
+        except Exception as error:
+            fnReRaiseControlPlaneRefusal(error)
+            raise HTTPException(
+                500, f"Generation failed: "
+                f"{_fsSanitizeServerError(str(error))}")
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnGenerateTheTests, "generate-tests", requestHttp,
+    )
 
 
 def _fbNeedsClaudeFallback(dictCtx, sContainerId, request):
@@ -88,7 +133,7 @@ def _fbNeedsClaudeFallback(dictCtx, sContainerId, request):
 
 def _fnApplyGeneratedTests(
     dictCtx, sContainerId, dictWorkflow, iStepIndex,
-    dictResult,
+    dictResult, requestHttp,
 ):
     """Store generated test categories in the step and save.
 
@@ -110,7 +155,10 @@ def _fnApplyGeneratedTests(
         dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
     )
     dictStep["saTestCommands"] = flistBuildTestCommands(dictStep)
-    dictCtx["save"](sContainerId, dictWorkflow)
+    fnCommitWorkflowSave(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        "Recording the generated tests",
+    )
 
 
 def _fdictBuildGenerateResponse(dictResult):
@@ -332,9 +380,12 @@ def _fnRegisterTestGenerate(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/generate-test"
     )
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
     async def fnGenerateTest(
         sContainerId: str, iStepIndex: int,
-        request: TestGenerateRequest,
+        request: TestGenerateRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         from ..testGenerator import fdictGenerateAllTests
@@ -345,9 +396,10 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
+        _fnRequireStepIndexBeforeGenerating(dictWorkflow, iStepIndex)
         dictResult = await _fdictRunTestGeneration(
             dictCtx, sContainerId, iStepIndex,
-            dictWorkflow, fdictGenerateAllTests, request,
+            dictWorkflow, fdictGenerateAllTests, request, requestHttp,
         )
         if dictResult.get("bNeedsOverwriteConfirm"):
             return {
@@ -358,7 +410,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
             }
         _fnApplyGeneratedTests(
             dictCtx, sContainerId, dictWorkflow,
-            iStepIndex, dictResult,
+            iStepIndex, dictResult, requestHttp,
         )
         return _fdictBuildGenerateResponse(dictResult)
 

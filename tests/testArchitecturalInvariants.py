@@ -4046,6 +4046,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # route. Dropping the reconciling reader would have been smaller and
     # would have made the dashboard say "killed (130)" over a crash.
     "routes/pipelineRoutes.py": 3020,
+    # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
+    # generate-test migration, under the 2026-08-05 ruling above — an
+    # existing route module, carrier plumbing, raised once rather than
+    # split. It is +2 over the cap and the two lines are the reason the
+    # migration is not the cheap one: a PRE-FLIGHT that rejects an
+    # out-of-range step index before any carrier opens, so a typo in
+    # the URL answers 404 instead of quarantining an untouched
+    # container, and the docstring recording WHY that is the only
+    # failure the pre-flight can take (every other one the generator
+    # raises happens at or after a write). Reaching 800 exactly was
+    # possible only by deleting the blank line after each docstring's
+    # summary, which is deforming the source to satisfy a number.
+    "routes/testRoutes.py": 802,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
