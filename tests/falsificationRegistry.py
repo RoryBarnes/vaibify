@@ -553,10 +553,10 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/sessionLifecycle.py',
         old="""    async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
-            return _tReserveForStartUnderLocks(""",
+            return _ftReserveForStartUnderLocks(""",
         new="""    async with _flockObtainContainerMutation(dictLockStore, sName):
         if True:
-            return _tReserveForStartUnderLocks(""",
+            return _ftReserveForStartUnderLocks(""",
     ),
 
     Falsification(
@@ -1126,9 +1126,9 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testDataLoadersMutationCoverage.py::test_loadCsvByRowIndex_index_zero_returns_first_row',
         source='vaibify/gui/dataLoaders.py',
         old="""    if iIndex < 0:
-        return _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
+        return _ffLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
         new="""    if iIndex <= 0:
-        return _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
+        return _ffLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
     ),
     Falsification(
         nodeid='tests/testDataLoadersMutationCoverage.py::test_extractHdf5Value_negative_flat_index_maps_to_last',

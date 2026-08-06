@@ -1020,7 +1020,7 @@ class _BytesGeneratorPipe:
 
     def read(self, iSize=-1):
         if iSize is None or iSize < 0:
-            return self._baDrainAll()
+            return self._fbaDrainAll()
         while len(self._baBuffer) < iSize and not self._bExhausted:
             self._fnPullOneChunk()
         baOut = self._baBuffer[:iSize]
@@ -1033,7 +1033,7 @@ class _BytesGeneratorPipe:
         except StopIteration:
             self._bExhausted = True
 
-    def _baDrainAll(self):
+    def _fbaDrainAll(self):
         while not self._bExhausted:
             self._fnPullOneChunk()
         baOut = self._baBuffer

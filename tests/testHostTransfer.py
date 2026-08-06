@@ -220,7 +220,7 @@ async def testCorrectGenerationActiveTransferSucceedsAndRevokes():
     REVOKED and the new session-bound lease authorizes release while
     the old one is refused.
 
-    Kills: dropping ``fnRevokeSessionById`` from ``_tCommitTransfer``
+    Kills: dropping ``fnRevokeSessionById`` from ``_ftCommitTransfer``
     (the old credential would keep authorizing after the transfer).
     """
     stateApp = _fstateBuildAppState()
@@ -253,7 +253,7 @@ async def testStaleGenerationTransferIsRefused():
     doomed transfer never fences or kills the successor's terminals.
 
     Kills: neutralizing the ``iOwnerGeneration != iExpectedGen``
-    refusal in ``_tRefusalBeforePremint`` (the commit-point backstop
+    refusal in ``_ftRefusalBeforePremint`` (the commit-point backstop
     still refuses, but only after draining the successor's live
     terminal, which this test detects).
     """
@@ -333,7 +333,7 @@ async def testReapedRecordYieldsClaimNormally():
     released, must answer "container unowned — claim normally", never
     mint ownership out of thin air and never tell the client to retry.
 
-    Kills: rewording ``_tRefusalBeforePremint``'s unowned outcome to
+    Kills: rewording ``_ftRefusalBeforePremint``'s unowned outcome to
     ``S_TRANSFER_BUSY_RETRY``, which would send the client into a
     hopeless retry loop instead of the claim path.
     """
@@ -406,7 +406,7 @@ async def testPoisonedRecordRefusesTransfer():
     BEFORE the DRAINING phase, leaving the terminals untouched.
 
     Kills: neutralizing the poison refusal in
-    ``_tRefusalBeforePremint`` (the commit-point backstop still
+    ``_ftRefusalBeforePremint`` (the commit-point backstop still
     refuses, but only after draining the live terminal, which this
     test detects).
     """
@@ -443,7 +443,7 @@ async def testCancelRequestedDurableTaskRefusesTransfer():
     refusing BEFORE the DRAINING phase touches any terminal.
 
     Kills: weakening the live-task state refusal in
-    ``_tRefusalBeforePremint`` to ignore ``sState`` (the commit-point
+    ``_ftRefusalBeforePremint`` to ignore ``sState`` (the commit-point
     backstop still refuses, but only after draining the live
     terminal, which this test detects).
     """
@@ -686,7 +686,7 @@ async def testAgentAuthorizationSurvivesTransfer():
     untouched by a transfer (§6.2): the in-container agent keeps
     authorizing against the same container across the rotation.
 
-    Kills: making ``_tCommitTransfer`` also rotate
+    Kills: making ``_ftCommitTransfer`` also rotate
     ``recordOwner.sAgentToken``, which would cut off the working agent
     mid-session on every ``vaibify open``.
     """

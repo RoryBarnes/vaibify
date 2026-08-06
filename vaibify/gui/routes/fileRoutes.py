@@ -207,7 +207,7 @@ def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
     return baFirst, iterChunks
 
 
-async def _ttIterStreamOrRaiseHttp(
+async def _ftIterStreamOrRaiseHttp(
     connectionDocker, sContainerId, sAbsPath,
 ):
     """Begin streaming the file via a worker thread; map errors to HTTP 500."""
@@ -254,7 +254,7 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
             dictCtx["workflowDir"](sContainerId), sFilePath,
         )
         fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
-        baFirst, iterChunks = await _ttIterStreamOrRaiseHttp(
+        baFirst, iterChunks = await _ftIterStreamOrRaiseHttp(
             dictCtx["docker"], sContainerId, sAbsPath,
         )
         return _fresponseStreamDownload(

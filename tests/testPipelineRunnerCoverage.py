@@ -3,7 +3,7 @@
 import time
 
 from vaibify.gui.pipelineRunner import (
-    _fParseCpuTime,
+    _ffParseCpuTime,
     _fbStepIncludedInRun,
     _fdictBuildWorkflowVars,
     _fiAggregateTestExitCode,
@@ -79,26 +79,26 @@ class TestFnRecordRunStats:
 class TestFParseCpuTime:
     def test_parses_valid_output(self):
         sOutput = "some output\n__VAIBIFY_CPU__ 1.23 0.45\ndone"
-        assert _fParseCpuTime(sOutput) == 1.68
+        assert _ffParseCpuTime(sOutput) == 1.68
 
     def test_no_cpu_line_returns_zero(self):
-        assert _fParseCpuTime("just output\nno cpu here") == 0.0
+        assert _ffParseCpuTime("just output\nno cpu here") == 0.0
 
     def test_empty_output(self):
-        assert _fParseCpuTime("") == 0.0
+        assert _ffParseCpuTime("") == 0.0
 
     def test_malformed_cpu_line(self):
-        assert _fParseCpuTime("__VAIBIFY_CPU__ bad data") == 0.0
+        assert _ffParseCpuTime("__VAIBIFY_CPU__ bad data") == 0.0
 
     def test_only_user_time(self):
-        assert _fParseCpuTime("__VAIBIFY_CPU__ 2.5") == 0.0
+        assert _ffParseCpuTime("__VAIBIFY_CPU__ 2.5") == 0.0
 
     def test_first_cpu_line_wins(self):
         sOutput = (
             "__VAIBIFY_CPU__ 1.0 2.0\n"
             "__VAIBIFY_CPU__ 9.0 9.0\n"
         )
-        assert _fParseCpuTime(sOutput) == 3.0
+        assert _ffParseCpuTime(sOutput) == 3.0
 
 
 class TestFsWrapWithTime:

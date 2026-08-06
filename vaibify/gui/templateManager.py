@@ -124,7 +124,7 @@ _STEP_DIRECTORY = str(pathlib.Path(__file__).parent.parent)
 )
 def test_quantitative_benchmark(dictStandard):
     """Compare output value against stored benchmark within tolerance."""
-    fActual = _fLoadValue(
+    fActual = _ffLoadValue(
         dictStandard["sDataFile"],
         dictStandard["sAccessPath"],
         _STEP_DIRECTORY,

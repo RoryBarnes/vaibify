@@ -296,7 +296,7 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
 
     def fnEmitChunk(sStream, sLine):
         if sLine.startswith("__VAIBIFY_CPU__ "):
-            dictAccum["fCpu"] = _fParseCpuTime(sLine)
+            dictAccum["fCpu"] = _ffParseCpuTime(sLine)
             return
         if dictBatch["bDisabled"]:
             return
@@ -465,7 +465,7 @@ def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
 
     def fnEmitOne(sStream, sLine):
         if sLine.startswith("__VAIBIFY_CPU__ "):
-            dictAccum["fCpu"] = _fParseCpuTime(sLine)
+            dictAccum["fCpu"] = _ffParseCpuTime(sLine)
             return
         if dictBatch["bDisabled"]:
             return
@@ -535,7 +535,7 @@ def _fsWrapWithTime(sCommand):
     )
 
 
-def _fParseCpuTime(sOutput):
+def _ffParseCpuTime(sOutput):
     """Extract user+system CPU seconds from time output."""
     for sLine in sOutput.splitlines():
         if sLine.startswith("__VAIBIFY_CPU__ "):

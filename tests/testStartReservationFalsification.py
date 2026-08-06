@@ -266,7 +266,7 @@ async def testCancelFromANonOwningSessionIsRefused():
     ``BrowserSessionRecord``, not a forged id — must be refused, and the
     start must still be running afterwards.
 
-    Kills: in startReservation._tMarkCancelRequested, drop the
+    Kills: in startReservation._ftMarkCancelRequested, drop the
     ``recordOwner.sBrowserSessionId not in ("", sBrowserSessionId)``
     refusal — any session can then kill any start.
     """
@@ -554,7 +554,7 @@ async def testALostSuccessResponseStillYieldsTheOwnerDerivedLease():
     which is what makes the delivery transfer-safe — and never a value
     copied into the result at settlement time.
 
-    Kills: in startReservation._tDeliverSucceededResult, replace
+    Kills: in startReservation._ftDeliverSucceededResult, replace
     ``recordOwner.sLeaseId`` with ``recordResult.sReservationId`` — the
     tab is handed a value that authorizes nothing and every subsequent
     owner-scoped call is refused.
@@ -596,7 +596,7 @@ async def testAConcurrentClaimAndStartResolveToOneOwnerRecord():
     the start may win, and the session must end holding exactly one
     container.
 
-    Kills: in sessionLifecycle._tReserveForStartUnderLocks, pass
+    Kills: in sessionLifecycle._ftReserveForStartUnderLocks, pass
     ``dictSessionOwner=None`` into the claim — the START path then runs
     no reverse-index check at all and the session ends up holding two
     containers. (Dropping the cardinality LOCK is not separately

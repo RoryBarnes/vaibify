@@ -91,7 +91,7 @@ def _ftRedactExactSecrets(sText, listExactSecrets, dictCounts):
     return sText
 
 
-def _fFractionalShannonEntropy(sToken):
+def _ffFractionalShannonEntropy(sToken):
     """Return the Shannon entropy of a token in bits per character."""
     dictFrequency = {}
     for sCharacter in sToken:
@@ -113,7 +113,7 @@ def _fbTokenLooksSecret(sToken):
         return False
     if "[REDACTED" in sToken:
         return False
-    return _fFractionalShannonEntropy(sToken) >= _F_ENTROPY_LIMIT_BITS
+    return _ffFractionalShannonEntropy(sToken) >= _F_ENTROPY_LIMIT_BITS
 
 
 def _fsRedactSupplementalPatterns(sLine, dictCounts):

@@ -36,35 +36,35 @@ def test_column_index_missing_raises():
 # --- aggregate ---
 
 def test_csv_aggregate_mean(pathCsv):
-    assert dl._fLoadCsvAggregate(pathCsv, "y", "mean") == 20.0
+    assert dl._ffLoadCsvAggregate(pathCsv, "y", "mean") == 20.0
 
 
 def test_csv_aggregate_max(pathCsv):
-    assert dl._fLoadCsvAggregate(pathCsv, "y", "max") == 30.0
+    assert dl._ffLoadCsvAggregate(pathCsv, "y", "max") == 30.0
 
 
 # --- positive row index ---
 
 def test_csv_by_row_index_returns_cell(pathCsv):
-    assert dl._fLoadCsvByRowIndex(pathCsv, "y", 0) == 10.0
-    assert dl._fLoadCsvByRowIndex(pathCsv, "x", 2) == 3.0
+    assert dl._ffLoadCsvByRowIndex(pathCsv, "y", 0) == 10.0
+    assert dl._ffLoadCsvByRowIndex(pathCsv, "x", 2) == 3.0
 
 
 def test_csv_by_row_index_out_of_range_raises(pathCsv):
     with pytest.raises(IndexError):
-        dl._fLoadCsvByRowIndex(pathCsv, "y", 99)
+        dl._ffLoadCsvByRowIndex(pathCsv, "y", 99)
 
 
 # --- negative row index ---
 
 def test_csv_negative_row_returns_from_tail(pathCsv):
-    assert dl._fLoadCsvByRowIndex(pathCsv, "y", -1) == 30.0
-    assert dl._fLoadCsvByRowIndex(pathCsv, "y", -3) == 10.0
+    assert dl._ffLoadCsvByRowIndex(pathCsv, "y", -1) == 30.0
+    assert dl._ffLoadCsvByRowIndex(pathCsv, "y", -3) == 10.0
 
 
 def test_csv_negative_row_out_of_range_raises(pathCsv):
     with pytest.raises(IndexError):
-        dl._fLoadCsvByRowIndex(pathCsv, "y", -99)
+        dl._ffLoadCsvByRowIndex(pathCsv, "y", -99)
 
 
 # --- empty file header handling ---

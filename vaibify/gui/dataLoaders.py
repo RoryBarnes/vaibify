@@ -9,7 +9,7 @@ test file deployed to containers.
 
 Public API
 ----------
-fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat="")
+ffLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat="")
     Load a single scalar value from any supported data file.
 
 DICT_FORMAT_MAP : dict
@@ -22,7 +22,7 @@ fsReadLoaderSource() -> str
 __all__ = [
     "DICT_FORMAT_MAP",
     "DICT_LOADERS",
-    "fLoadValue",
+    "ffLoadValue",
     "fsReadLoaderSource",
 ]
 
@@ -159,7 +159,7 @@ _DICT_PERCENTILE_AGGREGATES = {
 }
 
 
-def _fApplyAggregate(daData, sAggregate):
+def _ffApplyAggregate(daData, sAggregate):
     """Return a scalar aggregate (mean/min/max/std/percentile) of daData."""
     if sAggregate == "mean":
         return float(daData.mean())
@@ -176,20 +176,20 @@ def _fApplyAggregate(daData, sAggregate):
     raise ValueError(f"Unknown aggregate: {sAggregate}")
 
 
-def _fExtractArrayValue(daData, dictAccess):
+def _ffExtractArrayValue(daData, dictAccess):
     """Extract a scalar from an array by aggregate or index."""
     if daData.ndim == 0:
         return float(daData)
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
-        return _fApplyAggregate(daData, sAggregate)
+        return _ffApplyAggregate(daData, sAggregate)
     listIndices = dictAccess.get("listIndices", [-1])
     if len(listIndices) == 1 and daData.ndim > 1:
         return float(daData.flat[listIndices[0]])
     return float(daData[tuple(listIndices)])
 
 
-def _fExtractTabularValue(listHeaders, listRows, dictAccess):
+def _ffExtractTabularValue(listHeaders, listRows, dictAccess):
     """Extract a value from parsed tabular data."""
     sColumn = dictAccess.get("column", "")
     if sColumn and listHeaders:
@@ -199,20 +199,20 @@ def _fExtractTabularValue(listHeaders, listRows, dictAccess):
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
         daValues = np.array([float(r[iCol]) for r in listRows])
-        return _fApplyAggregate(daValues, sAggregate)
+        return _ffApplyAggregate(daValues, sAggregate)
     listIndices = dictAccess.get("listIndices", [-1])
     iRow = listIndices[0] if listIndices else -1
     return float(listRows[iRow][iCol])
 
 
-def _fExtractDataframeValue(dfData, dictAccess, sFullPath=""):
+def _ffExtractDataframeValue(dfData, dictAccess, sFullPath=""):
     """Extract a value from a pandas DataFrame."""
     try:
         sColumn = dictAccess.get("column", dfData.columns[0])
         sAggregate = dictAccess.get("sAggregate")
         if sAggregate:
             daValues = dfData[sColumn].astype(float).to_numpy()
-            return _fApplyAggregate(daValues, sAggregate)
+            return _ffApplyAggregate(daValues, sAggregate)
         listIndices = dictAccess.get("listIndices", [-1])
         iRow = listIndices[0] if listIndices else -1
         return float(dfData[sColumn].iloc[iRow])
@@ -222,7 +222,7 @@ def _fExtractDataframeValue(dfData, dictAccess, sFullPath=""):
         ) from exc
 
 
-def _fNavigateJsonValue(dictData, dictAccess):
+def _ffNavigateJsonValue(dictData, dictAccess):
     """Traverse a parsed JSON structure and return a scalar."""
     sKey = dictAccess.get("key", "")
     listKeys = sKey.split(".") if sKey else []
@@ -235,7 +235,7 @@ def _fNavigateJsonValue(dictData, dictAccess):
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate and isinstance(value, list):
         daArray = np.array(value, dtype=float)
-        return _fApplyAggregate(daArray, sAggregate)
+        return _ffApplyAggregate(daArray, sAggregate)
     listIndices = dictAccess.get("listIndices", None)
     if listIndices is not None:
         for iIdx in listIndices:
@@ -271,7 +271,7 @@ def _ftSplitHeaderAndData(listDataLines):
     return (listDataLines[0], listDataLines[1:])
 
 
-def _fLoadTabularWithComments(
+def _ffLoadTabularWithComments(
     sFullPath, dictAccess, sCommentPrefix="##", sHeaderPrefix="#",
 ):
     """Load a value from a tab-delimited file with comment/header lines."""
@@ -287,10 +287,10 @@ def _fLoadTabularWithComments(
                 )
                 continue
             listRows.append(sLine.strip().split("\t"))
-    return _fExtractTabularValue(listHeaders, listRows, dictAccess)
+    return _ffExtractTabularValue(listHeaders, listRows, dictAccess)
 
 
-def _fLoadNumpyValue(sFullPath, dictAccess):
+def _ffLoadNumpyValue(sFullPath, dictAccess):
     """Load a value from a numpy file."""
     try:
         daData = np.load(sFullPath, allow_pickle=False)
@@ -298,10 +298,10 @@ def _fLoadNumpyValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as npy: {exc}",
         ) from exc
-    return _fExtractArrayValue(daData, dictAccess)
+    return _ffExtractArrayValue(daData, dictAccess)
 
 
-def _fLoadNpzValue(sFullPath, dictAccess):
+def _ffLoadNpzValue(sFullPath, dictAccess):
     """Load a value from a numpy .npz archive."""
     try:
         archiveNpz = np.load(sFullPath, allow_pickle=False)
@@ -311,10 +311,10 @@ def _fLoadNpzValue(sFullPath, dictAccess):
         ) from exc
     sKey = dictAccess.get("key", list(archiveNpz.files)[0])
     daData = archiveNpz[sKey]
-    return _fExtractArrayValue(daData, dictAccess)
+    return _ffExtractArrayValue(daData, dictAccess)
 
 
-def _fLoadKeyvalueValue(sFullPath, dictAccess):
+def _ffLoadKeyvalueValue(sFullPath, dictAccess):
     """Load a value from a key = value text file."""
     sTargetKey = dictAccess.get("key", "")
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
@@ -330,7 +330,7 @@ def _fLoadKeyvalueValue(sFullPath, dictAccess):
     raise KeyError(f"Key {sTargetKey!r} not found in {sFullPath}")
 
 
-def _fLoadJsonValue(sFullPath, dictAccess):
+def _ffLoadJsonValue(sFullPath, dictAccess):
     """Load a value from a JSON file.
 
     Tolerates doubly-serialised payloads: when the file's top-level
@@ -353,14 +353,14 @@ def _fLoadJsonValue(sFullPath, dictAccess):
                 f"{sFullPath}: {exc}",
             ) from exc
     try:
-        return _fNavigateJsonValue(dictData, dictAccess)
+        return _ffNavigateJsonValue(dictData, dictAccess)
     except (KeyError, IndexError, TypeError) as exc:
         raise ValueError(
             f"Failed to access json path in {sFullPath}: {exc}",
         ) from exc
 
 
-def _fLoadCsvValue(sFullPath, dictAccess):
+def _ffLoadCsvValue(sFullPath, dictAccess):
     """Load a value from a CSV file, streaming when no full pass is needed.
 
     Aggregates (mean, std, percentiles, ...) need every row and so
@@ -377,8 +377,8 @@ def _fLoadCsvValue(sFullPath, dictAccess):
     iIndex = listIndices[0] if listIndices else -1
     try:
         if sAggregate and sColumn:
-            return _fLoadCsvAggregate(sFullPath, sColumn, sAggregate)
-        return _fLoadCsvByRowIndex(sFullPath, sColumn, iIndex)
+            return _ffLoadCsvAggregate(sFullPath, sColumn, sAggregate)
+        return _ffLoadCsvByRowIndex(sFullPath, sColumn, iIndex)
     except (KeyError, IndexError, ValueError) as exc:
         raise ValueError(
             f"Failed to access csv column in {sFullPath}: {exc}",
@@ -408,7 +408,7 @@ def _ftOpenCsvReader(sFullPath):
     return reader, fileHandle, listHeaders
 
 
-def _fLoadCsvAggregate(sFullPath, sColumn, sAggregate):
+def _ffLoadCsvAggregate(sFullPath, sColumn, sAggregate):
     """Compute an aggregate over one CSV column with a single streaming pass."""
     reader, fileHandle, listHeaders = _ftOpenCsvReader(sFullPath)
     try:
@@ -416,13 +416,13 @@ def _fLoadCsvAggregate(sFullPath, sColumn, sAggregate):
         listValues = [float(listRow[iCol]) for listRow in reader]
     finally:
         fileHandle.close()
-    return _fApplyAggregate(np.array(listValues), sAggregate)
+    return _ffApplyAggregate(np.array(listValues), sAggregate)
 
 
-def _fLoadCsvByRowIndex(sFullPath, sColumn, iIndex):
+def _ffLoadCsvByRowIndex(sFullPath, sColumn, iIndex):
     """Stream a CSV and return a single cell at the requested row index."""
     if iIndex < 0:
-        return _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex)
+        return _ffLoadCsvNegativeRow(sFullPath, sColumn, iIndex)
     reader, fileHandle, listHeaders = _ftOpenCsvReader(sFullPath)
     try:
         iCol = _fiColumnIndexOrRaise(listHeaders, sColumn)
@@ -434,7 +434,7 @@ def _fLoadCsvByRowIndex(sFullPath, sColumn, iIndex):
     raise IndexError(f"CSV row {iIndex} out of range")
 
 
-def _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex):
+def _ffLoadCsvNegativeRow(sFullPath, sColumn, iIndex):
     """Return a CSV cell at a negative row index with constant-memory tail."""
     from collections import deque
     reader, fileHandle, listHeaders = _ftOpenCsvReader(sFullPath)
@@ -464,7 +464,7 @@ def _fiColumnIndexOrRaise(listHeaders, sColumn):
         raise KeyError(sColumn)
 
 
-def _fLoadHdf5Value(sFullPath, dictAccess):
+def _ffLoadHdf5Value(sFullPath, dictAccess):
     """Load a value from an HDF5 file using h5py native slice indexing.
 
     For datasets that hold MB-to-GB of values, materialising the whole
@@ -480,20 +480,20 @@ def _fLoadHdf5Value(sFullPath, dictAccess):
     try:
         with h5py.File(sFullPath, "r") as fileHdf5:
             datasetHdf5 = fileHdf5[sDataset]
-            return _fExtractHdf5Value(datasetHdf5, dictAccess)
+            return _ffExtractHdf5Value(datasetHdf5, dictAccess)
     except (OSError, KeyError) as exc:
         raise ValueError(
             f"Failed to load {sFullPath} as hdf5: {exc}",
         ) from exc
 
 
-def _fExtractHdf5Value(datasetHdf5, dictAccess):
+def _ffExtractHdf5Value(datasetHdf5, dictAccess):
     """Extract a scalar from an h5py dataset, slicing lazily when possible."""
     if datasetHdf5.ndim == 0:
         return float(datasetHdf5[()])
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
-        return _fApplyAggregate(np.array(datasetHdf5), sAggregate)
+        return _ffApplyAggregate(np.array(datasetHdf5), sAggregate)
     listIndices = dictAccess.get("listIndices", [-1])
     if len(listIndices) == 1 and datasetHdf5.ndim > 1:
         tShape = datasetHdf5.shape
@@ -505,7 +505,7 @@ def _fExtractHdf5Value(datasetHdf5, dictAccess):
     return float(datasetHdf5[tuple(listIndices)])
 
 
-def _fLoadWhitespaceValue(sFullPath, dictAccess):
+def _ffLoadWhitespaceValue(sFullPath, dictAccess):
     """Load a value from a whitespace-delimited text file."""
     sColumn = dictAccess.get("column", "")
     listIndices = dictAccess.get("listIndices", [-1])
@@ -533,11 +533,11 @@ def _fLoadWhitespaceValue(sFullPath, dictAccess):
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
         daValues = np.array([float(r[iColumn]) for r in listRows])
-        return _fApplyAggregate(daValues, sAggregate)
+        return _ffApplyAggregate(daValues, sAggregate)
     return float(listRows[iIndex][iColumn])
 
 
-def _fLoadJsonlValue(sFullPath, dictAccess):
+def _ffLoadJsonlValue(sFullPath, dictAccess):
     """Load a value from a JSON Lines file."""
     try:
         with open(sFullPath, encoding="utf-8", errors="replace") as fh:
@@ -553,7 +553,7 @@ def _fLoadJsonlValue(sFullPath, dictAccess):
     try:
         if sAggregate and sKey:
             daValues = np.array([float(r[sKey]) for r in listRecords])
-            return _fApplyAggregate(daValues, sAggregate)
+            return _ffApplyAggregate(daValues, sAggregate)
         listIndices = dictAccess.get("listIndices", [0])
         iRow = listIndices[0] if listIndices else 0
         if sKey:
@@ -565,7 +565,7 @@ def _fLoadJsonlValue(sFullPath, dictAccess):
         ) from exc
 
 
-def _fLoadExcelValue(sFullPath, dictAccess):
+def _ffLoadExcelValue(sFullPath, dictAccess):
     """Load a value from an Excel file."""
     try:
         import openpyxl
@@ -590,7 +590,7 @@ def _fLoadExcelValue(sFullPath, dictAccess):
         sAggregate = dictAccess.get("sAggregate")
         if sAggregate:
             daValues = np.array([float(r[iCol]) for r in listRows[1:]])
-            return _fApplyAggregate(daValues, sAggregate)
+            return _ffApplyAggregate(daValues, sAggregate)
         listIndices = dictAccess.get("listIndices", [-1])
         iRow = listIndices[0] if listIndices else -1
         return float(listRows[1:][iRow][iCol])
@@ -600,7 +600,7 @@ def _fLoadExcelValue(sFullPath, dictAccess):
         ) from exc
 
 
-def _fLoadFitsValue(sFullPath, dictAccess):
+def _ffLoadFitsValue(sFullPath, dictAccess):
     """Load a value from a FITS file."""
     try:
         from astropy.io import fits as fitsLib
@@ -624,12 +624,12 @@ def _fLoadFitsValue(sFullPath, dictAccess):
             f"Failed to load {sFullPath} as fits: {exc}",
         ) from exc
     if sAggregate:
-        return _fApplyAggregate(daData, sAggregate)
+        return _ffApplyAggregate(daData, sAggregate)
     iDataIdx = listIndices[1] if len(listIndices) > 1 else 0
     return float(daData[iDataIdx])
 
 
-def _fLoadMatlabValue(sFullPath, dictAccess):
+def _ffLoadMatlabValue(sFullPath, dictAccess):
     """Load a value from a MATLAB .mat file."""
     try:
         from scipy.io import loadmat
@@ -651,10 +651,10 @@ def _fLoadMatlabValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to access matlab variable in {sFullPath}: {exc}",
         ) from exc
-    return _fExtractArrayValue(daData, dictAccess)
+    return _ffExtractArrayValue(daData, dictAccess)
 
 
-def _fLoadParquetValue(sFullPath, dictAccess):
+def _ffLoadParquetValue(sFullPath, dictAccess):
     """Load a value from a Parquet file."""
     try:
         import pyarrow.parquet as pq
@@ -673,10 +673,10 @@ def _fLoadParquetValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to access parquet column in {sFullPath}: {exc}",
         ) from exc
-    return _fExtractArrayValue(daValues, dictAccess)
+    return _ffExtractArrayValue(daValues, dictAccess)
 
 
-def _fLoadImageValue(sFullPath, dictAccess):
+def _ffLoadImageValue(sFullPath, dictAccess):
     """Load a value from an image file."""
     try:
         from PIL import Image
@@ -688,10 +688,10 @@ def _fLoadImageValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as image: {exc}",
         ) from exc
-    return _fExtractArrayValue(daPixels.flatten(), dictAccess)
+    return _ffExtractArrayValue(daPixels.flatten(), dictAccess)
 
 
-def _fLoadFastaValue(sFullPath, dictAccess):
+def _ffLoadFastaValue(sFullPath, dictAccess):
     """Load a value from a FASTA file (sequence length)."""
     listLengths = []
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
@@ -708,12 +708,12 @@ def _fLoadFastaValue(sFullPath, dictAccess):
     daLengths = np.array(listLengths, dtype=float)
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
-        return _fApplyAggregate(daLengths, sAggregate)
+        return _ffApplyAggregate(daLengths, sAggregate)
     listIndices = dictAccess.get("listIndices", [0])
     return float(daLengths[listIndices[0]])
 
 
-def _fLoadFastqValue(sFullPath, dictAccess):
+def _ffLoadFastqValue(sFullPath, dictAccess):
     """Load a value from a FASTQ file (sequence length or quality)."""
     listLengths = []
     listQualities = []
@@ -730,19 +730,19 @@ def _fLoadFastqValue(sFullPath, dictAccess):
     )
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
-        return _fApplyAggregate(daValues, sAggregate)
+        return _ffApplyAggregate(daValues, sAggregate)
     listIndices = dictAccess.get("listIndices", [0])
     return float(daValues[listIndices[0]])
 
 
-def _fLoadVcfValue(sFullPath, dictAccess):
+def _ffLoadVcfValue(sFullPath, dictAccess):
     """Load a value from a VCF file."""
-    return _fLoadTabularWithComments(
+    return _ffLoadTabularWithComments(
         sFullPath, dictAccess, sCommentPrefix="##", sHeaderPrefix="#",
     )
 
 
-def _fLoadBedValue(sFullPath, dictAccess):
+def _ffLoadBedValue(sFullPath, dictAccess):
     """Load a value from a BED file."""
     listHeaders = [
         "chrom", "chromStart", "chromEnd", "name", "score", "strand",
@@ -752,10 +752,10 @@ def _fLoadBedValue(sFullPath, dictAccess):
         for sLine in fh:
             if sLine.strip() and not sLine.startswith("#"):
                 listRows.append(sLine.strip().split("\t"))
-    return _fExtractTabularValue(listHeaders, listRows, dictAccess)
+    return _ffExtractTabularValue(listHeaders, listRows, dictAccess)
 
 
-def _fLoadGffValue(sFullPath, dictAccess):
+def _ffLoadGffValue(sFullPath, dictAccess):
     """Load a value from a GFF/GTF file."""
     listHeaders = [
         "seqid", "source", "type", "start", "end",
@@ -766,10 +766,10 @@ def _fLoadGffValue(sFullPath, dictAccess):
         for sLine in fh:
             if sLine.strip() and not sLine.startswith("#"):
                 listRows.append(sLine.strip().split("\t"))
-    return _fExtractTabularValue(listHeaders, listRows, dictAccess)
+    return _ffExtractTabularValue(listHeaders, listRows, dictAccess)
 
 
-def _fLoadSamValue(sFullPath, dictAccess):
+def _ffLoadSamValue(sFullPath, dictAccess):
     """Load a value from a SAM file."""
     listHeaders = [
         "QNAME", "FLAG", "RNAME", "POS", "MAPQ", "CIGAR",
@@ -780,10 +780,10 @@ def _fLoadSamValue(sFullPath, dictAccess):
         for sLine in fh:
             if not sLine.startswith("@") and sLine.strip():
                 listRows.append(sLine.strip().split("\t"))
-    return _fExtractTabularValue(listHeaders, listRows, dictAccess)
+    return _ffExtractTabularValue(listHeaders, listRows, dictAccess)
 
 
-def _fLoadSyslogValue(sFullPath, dictAccess):
+def _ffLoadSyslogValue(sFullPath, dictAccess):
     """Load a value from a syslog file (line count)."""
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
         listLines = [s for s in fh if s.strip()]
@@ -793,7 +793,7 @@ def _fLoadSyslogValue(sFullPath, dictAccess):
     )
 
 
-def _fLoadCefValue(sFullPath, dictAccess):
+def _ffLoadCefValue(sFullPath, dictAccess):
     """Load a value from a CEF file (record count)."""
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
         listRecords = [s for s in fh if s.strip().startswith("CEF:")]
@@ -803,7 +803,7 @@ def _fLoadCefValue(sFullPath, dictAccess):
     )
 
 
-def _fLoadFixedwidthValue(sFullPath, dictAccess):
+def _ffLoadFixedwidthValue(sFullPath, dictAccess):
     """Load a value from a fixed-width text file."""
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
         listRawLines = fh.readlines()
@@ -818,7 +818,7 @@ def _fLoadFixedwidthValue(sFullPath, dictAccess):
     return float(listTokens[iCol])
 
 
-def _fLoadMultitableValue(sFullPath, dictAccess):
+def _ffLoadMultitableValue(sFullPath, dictAccess):
     """Load a value from a multi-table text file."""
     with open(sFullPath, encoding="utf-8", errors="replace") as fh:
         sContent = fh.read()
@@ -838,13 +838,13 @@ def _fLoadMultitableValue(sFullPath, dictAccess):
     listParsedRows = [r.split() for r in listDataRows]
     if sAggregate:
         daValues = np.array([float(r[iCol]) for r in listParsedRows])
-        return _fApplyAggregate(daValues, sAggregate)
+        return _ffApplyAggregate(daValues, sAggregate)
     listIndices = dictAccess.get("listIndices", [-1])
     iRow = listIndices[0] if listIndices else -1
     return float(listParsedRows[iRow][iCol])
 
 
-def _fLoadBamValue(sFullPath, dictAccess):
+def _ffLoadBamValue(sFullPath, dictAccess):
     """Load a value from a BAM file."""
     try:
         import pysam
@@ -865,10 +865,10 @@ def _fLoadBamValue(sFullPath, dictAccess):
             listValues.append(float(read.template_length))
     samfile.close()
     daValues = np.array(listValues, dtype=float)
-    return _fExtractArrayValue(daValues, dictAccess)
+    return _ffExtractArrayValue(daValues, dictAccess)
 
 
-def _fLoadFortranValue(sFullPath, dictAccess):
+def _ffLoadFortranValue(sFullPath, dictAccess):
     """Load a value from a FORTRAN binary file."""
     try:
         from scipy.io import FortranFile
@@ -894,10 +894,10 @@ def _fLoadFortranValue(sFullPath, dictAccess):
     sKey = dictAccess.get("key", "")
     iRecord = int(sKey) if sKey.isdigit() else 0
     daData = listRecords[iRecord]
-    return _fExtractArrayValue(daData, dictAccess)
+    return _ffExtractArrayValue(daData, dictAccess)
 
 
-def _fLoadSpssValue(sFullPath, dictAccess):
+def _ffLoadSpssValue(sFullPath, dictAccess):
     """Load a value from an SPSS .sav file."""
     try:
         import pyreadstat
@@ -909,10 +909,10 @@ def _fLoadSpssValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as spss: {exc}",
         ) from exc
-    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
+    return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
-def _fLoadStataValue(sFullPath, dictAccess):
+def _ffLoadStataValue(sFullPath, dictAccess):
     """Load a value from a Stata .dta file."""
     try:
         import pyreadstat
@@ -924,10 +924,10 @@ def _fLoadStataValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as stata: {exc}",
         ) from exc
-    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
+    return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
-def _fLoadSasValue(sFullPath, dictAccess):
+def _ffLoadSasValue(sFullPath, dictAccess):
     """Load a value from a SAS .sas7bdat file."""
     try:
         import pyreadstat
@@ -939,10 +939,10 @@ def _fLoadSasValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as sas: {exc}",
         ) from exc
-    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
+    return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
-def _fLoadRdataValue(sFullPath, dictAccess):
+def _ffLoadRdataValue(sFullPath, dictAccess):
     """Load a value from an R data file."""
     try:
         import pyreadr
@@ -956,10 +956,10 @@ def _fLoadRdataValue(sFullPath, dictAccess):
         ) from exc
     sKey = dictAccess.get("key", list(dictFrames.keys())[0])
     dfData = dictFrames[sKey]
-    return _fExtractDataframeValue(dfData, dictAccess, sFullPath)
+    return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
-def _fLoadVotableValue(sFullPath, dictAccess):
+def _ffLoadVotableValue(sFullPath, dictAccess):
     """Load a value from a VOTable file."""
     try:
         from astropy.io.votable import parse as votableParse
@@ -979,10 +979,10 @@ def _fLoadVotableValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to access votable column in {sFullPath}: {exc}",
         ) from exc
-    return _fExtractArrayValue(daValues, dictAccess)
+    return _ffExtractArrayValue(daValues, dictAccess)
 
 
-def _fLoadIpacValue(sFullPath, dictAccess):
+def _ffLoadIpacValue(sFullPath, dictAccess):
     """Load a value from an IPAC table file."""
     try:
         from astropy.io import ascii as astropyAscii
@@ -1003,10 +1003,10 @@ def _fLoadIpacValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to access ipac column in {sFullPath}: {exc}",
         ) from exc
-    return _fExtractArrayValue(daValues, dictAccess)
+    return _ffExtractArrayValue(daValues, dictAccess)
 
 
-def _fLoadPcapValue(sFullPath, dictAccess):
+def _ffLoadPcapValue(sFullPath, dictAccess):
     """Load a value from a PCAP file (packet count or length)."""
     try:
         from scapy.all import rdpcap
@@ -1020,10 +1020,10 @@ def _fLoadPcapValue(sFullPath, dictAccess):
         ) from exc
     listLengths = [float(len(p)) for p in listPackets]
     daValues = np.array(listLengths, dtype=float)
-    return _fExtractArrayValue(daValues, dictAccess)
+    return _ffExtractArrayValue(daValues, dictAccess)
 
 
-def _fLoadVtkValue(sFullPath, dictAccess):
+def _ffLoadVtkValue(sFullPath, dictAccess):
     """Load a value from a VTK file."""
     try:
         import pyvista
@@ -1044,10 +1044,10 @@ def _fLoadVtkValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to access vtk array in {sFullPath}: {exc}",
         ) from exc
-    return _fExtractArrayValue(daData, dictAccess)
+    return _ffExtractArrayValue(daData, dictAccess)
 
 
-def _fLoadCgnsValue(sFullPath, dictAccess):
+def _ffLoadCgnsValue(sFullPath, dictAccess):
     """Load a value from a CGNS file (HDF5 under the hood)."""
     import h5py
     sDataset = dictAccess.get("dataset", "")
@@ -1058,10 +1058,10 @@ def _fLoadCgnsValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as cgns: {exc}",
         ) from exc
-    return _fExtractArrayValue(daData.flatten(), dictAccess)
+    return _ffExtractArrayValue(daData.flatten(), dictAccess)
 
 
-def _fLoadSafetensorsValue(sFullPath, dictAccess):
+def _ffLoadSafetensorsValue(sFullPath, dictAccess):
     """Load a value from a safetensors file."""
     try:
         from safetensors import safe_open
@@ -1079,10 +1079,10 @@ def _fLoadSafetensorsValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to load {sFullPath} as safetensors: {exc}",
         ) from exc
-    return _fExtractArrayValue(daData, dictAccess)
+    return _ffExtractArrayValue(daData, dictAccess)
 
 
-def _fLoadTfrecordValue(sFullPath, dictAccess):
+def _ffLoadTfrecordValue(sFullPath, dictAccess):
     """Load a value from a TFRecord file."""
     try:
         from tfrecord.reader import tfrecord_iterator
@@ -1108,50 +1108,50 @@ def _fLoadTfrecordValue(sFullPath, dictAccess):
         raise ValueError(
             f"Failed to access tfrecord key in {sFullPath}: {exc}",
         ) from exc
-    return _fExtractArrayValue(daValues, dictAccess)
+    return _ffExtractArrayValue(daValues, dictAccess)
 
 
 _DICT_LOADERS = {
-    "npy": _fLoadNumpyValue,
-    "npz": _fLoadNpzValue,
-    "json": _fLoadJsonValue,
-    "csv": _fLoadCsvValue,
-    "hdf5": _fLoadHdf5Value,
-    "whitespace": _fLoadWhitespaceValue,
-    "keyvalue": _fLoadKeyvalueValue,
-    "jsonl": _fLoadJsonlValue,
-    "excel": _fLoadExcelValue,
-    "fits": _fLoadFitsValue,
-    "matlab": _fLoadMatlabValue,
-    "parquet": _fLoadParquetValue,
-    "image": _fLoadImageValue,
-    "fasta": _fLoadFastaValue,
-    "fastq": _fLoadFastqValue,
-    "vcf": _fLoadVcfValue,
-    "bed": _fLoadBedValue,
-    "gff": _fLoadGffValue,
-    "sam": _fLoadSamValue,
-    "syslog": _fLoadSyslogValue,
-    "cef": _fLoadCefValue,
-    "fixedwidth": _fLoadFixedwidthValue,
-    "multitable": _fLoadMultitableValue,
-    "bam": _fLoadBamValue,
-    "fortran": _fLoadFortranValue,
-    "spss": _fLoadSpssValue,
-    "stata": _fLoadStataValue,
-    "sas": _fLoadSasValue,
-    "rdata": _fLoadRdataValue,
-    "votable": _fLoadVotableValue,
-    "ipac": _fLoadIpacValue,
-    "pcap": _fLoadPcapValue,
-    "vtk": _fLoadVtkValue,
-    "cgns": _fLoadCgnsValue,
-    "safetensors": _fLoadSafetensorsValue,
-    "tfrecord": _fLoadTfrecordValue,
+    "npy": _ffLoadNumpyValue,
+    "npz": _ffLoadNpzValue,
+    "json": _ffLoadJsonValue,
+    "csv": _ffLoadCsvValue,
+    "hdf5": _ffLoadHdf5Value,
+    "whitespace": _ffLoadWhitespaceValue,
+    "keyvalue": _ffLoadKeyvalueValue,
+    "jsonl": _ffLoadJsonlValue,
+    "excel": _ffLoadExcelValue,
+    "fits": _ffLoadFitsValue,
+    "matlab": _ffLoadMatlabValue,
+    "parquet": _ffLoadParquetValue,
+    "image": _ffLoadImageValue,
+    "fasta": _ffLoadFastaValue,
+    "fastq": _ffLoadFastqValue,
+    "vcf": _ffLoadVcfValue,
+    "bed": _ffLoadBedValue,
+    "gff": _ffLoadGffValue,
+    "sam": _ffLoadSamValue,
+    "syslog": _ffLoadSyslogValue,
+    "cef": _ffLoadCefValue,
+    "fixedwidth": _ffLoadFixedwidthValue,
+    "multitable": _ffLoadMultitableValue,
+    "bam": _ffLoadBamValue,
+    "fortran": _ffLoadFortranValue,
+    "spss": _ffLoadSpssValue,
+    "stata": _ffLoadStataValue,
+    "sas": _ffLoadSasValue,
+    "rdata": _ffLoadRdataValue,
+    "votable": _ffLoadVotableValue,
+    "ipac": _ffLoadIpacValue,
+    "pcap": _ffLoadPcapValue,
+    "vtk": _ffLoadVtkValue,
+    "cgns": _ffLoadCgnsValue,
+    "safetensors": _ffLoadSafetensorsValue,
+    "tfrecord": _ffLoadTfrecordValue,
 }
 
 
-def _fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
+def _ffLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
     """Load a single value from a data file using the access path.
 
     A ``.txt`` / ``.dat`` file with a ``key:`` access path is treated as
@@ -1183,7 +1183,7 @@ DICT_FORMAT_MAP = _DICT_FORMAT_MAP
 DICT_LOADERS = _DICT_LOADERS
 
 
-def fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
+def ffLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
     """Load a single scalar value from any supported data file.
 
     Parameters
@@ -1202,7 +1202,7 @@ def fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
     float
         The extracted scalar value.
     """
-    return _fLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat)
+    return _ffLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat)
 
 
 def fsReadLoaderSource():

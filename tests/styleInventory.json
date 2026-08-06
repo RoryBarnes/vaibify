@@ -272,11 +272,6 @@
       "sReason": "texec family: sibling of the pinned typed-read grant point; rename only with the mutation-boundary contract (ruling R10)"
     },
     {
-      "sIdentity": "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe._baDrainAll",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe.read",
       "sDebtClass": "interface-method",
       "sReason": "file-like protocol method consumed by tarfile"
@@ -299,16 +294,6 @@
     {
       "sIdentity": "vaibify/gui/attributionLog.py::fnAppendFlag",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/browserSession.py::_tCreateSessionRecordLocked",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/browserSession.py::_tMintSessionForCapability",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -362,246 +347,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fApplyAggregate",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractArrayValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractDataframeValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractHdf5Value",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fExtractTabularValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadBamValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadBedValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCefValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCgnsValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvAggregate",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvByRowIndex",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvNegativeRow",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadCsvValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadExcelValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFastaValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFastqValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFitsValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFixedwidthValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadFortranValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadGffValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadHdf5Value",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadImageValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadIpacValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadJsonValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadJsonlValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadKeyvalueValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadMatlabValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadMultitableValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadNpzValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadNumpyValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadParquetValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadPcapValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadRdataValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSafetensorsValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSamValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSasValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSpssValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadStataValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadSyslogValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadTabularWithComments",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadTfrecordValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadVcfValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadVotableValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadVtkValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fLoadWhitespaceValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_fNavigateJsonValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/dataLoaders.py::fLoadValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/diskSpace.py::fnCheckWorkspaceFreeBytes",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -644,11 +389,6 @@
     {
       "sIdentity": "vaibify/gui/pipelineLogger.py::_fnEnsureLogsDirectory",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_fParseCpuTime",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -947,11 +687,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/routes/fileRoutes.py::_ttIterStreamOrRaiseHttp",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterCommitCanonical.fnCommitCanonical",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -994,11 +729,6 @@
     {
       "sIdentity": "vaibify/gui/routes/gitRoutes.py::_fnRegisterUntrackAiDeclaration.fnUntrackAiDeclaration",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routes/gitRoutes.py::_tCollectGitBadgeInputs",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -1597,11 +1327,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/serverLifespan.py::_fIdleTimeoutSeconds",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/serverMiddleware.py::ActivityTrackingMiddleware.dispatch",
       "sDebtClass": "interface-method",
       "sReason": "BaseHTTPMiddleware override; the name is the protocol"
@@ -1615,41 +1340,6 @@
       "sIdentity": "vaibify/gui/serverMiddleware.py::SessionTokenMiddleware.dispatch",
       "sDebtClass": "interface-method",
       "sReason": "BaseHTTPMiddleware override; the name is the protocol"
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tCommitTransfer",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tOutcomeForBusyContainer",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tOutcomeForCapabilityState",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tRefusalAtCommitPoint",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tRefusalBeforePremint",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tReserveForStartUnderLocks",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::_tTransferUnderDrain",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
     },
     {
       "sIdentity": "vaibify/gui/setupServer.py::_fnRegisterIndexRoute.fnServeSetupIndex",
@@ -1682,46 +1372,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/staleOutputDetector.py::_fLookupMtime",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/staleOutputDetector.py::_fMaxMtime",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/staleOutputDetector.py::_fParseMtime",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/startReservation.py::_tDeliverFailedResult",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/startReservation.py::_tDeliverPendingResult",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/startReservation.py::_tDeliverSucceededResult",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/startReservation.py::_tMarkCancelRequested",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/startReservation.py::_tRecoverLeaseWithoutAResult",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/stepRename.py::_fnMoveStepDirectory",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -1729,11 +1379,6 @@
     {
       "sIdentity": "vaibify/gui/terminalContainment.py::fnDrainSessionRecord",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/transcriptSanitizer.py::_fFractionalShannonEntropy",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -1842,11 +1487,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/reproducibility/aiProvenanceStamp.py::_sHashProjectContext",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request",
       "sDebtClass": "interface-method",
       "sReason": "urllib HTTPRedirectHandler override; the name is the protocol"
@@ -1915,110 +1555,10 @@
       "sIdentity": "vaibify/reproducibility/scheduledReverify.py::fnRunReverifyOnce",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_daLoadCsv",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_daLoadNpy",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_daLoadWhitespace",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_dictLoadJson",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_dictLoadKeyValueText",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_dictLoadNpz",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listColumnStats",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listGlobalAggregates",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listPerColumnFirstLast",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromArray",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromFile",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromJson",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromJsonList",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpz",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpz1d",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpz2d",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromNpzScalar",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromScalarJson",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::_listStandardsFromTextOrKv",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/testing/standards.py::fLoadValue",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
     }
   ],
   "dictBudgets": {
-    "legacy-name": 105,
+    "legacy-name": 13,
     "legacy-fn-return": 249,
     "legacy-yield": 0,
     "legacy-literal-return": 0,

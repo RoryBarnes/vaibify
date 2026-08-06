@@ -706,7 +706,7 @@ async def ftCancelStart(
     async with sessionLifecycle.flockContainerMutationForAppState(
         appState, sName,
     ):
-        iCode, dictBody, reservation = _tMarkCancelRequested(
+        iCode, dictBody, reservation = _ftMarkCancelRequested(
             appState, sName, sBrowserSessionId, sReservationId,
         )
     if reservation is None:
@@ -718,7 +718,7 @@ async def ftCancelStart(
     ))
 
 
-def _tMarkCancelRequested(
+def _ftMarkCancelRequested(
     appState, sName, sBrowserSessionId, sReservationId,
 ):
     """Authorize the cancel and flag the task, under the mutation lock."""
@@ -837,21 +837,21 @@ def ftPollStartStatus(appState, sName, sBrowserSessionId):
         appState, sName,
     )
     if recordResult is None:
-        return _tRecoverLeaseWithoutAResult(
+        return _ftRecoverLeaseWithoutAResult(
             appState, sName, sBrowserSessionId,
         )
     if recordResult.sState == startResultStore.S_RESULT_SUCCEEDED:
-        return _tDeliverSucceededResult(
+        return _ftDeliverSucceededResult(
             appState, sName, sBrowserSessionId, recordResult,
         )
     if recordResult.sState == startResultStore.S_RESULT_FAILED:
-        return _tDeliverFailedResult(sName, sBrowserSessionId, recordResult)
-    return _tDeliverPendingResult(
+        return _ftDeliverFailedResult(sName, sBrowserSessionId, recordResult)
+    return _ftDeliverPendingResult(
         appState, sName, sBrowserSessionId, recordResult,
     )
 
 
-def _tRecoverLeaseWithoutAResult(appState, sName, sBrowserSessionId):
+def _ftRecoverLeaseWithoutAResult(appState, sName, sBrowserSessionId):
     """Answer a poll with no result record left to read.
 
     The result ledger is transient by design. Ownership is not: a
@@ -884,7 +884,7 @@ def _tRecoverLeaseWithoutAResult(appState, sName, sBrowserSessionId):
     })
 
 
-def _tDeliverPendingResult(
+def _ftDeliverPendingResult(
     appState, sName, sBrowserSessionId, recordResult,
 ):
     """Report an in-flight start to its initiator or the current owner."""
@@ -902,7 +902,7 @@ def _tDeliverPendingResult(
     })
 
 
-def _tDeliverSucceededResult(
+def _ftDeliverSucceededResult(
     appState, sName, sBrowserSessionId, recordResult,
 ):
     """Deliver a success — bound to the LIVE owner record, never a copy.
@@ -939,7 +939,7 @@ def _tDeliverSucceededResult(
     })
 
 
-def _tDeliverFailedResult(sName, sBrowserSessionId, recordResult):
+def _ftDeliverFailedResult(sName, sBrowserSessionId, recordResult):
     """Deliver a failure through the session-bound entitlement ONLY.
 
     This path grants no container authority whatsoever — no lease, no

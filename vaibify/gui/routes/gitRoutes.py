@@ -234,7 +234,7 @@ def _fdictProjectGitView(dictGit, sRemoteUrl):
     }
 
 
-async def _tCollectGitBadgeInputs(docker, sContainerId, dictWorkflow, sRepo):
+async def _ftCollectGitBadgeInputs(docker, sContainerId, dictWorkflow, sRepo):
     """Gather badge inputs: three independent execs run concurrently,
     then blob hashing runs against the resolved tracked-file list.
 
@@ -277,7 +277,7 @@ def _fnRegisterGitBadges(app, dictCtx):
             return _fdictNoProjectRepoResponse()
         docker = dictCtx["docker"]
         dictGit, listTracked, dictHashes, sRemoteUrl = (
-            await _tCollectGitBadgeInputs(
+            await _ftCollectGitBadgeInputs(
                 docker, sContainerId, dictWorkflow, sRepo,
             )
         )

@@ -241,7 +241,7 @@ F_HUB_WATCHDOG_INTERVAL_SECONDS = 60.0
 S_HUB_IDLE_TIMEOUT_ENV = "VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS"
 
 
-def _fIdleTimeoutSeconds():
+def _ffIdleTimeoutSeconds():
     """Return the idle timeout, honoring the env override when valid."""
     sOverride = os.environ.get(S_HUB_IDLE_TIMEOUT_ENV, "")
     if not sOverride:
@@ -518,7 +518,7 @@ def _fnRegisterIdleShutdownWatchdog(app, dictCtx, fInterval=None):
         fInterval if fInterval is not None
         else F_HUB_WATCHDOG_INTERVAL_SECONDS
     )
-    fTimeout = _fIdleTimeoutSeconds()
+    fTimeout = _ffIdleTimeoutSeconds()
 
     async def fnStartWatchdog(app):
         app.state.fLastActivityMonotonic = time.monotonic()
