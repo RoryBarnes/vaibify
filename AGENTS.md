@@ -560,9 +560,13 @@ container-scoped routes, but `/ws/pipeline/{sContainerId}` and
 they never receive, and nothing could ever migrate them out of it.
 
 **What the boundary still does NOT do, stated so nobody reads the above
-as more than it is.** **14 of 130 routes are migrated; 116 still
+as more than it is.** **31 of 130 routes are migrated; 99 still
 await** and take the ambient branch, where the gate catches DIRECT
-primitive reach, not undeclared intent. For those 116, a mutation the
+primitive reach, not undeclared intent. **46 of those 99 are
+`container-read` and will stay there by decision (2026-08-05)** — the
+migration was scoped to the mutating routes, so this list bottoms out
+at 46 rather than empty, and phase 4 does not happen. For the rest, a
+mutation the
 route starts with `asyncio.to_thread` holds no mutation lock and
 registers no durable work, so a transfer arriving mid-flight sees an
 unlocked container and commits — and the old owner's command keeps
@@ -572,10 +576,14 @@ durable work.
 The migrated set is real rather than nominal, and worth knowing when
 reasoning about which paths are already enforced: the four synchronous
 single-writes (draft PUT/DELETE, file PUT, settings PUT), the four
-tracked-repo mutations (init, track, ignore, untrack), the plot
-standardization and `plot-standards` read, and the four
-probe-plus-run routes (clean, run-tests, run-test-category,
-save-and-run-test). A run arriving while any of those holds the drain
+tracked-repo mutations (init, track, ignore, untrack), the two
+repository pushes, the plot standardization and `plot-standards` read,
+the four probe-plus-run routes (clean, run-tests, run-test-category,
+save-and-run-test), the seven AI-declaration saves, the six step-CRUD
+saves, the file upload, and project creation — whose duplicate-name
+probe, path validation, absence assertion and write now share ONE held
+lock, closing a check-then-write race two sessions could both pass.
+A run arriving while any of those holds the drain
 is now refused at dispatch and told which operation holds it, rather
 than queued — `_fsDescribeBlockingMutationWork` in `pipelineServer.py`,
 which does NOT offer the Kill button, because Kill stops a pipeline
