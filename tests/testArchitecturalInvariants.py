@@ -3897,11 +3897,23 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 # concepts, not a new responsibility arriving. A split may still be
 # right later; it should be triggered by a real seam, not by this.
 #
-# What this ruling does NOT license: a new module over the cap, a rise
-# for any reason other than adding carrier plumbing to an existing
-# route, or letting these entries drift upward again afterwards. When
-# the migration stops, these numbers are debt like every other entry
-# here and may only fall.
+# What this ruling does NOT license: a NEW module written over the cap,
+# a rise for any reason other than adding carrier plumbing to an
+# existing route, or letting these entries drift upward again
+# afterwards. When the migration stops, these numbers are debt like
+# every other entry here and may only fall.
+#
+# Clarified 2026-08-06, because an agent read the line above as
+# ambiguous and was right to ask. "A new module over the cap" means a
+# newly WRITTEN module, not an existing module taking its first entry
+# here. An existing module that crosses 800 for the first time while
+# gaining carrier plumbing takes an entry like any other — testRoutes.py
+# did, at 802. The agent that hit it first trimmed to exactly 800 and
+# then reverted, because reaching the number required deleting the blank
+# line after each docstring summary. That reversal was correct and is
+# the point of the whole ruling: deforming source to satisfy a count is
+# the outcome this exists to prevent, and a two-line overshoot is not
+# evidence of a god module.
 # ---------------------------------------------------------------------
 
 I_MODULE_LINE_CAP = 800

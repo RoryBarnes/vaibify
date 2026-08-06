@@ -565,9 +565,9 @@ container-scoped routes, but `/ws/pipeline/{sContainerId}` and
 they never receive, and nothing could ever migrate them out of it.
 
 **What the boundary still does NOT do, stated so nobody reads the above
-as more than it is.** **53 of 130 routes are migrated; 77 still
+as more than it is.** **60 of 130 routes are migrated; 70 still
 await** and take the ambient branch, where the gate catches DIRECT
-primitive reach, not undeclared intent. **46 of those 77 are
+primitive reach, not undeclared intent. **46 of those 70 are
 `container-read` and will stay there by decision (2026-08-05)** — the
 migration was scoped to the mutating routes, so this list bottoms out
 at 46 rather than empty, and phase 4 does not happen. For the rest, a
