@@ -2121,8 +2121,18 @@ def _fdictEntry(sRel):
         # route test — the unit fixtures had encoded the same wrong key.
         nodeid='tests/testStepRoutes.py::testAlignRouteMovesTheMarkerThroughRealWiring',
         source='vaibify/gui/routes/stepRoutes.py',
-        old='                    dictCtx["paths"].get(sContainerId, ""),',
-        new='                    dictWorkflow.get("sPath", ""),',
+        # Re-anchored 2026-08-05: the alignment loop moved out of the
+        # handler into the mode-(b) worker, so the line dedented, and
+        # the path expression alone now occurs twice (the rename cascade
+        # passes it too). The preceding argument line disambiguates.
+        old=(
+            '                dictWorkflow, iIndex, dictPlan,\n'
+            '                dictCtx["paths"].get(sContainerId, ""),'
+        ),
+        new=(
+            '                dictWorkflow, iIndex, dictPlan,\n'
+            '                dictWorkflow.get("sPath", ""),'
+        ),
     ),
     Falsification(
         # A short-circuited warnings builder makes a manual
@@ -2336,13 +2346,15 @@ def _fdictEntry(sRel):
         # cascade recorded is lost on the next load.
         nodeid='tests/testStepRoutes.py::testRenameRoutePersistsAnUnrecoverableSplit',
         source='vaibify/gui/routes/stepRoutes.py',
+        # Re-anchored 2026-08-05: the branch moved into the mode-(b)
+        # worker and its comment moved up into the wrapper's docstring,
+        # where the save-then-poison ordering is now explained in full.
+        # The mutation is unchanged in meaning -- delete the branch and
+        # StepRenameSplitError falls through to the generic RuntimeError
+        # clause, which 500s without ever saving.
         old="""        except stepRename.StepRenameSplitError as error:
-            # The directory moved and could not be put back. The
-            # workflow now records where the bytes actually are, so it
-            # has to be PERSISTED or the nonconforming warning that
-            # leads the researcher to the repair is lost on reload.
             dictCtx["save"](sContainerId, dictWorkflow)
-            raise HTTPException(500, str(error))
+            raise HTTPException(500, str(error)) from error
 """,
         new='',
     ),
@@ -5805,5 +5817,218 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/gitRoutes.py',
         old='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})\n',
         new='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset()\n',
+    ),
+    # --- Step routes that are not a plain save (phase 2, 2026-08-05) ---
+    #
+    # Each entry mutates the route's OWN call site. The rename has three
+    # separable guarantees -- the cascade's drain, the save sharing it,
+    # and the refusal being carried -- so each has its own lever; a
+    # single mutant covering all three would isolate none of them.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepRenameCascadeRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # Swaps the MODE rather than dropping the admission. Running the
+        # worker inline was tried first: the cascade then reaches the
+        # exec unadmitted and 500s, which fails the carried-refusal and
+        # split tests too, so one mutant landed on four shapes and
+        # isolated none.
+        #
+        # RECORDED COLLATERAL, and it is intrinsic rather than drift:
+        # this also fails testTheRenameCascadeSaveSharesTheCascadesDrain.
+        # The cascade and its save are ONE worker by design -- that IS
+        # the guarantee -- so no mutation can change the cascade's
+        # admission without changing the save's.
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnApplyTheRename, "rename-step", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    from .. import commitCarrier\n'
+            '    dictLaneTuple = fdictRequireLaneTupleForCommit(\n'
+            '        requestHttp, sContainerId, "rename-step",\n'
+            '    )\n'
+            '    dictCarried = commitCarrier.fdictCommitSynchronousMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", "rename-step",\n'
+            '        fnApplyTheRename, {"sDockerContainerId": '
+            'sContainerId},\n'
+            '    )["result"]\n'
+            '    if dictCarried["errorRefused"] is not None:\n'
+            '        raise dictCarried["errorRefused"]\n'
+            '    return dictCarried["objResult"]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRenameCascadeSaveSharesTheCascadesDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # The save leaves the worker and becomes its OWN mode-(a)
+        # commit after the drain is released -- which is exactly what a
+        # reviewer would write if they read the cascade as "container
+        # work, then bookkeeping", and is a design that looks correct:
+        # the save is still carried, still journaled with its hash
+        # postcondition, and the route still answers 200. What it loses
+        # is the only thing that matters here, the drain held ACROSS
+        # both. A bare uncarried save was tried first and 500s the
+        # route, which fails the cascade's own test too.
+        old=(
+            '        dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '        return dictReport\n'
+            '\n'
+            '    def fnApplyTheRename(supervisor=None):\n'
+            '        del supervisor\n'
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fnRenameThenSave)\n'
+            '\n'
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnApplyTheRename, "rename-step", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '        return dictReport\n'
+            '\n'
+            '    def fnApplyTheRename(supervisor=None):\n'
+            '        del supervisor\n'
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fnRenameThenSave)\n'
+            '\n'
+            '    dictReportDone = await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnApplyTheRename, "rename-step", '
+            'requestHttp,\n'
+            '    )\n'
+            '    fnCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The rename save",\n'
+            '    )\n'
+            '    return dictReportDone\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRenamePreviewScanRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnScanTheScripts, '
+            '"rename-step-preview", requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    del requestHttp\n'
+            '    return stepRename.flistScanScriptsForOldName(\n'
+            '        dictCtx["docker"], sContainerId, dictWorkflow, '
+            'dictPlan,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDirectoryAlignmentBatchRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"align-step-directories",\n'
+            '        fnAlignEveryStep,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new=(
+            '    return fnAlignEveryStep()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testATakenStepNameIsRefusedWithoutQuarantiningTheContainer'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # Bypassing the capture re-raises the 409 inside the worker,
+        # which settles through the failure path and quarantines the
+        # container over a name that was already taken.
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fnRenameThenSave)\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, '
+            '"objResult": fnRenameThenSave()}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnrecoverableSplitSavesUnderTheDrainAndThenPoisons'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # Raise first, save second: the poison still happens, but the
+        # save never does, so the only pointer to the split is lost.
+        #
+        # RECORDED COLLATERAL, not drift: this also fails
+        # testStepRoutes.py::testRenameRoutePersistsAnUnrecoverableSplit,
+        # which has defended the same save since before the migration.
+        # The two are complementary rather than redundant -- that one
+        # proves the save happens, this one proves it happens BEFORE the
+        # record poisons -- but a single deletion of the save is
+        # correctly visible to both.
+        old=(
+            '        except stepRename.StepRenameSplitError as error:\n'
+            '            dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '            raise HTTPException(500, str(error)) from error\n'
+        ),
+        new=(
+            '        except stepRename.StepRenameSplitError as error:\n'
+            '            raise HTTPException(500, str(error)) from error\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepUpdateSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The step update",\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCtx["save"](sContainerId, dictWorkflow)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '    await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnRunTheUpdate, "update-step", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictCarried = fnRunTheUpdate()\n'
+            '    if dictCarried["errorRefused"] is not None:\n'
+            '        raise dictCarried["errorRefused"]\n'
+        ),
     ),
 ]

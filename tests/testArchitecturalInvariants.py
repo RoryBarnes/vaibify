@@ -4544,6 +4544,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sibling route module may not import them.
     # −38 (2026-08-05): the lifted drain wrapper, as above.
     "routes/repoRoutes.py": 786,
+    # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
+    # when its last three routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above). Two of the three could not stay inline:
+    # mode (b) runs its worker in a thread, so the rename cascade and
+    # the alignment batch each became a named synchronous worker where
+    # the handler used to `await asyncio.to_thread(...)`. The added
+    # lines are those two workers, the update-step worker, and the
+    # docstrings recording which failures are carried back and which
+    # poison -- a judgement read out of stepRename's source that a
+    # reader must not have to re-derive. Same cohesive responsibility:
+    # step CRUD, in the module that owns it.
+    "routes/stepRoutes.py": 808,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

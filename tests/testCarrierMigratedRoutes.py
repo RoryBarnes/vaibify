@@ -3443,3 +3443,417 @@ def testAnUnreachableRemoteLeavesTheContainerUsable(tclientGated):
         f"{dictResolution}. The researcher now has to run 'vaibify "
         "reconcile' because their network dropped."
     )
+
+
+# ---------------------------------------------------------------------
+# Group 8 -- the three step routes that are not a plain save, mode (b).
+#
+# Every OTHER step route persists project.json and nothing else, which
+# is why Group 1 could parametrize six of them over one assertion.
+# These three each reach the container for something else first: the
+# rename runs a git mv cascade, the alignment runs that cascade once per
+# nonconforming step, and the step update reads the AICS level before
+# and after its edit so the auto-archive can tell whether the edit
+# promoted the workflow. None of those is a write with a hash the
+# journal can check afterwards, and every one of them can run for as
+# long as a git process takes, so they are mode (b) and the drain is
+# held for the WORKER's life rather than for a function call.
+#
+# The step update declares BOTH modes, and the two are asserted
+# separately -- its save still goes through ``fnCommitWorkflowSave``, so
+# a regression in the save and a regression in the surrounding drain are
+# different defects and must fail different tests.
+# ---------------------------------------------------------------------
+
+# The draft harness's step is ALREADY nonconforming: "Step A" slugs to
+# "StepA" and its directory is "stepA". What it lacks is a project repo,
+# without which every cascade refuses before touching the container --
+# so the alignment batch would run its carrier, skip its one step, save
+# nothing, and reach no primitive at all. The test would then pass
+# having exercised the cascade's absence.
+#
+# The declared script is given as a COMMAND, not as ``saStepScripts``
+# directly: that array is transient and ``fnAttachComputedTrackedPaths``
+# recomputes it from the step's commands on every load, so a hard-coded
+# value is overwritten before any route sees it. Setting it directly was
+# tried first and the dry run reported no matching script at all.
+DICT_WORKFLOW_FOR_CASCADE = copy.deepcopy(DICT_WORKFLOW)
+DICT_WORKFLOW_FOR_CASCADE["sProjectRepoPath"] = S_PROJECT_REPO
+DICT_WORKFLOW_FOR_CASCADE["listSteps"][0]["saDataCommands"] = [
+    "python analyze.py",
+]
+
+
+class DockerDoubleForTheRenameCascade(DockerDoubleThatCallsTheRealGates):
+    """The gate-faithful double, with a step directory that can move.
+
+    Two departures from the parent, both required to reach the cascade
+    at all:
+
+    * the workflow it serves carries ``sProjectRepoPath`` and a declared
+      script, so the cascade gets past its own precondition checks and
+      the dry run has something to grep;
+    * ``test -e`` answers NON-zero. The parent falls through to
+      ``(0, "")`` for any command it does not recognise, which
+      ``_fnMoveStepDirectory`` reads as "the destination already
+      exists" -- so against the unmodified double every rename refuses
+      with a 409 before it moves anything. That refusal is worth
+      testing, and is (see the carried-refusal test below), but a
+      success path has to be reachable too or the drain would only ever
+      be asserted around a no-op.
+    """
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        if sCommand.startswith("test -e "):
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+            self._fnRecordLiveAdmission(
+                sContainerId, S_PRIMITIVE_EXEC, sCommand,
+            )
+            return (1, "")
+        return super().ftResultExecuteCommand(
+            sContainerId, sCommand, sWorkdir,
+        )
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(DICT_WORKFLOW_FOR_CASCADE).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@pytest.fixture
+def tclientCascade():
+    """The gated client over a workflow whose step directory can move."""
+    return _tConnectGatedClient(DockerDoubleForTheRenameCascade())
+
+
+@pytest.mark.falsification
+def testTheStepRenameCascadeRunsUnderTheDrain(tclientCascade):
+    """POST .../rename moves the directory under a mode-(b) admission.
+
+    The marker is the move command itself rather than any exec, because
+    the same request also runs the workflow save's own commands: a
+    handler that reached only THOSE under the drain would pass a loose
+    assertion while the git mv -- the irreversible half -- ran
+    unadmitted.
+
+    Kills: replacing ``_fdictApplyRenameUnderTheDrain``'s
+    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    """
+    client, connectionDocker = tclientCascade
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/rename",
+        json={"sNewName": "Renamed Step", "bDryRun": False},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "git mv",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheRenameCascadeSaveSharesTheCascadesDrain(tclientCascade):
+    """The rename's project.json save runs inside the SAME admission.
+
+    Not a duplicate of the assertion above. The cascade rewrites the
+    step's directory, output paths and declared binaries in memory and
+    the save is what makes that survive a reload, so the two have to
+    commit together: a save left outside the worker would drop the drain
+    between "the bytes moved" and "the workflow says so", and another
+    session writing in that gap would produce a project.json that points
+    at a directory which no longer exists.
+
+    Kills: moving ``dictCtx["save"](sContainerId, dictWorkflow)`` out of
+    ``fnRenameThenSave`` and back into the handler, after the await.
+    """
+    client, connectionDocker = tclientCascade
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/rename",
+        json={"sNewName": "Renamed Step", "bDryRun": False},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheRenamePreviewScanRunsUnderTheDrain(tclientCascade):
+    """The dry run's script scan is carried, though it changes nothing.
+
+    A preview that cannot run is worse than no preview: the researcher
+    is asked to confirm a rename without being shown which scripts spell
+    the old directory out. The scan greps one declared script per
+    container round-trip, and the gate treats an exec as mutating
+    because a primitive handed command text cannot know what the text
+    does -- so on the enforced branch an uncarried preview is refused
+    outright.
+
+    Kills: replacing ``_flistScanScriptsUnderTheDrain``'s
+    fobjRunWorkerUnderTheDrain call with a direct call to
+    ``stepRename.flistScanScriptsForOldName``.
+    """
+    client, connectionDocker = tclientCascade
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/rename",
+        json={"sNewName": "Renamed Step", "bDryRun": True},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["listScriptWarnings"] == ["stepA/analyze.py"], (
+        "the scan reported no matching script, so the exec assertion "
+        "below would be about a loop that never ran"
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "grep -Iq",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheDirectoryAlignmentBatchRunsUnderTheDrain(tclientCascade):
+    """POST .../align-directories runs its whole batch under one drain.
+
+    One admission for the batch, not one per step, is the property under
+    test: every iteration rewrites the SAME workflow dict and the batch
+    ends in a single save, so a drain dropped between two steps would
+    let another session's save be silently overwritten by the one at the
+    end.
+
+    Kills: replacing ``_fdictAlignDirectoriesUnderTheDrain``'s
+    fdictRunLockHeldMutation call with a direct call to
+    ``_fdictAlignEveryNonconformingStep``.
+    """
+    client, connectionDocker = tclientCascade
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/align-directories",
+    )
+    assert response.status_code == 200, response.text
+    assert len(response.json()["listAligned"]) == 1, (
+        "the batch aligned nothing, so it reached no cascade and the "
+        f"admission assertion would be vacuous: {response.json()}"
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "git mv",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testATakenStepNameIsRefusedWithoutQuarantiningTheContainer(tclientGated):
+    """A 409 from inside the rename worker must not take the container out.
+
+    The rename's refusals live BELOW the container boundary -- the
+    cascade asks the container whether the destination directory exists
+    and raises ``ValueError`` when it does -- and a carrier worker that
+    RAISES is settled through the failure path, which marks its journal
+    record NEEDS RECONCILIATION. Choosing a name that is already taken
+    would then cost the researcher their container until they ran
+    ``vaibify reconcile``.
+
+    That the 409 is safe to carry was read out of
+    ``stepRename.fdictApplyStepRename``, not inferred from its shape:
+    three of its four ``ValueError`` paths fire before anything moves,
+    and the fourth is reached only through the cascade's own rollback,
+    which puts the directory back before the error escapes. Every
+    remaining failure is a 500 and still poisons.
+
+    The default double is deliberate here: it answers ``test -e``
+    affirmatively, so the destination reads as already present and the
+    409 fires on the real path rather than a patched one.
+
+    Kills: dropping ``fdictCarryARefusalBackInsteadOfRaising`` from
+    ``fnApplyTheRename``, so the 409 is re-raised inside the worker.
+    """
+    from vaibify.config import operationJournal
+
+    client, _connectionDocker = tclientGated
+    response = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/rename",
+        json={"sNewName": "Renamed Step", "bDryRun": False},
+    )
+    assert 400 <= response.status_code < 500, (
+        f"expected a declined refusal, got {response.status_code}: "
+        f"{response.text}"
+    )
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        S_CONTAINER_NAME,
+    )
+    assert dictResolution["sResolution"] != (
+        operationJournal.S_RESOLUTION_QUARANTINED
+    ), (
+        "a name collision quarantined the container: "
+        f"{dictResolution}. The researcher now has to run 'vaibify "
+        "reconcile' because they picked a name that was taken."
+    )
+
+
+@pytest.mark.falsification
+def testAnUnrecoverableSplitSavesUnderTheDrainAndThenPoisons(tclientCascade):
+    """The split's save LANDS, and only then does the record poison.
+
+    The one place in this migration where a carrier must do both. The
+    directory moved and could not be put back, so the workflow dict now
+    records where the bytes actually are -- and that is the ONLY pointer
+    the researcher has to the repair, surfaced as the nonconforming
+    warning on the next load. It must be persisted. But the container is
+    also genuinely split, which is exactly the unknown state the
+    quarantine exists for.
+
+    So both halves are asserted, and in order: the workflow file was
+    actually WRITTEN, and the journal then resolved to QUARANTINED.
+    Asserting only the quarantine would pass against a handler that
+    poisoned without saving -- which is the older bug this route already
+    carries a falsification for -- and asserting only the save would
+    pass against one that settled the record normally and left a split
+    container looking healthy.
+
+    What is deliberately NOT asserted here is the admission MODE of that
+    write. Which drain the save shares is the neighbouring test's
+    guarantee, and duplicating it here would make every mutant that
+    changes the cascade's mode fail this test too, so neither kill would
+    isolate anything.
+
+    Kills: reordering ``fnRenameThenSave``'s split branch to raise
+    before it saves.
+    """
+    from vaibify.config import operationJournal
+    from vaibify.gui import stepRename
+
+    client, connectionDocker = tclientCascade
+
+    def fdictRaiseSplit(
+        connectionDockerArg, sContainerIdArg, filesRepoArg,
+        dictWorkflowArg, iStepIndexArg, dictPlanArg, sWorkflowPathArg,
+    ):
+        dictWorkflowArg["listSteps"][iStepIndexArg]["sDirectory"] = "Moved"
+        raise stepRename.StepRenameSplitError(
+            "directory moved, undo failed",
+        )
+
+    with patch.object(
+        stepRename, "fdictApplyStepRename", fdictRaiseSplit,
+    ):
+        response = client.post(
+            f"/api/steps/{S_CONTAINER_ID}/0/rename",
+            json={"sNewName": "Renamed Step", "bDryRun": False},
+        )
+    assert response.status_code == 500, response.text
+
+    listWorkflowWrites = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+        and dictReached["sPath"] == S_WORKFLOW_PATH
+    ]
+    assert listWorkflowWrites, (
+        "the split raised without persisting the workflow, so the "
+        "nonconforming directory it recorded lives only in memory and "
+        "the next load shows a step that looks healthy. The ledger is "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        S_CONTAINER_NAME,
+    )
+    assert dictResolution["sResolution"] == (
+        operationJournal.S_RESOLUTION_QUARANTINED
+    ), (
+        "a container whose step directory split from its workflow "
+        f"settled clean: {dictResolution}. Nothing will tell the "
+        "researcher the two disagree."
+    )
+
+
+@pytest.mark.falsification
+def testTheStepUpdateSaveCommitsThroughTheSynchronousCarrier(tclientGated):
+    """PUT /api/steps/{id}/{index} writes project.json under mode (a).
+
+    Mode (a) for the save specifically, inside the mode-(b) drain the
+    rest of the route holds. The distinction is not cosmetic: the
+    synchronous carrier journals a ``file-write`` record whose expected
+    hash IS the workflow's serialization fingerprint, so a crash inside
+    the commit window can be adjudicated afterwards by hashing the file
+    on disk. Folding the save into the surrounding ``helper`` record
+    would journal something that proves nothing about the bytes.
+
+    Kills: reverting ``fnUpdateSaveAndArchive``'s
+    ``fnCommitWorkflowSave(...)`` call to
+    ``dictCtx["save"](sContainerId, dictWorkflow)``.
+    """
+    client, connectionDocker = tclientGated
+    response = client.put(
+        f"/api/steps/{S_CONTAINER_ID}/0",
+        json={"saDataCommands": ["python analyze.py"]},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+@pytest.mark.falsification
+def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
+    """The edit's before/after level readings share one held drain.
+
+    ``fnMaybeAutoArchive`` archives on a TRANSITION -- the workflow was
+    below L1 and is now at or above it -- so it compares a level read
+    taken before the edit with one taken after. Both readings hash the
+    repo through the container, so both are guarded operations, and if
+    the drain is dropped between them another session's write moves the
+    level in the gap: the promotion is then detected, or missed, for a
+    change the researcher never made.
+
+    Asserted at the level read's own call site rather than through the
+    save, so a regression in the save's carrier lands on the mode-(a)
+    test above and this one alone reports the drain.
+
+    THE LEVEL GATE IS STUBBED HERE, AND THAT IS THE POINT. Against this
+    harness the real ``fiAICSLevel`` declines at L1's first criterion --
+    the one step is ``untested``/``untested``, so it is not user-approved
+    -- and returns 0 without ever reaching the container. Asserting on
+    the primitive ledger would then be an assertion about a read that
+    never happened, which is the vacuity this file exists to avoid. The
+    stub is not a stand-down: it replaces only the gate, is called by the
+    real handler inside the real carrier, and reads the live admission
+    contextvar at the exact statement whose admission is in question.
+
+    Kills: replacing ``_fnUpdateThenArchiveUnderTheDrain``'s
+    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    """
+    from vaibify.gui.routes import stepRoutes
+
+    client, _connectionDocker = tclientGated
+    listModesAtTheLevelRead = []
+
+    def fiRecordTheLiveAdmission(
+        dictWorkflowArg, filesRepoArg, dictScriptStatus=None,
+    ):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            S_CONTAINER_ID,
+        )
+        listModesAtTheLevelRead.append(
+            "" if admission is None else admission.sMode,
+        )
+        return 0
+
+    with patch.object(
+        stepRoutes, "fiAICSLevel", fiRecordTheLiveAdmission,
+    ):
+        response = client.put(
+            f"/api/steps/{S_CONTAINER_ID}/0",
+            json={"saDataCommands": ["python analyze.py"]},
+        )
+    assert response.status_code == 200, response.text
+    assert listModesAtTheLevelRead == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    ], (
+        "the pre-edit level read did not run under a lock-held "
+        f"admission: {listModesAtTheLevelRead}. Under "
+        f"{mutationAdmission.S_ADMISSION_MODE_REQUEST!r} the route is "
+        "still riding the legacy ambient mint; under '' it read the "
+        "level with no admission at all, and an empty list means the "
+        "handler never read it."
+    )

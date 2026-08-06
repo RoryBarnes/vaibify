@@ -167,7 +167,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/pipeline/{sContainerId}/acknowledge-step/{iStepIndex}"),
     ("POST", "/api/pipeline/{sContainerId}/clean"),
     ("POST", "/api/pipeline/{sContainerId}/kill"),
-    ("POST", "/api/steps/{sContainerId}/align-directories"),
     ("POST", "/api/steps/{sContainerId}/create"),
     ("POST", "/api/steps/{sContainerId}/declare-no-input-data"),
     ("POST", "/api/steps/{sContainerId}/insert/{iPosition}"),
@@ -175,7 +174,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/generate-test"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/input-data"),
-    ("POST", "/api/steps/{sContainerId}/{iStepIndex}/rename"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/scan-dependencies"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"),
@@ -212,7 +210,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("PUT", "/api/draft/{sContainerId}/{sFilePath:path}"),
     ("PUT", "/api/file/{sContainerId}/{sFilePath:path}"),
     ("PUT", "/api/settings/{sContainerId}"),
-    ("PUT", "/api/steps/{sContainerId}/{iStepIndex}"),
     ("PUT", "/api/workflow/{sContainerId}/project-context"),
 })
 

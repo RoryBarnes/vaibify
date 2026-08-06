@@ -62,8 +62,19 @@ def _fdictBuildWorkflow():
 
 
 @pytest.fixture
-def tClientAndWorkflow():
-    """Return ``(clientHttp, dictWorkflow)`` with only stepRoutes wired."""
+def tClientAndWorkflow(monkeypatch):
+    """Return ``(clientHttp, dictWorkflow)`` with only stepRoutes wired.
+
+    The carrier is stood down because update-step now runs its level
+    read, save and auto-archive under a mode-(b) drain, which a bare
+    ``FastAPI()`` cannot bind to an owner record. These tests are about
+    the name<->directory contract the handler enforces BEFORE any of
+    that, and prove nothing about the admission -- see
+    ``tests/carrierStandDown.py``.
+    """
+    from tests.carrierStandDown import fnStandCarrierDown
+
+    fnStandCarrierDown(monkeypatch, stepRoutes)
     dictWorkflow = _fdictBuildWorkflow()
     dictContext = {
         "workflows": {_S_CONTAINER_ID: dictWorkflow},

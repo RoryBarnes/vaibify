@@ -385,10 +385,8 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/overleaf/{sContainerId}/push"),
     ("POST", "/api/pipeline/{sContainerId}/acknowledge-step/{iStepIndex}"),
     ("POST", "/api/pipeline/{sContainerId}/kill"),
-    ("POST", "/api/steps/{sContainerId}/align-directories"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/generate-test"),
-    ("POST", "/api/steps/{sContainerId}/{iStepIndex}/rename"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/scan-dependencies"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"),
@@ -409,7 +407,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/zenodo/{sContainerId}/archive"),
     ("POST", "/api/zenodo/{sContainerId}/download"),
     ("POST", "/api/zenodo/{sContainerId}/metadata"),
-    ("PUT", "/api/steps/{sContainerId}/{iStepIndex}"),
     ("PUT", "/api/workflow/{sContainerId}/project-context"),
 })
 
