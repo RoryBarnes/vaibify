@@ -2647,8 +2647,8 @@ def _fdictEntry(sRel):
         nodeid='tests/testSyncEpoch.py::test_verify_remote_bumps_sync_epoch',
         source='vaibify/gui/routes/syncRoutes.py',
         old="""        fnBumpSyncEpoch(dictCtx, sContainerId)
-        return dictStatus""",
-        new="""        return dictStatus""",
+        return dictCarried["dictStatus"]""",
+        new="""        return dictCarried["dictStatus"]""",
     ),
     Falsification(
         # An out-of-band push produces no HTTP traffic; this route is
@@ -5398,6 +5398,151 @@ def _fdictEntry(sRel):
         new=(
             '        except HTTPException:\n'
             '            raise\n'
+        ),
+    ),
+
+    # --- Five Sync-panel routes, carrier modes (a) and (b)
+    # (2026-08-05) ---
+    # Each mutant below was applied by hand, the whole
+    # testCarrierMigratedRoutes.py file run, the source restored from an
+    # in-memory copy and re-hashed byte-identical. Every one killed
+    # EXACTLY its own test, with one stated exception recorded on the
+    # arXiv save's entry.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSyncTrackingToggleCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The sync-tracking change",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGitIdentityWriteRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        iExit, sOut = await _ftWriteGitIdentityUnderTheDrain(\n'
+            '            dictCtx, sContainerId, sWorkdir,\n'
+            '            request.sName.strip(), request.sEmail.strip(), '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        iExit, sOut = await asyncio.to_thread(\n'
+            '            _ftWriteGitIdentity,\n'
+            '            dictCtx["docker"], sContainerId, sWorkdir,\n'
+            '            request.sName.strip(), request.sEmail.strip(),\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSingleFileGithubPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictResult = await _fdictRunAddFileUnderTheDrain(\n'
+            '            dictCtx, sContainerId, sWorkdir, request, '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResult = await asyncio.to_thread(\n'
+            '            _fdictRunGithubAddFileBlocking,\n'
+            '            dictCtx, sContainerId, sWorkdir, request,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteVerifyRewritesItsCacheUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictCarried = await _fdictVerifyRemoteUnderTheDrain(\n'
+            '            dictWorkflow, sService, filesRepo, sContainerId, '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCarried = {\n'
+            '            "dictStatus": await asyncio.to_thread(\n'
+            '                fdictRunRemoteVerifyBlocking, dictWorkflow, '
+            'sService,\n'
+            '                filesRepo,\n'
+            '            ),\n'
+            '            "errorRemote": None,\n'
+            '        }\n'
+        ),
+    ),
+
+    # The arXiv handler's mode-(a) half. This mutant kills BOTH arXiv
+    # tests, not one, and the reason is sequencing rather than a weak
+    # assertion: the save runs first, so an unadmitted write 500s the
+    # handler before the verify that would rewrite the cache can run.
+    # Recorded here so a re-confirmation run does not read the second
+    # failure as drift. The reverse direction DOES isolate -- see the
+    # entry below.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheArxivConfigureSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictRemotes["arxiv"] = dictConfig\n'
+            '    fnCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The arXiv configuration",\n'
+            '    )\n'
+        ),
+        new=(
+            '        dictRemotes["arxiv"] = dictConfig\n'
+            '    dictCtx["save"](sContainerId, dictWorkflow)\n'
+        ),
+    ),
+
+    # The arXiv handler's mode-(b) half, and the entry that proves the
+    # two are separately guarded: removing this carrier failed ONLY this
+    # test while the save's test still passed. It isolates because
+    # _fdictRunArxivVerifyAfterConfig catches the refusal and reports it
+    # as sVerifyError, so the response stays 200 and only the cache
+    # write goes missing from the ledger.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheArxivCacheRewriteRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictVerify = await _fobjRunArxivCacheWorkUnderTheDrain(\n'
+            '            sContainerId, requestHttp, "arxiv-verify",\n'
+            '            lambda: _fdictRunArxivVerifyAfterConfig(\n'
+            '                dictWorkflow,\n'
+            '                ffilesForWorkflow(dictCtx, sContainerId, '
+            'dictWorkflow),\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictVerify = await asyncio.to_thread(\n'
+            '            _fdictRunArxivVerifyAfterConfig, dictWorkflow,\n'
+            '            ffilesForWorkflow(dictCtx, sContainerId, '
+            'dictWorkflow),\n'
+            '        )\n'
         ),
     ),
 ]

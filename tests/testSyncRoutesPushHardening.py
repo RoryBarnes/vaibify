@@ -23,7 +23,21 @@ from fastapi.testclient import TestClient
 
 from vaibify.gui import containerGit
 from vaibify.gui.routes import syncRoutes
+from tests.carrierStandDown import fnStandCarrierDown
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for ``add-file``, driven here bare.
+
+    The single-file push now runs under carrier mode (b), which
+    needs an owner record this module's bare ``FastAPI()`` has not
+    got. Requested only by the add-file tests -- the bulk push is
+    still awaiting migration and must keep meeting the real path.
+    See ``tests/carrierStandDown.py`` for what the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, syncRoutes)
 
 
 S_CONTAINER_ID = "cid"
@@ -211,7 +225,7 @@ def test_push_stores_hash_under_repo_relative_sync_key():
     assert dictEntry["bGithub"] is True
 
 
-def test_add_file_exec_raises_and_probe_inconclusive_is_indeterminate():
+def test_add_file_exec_raises_and_probe_inconclusive_is_indeterminate(fixtureCarrierStoodDown):
     """The single-file route shares the indeterminate contract."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)
@@ -235,7 +249,7 @@ def test_add_file_exec_raises_and_probe_inconclusive_is_indeterminate():
     assert dictResult["sErrorType"] == "indeterminate"
 
 
-def test_add_file_success_includes_rev_parse_hash():
+def test_add_file_success_includes_rev_parse_hash(fixtureCarrierStoodDown):
     """The single-file route stamps the verified hash and remote state."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)

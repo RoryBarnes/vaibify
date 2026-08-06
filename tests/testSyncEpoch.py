@@ -11,8 +11,21 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui import containerGit, pipelineServer
 from vaibify.gui.routes import gitRoutes, pipelineRoutes, syncRoutes
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the migrated routes driven bare here.
+
+    ``add-file`` and ``verify`` now do their container work through
+    carrier mode (b); this module builds a bare ``FastAPI()`` with no
+    owner record for either to bind to. Requested only by the tests
+    that reach a carrier. See ``tests/carrierStandDown.py``.
+    """
+    fnStandCarrierDown(monkeypatch, syncRoutes)
 
 
 S_CONTAINER_ID = "cid"
@@ -121,7 +134,7 @@ def test_push_bumps_epoch_even_on_failure():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_add_file_bumps_sync_epoch():
+def test_add_file_bumps_sync_epoch(fixtureCarrierStoodDown):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     with patch(
@@ -331,7 +344,7 @@ def _fiReadEpochFromStatePoll(clientHttp):
 
 
 @pytest.mark.falsification
-def test_verify_remote_bumps_sync_epoch():
+def test_verify_remote_bumps_sync_epoch(fixtureCarrierStoodDown):
     """A completed remote verify must invalidate the dashboard.
 
     Drives the real route through TestClient and reads the epoch back
@@ -363,7 +376,7 @@ def test_verify_remote_bumps_sync_epoch():
     assert _fiReadEpochFromStatePoll(clientHttp) == 1
 
 
-def test_failed_verify_does_not_bump_sync_epoch():
+def test_failed_verify_does_not_bump_sync_epoch(fixtureCarrierStoodDown):
     """A verify that never reached the remote changed no cached state."""
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)

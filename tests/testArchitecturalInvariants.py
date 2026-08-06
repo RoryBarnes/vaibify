@@ -4077,7 +4077,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # is the fourth route module to reach its cap; whether to split
     # syncRoutes along the credential/DAG seam is the researcher's
     # decision, not a line this bump settles.
-    "routes/syncRoutes.py": 2512,
+    # +208 (2026-08-05): carrier plumbing for five of this module's
+    # routes, under the 2026-08-05 ruling at the head of this record.
+    # Each is one ``requestHttp`` parameter, one declaration, and one
+    # under-the-drain wrapper naming why its worker carries refusals
+    # back instead of raising them; ``add-file``'s chain also gained a
+    # synchronous twin, because a mode-(b) worker runs in a thread and
+    # cannot await the three ``to_thread`` hops it used to make. The
+    # remaining ten routes in this module have NOT been migrated, so
+    # this entry will need raising again before it may start falling.
+    "routes/syncRoutes.py": 2720,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.

@@ -102,7 +102,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         self.listTypedPathProbes = []
 
     def _fnRecordLiveAdmission(
-        self, sContainerId, sPrimitiveName, sCommand="",
+        self, sContainerId, sPrimitiveName, sCommand="", sPath="",
     ):
         """Record the admission mode live at one primitive's gate.
 
@@ -113,6 +113,14 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         Asserting "every exec ran under lock-held" would therefore be
         false for a correctly migrated route, and relaxing it to "some
         exec did" would pass for one whose worker never ran.
+
+        The write's TARGET is recorded for the same reason one level
+        further in. A two-mode route whose carriers both end in a WRITE
+        -- arXiv configure saves project.json under mode (a) and
+        rewrites syncStatus.json under mode (b) -- cannot be separated
+        by command text, because a write has none. Without the path,
+        either missing carrier would fail both of that route's tests
+        and neither kill would isolate a guard.
         """
         admission = mutationAdmission.fadmissionActiveForContainerId(
             sContainerId,
@@ -121,6 +129,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             "sPrimitive": sPrimitiveName,
             "sMode": "" if admission is None else admission.sMode,
             "sCommand": sCommand,
+            "sPath": sPath,
         })
 
     def fnWriteFile(
@@ -130,7 +139,9 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, S_PRIMITIVE_WRITE,
         )
-        self._fnRecordLiveAdmission(sContainerId, S_PRIMITIVE_WRITE)
+        self._fnRecordLiveAdmission(
+            sContainerId, S_PRIMITIVE_WRITE, sPath=sPath,
+        )
         return MockDockerDraft.fnWriteFile(
             self, sContainerId, sPath, baContent,
             iMode=iMode, iUid=iUid, iGid=iGid,
@@ -2720,4 +2731,229 @@ def testTheHundredStepWarningSaveIsCarriedToo():
     )
     _fnAssertWritesRanUnder(
         connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+# ---------------------------------------------------------------------
+# Group 5 -- five of the Sync panel's routes.
+#
+# The first block of syncRoutes to migrate, and it spans three shapes,
+# which is why the assertions below are not one parametrization. The
+# tracking toggle is an ordinary mode-(a) project.json save. The git
+# identity and the single-file push are mode-(b) container EXECS. The
+# remote verify is mode (b) whose effect is a container WRITE rather
+# than an exec, and arXiv configure carries BOTH a mode-(a) save and a
+# mode-(b) cache rewrite in one handler -- so its two carriers are
+# asserted separately, or a missing one hides behind the other.
+# ---------------------------------------------------------------------
+
+def _fdictStubbedRemoteStatus(sService):
+    """Return the status shape ``fnWriteSyncStatus`` persists.
+
+    Stubbed because the real verify contacts a remote, and the claim
+    under test is the ADMISSION its container write runs under, not the
+    hashing. What stays real is that a write actually happens: a stub
+    that returned early would leave the ledger empty and the assertion
+    vacuous, which is the case ``_fnAssertSelectedRanUnder`` reports as
+    a failure rather than passing.
+    """
+    return {
+        "sService": sService,
+        "bMatches": True,
+        "iTotalFiles": 0,
+        "iMatchedFiles": 0,
+        "listDivergent": [],
+        "sCheckedAt": _fsFreshIsoTimestamp(),
+    }
+
+
+@contextlib.contextmanager
+def _fnRemoteVerifyStubbed(sService):
+    """Stub the remote comparison; leave the container write real."""
+    from vaibify.reproducibility import scheduledReverify
+    with patch.object(
+        scheduledReverify, "fdictVerifyRemoteService",
+        lambda filesRepo, dictWorkflow, sRequested, sNowIso=None: (
+            _fdictStubbedRemoteStatus(sService)
+        ),
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+        lambda sContainerId: None,
+    ):
+        yield
+
+
+@pytest.mark.falsification
+def testTheSyncTrackingToggleCommitsThroughTheSynchronousCarrier(
+    tclientGated,
+):
+    """POST /api/sync/{id}/track persists project.json under mode (a).
+
+    Kills: reverting ``fnSetTracking``'s ``fnCommitWorkflowSave(...)``
+    call to ``dictCtx["save"](sContainerId, dictWorkflow)``. On the
+    enforced branch that save reaches the write primitive with no
+    admission open at all, so the recorded mode is ``''``.
+    """
+    client, connectionDocker = tclientGated
+    client.post(
+        f"/api/sync/{S_CONTAINER_ID}/track",
+        json={
+            "sPath": "stepA/output.dat",
+            "sService": "Github",
+            "bTrack": True,
+        },
+    )
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+@pytest.mark.falsification
+def testTheGitIdentityWriteRunsUnderTheDrain(tclientGated):
+    """POST /api/github/{id}/identity runs git config under mode (b).
+
+    The marker is ``git config user.name``, specific to this route's own
+    command: a loose marker was tried elsewhere in this file, matched the
+    connect handler's own git probes, and turned the assertion into
+    noise.
+
+    Kills: reverting ``fnGithubIdentity`` to
+    ``await asyncio.to_thread(_ftWriteGitIdentity, ...)``. That exec then
+    reaches the primitive with no admission, recording ``''``.
+    """
+    client, connectionDocker = tclientGated
+    client.post(
+        f"/api/github/{S_CONTAINER_ID}/identity",
+        json={"sName": "A Researcher", "sEmail": "someone@example.org"},
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "git config user.name",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheSingleFileGithubPushRunsUnderTheDrain(tclientGated):
+    """POST /api/github/{id}/add-file commits and pushes under mode (b).
+
+    The marker is this request's own commit MESSAGE, not ``git add``.
+    The dispatcher interposes four ``-c`` hardening flags between the
+    program and its subcommand, so ``git add`` matches nothing and the
+    assertion would have been vacuous -- which is the failure
+    ``_fnAssertSelectedRanUnder`` reports rather than passes, and is how
+    this marker came to be chosen.
+
+    Kills: reverting ``fnGithubAddFile`` to the coroutine chain it
+    replaced, whose three ``to_thread`` hops reach the exec primitive
+    with no admission open.
+    """
+    client, connectionDocker = tclientGated
+    client.post(
+        f"/api/github/{S_CONTAINER_ID}/add-file",
+        json={
+            "sFilePath": "stepA/output.dat",
+            "sCommitMessage": "carried",
+        },
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "commit -m 'carried'",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheRemoteVerifyRewritesItsCacheUnderTheDrain(tclientGated):
+    """POST /api/sync/{id}/{service}/verify writes under mode (b).
+
+    The verify's mutation is not its network call but the
+    ``syncStatus.json`` it rewrites inside the project repo afterwards,
+    which is what the Level-2 cells read. Selecting the WRITE rather
+    than every primitive is deliberate: the route also READS the
+    existing cache, and those reads cross the gate through the
+    audited-read carve-out rather than under any carrier.
+
+    Kills: reverting ``fnVerifyRemote`` to
+    ``await asyncio.to_thread(fdictRunRemoteVerifyBlocking, ...)``.
+    """
+    client, connectionDocker = tclientGated
+    with _fnRemoteVerifyStubbed("github"):
+        client.post(f"/api/sync/{S_CONTAINER_ID}/github/verify")
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheArxivConfigureSaveCommitsSynchronously(tclientGated):
+    """The arXiv config's project.json save runs under mode (a).
+
+    One of this handler's TWO carriers, and asserted on the workflow
+    file alone so that a defect in the sibling mode-(b) carrier cannot
+    also fail this test. Confirmed: removing the cache carrier fails
+    only its own test, and this one still passes.
+
+    The isolation is ONE-DIRECTIONAL, and saying so is the honest
+    reading. Removing THIS carrier fails both tests, because the save
+    runs first: an unadmitted write raises at the primitive, the
+    handler 500s, and the verify that would have rewritten the cache
+    never runs. That is sequencing, not a weak assertion -- no test can
+    separate a downstream carrier from an upstream refusal in a
+    straight-line handler -- so the diagnosis to remember is that BOTH
+    arXiv tests failing means the SAVE, while only the second failing
+    means the cache rewrite.
+
+    Kills: reverting ``_fnPersistArxivConfig``'s
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = tclientGated
+    with _fnRemoteVerifyStubbed("arxiv"):
+        client.post(
+            f"/api/sync/{S_CONTAINER_ID}/arxiv/configure",
+            json={"sArxivId": "2401.12345"},
+        )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testTheArxivCacheRewriteRunsUnderTheDrain(tclientGated):
+    """The arXiv config's sync-cache rewrite runs under mode (b).
+
+    The handler's OTHER carrier. Saving the configuration and verifying
+    against arXiv are two mutations, not one: the save is a synchronous
+    single write whose bytes the journal can adjudicate, while the
+    verify contacts a remote and rewrites a different file for as long
+    as the network takes. A migration that carried only the save would
+    leave this write refused at the primitive.
+
+    Selected by NAMING the cache file rather than by excluding the
+    workflow path. The synchronous save is atomic, so it also writes a
+    ``.tmp`` sibling -- and a "not the workflow" selector picked that up
+    and reported the SAVE's mode as this carrier's, which would have
+    failed the test for a correct migration.
+
+    Kills: reverting the verify hop to
+    ``await asyncio.to_thread(_fdictRunArxivVerifyAfterConfig, ...)``.
+    """
+    client, connectionDocker = tclientGated
+    with _fnRemoteVerifyStubbed("arxiv"):
+        client.post(
+            f"/api/sync/{S_CONTAINER_ID}/arxiv/configure",
+            json={"sArxivId": "2401.12345"},
+        )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and "syncStatus" in dictReached["sPath"]
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "write to the sync-status cache",
     )
