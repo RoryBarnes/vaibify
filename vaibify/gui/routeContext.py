@@ -22,6 +22,7 @@ __all__ = [
     "fnCommitWorkflowSave",
     "fnRecordAttributionEvent",
     "fnRejectAgentTokenLane",
+    "fobjRunWorkerUnderTheDrain",
     "fsHashContainerFileOrEmpty",
     "fsRefreshVerifyCacheAfterPush",
 ]
@@ -125,6 +126,56 @@ def fdictCarryARefusalBackInsteadOfRaising(
         ):
             raise
         return {"errorRefused": errorHttp, "objResult": None}
+
+
+async def fobjRunWorkerUnderTheDrain(
+    sContainerId, fnCarryingWorker, sOperationTarget, requestHttp,
+):
+    """Run a carrying worker under the drain; re-raise its refusal here.
+
+    Mode (b) rather than mode (a) whenever the effect is a sequence of
+    container commands that can run for as long as a network round-trip
+    or a subprocess takes: mode (a) runs its effect on the event loop,
+    and — more importantly — the drain has to be held for the WORKER's
+    life, so an ownership hand-over or a Run Step arriving mid-effect is
+    refused and told what is running rather than landing underneath a
+    process that keeps writing.
+
+    ``fnCarryingWorker(supervisor=None)`` must return the
+    ``{"errorRefused", "objResult"}`` shape
+    :func:`fdictCarryARefusalBackInsteadOfRaising` produces. The refusal
+    travels back as a VALUE and is re-raised OUT HERE deliberately: by
+    then the supervisor has settled its journal record normally, so the
+    researcher gets their 4xx and their container stays usable, where a
+    raise from inside the worker would poison the record and quarantine
+    the container over "that name is already taken".
+
+    Lifted here on the fourth copy — the git panel, the Repos panel and
+    the step-rename cascade all wanted the identical five statements —
+    so the "settle, then raise" ordering has one implementation to get
+    right. What deliberately did NOT move is the caller's own call to
+    the carry-back: which statuses a panel treats as decided is ITS
+    judgement, stated at its own call site, and folding those calls in
+    here would leave one mutant able to break every caller's guarantee
+    at once, isolating none of them.
+
+    ``sOperationTarget`` is written into the journal, so a caller must
+    pass a compile-time constant or an already-sanitized identifier —
+    never a remote URL or anything else derived from the request.
+    """
+    from . import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationTarget,
+    )
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", sOperationTarget,
+        fnCarryingWorker,
+    )
+    dictCarried = dictOutcome["result"]
+    if dictCarried["errorRefused"] is not None:
+        raise dictCarried["errorRefused"]
+    return dictCarried["objResult"]
 
 
 def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):

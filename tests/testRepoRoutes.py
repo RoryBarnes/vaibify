@@ -180,28 +180,19 @@ def fixtureCarrierStoodDown(monkeypatch):
     refusal, and rather than inline setup in one client builder because
     the module has two and only one of them had it -- which showed up
     as five push tests failing on a `track` call they make as SETUP.
+
+    It delegates to the SHARED stand-down rather than keeping its own
+    patches, and the reason is a divergence that has now happened
+    twice. This copy patched only ``repoRoutes``' imported binding of
+    the lane-tuple resolver; when the drain wrapper was lifted into
+    ``routeContext``, the resolution moved to the definition this copy
+    left live and eighteen tests answered 403 from a carrier the module
+    believed it had stood down.
     """
-    from vaibify.gui import commitCarrier
+    from tests.carrierStandDown import fnStandCarrierDown
     from vaibify.gui.routes import repoRoutes
 
-    monkeypatch.setattr(
-        repoRoutes, "fdictRequireLaneTupleForCommit",
-        lambda requestHttp, sContainerId, sOperationName: {
-            "sContainerName": "fake-container",
-        },
-    )
-
-    async def _fdictRunWorkerWithoutTheDrain(
-        appState, sName, sContainerId, dictLaneTuple, sOperationKind,
-        sTarget, fnWorker, dictHolderIdentity=None,
-        fnTerminateWorker=None,
-    ):
-        return {"bCommitted": True, "result": fnWorker(None)}
-
-    monkeypatch.setattr(
-        commitCarrier, "fdictRunLockHeldMutation",
-        _fdictRunWorkerWithoutTheDrain,
-    )
+    fnStandCarrierDown(monkeypatch, repoRoutes)
 
 
 @pytest.fixture

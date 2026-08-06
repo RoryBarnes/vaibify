@@ -23,6 +23,7 @@ from ..pipelineServer import fnBumpSyncEpoch
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
+    fobjRunWorkerUnderTheDrain,
     fsRefreshVerifyCacheAfterPush,
 )
 from ..routeScope import (
@@ -451,28 +452,17 @@ async def _fobjRunRepoWorkerUnderTheDrain(
 ):
     """Run one repo mutation under the drain; re-raise a 4xx refusal here.
 
-    The refusal is re-raised OUTSIDE the carrier deliberately: by then
-    the supervisor has settled its journal record normally, so the
-    researcher gets their 404 and their container stays usable.
+    Carries no extra 5xx status: every 5xx reachable from a tracked-repo
+    mutation is a sidecar write that failed partway, which is exactly
+    the unknown state the quarantine exists for.
     """
-    from .. import commitCarrier
-    dictLaneTuple = fdictRequireLaneTupleForCommit(
-        requestHttp, sContainerId, sOperationTarget,
-    )
-
     def fnRunTheEffect(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(fnEffect)
 
-    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
-        requestHttp.app.state, dictLaneTuple["sContainerName"],
-        sContainerId, dictLaneTuple, "helper", sOperationTarget,
-        fnRunTheEffect,
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnRunTheEffect, sOperationTarget, requestHttp,
     )
-    dictCarried = dictOutcome["result"]
-    if dictCarried["errorRefused"] is not None:
-        raise dictCarried["errorRefused"]
-    return dictCarried["objResult"]
 
 
 async def _fnRewriteTheSidecarUnderTheDrain(

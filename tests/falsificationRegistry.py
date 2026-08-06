@@ -4949,17 +4949,28 @@ def _fdictEntry(sRel):
             'testTheRepoTrackRunsUnderTheDrain'
         ),
         source='vaibify/gui/routes/repoRoutes.py',
+        # Retargeted 2026-08-05: the settle-then-raise ordering moved to
+        # routeContext.fobjRunWorkerUnderTheDrain on its fourth caller,
+        # so the drain invocation this used to mutate no longer lives in
+        # repoRoutes. The DELEGATION to it does, and is this module's
+        # own call site. It swaps the MODE rather than dropping the
+        # admission, for the reason the test's own docstring gives:
+        # reaching the exec unadmitted 500s the route before its refusal
+        # can be observed, so that mutant fails
+        # testAnExpectedRefusalLeavesTheContainerUsable too and isolates
+        # neither. Verified: this one fails that test alone.
         old=(
-            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
-            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
-            '\n'
-            '        sContainerId, dictLaneTuple, "helper", '
-            'sOperationTarget,\n'
-            '        fnRunTheEffect,\n'
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnRunTheEffect, sOperationTarget, '
+            'requestHttp,\n'
             '    )\n'
         ),
         new=(
-            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation('
+            '    from .. import commitCarrier\n'
+            '    dictLaneTuple = fdictRequireLaneTupleForCommit(\n'
+            '        requestHttp, sContainerId, sOperationTarget,\n'
+            '    )\n'
+            '    dictCarried = commitCarrier.fdictCommitSynchronousMutation('
             '\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
             '\n'
@@ -4967,7 +4978,10 @@ def _fdictEntry(sRel):
             'sOperationTarget,\n'
             '        fnRunTheEffect, {"sDockerContainerId": '
             'sContainerId},\n'
-            '    )\n'
+            '    )["result"]\n'
+            '    if dictCarried["errorRefused"] is not None:\n'
+            '        raise dictCarried["errorRefused"]\n'
+            '    return dictCarried["objResult"]\n'
         ),
     ),
     Falsification(

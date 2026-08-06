@@ -4525,7 +4525,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # would be refused -- so every route grows a named worker plus the
     # docstring saying which commands share its held drain and why. The
     # module's responsibility is unchanged; only the call shape is.
-    "routes/gitRoutes.py": 1044,
+    # −7 (2026-08-05): the settle-then-raise ordering lifted into
+    # routeContext.fobjRunWorkerUnderTheDrain on its fourth caller. Both
+    # this module and repoRoutes are now fully migrated, so their
+    # entries are ratcheted back down to what they actually measure
+    # rather than left holding the migration's headroom.
+    "routes/gitRoutes.py": 1037,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
@@ -4537,7 +4542,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # concern arriving. There is no seam to split on: the push helpers
     # thread the panel's own sidecar and remote through, and a
     # sibling route module may not import them.
-    "routes/repoRoutes.py": 824,
+    # −38 (2026-08-05): the lifted drain wrapper, as above.
+    "routes/repoRoutes.py": 786,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

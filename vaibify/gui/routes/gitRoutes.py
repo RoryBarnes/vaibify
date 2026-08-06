@@ -48,9 +48,9 @@ from ..actionCatalog import fnAgentAction
 from ..pipelineServer import fdictRequireWorkflow, fnBumpSyncEpoch
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
-    fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
     fnCommitWorkflowSave,
+    fobjRunWorkerUnderTheDrain,
     fsRefreshVerifyCacheAfterPush,
 )
 from ..routeScope import (
@@ -382,27 +382,20 @@ async def _fobjRunGitWorkerUnderTheDrain(
     ``sOperationTarget`` is a compile-time constant at every call site
     below, never a remote URL or anything else derived from the request,
     so nothing this writes into the journal needs redacting.
-    """
-    from .. import commitCarrier
-    dictLaneTuple = fdictRequireLaneTupleForCommit(
-        requestHttp, sContainerId, sOperationTarget,
-    )
 
+    The settle-then-raise ordering lives in ``routeContext``; what stays
+    here is the reason THIS panel is mode (b) and the status set only
+    this panel carries.
+    """
     def fnRunTheEffect(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             fnEffect, _SET_GIT_REMOTE_REFUSAL_STATUSES,
         )
 
-    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
-        requestHttp.app.state, dictLaneTuple["sContainerName"],
-        sContainerId, dictLaneTuple, "helper", sOperationTarget,
-        fnRunTheEffect,
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnRunTheEffect, sOperationTarget, requestHttp,
     )
-    dictCarried = dictOutcome["result"]
-    if dictCarried["errorRefused"] is not None:
-        raise dictCarried["errorRefused"]
-    return dictCarried["objResult"]
 
 
 def _fnRegisterCommitCanonical(app, dictCtx):
