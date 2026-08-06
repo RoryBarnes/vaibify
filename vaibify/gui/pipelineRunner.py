@@ -242,7 +242,7 @@ async def _ftRunSingleCommand(
     async with _fcontextWebSocketHeartbeat(fnStatusCallback):
         try:
             resultExec = await asyncio.to_thread(
-                connectionDocker.texecRunInContainerStreamedWithChunks,
+                connectionDocker.ftRunInContainerStreamedWithChunks,
                 sContainerId, sTimedCmd, fnEmitChunk,
                 sWorkdir=sWorkdir,
             )

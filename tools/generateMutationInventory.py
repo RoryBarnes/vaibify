@@ -143,8 +143,8 @@ SET_MUTATING_DOCKER_SUBCOMMANDS = frozenset({
 # testMutationInventory::testEveryDockerPrimitiveIsInTheScopeList.
 DICT_PRIMITIVE_ACCESS = {
     # --- vaibify/docker/dockerConnection.py: mutation-capable ---
-    "texecRunInContainerStreamed": S_ACCESS_ARBITRARY_COMMAND,
-    "texecRunInContainerStreamedWithChunks": S_ACCESS_ARBITRARY_COMMAND,
+    "ftRunInContainerStreamed": S_ACCESS_ARBITRARY_COMMAND,
+    "ftRunInContainerStreamedWithChunks": S_ACCESS_ARBITRARY_COMMAND,
     "ftResultExecuteCommand": S_ACCESS_ARBITRARY_COMMAND,
     "fnWriteFile": S_ACCESS_ARCHIVE_WRITE,
     "fnWriteFileViaTar": S_ACCESS_ARCHIVE_WRITE,

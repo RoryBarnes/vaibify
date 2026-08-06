@@ -321,7 +321,7 @@ def test_env_prefix_is_applied_outside_the_time_wrapper():
     """
     from vaibify.gui.pipelineRunner import _ftRunSingleCommand
     mockDocker = _fMockDocker()
-    mockDocker.texecRunInContainerStreamedWithChunks.return_value = (
+    mockDocker.ftRunInContainerStreamedWithChunks.return_value = (
         MagicMock(iExitCode=0, sStdout="", sStderr="")
     )
     fnCallback, _listCaptured = _fMockCallback()
@@ -330,7 +330,7 @@ def test_env_prefix_is_applied_outside_the_time_wrapper():
         "/work", fnCallback,
         sEnvPrefix=f"export SOURCE_DATE_EPOCH={I_EPOCH} && ",
     ))
-    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+    sExecuted = mockDocker.ftRunInContainerStreamedWithChunks \
         .call_args[0][1]
     assert sExecuted.index("export SOURCE_DATE_EPOCH") < (
         sExecuted.index("/usr/bin/time")

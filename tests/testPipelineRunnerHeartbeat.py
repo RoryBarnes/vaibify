@@ -41,7 +41,7 @@ def _fMockDockerSlow(fSleepSeconds, iExitCode=0, sOutput=""):
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
         fnSlowStream
     )
     return mockDocker
@@ -120,7 +120,7 @@ def test_run_single_command_drains_pending_batch_on_teardown():
             iExitCode=0, sStdout="first\nsecond", sStderr="",
         )
 
-    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
         fnStreaming
     )
     asyncio.run(_ftRunSingleCommand(

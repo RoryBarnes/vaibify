@@ -28,7 +28,7 @@ class FakeExecDockerConnection:
     def __init__(self):
         self.listCommands = []
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         self.listCommands.append((sContainerId, sCommand))
@@ -48,7 +48,7 @@ class FailingExecConnection:
     def __init__(self):
         self.listCommands = []
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         self.listCommands.append((sContainerId, sCommand))

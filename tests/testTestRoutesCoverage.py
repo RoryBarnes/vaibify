@@ -21,12 +21,12 @@ def _fnSetExecResult(
 ):
     """Configure mockDocker so both exec entry points return the same data.
 
-    The migrated test routes call ``texecRunInContainerStreamed``;
+    The migrated test routes call ``ftRunInContainerStreamed``;
     other paths still call ``ftResultExecuteCommand``. Patching both
     keeps every test deterministic regardless of which one the code
     under test selects.
     """
-    mockDocker.texecRunInContainerStreamed = MagicMock(
+    mockDocker.ftRunInContainerStreamed = MagicMock(
         return_value=ExecResult(
             iExitCode=iExitCode, sStdout=sStdout, sStderr=sStderr,
         ),
@@ -1016,7 +1016,7 @@ class TestFdictRunOneTestCategory:
             dictCtx, "cid-1", "/ws", ["pytest a.py", "pytest b.py"])
         sCommand = (
             dictCtx["docker"]
-            .texecRunInContainerStreamed.call_args[0][1]
+            .ftRunInContainerStreamed.call_args[0][1]
         )
         assert sCommand == "cd '/ws' && pytest a.py && pytest b.py"
 
@@ -1115,7 +1115,7 @@ class TestRunTestsResolvesRepoRoot:
             await fnHandler("cid-1", 0)
         sCmd = (
             dictCtx["docker"]
-            .texecRunInContainerStreamed.call_args[0][1]
+            .ftRunInContainerStreamed.call_args[0][1]
         )
         assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
 
@@ -1174,7 +1174,7 @@ class TestRunTestCategoryResolvesRepoRoot:
             await fnHandler("cid-1", 0, mockRequest)
         sCmd = (
             dictCtx["docker"]
-            .texecRunInContainerStreamed.call_args[0][1]
+            .ftRunInContainerStreamed.call_args[0][1]
         )
         assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
 
@@ -1232,7 +1232,7 @@ class TestSaveAndRunTestResolvesRepoRoot:
             await fnHandler("cid-1", 0, mockRequest)
         sCmd = (
             dictCtx["docker"]
-            .texecRunInContainerStreamed.call_args[0][1]
+            .ftRunInContainerStreamed.call_args[0][1]
         )
         assert "cd '/workspace/GJ_proj/XuvEvolution/EngleBarnes'" in sCmd
 
@@ -1306,7 +1306,7 @@ class TestRunTestsNeverReportsUnexecutedAsPassed:
 
         sCommand = (
             dictCtx["docker"]
-            .texecRunInContainerStreamed.call_args[0][1]
+            .ftRunInContainerStreamed.call_args[0][1]
         )
         assert "python -m pytest tests/ -v" in sCommand
         assert dictResult["bPassed"] is True
@@ -1351,6 +1351,6 @@ class TestRunTestsNeverReportsUnexecutedAsPassed:
                 await self._ftRunLegacyStep(dictCtx, dictStep)
 
         assert excInfo.value.status_code == 500
-        dictCtx["docker"].texecRunInContainerStreamed.assert_not_called()
+        dictCtx["docker"].ftRunInContainerStreamed.assert_not_called()
         assert "sUnitTest" not in dictStep["dictVerification"]
         dictCtx["save"].assert_not_called()

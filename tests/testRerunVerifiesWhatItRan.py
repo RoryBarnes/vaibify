@@ -52,7 +52,7 @@ S_CONTAINER_NAME = "rerun-acceptance-container"
 
 
 class _ExecResult:
-    """The ``texecRunInContainerStreamed`` result shape."""
+    """The ``ftRunInContainerStreamed`` result shape."""
 
     def __init__(self, iExitCode, sStdout, sStderr):
         self.iExitCode = iExitCode
@@ -82,7 +82,7 @@ class LocalShellContainer:
         )
         return completed.returncode, completed.stdout
 
-    def texecRunInContainerStreamed(self, sContainerId, sCommand, **kwargs):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand, **kwargs):
         """Return the streamed-exec result shape from a real shell run."""
         self.listCommands.append(sCommand)
         completed = subprocess.run(

@@ -202,21 +202,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._texecRunTypedRead",
-      "sDebtClass": "security-pinned",
-      "sReason": "the typed-read exemption grant point; its literal name is pinned by S_EXEMPTION_METHOD in tests/testMutationBoundary.py and an AGENTS.md paragraph (ruling R10)"
-    },
-    {
-      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.texecRunInContainerStreamed",
-      "sDebtClass": "security-pinned",
-      "sReason": "texec family: sibling of the pinned typed-read grant point; rename only with the mutation-boundary contract (ruling R10)"
-    },
-    {
-      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.texecRunInContainerStreamedWithChunks",
-      "sDebtClass": "security-pinned",
-      "sReason": "texec family: sibling of the pinned typed-read grant point; rename only with the mutation-boundary contract (ruling R10)"
-    },
-    {
       "sIdentity": "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe.read",
       "sDebtClass": "interface-method",
       "sReason": "file-like protocol method consumed by tarfile"

@@ -45,7 +45,7 @@ def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
         'printf "%s\\t%s\\n" "${sAgent}" "${sVersion}"; fi; done'
     )
     try:
-        resultExec = connectionDocker.texecRunInContainerStreamed(
+        resultExec = connectionDocker.ftRunInContainerStreamed(
             sContainerId, sCommand,
         )
     except Exception as exc:  # noqa: BLE001 — absence is a provenance fact

@@ -6,7 +6,7 @@ even when docker-py is not installed.
 Stream separation
 -----------------
 
-``texecRunInContainerStreamed`` is the canonical execution entry
+``ftRunInContainerStreamed`` is the canonical execution entry
 point. It captures stdout and stderr separately and returns an
 ``ExecResult`` dataclass so callers can render real container output
 distinctly from container-side error noise. The legacy
@@ -327,7 +327,7 @@ class DockerConnection:
         container = self._clientDocker.containers.get(sContainerId)
         return self._dictContainers.setdefault(sContainerId, container)
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None
     ):
         """Run a command, capturing stdout and stderr separately.
@@ -346,7 +346,7 @@ class DockerConnection:
             output, surface stderr as a distinct error region).
         """
         mutationAdmission.fnAssertContainerCommandAdmitted(
-            sContainerId, "texecRunInContainerStreamed",
+            sContainerId, "ftRunInContainerStreamed",
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
@@ -390,7 +390,7 @@ class DockerConnection:
             baStdout, baStderr = tOutput, None
         return baStdout or b"", baStderr or b""
 
-    def texecRunInContainerStreamedWithChunks(
+    def ftRunInContainerStreamedWithChunks(
         self, sContainerId, sCommand, fnEmitChunk,
         sWorkdir=None, sUser=None,
     ):
@@ -400,7 +400,7 @@ class DockerConnection:
         decoded text with the trailing newline stripped. Partial
         trailing data is buffered across docker-py chunks and flushed
         on process exit. Returns an :class:`ExecResult` with the same
-        contract as :meth:`texecRunInContainerStreamed` so callers can
+        contract as :meth:`ftRunInContainerStreamed` so callers can
         keep their post-exec bookkeeping unchanged.
 
         This is the durable-task exec primitive the carrier guards
@@ -412,7 +412,7 @@ class DockerConnection:
         never a writer nobody can name (the hazard ``exec_run`` hides).
         """
         mutationAdmission.fnAssertDurableExecAdmitted(
-            sContainerId, "texecRunInContainerStreamedWithChunks",
+            sContainerId, "ftRunInContainerStreamedWithChunks",
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
@@ -449,7 +449,7 @@ class DockerConnection:
         """Stream demuxed exec output, emitting one line at a time.
 
         ``dictAccum`` mirrors the streamed text for the legacy contract
-        in ``texecRunInContainerStreamedWithChunks``; the only in-tree
+        in ``ftRunInContainerStreamedWithChunks``; the only in-tree
         caller (the runner's chunk emitter) never reads ``sStdout`` /
         ``sStderr``. Multi-day runs accumulating every line in memory
         leak proportional to throughput, so when ``fnEmitChunk`` is
@@ -522,22 +522,22 @@ class DockerConnection:
 
         Merges stdout and stderr, matching the historical contract.
         Emits a ``DeprecationWarning`` so existing call sites surface
-        in audits while migrating to ``texecRunInContainerStreamed``.
+        in audits while migrating to ``ftRunInContainerStreamed``.
         """
         warnings.warn(
             "ftResultExecuteCommand merges stdout and stderr; "
-            "migrate to texecRunInContainerStreamed for split "
+            "migrate to ftRunInContainerStreamed for split "
             "streams.",
             DeprecationWarning,
             stacklevel=2,
         )
-        resultExec = self.texecRunInContainerStreamed(
+        resultExec = self.ftRunInContainerStreamed(
             sContainerId, sCommand, sWorkdir=sWorkdir, sUser=sUser,
         )
         sOutput = resultExec.sStdout + resultExec.sStderr
         return (resultExec.iExitCode, sOutput)
 
-    def _texecRunTypedRead(self, sContainerId, sOperation, sPath):
+    def _ftRunTypedRead(self, sContainerId, sOperation, sPath):
         """Run one NAMED read operation against a path, as a read.
 
         The single place the audited-read exemption is granted, and it
@@ -568,7 +568,7 @@ class DockerConnection:
         )
         tokenRead = mutationAdmission.ftokenEnterAuditedRead()
         try:
-            return self.texecRunInContainerStreamed(sContainerId, sCommand)
+            return self.ftRunInContainerStreamed(sContainerId, sCommand)
         finally:
             mutationAdmission.fnExitAuditedRead(tokenRead)
 
@@ -589,10 +589,10 @@ class DockerConnection:
         path.
 
         The command is not built here: this names a declared read
-        operation and :meth:`_texecRunTypedRead` builds it, so a path
+        operation and :meth:`_ftRunTypedRead` builds it, so a path
         cannot become program or shell syntax.
         """
-        resultExec = self._texecRunTypedRead(
+        resultExec = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath,
         )
         if resultExec.iExitCode != 0:
@@ -615,7 +615,7 @@ class DockerConnection:
         the caller supplies a PATH and never a command, and this method
         supplies only the NAME of a declared read operation. The program
         is fixed source text in :data:`_DICT_TYPED_READ_PROGRAMS`, and
-        :meth:`_texecRunTypedRead` does the substitution and the
+        :meth:`_ftRunTypedRead` does the substitution and the
         quoting -- so an adapter cannot pass a command even by mistake.
 
         Callers used to assemble ``f"ls -1 {sPath}"`` themselves and
@@ -627,7 +627,7 @@ class DockerConnection:
         an empty directory returns an empty list, which is a different
         answer and must stay one.
         """
-        resultExec = self._texecRunTypedRead(
+        resultExec = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_DIRECTORY, sDirectoryPath,
         )
         if resultExec.iExitCode != 0:

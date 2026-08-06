@@ -161,7 +161,7 @@ def _fnRefuseIfRunInFlight(sContainerId, iStepIndex):
 
 def _fsRequireCosmicRay(connectionDocker, sContainerId):
     """Return the container's cosmic-ray version or raise HTTP 409."""
-    resultExec = connectionDocker.texecRunInContainerStreamed(
+    resultExec = connectionDocker.ftRunInContainerStreamed(
         sContainerId, "cosmic-ray --version",
     )
     if resultExec.iExitCode != 0:
@@ -273,7 +273,7 @@ def _fdictRunMutationSync(
     )
     sWorkDirectory = posixpath.dirname(sSessionPath)
     sConfigPath = posixpath.join(sWorkDirectory, "cosmic-ray.toml")
-    resultExec = connectionDocker.texecRunInContainerStreamed(
+    resultExec = connectionDocker.ftRunInContainerStreamed(
         sContainerId,
         f"cosmic-ray init {fsShellQuote(sConfigPath)} "
         f"{fsShellQuote(sSessionPath)} && "
@@ -309,7 +309,7 @@ def _fsPrepareMutationSession(
         fsFalsificationStepSlug(dictStep.get("sDirectory", "")),
     )
     connectionDocker = dictCtx["docker"]
-    connectionDocker.texecRunInContainerStreamed(
+    connectionDocker.ftRunInContainerStreamed(
         sContainerId,
         f"rm -rf {fsShellQuote(sWorkDirectory)} && "
         f"mkdir -p {fsShellQuote(sWorkDirectory)}",
@@ -376,7 +376,7 @@ def _fdictSummarizeMutationSession(
     sSummaryPath = posixpath.join(
         posixpath.dirname(sSessionPath), "summarizeSession.py",
     )
-    resultSummary = connectionDocker.texecRunInContainerStreamed(
+    resultSummary = connectionDocker.ftRunInContainerStreamed(
         sContainerId,
         f"python {fsShellQuote(sSummaryPath)} "
         f"{fsShellQuote(sSessionPath)}",

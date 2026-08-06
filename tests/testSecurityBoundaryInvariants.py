@@ -194,7 +194,7 @@ class _MockDockerConnection:
                           iMode=None, iUid=None, iGid=None):
         self._dictFiles[sPath] = baContent
 
-    def texecRunInContainerStreamed(self, sContainerId, sCommand,
+    def ftRunInContainerStreamed(self, sContainerId, sCommand,
                                     sWorkdir=None, sUser=None):
         from types import SimpleNamespace
         return SimpleNamespace(iExitCode=0, sStdout="ok", sStderr="")

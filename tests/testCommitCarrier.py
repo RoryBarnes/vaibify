@@ -141,7 +141,7 @@ def clientWithProbeRoutes():
 
     @app.post("/api/carrier-probe/durable-exec")
     async def fnProbeDurableExec():
-        connectionDocker.texecRunInContainerStreamedWithChunks(
+        connectionDocker.ftRunInContainerStreamedWithChunks(
             S_CONTAINER_ID, "touch /tmp/effect", None, sUser="probe",
         )
         return {"bLaunched": True}
@@ -233,7 +233,7 @@ def test_route_durable_exec_without_mode_c_guard_is_refused(
     durable-task guard, before ``exec_create`` is ever reached.
 
     Kills: removing the ``fnAssertDurableExecAdmitted`` gate from
-    ``dockerConnection.texecRunInContainerStreamedWithChunks``.
+    ``dockerConnection.ftRunInContainerStreamedWithChunks``.
     """
     clientHttp, stubContainer, connectionDocker = clientWithProbeRoutes
     responseHttp = clientHttp.post("/api/carrier-probe/durable-exec")
@@ -955,7 +955,7 @@ def test_durable_task_journals_execs_through_create_journal_start():
 
         async def _fnBody():
             return await asyncio.to_thread(
-                connectionDocker.texecRunInContainerStreamedWithChunks,
+                connectionDocker.ftRunInContainerStreamedWithChunks,
                 S_CONTAINER_ID, "python run.py", None, None, "runner",
             )
 

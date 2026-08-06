@@ -180,7 +180,7 @@ async def _fdictRunOneTestCategory(
         [f"cd {fsShellQuote(sDirectory)}"] + list(listCommands))
     sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
     resultExec = await asyncio.to_thread(
-        dictCtx["docker"].texecRunInContainerStreamed,
+        dictCtx["docker"].ftRunInContainerStreamed,
         sContainerId, sCatCmd,
     )
     return {
@@ -319,7 +319,7 @@ async def _ftRunSaveAndRunTest(
         fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
     )
     return await asyncio.to_thread(
-        connectionDocker.texecRunInContainerStreamed,
+        connectionDocker.ftRunInContainerStreamed,
         sContainerId, sTestCmd,
     )
 
@@ -404,7 +404,7 @@ async def _ftRunCategoryCommands(
     """Run the category commands; return (resultExec, bPassed, sOutput)."""
     sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds)
     resultExec = await asyncio.to_thread(
-        connectionDocker.texecRunInContainerStreamed,
+        connectionDocker.ftRunInContainerStreamed,
         sContainerId, sFullCmd,
     )
     bPassed = resultExec.iExitCode == 0

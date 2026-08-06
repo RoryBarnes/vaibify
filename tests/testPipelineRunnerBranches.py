@@ -30,7 +30,7 @@ def _fMockDocker(iExitCode=0, sOutput=""):
 
 
 def _fnConfigureStreamingMock(mockDocker, listResults):
-    """Mirror the legacy mock onto texecRunInContainerStreamedWithChunks."""
+    """Mirror the legacy mock onto ftRunInContainerStreamedWithChunks."""
     from vaibify.docker.dockerConnection import ExecResult
     listPending = list(listResults)
 
@@ -48,7 +48,7 @@ def _fnConfigureStreamingMock(mockDocker, listResults):
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
         fnStreamingSideEffect
     )
 
@@ -147,7 +147,7 @@ def _flistAllExecutedCommands(mockDocker):
     listStreamed = [
         c.args[1]
         for c in
-        mockDocker.texecRunInContainerStreamedWithChunks.call_args_list
+        mockDocker.ftRunInContainerStreamedWithChunks.call_args_list
     ]
     return listLegacy + listStreamed
 

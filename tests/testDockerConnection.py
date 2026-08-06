@@ -193,7 +193,7 @@ def _fMockContainerWithUser(sUser):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_texecRunInContainerStreamed_defaults_to_image_user(mockGetDocker):
+def test_ftRunInContainerStreamed_defaults_to_image_user(mockGetDocker):
     """``docker exec`` defaults to the image's unprivileged user."""
     from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
     _CACHED_CONTAINER_USER.clear()
@@ -203,13 +203,13 @@ def test_texecRunInContainerStreamed_defaults_to_image_user(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id")
+    conn.ftRunInContainerStreamed("abc123", "id")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "researcher"
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_texecRunInContainerStreamed_explicit_root_overrides(mockGetDocker):
+def test_ftRunInContainerStreamed_explicit_root_overrides(mockGetDocker):
     """Callers that genuinely need root can opt in via ``sUser="root"``."""
     from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
     _CACHED_CONTAINER_USER.clear()
@@ -219,7 +219,7 @@ def test_texecRunInContainerStreamed_explicit_root_overrides(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id", sUser="root")
+    conn.ftRunInContainerStreamed("abc123", "id", sUser="root")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "root"
 
@@ -253,7 +253,7 @@ def test_resolve_user_falls_back_to_researcher_when_attrs_missing(
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id")
+    conn.ftRunInContainerStreamed("abc123", "id")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "researcher"
 
@@ -277,7 +277,7 @@ def test_resolve_user_ignores_run_user_zero_override(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id")
+    conn.ftRunInContainerStreamed("abc123", "id")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "researcher"
 
@@ -406,7 +406,7 @@ def test_fnWriteFileViaTar_sets_mtime_to_current_time(mockGetDocker):
 
 
 # -----------------------------------------------------------------------
-# texecRunInContainerStreamedWithChunks
+# ftRunInContainerStreamedWithChunks
 # -----------------------------------------------------------------------
 
 
@@ -435,7 +435,7 @@ def test_streamed_with_chunks_emits_per_line(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamedWithChunks(
+    resultExec = conn.ftRunInContainerStreamedWithChunks(
         "abc123", "do-it",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )
@@ -461,7 +461,7 @@ def test_streamed_with_chunks_buffers_partial_lines(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    conn.texecRunInContainerStreamedWithChunks(
+    conn.ftRunInContainerStreamedWithChunks(
         "abc123", "cmd",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )
@@ -480,7 +480,7 @@ def test_streamed_with_chunks_flushes_trailing_partial(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    conn.texecRunInContainerStreamedWithChunks(
+    conn.ftRunInContainerStreamedWithChunks(
         "abc123", "cmd",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )
@@ -496,7 +496,7 @@ def test_streamed_with_chunks_propagates_exit_code(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     _fMockExecForStream(mockClient, [(b"hi\n", None)], iExitCode=7)
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamedWithChunks(
+    resultExec = conn.ftRunInContainerStreamedWithChunks(
         "abc123", "cmd", lambda sStream, sLine: None,
     )
     assert resultExec.iExitCode == 7
@@ -511,7 +511,7 @@ def test_streamed_with_chunks_passes_workdir_and_user(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     _fMockExecForStream(mockClient, [])
     conn = DockerConnection()
-    conn.texecRunInContainerStreamedWithChunks(
+    conn.ftRunInContainerStreamedWithChunks(
         "abc123", "pwd", lambda sStream, sLine: None,
         sWorkdir="/workspace", sUser="root",
     )
@@ -581,7 +581,7 @@ def test_streaming_path_does_not_accumulate_lines(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamedWithChunks(
+    resultExec = conn.ftRunInContainerStreamedWithChunks(
         "abc123", "spew",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )

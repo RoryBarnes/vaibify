@@ -593,7 +593,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testMutationBoundary.py::testAnUnadmittedExecIsRefusedBeforeItRuns',
         source='vaibify/docker/dockerConnection.py',
         old="""        mutationAdmission.fnAssertContainerCommandAdmitted(
-            sContainerId, "texecRunInContainerStreamed",
+            sContainerId, "ftRunInContainerStreamed",
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
@@ -3328,7 +3328,7 @@ def _fdictEntry(sRel):
         nodeid='tests/testCommitCarrier.py::test_route_durable_exec_without_mode_c_guard_is_refused',
         source='vaibify/docker/dockerConnection.py',
         old='''        mutationAdmission.fnAssertDurableExecAdmitted(
-            sContainerId, "texecRunInContainerStreamedWithChunks",
+            sContainerId, "ftRunInContainerStreamedWithChunks",
         )''',
         new='''        pass''',
     ),

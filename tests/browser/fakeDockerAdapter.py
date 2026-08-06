@@ -208,7 +208,7 @@ class FailClosedDockerAdapter:
 
         The single fail-closed contract shared by BOTH exec surfaces —
         the blocking ``ftResultExecuteCommand`` and the streamed
-        ``texecRunInContainerStreamed``. Only commands the browser lane's
+        ``ftRunInContainerStreamed``. Only commands the browser lane's
         journeys actually issue are modelled, each mirrored by a Lane 2
         assertion; anything else raises ``UnmodelledContainerCall`` so a
         fabricated success can never stand in for a real one on either API.
@@ -269,7 +269,7 @@ class FailClosedDockerAdapter:
     ):
         self._dictFiles[sPath] = baContent
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         from types import SimpleNamespace

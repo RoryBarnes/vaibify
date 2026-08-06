@@ -151,7 +151,7 @@ class MockDockerBoost:
             return (1, "")
         return (0, "")
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         """Mirror legacy mock through ExecResult for migrated routes."""

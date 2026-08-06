@@ -1,7 +1,7 @@
 """Tests for the split-stream docker exec contract (audit F-R-01).
 
 These cover the new ``ExecResult`` dataclass, the new
-``texecRunInContainerStreamed`` entry point, and the legacy
+``ftRunInContainerStreamed`` entry point, and the legacy
 ``ftResultExecuteCommand`` backward-compat wrapper that now emits a
 ``DeprecationWarning`` while preserving the historical
 ``(iExitCode, sOutput)`` shape.
@@ -66,7 +66,7 @@ def test_ExecResult_equality_is_field_based():
 
 
 # ---------------------------------------------------------------------
-# texecRunInContainerStreamed
+# ftRunInContainerStreamed
 # ---------------------------------------------------------------------
 
 
@@ -81,7 +81,7 @@ def test_streamed_separates_stdout_and_stderr(mockGetDocker):
     )
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamed(
+    resultExec = conn.ftRunInContainerStreamed(
         "abc123", "echo split",
     )
     assert isinstance(resultExec, ExecResult)
@@ -100,7 +100,7 @@ def test_streamed_returns_exit_code(mockGetDocker):
     )
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamed(
+    resultExec = conn.ftRunInContainerStreamed(
         "abc123", "false",
     )
     assert resultExec.iExitCode == 7
@@ -119,7 +119,7 @@ def test_streamed_handles_none_streams(mockGetDocker):
     )
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamed(
+    resultExec = conn.ftRunInContainerStreamed(
         "abc123", "echo x",
     )
     assert resultExec.sStdout == "only stdout\n"
@@ -135,7 +135,7 @@ def test_streamed_passes_demux_to_exec_run(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "true")
+    conn.ftRunInContainerStreamed("abc123", "true")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["demux"] is True
 
@@ -149,7 +149,7 @@ def test_streamed_forwards_workdir_and_user(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed(
+    conn.ftRunInContainerStreamed(
         "abc123", "pwd",
         sWorkdir="/workspace", sUser="astro",
     )
@@ -180,7 +180,7 @@ def test_legacy_wrapper_emits_deprecation_warning(mockGetDocker):
         if issubclass(w.category, DeprecationWarning)
     ]
     assert len(listDeprecations) == 1
-    assert "texecRunInContainerStreamed" in str(
+    assert "ftRunInContainerStreamed" in str(
         listDeprecations[0].message)
 
 
@@ -217,7 +217,7 @@ async def test_save_and_run_test_route_exposes_stderr_separately():
     from vaibify.gui.routes import testRoutes
 
     mockDocker = MagicMock()
-    mockDocker.texecRunInContainerStreamed = MagicMock(
+    mockDocker.ftRunInContainerStreamed = MagicMock(
         return_value=ExecResult(
             iExitCode=1,
             sStdout="collected 1 item\n",

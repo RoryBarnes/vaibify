@@ -489,7 +489,7 @@ class ContainerRepoFiles:
     """Repo-file adapter that routes every operation through docker exec.
 
     ``connectionDocker`` is duck-typed: it must provide
-    ``texecRunInContainerStreamed``, ``fbaFetchFile``, and
+    ``ftRunInContainerStreamed``, ``fbaFetchFile``, and
     ``fnWriteFile`` (the ``DockerConnection`` contract). All repo
     paths are container-side POSIX paths rooted at ``sRootPath``.
     """
@@ -509,7 +509,7 @@ class ContainerRepoFiles:
 
     def _ftExec(self, sCommand):
         """Run one container command; return ``(iExitCode, sStdout)``."""
-        resultExec = self.connectionDocker.texecRunInContainerStreamed(
+        resultExec = self.connectionDocker.ftRunInContainerStreamed(
             self.sContainerId, sCommand,
         )
         return (resultExec.iExitCode, resultExec.sStdout)
@@ -668,7 +668,7 @@ class ContainerRepoFiles:
         """
         sJoined = " ".join(fsShellQuotePosix(s) for s in saCommand)
         sCommand = f"timeout {int(max(fTimeoutSeconds, 1))} {sJoined}"
-        resultExec = self.connectionDocker.texecRunInContainerStreamed(
+        resultExec = self.connectionDocker.ftRunInContainerStreamed(
             self.sContainerId, sCommand,
         )
         return (
@@ -908,7 +908,7 @@ class SnapshotRepoFiles:
             sRootPath, listScriptRelPaths, listHashRelPaths,
             listAbsHashPaths=listAbsHashPaths,
         )
-        resultExec = connectionDocker.texecRunInContainerStreamed(
+        resultExec = connectionDocker.ftRunInContainerStreamed(
             sContainerId, sCommand,
         )
         dictParsed = _fdictParseEmbeddedScriptOutput(resultExec.sStdout)

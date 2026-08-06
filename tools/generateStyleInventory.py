@@ -186,22 +186,6 @@ S_REASON_CLI_VERB = (
 # The scanner still finds these sites; this map only converts their
 # category and supplies the reason. Adding an entry is a review act.
 DICT_REVIEWED_DISPOSITIONS = {
-    "vaibify/docker/dockerConnection.py::DockerConnection.texecRunInContainerStreamed": (
-        S_CATEGORY_SECURITY_PINNED,
-        "texec family: sibling of the pinned typed-read grant point; "
-        "rename only with the mutation-boundary contract (ruling R10)",
-    ),
-    "vaibify/docker/dockerConnection.py::DockerConnection.texecRunInContainerStreamedWithChunks": (
-        S_CATEGORY_SECURITY_PINNED,
-        "texec family: sibling of the pinned typed-read grant point; "
-        "rename only with the mutation-boundary contract (ruling R10)",
-    ),
-    "vaibify/docker/dockerConnection.py::DockerConnection._texecRunTypedRead": (
-        S_CATEGORY_SECURITY_PINNED,
-        "the typed-read exemption grant point; its literal name is "
-        "pinned by S_EXEMPTION_METHOD in tests/testMutationBoundary.py "
-        "and an AGENTS.md paragraph (ruling R10)",
-    ),
     "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe.read": (
         S_CATEGORY_INTERFACE,
         "file-like protocol method consumed by tarfile",

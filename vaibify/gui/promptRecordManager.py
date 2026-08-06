@@ -63,7 +63,7 @@ _S_LIST_SCRIPT = (
 
 def fdictListContainerTranscripts(connectionDocker, sContainerId):
     """Return ``{sContainerPath: iSizeBytes}`` for agent transcripts."""
-    resultExec = connectionDocker.texecRunInContainerStreamed(
+    resultExec = connectionDocker.ftRunInContainerStreamed(
         sContainerId, _S_LIST_SCRIPT,
     )
     if resultExec.iExitCode != 0:

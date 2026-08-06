@@ -1085,8 +1085,8 @@ def testNoUnscopedDockerExecOutsideConnection():
 
 
 _SET_DISPATCHER_METHOD_NAMES = frozenset({
-    "texecRunInContainerStreamed",
-    "texecRunInContainerStreamedWithChunks",
+    "ftRunInContainerStreamed",
+    "ftRunInContainerStreamedWithChunks",
     "ftResultExecuteCommand",
     "fsExecCreate",
 })

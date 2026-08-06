@@ -56,7 +56,7 @@ def _fMockDocker(iExitCode=0, sOutput=""):
 
 
 def _fnConfigureStreamingMock(mockDocker, listResults):
-    """Set ``texecRunInContainerStreamedWithChunks`` to stream listResults.
+    """Set ``ftRunInContainerStreamedWithChunks`` to stream listResults.
 
     Each ``(iExitCode, sOutput)`` is consumed by one call to the
     streaming method. The mock walks ``sOutput`` line-by-line and
@@ -80,7 +80,7 @@ def _fnConfigureStreamingMock(mockDocker, listResults):
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
         fnStreamingSideEffect
     )
 
@@ -947,7 +947,7 @@ def test_ftRunCommandList_threads_env_prefix_to_executed_command():
         mockDocker, "cid", ["echo hi"],
         "/work", dictVariables, fnCallback,
     ))
-    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+    sExecuted = mockDocker.ftRunInContainerStreamedWithChunks \
         .call_args[0][1]
     assert "SOURCE_DATE_EPOCH=42" in sExecuted
 
@@ -958,7 +958,7 @@ def test_ftRunSingleCommand_no_env_prefix_by_default():
     _fnRunAsync(_ftRunSingleCommand(
         mockDocker, "cid", "echo hi", "echo hi", "/work", fnCallback,
     ))
-    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+    sExecuted = mockDocker.ftRunInContainerStreamedWithChunks \
         .call_args[0][1]
     assert "SOURCE_DATE_EPOCH" not in sExecuted
 

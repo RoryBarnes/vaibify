@@ -354,7 +354,7 @@ def test_config_toml_defaults_to_per_mutant_timeout():
 
 def test_require_cosmic_ray_returns_version():
     mockDocker = MagicMock()
-    mockDocker.texecRunInContainerStreamed = MagicMock(
+    mockDocker.ftRunInContainerStreamed = MagicMock(
         return_value=ExecResult(
             iExitCode=0, sStdout="cosmic-ray, version 8.4.6\n",
             sStderr="",
@@ -367,7 +367,7 @@ def test_require_cosmic_ray_returns_version():
 
 def test_require_cosmic_ray_raises_409_when_absent():
     mockDocker = MagicMock()
-    mockDocker.texecRunInContainerStreamed = MagicMock(
+    mockDocker.ftRunInContainerStreamed = MagicMock(
         return_value=ExecResult(
             iExitCode=127, sStdout="", sStderr="not found",
         ),

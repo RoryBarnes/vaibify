@@ -39,7 +39,7 @@ class FakeExecDockerConnection:
         self.listCommands = []
         self.listWrites = []
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         self.listCommands.append((sContainerId, sCommand))
@@ -367,7 +367,7 @@ class _CannedExecConnection:
         self.iExitCode = iExitCode
         self.sStdout = sStdout
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         self.listCommands.append((sContainerId, sCommand))

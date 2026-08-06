@@ -60,7 +60,7 @@ def _fnConfigureStreamingMock(mockDocker, listResults):
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
         fnStreamingSideEffect
     )
 

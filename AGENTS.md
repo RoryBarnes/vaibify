@@ -490,7 +490,7 @@ remainder is deliberate and named, never a silent claim of coverage.
 **A typed read is exempt only inside its adapter.** Reading a file
 means running a program in the container, so guarding the exec would
 refuse reads too. Exactly one private method,
-`DockerConnection._texecRunAuditedRead`, grants the exemption, and
+`DockerConnection._ftRunTypedRead`, grants the exemption, and
 every command through it must be BUILT by its adapter from a path or an
 identifier. An adapter that forwarded a caller's string would turn the
 read carve-out into a general bypass —

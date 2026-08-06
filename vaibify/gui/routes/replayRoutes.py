@@ -311,7 +311,7 @@ def _fnReplaceRootWithSymlink(dictCtx, sContainerId, dictWorkflow, request):
         + fsShellQuote(S_PROJECT_CONTEXT_RELATIVE_PATH)
         + " " + fsShellQuote(sBasename)
     )
-    resultExec = dictCtx["docker"].texecRunInContainerStreamed(
+    resultExec = dictCtx["docker"].ftRunInContainerStreamed(
         sContainerId, sCommand,
     )
     if resultExec.iExitCode != 0:
