@@ -6550,4 +6550,226 @@ def _fdictEntry(sRel):
             '            listPlots, sFileName)\n'
         ),
     ),
+
+    # --- The Sync panel's remaining Overleaf and Zenodo routes ---
+    # (2026-08-06). Each mode-(b) mutant reverts the route to the bare
+    # ``asyncio.to_thread`` it used before migration, which is the
+    # state the migration exists to leave behind: no mutation lock, no
+    # journal record, so a transfer arriving mid-flight sees an idle
+    # container. Each mode-(a) mutant reverts a ``fnCommitWorkflowSave``
+    # to the raw ``dictCtx["save"]``.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafDiffDigestsItsFilesUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        return await _fdictBuildDiffUnderTheDrain(\n'
+            '            dictCtx, sContainerId, sProjectId, request, '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return await asyncio.to_thread(\n'
+            '            _fdictBuildDiffResult,\n'
+            '            dictCtx, sContainerId, sProjectId, request,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheManuscriptPullWritesItsIgnoreUnderTheSameDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    return await _fdictPullManuscriptUnderTheDrain(\n'
+            '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
+            '        listPullPaths, sTargetDirectory, requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await asyncio.to_thread(\n'
+            '        _fdictPullManuscriptBlocking,\n'
+            '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
+            '        listPullPaths, sTargetDirectory,\n'
+            '    )\n'
+        ),
+    ),
+
+    # The two mirror mutants are not carrier removals -- these routes
+    # HAVE no carrier, which is the claim. Each gives the route a
+    # container touch, and the enforced branch refuses it, which is
+    # what makes an empty gated ledger evidence rather than an
+    # assumption.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheMirrorRefreshReachesNoContainerPrimitive'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        bSuccess, result = await asyncio.to_thread(\n'
+            '            syncDispatcher.ftRefreshOverleafMirror, '
+            'sProjectId,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "git fetch --all",\n'
+            '        )\n'
+            '        bSuccess, result = await asyncio.to_thread(\n'
+            '            syncDispatcher.ftRefreshOverleafMirror, '
+            'sProjectId,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheMirrorDeleteReachesNoContainerPrimitive'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        await asyncio.to_thread(\n'
+            '            overleafMirror.fnDeleteMirror, sProjectId,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "rm -rf /tmp/mirror",\n'
+            '        )\n'
+            '        await asyncio.to_thread(\n'
+            '            overleafMirror.fnDeleteMirror, sProjectId,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoMetadataSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '            "The Zenodo metadata save",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCredentialSetupProbesTheServiceUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictResult = await _fdictRunSetupUnderTheDrain(\n'
+            '            dictCtx, sContainerId, request, requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResult = await asyncio.to_thread(\n'
+            '            _fdictRunSetupBlocking, dictCtx, sContainerId, '
+            'request,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCredentialSetupSavesItsBindingSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '            fnCommitWorkflowSave(\n'
+            '                dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '                "The Overleaf project binding",\n'
+            '            )\n'
+        ),
+        new='            dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    # The archive handler carries THREE mutations and the three mutants
+    # below cascade in one direction, which is the diagnosis to keep:
+    # the upload's mutant fails all three tests, the digests' fails two,
+    # and the save's fails one. That is sequencing -- an unadmitted exec
+    # 500s the handler before the next carrier is reached -- and no test
+    # can separate a downstream carrier from an upstream refusal in a
+    # straight-line handler.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoUploadRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testTheZenodoDigestPassRunsUnderItsOwnDrain and
+        # testTheZenodoArchiveRecordCommitsSynchronously, both of which
+        # need the upload to have succeeded before their own carrier
+        # runs at all.
+        old=(
+            '    iExit, sOut = await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnArchiveToZenodo, "zenodo-archive", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    iExit, sOut = await asyncio.to_thread(\n'
+            '        syncDispatcher.ftResultArchiveToZenodo,\n'
+            '        dictCtx["docker"], sContainerId, sZenodoService,\n'
+            '        request.listFilePaths, dictMetadata, '
+            'iParentDepositId,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoDigestPassRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testTheZenodoArchiveRecordCommitsSynchronously -- the refused
+        # digest exec 500s the handler before the save is reached.
+        old=(
+            '    dictDigests = await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnComputeTheDigests, '
+            '"zenodo-archive-digests",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictDigests = await asyncio.to_thread(\n'
+            '        _fdictComputePostArchiveZenodoDigests,\n'
+            '        dictCtx, sContainerId, dictWorkflow, '
+            'request.listFilePaths,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoArchiveRecordCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    fnCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The Zenodo archive record",\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
 ]

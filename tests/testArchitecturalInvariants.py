@@ -4135,7 +4135,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # cannot await the three ``to_thread`` hops it used to make. The
     # remaining ten routes in this module have NOT been migrated, so
     # this entry will need raising again before it may start falling.
-    "routes/syncRoutes.py": 2720,
+    # +257 (2026-08-06): carrier plumbing for eight more of this
+    # module's routes — the two Overleaf mirror routes (declaration
+    # and rationale only, both act on the HOST mirror), the diff, the
+    # manuscript pull, the credential setup, and the three Zenodo
+    # routes. The bulk is not the declarations: it is the synchronous
+    # twins a mode-(b) worker needs, because that worker runs in a
+    # thread and cannot await the ``to_thread`` hops these chains used
+    # to make. Two routes remain awaiting here — the GitHub and
+    # Overleaf pushes — after which this entry may start falling.
+    "routes/syncRoutes.py": 2977,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.

@@ -325,7 +325,6 @@ S_CARRIER_DECLARATION_SEPARATOR = "+"
 # three records still add back up to the resolved population, so
 # neither can quietly leave it.
 SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
-    ("DELETE", "/api/overleaf/{sContainerId}/mirror"),
     ("DELETE", "/api/workflow/{sContainerId}/determinism"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
@@ -377,12 +376,8 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/containers/{sName}/start/cancel"),
     ("POST", "/api/containers/{sName}/stop"),
     ("POST", "/api/github/{sContainerId}/push"),
-    ("POST", "/api/overleaf/{sContainerId}/diff"),
-    ("POST", "/api/overleaf/{sContainerId}/mirror/refresh"),
-    ("POST", "/api/overleaf/{sContainerId}/pull-manuscript"),
     ("POST", "/api/overleaf/{sContainerId}/push"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"),
-    ("POST", "/api/sync/{sContainerId}/setup"),
     ("POST", "/api/workflow/{sContainerId}/ai-declaration/generate-template"),
     ("POST", "/api/workflow/{sContainerId}/binaries/capture"),
     ("POST", "/api/workflow/{sContainerId}/binaries/declare"),
@@ -392,9 +387,7 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/workflow/{sContainerId}/level3/reproduce-script"),
     ("POST", "/api/workflow/{sContainerId}/level3/verify"),
     ("POST", "/api/workflow/{sContainerId}/manifest/verify"),
-    ("POST", "/api/zenodo/{sContainerId}/archive"),
     ("POST", "/api/zenodo/{sContainerId}/download"),
-    ("POST", "/api/zenodo/{sContainerId}/metadata"),
 })
 
 

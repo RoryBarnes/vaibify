@@ -19,16 +19,19 @@ from .. import containerGit, workflowManager
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     fdictRunRemoteVerifyBlocking,
     ffilesForWorkflow,
     fnCommitWorkflowSave,
     fnRejectAgentTokenLane,
+    fobjRunWorkerUnderTheDrain,
     fsRefreshVerifyCacheAfterPush,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_SEPARATE_AUTHORITY,
     fnDeclareCarrierMode,
 )
 from ..pipelineServer import (
@@ -513,7 +516,7 @@ def _flistManuscriptMirrorPaths(syncDispatcher, sProjectId):
 
 
 async def _fdictHandlePullManuscript(
-    syncDispatcher, dictCtx, sContainerId,
+    syncDispatcher, dictCtx, sContainerId, requestHttp,
 ):
     """Pull the Overleaf manuscript sources into the project repo.
 
@@ -554,8 +557,63 @@ async def _fdictHandlePullManuscript(
             ),
         )
     sTargetDirectory = posixpath.join(sRepo, ".vaibify", "manuscript")
-    iExitCode, sOutput = await asyncio.to_thread(
-        syncDispatcher.ftResultPullFromOverleaf,
+    return await _fdictPullManuscriptUnderTheDrain(
+        syncDispatcher, dictCtx, sContainerId, sProjectId,
+        listPullPaths, sTargetDirectory, requestHttp,
+    )
+
+
+async def _fdictPullManuscriptUnderTheDrain(
+    syncDispatcher, dictCtx, sContainerId, sProjectId,
+    listPullPaths, sTargetDirectory, requestHttp,
+):
+    """Pull the sources and write their ``.gitignore`` under one drain.
+
+    Two container mutations, one carrier: the pull writes the manuscript
+    files and the ``.gitignore`` that keeps them out of the researcher's
+    commits is what makes the pull safe. Splitting them across two
+    carriers would let a hand-over land between the files arriving and
+    the ignore rule that hides them, and the successor's first ``git
+    status`` would show the whole manuscript as untracked changes.
+
+    The mirror LISTING that chose ``listPullPaths`` stays outside: it
+    reads the host-side clone and touches no container state.
+
+    A non-zero exit is carried back rather than raised. The pull ran to
+    completion and reported its own failure — a bad token, an
+    unreachable remote — so the container's state is known, and a raise
+    would settle through the failure path and quarantine the container
+    over a network blip. That is the same judgement the git panel makes
+    about a failed ``git fetch``, which is why 502 is named here.
+    """
+    def fnPullTheManuscript(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictPullManuscriptBlocking(
+                syncDispatcher, dictCtx, sContainerId, sProjectId,
+                listPullPaths, sTargetDirectory,
+            ),
+            setAlsoCarriedStatusCodes=frozenset({502}),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnPullTheManuscript, "overleaf-pull-manuscript",
+        requestHttp,
+    )
+
+
+def _fdictPullManuscriptBlocking(
+    syncDispatcher, dictCtx, sContainerId, sProjectId,
+    listPullPaths, sTargetDirectory,
+):
+    """Run the pull and write the self-ignoring ``.gitignore``.
+
+    Synchronous because a mode-(b) worker runs in a thread and cannot
+    await: the two ``to_thread`` hops became direct calls, which is the
+    same work on the same thread rather than two round-trips onto two
+    of them.
+    """
+    iExitCode, sOutput = syncDispatcher.ftResultPullFromOverleaf(
         dictCtx["docker"], sContainerId, sProjectId,
         listPullPaths, sTargetDirectory,
     )
@@ -585,9 +643,12 @@ def _fnRegisterPullManuscript(app, dictCtx):
 
     @fnAgentAction("pull-manuscript")
     @app.post("/api/overleaf/{sContainerId}/pull-manuscript")
-    async def fnPullManuscript(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnPullManuscript(
+        sContainerId: str, requestHttp: Request,
+    ):
         return await _fdictHandlePullManuscript(
-            syncDispatcher, dictCtx, sContainerId,
+            syncDispatcher, dictCtx, sContainerId, requestHttp,
         )
 
 
@@ -641,8 +702,12 @@ def _fnRegisterZenodoArchive(app, dictCtx):
 
     @fnAgentAction("publish-to-zenodo")
     @app.post("/api/zenodo/{sContainerId}/archive")
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
     async def fnZenodoArchive(
         sContainerId: str, request: SyncPushRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
@@ -650,33 +715,55 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         dictResult, sZenodoService = await _ftPerformZenodoArchive(
-            syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
+            syncDispatcher, dictCtx, sContainerId, dictWorkflow,
+            request, requestHttp,
         )
         if not dictResult["bSuccess"]:
             return dictResult
         await _fnPersistZenodoArchiveSuccess(
             dictCtx, sContainerId, dictWorkflow, request,
-            dictResult, sZenodoService,
+            dictResult, sZenodoService, requestHttp,
         )
         return dictResult
 
 
 async def _ftPerformZenodoArchive(
     syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
+    requestHttp,
 ):
-    """Upload to Zenodo and parse the per-deposit response.
+    """Upload to Zenodo under the drain and parse the deposit response.
 
     Returns ``(dictResult, sZenodoService)``. On failure the parsed
     Zenodo metadata is not merged into ``dictResult`` so callers can
     short-circuit before persisting.
+
+    Mode (b): the upload streams the researcher's selected outputs to a
+    remote archive from inside the container, for as long as the files
+    and the network take. Holding the drain for the worker's life is
+    what keeps an ownership hand-over from landing while a deposit is
+    half-published — Zenodo mints a DOI at the end, so a container that
+    changed hands mid-upload would leave the successor unable to say
+    whether the archive exists.
+
+    Nothing here raises for a failed upload: the dispatcher reports its
+    exit code, the route turns it into ``bSuccess: False``, and a worker
+    that raised would quarantine the container over a rejected token.
     """
     sZenodoService = dictWorkflow.get("sZenodoService", "sandbox")
     dictMetadata = _fdictResolveZenodoMetadataForArchive(dictWorkflow)
     iParentDepositId = _fiReadParentDepositId(dictWorkflow)
-    iExit, sOut = await asyncio.to_thread(
-        syncDispatcher.ftResultArchiveToZenodo,
-        dictCtx["docker"], sContainerId, sZenodoService,
-        request.listFilePaths, dictMetadata, iParentDepositId,
+
+    def fnArchiveToZenodo(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: syncDispatcher.ftResultArchiveToZenodo(
+                dictCtx["docker"], sContainerId, sZenodoService,
+                request.listFilePaths, dictMetadata, iParentDepositId,
+            ),
+        )
+
+    iExit, sOut = await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnArchiveToZenodo, "zenodo-archive", requestHttp,
     )
     dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)
     if dictResult["bSuccess"]:
@@ -686,21 +773,41 @@ async def _ftPerformZenodoArchive(
 
 async def _fnPersistZenodoArchiveSuccess(
     dictCtx, sContainerId, dictWorkflow, request,
-    dictResult, sZenodoService,
+    dictResult, sZenodoService, requestHttp,
 ):
-    """Persist the publish record, refresh digests, save the workflow."""
+    """Persist the publish record, refresh digests, save the workflow.
+
+    The digest pass is its own mode-(b) invocation rather than sharing
+    the upload's: the upload's supervisor released the drain when its
+    worker terminated, which is the property that makes mode (b) worth
+    having. The save that follows is a mode-(a) synchronous commit
+    whose bytes the journal can adjudicate.
+    """
     _fnPersistZenodoPublishRecord(dictWorkflow, dictResult)
     workflowManager.fnUpdateSyncStatus(
         dictWorkflow, request.listFilePaths, "Zenodo",
     )
-    dictDigests = await asyncio.to_thread(
-        _fdictComputePostArchiveZenodoDigests,
-        dictCtx, sContainerId, dictWorkflow, request.listFilePaths,
+
+    def fnComputeTheDigests(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictComputePostArchiveZenodoDigests(
+                dictCtx, sContainerId, dictWorkflow,
+                request.listFilePaths,
+            ),
+        )
+
+    dictDigests = await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnComputeTheDigests, "zenodo-archive-digests",
+        requestHttp,
     )
     workflowManager.fnUpdateZenodoDigests(
         dictWorkflow, dictDigests, sZenodoService=sZenodoService,
     )
-    dictCtx["save"](sContainerId, dictWorkflow)
+    fnCommitWorkflowSave(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        "The Zenodo archive record",
+    )
 
 
 def _fnRegisterZenodoDeposit(app, dictCtx):
@@ -747,8 +854,10 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
 
     @fnAgentAction("set-zenodo-metadata")
     @app.post("/api/zenodo/{sContainerId}/metadata")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnSetZenodoMetadata(
         sContainerId: str, request: ZenodoMetadataRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -763,7 +872,10 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
             raise HTTPException(
                 status_code=400, detail=str(error),
             )
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The Zenodo metadata save",
+        )
         return workflowManager.fdictGetZenodoMetadata(dictWorkflow)
 
 
@@ -1347,23 +1459,27 @@ _S_OVERLEAF_REMEDIATION = (
 _I_OVERLEAF_STDERR_MAX = 200
 
 
-async def _fbRunOverleafValidation(
+def _fbRunOverleafValidation(
     syncDispatcher, connectionDocker, sContainerId, sProjectId,
 ):
-    """Run Overleaf credential validation in a worker thread.
+    """Validate the stored Overleaf credential against the project.
 
     Returns ``(bSuccess, sStderr)`` so the caller can surface the
     underlying git message in the remediation toast.
+
+    Synchronous because the whole setup flow now runs inside a mode-(b)
+    worker, which is already off the event loop and cannot await: the
+    ``to_thread`` hop this replaced would have been a second thread
+    doing the same work.
     """
     if not sProjectId:
         return (False, "")
-    return await asyncio.to_thread(
-        syncDispatcher.fbValidateOverleafCredentials,
+    return syncDispatcher.fbValidateOverleafCredentials(
         connectionDocker, sContainerId, sProjectId,
     )
 
 
-async def _ftRunServiceValidation(
+def _ftRunServiceValidation(
     syncDispatcher, sService, connectionDocker,
     sContainerId, sProjectId, sZenodoInstance="",
 ):
@@ -1377,13 +1493,12 @@ async def _ftRunServiceValidation(
         sZenodoService = syncDispatcher.fsZenodoInstanceToService(
             sZenodoInstance or "sandbox"
         )
-        bPass = await asyncio.to_thread(
-            syncDispatcher.fbValidateZenodoToken,
+        bPass = syncDispatcher.fbValidateZenodoToken(
             connectionDocker, sContainerId, sZenodoService,
         )
         return (bPass, "")
     if sService == "overleaf":
-        return await _fbRunOverleafValidation(
+        return _fbRunOverleafValidation(
             syncDispatcher, connectionDocker,
             sContainerId, sProjectId,
         )
@@ -1479,7 +1594,7 @@ def _fnDispatchStore(
     )
 
 
-async def _fdictStoreValidateCredential(
+def _fdictStoreValidateCredential(
     dictCtx, sContainerId, sService, sToken, sProjectId,
     sZenodoInstance="",
 ):
@@ -1509,7 +1624,7 @@ async def _fdictStoreValidateCredential(
             syncDispatcher, dictCtx, sContainerId, tSlots[1],
         )
         return dictStoreFail
-    dictResult = await _fdictValidateStoredCredential(
+    dictResult = _fdictValidateStoredCredential(
         dictCtx, sContainerId, sService, sProjectId,
         sZenodoInstance,
     )
@@ -1656,7 +1771,7 @@ def _fnAppendTokenDisposition(dictResult, bRestored):
     ) + sDisposition
 
 
-async def _fdictValidateStoredCredential(
+def _fdictValidateStoredCredential(
     dictCtx, sContainerId, sService, sProjectId,
     sZenodoInstance="",
 ):
@@ -1666,7 +1781,7 @@ async def _fdictValidateStoredCredential(
         dictCtx["docker"], sContainerId, sService)
     if not dictResult["bConnected"]:
         return dictResult
-    bValid, sDetail = await _ftRunServiceValidation(
+    bValid, sDetail = _ftRunServiceValidation(
         syncDispatcher, sService, dictCtx["docker"],
         sContainerId, sProjectId, sZenodoInstance,
     )
@@ -1704,30 +1819,66 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         )
 
     @app.post("/api/sync/{sContainerId}/setup")
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
     async def fnSetupConnection(
         sContainerId: str, request: SyncSetupRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         syncDispatcher.fnValidateServiceName(request.sService)
-        dictResult = await _fdictRunSetup(
-            dictCtx, sContainerId, request,
+        dictResult = await _fdictRunSetupUnderTheDrain(
+            dictCtx, sContainerId, request, requestHttp,
         )
         if dictResult.get("bConnected"):
             _fnPersistServiceSettings(
-                dictCtx, sContainerId, request,
+                dictCtx, sContainerId, request, requestHttp,
             )
         return dictResult
 
-    async def _fdictRunSetup(dictCtx, sContainerId, request):
+    async def _fdictRunSetupUnderTheDrain(
+        dictCtx, sContainerId, request, requestHttp,
+    ):
+        """Store and validate the credential holding the drain.
+
+        Mode (b), and the drain is the point rather than a formality.
+        Storing a token is a stage-validate-commit sequence over a
+        SHARED slot: the previous credential is snapshotted, the new
+        one overwrites it, a remote is contacted, and a failure
+        restores the snapshot. A second session's setup interleaving
+        between the snapshot and the restore would swap the two
+        researchers' tokens, and neither would be told.
+
+        The journal target is the compile-time constant below. Nothing
+        derived from the request reaches it -- not the token, not the
+        project id, not the service name -- because a journal record
+        outlives the request and is read back by ``vaibify
+        reconcile``.
+        """
+        def fnRunTheSetup(supervisor=None):
+            del supervisor
+            return fdictCarryARefusalBackInsteadOfRaising(
+                lambda: _fdictRunSetupBlocking(
+                    dictCtx, sContainerId, request,
+                ),
+            )
+
+        return await fobjRunWorkerUnderTheDrain(
+            sContainerId, fnRunTheSetup, "sync-credential-setup",
+            requestHttp,
+        )
+
+    def _fdictRunSetupBlocking(dictCtx, sContainerId, request):
         sZenodoInstance = _fsResolveZenodoInstance(request)
         if request.sToken:
-            return await _fdictStoreValidateCredential(
+            return _fdictStoreValidateCredential(
                 dictCtx, sContainerId, request.sService,
                 request.sToken, request.sProjectId or "",
                 sZenodoInstance,
             )
         if _fbServiceHasStoredCredential(request.sService):
-            return await _fdictValidateStoredCredential(
+            return _fdictValidateStoredCredential(
                 dictCtx, sContainerId, request.sService,
                 request.sProjectId or "",
                 sZenodoInstance,
@@ -1735,15 +1886,22 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         return syncDispatcher.fdictCheckConnectivity(
             dictCtx["docker"], sContainerId, request.sService)
 
-    def _fnPersistServiceSettings(dictCtx, sContainerId, request):
+    def _fnPersistServiceSettings(
+        dictCtx, sContainerId, request, requestHttp,
+    ):
         if request.sService == "overleaf" and request.sProjectId:
             dictWorkflow = fdictRequireWorkflow(
                 dictCtx["workflows"], sContainerId)
             dictWorkflow["sOverleafProjectId"] = request.sProjectId
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fnCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The Overleaf project binding",
+            )
             return
         if request.sService == "zenodo":
-            _fnPersistZenodoService(dictCtx, sContainerId, request)
+            _fnPersistZenodoService(
+                dictCtx, sContainerId, request, requestHttp,
+            )
 
     @app.get("/api/sync/{sContainerId}/check/{sService}")
     async def fnCheckConnection(
@@ -1938,7 +2096,9 @@ def _fsResolveZenodoInstance(request):
     return sRequested
 
 
-def _fnPersistZenodoService(dictCtx, sContainerId, request):
+def _fnPersistZenodoService(
+    dictCtx, sContainerId, request, requestHttp,
+):
     """Record which Zenodo service a successful setup chose."""
     from .. import syncDispatcher
     sInstance = _fsResolveZenodoInstance(request)
@@ -1949,7 +2109,10 @@ def _fnPersistZenodoService(dictCtx, sContainerId, request):
     dictWorkflow["sZenodoService"] = (
         syncDispatcher.fsZenodoInstanceToService(sInstance)
     )
-    dictCtx["save"](sContainerId, dictWorkflow)
+    fnCommitWorkflowSave(
+        dictCtx, sContainerId, dictWorkflow, requestHttp,
+        "The Zenodo instance selection",
+    )
 
 
 def _fnRegisterDag(app, dictCtx):
@@ -2015,6 +2178,21 @@ def _fnRegisterDatasetDownload(app, dictCtx):
     """Register Zenodo dataset download endpoint."""
     from .. import syncDispatcher
 
+    # NOT MIGRATED, and deliberately so (2026-08-06). This route calls
+    # ``syncDispatcher.ftResultDownloadDataset``, which exists NOWHERE
+    # in the repository: every call raises ``AttributeError`` and
+    # answers 500. Its two tests patch the name into being with
+    # ``create=True``, so the suite exercises a function the product
+    # does not have. The route is advertised to the in-container agent
+    # as ``download-zenodo-dataset`` with ``bAgentSafe: True``.
+    #
+    # Migrating it would make that WORSE rather than better: inside a
+    # carrier the AttributeError settles through the failure path,
+    # poisons the journal record and QUARANTINES the container until
+    # the researcher runs ``vaibify reconcile`` -- so a broken button
+    # would take a working container out of service. It keeps the
+    # legacy ambient mint until the dispatcher exists and the route can
+    # be migrated against behaviour somebody has actually run.
     @fnAgentAction("download-zenodo-dataset")
     @app.post("/api/zenodo/{sContainerId}/download")
     async def fnDownloadDataset(
@@ -2062,7 +2240,15 @@ def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
     from .. import syncDispatcher
 
     @fnAgentAction("refresh-overleaf-mirror")
+    # separate-authority, not a carrier mode. The refresh fetches into
+    # the HOST-side partial clone and writes nothing inside the
+    # container -- ``ftRefreshOverleafMirror`` takes no docker
+    # connection at all. What governs it is the project-id validation
+    # that bounds the mirror path, plus the host keyring lookup for the
+    # token; the commit carrier governs container state, which this
+    # never touches. Ruling 2026-08-05.
     @app.post("/api/overleaf/{sContainerId}/mirror/refresh")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnRefreshMirror(sContainerId: str):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
@@ -2143,8 +2329,10 @@ def _fnRegisterOverleafDiff(app, dictCtx):
     from .. import syncDispatcher
 
     @app.post("/api/overleaf/{sContainerId}/diff")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnOverleafDiff(
         sContainerId: str, request: OverleafDiffRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
@@ -2155,10 +2343,44 @@ def _fnRegisterOverleafDiff(app, dictCtx):
         await asyncio.to_thread(
             syncDispatcher.ftRefreshOverleafMirror, sProjectId,
         )
-        return await asyncio.to_thread(
-            _fdictBuildDiffResult,
-            dictCtx, sContainerId, sProjectId, request,
+        return await _fdictBuildDiffUnderTheDrain(
+            dictCtx, sContainerId, sProjectId, request, requestHttp,
         )
+
+
+async def _fdictBuildDiffUnderTheDrain(
+    dictCtx, sContainerId, sProjectId, request, requestHttp,
+):
+    """Compute the push preview holding the container's mutation drain.
+
+    The preview looks like a read and is not one at the boundary that
+    matters: ``fdictDiffOverleafPush`` digests the selected files by
+    running a ``python3 -c`` script inside the container through
+    ``ftResultExecuteCommand``, a GENERAL exec. The primitive cannot
+    know that particular text only hashes, so it is admitted as a
+    mutation or refused — there is no third answer, and the typed-read
+    carve-out is reserved for commands its adapter BUILDS.
+
+    Mode (b) rather than (a) because the work is a container round-trip
+    over the researcher's whole selection plus host-side git object
+    reads, neither of which belongs on the event loop.
+
+    The mirror refresh that precedes this in the handler stays outside
+    the carrier deliberately: it is a host-side fetch that touches no
+    container state, so wrapping it would journal a container operation
+    that never happens.
+    """
+    def fnBuildTheDiff(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictBuildDiffResult(
+                dictCtx, sContainerId, sProjectId, request,
+            ),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnBuildTheDiff, "overleaf-diff", requestHttp,
+    )
 
 
 def _fdictBuildDiffResult(
@@ -2219,7 +2441,16 @@ def _fnRegisterOverleafMirrorDelete(app, dictCtx):
     """Register DELETE /api/overleaf/{id}/mirror endpoint."""
 
     @fnAgentAction("delete-overleaf-mirror")
+    # separate-authority, not a carrier mode. The mirror is a partial
+    # clone under the researcher's own ``~/.vaibify`` mirror root, on
+    # the HOST; this route reaches the container not at all. What
+    # governs it is ``overleafMirror.fnValidateOverleafProjectId``,
+    # which bounds the id to the shape a directory name may take before
+    # ``_fsMirrorPath`` joins it under the mirror root, so no request
+    # value can steer the ``rmtree`` outside that tree. Ruling
+    # 2026-08-05, same reasoning as fileRoutes' host pull.
     @app.delete("/api/overleaf/{sContainerId}/mirror")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnDeleteMirror(sContainerId: str):
         dictCtx["require"]()
         sProjectId = _fsRequireOverleafProjectId(

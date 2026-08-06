@@ -4828,3 +4828,533 @@ def testAnOutOfRangeStepIsRefusedBeforeTheContainerIsTouched(
         "carrier and the container was marked: "
         f"{connectionDocker.listAdmittedPrimitives}"
     )
+
+
+# ---------------------------------------------------------------------
+# Group 12 -- the Sync panel's remaining Overleaf and Zenodo routes.
+#
+# Three shapes again, and the split is not cosmetic. The two mirror
+# routes act on a partial clone under the researcher's OWN home
+# directory and reach the container not at all, so their assertion is
+# an EMPTY gated ledger paired with evidence they did their work. The
+# diff, the manuscript pull and the Zenodo upload are mode-(b)
+# container work. The credential setup and the Zenodo metadata save
+# carry a mode-(a) project.json write, and setup carries BOTH -- so
+# its two carriers are asserted separately, or a missing one hides
+# behind the other.
+#
+# One route in this family is deliberately NOT here: POST
+# /api/zenodo/{id}/download was left awaiting, because
+# ``syncDispatcher.ftResultDownloadDataset`` exists nowhere in the
+# repository and every production call raises. See the comment at its
+# registration for why carrying a route that cannot run would make it
+# worse rather than better.
+# ---------------------------------------------------------------------
+
+S_SYNC_OVERLEAF_PROJECT_ID = "ol1234"
+S_SYNC_PUSHABLE_FILE = posixpath.join(S_PROJECT_REPO, "stepA/output.dat")
+
+# Emitted by the container-side digest script the Overleaf diff runs,
+# and by nothing else this double answers. A looser marker would match
+# any embedded ``python3 -c`` and fold the connect handler's own probes
+# into a claim about the diff's. Deliberately free of quote characters:
+# the script travels through ``fsShellQuote``, which rewrites every
+# ``'`` as ``'"'"'``, so a marker containing one matches nothing and
+# the assertion fails on its own emptiness rather than passing.
+S_SYNC_DIGEST_MARKER = "s=hashlib.sha1(b"
+
+
+def _fdictSyncBoundWorkflow():
+    """Return the draft workflow bound to an Overleaf project + repo.
+
+    The draft harness's document carries neither, so every route below
+    would refuse ("Overleaf project ID not set", "no repository path")
+    before reaching a carrier -- a fixture under which these tests
+    would pass having exercised the refusal.
+    """
+    dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+    dictWorkflow["sProjectRepoPath"] = S_PROJECT_REPO
+    dictWorkflow["sOverleafProjectId"] = S_SYNC_OVERLEAF_PROJECT_ID
+    dictWorkflow["sZenodoService"] = "sandbox"
+    return dictWorkflow
+
+
+class DockerDoubleServingASyncBoundWorkflow(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double over a workflow bound to Overleaf."""
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(_fdictSyncBoundWorkflow()).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@pytest.fixture
+def tclientSyncBound():
+    """The gated client over an Overleaf-bound, Zenodo-bound workflow."""
+    return _tConnectGatedClient(DockerDoubleServingASyncBoundWorkflow())
+
+
+@contextlib.contextmanager
+def _fnOverleafHostMirrorStubbed():
+    """Stub the HOST mirror and its token; leave container work real.
+
+    Everything stubbed here runs on the researcher's own machine: the
+    partial clone, the git objects read out of it, and the keyring
+    lookup that would otherwise reach the real OS credential store
+    during a test run. What is deliberately left REAL is every call
+    that crosses into the container, because that is the whole subject
+    of these tests.
+    """
+    from vaibify.gui import syncDispatcher
+    from vaibify.reproducibility import overleafMirror
+    with patch.object(
+        syncDispatcher, "ftRefreshOverleafMirror",
+        lambda sProjectId: (True, {
+            "sHeadSha": "", "iFileCount": 0, "sRefreshedAt": "",
+        }),
+    ), patch.object(
+        syncDispatcher, "_fsFetchOverleafToken", lambda: "",
+    ), patch.object(
+        overleafMirror, "fdictDiffAgainstMirror",
+        lambda sProjectId, dictDigests, sTargetDirectory: {
+            "listNew": [], "listOverwrite": [], "listUnchanged": [],
+        },
+    ), patch.object(
+        overleafMirror, "flistDetectConflicts", lambda *a, **k: [],
+    ), patch.object(
+        overleafMirror, "flistDetectCaseCollisions", lambda *a, **k: [],
+    ), patch.object(
+        overleafMirror, "fsReadMirrorHeadSha", lambda sProjectId: "",
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+        lambda sContainerId: None,
+    ):
+        yield
+
+
+@pytest.mark.falsification
+def testTheOverleafDiffDigestsItsFilesUnderTheDrain(tclientSyncBound):
+    """POST /api/overleaf/{id}/diff runs its digest exec under mode (b).
+
+    The push preview reads like a read and is not one at the boundary
+    that decides: ``fdictDiffOverleafPush`` hashes the selection by
+    running a ``python3 -c`` script through the GENERAL exec
+    primitive, which the gate must treat as mutating because command
+    text cannot be told apart from a delete.
+
+    Kills: reverting ``fnOverleafDiff`` to
+    ``await asyncio.to_thread(_fdictBuildDiffResult, ...)``. That exec
+    then reaches the primitive with no admission at all, so nothing
+    matching the marker is recorded and the assertion reports the
+    empty selection rather than passing.
+    """
+    client, connectionDocker = tclientSyncBound
+    with _fnOverleafHostMirrorStubbed():
+        client.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/diff",
+            json={
+                "listFilePaths": [S_SYNC_PUSHABLE_FILE],
+                "sTargetDirectory": "figures",
+            },
+        )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_SYNC_DIGEST_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheManuscriptPullWritesItsIgnoreUnderTheSameDrain(
+    tclientSyncBound,
+):
+    """POST .../pull-manuscript pulls and self-ignores under one mode (b).
+
+    The WRITE is selected rather than every primitive, and the target
+    named: the pull's own exec and the ``.gitignore`` that hides its
+    output are two mutations the migration deliberately put under ONE
+    carrier, because a hand-over landing between them leaves the
+    successor's first ``git status`` showing the whole manuscript as
+    untracked changes. Naming the path is what makes the assertion
+    about THIS write rather than any write the request happened to
+    make.
+
+    Kills: reverting ``_fdictHandlePullManuscript`` to its two
+    ``asyncio.to_thread`` hops plus a bare ``fnWriteFile``.
+    """
+    from vaibify.reproducibility import overleafMirror
+    client, connectionDocker = tclientSyncBound
+    with _fnOverleafHostMirrorStubbed(), patch.object(
+        overleafMirror, "flistListMirrorTree",
+        lambda sProjectId: [{"sPath": "main.tex", "sType": "blob"}],
+    ):
+        client.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/pull-manuscript",
+        )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"].endswith(
+                ".vaibify/manuscript/.gitignore",
+            )
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "write of the pulled manuscript's .gitignore",
+    )
+
+
+@pytest.mark.falsification
+def testTheMirrorRefreshReachesNoContainerPrimitive(tclientSyncBound):
+    """POST .../mirror/refresh touches the HOST clone and nothing else.
+
+    Paired assertions, because either alone is satisfiable by a
+    defect. The gated ledger must be EMPTY -- ``ftRefreshOverleafMirror``
+    takes no docker connection at all, which is why the route is
+    declared ``separate-authority`` rather than given a carrier -- and
+    the route must have reached the refresh, or one that refused early
+    would pass the first assertion having done nothing.
+
+    Kills: routing the refresh through the container, e.g. running the
+    fetch with ``dictCtx["docker"].ftResultExecuteCommand``.
+    """
+    from vaibify.gui import syncDispatcher
+    client, connectionDocker = tclientSyncBound
+    listRefreshed = []
+
+    def ftRecordRefresh(sProjectId):
+        listRefreshed.append(sProjectId)
+        return (True, {"sHeadSha": "abc", "iFileCount": 1})
+
+    with patch.object(
+        syncDispatcher, "ftRefreshOverleafMirror", ftRecordRefresh,
+    ), patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+        lambda sContainerId: None,
+    ):
+        response = client.post(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror/refresh",
+        )
+    assert response.status_code == 200, response.text
+    assert listRefreshed == [S_SYNC_OVERLEAF_PROJECT_ID], (
+        "the route did not reach the host mirror refresh, so the "
+        "empty gated ledger below asserts nothing"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared separate-authority reached a "
+        "mutation-capable container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )
+
+
+@pytest.mark.falsification
+def testTheMirrorDeleteReachesNoContainerPrimitive(tclientSyncBound):
+    """DELETE .../mirror removes a HOST directory and nothing else.
+
+    Same paired shape as the refresh above: an empty gated ledger is
+    only evidence beside proof the deletion was actually reached.
+
+    Kills: routing the deletion through the container, e.g. an ``rm
+    -rf`` assembled and run through the general exec primitive.
+    """
+    from vaibify.reproducibility import overleafMirror
+    client, connectionDocker = tclientSyncBound
+    listDeleted = []
+    with patch.object(
+        overleafMirror, "fnDeleteMirror", listDeleted.append,
+    ):
+        response = client.delete(
+            f"/api/overleaf/{S_CONTAINER_ID}/mirror",
+        )
+    assert response.status_code == 200, response.text
+    assert listDeleted == [S_SYNC_OVERLEAF_PROJECT_ID], (
+        "the route did not reach the host mirror deletion, so the "
+        "empty gated ledger below asserts nothing"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared separate-authority reached a "
+        "mutation-capable container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )
+
+
+@pytest.mark.falsification
+def testTheZenodoMetadataSaveCommitsThroughTheSynchronousCarrier(
+    tclientSyncBound,
+):
+    """POST /api/zenodo/{id}/metadata persists project.json under mode (a).
+
+    Kills: reverting ``fnSetZenodoMetadata``'s ``fnCommitWorkflowSave``
+    call to ``dictCtx["save"](sContainerId, dictWorkflow)``. On the
+    enforced branch that save reaches the write primitive with no
+    admission open at all, so the recorded mode is ``''``.
+    """
+    client, connectionDocker = tclientSyncBound
+    response = client.post(
+        f"/api/zenodo/{S_CONTAINER_ID}/metadata",
+        json={
+            "sTitle": "An Archive",
+            "sDescription": "",
+            "listCreators": [{"sName": "A Researcher"}],
+            "listKeywords": [],
+        },
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+
+
+# Emitted by the GitHub connectivity probe the credential setup runs
+# inside the container, and by nothing else this double answers.
+S_SYNC_GITHUB_PROBE_MARKER = "git ls-remote --exit-code origin HEAD"
+
+
+@pytest.mark.falsification
+def testTheCredentialSetupProbesTheServiceUnderTheDrain(tclientSyncBound):
+    """POST /api/sync/{id}/setup runs its connectivity probe under mode (b).
+
+    One of this handler's TWO carriers. The drain is the point rather
+    than a formality: storing a token is stage-validate-commit over a
+    SHARED slot -- snapshot the previous credential, overwrite it,
+    contact the remote, restore on failure -- so a second session's
+    setup interleaving between the snapshot and the restore would swap
+    the two researchers' tokens and tell neither.
+
+    The host credential lane is stubbed to False rather than left
+    live: it shells out to ``gh auth token`` on the researcher's own
+    machine, which would make the outcome depend on who is running the
+    suite. What it decides is only ``bConnected``, and this test
+    asserts the admission of the CONTAINER probe, which runs either
+    way.
+
+    Kills: reverting ``fnSetupConnection`` to
+    ``await _fdictRunSetup(...)`` with its ``asyncio.to_thread`` hops.
+    That probe then reaches the exec primitive with no admission, so
+    nothing matching the marker is recorded.
+    """
+    from vaibify.gui import syncDispatcher
+    client, connectionDocker = tclientSyncBound
+    with patch.object(
+        syncDispatcher, "_fbHostGithubCredentialAvailable",
+        lambda sRemoteUrl: False,
+    ):
+        client.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={"sService": "github"},
+        )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_SYNC_GITHUB_PROBE_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheCredentialSetupSavesItsBindingSynchronously(
+    tclientSyncBound, fixtureHermeticKeyring,
+):
+    """A connected Overleaf setup persists project.json under mode (a).
+
+    The handler's OTHER carrier. Binding the project id is a
+    synchronous single write whose bytes the journal can adjudicate,
+    where the store-and-validate before it contacts a remote for as
+    long as the network takes -- two mutations, not one, and a
+    migration that carried only the probe would leave this write
+    refused at the primitive.
+
+    The keyring is the suite's in-memory fake
+    (``fixtureHermeticKeyring``), SEEDED here rather than patched away,
+    so ``_fbServiceHasStoredCredential`` and ``_fdictCheckHostKeyring``
+    both run for real against a store that is not the researcher's.
+
+    The isolation here is BIDIRECTIONAL, unlike arXiv configure's, and
+    the reason is this fixture rather than anything about the handler:
+    an Overleaf setup's connectivity check reads the HOST keyring and
+    its validation is stubbed, so the mode-(b) worker reaches no
+    container primitive on this path and cannot be refused. Verified
+    both ways -- each carrier's removal fails one test and only one.
+
+    Kills: reverting ``_fnPersistServiceSettings``'s
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    from vaibify.gui import syncDispatcher
+    client, connectionDocker = tclientSyncBound
+    fixtureHermeticKeyring.dictStore[("vaibify", "overleaf_token")] = (
+        "not-a-real-token"
+    )
+    with patch.object(
+        syncDispatcher, "fbValidateOverleafCredentials",
+        lambda connectionDockerCalled, sContainerId, sProjectId: (
+            True, ""
+        ),
+    ):
+        response = client.post(
+            f"/api/sync/{S_CONTAINER_ID}/setup",
+            json={
+                "sService": "overleaf",
+                "sProjectId": S_SYNC_OVERLEAF_PROJECT_ID,
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["bConnected"] is True, (
+        "the setup did not report Connected, so it never reached the "
+        "persist step this test asserts about: " + response.text
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@contextlib.contextmanager
+def _tlistRecordEveryZenodoUpload():
+    """Record the live admission at each ``ftResultArchiveToZenodo`` call.
+
+    Instrumenting the DISPATCHER rather than matching command text,
+    because the archive script travels base64-encoded inside a
+    ``python3 -c "import base64; exec(...)"`` shell -- the same shape
+    ``repoFiles`` uses for every embedded script, so a text marker
+    could not tell the Zenodo upload from any other one, and a test
+    that cannot name what it observed is not evidence that the
+    observation was the one required.
+
+    The real dispatcher is still CALLED, so the container exec and its
+    gate crossing happen exactly as in production.
+    """
+    from vaibify.gui import syncDispatcher
+    listCalls = []
+    fnReal = syncDispatcher.ftResultArchiveToZenodo
+
+    def ftRecordThenArchive(connectionDocker, sContainerId, *aArgs):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            sContainerId,
+        )
+        listCalls.append("" if admission is None else admission.sMode)
+        return fnReal(connectionDocker, sContainerId, *aArgs)
+
+    with patch.object(
+        syncDispatcher, "ftResultArchiveToZenodo", ftRecordThenArchive,
+    ):
+        yield listCalls
+
+
+@pytest.mark.falsification
+def testTheZenodoUploadRunsUnderTheDrain(tclientSyncBound):
+    """POST /api/zenodo/{id}/archive uploads under a mode-(b) admission.
+
+    Zenodo mints a DOI at the END of the upload, so a container that
+    changed hands mid-publish would leave the successor unable to say
+    whether the archive exists. Holding the drain for the worker's
+    life is what makes a hand-over arriving mid-upload refuse and say
+    what is running.
+
+    Kills: reverting ``_ftPerformZenodoArchive`` to
+    ``await asyncio.to_thread(syncDispatcher.ftResultArchiveToZenodo,
+    ...)``, which reaches the exec primitive with no admission and
+    records ``''`` here.
+    """
+    client, _connectionDocker = tclientSyncBound
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+        lambda sContainerId: None,
+    ), _tlistRecordEveryZenodoUpload() as listCalls:
+        client.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": [S_SYNC_PUSHABLE_FILE]},
+        )
+    assert listCalls, (
+        "the route never reached the Zenodo upload, so this asserts "
+        "nothing about the admission it runs under"
+    )
+    assert listCalls == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+    ] * len(listCalls), (
+        "the Zenodo upload ran under an admission that is not "
+        f"lock-held: {listCalls}"
+    )
+
+
+# Emitted by ``containerGit.fdictComputeBlobShasInContainer`` and by
+# nothing else the archive request runs. Quote-free for the reason
+# S_SYNC_DIGEST_MARKER states, and distinct from it so the two digest
+# scripts cannot be mistaken for one another.
+S_ZENODO_BLOB_SHA_MARKER = "h = hashlib.sha1(); h.update(header)"
+
+
+def _fresponsePostZenodoArchive(client):
+    """Publish one file to Zenodo through the migrated archive route."""
+    with patch(
+        "vaibify.gui.routes.syncRoutes._fnRequireNetworkAccess",
+        lambda sContainerId: None,
+    ):
+        return client.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": [S_SYNC_PUSHABLE_FILE]},
+        )
+
+
+@pytest.mark.falsification
+def testTheZenodoDigestPassRunsUnderItsOwnDrain(tclientSyncBound):
+    """The archive's post-upload digest pass holds a mode-(b) drain.
+
+    A SECOND mode-(b) invocation rather than an extension of the
+    upload's, because the upload's supervisor released the drain when
+    its worker terminated -- which is the property that makes mode (b)
+    worth having. The digests are what the dashboard's Zenodo cells
+    compare against, so an uncarried pass would be refused at the
+    primitive and leave the archive recorded with no content
+    fingerprints.
+
+    Kills: reverting ``_fnPersistZenodoArchiveSuccess``'s digest hop to
+    ``await asyncio.to_thread(_fdictComputePostArchiveZenodoDigests,
+    ...)``.
+    """
+    client, connectionDocker = tclientSyncBound
+    _fresponsePostZenodoArchive(client)
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_ZENODO_BLOB_SHA_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheZenodoArchiveRecordCommitsSynchronously(tclientSyncBound):
+    """The archive's project.json save runs under mode (a).
+
+    The archive handler's THIRD carrier. The record it writes carries
+    the deposit id and the DOI Zenodo just minted, so a save refused at
+    the primitive would leave a published archive the workflow cannot
+    name -- the researcher would see a successful publish and an empty
+    deposit panel.
+
+    Selected on the workflow path rather than on every write, so this
+    test names one carrier rather than "some write happened".
+
+    The isolation is ONE-DIRECTIONAL and the direction is worth
+    knowing when diagnosing. Removing THIS carrier fails only this
+    test (verified). Removing the DIGEST carrier fails both, because
+    the digests run first and an unadmitted exec 500s the handler
+    before the save is reached (verified). So all three archive tests
+    failing means the UPLOAD, two means the DIGESTS, and one means the
+    save.
+
+    Kills: reverting ``_fnPersistZenodoArchiveSuccess``'s
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = tclientSyncBound
+    _fresponsePostZenodoArchive(client)
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )

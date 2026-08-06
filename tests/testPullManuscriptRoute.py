@@ -13,7 +13,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from vaibify.gui.routes import syncRoutes
 from vaibify.gui.routes.syncRoutes import _fnRegisterPullManuscript
+from tests.carrierStandDown import fnStandCarrierDown
 
 
 S_CONTAINER_ID = "pull_ms_cid"
@@ -36,7 +38,15 @@ def fixtureDocker():
 
 
 @pytest.fixture
-def fixtureClient(fixtureDocker):
+def fixtureClient(fixtureDocker, monkeypatch):
+    # The pull is a carrier mode-(b) mutation, and this module builds a
+    # bare FastAPI over a fake docker, so it holds no lease and no
+    # journal: every request would answer 403 from the carrier's own
+    # binding rather than from anything these tests are about. Stood
+    # down explicitly — what this module proves is WHICH paths the pull
+    # derives and that the ignore lands, never the admission it runs
+    # under; that lives in tests/testCarrierMigratedRoutes.py.
+    fnStandCarrierDown(monkeypatch, syncRoutes)
     app = FastAPI()
     dictCtx = {
         "docker": fixtureDocker,
