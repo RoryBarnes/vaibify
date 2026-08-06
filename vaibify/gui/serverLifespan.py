@@ -26,7 +26,7 @@ __all__ = [
 
 
 @asynccontextmanager
-async def _alifespanShared(app):
+async def _fcontextLifespanShared(app):
     """Single lifespan that drives every registered startup/shutdown hook.
 
     Modules append callables to ``app.state.listLifespanStartup`` and

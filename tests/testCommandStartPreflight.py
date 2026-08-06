@@ -130,11 +130,11 @@ def test_preflight_fails_when_image_missing():
     ), patch(
         "vaibify.docker.fbImageExists", return_value=False,
     ), patch(
-        "vaibify.cli.commandStart._flistpreflightPorts", return_value=[],
+        "vaibify.cli.commandStart._flistPreflightPorts", return_value=[],
     ), patch(
         "vaibify.cli.commandStart._fpreflightContainerName",
     ) as mockName, patch(
-        "vaibify.cli.commandStart._flistpreflightBindMounts",
+        "vaibify.cli.commandStart._flistPreflightBindMounts",
         return_value=[],
     ):
         from vaibify.cli.preflightResult import PreflightResult
@@ -156,14 +156,14 @@ def test_preflight_fails_when_image_missing():
 
 def test_preflight_fails_when_host_port_in_use():
     """A listPorts entry whose host port is bound emits a fail."""
-    from vaibify.cli.commandStart import _flistpreflightPorts
+    from vaibify.cli.commandStart import _flistPreflightPorts
     config = _fConfigForPreflight(
         listPorts=[{"host": 8888, "container": 8888}],
     )
     with patch(
         "vaibify.docker.fbForwardedHostPortFree", return_value=False,
     ):
-        listResults = _flistpreflightPorts(config)
+        listResults = _flistPreflightPorts(config)
     assert len(listResults) == 1
     assert listResults[0].sLevel == "fail"
     assert "8888" in listResults[0].sMessage
@@ -173,27 +173,27 @@ def test_preflight_fails_when_host_port_in_use():
 
 def test_preflight_passes_when_host_port_free():
     """A free host port emits an ok-level result."""
-    from vaibify.cli.commandStart import _flistpreflightPorts
+    from vaibify.cli.commandStart import _flistPreflightPorts
     config = _fConfigForPreflight(
         listPorts=[{"host": 9000, "container": 9000}],
     )
     with patch(
         "vaibify.docker.fbForwardedHostPortFree", return_value=True,
     ):
-        listResults = _flistpreflightPorts(config)
+        listResults = _flistPreflightPorts(config)
     assert listResults[0].sLevel == "ok"
 
 
 def test_preflight_falls_back_to_container_when_host_omitted():
     """When `host` is omitted, the `container` port is checked instead."""
-    from vaibify.cli.commandStart import _flistpreflightPorts
+    from vaibify.cli.commandStart import _flistPreflightPorts
     config = _fConfigForPreflight(listPorts=[{"container": 7777}])
     listObserved = []
     with patch(
         "vaibify.docker.fbForwardedHostPortFree",
         side_effect=lambda iPort: listObserved.append(iPort) or True,
     ):
-        _flistpreflightPorts(config)
+        _flistPreflightPorts(config)
     assert listObserved == [7777]
 
 
@@ -258,12 +258,12 @@ def test_preflight_ok_when_container_not_present():
 
 def test_preflight_fails_when_bind_mount_source_missing(tmp_path):
     """A nonexistent bind-mount host path emits a fail."""
-    from vaibify.cli.commandStart import _flistpreflightBindMounts
+    from vaibify.cli.commandStart import _flistPreflightBindMounts
     sMissing = str(tmp_path / "does-not-exist")
     config = _fConfigForPreflight(
         listBindMounts=[{"host": sMissing, "container": "/data"}],
     )
-    listResults = _flistpreflightBindMounts(config)
+    listResults = _flistPreflightBindMounts(config)
     assert len(listResults) == 1
     assert listResults[0].sLevel == "fail"
     assert sMissing in listResults[0].sMessage
@@ -272,25 +272,25 @@ def test_preflight_fails_when_bind_mount_source_missing(tmp_path):
 
 def test_preflight_passes_when_bind_mount_source_exists(tmp_path):
     """An existing bind-mount host path emits an ok."""
-    from vaibify.cli.commandStart import _flistpreflightBindMounts
+    from vaibify.cli.commandStart import _flistPreflightBindMounts
     sExisting = str(tmp_path)
     config = _fConfigForPreflight(
         listBindMounts=[{"host": sExisting, "container": "/data"}],
     )
-    listResults = _flistpreflightBindMounts(config)
+    listResults = _flistPreflightBindMounts(config)
     assert listResults[0].sLevel == "ok"
 
 
 def test_preflight_reports_all_missing_bind_mounts(tmp_path):
     """Every missing bind-mount path appears in the report."""
-    from vaibify.cli.commandStart import _flistpreflightBindMounts
+    from vaibify.cli.commandStart import _flistPreflightBindMounts
     sMissingOne = str(tmp_path / "a")
     sMissingTwo = str(tmp_path / "b")
     config = _fConfigForPreflight(listBindMounts=[
         {"host": sMissingOne, "container": "/x"},
         {"host": sMissingTwo, "container": "/y"},
     ])
-    listResults = _flistpreflightBindMounts(config)
+    listResults = _flistPreflightBindMounts(config)
     listFails = [r for r in listResults if r.sLevel == "fail"]
     assert len(listFails) == 2
     saMessages = " ".join(r.sMessage for r in listFails)

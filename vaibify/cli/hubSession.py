@@ -102,7 +102,7 @@ def fsResolveHubBaseUrl(iPort=None):
     return "http://127.0.0.1:%d" % fiResolveHubPort(iPort)
 
 
-def _fobjParseResponseBody(response):
+def _fjsonParseResponseBody(response):
     """Return the parsed JSON body, or the raw text when not JSON."""
     try:
         return response.json()
@@ -153,10 +153,10 @@ def ftSendHttpRequest(
         raise HubSessionError(
             "vaibify hub unreachable at %s: %s" % (sBaseUrl, error)
         )
-    return response.status_code, _fobjParseResponseBody(response)
+    return response.status_code, _fjsonParseResponseBody(response)
 
 
-def _fobjRequireOkResponse(tResponse, sWhat):
+def _fjsonRequireOkResponse(tResponse, sWhat):
     """Return the body of a 2xx response, or raise with the hub's detail."""
     iStatusCode, objBody = tResponse
     if 200 <= iStatusCode < 300:
@@ -230,7 +230,7 @@ def fsRedeemHostLaneCredential(iHubPort, sBaseUrl):
     no container until this client claims one.
     """
     sCapability = fsRequestBootstrapCapability(iHubPort)
-    objBody = _fobjRequireOkResponse(
+    objBody = _fjsonRequireOkResponse(
         ftSendHttpRequest(
             sBaseUrl, "", "POST", S_BOOTSTRAP_ENDPOINT,
             {"sCapability": sCapability}, F_BOOTSTRAP_TIMEOUT_SECONDS,
@@ -248,7 +248,7 @@ def fsRedeemHostLaneCredential(iHubPort, sBaseUrl):
 
 def fsResolveContainerId(sBaseUrl, sCredential, sContainerName):
     """Return the running Docker id the hub knows for a container name."""
-    objBody = _fobjRequireOkResponse(
+    objBody = _fjsonRequireOkResponse(
         ftSendHttpRequest(
             sBaseUrl, sCredential, "GET", "/api/registry", None,
             F_BOOTSTRAP_TIMEOUT_SECONDS,
@@ -288,7 +288,7 @@ def fsClaimContainer(sBaseUrl, sCredential, sContainerName):
         raise HubSessionError(
             fsExplainClaimConflict(sContainerName, objBody),
         )
-    objBody = _fobjRequireOkResponse(
+    objBody = _fjsonRequireOkResponse(
         (iStatusCode, objBody), "Container claim",
     )
     sLeaseId = (objBody or {}).get("sLeaseId", "")
@@ -380,7 +380,7 @@ def fsSelectWorkflowPath(dictSession, sWorkflowPath=None):
     """
     if sWorkflowPath:
         return sWorkflowPath
-    objBody = _fobjRequireOkResponse(
+    objBody = _fjsonRequireOkResponse(
         ftSendSessionRequest(
             dictSession, "GET",
             "/api/workflows/%s" % dictSession["sContainerId"], None,
@@ -398,7 +398,7 @@ def fsSelectWorkflowPath(dictSession, sWorkflowPath=None):
 def fnConnectWorkflow(dictSession, sWorkflowPath):
     """Load the container's project into the hub's workflow cache."""
     sPath = fsSelectWorkflowPath(dictSession, sWorkflowPath)
-    _fobjRequireOkResponse(
+    _fjsonRequireOkResponse(
         ftSendSessionRequest(
             dictSession, "POST",
             "/api/connect/%s" % dictSession["sContainerId"],
@@ -452,7 +452,7 @@ def fdictOpenResearcherSession(
 
 def fiResolveStepLabel(dictSession, sLabel):
     """Return the 0-based step index the hub assigns to a step label."""
-    objBody = _fobjRequireOkResponse(
+    objBody = _fjsonRequireOkResponse(
         ftSendSessionRequest(
             dictSession, "GET",
             "/api/steps/%s/by-label/%s" % (

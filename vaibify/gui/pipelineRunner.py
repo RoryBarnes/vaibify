@@ -236,10 +236,10 @@ async def _ftRunSingleCommand(
     sTimedCmd = sEnvPrefix + _fsWrapWithTime(sResolved)
     loopMain = asyncio.get_running_loop()
     dictAccum = {"fCpu": 0.0}
-    fnEmitChunk, faDrainPending = _ftBuildBatchingEmitter(
+    fnEmitChunk, fnDrainPending = _ftBuildBatchingEmitter(
         fnStatusCallback, loopMain, dictAccum,
     )
-    async with _actxWebSocketHeartbeat(fnStatusCallback):
+    async with _fcontextWebSocketHeartbeat(fnStatusCallback):
         try:
             resultExec = await asyncio.to_thread(
                 connectionDocker.texecRunInContainerStreamedWithChunks,
@@ -247,7 +247,7 @@ async def _ftRunSingleCommand(
                 sWorkdir=sWorkdir,
             )
         finally:
-            await faDrainPending()
+            await fnDrainPending()
     if resultExec.iExitCode != 0:
         await fnStatusCallback({
             "sType": "commandFailed",
@@ -267,7 +267,7 @@ F_BATCH_MAX_INTERVAL_SECONDS = 0.1
 
 
 def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
-    """Build a ``(fnEmitChunk, faDrainPending)`` pair that coalesces lines.
+    """Build a ``(fnEmitChunk, fnDrainPending)`` pair that coalesces lines.
 
     Lines arriving on the worker thread are accumulated into a buffer
     and flushed as a single ``{"sType": "outputBatch", "listLines":
@@ -279,7 +279,7 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
     fired, which on a sporadic chatty step delayed dashboard output by
     seconds.
 
-    ``faDrainPending`` is an async coroutine that empties the buffer on
+    ``fnDrainPending`` is an async coroutine that empties the buffer on
     per-command teardown so no lines are stuck after the docker exec
     returns; it must be ``await``-ed from the event-loop thread (the
     same thread that runs the docker ``asyncio.to_thread`` await).
@@ -312,7 +312,7 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
                 dictBatch, lockBuffer, fnStatusCallback, loopMain,
             )
 
-    async def faDrainPending():
+    async def fnDrainPending():
         _fnCancelTimerFlush(dictBatch)
         with lockBuffer:
             listToSend = dictBatch["listLines"]
@@ -320,11 +320,11 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
             dictBatch["fFirstLineAt"] = 0.0
         if not listToSend or dictBatch["bDisabled"]:
             return
-        await _faFlushBatchFromLoop(
+        await _fnFlushBatchFromLoop(
             dictBatch, fnStatusCallback, listToSend,
         )
 
-    return fnEmitChunk, faDrainPending
+    return fnEmitChunk, fnDrainPending
 
 
 def _fnScheduleTimerFlush(
@@ -341,7 +341,7 @@ def _fnScheduleTimerFlush(
             return
         dictBatch["handleTimer"] = loopMain.call_later(
             F_BATCH_MAX_INTERVAL_SECONDS,
-            lambda: loopMain.create_task(_faTimerFlush(
+            lambda: loopMain.create_task(_fnTimerFlush(
                 dictBatch, lockBuffer, fnStatusCallback,
             )),
         )
@@ -359,7 +359,7 @@ def _fnCancelTimerFlush(dictBatch):
         dictBatch["handleTimer"] = None
 
 
-async def _faTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
+async def _fnTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
     """Loop-side timer callback: drain whatever has accumulated."""
     dictBatch["handleTimer"] = None
     with lockBuffer:
@@ -368,7 +368,7 @@ async def _faTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
         dictBatch["fFirstLineAt"] = 0.0
     if not listToSend or dictBatch["bDisabled"]:
         return
-    await _faFlushBatchFromLoop(
+    await _fnFlushBatchFromLoop(
         dictBatch, fnStatusCallback, listToSend,
     )
 
@@ -424,7 +424,7 @@ def _fnFlushBatchFromWorker(
         )
 
 
-async def _faFlushBatchFromLoop(
+async def _fnFlushBatchFromLoop(
     dictBatch, fnStatusCallback, listLines,
 ):
     """Await one batch directly on the event-loop thread.
@@ -452,7 +452,7 @@ def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
 
     Production callers should use :func:`_ftBuildBatchingEmitter` to
     benefit from the per-100ms / 50-line coalescing and the matching
-    ``faDrainPending`` async teardown. This shim exists for callers
+    ``fnDrainPending`` async teardown. This shim exists for callers
     that imported the symbol directly and treat the emitter as a
     one-line-at-a-time forwarder; each emit triggers an immediate
     batch-of-one flush so the dispatched event shape matches the
@@ -484,7 +484,7 @@ F_WS_HEARTBEAT_INTERVAL = 15.0
 
 
 @contextlib.asynccontextmanager
-async def _actxWebSocketHeartbeat(fnStatusCallback):
+async def _fcontextWebSocketHeartbeat(fnStatusCallback):
     """Emit ``wsHeartbeat`` events on the WS while a command runs.
 
     Keeps the in-container ``vaibify-do`` socket's per-recv inactivity

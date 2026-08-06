@@ -1275,7 +1275,7 @@ def test_loader_csv_streams_does_not_materialise_full_table(tmp_path):
     listLines = ["t,v"] + [f"{i},{i}" for i in range(5000)]
     sPath.write_text("\n".join(listLines) + "\n", encoding="utf-8")
     iCounter = {"reads": 0}
-    fnOriginalOpen = dataLoaders._freaderOpenCsv
+    fnOriginalOpen = dataLoaders._ftOpenCsvReader
 
     def fnCountingOpen(sFullPath):
         reader, fileHandle, listHeaders = fnOriginalOpen(sFullPath)
@@ -1287,11 +1287,11 @@ def test_loader_csv_streams_does_not_materialise_full_table(tmp_path):
 
         return fnCountingReader(), fileHandle, listHeaders
 
-    dataLoaders._freaderOpenCsv = fnCountingOpen
+    dataLoaders._ftOpenCsvReader = fnCountingOpen
     try:
         fLoadValue("mid.csv", "column:v,index:50", str(tmp_path))
     finally:
-        dataLoaders._freaderOpenCsv = fnOriginalOpen
+        dataLoaders._ftOpenCsvReader = fnOriginalOpen
     assert iCounter["reads"] <= 60
 
 

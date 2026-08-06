@@ -162,7 +162,7 @@ def fdictRetryDockerConnection(dictCtx):
 
     Mutating ``dictCtx['docker']`` lets every route closure pick up
     the new connection without a vaibify restart, because
-    ``_ftupleBuildHelpers`` reads the connection from the shared
+    ``_ftBuildHelpers`` reads the connection from the shared
     raw-dict at call time rather than capturing it at build time.
     """
     from . import pipelineServer

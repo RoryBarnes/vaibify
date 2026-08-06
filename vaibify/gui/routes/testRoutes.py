@@ -304,7 +304,7 @@ def _fnPersistTestEdit(connectionDocker, sContainerId, sFilePath, sContent):
     )
 
 
-async def _fresultRunSaveAndRunTest(
+async def _ftRunSaveAndRunTest(
     connectionDocker, sContainerId, dictStep, dictWorkflow, sFilePath,
 ):
     """Build the pytest command and run it; return the streamed result."""
@@ -467,7 +467,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             dictCtx["docker"], sContainerId,
             sFilePath, request.sContent,
         )
-        resultExec = await _fresultRunSaveAndRunTest(
+        resultExec = await _ftRunSaveAndRunTest(
             dictCtx["docker"], sContainerId, dictStep,
             dictWorkflow, sFilePath,
         )

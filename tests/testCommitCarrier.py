@@ -148,7 +148,7 @@ def clientWithProbeRoutes():
 
     @app.post("/api/carrier-probe/admitted-write")
     async def fnProbeAdmittedWrite():
-        tAdmissionTokens = commitCarrier.ftupleOpenEstablishingAdmission(
+        tAdmissionTokens = commitCarrier.ftOpenEstablishingAdmission(
             S_CONTAINER_NAME, S_CONTAINER_ID,
         )
         try:

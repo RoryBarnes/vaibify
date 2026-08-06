@@ -389,7 +389,7 @@ def _fLoadCsvValue(sFullPath, dictAccess):
         ) from exc
 
 
-def _freaderOpenCsv(sFullPath):
+def _ftOpenCsvReader(sFullPath):
     """Open ``sFullPath`` and return a ``csv.reader`` plus header list.
 
     The reader is positioned past the header so the caller iterates
@@ -410,7 +410,7 @@ def _freaderOpenCsv(sFullPath):
 
 def _fLoadCsvAggregate(sFullPath, sColumn, sAggregate):
     """Compute an aggregate over one CSV column with a single streaming pass."""
-    reader, fileHandle, listHeaders = _freaderOpenCsv(sFullPath)
+    reader, fileHandle, listHeaders = _ftOpenCsvReader(sFullPath)
     try:
         iCol = _fiColumnIndexOrRaise(listHeaders, sColumn)
         listValues = [float(listRow[iCol]) for listRow in reader]
@@ -423,7 +423,7 @@ def _fLoadCsvByRowIndex(sFullPath, sColumn, iIndex):
     """Stream a CSV and return a single cell at the requested row index."""
     if iIndex < 0:
         return _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex)
-    reader, fileHandle, listHeaders = _freaderOpenCsv(sFullPath)
+    reader, fileHandle, listHeaders = _ftOpenCsvReader(sFullPath)
     try:
         iCol = _fiColumnIndexOrRaise(listHeaders, sColumn)
         for iCurrent, listRow in enumerate(reader):
@@ -437,7 +437,7 @@ def _fLoadCsvByRowIndex(sFullPath, sColumn, iIndex):
 def _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex):
     """Return a CSV cell at a negative row index with constant-memory tail."""
     from collections import deque
-    reader, fileHandle, listHeaders = _freaderOpenCsv(sFullPath)
+    reader, fileHandle, listHeaders = _ftOpenCsvReader(sFullPath)
     try:
         iCol = _fiColumnIndexOrRaise(listHeaders, sColumn)
         dequeTail = deque(reader, maxlen=-iIndex)

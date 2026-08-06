@@ -805,7 +805,7 @@ class DockerConnection:
         """
         return self._clientDocker.api.exec_inspect(sExecId)
 
-    def ftupleRunRootShellProbe(self, sContainerId, sScript):
+    def ftRunRootShellProbe(self, sContainerId, sScript):
         """Run a ``/bin/sh`` script as root; return (iExitCode, sOutput).
 
         The containment-probe primitive (design v13 §6.1): group
@@ -838,7 +838,7 @@ class DockerConnection:
         """
         sScript = _fsBuildProcessGroupScript(iProcessGroup, ":")
         try:
-            iExitCode, sOutput = self.ftupleRunRootShellProbe(
+            iExitCode, sOutput = self.ftRunRootShellProbe(
                 sContainerId, sScript,
             )
         except Exception as error:
@@ -885,7 +885,7 @@ class DockerConnection:
             iProcessGroup, f'kill -{sSignalName} "$iMemberPid" 2>/dev/null',
         )
         try:
-            self.ftupleRunRootShellProbe(sContainerId, sScript)
+            self.ftRunRootShellProbe(sContainerId, sScript)
         except Exception:
             pass
 

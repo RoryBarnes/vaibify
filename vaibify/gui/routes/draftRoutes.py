@@ -122,7 +122,7 @@ def _fnRegisterDraftWrite(app, dictCtx):
             dictCtx, sContainerId, sFilePath, request.sWorkdir,
         )
         _fnEnsureDraftDir(dictCtx, sContainerId, sDraftDir)
-        sJsonPayload = draftManager.fjsonBuildDraftPayload(
+        sJsonPayload = draftManager.fsBuildDraftPayload(
             sFilePath, request.sWorkdir, request.sContent,
             request.sBaseHash,
         )

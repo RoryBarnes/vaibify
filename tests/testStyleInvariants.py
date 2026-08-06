@@ -151,7 +151,7 @@ DICT_TIER_TWO_REGISTRY_COPY = {
 # Lower the matching constant in the same commit as every burn-down.
 # ---------------------------------------------------------------------------
 
-I_LEGACY_NAME_BUDGET = 143
+I_LEGACY_NAME_BUDGET = 105
 I_LEGACY_FN_RETURN_BUDGET = 249
 I_LEGACY_YIELD_BUDGET = 0
 I_LEGACY_LITERAL_RETURN_BUDGET = 0
@@ -271,9 +271,9 @@ legacy-fn-return	vaibify/gui/pipelineServer.py::_fnRegisterLastResortExceptionHa
 legacy-fn-return	vaibify/gui/pipelineServer.py::_fnRegisterStaticFiles.fnBootstrapSession
 legacy-fn-return	vaibify/gui/pipelineServer.py::_fnRegisterStaticFiles.fnRedeemTransferCapability
 legacy-fn-return	vaibify/gui/pipelineServer.py::_fnRegisterStaticFiles.fnServeIndex
-legacy-fn-return	vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnFiles
-legacy-fn-return	vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnVariables
-legacy-fn-return	vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnWorkflowDir
+legacy-fn-return	vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnFiles
+legacy-fn-return	vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnVariables
+legacy-fn-return	vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnWorkflowDir
 legacy-fn-return	vaibify/gui/pipelineServer.py::fnPipelineMessageLoop.fnStartDispatchTask
 legacy-fn-return	vaibify/gui/pipelineServer.py::fnValidatePathWithinRoot
 legacy-fn-return	vaibify/gui/pipelineTestRunner.py::fnRunAllTests

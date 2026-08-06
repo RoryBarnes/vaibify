@@ -65,7 +65,7 @@ class _StubContainmentConnection:
         )
         return SimpleNamespace(_sock=MagicMock(), close=lambda: None)
 
-    def ftupleRunRootShellProbe(self, sContainerId, sScript):
+    def ftRunRootShellProbe(self, sContainerId, sScript):
         if self.sMarkerPath and self.sMarkerPath in sScript:
             return (0, self.sMarkerContent)
         return (1, "")
@@ -222,7 +222,7 @@ def test_failed_discovery_of_a_live_shell_quarantines_and_raises():
 
     def fnNeverFindMarker(sContainerId, sScript):
         return (1, "")
-    connectionStub.ftupleRunRootShellProbe = fnNeverFindMarker
+    connectionStub.ftRunRootShellProbe = fnNeverFindMarker
     session = TerminalSession(
         connectionStub, S_CONTAINER_ID,
         dictContainment={

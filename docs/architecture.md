@@ -558,7 +558,7 @@ see "PID-reuse-proof staleness" below;
 
 ### Claim arbitration
 
-`containerOwnership.ftdictClaim` replaces the old short-circuit (the
+`containerOwnership.ftClaim` replaces the old short-circuit (the
 pre-refactor claim returned `bClaimed: True` whenever the container was
 already locked, silently admitting a second same-hub tab). The arbiter
 now has three outcomes:

@@ -150,7 +150,7 @@ def test_naive_event_timestamp_is_read_as_utc_not_local(
     hours under this fixture — which drops a legitimate recorded cause
     outside the window and permanently flags ordinary work.
 
-    Kills: Return ``dtParsed`` unchanged from ``fdtParseTimestampAsUtc``
+    Kills: Return ``dtParsed`` unchanged from ``fdatetimeParseTimestampAsUtc``
     in ``attributionLog.py`` (drop the naive-to-UTC normalization).
     """
     filesRepo = ffilesEnsureRepoFiles(str(tmp_path))

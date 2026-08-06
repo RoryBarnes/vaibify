@@ -103,7 +103,7 @@ def test_resolve_base_url_uses_the_single_live_hub():
 def test_parse_response_body_falls_back_to_text_when_not_json():
     fakeResponse = _FakeResponse("plain text", bJsonRaises=True)
     fakeResponse.text = "plain text"
-    assert hubSession._fobjParseResponseBody(fakeResponse) == "plain text"
+    assert hubSession._fjsonParseResponseBody(fakeResponse) == "plain text"
 
 
 def test_get_fields_ride_the_query_string():
@@ -135,21 +135,21 @@ def test_send_request_wraps_a_connection_error():
 
 
 def test_require_ok_returns_body_on_success():
-    assert hubSession._fobjRequireOkResponse(
+    assert hubSession._fjsonRequireOkResponse(
         (200, {"sToken": "abc"}), "Fetch",
     ) == {"sToken": "abc"}
 
 
 def test_require_ok_raises_with_the_hubs_detail_field():
     with pytest.raises(HubSessionError, match="in use"):
-        hubSession._fobjRequireOkResponse(
+        hubSession._fjsonRequireOkResponse(
             (409, {"detail": "in use"}), "Claim",
         )
 
 
 def test_require_ok_raises_with_raw_body_when_not_a_dict():
     with pytest.raises(HubSessionError, match="boom"):
-        hubSession._fobjRequireOkResponse((500, "boom"), "Call")
+        hubSession._fjsonRequireOkResponse((500, "boom"), "Call")
 
 
 # ------------------------------------------------------------------

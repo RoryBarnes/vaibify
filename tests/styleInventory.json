@@ -17,11 +17,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/cli/commandBuild.py::_fdiDockerDfBytes",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/cli/commandBuild.py::build",
       "sDebtClass": "cli-verb",
       "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
@@ -132,26 +127,6 @@
       "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
     },
     {
-      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightBindMountFormats",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightBindMounts",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightColimaSharedRoots",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/commandStart.py::_flistpreflightPorts",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/cli/commandStart.py::_fnAcquireGuiSessionSlotOrExit",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -180,16 +155,6 @@
       "sIdentity": "vaibify/cli/commandWorkflow.py::workflow",
       "sDebtClass": "cli-verb",
       "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/hubSession.py::_fobjParseResponseBody",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/hubSession.py::_fobjRequireOkResponse",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
     },
     {
       "sIdentity": "vaibify/cli/main.py::_DefaultContainerIdFilter.filter",
@@ -239,26 +204,6 @@
     {
       "sIdentity": "vaibify/config/containerLock.py::fnAcquireContainerLock",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/config/processLiveness.py::_fdtNormalizeToNaiveLocal",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/config/processLiveness.py::fdtParseClaimIso",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/config/processLiveness.py::fdtReadProcessStartClock",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/config/processLiveness.py::fdtReadProcessStartClockCached",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -317,11 +262,6 @@
       "sReason": "the typed-read exemption grant point; its literal name is pinned by S_EXEMPTION_METHOD in tests/testMutationBoundary.py and an AGENTS.md paragraph (ruling R10)"
     },
     {
-      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.ftupleRunRootShellProbe",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.texecRunInContainerStreamed",
       "sDebtClass": "security-pinned",
       "sReason": "texec family: sibling of the pinned typed-read grant point; rename only with the mutation-boundary contract (ruling R10)"
@@ -354,11 +294,6 @@
     {
       "sIdentity": "vaibify/gui/actionCatalog.py::fnAgentAction._fnDecorator",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/attributionLog.py::fdtParseTimestampAsUtc",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -407,16 +342,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/commitCarrier.py::ftupleOpenEstablishingAdmission",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/commitCarrier.py::ftupleOpenRequestAdmission",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/conftestManager.py::fnWriteConftestMarkersBatch",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -432,18 +357,8 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/containerOwnership.py::_ftdictClaimUnowned",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/containerOwnership.py::fnReleaseOwnership",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/containerOwnership.py::ftdictClaim",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -682,11 +597,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/dataLoaders.py::_freaderOpenCsv",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/dataLoaders.py::fLoadValue",
       "sDebtClass": "legacy-name",
       "sReason": ""
@@ -727,26 +637,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/hostControlChannel.py::_fbyteReadResponseLine",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/hostControlChannel.py::_ftupleParseDarwinPeerCredentials",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/hostControlChannel.py::_ftupleParseLinuxPeerCredentials",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/hostControlChannel.py::fituplePeerUidGid",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/hostIncidents.py::HostIncidentHandler.emit",
       "sDebtClass": "interface-method",
       "sReason": "logging.Handler override; the name is the protocol"
@@ -757,22 +647,7 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_actxWebSocketHeartbeat",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/pipelineRunner.py::_fParseCpuTime",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_faFlushBatchFromLoop",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_faTimerFlush",
       "sDebtClass": "legacy-name",
       "sReason": ""
     },
@@ -784,11 +659,6 @@
     {
       "sIdentity": "vaibify/gui/pipelineRunner.py::_fnStartHeartbeatThread",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_ftBuildBatchingEmitter.faDrainPending",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -832,22 +702,17 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnFiles",
+      "sIdentity": "vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnFiles",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnVariables",
+      "sIdentity": "vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnVariables",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/pipelineServer.py::_ftupleBuildHelpers.fnWorkflowDir",
+      "sIdentity": "vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnWorkflowDir",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
     },
@@ -939,16 +804,6 @@
     {
       "sIdentity": "vaibify/gui/registryRoutes.py::_fnRegisterStopContainer.fnStopContainer",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/registryRoutes.py::_ftupleDiscoverAllContainers",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/registryRoutes.py::_ftupleSplitContainers",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -1722,11 +1577,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/routes/testRoutes.py::_fresultRunSaveAndRunTest",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/routes/workflowRoutes.py::_fnRegisterConnect.fnConnect",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -1744,11 +1594,6 @@
     {
       "sIdentity": "vaibify/gui/routes/workflowRoutes.py::_fnRegisterWorkflowSearch.fnFindWorkflows",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/serverLifespan.py::_alifespanShared",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -1803,11 +1648,6 @@
     },
     {
       "sIdentity": "vaibify/gui/sessionLifecycle.py::_tTransferUnderDrain",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/sessionLifecycle.py::ftdictClaimWithCardinality",
       "sDebtClass": "legacy-name",
       "sReason": ""
     },
@@ -1882,11 +1722,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/stateManager.py::_ftupleTryLoadStateFile",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/stepRename.py::_fnMoveStepDirectory",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -1894,26 +1729,6 @@
     {
       "sIdentity": "vaibify/gui/terminalContainment.py::fnDrainSessionRecord",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/testGenerator.py::_ftolForStochasticKind",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/testGenerator.py::_ftolMeanFromCv",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/testGenerator.py::_ftolPercentileFromN",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/testGenerator.py::_ftolStdFromN",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -2102,11 +1917,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/templates/workflow/PlotHistogram/plotHistogram.py::fliaCountPerBin",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/testing/standards.py::_daLoadCsv",
       "sDebtClass": "legacy-name",
       "sReason": ""
@@ -2208,7 +2018,7 @@
     }
   ],
   "dictBudgets": {
-    "legacy-name": 143,
+    "legacy-name": 105,
     "legacy-fn-return": 249,
     "legacy-yield": 0,
     "legacy-literal-return": 0,

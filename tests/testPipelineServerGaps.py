@@ -16,7 +16,7 @@ from vaibify.gui.pipelineServer import (
     _fnHandleTerminalText,
     _fnSafeDispatch,
     _fconnectionCreateDocker,
-    _ftupleBuildHelpers,
+    _ftBuildHelpers,
     ffBuildResilientWsCallback,
     fnDispatchAction,
     fnHandlePipelineWs,
@@ -864,12 +864,12 @@ class TestCreateDocker:
 
 
 # ---------------------------------------------------------------
-# _ftupleBuildHelpers — fnWorkflowDir (lines 978-986)
+# _ftBuildHelpers — fnWorkflowDir (lines 978-986)
 # ---------------------------------------------------------------
 
 class TestWorkflowDir:
     def test_returns_workspace_root_when_no_path(self):
-        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftBuildHelpers(
             MagicMock(), {}, {},
         )
         sResult = fnWorkflowDir("ctr1")
@@ -877,7 +877,7 @@ class TestWorkflowDir:
 
     def test_returns_parent_of_vaibify_dir(self):
         dictPaths = {"ctr1": "/workspace/project/.vaibify/w.yml"}
-        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftBuildHelpers(
             MagicMock(), {}, dictPaths,
         )
         sResult = fnWorkflowDir("ctr1")
@@ -885,7 +885,7 @@ class TestWorkflowDir:
 
     def test_returns_dirname_without_vaibify(self):
         dictPaths = {"ctr1": "/workspace/project/workflow.yml"}
-        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftBuildHelpers(
             MagicMock(), {}, dictPaths,
         )
         sResult = fnWorkflowDir("ctr1")

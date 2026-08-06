@@ -151,7 +151,7 @@ DICT_PRIMITIVE_ACCESS = {
     "fsExecCreate": S_ACCESS_EXEC_CREATE,
     "fsocketExecStart": S_ACCESS_EXEC_CREATE,
     "fnExecResize": S_ACCESS_EXEC_STATE,
-    "ftupleRunRootShellProbe": S_ACCESS_ROOT_SHELL,
+    "ftRunRootShellProbe": S_ACCESS_ROOT_SHELL,
     "fdictProbeProcessGroupMembers": S_ACCESS_ARBITRARY_COMMAND,
     "fnSignalProcessGroupMembers": S_ACCESS_SIGNAL,
     # --- vaibify/docker/dockerConnection.py: read / cache ---

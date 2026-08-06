@@ -2460,9 +2460,9 @@ from vaibify.gui.testGenerator import (
     _F_SIGMA_MULT,
     _fdictMergePreservingOverrides,
     _fsClassifyStochasticity,
-    _ftolMeanFromCv,
-    _ftolPercentileFromN,
-    _ftolStdFromN,
+    _ffMeanToleranceFromCv,
+    _ffPercentileToleranceFromN,
+    _ffStdToleranceFromN,
     fbStepProducesStochasticOutputs,
 )
 
@@ -2538,22 +2538,22 @@ def test_fdictBuildQuantitativeStandards_stochastic_includes_percentiles():
     }
 
 
-def test_ftolMeanFromCv_known_value():
-    fRtol = _ftolMeanFromCv(0.05, 1000)
+def test_ffMeanToleranceFromCv_known_value():
+    fRtol = _ffMeanToleranceFromCv(0.05, 1000)
     fExpected = max(_F_SIGMA_MULT * 0.05 / _math.sqrt(1000), _F_FLOOR_RTOL)
     assert abs(fRtol - fExpected) < 1e-12
 
 
-def test_ftolStdFromN_known_value():
-    fRtol = _ftolStdFromN(1000)
+def test_ffStdToleranceFromN_known_value():
+    fRtol = _ffStdToleranceFromN(1000)
     fExpected = max(
         _F_SIGMA_MULT * _math.sqrt(2.0 / 999), _F_FLOOR_RTOL,
     )
     assert abs(fRtol - fExpected) < 1e-12
 
 
-def test_ftolPercentileFromN_uses_floor_for_zero_value():
-    assert _ftolPercentileFromN(0.5, 1000, 0.05, 0.0) == _F_FLOOR_RTOL
+def test_ffPercentileToleranceFromN_uses_floor_for_zero_value():
+    assert _ffPercentileToleranceFromN(0.5, 1000, 0.05, 0.0) == _F_FLOOR_RTOL
 
 
 def test_fdictMergePreservingOverrides_keeps_user_fRtol():
@@ -2735,7 +2735,7 @@ def test_loader_npy_std_aggregate(tmp_path):
 
 
 # -----------------------------------------------------------------------
-# Tolerance branches in _ftolMeanFromCv / _ftolStdFromN / etc.
+# Tolerance branches in _ffMeanToleranceFromCv / _ffStdToleranceFromN / etc.
 # -----------------------------------------------------------------------
 
 
@@ -2748,42 +2748,42 @@ from vaibify.gui.testGenerator import (
     _fdictGenerateQuantitativeCategory,
     _fdictErrorResult,
     _fnAppendErrorLog,
-    _ftolForStochasticKind,
+    _ffToleranceForStochasticKind,
     _ftExtractStepInfo,
 )
 
 
-def test_ftolMeanFromCv_returns_floor_when_sample_size_zero():
+def test_ffMeanToleranceFromCv_returns_floor_when_sample_size_zero():
     """Line 445: iSampleSize <= 0 returns the floor rtol."""
-    assert _ftolMeanFromCv(0.05, 0) == _F_FLOOR_RTOL
+    assert _ffMeanToleranceFromCv(0.05, 0) == _F_FLOOR_RTOL
 
 
-def test_ftolMeanFromCv_returns_floor_when_sample_size_negative():
-    assert _ftolMeanFromCv(0.05, -3) == _F_FLOOR_RTOL
+def test_ffMeanToleranceFromCv_returns_floor_when_sample_size_negative():
+    assert _ffMeanToleranceFromCv(0.05, -3) == _F_FLOOR_RTOL
 
 
-def test_ftolStdFromN_returns_floor_when_sample_size_below_two():
+def test_ffStdToleranceFromN_returns_floor_when_sample_size_below_two():
     """Line 459: N < 2 returns the floor rtol."""
-    assert _ftolStdFromN(1) == _F_FLOOR_RTOL
-    assert _ftolStdFromN(0) == _F_FLOOR_RTOL
+    assert _ffStdToleranceFromN(1) == _F_FLOOR_RTOL
+    assert _ffStdToleranceFromN(0) == _F_FLOOR_RTOL
 
 
-def test_ftolForStochasticKind_returns_default_for_unknown_kind():
+def test_ffToleranceForStochasticKind_returns_default_for_unknown_kind():
     """Line 499: an unrecognised sMetricKind falls through to default."""
     dictStandard = {
         "sMetricKind": "kurtosis", "iSampleSize": 100,
         "fObservedCv": 0.05, "fValue": 1.0,
     }
-    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    fRtol = _ffToleranceForStochasticKind(dictStandard, 0.123)
     assert fRtol == 0.123
 
 
-def test_ftolForStochasticKind_dispatches_to_std_for_std_kind():
+def test_ffToleranceForStochasticKind_dispatches_to_std_for_std_kind():
     dictStandard = {
         "sMetricKind": "std", "iSampleSize": 1000,
         "fObservedCv": 0.05, "fValue": 1.0,
     }
-    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    fRtol = _ffToleranceForStochasticKind(dictStandard, 0.123)
     assert fRtol != 0.123
     assert fRtol > 0
 

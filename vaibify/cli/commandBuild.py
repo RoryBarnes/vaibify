@@ -751,7 +751,7 @@ def _flistPreflightArch(config):
 _I_DOCKER_DISK_WARN_BYTES = 50 * (2 ** 30)
 
 
-def _fdiDockerDfBytes():
+def _fiDockerDfBytes():
     """Return total bytes used reported by `docker system df`, or -1."""
     try:
         resultProcess = subprocess.run(
@@ -850,7 +850,7 @@ def _fpreflightDiskWarn(iBytes):
 
 def _flistPreflightDisk():
     """Return list of PreflightResult records for Docker disk usage."""
-    iBytes = _fdiDockerDfBytes()
+    iBytes = _fiDockerDfBytes()
     if iBytes < 0:
         return [PreflightResult(
             sName="docker-disk",

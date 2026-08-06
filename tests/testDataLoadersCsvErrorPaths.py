@@ -72,7 +72,7 @@ def test_csv_negative_row_out_of_range_raises(pathCsv):
 def test_reader_open_on_empty_file_yields_no_headers(tmp_path):
     pEmpty = tmp_path / "empty.csv"
     pEmpty.write_text("")
-    reader, fileHandle, listHeaders = dl._freaderOpenCsv(str(pEmpty))
+    reader, fileHandle, listHeaders = dl._ftOpenCsvReader(str(pEmpty))
     try:
         assert listHeaders == []
     finally:

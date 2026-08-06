@@ -195,7 +195,7 @@ def _fpreflightImage(config):
     )
 
 
-def _flistpreflightPorts(config):
+def _flistPreflightPorts(config):
     """Pre-flight every host port forwarding entry; return all results."""
     from vaibify.docker import fbForwardedHostPortFree
     listResults = []
@@ -266,7 +266,7 @@ def _fpreflightRunningContainer(sProjectName):
     )
 
 
-def _flistpreflightBindMounts(config):
+def _flistPreflightBindMounts(config):
     """Pre-flight every bind-mount source path; return all results."""
     listResults = []
     for dictMount in getattr(config, "listBindMounts", []) or []:
@@ -296,7 +296,7 @@ def _fpreflightSingleBindMount(dictMount):
 _RE_BIND_MOUNT_PATH_OK = re.compile(r"^[\w./~ -]+$", re.ASCII)
 
 
-def _flistpreflightBindMountFormats(config):
+def _flistPreflightBindMountFormats(config):
     """Pre-flight every bind-mount source path's format; return all results."""
     listResults = []
     for dictMount in getattr(config, "listBindMounts", []) or []:
@@ -414,7 +414,7 @@ def _fbPathStartsWith(sPath, sPrefix):
     return sPath.startswith(sPrefixSlash)
 
 
-def _flistpreflightColimaSharedRoots(config):
+def _flistPreflightColimaSharedRoots(config):
     """Pre-flight: every bind-mount lives under a Colima shared root."""
     from vaibify.docker.dockerContext import fbColimaActive
     if not fbColimaActive():
@@ -450,11 +450,11 @@ def flistRunStartPreflight(config):
     if listResults[0].sLevel == "fail":
         return listResults
     listResults.append(_fpreflightImage(config))
-    listResults.extend(_flistpreflightPorts(config))
+    listResults.extend(_flistPreflightPorts(config))
     listResults.append(_fpreflightContainerName(config))
-    listResults.extend(_flistpreflightBindMounts(config))
-    listResults.extend(_flistpreflightBindMountFormats(config))
-    listResults.extend(_flistpreflightColimaSharedRoots(config))
+    listResults.extend(_flistPreflightBindMounts(config))
+    listResults.extend(_flistPreflightBindMountFormats(config))
+    listResults.extend(_flistPreflightColimaSharedRoots(config))
     resultColimaVersion = fpreflightColimaVersion()
     if resultColimaVersion is not None:
         listResults.append(resultColimaVersion)

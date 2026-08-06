@@ -1,6 +1,6 @@
 """Tests for the WebSocket-heartbeat side task in pipelineRunner.
 
-The heartbeat lives inside ``_actxWebSocketHeartbeat`` and wraps every
+The heartbeat lives inside ``_fcontextWebSocketHeartbeat`` and wraps every
 ``asyncio.to_thread`` call to the blocking docker exec, so the
 in-container ``vaibify-do`` socket sees keepalive traffic at the
 application layer during multi-minute commands.

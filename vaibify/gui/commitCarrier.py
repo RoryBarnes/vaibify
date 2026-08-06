@@ -60,9 +60,9 @@ __all__ = [
     "fdictBuildLaneTupleFromRequest",
     "fdictBuildLaneTupleFromWebSocket",
     "fbLaneTupleStillCurrent",
-    "ftupleOpenRequestAdmission",
+    "ftOpenRequestAdmission",
     "fnCloseRequestAdmission",
-    "ftupleOpenEstablishingAdmission",
+    "ftOpenEstablishingAdmission",
     "fdictCommitSynchronousMutation",
     "fdictRunLockHeldMutation",
     "fdictRequestLockHeldCancel",
@@ -298,7 +298,7 @@ def fnResetEnforcedRequestLane(token):
     fnResetEnforcedLane(token)
 
 
-def ftupleOpenRequestAdmission(appState, dictScope, request):
+def ftOpenRequestAdmission(appState, dictScope, request):
     """Open the per-request admission for an authorized container route.
 
     Returns ``(tokenLane, tokenAdmission)``; ``tokenAdmission`` is
@@ -337,7 +337,7 @@ def fnCloseRequestAdmission(tTokens):
     fnResetEnforcedLane(tokenLane)
 
 
-def ftupleOpenEstablishingAdmission(sContainerName, sContainerId):
+def ftOpenEstablishingAdmission(sContainerName, sContainerId):
     """Open the owner-establishing admission for the connect handler.
 
     Connect arbitrates ownership itself (``S_SCOPE_OWNER_ESTABLISHING``

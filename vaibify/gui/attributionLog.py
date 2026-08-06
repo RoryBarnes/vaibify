@@ -47,7 +47,7 @@ __all__ = [
     "F_ATTRIBUTION_WINDOW_SECONDS",
     "F_ATTRIBUTION_MTIME_CUTOFF_SECONDS",
     "fbSupervisionEnabled",
-    "fdtParseTimestampAsUtc",
+    "fdatetimeParseTimestampAsUtc",
     "fnAppendAttributionEvent",
     "flistLoadAttributionEvents",
     "fbEventsAccountForChange",
@@ -96,7 +96,7 @@ def fbSupervisionEnabled(dictWorkflow):
     return dictSupervision.get("bEnabled") is True
 
 
-def fdtParseTimestampAsUtc(sTimestamp):
+def fdatetimeParseTimestampAsUtc(sTimestamp):
     """Return an aware UTC datetime, or ``None`` when unparseable.
 
     A timezone-less stamp is read as UTC rather than allowed to
@@ -202,7 +202,7 @@ def _flistTimestampedEvents(listEvents, fNowEpoch):
     """
     listTimestamped = []
     for dictEvent in listEvents:
-        dtEvent = fdtParseTimestampAsUtc(dictEvent.get("sTimestampUtc"))
+        dtEvent = fdatetimeParseTimestampAsUtc(dictEvent.get("sTimestampUtc"))
         if dtEvent is None:
             continue
         fEpoch = dtEvent.timestamp()

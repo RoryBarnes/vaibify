@@ -326,9 +326,9 @@ def test_hub_startup_hook_runs_the_journal_auto_probe():
 
 
 def test_claim_refuses_a_quarantined_container_with_the_reason():
-    from vaibify.gui.containerOwnership import ftdictClaim
+    from vaibify.gui.containerOwnership import ftClaim
     _fnWriteRawJournalBytes(S_PROJECT, b"this is not a journal")
-    iStatusCode, dictPayload = ftdictClaim({}, S_PROJECT, "", 8050)
+    iStatusCode, dictPayload = ftClaim({}, S_PROJECT, "", 8050)
     assert iStatusCode == 409
     assert dictPayload["bClaimed"] is False
     assert dictPayload["bQuarantined"] is True

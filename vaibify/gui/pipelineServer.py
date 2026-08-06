@@ -787,7 +787,7 @@ async def fnPipelineMessageLoop(
       ``progress`` / ``error`` / ``pipelineError`` — pipeline status.
     - ``runRefused`` — a dispatch arrived while another pipeline action
       for the same container was still live; nothing was started.
-    - ``wsHeartbeat`` — emitted by ``_actxWebSocketHeartbeat`` in
+    - ``wsHeartbeat`` — emitted by ``_fcontextWebSocketHeartbeat`` in
       ``pipelineRunner`` every ``F_WS_HEARTBEAT_INTERVAL`` seconds
       while a single command is running. Pure keepalive: clients must
       ignore it (frontend filter in ``scriptPipelineRunner.js``,
@@ -2198,7 +2198,7 @@ def fdictResolveVariables(dictWorkflows, dictPaths, sContainerId):
     return workflowManager.fdictBuildGlobalVariables(dictWorkflow, sPath)
 
 
-def _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths):
+def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
     """Build closure-based helper functions for the context.
 
     Closures look up ``dictRaw["docker"]`` dynamically rather than
@@ -2294,7 +2294,7 @@ def fdictBuildContext(connectionDocker):
         "dictWorkflowEpochs": {},
     }
     fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles = (
-        _ftupleBuildHelpers(dictRaw, dictWorkflows, dictPaths)
+        _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths)
     )
     dictRaw["require"] = fnRequire
     dictRaw["save"] = fnSave
@@ -2400,7 +2400,7 @@ from .serverLifespan import (  # noqa: E402,F401
     F_HUB_WATCHDOG_INTERVAL_SECONDS,
     I_VAIBIFY_IO_THREAD_POOL_FLOOR,
     S_HUB_IDLE_TIMEOUT_ENV,
-    _alifespanShared,
+    _fcontextLifespanShared,
     _fIdleTimeoutSeconds,
     _fbAnyContainerRunning,
     _fbAnyHeldContainerBusy,

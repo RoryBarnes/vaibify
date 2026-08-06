@@ -477,7 +477,7 @@ async def testAnInconclusiveSettlementQuarantinesInsteadOfReleasing():
     )
     assert recordOwner.poison is not None
     assert containerOwnership.fbOwnerIsReapable(recordOwner) is False
-    iCodeClaim, dictClaim = containerOwnership.ftdictClaim(
+    iCodeClaim, dictClaim = containerOwnership.ftClaim(
         stateApp.dictContainerOwners, S_PROJECT_NAME, "", 0,
     )
     assert iCodeClaim == 409 and dictClaim.get("bPoisoned") is True
@@ -614,7 +614,7 @@ async def testAConcurrentClaimAndStartResolveToOneOwnerRecord():
             startReservation, "_fsExecuteReservedStart", controller.fsExecute,
         )
         tResults = await asyncio.gather(
-            sessionLifecycle.ftdictClaimWithCardinality(
+            sessionLifecycle.ftClaimWithCardinality(
                 stateApp, S_OTHER_PROJECT_NAME, "", 0,
                 sBrowserSessionId=sSessionId,
             ),
@@ -759,7 +759,7 @@ async def testAFailedStartNeverReleasesOwnershipItDidNotCreate():
     """
     stateApp = _fstateBuildAppState()
     sSessionId = _fsRedeemSession(stateApp)
-    iCode, dictClaim = await sessionLifecycle.ftdictClaimWithCardinality(
+    iCode, dictClaim = await sessionLifecycle.ftClaimWithCardinality(
         stateApp, S_PROJECT_NAME, "", 0, sBrowserSessionId=sSessionId,
     )
     assert iCode == 200, dictClaim

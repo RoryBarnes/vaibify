@@ -17,7 +17,7 @@ from vaibify.gui.containerOwnership import (
     PoisonRecord,
     fbOwnerIsReapable,
     fnReleaseOwnership,
-    ftdictClaim,
+    ftClaim,
 )
 from vaibify.gui.registryRoutes import _fnAnnotateOwnershipState
 
@@ -41,7 +41,7 @@ def test_a_poisoned_record_refuses_every_claim_including_its_own_lease():
         ("LEASE-B", "session-b"),
         ("", ""),
     ):
-        iCode, dictPayload = ftdictClaim(
+        iCode, dictPayload = ftClaim(
             dictOwners, S_PROJECT, sLeaseId, iPort=8000,
             sBrowserSessionId=sSessionId,
         )

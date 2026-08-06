@@ -37,7 +37,7 @@ __all__ = [
     "I_MAX_DRAFT_CONTENT_BYTES",
     "I_DRAFT_RETENTION_DAYS",
     "fdictParseDraftPayload",
-    "fjsonBuildDraftPayload",
+    "fsBuildDraftPayload",
     "fsDraftDirectory",
     "fsDraftFilename",
     "fsDraftPath",
@@ -91,7 +91,7 @@ def fsDraftPath(sProjectRepoPath, sWorkflowPath, sFilePath, sWorkdir):
     )
 
 
-def fjsonBuildDraftPayload(sFilePath, sWorkdir, sContent, sBaseHash):
+def fsBuildDraftPayload(sFilePath, sWorkdir, sContent, sBaseHash):
     """Return the JSON-encoded payload to write to a draft file."""
     dictPayload = {
         "sFilePath": sFilePath,

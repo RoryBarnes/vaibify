@@ -42,7 +42,7 @@ __all__ = [
     "fbAgentTokenAuthorizesContainerId",
     "frecordOwnerAuthorizedByAgentToken",
     "fsConflictingHeldContainer",
-    "ftdictClaim",
+    "ftClaim",
     "fbBrowserSessionOwnsLease",
     "fbReleaseWouldBePermitted",
     "fnReleaseOwnership",
@@ -370,7 +370,7 @@ def fsConflictingHeldContainer(dictSessionOwner, sBrowserSessionId, sName):
     return ""
 
 
-def ftdictClaim(
+def ftClaim(
     dictContainerOwners, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, fGraceSeconds=_F_GRACE_SECONDS,
     sBrowserSessionId="", dictSessionOwner=None, connectionDocker=None,
@@ -387,7 +387,7 @@ def ftdictClaim(
     Cardinality (design §9) is checked first: a bound session that
     already holds a different container is refused 409 before any
     arbitration, naming the held container. Routes reach this primitive
-    through :func:`sessionLifecycle.ftdictClaimWithCardinality`, whose
+    through :func:`sessionLifecycle.ftClaimWithCardinality`, whose
     hub-wide cardinality lock makes this read-check-write atomic across
     concurrent claims on different containers.
     """
@@ -398,7 +398,7 @@ def ftdictClaim(
         return (409, _fdictCardinalityRefused(sName, sHeldElsewhereName))
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
-        return _ftdictClaimUnowned(
+        return _ftClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
             sBrowserSessionId, dictSessionOwner, connectionDocker,
         )
@@ -426,14 +426,14 @@ def ftdictClaim(
         _fnForceReleaseOwnership(
             dictContainerOwners, sName, dictSessionOwner,
         )
-        return _ftdictClaimUnowned(
+        return _ftClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
             sBrowserSessionId, dictSessionOwner, connectionDocker,
         )
     return (409, _fdictClaimRefused(sName, recordOwner))
 
 
-def _ftdictClaimUnowned(
+def _ftClaimUnowned(
     dictContainerOwners, sName, iPort, sContainerId, sBrowserSessionId="",
     dictSessionOwner=None, connectionDocker=None,
 ):

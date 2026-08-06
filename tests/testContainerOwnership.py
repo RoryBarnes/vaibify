@@ -33,7 +33,7 @@ def _ftReleaseAll(dictContainerOwners):
 
 def test_unowned_claim_grants_a_lease(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    iStatus, dictBody = containerOwnership.ftdictClaim(
+    iStatus, dictBody = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     try:
@@ -47,12 +47,12 @@ def test_unowned_claim_grants_a_lease(tmp_lock_dir):
 
 def test_same_lease_reclaim_is_idempotent(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     sLeaseId = dictFirst["sLeaseId"]
     try:
-        iStatus, dictSecond = containerOwnership.ftdictClaim(
+        iStatus, dictSecond = containerOwnership.ftClaim(
             dictContainerOwners, "demo", sLeaseId, 8050,
         )
         assert iStatus == 200
@@ -64,12 +64,12 @@ def test_same_lease_reclaim_is_idempotent(tmp_lock_dir):
 
 def test_foreign_claim_returns_409_without_leaking_lease(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     sOwnerLease = dictFirst["sLeaseId"]
     try:
-        iStatus, dictBody = containerOwnership.ftdictClaim(
+        iStatus, dictBody = containerOwnership.ftClaim(
             dictContainerOwners, "demo", "a-different-lease", 8050,
         )
         assert iStatus == 409
@@ -83,9 +83,9 @@ def test_foreign_claim_returns_409_without_leaking_lease(tmp_lock_dir):
 
 def test_no_lease_claim_on_owned_returns_409(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     try:
-        iStatus, dictBody = containerOwnership.ftdictClaim(
+        iStatus, dictBody = containerOwnership.ftClaim(
             dictContainerOwners, "demo", None, 8050,
         )
         assert iStatus == 409
@@ -96,12 +96,12 @@ def test_no_lease_claim_on_owned_returns_409(tmp_lock_dir):
 
 def test_claim_takes_over_reapable_idle_owner(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     sOldLease = dictFirst["sLeaseId"]
     try:
-        iStatus, dictBody = containerOwnership.ftdictClaim(
+        iStatus, dictBody = containerOwnership.ftClaim(
             dictContainerOwners, "demo", None, 8050, fGraceSeconds=0.0,
         )
         assert iStatus == 200
@@ -113,10 +113,10 @@ def test_claim_takes_over_reapable_idle_owner(tmp_lock_dir):
 
 def test_claim_does_not_take_over_owner_with_live_connection(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     containerOwnership.fnIncrementLiveConnection(dictContainerOwners, "demo")
     try:
-        iStatus, _dictBody = containerOwnership.ftdictClaim(
+        iStatus, _dictBody = containerOwnership.ftClaim(
             dictContainerOwners, "demo", None, 8050, fGraceSeconds=0.0,
         )
         assert iStatus == 409
@@ -126,7 +126,7 @@ def test_claim_does_not_take_over_owner_with_live_connection(tmp_lock_dir):
 
 def test_release_verifies_lease_frees_flock_and_drops_record(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     sLeaseId = dictFirst["sLeaseId"]
@@ -135,7 +135,7 @@ def test_release_verifies_lease_frees_flock_and_drops_record(tmp_lock_dir):
     )
     assert bReleased is True
     assert "demo" not in dictContainerOwners
-    iStatus, _dictBody = containerOwnership.ftdictClaim(
+    iStatus, _dictBody = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8051,
     )
     try:
@@ -146,7 +146,7 @@ def test_release_verifies_lease_frees_flock_and_drops_record(tmp_lock_dir):
 
 def test_release_by_non_owner_is_rejected(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     try:
         bReleased = containerOwnership.fnReleaseOwnership(
             dictContainerOwners, "demo", "not-the-owner-lease",
@@ -167,7 +167,7 @@ def test_release_unknown_container_is_rejected(tmp_lock_dir):
 
 def test_fbSessionOwnsContainer_matches_only_the_owning_lease(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     sLeaseId = dictFirst["sLeaseId"]
@@ -190,7 +190,7 @@ def test_fbSessionOwnsContainer_matches_only_the_owning_lease(tmp_lock_dir):
 
 def test_live_connection_count_increments_and_decrements(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     try:
         containerOwnership.fnIncrementLiveConnection(dictContainerOwners, "demo")
         assert dictContainerOwners["demo"].iLiveConnectionCount == 1
@@ -204,7 +204,7 @@ def test_live_connection_count_increments_and_decrements(tmp_lock_dir):
 
 def test_fbOwnerIsReapable_honors_live_connection_and_grace(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     recordOwner = dictContainerOwners["demo"]
     try:
         assert not containerOwnership.fbOwnerIsReapable(recordOwner)
@@ -221,8 +221,8 @@ def test_fbOwnerIsReapable_honors_live_connection_and_grace(tmp_lock_dir):
 
 def test_flistReapIdleOwnerships_releases_only_idle_past_grace(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "idle", None, 8050)
-    containerOwnership.ftdictClaim(dictContainerOwners, "busy", None, 8051)
+    containerOwnership.ftClaim(dictContainerOwners, "idle", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "busy", None, 8051)
     containerOwnership.fnIncrementLiveConnection(dictContainerOwners, "busy")
     try:
         listReaped = containerOwnership.flistReapIdleOwnerships(
@@ -237,7 +237,7 @@ def test_flistReapIdleOwnerships_releases_only_idle_past_grace(tmp_lock_dir):
 
 def test_flistReapIdleOwnerships_skips_running_pipeline(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     try:
         listReaped = containerOwnership.flistReapIdleOwnerships(
             dictContainerOwners,
@@ -252,10 +252,10 @@ def test_flistReapIdleOwnerships_skips_running_pipeline(tmp_lock_dir):
 
 def test_claim_mints_a_distinct_per_container_agent_token(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(
+    containerOwnership.ftClaim(
         dictContainerOwners, "alpha", None, 8050, sContainerId="cid-alpha",
     )
-    containerOwnership.ftdictClaim(
+    containerOwnership.ftClaim(
         dictContainerOwners, "beta", None, 8050, sContainerId="cid-beta",
     )
     try:
@@ -269,10 +269,10 @@ def test_claim_mints_a_distinct_per_container_agent_token(tmp_lock_dir):
 
 def test_fbAgentTokenAuthorizesContainerId_is_per_container(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(
+    containerOwnership.ftClaim(
         dictContainerOwners, "alpha", None, 8050, sContainerId="cid-alpha",
     )
-    containerOwnership.ftdictClaim(
+    containerOwnership.ftClaim(
         dictContainerOwners, "beta", None, 8050, sContainerId="cid-beta",
     )
     try:
@@ -309,7 +309,7 @@ def test_agent_token_with_empty_container_id_fails_closed(tmp_lock_dir):
     sPresentedToken or not sContainerId' mutated or->and
     """
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    containerOwnership.ftdictClaim(dictContainerOwners, "demo", None, 8050)
+    containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     try:
         sToken = dictContainerOwners["demo"].sAgentToken
         assert dictContainerOwners["demo"].sContainerId == ""
@@ -330,18 +330,18 @@ def test_same_lease_reclaim_refreshes_grace_clock(tmp_lock_dir):
     clock, a concurrent idle reaper can release the just-reclaimed
     session between reload and reconnect.
 
-    Kills: ftdictClaim:140 same-lease idempotent reclaim no longer runs
+    Kills: ftClaim:140 same-lease idempotent reclaim no longer runs
     recordOwner.fLastSeenMonotonic = time.monotonic()
     """
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     sLeaseId = dictFirst["sLeaseId"]
     try:
         recordOwner = dictContainerOwners["demo"]
         recordOwner.fLastSeenMonotonic = time.monotonic() - 1000.0
-        containerOwnership.ftdictClaim(
+        containerOwnership.ftClaim(
             dictContainerOwners, "demo", sLeaseId, 8050,
         )
         fElapsedSinceReclaim = (
@@ -368,7 +368,7 @@ def test_release_stops_keep_alive(tmp_lock_dir, monkeypatch):
         containerOwnership, "fnStopKeepAlive", listStoppedNames.append,
     )
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", None, 8050,
     )
     sLeaseId = dictFirst["sLeaseId"]
@@ -395,13 +395,13 @@ def test_copied_lease_from_foreign_session_is_refused_without_refresh(
     refresh A's ``fLastSeenMonotonic`` — otherwise B could both "claim"
     A's container and revive A's grace clock.
 
-    Kills: ftdictClaim same-lease reclaim guard drops the session check
+    Kills: ftClaim same-lease reclaim guard drops the session check
     'and (recordOwner.sBrowserSessionId == "" or recordOwner
     .sBrowserSessionId == sBrowserSessionId)', reverting to a lease-only
     reclaim that grants + refreshes for any matching lease.
     """
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+    _iStatus, dictFirst = containerOwnership.ftClaim(
         dictContainerOwners, "demo", "", 8050,
         sBrowserSessionId="session-A",
     )
@@ -412,7 +412,7 @@ def test_copied_lease_from_foreign_session_is_refused_without_refresh(
         # reaches the session arbitration rather than a grace take-over.
         containerOwnership.fnIncrementLiveConnection(dictContainerOwners, "demo")
         recordOwner.fLastSeenMonotonic = 123.0
-        iStatus, dictBody = containerOwnership.ftdictClaim(
+        iStatus, dictBody = containerOwnership.ftClaim(
             dictContainerOwners, "demo", sLeaseA, 8050,
             sBrowserSessionId="session-B",
         )

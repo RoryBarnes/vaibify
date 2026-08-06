@@ -265,7 +265,7 @@ def fiDiscoverTerminalProcessGroup(
     fDeadline = time.monotonic() + fTimeoutSeconds
     while True:
         try:
-            iExitCode, sOutput = connectionDocker.ftupleRunRootShellProbe(
+            iExitCode, sOutput = connectionDocker.ftRunRootShellProbe(
                 sContainerId, sScript,
             )
         except Exception:

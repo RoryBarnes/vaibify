@@ -3013,7 +3013,7 @@ def testClaimRejectsForeignLease():
 
     The old registry route returned ``{bClaimed: True}`` unconditionally
     once the container was in the in-process lock dict, so a second
-    same-hub tab silently succeeded. ``ftdictClaim`` must instead refuse a
+    same-hub tab silently succeeded. ``ftClaim`` must instead refuse a
     non-owner with 409 -- without leaking the owner's lease -- while
     keeping a same-lease re-claim idempotent for the reload path.
     """
@@ -3021,7 +3021,7 @@ def testClaimRejectsForeignLease():
     dictOwners = {
         "Proj": _frecordSeedOwner("LEASE-A", "2026-01-02T03:04:05"),
     }
-    iCodeForeign, dictForeign = containerOwnership.ftdictClaim(
+    iCodeForeign, dictForeign = containerOwnership.ftClaim(
         dictOwners, "Proj", "LEASE-B", iPort=8000,
     )
     assert iCodeForeign == 409, (
@@ -3032,16 +3032,16 @@ def testClaimRejectsForeignLease():
     assert "sLeaseId" not in dictForeign, (
         "the 409 body must never echo the current owner's lease"
     )
-    iCodeSame, dictSame = containerOwnership.ftdictClaim(
+    iCodeSame, dictSame = containerOwnership.ftClaim(
         dictOwners, "Proj", "LEASE-A", iPort=8000,
     )
     assert iCodeSame == 200 and dictSame["sLeaseId"] == "LEASE-A", (
         "a same-lease re-claim (the reload path) must be idempotent success"
     )
     sSource = fsReadSource(GUI_DIR / "registryRoutes.py")
-    assert "ftdictClaim" in sSource and "bClaimed" not in sSource, (
+    assert "ftClaim" in sSource and "bClaimed" not in sSource, (
         "the claim route must delegate arbitration to "
-        "containerOwnership.ftdictClaim and hold no inline bClaimed "
+        "containerOwnership.ftClaim and hold no inline bClaimed "
         "short-circuit"
     )
 

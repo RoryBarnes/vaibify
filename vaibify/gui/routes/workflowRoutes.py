@@ -352,7 +352,7 @@ def _fnRegisterConnect(app, dictCtx):
         # duration (design §8) — the one lane where the owner record
         # may be created DURING the handler (viewer first connect).
         from .. import commitCarrier
-        tAdmissionTokens = commitCarrier.ftupleOpenEstablishingAdmission(
+        tAdmissionTokens = commitCarrier.ftOpenEstablishingAdmission(
             _fsResolveOwnedNameForContainerId(dictCtx, sContainerId),
             sContainerId,
         )

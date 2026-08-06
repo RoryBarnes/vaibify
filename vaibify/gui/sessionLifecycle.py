@@ -38,7 +38,7 @@ Two invariants (design §3.5), recorded while they are true:
    future "move my session to container B" must be release-A then
    claim-B, never a combined switch holding both.
 2. **The locks live here, wrapping the SYNCHRONOUS ownership
-   primitives.** ``ftdictClaim``, ``fnReleaseOwnership``, and
+   primitives.** ``ftClaim``, ``fnReleaseOwnership``, and
    ``flistReapIdleOwnerships`` stay synchronous; the ``asyncio.Lock``s
    are taken in this lifecycle layer around those calls, never pushed
    down into them. Corollary: build is browser-hub scoped and takes no
@@ -67,7 +67,7 @@ __all__ = [
     "fdictCreateLifecycleLockStore",
     "flockContainerMutationForAppState",
     "flockSessionCardinalityForAppState",
-    "ftdictClaimWithCardinality",
+    "ftClaimWithCardinality",
     "ftReserveContainerForStart",
     "ftSettleFailedStartOwnership",
     "S_START_RESERVED",
@@ -251,7 +251,7 @@ def flockSessionCardinalityForAppState(appState):
     )
 
 
-async def ftdictClaimWithCardinality(
+async def ftClaimWithCardinality(
     appState, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, sBrowserSessionId="", connectionDocker=None,
 ):
@@ -259,7 +259,7 @@ async def ftdictClaimWithCardinality(
 
     The sole claim path for routes: acquires the container-mutation lock
     (the drain), then the hub-wide cardinality lock, and only then runs
-    the synchronous :func:`containerOwnership.ftdictClaim`, whose
+    the synchronous :func:`containerOwnership.ftClaim`, whose
     cardinality read-check-write on ``dictSessionOwner`` therefore
     executes atomically against every other creation path. Two
     concurrent claims by one session on two DIFFERENT containers take
@@ -273,7 +273,7 @@ async def ftdictClaimWithCardinality(
     dictSessionOwner = getattr(appState, "dictSessionOwner", None)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
-            return containerOwnership.ftdictClaim(
+            return containerOwnership.ftClaim(
                 dictContainerOwners, sName, sLeaseId, iPort,
                 sContainerId=sContainerId,
                 fbPipelineRunning=fbPipelineRunning,
@@ -334,7 +334,7 @@ def _tReserveForStartUnderLocks(
     if sRefusal:
         return (S_START_REFUSED, {"sName": sName, "sMessage": sRefusal}, None)
     if recordOwner is None:
-        iStatusCode, dictPayload = containerOwnership.ftdictClaim(
+        iStatusCode, dictPayload = containerOwnership.ftClaim(
             dictOwners, sName, "", iPort,
             sBrowserSessionId=sBrowserSessionId,
             dictSessionOwner=getattr(appState, "dictSessionOwner", None),

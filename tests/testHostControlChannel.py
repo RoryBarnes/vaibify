@@ -2,7 +2,7 @@
 
 The end-to-end tests bind a REAL Unix domain socket, serve it with the
 real handlers on a real event loop, and connect with the real blocking
-client — so the peer-credential shim (``fituplePeerUidGid``) is
+client — so the peer-credential shim (``ftPeerUidGid``) is
 exercised for real on whichever platform runs the suite: the
 ``LOCAL_PEERCRED`` branch on macOS, the ``SO_PEERCRED`` branch on
 Linux CI. The opposite platform's *parser* is structure-tested here
@@ -26,7 +26,7 @@ from vaibify.gui import containerOwnership, hostControlChannel
 from vaibify.gui.hostControlChannel import (
     HostControlError,
     fdictSendHostControlRequest,
-    fituplePeerUidGid,
+    ftPeerUidGid,
     fnRegisterHostControlChannel,
     fnUnlinkStaleControlSockets,
     fsControlSocketPathForPort,
@@ -189,7 +189,7 @@ def test_peer_credentials_resolve_to_this_user_over_a_real_connection(
         socketClient.connect(sPath)
         socketAccepted, _ = socketServer.accept()
         try:
-            iPeerUid, iPeerGid = fituplePeerUidGid(socketAccepted)
+            iPeerUid, iPeerGid = ftPeerUidGid(socketAccepted)
         finally:
             socketAccepted.close()
     finally:
@@ -202,11 +202,11 @@ def test_peer_credentials_resolve_to_this_user_over_a_real_connection(
 def test_linux_ucred_parser_reads_a_packed_struct_and_fails_closed():
     """Structure test for the SO_PEERCRED branch (live on Linux CI)."""
     byteCredentials = struct.pack("3i", 4242, 501, 20)
-    assert hostControlChannel._ftupleParseLinuxPeerCredentials(
+    assert hostControlChannel._ftParseLinuxPeerCredentials(
         byteCredentials,
     ) == (501, 20)
     with pytest.raises(HostControlError):
-        hostControlChannel._ftupleParseLinuxPeerCredentials(b"\x01\x02")
+        hostControlChannel._ftParseLinuxPeerCredentials(b"\x01\x02")
 
 
 def test_darwin_xucred_parser_reads_a_packed_struct_and_fails_closed():
@@ -214,23 +214,23 @@ def test_darwin_xucred_parser_reads_a_packed_struct_and_fails_closed():
     byteCredentials = bytearray(76)
     struct.pack_into("IIh", byteCredentials, 0, 0, 501, 1)
     struct.pack_into("I", byteCredentials, 12, 20)
-    assert hostControlChannel._ftupleParseDarwinPeerCredentials(
+    assert hostControlChannel._ftParseDarwinPeerCredentials(
         bytes(byteCredentials),
     ) == (501, 20)
     byteBadVersion = bytearray(byteCredentials)
     struct.pack_into("IIh", byteBadVersion, 0, 7, 501, 1)
     with pytest.raises(HostControlError):
-        hostControlChannel._ftupleParseDarwinPeerCredentials(
+        hostControlChannel._ftParseDarwinPeerCredentials(
             bytes(byteBadVersion),
         )
     byteNoGroups = bytearray(byteCredentials)
     struct.pack_into("IIh", byteNoGroups, 0, 0, 501, 0)
     with pytest.raises(HostControlError):
-        hostControlChannel._ftupleParseDarwinPeerCredentials(
+        hostControlChannel._ftParseDarwinPeerCredentials(
             bytes(byteNoGroups),
         )
     with pytest.raises(HostControlError):
-        hostControlChannel._ftupleParseDarwinPeerCredentials(b"\x00\x01")
+        hostControlChannel._ftParseDarwinPeerCredentials(b"\x00\x01")
 
 
 def test_a_foreign_peer_is_closed_without_a_byte_of_response(
@@ -764,7 +764,7 @@ def test_force_abandon_lifecycle_poisons_refuses_and_reconciles(
     assert recordOwner.fileHandleLock is not None, (
         "poison retains the flock; it is never dropped"
     )
-    iClaimCode, dictClaimBody = containerOwnership.ftdictClaim(
+    iClaimCode, dictClaimBody = containerOwnership.ftClaim(
         app.state.dictContainerOwners, S_PROJECT, "a-foreign-lease", 8123,
     )
     assert iClaimCode == 409

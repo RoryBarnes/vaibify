@@ -9,7 +9,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from vaibify.cli.commandBuild import (
-    _fdiDockerDfBytes,
+    _fiDockerDfBytes,
     _fiParseHumanSize,
     _fiSumDfSizeBytes,
     _flistArchMismatchResults,
@@ -283,48 +283,48 @@ def test_fiSumDfSizeBytes_returns_negative_on_bad_size():
 
 
 @patch("subprocess.run")
-def test_fdiDockerDfBytes_happy_path(mockRun):
+def test_fiDockerDfBytes_happy_path(mockRun):
     sJson = "\n".join([
         json.dumps({"Type": "Images", "Size": "1GB"}),
         json.dumps({"Type": "Containers", "Size": "500MB"}),
     ])
     mockRun.return_value = _resultProcess(iReturnCode=0, sStdout=sJson)
-    iBytes = _fdiDockerDfBytes()
+    iBytes = _fiDockerDfBytes()
     assert iBytes == 1 * 1000 ** 3 + 500 * 1000 ** 2
 
 
 @patch("subprocess.run", side_effect=FileNotFoundError)
-def test_fdiDockerDfBytes_returns_negative_when_docker_missing(mockRun):
-    assert _fdiDockerDfBytes() == -1
+def test_fiDockerDfBytes_returns_negative_when_docker_missing(mockRun):
+    assert _fiDockerDfBytes() == -1
 
 
 @patch("subprocess.run",
        side_effect=subprocess.TimeoutExpired("docker", 10))
-def test_fdiDockerDfBytes_returns_negative_on_timeout(mockRun):
-    assert _fdiDockerDfBytes() == -1
+def test_fiDockerDfBytes_returns_negative_on_timeout(mockRun):
+    assert _fiDockerDfBytes() == -1
 
 
 @patch("subprocess.run")
-def test_fdiDockerDfBytes_returns_negative_on_nonzero(mockRun):
+def test_fiDockerDfBytes_returns_negative_on_nonzero(mockRun):
     mockRun.return_value = _resultProcess(iReturnCode=2)
-    assert _fdiDockerDfBytes() == -1
+    assert _fiDockerDfBytes() == -1
 
 
-@patch("vaibify.cli.commandBuild._fdiDockerDfBytes", return_value=-1)
+@patch("vaibify.cli.commandBuild._fiDockerDfBytes", return_value=-1)
 def test_flistPreflightDisk_emits_info_when_unparseable(mockBytes):
     listResults = _flistPreflightDisk()
     assert len(listResults) == 1
     assert listResults[0].sLevel == "info"
 
 
-@patch("vaibify.cli.commandBuild._fdiDockerDfBytes",
+@patch("vaibify.cli.commandBuild._fiDockerDfBytes",
        return_value=5 * (2 ** 30))
 def test_flistPreflightDisk_no_warning_when_below_threshold(mockBytes):
     assert _flistPreflightDisk() == []
 
 
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=True)
-@patch("vaibify.cli.commandBuild._fdiDockerDfBytes",
+@patch("vaibify.cli.commandBuild._fiDockerDfBytes",
        return_value=80 * (2 ** 30))
 def test_flistPreflightDisk_warns_when_threshold_exceeded(
     mockBytes, mockColima,
@@ -337,7 +337,7 @@ def test_flistPreflightDisk_warns_when_threshold_exceeded(
 
 
 @patch("vaibify.docker.dockerContext.fbColimaActive", return_value=False)
-@patch("vaibify.cli.commandBuild._fdiDockerDfBytes",
+@patch("vaibify.cli.commandBuild._fiDockerDfBytes",
        return_value=80 * (2 ** 30))
 def test_flistPreflightDisk_warn_no_colima_advice_when_not_colima(
     mockBytes, mockColima,

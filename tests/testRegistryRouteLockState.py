@@ -71,7 +71,7 @@ def _fnPatchRegistrySources(monkeypatch, listProjects):
         lambda: listProjects,
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._ftupleDiscoverAllContainers",
+        "vaibify.gui.registryRoutes._ftDiscoverAllContainers",
         lambda dictCtx: ([], []),
     )
 

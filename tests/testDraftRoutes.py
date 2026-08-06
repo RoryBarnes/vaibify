@@ -213,7 +213,7 @@ def test_fsDraftDirectory_empty_when_inputs_missing():
 
 
 def test_fdictParseDraftPayload_round_trips():
-    sJson = draftManager.fjsonBuildDraftPayload(
+    sJson = draftManager.fsBuildDraftPayload(
         "src/x.py", "step1", "abc", "hash1",
     )
     dictParsed = draftManager.fdictParseDraftPayload(sJson)

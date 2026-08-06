@@ -22,9 +22,9 @@ __all__ = [
     "fbIsUsablePid",
     "fbIsProcessAlive",
     "fbIsProcessAliveSince",
-    "fdtReadProcessStartClock",
-    "fdtReadProcessStartClockCached",
-    "fdtParseClaimIso",
+    "fdatetimeReadProcessStartClock",
+    "fdatetimeReadProcessStartClockCached",
+    "fdatetimeParseClaimIso",
 ]
 
 import datetime
@@ -69,15 +69,15 @@ def fbIsProcessAliveSince(iPid, sClaimIso, dictStartClockCache=None):
     """
     if not fbIsProcessAlive(iPid):
         return False
-    dtStart = fdtReadProcessStartClockCached(iPid, dictStartClockCache)
-    dtClaim = fdtParseClaimIso(sClaimIso)
+    dtStart = fdatetimeReadProcessStartClockCached(iPid, dictStartClockCache)
+    dtClaim = fdatetimeParseClaimIso(sClaimIso)
     if dtStart is None or dtClaim is None:
         return True
     dtTolerance = datetime.timedelta(seconds=_F_RECYCLE_TOLERANCE_SECONDS)
     return dtStart <= dtClaim + dtTolerance
 
 
-def fdtReadProcessStartClockCached(iPid, dictStartClockCache):
+def fdatetimeReadProcessStartClockCached(iPid, dictStartClockCache):
     """Return a PID's start clock, memoizing per refresh to batch ps spawns.
 
     With ``dictStartClockCache`` ``None`` the probe runs on every call
@@ -86,13 +86,13 @@ def fdtReadProcessStartClockCached(iPid, dictStartClockCache):
     registry refresh spawn ``ps`` at most once per distinct PID.
     """
     if dictStartClockCache is None:
-        return fdtReadProcessStartClock(iPid)
+        return fdatetimeReadProcessStartClock(iPid)
     if iPid not in dictStartClockCache:
-        dictStartClockCache[iPid] = fdtReadProcessStartClock(iPid)
+        dictStartClockCache[iPid] = fdatetimeReadProcessStartClock(iPid)
     return dictStartClockCache[iPid]
 
 
-def fdtReadProcessStartClock(iPid):
+def fdatetimeReadProcessStartClock(iPid):
     """Return a PID's start time from ``ps``, or None on any failure."""
     if not fbIsUsablePid(iPid):
         return None
@@ -124,7 +124,7 @@ def _fsReadStartTimeFromProcessStatus(iPid):
     return resultProcess.stdout.strip()
 
 
-def fdtParseClaimIso(sClaimIso):
+def fdatetimeParseClaimIso(sClaimIso):
     """Return a claim ISO string as a naive-local datetime, or None."""
     if not isinstance(sClaimIso, str) or not sClaimIso:
         return None
@@ -132,10 +132,10 @@ def fdtParseClaimIso(sClaimIso):
         dtClaim = datetime.datetime.fromisoformat(sClaimIso)
     except ValueError:
         return None
-    return _fdtNormalizeToNaiveLocal(dtClaim)
+    return _fdatetimeNormalizeToNaiveLocal(dtClaim)
 
 
-def _fdtNormalizeToNaiveLocal(dtValue):
+def _fdatetimeNormalizeToNaiveLocal(dtValue):
     """Drop tzinfo, converting an aware datetime to local naive time."""
     if dtValue.tzinfo is None:
         return dtValue

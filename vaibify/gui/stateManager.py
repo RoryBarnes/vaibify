@@ -159,7 +159,7 @@ def ftLoadStateWithStatus(
     """
     if not sStatePath:
         return fdictBuildEmptyState(), "loaded"
-    sPrimaryStatus, dictPrimary = _ftupleTryLoadStateFile(
+    sPrimaryStatus, dictPrimary = _ftTryLoadStateFile(
         connectionDocker, sContainerId, sStatePath,
     )
     if sPrimaryStatus == "parsed":
@@ -168,7 +168,7 @@ def ftLoadStateWithStatus(
         sPrimaryStatus, connectionDocker, sContainerId, sStatePath,
     )
     sBakPath = _fsBakPathFor(sStatePath)
-    sBakStatus, dictBak = _ftupleTryLoadStateFile(
+    sBakStatus, dictBak = _ftTryLoadStateFile(
         connectionDocker, sContainerId, sBakPath,
     )
     if sBakStatus == "parsed":
@@ -186,7 +186,7 @@ def ftLoadStateWithStatus(
     return None, "missing"
 
 
-def _ftupleTryLoadStateFile(connectionDocker, sContainerId, sPath):
+def _ftTryLoadStateFile(connectionDocker, sContainerId, sPath):
     """Return ``(sStatus, dictParsedOrNone)`` for a single file.
 
     ``sStatus`` is ``"missing"``, ``"corrupt"``, or ``"parsed"``.

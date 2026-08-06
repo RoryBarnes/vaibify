@@ -118,7 +118,7 @@ S_SETSID_ESCAPE_LINE = (
 def _fbEscapedMarkerExists(tLiveContainer):
     """Independently check the setsid descendant's marker file."""
     _sName, sContainerId, connectionDocker = tLiveContainer
-    iExitCode, _ = connectionDocker.ftupleRunRootShellProbe(
+    iExitCode, _ = connectionDocker.ftRunRootShellProbe(
         sContainerId, f"test -e {S_ESCAPED_MARKER_PATH}",
     )
     return iExitCode == 0
@@ -127,7 +127,7 @@ def _fbEscapedMarkerExists(tLiveContainer):
 def _fbEscapedProcessIsAlive(tLiveContainer):
     """Return True while the setsid descendant is still running."""
     _sName, sContainerId, connectionDocker = tLiveContainer
-    iExitCode, _sOutput = connectionDocker.ftupleRunRootShellProbe(
+    iExitCode, _sOutput = connectionDocker.ftRunRootShellProbe(
         sContainerId,
         f"grep -l {S_ESCAPED_MARKER_PATH} /proc/*/cmdline 2>/dev/null "
         "| head -n 1",
@@ -139,7 +139,7 @@ def _fbEscapedProcessIsAlive(tLiveContainer):
 def _fbLeakedMarkerExists(tLiveContainer):
     """Independently check the descendant's marker file, root exec."""
     sName, sContainerId, connectionDocker = tLiveContainer
-    iExitCode, _ = connectionDocker.ftupleRunRootShellProbe(
+    iExitCode, _ = connectionDocker.ftRunRootShellProbe(
         sContainerId, f"test -e {S_LEAKED_MARKER_PATH}",
     )
     return iExitCode == 0

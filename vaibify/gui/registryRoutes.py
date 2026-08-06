@@ -130,7 +130,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         _fnReapStaleContainerClaims(dictCtx)
         listRegistered = flistGetAllProjectsWithStatus()
         listVaibify, listUnrecognized = (
-            _ftupleDiscoverAllContainers(dictCtx)
+            _ftDiscoverAllContainers(dictCtx)
         )
         listContainers = _flistMergeProjectsAndContainers(
             listRegistered, listVaibify,
@@ -256,11 +256,11 @@ def _fnRegisterClaimContainer(app, dictCtx):
             request.headers.get("x-session-token", ""),
         )
         # The commit goes through the sessionLifecycle authority (never
-        # containerOwnership.ftdictClaim directly), whose canonical lock
+        # containerOwnership.ftClaim directly), whose canonical lock
         # order makes the one-container-per-session read-check-write
         # atomic across concurrent claims on different containers.
         iStatusCode, dictPayload = (
-            await sessionLifecycle.ftdictClaimWithCardinality(
+            await sessionLifecycle.ftClaimWithCardinality(
                 app.state, sName, sLeaseId, iPort,
                 sContainerId=sContainerId,
                 fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
@@ -750,7 +750,7 @@ def _fdictRequireProject(sName):
     return dictProject
 
 
-def _ftupleDiscoverAllContainers(dictCtx):
+def _ftDiscoverAllContainers(dictCtx):
     """Query Docker for all running containers.
 
     Returns
@@ -767,7 +767,7 @@ def _ftupleDiscoverAllContainers(dictCtx):
     except Exception:
         return [], []
     _fnSweepSiblingContainerCaches(dictCtx, listContainers)
-    return _ftupleSplitContainers(connectionDocker, listContainers)
+    return _ftSplitContainers(connectionDocker, listContainers)
 
 
 def _fnSweepSiblingContainerCaches(dictCtx, listContainers):
@@ -787,7 +787,7 @@ def _fnSweepSiblingContainerCaches(dictCtx, listContainers):
     fnSweepAllContainerCaches(dictCtx, [s for s in listIds if s])
 
 
-def _ftupleSplitContainers(connectionDocker, listContainers):
+def _ftSplitContainers(connectionDocker, listContainers):
     """Split containers into vaibify and unrecognized lists."""
     listVaibify = []
     listUnrecognized = []

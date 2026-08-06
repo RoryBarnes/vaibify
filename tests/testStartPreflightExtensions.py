@@ -21,12 +21,12 @@ def _fConfigForPreflight(listBindMounts=None, sProjectName="proj"):
 
 def test_bind_mount_path_with_space_emits_warn(tmp_path):
     """A bind-mount host path containing a space emits a warn-level result."""
-    from vaibify.cli.commandStart import _flistpreflightBindMountFormats
+    from vaibify.cli.commandStart import _flistPreflightBindMountFormats
     sPathSpace = "/Users/example/My Stuff/data"
     config = _fConfigForPreflight(listBindMounts=[
         {"host": sPathSpace, "container": "/data"},
     ])
-    listResults = _flistpreflightBindMountFormats(config)
+    listResults = _flistPreflightBindMountFormats(config)
     assert len(listResults) == 1
     assert listResults[0].sLevel == "warn"
     assert sPathSpace in listResults[0].sMessage
@@ -34,22 +34,22 @@ def test_bind_mount_path_with_space_emits_warn(tmp_path):
 
 def test_bind_mount_path_clean_yields_no_result():
     """A well-behaved host path produces no warn entry."""
-    from vaibify.cli.commandStart import _flistpreflightBindMountFormats
+    from vaibify.cli.commandStart import _flistPreflightBindMountFormats
     config = _fConfigForPreflight(listBindMounts=[
         {"host": "/Users/example/data", "container": "/data"},
     ])
-    listResults = _flistpreflightBindMountFormats(config)
+    listResults = _flistPreflightBindMountFormats(config)
     assert listResults == []
 
 
 def test_bind_mount_path_with_unicode_emits_warn():
     """A non-ASCII host path emits a warn-level result."""
-    from vaibify.cli.commandStart import _flistpreflightBindMountFormats
+    from vaibify.cli.commandStart import _flistPreflightBindMountFormats
     sPathUnicode = "/Users/example/d\u00e9j\u00e0/data"
     config = _fConfigForPreflight(listBindMounts=[
         {"host": sPathUnicode, "container": "/data"},
     ])
-    listResults = _flistpreflightBindMountFormats(config)
+    listResults = _flistPreflightBindMountFormats(config)
     assert len(listResults) == 1
     assert listResults[0].sLevel == "warn"
 
@@ -61,7 +61,7 @@ def test_bind_mount_path_with_unicode_emits_warn():
 
 def test_bind_mount_outside_colima_shared_roots_fails():
     """A bind-mount source outside Colima's shared roots emits a fail."""
-    from vaibify.cli.commandStart import _flistpreflightColimaSharedRoots
+    from vaibify.cli.commandStart import _flistPreflightColimaSharedRoots
     config = _fConfigForPreflight(listBindMounts=[
         {"host": "/opt/foo", "container": "/data"},
     ])
@@ -71,7 +71,7 @@ def test_bind_mount_outside_colima_shared_roots_fails():
         "vaibify.cli.commandStart._flistColimaSharedRoots",
         return_value=["/Users", "/private/tmp"],
     ):
-        listResults = _flistpreflightColimaSharedRoots(config)
+        listResults = _flistPreflightColimaSharedRoots(config)
     assert len(listResults) == 1
     assert listResults[0].sLevel == "fail"
     assert "Colima isn't sharing" in listResults[0].sMessage
@@ -80,7 +80,7 @@ def test_bind_mount_outside_colima_shared_roots_fails():
 
 def test_bind_mount_inside_colima_shared_roots_passes(tmp_path):
     """A bind-mount source under a shared root yields no fail."""
-    from vaibify.cli.commandStart import _flistpreflightColimaSharedRoots
+    from vaibify.cli.commandStart import _flistPreflightColimaSharedRoots
     sShared = str(tmp_path)
     sChild = f"{sShared}/sub"
     config = _fConfigForPreflight(listBindMounts=[
@@ -92,18 +92,18 @@ def test_bind_mount_inside_colima_shared_roots_passes(tmp_path):
         "vaibify.cli.commandStart._flistColimaSharedRoots",
         return_value=[sShared],
     ):
-        listResults = _flistpreflightColimaSharedRoots(config)
+        listResults = _flistPreflightColimaSharedRoots(config)
     assert listResults == []
 
 
 def test_colima_share_check_skipped_when_colima_inactive():
     """No result is emitted when Colima is not the active context."""
-    from vaibify.cli.commandStart import _flistpreflightColimaSharedRoots
+    from vaibify.cli.commandStart import _flistPreflightColimaSharedRoots
     config = _fConfigForPreflight(listBindMounts=[
         {"host": "/opt/foo", "container": "/data"},
     ])
     with patch(
         "vaibify.docker.dockerContext.fbColimaActive", return_value=False,
     ):
-        listResults = _flistpreflightColimaSharedRoots(config)
+        listResults = _flistPreflightColimaSharedRoots(config)
     assert listResults == []

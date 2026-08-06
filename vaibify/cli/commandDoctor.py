@@ -39,16 +39,16 @@ def _flistBuildOnlyChecks(config):
 def _flistStartOnlyChecks(config):
     """Run start-only pre-flight helpers and return their results."""
     from .commandStart import (
-        _flistpreflightBindMountFormats, _flistpreflightBindMounts,
-        _flistpreflightColimaSharedRoots, _flistpreflightPorts,
+        _flistPreflightBindMountFormats, _flistPreflightBindMounts,
+        _flistPreflightColimaSharedRoots, _flistPreflightPorts,
         _fpreflightContainerName, _fpreflightImage,
     )
     listResults = [_fpreflightImage(config)]
-    listResults.extend(_flistpreflightPorts(config))
+    listResults.extend(_flistPreflightPorts(config))
     listResults.append(_fpreflightContainerName(config))
-    listResults.extend(_flistpreflightBindMounts(config))
-    listResults.extend(_flistpreflightBindMountFormats(config))
-    listResults.extend(_flistpreflightColimaSharedRoots(config))
+    listResults.extend(_flistPreflightBindMounts(config))
+    listResults.extend(_flistPreflightBindMountFormats(config))
+    listResults.extend(_flistPreflightColimaSharedRoots(config))
     return listResults
 
 
