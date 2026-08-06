@@ -1001,9 +1001,12 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteAuthGate::test_unauthorized_kill_rejected_before_count_exec',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""    async def fnKillRunningTasks(sContainerId: str):
+        old="""    async def fnKillRunningTasks(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()""",
-        new='    async def fnKillRunningTasks(sContainerId: str):',
+        new=(
+            '    async def fnKillRunningTasks('
+            'sContainerId: str, requestHttp: Request):'
+        ),
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteActuallyKills::test_kill_exec_issued_when_count_positive',
@@ -4643,8 +4646,31 @@ def _fdictEntry(sRel):
             'testEveryContainerScopedRouteEitherDeclaresOrIsRecordedAsAwaiting'
         ),
         source='vaibify/gui/routeScope.py',
-        old='    ("POST", "/api/pipeline/{sContainerId}/kill"),\n',
-        new='',
+        # Anchored on two adjacent CONTAINER-READ entries, which are
+        # the members that stay awaiting by decision (2026-08-05). The
+        # entry named the pipeline kill route until phase 2 migrated
+        # it, and would have gone stale again on every migration; the
+        # read pair cannot. Two lines rather than one because every
+        # awaiting GET also appears in SET_CONTAINER_READ_ROUTES, and
+        # only the ADJACENCY of these two is unique to the allow-list
+        # (the read set separates them with plot-standards).
+        #
+        # RECORDED COLLATERAL, intrinsic rather than drift: also fails
+        # testTheDeclaringPopulationPartitionsWithNothingLeftOver and
+        # testTheDeclarationIndexReadsTheLiveApplication. Dropping a
+        # route from the allow-list without declaring it is exactly the
+        # state those two exist to detect, so no mutation can produce
+        # this one's failure without producing theirs. The entry's
+        # previous form had the same collateral, unrecorded.
+        old=(
+            '    ("GET", "/api/steps/{sContainerId}/{iStepIndex}'
+            '/falsification"),\n'
+            '    ("GET", "/api/sync/{sContainerId}/check/{sService}"),\n'
+        ),
+        new=(
+            '    ("GET", "/api/steps/{sContainerId}/{iStepIndex}'
+            '/falsification"),\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -6255,6 +6281,68 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheKillProcessSweepRunsUnderOneHeldDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Back to the bare to_thread the sweep used before, which is
+        # the exploit shape: a hand-over arriving between the count and
+        # the kill sees an unlocked container and commits, while the
+        # former owner's `kill -9` carries on into it.
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnCountThenKill, "kill-pipeline", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictCarried = await asyncio.to_thread(fnCountThenKill)\n'
+            '    return dictCarried["objResult"]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheKillStoppedStateWriteRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnWriteTheStoppedState,\n'
+            '        "pipeline-state-kill", requestHttp,\n'
+            '    )\n'
+        ),
+        new='    await asyncio.to_thread(fnWriteTheStoppedState)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheKillReconcileWriteKeepsTheRunnersRealCauseOfDeath'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Drop the injected persister and the reconciling write falls
+        # back to the reader's own background lane, which holds no
+        # admission -- so on the enforced branch the write that records
+        # the runner's real exit code is refused at the primitive.
+        old=(
+            '    dictState = await pipelineState.fdictReadReconciledState(\n'
+            '        dictCtx, sContainerId,\n'
+            '        fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
+            '            dictCtx, sContainerId, requestHttp,\n'
+            '        ),\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictState = await pipelineState.fdictReadReconciledState(\n'
+            '        dictCtx, sContainerId,\n'
+            '    )\n'
+        ),
     ),
 
     Falsification(

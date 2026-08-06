@@ -74,9 +74,15 @@ DICT_OWNER_HEADERS = {
     routeScope.S_LEASE_HEADER_NAME: S_LEASE_ID,
 }
 
-# A path that IS in the seeded allow-list, used to drive the ambient
-# branch against a real entry rather than a fabricated one.
-S_AWAITING_PATH = "/api/pipeline/{sContainerId}/kill"
+# A path that IS in the allow-list, used to drive the ambient branch
+# against a real entry rather than a fabricated one. Deliberately a
+# ``container-read`` GET: phase 2 migrates every MUTATING route out of
+# the allow-list, so any POST named here becomes wrong the moment it is
+# migrated -- and the entry pointed at the pipeline kill route until
+# that migration made it wrong. The 46 container-read GETs stay
+# awaiting by decision (2026-08-05), so this one cannot go stale.
+S_AWAITING_METHOD = "GET"
+S_AWAITING_PATH = "/api/logs/{sContainerId}"
 
 # Container-scoped by the {sContainerId} convention, but served by the
 # WebSocket authority rather than by ContainerAwareRoute. See the module
@@ -239,7 +245,7 @@ def _fsetRouteKeys(route):
     }
 
 
-def fappBuildOwnedApplication(listtRoutes):
+def fappBuildOwnedApplication(listtRoutes, sMethod="POST"):
     """Return an app whose single container is genuinely owned.
 
     A real credential, a real bound lease, and an owner map keyed by a
@@ -248,11 +254,16 @@ def fappBuildOwnedApplication(listtRoutes):
     than stubbed past. Shared with
     ``tests/testCarrierIntentAudit.py``, which drives the same real
     lanes to produce the observations it compares.
+
+    ``sMethod`` exists because the allow-list's surviving members are
+    all GETs; the ambient branch is method-blind, but allow-list
+    membership is keyed by ``(method, path)``, so driving a real
+    awaiting entry means registering the verb it is recorded under.
     """
     app = FastAPI()
     app.router.route_class = routeScope.ContainerAwareRoute
     for sPath, fnHandler in listtRoutes:
-        app.post(sPath)(fnHandler)
+        app.router.api_route(sPath, methods=[sMethod])(fnHandler)
     app.state.dictContainerOwners = {
         S_CONTAINER_NAME: OwnerRecord(
             sLeaseId=S_LEASE_ID, fileHandleLock=None,
@@ -308,14 +319,15 @@ def _fnBuildLaneReporter():
     return fnReportTheLaneItWasServedOn
 
 
-def _fdictDriveOneRoute(sPath, tupleDeclarations):
-    """POST to one freshly built owned route; return its response body."""
+def _fdictDriveOneRoute(sPath, tupleDeclarations, sMethod="POST"):
+    """Call one freshly built owned route; return its response body."""
     fnHandler = _fnBuildLaneReporter()
     if tupleDeclarations:
         routeScope.fnDeclareCarrierMode(*tupleDeclarations)(fnHandler)
-    app = fappBuildOwnedApplication([(sPath, fnHandler)])
+    app = fappBuildOwnedApplication([(sPath, fnHandler)], sMethod)
     client = TestClient(app)
-    response = client.post(
+    response = client.request(
+        sMethod,
         sPath.replace("{sContainerId}", S_CONTAINER_ID),
         headers=DICT_OWNER_HEADERS,
     )
@@ -360,7 +372,9 @@ def testDeclaringMintsNoAdmission():
         f"that opened no carrier: {dictDeclared['sRefusal']!r}"
     )
 
-    dictAwaiting = _fdictDriveOneRoute(S_AWAITING_PATH, ())
+    dictAwaiting = _fdictDriveOneRoute(
+        S_AWAITING_PATH, (), S_AWAITING_METHOD,
+    )
     assert dictAwaiting["sAdmissionMode"] == (
         mutationAdmission.S_ADMISSION_MODE_REQUEST
     )

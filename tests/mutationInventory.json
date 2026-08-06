@@ -4167,7 +4167,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -4178,17 +4178,17 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineState.py",
-      "sFingerprint": "02604e1c929a08e3",
+      "sFingerprint": "d8ac7395d69537b6",
       "sFunction": "fdictReadState",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "fbaFetchFile",
       "sReferenceKind": "direct-call"
     },
     {
@@ -5222,14 +5222,14 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/pipelineRoutes.py",
-      "sFingerprint": "483d7ccb276e69f1",
+      "sFingerprint": "95ed9270a86efbc3",
       "sFunction": "_fiCountMatchingProcesses",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -5352,14 +5352,14 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/pipelineRoutes.py",
-      "sFingerprint": "483d7ccb276e69f1",
+      "sFingerprint": "31aad6d549de17b7",
       "sFunction": "_fnKillMatchingProcesses",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "passed-callable"
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,

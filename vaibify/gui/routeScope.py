@@ -381,7 +381,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/overleaf/{sContainerId}/mirror/refresh"),
     ("POST", "/api/overleaf/{sContainerId}/pull-manuscript"),
     ("POST", "/api/overleaf/{sContainerId}/push"),
-    ("POST", "/api/pipeline/{sContainerId}/kill"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/generate-test"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"),
     ("POST", "/api/sync/{sContainerId}/setup"),

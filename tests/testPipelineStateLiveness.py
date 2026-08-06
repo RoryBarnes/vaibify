@@ -65,6 +65,20 @@ class MockDockerConnection:
             if sToken.startswith("/"):
                 self.dictFiles.pop((sContainerId, sToken), None)
 
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        """Fetch a file the way the typed-read adapter does.
+
+        ``fdictReadState`` reads through this rather than assembling a
+        ``cat``, so an absent path answers ``FileNotFoundError`` — the
+        real adapter's answer, and the one the reader degrades to
+        ``None`` on.
+        """
+        del iMaxBytes
+        baContent = self.dictFiles.get((sContainerId, sPath))
+        if baContent is None:
+            raise FileNotFoundError(sPath)
+        return baContent
+
 
 def _fdictBuildRunningStateWithAge(fSecondsAgo):
     """Return a state dict whose heartbeat is ``fSecondsAgo`` in the past."""

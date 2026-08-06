@@ -34,6 +34,20 @@ class MockDockerConnection:
             return (0, "")
         return (1, "")
 
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        """Fetch a file the way the typed-read adapter does.
+
+        ``fdictReadState`` reads through this rather than assembling a
+        ``cat``, so the double has to answer it. An absent path raises
+        ``FileNotFoundError``, which is the real adapter's answer and
+        the one the reader degrades to ``None`` on.
+        """
+        del iMaxBytes
+        baContent = self.dictFiles.get((sContainerId, sPath))
+        if baContent is None:
+            raise FileNotFoundError(sPath)
+        return baContent
+
     def _ftHandleRename(self, sContainerId, sCommand):
         listParts = sCommand.split()
         sSrc, sDst = listParts[1], listParts[2]
@@ -128,9 +142,9 @@ def test_reconcile_state_read_timeout_releases_lock():
 
     def fnSlowRead(*args, **kwargs):
         time.sleep(0.4)                 # far longer than the timeout
-        return (0, json.dumps({"bRunning": False}))
+        return json.dumps({"bRunning": False}).encode("utf-8")
 
-    mockDocker.ftResultExecuteCommand.side_effect = fnSlowRead
+    mockDocker.fbaFetchFile.side_effect = fnSlowRead
     dictCtx = {"docker": mockDocker}
 
     async def fnDrive():
@@ -142,10 +156,10 @@ def test_reconcile_state_read_timeout_releases_lock():
             )
             # If the lock were still held, this second call would block
             # forever; wait_for turns a deadlock into a test failure.
-            mockDocker.ftResultExecuteCommand.side_effect = None
-            mockDocker.ftResultExecuteCommand.return_value = (
-                0, json.dumps({"bRunning": False}),
-            )
+            mockDocker.fbaFetchFile.side_effect = None
+            mockDocker.fbaFetchFile.return_value = json.dumps(
+                {"bRunning": False},
+            ).encode("utf-8")
             rSecond = await asyncio.wait_for(
                 pipelineState.fdictReadReconciledState(dictCtx, "cid"),
                 timeout=2.0,

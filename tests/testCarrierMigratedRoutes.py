@@ -70,6 +70,7 @@ from vaibify.gui import (
     browserSession,
     draftManager,
     pipelineServer,
+    pipelineState,
     sessionLifecycle,
 )
 
@@ -4460,4 +4461,224 @@ def testTheComparePlotRouteOpensNoContainerConnectionAtAll(
     assert connectionDocker.listAdmittedPrimitives == [], (
         "a route declared typed-read reached a mutation-capable "
         f"container primitive: {connectionDocker.listAdmittedPrimitives}"
+    )
+
+
+# ---------------------------------------------------------------------
+# Group 10 -- the pipeline Kill route's three carriers.
+# ---------------------------------------------------------------------
+
+# Kill sweeps for the workflow's OWN command patterns, so a workflow
+# declaring no commands produces no grep pattern and the sweep never
+# reaches the container at all. The draft harness's workflow is that
+# one -- which is what lets the two state-write tests below exercise
+# their carrier with the sweep switched off, and vice versa. Each test
+# arranges for exactly ONE of the route's three carriers to run, which
+# is what makes their kill-confirms isolate.
+DICT_WORKFLOW_WITH_KILLABLE_COMMANDS = copy.deepcopy(DICT_WORKFLOW)
+DICT_WORKFLOW_WITH_KILLABLE_COMMANDS["listSteps"][0]["saDataCommands"] = [
+    "python analysis.py",
+]
+DICT_WORKFLOW_WITH_KILLABLE_COMMANDS["sProjectRepoPath"] = S_PROJECT_REPO
+
+# The command marker for the sweep. ``ps aux`` appears in BOTH of the
+# sweep's commands (the count and the kill) and in nothing the connect
+# handler issues, so it selects the sweep's crossings and only those.
+S_SWEEP_COMMAND_MARKER = "ps aux"
+
+
+def _fdictBuildRunningPipelineState(fHeartbeatAgeSeconds):
+    """Return a pipeline state claiming a runner alive N seconds ago."""
+    dtBeat = datetime.now(timezone.utc) - timedelta(
+        seconds=fHeartbeatAgeSeconds,
+    )
+    return {
+        "bRunning": True,
+        "sAction": "run-all",
+        "sLogPath": "/tmp/run.log",
+        "sStartTime": dtBeat.isoformat(),
+        "sEndTime": "",
+        "iExitCode": -1,
+        "iActiveStep": 2,
+        "iStepCount": 5,
+        "dictStepResults": {},
+        "listRecentOutput": [],
+        "iRunnerPid": 4242,
+        "sLastHeartbeat": dtBeat.isoformat(),
+        "sFailureReason": "",
+    }
+
+
+class DockerDoubleForTheKillRoute(DockerDoubleThatCallsTheRealGates):
+    """The gate-faithful double, told what the container is running.
+
+    Two answers the parent cannot give. The parent reports ``0``
+    matching processes, so the kill half of the sweep would never run;
+    and it has no pipeline state, so the reconciling reader returns
+    ``None`` and the stopped-state write never happens.
+
+    ``mv`` is modelled because ``fnWriteState`` is a temp-write plus a
+    rename. A double that swallowed the rename would leave the
+    canonical path empty, so the assertion that the reconcile RECORDED
+    the runner's real exit code would be reading a file nothing wrote.
+    """
+
+    def __init__(self, dictWorkflow):
+        super().__init__()
+        self._dictFiles[S_WORKFLOW_PATH] = json.dumps(
+            dictWorkflow,
+        ).encode("utf-8")
+
+    def fnSeedPipelineState(self, dictPipelineState):
+        """Put a pipeline state in the container, AFTER connect.
+
+        Not in the constructor, and the difference is not cosmetic: the
+        connect handler reads the pipeline state itself, and it runs on
+        the owner-ESTABLISHING admission, so a stale state seeded before
+        connect is reconciled by connect and Kill then finds a settled
+        file with nothing left to do. Seeding afterwards models what
+        actually happens — the runner dies during the session — and is
+        what lets the reconcile assertions below observe anything.
+        """
+        self._dictFiles[pipelineState.S_STATE_PATH] = json.dumps(
+            dictPipelineState,
+        ).encode("utf-8")
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        tExec = super().ftResultExecuteCommand(
+            sContainerId, sCommand, sWorkdir,
+        )
+        if sCommand.startswith("mv " + pipelineState.S_STATE_PATH_TEMP):
+            self._dictFiles[pipelineState.S_STATE_PATH] = (
+                self._dictFiles.pop(pipelineState.S_STATE_PATH_TEMP, b"")
+            )
+            return tExec
+        if S_SWEEP_COMMAND_MARKER in sCommand and "wc -l" in sCommand:
+            return (0, "3\n")
+        return tExec
+
+
+def _tConnectGatedKillClient(dictWorkflow, dictPipelineState=None):
+    """Return ``(client, docker)`` over the kill route's double."""
+    tClient = _tConnectGatedClient(
+        DockerDoubleForTheKillRoute(dictWorkflow),
+    )
+    if dictPipelineState is not None:
+        tClient[1].fnSeedPipelineState(dictPipelineState)
+    return tClient
+
+
+@pytest.mark.falsification
+def testTheKillProcessSweepRunsUnderOneHeldDrain():
+    """POST .../kill counts and kills processes under mode (b).
+
+    The count and the kill share ONE drain because the count IS the
+    guard: the kill runs only when the count is non-zero, and the
+    number the response reports is the number that was killed. Before
+    this migration both ran on a bare ``asyncio.to_thread``, so a
+    hand-over arriving between them saw an idle container and
+    committed, while the former owner's ``kill -9`` went on into a
+    workspace that now belonged to somebody else.
+
+    The pipeline state is absent here, so the reconciling reader
+    returns ``None`` and neither state-write carrier runs -- which is
+    what keeps this test's kill-confirm from also failing theirs.
+
+    Kills: passing ``_fiCountThenKillUnderTheDrain``'s worker to
+    ``asyncio.to_thread`` instead of ``fobjRunWorkerUnderTheDrain``.
+    """
+    client, connectionDocker = _tConnectGatedKillClient(
+        DICT_WORKFLOW_WITH_KILLABLE_COMMANDS,
+    )
+    client.post(f"/api/pipeline/{S_CONTAINER_ID}/kill")
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_SWEEP_COMMAND_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheKillStoppedStateWriteRunsUnderItsOwnDrain():
+    """POST .../kill records "not running" under mode (b).
+
+    The route's SECOND carrier, and it needs its own because the
+    sweep's supervisor released the drain when its worker terminated —
+    that release is the property mode (b) exists for. The workflow
+    here declares no commands, so the sweep never reaches the
+    container and this test isolates the state write.
+
+    Selected on the WRITE primitive rather than on any command,
+    because ``fnWriteState`` is a temp-file write followed by a
+    rename and the write is the irreversible half.
+
+    Kills: passing ``_fnMarkPipelineStopped``'s stopped-state worker to
+    ``asyncio.to_thread`` instead of ``fobjRunWorkerUnderTheDrain``.
+    """
+    client, connectionDocker = _tConnectGatedKillClient(
+        DICT_WORKFLOW,
+        _fdictBuildRunningPipelineState(1.0),
+    )
+    client.post(f"/api/pipeline/{S_CONTAINER_ID}/kill")
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+    dictPersisted = json.loads(
+        connectionDocker._dictFiles[pipelineState.S_STATE_PATH],
+    )
+    assert dictPersisted["bRunning"] is False, (
+        "Kill did not record the pipeline as stopped, so the dashboard "
+        f"would keep showing it running: {dictPersisted}"
+    )
+    assert dictPersisted["iExitCode"] == 130, (
+        "Kill recorded an exit code that is not the interrupt code: "
+        f"{dictPersisted}"
+    )
+
+
+@pytest.mark.falsification
+def testTheKillReconcileWriteKeepsTheRunnersRealCauseOfDeath():
+    """A Kill over a dead runner records what actually killed it.
+
+    The route's THIRD carrier, and the reason the reconciling reader
+    was kept rather than traded for a plain read. The runner here died
+    without writing a final state, so the reader reconciles: it stamps
+    the runner-disappeared sentinel and the heartbeat-stale reason, and
+    persists them. A cheaper migration would have dropped the
+    reconciling reader and let Kill overwrite the file with a flat
+    "killed (130)", which is the dashboard stating something that did
+    not happen.
+
+    Because the reconcile returns ``bRunning: False``, the stopped-state
+    write does not run, and the workflow declares no commands so the
+    sweep does not either — so this isolates the reconcile carrier.
+
+    Kills: dropping the ``fnPersistReconciled`` argument in
+    ``_fnMarkPipelineStopped`` so the reconcile write falls back to the
+    uncarried background lane.
+    """
+    client, connectionDocker = _tConnectGatedKillClient(
+        DICT_WORKFLOW,
+        _fdictBuildRunningPipelineState(
+            pipelineState.I_HEARTBEAT_STALE_SECONDS * 3,
+        ),
+    )
+    client.post(f"/api/pipeline/{S_CONTAINER_ID}/kill")
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+    dictPersisted = json.loads(
+        connectionDocker._dictFiles[pipelineState.S_STATE_PATH],
+    )
+    assert dictPersisted["iExitCode"] == (
+        pipelineState.I_EXIT_CODE_RUNNER_DISAPPEARED
+    ), (
+        "the reconcile did not record the runner-disappeared sentinel, "
+        "so Kill overwrote the real cause of death with its own: "
+        f"{dictPersisted}"
+    )
+    assert "heartbeat_stale" in dictPersisted["sFailureReason"], (
+        "the reconcile lost the failure reason a researcher reads to "
+        f"find out why their run stopped: {dictPersisted}"
     )

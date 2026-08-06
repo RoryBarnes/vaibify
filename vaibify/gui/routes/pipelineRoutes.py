@@ -64,9 +64,11 @@ from ..fileStatusManager import (
 from ..fileIntegrity import flistExtractAllScriptPaths
 from ..testStatusManager import fbRefreshAggregateTestStates
 from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
     fnCommitWorkflowSave,
+    fobjRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
@@ -115,23 +117,71 @@ def _fbCancelPipelineTask(dictPipelineTasks, sContainerId):
     return True
 
 
-async def _fnMarkPipelineStopped(dictCtx, sContainerId):
+def _ffnBuildCarriedStatePersister(dictCtx, sContainerId, requestHttp):
+    """Return a persister that carries the reconcile write on this request.
+
+    The reconciling reader is kept — not traded for a plain read — so a
+    Kill issued against a container whose runner already died still
+    records the runner's real exit code and ``sFailureCauseHost``
+    instead of overwriting them with a flat "killed (130)". The read is
+    a typed read and needs no admission; its WRITE does, so it gets its
+    own mode-(b) invocation here rather than sharing the kill's, which
+    has already released the drain by then.
+    """
+    from .. import pipelineState
+
+    async def fnPersistReconciledUnderTheDrain(dictReconciled):
+        def fnWriteTheReconciledState(supervisor=None):
+            del supervisor
+            # No 4xx is reachable inside this worker — the write raises
+            # docker errors, never an HTTPException — so the carry-back
+            # is a pass-through here and a docker failure mid-write
+            # propagates, which is exactly the unknown state the
+            # quarantine exists for. The call stays because the shape
+            # is the drain helper's contract, and because the judgement
+            # about which statuses are decided belongs at a call site.
+            return fdictCarryARefusalBackInsteadOfRaising(
+                lambda: pipelineState.fnWriteState(
+                    dictCtx["docker"], sContainerId, dictReconciled,
+                ),
+            )
+        await fobjRunWorkerUnderTheDrain(
+            sContainerId, fnWriteTheReconciledState,
+            "pipeline-state-reconcile", requestHttp,
+        )
+    return fnPersistReconciledUnderTheDrain
+
+
+async def _fnMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
     """Write a stopped state file so the UI shows not running.
 
     Reads through the reconciling reader so a kill issued against a
     container whose runner already vanished does not double-write —
     the watchdog will have already flipped ``bRunning`` to False.
+    At most one of the two writes can happen per call: a reconcile
+    returns ``bRunning: False``, and this returns without the second.
     """
     from .. import pipelineState
     dictState = await pipelineState.fdictReadReconciledState(
         dictCtx, sContainerId,
+        fnPersistReconciled=_ffnBuildCarriedStatePersister(
+            dictCtx, sContainerId, requestHttp,
+        ),
     )
     if dictState is None or not dictState.get("bRunning"):
         return
-    await asyncio.to_thread(
-        pipelineState.fnUpdateState,
-        dictCtx["docker"], sContainerId, dictState,
-        pipelineState.fdictBuildCompletedState(130),
+
+    def fnWriteTheStoppedState(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: pipelineState.fnUpdateState(
+                dictCtx["docker"], sContainerId, dictState,
+                pipelineState.fdictBuildCompletedState(130),
+            ),
+        )
+    await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnWriteTheStoppedState,
+        "pipeline-state-kill", requestHttp,
     )
 
 
@@ -171,7 +221,7 @@ def _flistBuildCleanCommands(dictWorkflow):
     return listCleanCommands
 
 
-async def _fiCountMatchingProcesses(
+def _fiCountMatchingProcesses(
     connectionDocker, sContainerId, sGrepPattern,
 ):
     """Count processes matching the grep pattern in the container."""
@@ -179,8 +229,7 @@ async def _fiCountMatchingProcesses(
         f"ps aux | grep -E '{sGrepPattern}' "
         f"| grep -v grep | wc -l"
     )
-    _, sCountOutput = await asyncio.to_thread(
-        connectionDocker.ftResultExecuteCommand,
+    _, sCountOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCountCommand,
     )
     try:
@@ -189,7 +238,7 @@ async def _fiCountMatchingProcesses(
         return 0
 
 
-async def _fnKillMatchingProcesses(
+def _fnKillMatchingProcesses(
     connectionDocker, sContainerId, listPatterns,
 ):
     """Kill all processes matching the given patterns."""
@@ -200,10 +249,55 @@ async def _fnKillMatchingProcesses(
             f"| awk '{{print $2}}' "
             f"| xargs kill -9 2>/dev/null"
         )
-        await asyncio.to_thread(
-            connectionDocker.ftResultExecuteCommand,
-            sContainerId, sKill,
+        connectionDocker.ftResultExecuteCommand(sContainerId, sKill)
+
+
+async def _fiCountThenKillUnderTheDrain(
+    dictCtx, sContainerId, listPatterns, sGrepPattern, requestHttp,
+):
+    """Count the workflow's processes and kill them holding one drain.
+
+    Mode (b), and the count and the kill share ONE held drain because
+    the count IS the guard: the kill runs only when the count is
+    non-zero, and the number the response reports is the number that
+    was killed. With the drain dropped between them, an ownership
+    hand-over could commit against a container this request was still
+    about to send ``kill -9`` into.
+
+    The worker is synchronous because the carrier runs workers in a
+    thread and refuses an ``async def`` outright; the two helpers it
+    calls therefore lost their own ``asyncio.to_thread`` wrappers
+    rather than gaining a second thread hop inside one.
+    """
+    def fnCountThenKill(supervisor=None):
+        del supervisor
+        # Nothing in here raises an HTTPException, so the carry-back is
+        # a pass-through; a docker failure part-way through a kill
+        # sweep is genuinely unknown state and must poison rather than
+        # be carried back as an ordinary refusal.
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fiCountAndKillMatchingProcesses(
+                dictCtx["docker"], sContainerId, listPatterns,
+                sGrepPattern,
+            ),
         )
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnCountThenKill, "kill-pipeline", requestHttp,
+    )
+
+
+def _fiCountAndKillMatchingProcesses(
+    connectionDocker, sContainerId, listPatterns, sGrepPattern,
+):
+    """Return how many matching processes there were, having killed them."""
+    iCountBefore = _fiCountMatchingProcesses(
+        connectionDocker, sContainerId, sGrepPattern,
+    )
+    if iCountBefore > 0:
+        _fnKillMatchingProcesses(
+            connectionDocker, sContainerId, listPatterns,
+        )
+    return iCountBefore
 
 
 def _fnRegisterPipelineState(app, dictCtx):
@@ -350,7 +444,8 @@ def _fnRegisterPipelineKill(app, dictCtx):
 
     @fnAgentAction("kill-pipeline")
     @app.post("/api/pipeline/{sContainerId}/kill")
-    async def fnKillRunningTasks(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnKillRunningTasks(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -362,14 +457,13 @@ def _fnRegisterPipelineKill(app, dictCtx):
             "|".join(listSafe) if listSafe else "")
         iCountBefore = 0
         if sGrepPattern:
-            iCountBefore = await _fiCountMatchingProcesses(
-                dictCtx["docker"], sContainerId, sGrepPattern)
-            if iCountBefore > 0:
-                await _fnKillMatchingProcesses(
-                    dictCtx["docker"], sContainerId,
-                    listPatterns,
-                )
-        await _fnMarkPipelineStopped(dictCtx, sContainerId)
+            iCountBefore = await _fiCountThenKillUnderTheDrain(
+                dictCtx, sContainerId, listPatterns, sGrepPattern,
+                requestHttp,
+            )
+        await _fnMarkPipelineStopped(
+            dictCtx, sContainerId, requestHttp,
+        )
         return {
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,

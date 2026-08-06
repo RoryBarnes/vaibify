@@ -2481,6 +2481,12 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         def ftResultExecuteCommand(self, sId, sCmd):
             return (1, "")
 
+        def fbaFetchFile(self, sId, sPath, iMaxBytes=None):
+            # The pipeline-state read is a typed read, and the typed-read
+            # adapter spells "absent" as FileNotFoundError rather than a
+            # non-zero exit code.
+            raise FileNotFoundError(sPath)
+
     def _fnSave(sId, dictWf):
         return
 
@@ -4030,7 +4036,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # only its workflow save would have been refused at the probe, and
     # that is the trap worth recording where the next reader will meet
     # it.
-    "routes/pipelineRoutes.py": 2926,
+    # +94 (2026-08-06): the Kill route's three carriers. Two of them are
+    # the sweep and the stopped-state write; the third is the one worth
+    # recording here, because the cheap migration would not have had it.
+    # Kill reads through the RECONCILING reader, so a Kill issued over a
+    # runner that already died must still persist that runner's real
+    # exit code and sFailureCauseHost — and that write needs its own
+    # carrier, injected into the reader rather than performed by the
+    # route. Dropping the reconciling reader would have been smaller and
+    # would have made the dashboard say "killed (130)" over a crash.
+    "routes/pipelineRoutes.py": 3020,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the

@@ -118,7 +118,14 @@ I_UNCLASSIFIED_ROW_BUDGET = 299
 # general exec primitive and became a directory typed read. Same
 # answer, no command text, and it fixes a step directory containing a
 # space listing nothing.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 213
+# 213 -> 212 on 2026-08-06 when ``pipelineState.fdictReadState`` stopped
+# assembling ``cat /workspace/.vaibify/pipeline_state.json`` and became
+# a ``fbaFetchFile`` typed read. The dashboard's own liveness read was
+# the last general exec on the badge-poll path, and it was refused
+# outright on an enforced lane -- so migrating the Kill route meant
+# either carrying a READ or removing its command authority. This is the
+# second.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 
 
 # Every acquisition of a declared capability that still has no reviewed

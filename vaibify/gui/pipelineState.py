@@ -271,23 +271,35 @@ def _ffCoerceStateBudget(value):
 def fdictReadState(connectionDocker, sContainerId):
     """Read the pipeline state from the container, or None.
 
-    Any failure mode — docker daemon hiccup, half-written file mid-rename,
-    container down — degrades to ``None`` so callers (badge poll, agent
-    CLI, watchdog) always have a usable answer instead of an exception
-    bubbling up to the request handler.
+    A TYPED READ, not a general exec. This used to assemble
+    ``cat <path>`` and hand it to the command primitive, which cannot
+    tell a read from a delete and therefore treats every one as
+    mutating — so on an enforced lane the dashboard's own state read was
+    refused unless the route wrapped it in a carrier, and every caller
+    inherited that. ``fbaFetchFile`` names a declared read operation and
+    the adapter builds the command, so the path can never become
+    program text and the read needs no admission.
+
+    Any failure mode — docker daemon hiccup, half-written file
+    mid-rename, container down, file absent — degrades to ``None`` so
+    callers (badge poll, agent CLI, watchdog) always have a usable
+    answer instead of an exception bubbling up to the request handler.
+    ``fbaFetchFile`` spells "absent" as ``FileNotFoundError``, which is
+    an ``OSError`` and so already lands in that net; a carrier refusal
+    is NOT, because ``ControlPlaneRefusalError`` is deliberately not an
+    ``OSError``, so a refusal still surfaces loudly.
     """
     tBenignErrors = (
         (json.JSONDecodeError, OSError, TypeError, ValueError)
         + _T_DOCKER_API_ERROR
     )
     try:
-        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId,
-            f"cat {S_STATE_PATH} 2>/dev/null",
+        baContent = connectionDocker.fbaFetchFile(
+            sContainerId, S_STATE_PATH,
         )
-        if iExitCode != 0 or not sOutput.strip():
+        if not baContent.strip():
             return None
-        return json.loads(sOutput)
+        return json.loads(baContent)
     except tBenignErrors:
         return None
 
@@ -391,7 +403,29 @@ def _fdictLookupHostIncident(sContainerId):
     return fdictLatestIncidentForContainer(sContainerId)
 
 
-async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
+async def _fnPersistReconciledOnTheBackgroundLane(
+    connectionDocker, sContainerId, dictReconciled,
+):
+    """Write a reconciled state dict without a carrier admission.
+
+    The default persister, and honest about which lane it is on: the
+    status poll and the watchdog reach here from background work that
+    opens no carrier, which is the deliberate, named remainder the
+    admission gate documents. A caller that IS inside an enforced
+    request lane must supply its own carrier-backed persister instead,
+    or the write is refused at the primitive.
+    """
+    await asyncio.wait_for(
+        asyncio.to_thread(
+            fnWriteState, connectionDocker, sContainerId, dictReconciled,
+        ),
+        timeout=_F_STATE_IO_TIMEOUT_SECONDS,
+    )
+
+
+async def fdictReadReconciledState(
+    dictCtx, sContainerId, fNow=None, fnPersistReconciled=None,
+):
     """Read pipeline state and reconcile a vanished runner inline.
 
     The runner stamps ``sLastHeartbeat`` from a daemon thread; if the
@@ -401,6 +435,22 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
     exit code, plus the latest host-incident (if any) into
     ``sFailureCauseHost``, and writes atomically. Subsequent calls
     observe the already-reconciled file and return it unchanged.
+
+    ``fnPersistReconciled(dictReconciled)`` is awaited instead of the
+    default background write when the caller is inside an enforced
+    request lane. The READ needs no such treatment — it is a typed read
+    — but the reconciling WRITE is a real container mutation, and the
+    alternative to letting a request carry it was to have the request
+    read non-reconcilingly, which would make Kill report a flat
+    "killed (130)" over a runner that had actually died with a recorded
+    exit code and ``sFailureCauseHost``. The dashboard states what
+    happened; a cheaper reader would have it state something else.
+
+    The persister runs INSIDE the per-container state lock, which is
+    what serialises this reconcile against the status poll's. That
+    ordering (state lock, then whatever the persister takes) is the
+    only one: a carrier worker is synchronous and cannot await this
+    coroutine, so nothing can hold a mutation lock while waiting here.
     """
     connectionDocker = dictCtx["docker"]
     _fnEnsureStateLockForContainer(dictCtx, sContainerId)
@@ -435,13 +485,15 @@ async def fdictReadReconciledState(dictCtx, sContainerId, fNow=None):
             dictState, fNow, dictIncident=dictIncident,
         )
         try:
-            await asyncio.wait_for(
-                asyncio.to_thread(
-                    fnWriteState, connectionDocker, sContainerId,
-                    dictReconciled,
-                ),
-                timeout=_F_STATE_IO_TIMEOUT_SECONDS,
-            )
+            if fnPersistReconciled is None:
+                await _fnPersistReconciledOnTheBackgroundLane(
+                    connectionDocker, sContainerId, dictReconciled,
+                )
+            else:
+                await asyncio.wait_for(
+                    fnPersistReconciled(dictReconciled),
+                    timeout=_F_STATE_IO_TIMEOUT_SECONDS,
+                )
         except asyncio.TimeoutError:
             # The in-memory reconciliation is correct and returned to
             # the caller; persistence retries next cycle rather than

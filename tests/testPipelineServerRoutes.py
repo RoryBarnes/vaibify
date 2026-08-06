@@ -83,9 +83,18 @@ class MockDockerConnection:
             return (0, "")
         return (1, "")
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        del iMaxBytes
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
+        if "pipeline_state" in sPath:
+            # No run has happened, so the state file is absent. The
+            # catch-all below answers any .json with the WORKFLOW, and
+            # since the pipeline-state read became a typed read that
+            # would hand the state reader a workflow document. The old
+            # ``cat ... pipeline_state`` branch above said absent; this
+            # is the same answer through the adapter that replaced it.
+            raise FileNotFoundError(f"Not found: {sPath}")
         if sPath.endswith(".json"):
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         raise FileNotFoundError(f"Not found: {sPath}")
