@@ -4637,6 +4637,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # probe a hash belonging to a different file. Same cohesive
     # responsibility: the Replay axis, in the module that owns it.
     "routes/replayRoutes.py": 962,
+    # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
+    # when its eight remaining routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above and its 2026-08-06 clarification about a
+    # first entry). Three of the eight are one-line saves that gained
+    # only a requestHttp and a fnCommitWorkflowSave; the +182 is almost
+    # entirely the other four, each of which needed a SYNCHRONOUS twin
+    # because a mode-(b) worker runs in a thread and cannot await the
+    # to_thread hop these chains used to make -- and, for the envelope
+    # and the reproduce-script, a worker spanning work that used to sit
+    # on BOTH sides of that hop, because the readiness re-read and the
+    # manifest re-pin reach the container exactly as the generation
+    # does. Same cohesive responsibility throughout: the AICS Level 3
+    # readiness and attestation surface, in the module that owns it.
+    "routes/reproducibilityRoutes.py": 923,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

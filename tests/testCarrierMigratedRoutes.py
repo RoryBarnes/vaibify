@@ -66,6 +66,7 @@ from tests.testDraftRoutes import (
 )
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.config import mutationAdmission
+from vaibify.gui.routes import reproducibilityRoutes
 from vaibify.gui import (
     browserSession,
     draftManager,
@@ -5822,4 +5823,372 @@ def testTheOverleafPushBookkeepingSaveCommitsSynchronously(
         ),
         mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
         f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+# ---------------------------------------------------------------------
+# The AICS Level 3 reproducibility surface (phase 2, group 2).
+#
+# Eight routes, three shapes. Three are one-line declaration saves that
+# needed only a mode-(a) commit. Four write files INSIDE the project
+# repo through the container repo-file adapter -- which, note, spends
+# THREE primitive calls per logical write (``mkdir -p`` exec, ``.tmp``
+# write, ``mv -f`` exec), so "one write" is never one gate crossing
+# here. And one is a POST that writes nothing at all.
+# ---------------------------------------------------------------------
+
+S_ENVIRONMENT_JSON_PATH = posixpath.join(
+    S_PROJECT_REPO, ".vaibify", "environment.json",
+)
+S_REPRODUCE_SCRIPT_PATH = posixpath.join(S_PROJECT_REPO, "reproduce.sh")
+
+
+def _fdictLevelThreeWorkflow():
+    """Return the draft workflow bound to a project repo.
+
+    The draft harness's document carries none, so every L3 route would
+    refuse ("Workflow has no project repo") before reaching a carrier
+    -- a fixture under which these tests would pass having exercised
+    the refusal.
+    """
+    dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+    dictWorkflow["sProjectRepoPath"] = S_PROJECT_REPO
+    return dictWorkflow
+
+
+class DockerDoubleServingALevelThreeWorkflow(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double over a repo-bound workflow."""
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(_fdictLevelThreeWorkflow()).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@pytest.fixture
+def tclientLevelThree():
+    """The gated client over a workflow with a project repo."""
+    return _tConnectGatedClient(DockerDoubleServingALevelThreeWorkflow())
+
+
+def _fnAssertTheDeclarationSavedSynchronously(connectionDocker):
+    """Assert the route's ``project.json`` write ran under mode (a).
+
+    The three L3 declaration routes are one shape and one logical
+    mutation apiece: validate a body in memory, edit the workflow,
+    write it once. Mode (a) rather than (b) because there is no
+    ``await`` between the last in-memory edit and the bytes landing, so
+    there is nothing for a hand-over to slip into and no worker whose
+    life a drain would need to cover.
+
+    They are three TESTS rather than one parametrization so that each
+    route's carrier call gets its own kill-confirm: a parametrized test
+    takes one registry entry, which would leave two of the three calls
+    provably reached but not provably load-bearing.
+    """
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testTheDeterminismDeclarationCommitsSynchronously(tclientLevelThree):
+    """POST .../determinism/declare saves under mode (a).
+
+    Kills: reverting ``fnDeclareDeterminism``'s ``fnCommitWorkflowSave``
+    to ``dictCtx["save"](sContainerId, dictWorkflow)``.
+    """
+    client, connectionDocker = tclientLevelThree
+    client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/determinism/declare",
+        json={"dOmpNumThreads": 1},
+    )
+    _fnAssertTheDeclarationSavedSynchronously(connectionDocker)
+
+
+@pytest.mark.falsification
+def testTheBinaryDeclarationCommitsSynchronously(tclientLevelThree):
+    """POST .../binaries/declare saves under mode (a).
+
+    Kills: reverting ``fnDeclareBinaries``'s ``fnCommitWorkflowSave``
+    to ``dictCtx["save"](sContainerId, dictWorkflow)``.
+    """
+    client, connectionDocker = tclientLevelThree
+    client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/binaries/declare",
+        json={"bNoStandaloneBinaries": True, "listDeclaredBinaries": []},
+    )
+    _fnAssertTheDeclarationSavedSynchronously(connectionDocker)
+
+
+@pytest.mark.falsification
+def testTheDeterminismDeletionCommitsSynchronously(tclientLevelThree):
+    """DELETE .../determinism saves under mode (a).
+
+    Kills: reverting ``fnDeleteDeterminism``'s ``fnCommitWorkflowSave``
+    to ``dictCtx["save"](sContainerId, dictWorkflow)``.
+    """
+    client, connectionDocker = tclientLevelThree
+    client.delete(f"/api/workflow/{S_CONTAINER_ID}/determinism")
+    _fnAssertTheDeclarationSavedSynchronously(connectionDocker)
+
+
+@pytest.mark.falsification
+def testTheBinaryCaptureRunsUnderTheDrain(tclientLevelThree):
+    """POST .../binaries/capture hashes, runs and merges under mode (b).
+
+    Mode (b) rather than (a) for two reasons that compound. The capture
+    RUNS the declared binary (``<path> --version``, bounded at five
+    seconds), which does not belong on the event loop where it used to
+    sit. And the environment record is read-modify-written with no lock
+    of its own, so two captures arriving together could each read the
+    file before either wrote and one entry would silently vanish -- the
+    drain is now that lock.
+
+    Selected on the WRITE to environment.json rather than on every
+    primitive, because the adapter spends a ``mkdir -p`` exec, a
+    ``.tmp`` write and an ``mv -f`` exec per logical write and the
+    route's connect handler contributes execs of its own.
+
+    Kills: reverting ``fnCaptureBinary`` to calling
+    ``fdictCaptureSingleBinary`` + ``_fnAppendBinaryToEnvironmentJson``
+    directly on the event loop, which reaches the write primitive with
+    no admission and records ``''`` here.
+    """
+    client, connectionDocker = tclientLevelThree
+    client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/binaries/capture",
+        json={"sBinaryPath": "/usr/bin/env"},
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"].startswith(S_ENVIRONMENT_JSON_PATH)
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        f"write to {S_ENVIRONMENT_JSON_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testTheReproduceScriptAndItsManifestRepinShareOneDrain(
+    tclientLevelThree,
+):
+    """POST .../level3/reproduce-script writes and re-pins under ONE drain.
+
+    One carrier for both halves, because the re-pin is what makes the
+    script count: the Level 3 check requires the script's hash IN the
+    manifest, and without the re-pin the check stayed red after every
+    generation -- which read to the researcher as "the button did
+    nothing". A hand-over landing between them leaves the successor
+    with a script the manifest does not know about, which is exactly
+    the state that bug produced.
+
+    Asserted on BOTH writes at once, which is the point: proving they
+    ran under the same MODE is not the same as proving they ran under
+    one drain, but a mutant that splits them into two carriers leaves
+    both under lock-held and would pass. So the shared-drain claim
+    rests on the source, and what this pins is that neither half
+    reaches the container uncarried.
+
+    Kills: reverting ``_fbRepinManifestOrWarn``'s call site to
+    ``await asyncio.to_thread(manifestWriter.fnWriteManifest, ...)``
+    outside the worker, which reaches the write primitive with no
+    admission.
+    """
+    client, connectionDocker = tclientLevelThree
+    client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/reproduce-script",
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"].startswith(S_REPRODUCE_SCRIPT_PATH)
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        f"write to {S_REPRODUCE_SCRIPT_PATH}",
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and "MANIFEST.sha256" in dictReached["sPath"]
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "write to MANIFEST.sha256",
+    )
+
+
+@pytest.mark.falsification
+def testAReproduceScriptRepinRefusalIsNotAbsorbedIntoAFlag(
+    tclientLevelThree,
+):
+    """A refused manifest re-pin must escape its broad handler.
+
+    ``_fbRepinManifestOrWarn`` catches ``Exception`` and answers
+    ``bManifestRefreshed: False``, which is right for a genuine hash
+    failure and wrong for a carrier refusal: a route whose carrier call
+    was deleted would answer 200 with a soft flag, and the migration's
+    only proof would reach the researcher as an unchecked box.
+
+    The benign request runs FIRST in the same fixture, so this cannot
+    pass on a refusal arriving from the ownership gate instead.
+
+    Kills: deleting the ``fnReRaiseControlPlaneRefusal(exc)`` line from
+    ``_fbRepinManifestOrWarn``.
+    """
+    client, _connectionDocker = tclientLevelThree
+    responseBenign = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/reproduce-script",
+    )
+    assert responseBenign.status_code == 200, (
+        "the benign generation was itself refused, so this fixture "
+        f"cannot tell a re-pin refusal from any other: "
+        f"{responseBenign.text}"
+    )
+
+    def fnRefuseTheRepin(*aArgs, **dictKwargs):
+        raise mutationAdmission.MutationNotAdmittedError(
+            "no carrier admission is live",
+        )
+
+    with patch(
+        "vaibify.reproducibility.manifestWriter.fnWriteManifest",
+        fnRefuseTheRepin,
+    ):
+        responseHttp = client.post(
+            f"/api/workflow/{S_CONTAINER_ID}/level3/reproduce-script",
+        )
+    assert responseHttp.status_code == 500, (
+        "the refusal must escape the handler, not become "
+        f"bManifestRefreshed: False -- got {responseHttp.status_code} "
+        f"{responseHttp.text}"
+    )
+
+
+@pytest.mark.falsification
+def testTheEnvelopeRegenerationRunsUnderTheDrain(tclientLevelThree):
+    """POST .../level3/envelope writes its three tiers under mode (b).
+
+    The generator writes MANIFEST.sha256, requirements.lock and
+    .vaibify/environment.json across three tiers, each isolating its
+    own failure on the stated principle that a partial envelope beats
+    no envelope. Those handlers cannot absorb a carrier refusal --
+    ``ControlPlaneRefusalError`` descends from ``Exception`` alone and
+    every tier catches a narrower type (verified at the console) -- so
+    a forgotten carrier still raises out of the worker rather than
+    being logged as a skipped tier.
+
+    Kills: reverting ``_fdictRegenerateEnvelopeUnderTheDrain`` to
+    ``await asyncio.to_thread(dataArchiver.fnGenerate...)``.
+    """
+    client, connectionDocker = tclientLevelThree
+    client.post(f"/api/workflow/{S_CONTAINER_ID}/level3/envelope")
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and "MANIFEST.sha256" in dictReached["sPath"]
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "write to MANIFEST.sha256",
+    )
+
+
+@pytest.mark.falsification
+def testTheEnvelopeReadinessReReadJoinsTheSameCarrier(tclientLevelThree):
+    """The envelope's readiness re-read is carried, not left on the loop.
+
+    The single subtlety of this route. ``fdictL3ReadinessGaps`` LOOKS
+    like a read and is not one at the boundary that decides: it hashes
+    the repository to compare the manifest digest, which
+    ``ContainerRepoFiles.fdictHashFiles`` implements by running a
+    script through the GENERAL exec primitive. It used to run on the
+    event loop after the generation's thread returned; under the
+    enforced branch that is refused, so it moved INSIDE the worker.
+
+    Instrumented at ``fdictL3ReadinessGaps`` rather than by matching
+    command text, for the reason ``_tlistRecordEveryZenodoUpload``
+    states: the hash travels base64-encoded inside a ``python3 -c
+    "import base64; exec(...)"`` shell -- the shape ``repoFiles`` uses
+    for EVERY embedded script -- so a text marker could not tell this
+    hash from the three tiers' own. The real function is still called,
+    so its container work and gate crossings happen as in production.
+
+    Kills: offloading the ``fdictL3ReadinessGaps`` call to a bare
+    thread, which is the realistic way it leaves the carrier -- a
+    fresh thread inherits no contextvars, so the admission is absent
+    and the hash exec is refused. That mutant kills on the MODE, not
+    merely on the re-read being gone.
+    """
+    client, _connectionDocker = tclientLevelThree
+    listCalls = []
+    fnReal = reproducibilityRoutes.fdictL3ReadinessGaps
+
+    def fdictRecordThenRead(dictWorkflow, filesRepo):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            S_CONTAINER_ID,
+        )
+        listCalls.append("" if admission is None else admission.sMode)
+        return fnReal(dictWorkflow, filesRepo)
+
+    with patch.object(
+        reproducibilityRoutes, "fdictL3ReadinessGaps",
+        fdictRecordThenRead,
+    ):
+        client.post(f"/api/workflow/{S_CONTAINER_ID}/level3/envelope")
+    assert listCalls, (
+        "the route never reached the readiness re-read, so this "
+        "asserts nothing about the admission it runs under"
+    )
+    assert listCalls == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+    ] * len(listCalls), (
+        f"the readiness re-read ran outside the drain: {listCalls}"
+    )
+
+
+@pytest.mark.falsification
+def testTheDependencyLockVerifyReachesNoMutatingPrimitive(
+    tclientLevelThree,
+):
+    """POST .../dependencies/verify is a typed read despite the verb.
+
+    The one route in this group that writes nothing. It is declared
+    ``typed-read`` on the strength of what it CALLS -- ``fbIsFile`` and
+    ``fsReadText``, both of which reach the container through the
+    typed-read adapter -- not on the strength of its HTTP method, which
+    is POST because the GUI models it as an action.
+
+    Asserted in the two halves a typed-read claim needs, because either
+    alone is vacuous: the gated ledger must be EMPTY (it reached no
+    mutation-capable primitive) AND the typed-path ledger must be
+    NON-empty (it did real container work rather than returning early
+    at a 409).
+
+    Kills: reimplementing ``flistVerifyRequirementsLock``'s existence
+    check as ``filesRepo.ftRunCommand(["test", "-f", ...])``, which is
+    the general exec primitive and lands in the gated ledger.
+    """
+    client, connectionDocker = tclientLevelThree
+    connectionDocker.listTypedPathProbes.clear()
+    client.post(f"/api/workflow/{S_CONTAINER_ID}/dependencies/verify")
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared typed-read reached a mutation-capable "
+        f"primitive: {connectionDocker.listAdmittedPrimitives}"
+    )
+    assert connectionDocker.listTypedPathProbes, (
+        "the route reached no typed read either, so the assertion "
+        "above is vacuous: it probably refused before touching the "
+        "container at all"
     )

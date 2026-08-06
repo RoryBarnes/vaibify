@@ -27,12 +27,24 @@ import asyncio
 import logging
 import time
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
+from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..actionCatalog import fnAgentAction
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import fdictRequireWorkflow
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    ffilesForWorkflow,
+    fnCommitWorkflowSave,
+    fobjRunWorkerUnderTheDrain,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_TYPED_READ,
+    fnDeclareCarrierMode,
+)
 from ...reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
     fsRepoRootOf,
@@ -396,47 +408,102 @@ def _fnRegisterGenerateScript(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/level3/reproduce-script"
     )
-    async def fnL3GenerateReproduceScript(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnL3GenerateReproduceScript(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
-        try:
-            sPathWritten = fnGenerateReproduceScript(
-                sProjectRepo, dictWorkflow,
-                connectionDocker=dictCtx["docker"],
-                sContainerId=sContainerId,
-            )
-        except OSError as exc:
-            raise HTTPException(
-                500, f"Could not write reproduce.sh: {exc}",
-            ) from exc
-        # The Level 3 check requires the script's hash IN the
-        # manifest, so re-pin immediately — without this the check
-        # stayed red after every generation until the next envelope
-        # regeneration, which read as "the button did nothing".
-        bManifestRefreshed = True
-        try:
-            from ...reproducibility import manifestWriter
-            filesRepo = ffilesForWorkflow(
-                dictCtx, sContainerId, dictWorkflow,
-            )
-            await asyncio.to_thread(
-                manifestWriter.fnWriteManifest, filesRepo, dictWorkflow,
-            )
-        except Exception as exc:
-            logging.getLogger("vaibify").warning(
-                "reproduce.sh written but manifest re-pin failed: %s",
-                exc,
-            )
-            bManifestRefreshed = False
-        return {
-            "bWritten": True,
-            "bManifestRefreshed": bManifestRefreshed,
-            "sScriptPath": sPathWritten,
-            "sScriptFilename": S_REPRODUCE_SCRIPT_FILENAME,
-        }
+        return await _fdictGenerateScriptUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, sProjectRepo, requestHttp,
+        )
+
+
+async def _fdictGenerateScriptUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, sProjectRepo, requestHttp,
+):
+    """Write ``reproduce.sh`` and re-pin the manifest under one drain.
+
+    ONE carrier for both, because the manifest re-pin is what makes the
+    script count: the Level 3 check requires the script's hash IN the
+    manifest, and without the re-pin the check stayed red after every
+    generation, which read as "the button did nothing". A hand-over
+    landing between them would leave the successor with a script the
+    manifest does not know about -- the exact state that bug produced.
+
+    Mode (b) rather than mode (a): the write is followed by a ``chmod``
+    exec and then by a full repo hash, so it runs for as long as the
+    tree takes and belongs in a worker thread.
+    """
+    def fnGenerateTheScript(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictWriteScriptThenRepinManifest(
+                dictCtx, sContainerId, dictWorkflow, sProjectRepo,
+            ),
+            # The generator answers 500 for a failed WRITE, and a write
+            # that failed is exactly the unknown state the quarantine
+            # exists for -- so no 5xx is named here and it propagates.
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnGenerateTheScript, "reproduce-script", requestHttp,
+    )
+
+
+def _fdictWriteScriptThenRepinManifest(
+    dictCtx, sContainerId, dictWorkflow, sProjectRepo,
+):
+    """Write the script, then re-pin the manifest; report both outcomes.
+
+    Synchronous because a mode-(b) worker runs in a thread and cannot
+    await the ``to_thread`` hop the manifest re-pin used to make.
+    """
+    try:
+        sPathWritten = fnGenerateReproduceScript(
+            sProjectRepo, dictWorkflow,
+            connectionDocker=dictCtx["docker"],
+            sContainerId=sContainerId,
+        )
+    except OSError as exc:
+        raise HTTPException(
+            500, f"Could not write reproduce.sh: {exc}",
+        ) from exc
+    return {
+        "bWritten": True,
+        "bManifestRefreshed": _fbRepinManifestOrWarn(
+            dictCtx, sContainerId, dictWorkflow,
+        ),
+        "sScriptPath": sPathWritten,
+        "sScriptFilename": S_REPRODUCE_SCRIPT_FILENAME,
+    }
+
+
+def _fbRepinManifestOrWarn(dictCtx, sContainerId, dictWorkflow):
+    """Re-pin MANIFEST.sha256; return False (never raise) on failure.
+
+    A failed re-pin degrades to ``bManifestRefreshed: False`` because
+    the script itself did land and the researcher can regenerate the
+    envelope. A carrier REFUSAL is not that: it means this route's
+    carrier call was forgotten, and answering 200 with a soft flag
+    would hide the migration's only proof behind a checkbox.
+    """
+    from ...reproducibility import manifestWriter
+    try:
+        manifestWriter.fnWriteManifest(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            dictWorkflow,
+        )
+    except Exception as exc:
+        fnReRaiseControlPlaneRefusal(exc)
+        logging.getLogger("vaibify").warning(
+            "reproduce.sh written but manifest re-pin failed: %s", exc,
+        )
+        return False
+    return True
 
 
 def _fnRegisterDeclareBinaries(app, dictCtx):
@@ -446,7 +513,10 @@ def _fnRegisterDeclareBinaries(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/binaries/declare"
     )
-    async def fnDeclareBinaries(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnDeclareBinaries(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -458,7 +528,10 @@ def _fnRegisterDeclareBinaries(app, dictCtx):
         dictWorkflow["listDeclaredBinaries"] = list(
             request.get("listDeclaredBinaries") or [],
         )
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The standalone-binary declaration",
+        )
         return {
             "bNoStandaloneBinaries":
                 dictWorkflow["bNoStandaloneBinaries"],
@@ -514,7 +587,10 @@ def _fnRegisterCaptureBinary(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/binaries/capture"
     )
-    async def fnCaptureBinary(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnCaptureBinary(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -524,9 +600,44 @@ def _fnRegisterCaptureBinary(app, dictCtx):
         sBinaryPath = (request or {}).get("sBinaryPath") or ""
         if not isinstance(sBinaryPath, str) or not sBinaryPath.strip():
             raise HTTPException(400, "sBinaryPath is required.")
-        dictCaptured = fdictCaptureSingleBinary(filesRepo, sBinaryPath)
-        _fnAppendBinaryToEnvironmentJson(filesRepo, dictCaptured)
-        return {"dictCaptured": dictCaptured}
+        return await _fdictCaptureBinaryUnderTheDrain(
+            filesRepo, sContainerId, sBinaryPath, requestHttp,
+        )
+
+
+async def _fdictCaptureBinaryUnderTheDrain(
+    filesRepo, sContainerId, sBinaryPath, requestHttp,
+):
+    """Hash the binary, run it, and merge the entry under one drain.
+
+    Mode (b) rather than mode (a) for two reasons that compound. The
+    capture RUNS the declared binary (``<path> --version``, bounded at
+    five seconds), so it belongs in a worker thread rather than on the
+    event loop where it used to sit. And the environment record is
+    read-modify-written with no lock of its own, so two captures
+    arriving together could each read the file before either wrote and
+    one entry would vanish; the drain is now that lock.
+
+    Nothing here raises for an expected refusal -- an unreadable binary
+    comes back as a capture entry with an empty hash -- so the worker
+    does not poison its record for an outcome the researcher can read.
+    """
+    def fnCaptureTheBinary(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictCaptureAndRecordBinary(filesRepo, sBinaryPath),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnCaptureTheBinary, "binary-capture", requestHttp,
+    )
+
+
+def _fdictCaptureAndRecordBinary(filesRepo, sBinaryPath):
+    """Capture one binary and merge it into the environment record."""
+    dictCaptured = fdictCaptureSingleBinary(filesRepo, sBinaryPath)
+    _fnAppendBinaryToEnvironmentJson(filesRepo, dictCaptured)
+    return {"dictCaptured": dictCaptured}
 
 
 def _fnAppendBinaryToEnvironmentJson(filesRepo, dictCaptured):
@@ -622,7 +733,10 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/determinism/declare"
     )
-    async def fnDeclareDeterminism(sContainerId: str, request: dict):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnDeclareDeterminism(
+        sContainerId: str, request: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -637,7 +751,10 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
             else:
                 dictDeterminism[sKey] = jsonValue
         dictWorkflow["dictDeterminism"] = dictDeterminism
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The determinism declaration",
+        )
         return {"dictDeterminism": dictDeterminism}
 
 
@@ -656,24 +773,73 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/level3/envelope"
     )
-    async def fnRegenerateEnvelope(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnRegenerateEnvelope(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         _fsRequireProjectRepo(dictWorkflow)
-        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        from ...reproducibility import dataArchiver
-        await asyncio.to_thread(
-            dataArchiver.fnGenerateReproducibilityEnvelope,
-            filesRepo, dictWorkflow,
-            sContainerId, dictWorkflow.get("saHostBinaries"),
+        return await _fdictRegenerateEnvelopeUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
         )
-        return {
-            "dictL3ReadinessGaps": fdictL3ReadinessGaps(
-                dictWorkflow, filesRepo,
+
+
+async def _fdictRegenerateEnvelopeUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Regenerate the envelope and re-read its gaps under one drain.
+
+    ONE carrier covering the generation AND the readiness re-read,
+    which is the only shape that does not leave half of this route
+    uncarried: the gap check hashes the repository to compare the
+    manifest digest, so it reaches the exec primitive exactly as the
+    generation does. It used to run on the event loop after the thread
+    returned; under the enforced branch that would be refused.
+
+    The generator writes three files across three tiers and isolates
+    each tier's own failure, on the stated principle that a partial
+    envelope beats no envelope. Those handlers cannot absorb a carrier
+    refusal -- ``ControlPlaneRefusalError`` descends from ``Exception``
+    alone, and every tier catches a narrower type (verified at the
+    console) -- so a forgotten carrier still raises out of the worker.
+    """
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+
+    def fnRegenerateTheEnvelope(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictGenerateEnvelopeThenReadGaps(
+                filesRepo, dictWorkflow, sContainerId,
             ),
-        }
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnRegenerateTheEnvelope, "level3-envelope",
+        requestHttp,
+    )
+
+
+def _fdictGenerateEnvelopeThenReadGaps(
+    filesRepo, dictWorkflow, sContainerId,
+):
+    """Write the envelope, then report what the regeneration achieved.
+
+    Synchronous because a mode-(b) worker runs in a thread and cannot
+    await the ``to_thread`` hop the generation used to make.
+    """
+    from ...reproducibility import dataArchiver
+    dataArchiver.fnGenerateReproducibilityEnvelope(
+        filesRepo, dictWorkflow,
+        sContainerId, dictWorkflow.get("saHostBinaries"),
+    )
+    return {
+        "dictL3ReadinessGaps": fdictL3ReadinessGaps(
+            dictWorkflow, filesRepo,
+        ),
+    }
 
 
 def _fnRegisterDeleteDeterminism(app, dictCtx):
@@ -689,13 +855,19 @@ def _fnRegisterDeleteDeterminism(app, dictCtx):
     @app.delete(
         "/api/workflow/{sContainerId}/determinism"
     )
-    async def fnDeleteDeterminism(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fnDeleteDeterminism(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         dictWorkflow["dictDeterminism"] = {}
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The determinism deletion",
+        )
         return {"dictDeterminism": {}}
 
 
@@ -705,12 +877,22 @@ def _fnRegisterVerifyDependencyLock(app, dictCtx):
     Structural check of requirements.lock: every dependency pinned by
     exact version with hashes. Returns the problem list so the GUI can
     report what is wrong rather than a bare pass/fail.
+
+    ``typed-read`` despite the POST verb and the "verify" name, which
+    is the point of declaring behaviour rather than inferring it from
+    the method: ``flistVerifyRequirementsLock`` calls exactly
+    ``fbIsFile`` and ``fsReadText``, both of which reach the container
+    through the typed-read adapter and neither of which is
+    mutation-capable. The verb is POST because the GUI models it as an
+    action, not because anything is written. A carrier mode here would
+    state that the route mutates, which is false.
     """
 
     @fnAgentAction("verify-dependency-lock")
     @app.post(
         "/api/workflow/{sContainerId}/dependencies/verify"
     )
+    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fnVerifyDependencyLock(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(

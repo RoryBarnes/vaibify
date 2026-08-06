@@ -6919,4 +6919,181 @@ def _fdictEntry(sRel):
         ),
         new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
+
+    # ------- phase 2 group 2: the AICS Level 3 reproducibility surface
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeterminismDeletionCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        dictWorkflow["dictDeterminism"] = {}\n'
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The determinism deletion",\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictWorkflow["dictDeterminism"] = {}\n'
+            '        dictCtx["save"](sContainerId, dictWorkflow)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeterminismDeclarationCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The determinism declaration",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBinaryDeclarationCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The standalone-binary declaration",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBinaryCaptureRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnCaptureTheBinary, "binary-capture", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictCaptureAndRecordBinary(filesRepo, '
+            'sBinaryPath)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheReproduceScriptAndItsManifestRepinShareOneDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnGenerateTheScript, "reproduce-script", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictWriteScriptThenRepinManifest(\n'
+            '        dictCtx, sContainerId, dictWorkflow, sProjectRepo,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAReproduceScriptRepinRefusalIsNotAbsorbedIntoAFlag'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    except Exception as exc:\n'
+            '        fnReRaiseControlPlaneRefusal(exc)\n'
+            '        logging.getLogger("vaibify").warning(\n'
+        ),
+        new=(
+            '    except Exception as exc:\n'
+            '        logging.getLogger("vaibify").warning(\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheEnvelopeRegenerationRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnRegenerateTheEnvelope, '
+            '"level3-envelope",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictGenerateEnvelopeThenReadGaps(\n'
+            '        filesRepo, dictWorkflow, sContainerId,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheEnvelopeReadinessReReadJoinsTheSameCarrier'
+        ),
+        # The re-read offloaded to a BARE thread, which is the
+        # realistic way it leaves the carrier: a fresh thread inherits
+        # no contextvars, so the admission is absent and the hash exec
+        # is refused. Chosen over simply deleting the call because this
+        # mutant kills on the MODE -- the guarantee -- rather than on
+        # the re-read merely being absent.
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return {\n'
+            '        "dictL3ReadinessGaps": fdictL3ReadinessGaps(\n'
+            '            dictWorkflow, filesRepo,\n'
+            '        ),\n'
+            '    }\n'
+        ),
+        new=(
+            '    import concurrent.futures\n'
+            '    with concurrent.futures.ThreadPoolExecutor(1) as pool:\n'
+            '        return {\n'
+            '            "dictL3ReadinessGaps": pool.submit(\n'
+            '                fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
+            '            ).result(),\n'
+            '        }\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDependencyLockVerifyReachesNoMutatingPrimitive'
+        ),
+        # The typed-read claim broken the way a maintainer would break
+        # it: an existence check reimplemented as a shell test through
+        # the GENERAL exec primitive, which the gate must treat as
+        # mutating because command text cannot be told apart from a
+        # delete. INTRINSIC COLLATERAL, recorded so a re-confirmation
+        # run does not read it as drift: the L3 readiness gate reads
+        # the same lock through the same helper, so
+        # test_l3_verify_returns_202_with_handle_when_ready fails too.
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old='    if not filesRepo.fbIsFile(_S_LOCK_FILENAME):\n',
+        new=(
+            '    if filesRepo.ftRunCommand(\n'
+            '        ["test", "-f", _S_LOCK_FILENAME], 5.0,\n'
+            '    )[0] != 0:\n'
+        ),
+    ),
 ]

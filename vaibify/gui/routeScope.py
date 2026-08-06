@@ -325,7 +325,6 @@ S_CARRIER_DECLARATION_SEPARATOR = "+"
 # three records still add back up to the resolved population, so
 # neither can quietly leave it.
 SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
-    ("DELETE", "/api/workflow/{sContainerId}/determinism"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
     ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),
@@ -377,12 +376,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/containers/{sName}/stop"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"),
     ("POST", "/api/workflow/{sContainerId}/ai-declaration/generate-template"),
-    ("POST", "/api/workflow/{sContainerId}/binaries/capture"),
-    ("POST", "/api/workflow/{sContainerId}/binaries/declare"),
-    ("POST", "/api/workflow/{sContainerId}/dependencies/verify"),
-    ("POST", "/api/workflow/{sContainerId}/determinism/declare"),
-    ("POST", "/api/workflow/{sContainerId}/level3/envelope"),
-    ("POST", "/api/workflow/{sContainerId}/level3/reproduce-script"),
     ("POST", "/api/workflow/{sContainerId}/level3/verify"),
     ("POST", "/api/workflow/{sContainerId}/manifest/verify"),
     ("POST", "/api/zenodo/{sContainerId}/download"),
