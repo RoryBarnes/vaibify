@@ -248,6 +248,25 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         self.listTypedPathProbes.append(sPath)
         return False
 
+    def fbContainerPathIsDirectory(self, sContainerId, sPath):
+        """Probe a directory the way the real typed-read adapter does.
+
+        The sibling of ``fbContainerPathIsFile`` and gated the same
+        way. It exists because ``repoFiles.fbIsDir`` calls it and the
+        real connection answers it; a double that raised
+        ``AttributeError`` here would make a route's absence check look
+        like a route bug.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.append(sPath)
+        return False
+
 
 def _tConnectGatedClient(connectionDocker):
     """Return ``(client, docker)`` connected, with the ledger cleared.
@@ -6191,4 +6210,243 @@ def testTheDependencyLockVerifyReachesNoMutatingPrimitive(
         "the route reached no typed read either, so the assertion "
         "above is vacuous: it probably refused before touching the "
         "container at all"
+    )
+
+
+# ---------------------------------------------------------------------
+# The two routes left over from the group boundaries (phase 2).
+#
+# Neither is a save and neither belonged to a family: the AI-declaration
+# template generator lives in levelRoutes and the manifest verify in
+# pipelineRoutes, and each was the last awaiting route in its module.
+# ---------------------------------------------------------------------
+
+S_AI_DECLARATION_RELATIVE_PATH = ".vaibify/aiDeclaration.md"
+S_AI_DECLARATION_ABS_PATH = posixpath.join(
+    S_PROJECT_REPO, S_AI_DECLARATION_RELATIVE_PATH,
+)
+
+
+@pytest.mark.falsification
+def testTheDeclarationTemplateProbeAndWriteShareOneDrain(
+    tclientLevelThree,
+):
+    """POST .../ai-declaration/generate-template carries probe + write.
+
+    The probe is the GUARD -- "generate only if absent" -- so it and the
+    write belong to ONE carrier. Split across two, a second tab or the
+    in-container agent could pass the absence check between them and the
+    loser's blank template would overwrite a declaration the researcher
+    had already started editing. The generator's own ``FileExistsError``
+    is a second line of defence, not a substitute: it raises after the
+    drain would already have been released.
+
+    Selected on the write to the declaration path, because the adapter
+    spends a ``mkdir -p`` exec and an ``mv -f`` exec around it and the
+    connect handler contributes execs of its own.
+
+    Kills: reverting ``_fdictGenerateTemplateUnderTheDrain`` to calling
+    ``_fdictProbeThenWriteTemplate`` directly on the event loop, which
+    reaches the write primitive with no admission and records ``''``.
+    """
+    client, connectionDocker = tclientLevelThree
+    client.post(
+        f"/api/workflow/{S_CONTAINER_ID}"
+        "/ai-declaration/generate-template",
+        json={"sRelativePath": S_AI_DECLARATION_RELATIVE_PATH},
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"].startswith(
+                S_AI_DECLARATION_ABS_PATH,
+            )
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        f"write to {S_AI_DECLARATION_ABS_PATH}",
+    )
+
+
+class DockerDoubleHoldingAnExistingDeclaration(
+    DockerDoubleServingALevelThreeWorkflow,
+):
+    """The L3 double, answering that ONE declaration path exists.
+
+    Modelled at the typed-read probe rather than by generating the file
+    first, because the adapter's atomic write lands its bytes at
+    ``<path>.tmp`` and installs them with an ``mv -f`` exec the
+    in-memory double does not execute -- so a generated file is not
+    where the next probe looks, and a two-call test would exercise the
+    absent path twice while appearing to exercise the taken one.
+    """
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        bExists = sPath == S_AI_DECLARATION_ABS_PATH
+        if not bExists:
+            return super().fbContainerPathIsFile(sContainerId, sPath)
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.append(sPath)
+        return True
+
+
+@pytest.fixture
+def tclientDeclarationTaken():
+    """The gated client over a repo that already holds a declaration."""
+    return _tConnectGatedClient(
+        DockerDoubleHoldingAnExistingDeclaration(),
+    )
+
+
+@pytest.mark.falsification
+def testAnExistingDeclarationIsRefusedWithoutQuarantining(
+    tclientDeclarationTaken,
+):
+    """The already-exists 409 is carried back, never poisoned.
+
+    The refusal is decided with the container UNTOUCHED -- the file is
+    simply already there -- so it travels back as a value and is
+    re-raised after the supervisor settled its journal record normally.
+    A raise from inside the worker would settle through the failure path
+    and quarantine a perfectly healthy container over "you already have
+    a declaration", which is a message, not an incident.
+
+    A generation at a DIFFERENT path runs first in the same fixture, so
+    the 409 below cannot be a refusal arriving from the ownership gate
+    instead -- the trap where a green test measures the wrong refusal.
+
+    Kills: dropping the ``fdictCarryARefusalBackInsteadOfRaising``
+    wrapper from ``fnGenerateTheTemplate``, so the 409 raises out of the
+    worker; the response then becomes a 500 rather than the 409 the
+    dashboard tells the researcher to act on.
+    """
+    client, _connectionDocker = tclientDeclarationTaken
+    responseFree = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}"
+        "/ai-declaration/generate-template",
+        json={"sRelativePath": ".vaibify/someOtherDeclaration.md"},
+    )
+    assert responseFree.status_code == 200, (
+        "a generation at a free path was itself refused, so this "
+        "fixture cannot tell an already-exists refusal from any "
+        f"other: {responseFree.text}"
+    )
+    responseTaken = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}"
+        "/ai-declaration/generate-template",
+        json={"sRelativePath": S_AI_DECLARATION_RELATIVE_PATH},
+    )
+    assert responseTaken.status_code == 409, (
+        "a taken declaration path must be refused 409, not 500: "
+        f"{responseTaken.status_code} {responseTaken.text}"
+    )
+    # The STATUS is not the guarantee, and asserting it alone was this
+    # test's first, failed kill-confirm: a 409 raised out of the worker
+    # still reaches the client as a 409, because FastAPI renders an
+    # HTTPException the same either way. What differs is the JOURNAL --
+    # a worker that raises is settled through the failure path and
+    # quarantines the container. That is the thing to assert.
+    from vaibify.config import operationJournal
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        S_CONTAINER_NAME,
+    )
+    assert dictResolution["sResolution"] != (
+        operationJournal.S_RESOLUTION_QUARANTINED
+    ), (
+        "an already-present declaration quarantined the container: "
+        f"{dictResolution}. The researcher now has to run 'vaibify "
+        "reconcile' because they asked twice for the same template."
+    )
+
+
+@pytest.mark.falsification
+def testTheManifestVerifyRunsUnderTheDrain(tclientLevelThree):
+    """POST .../manifest/verify re-hashes under a mode-(b) admission.
+
+    This route reads like a read and is not one at the boundary that
+    decides: ``flistVerifyManifest`` re-hashes every pinned file by
+    running a script through the GENERAL exec primitive, which the gate
+    must treat as mutating because command text cannot be told apart
+    from a delete. ``typed-read`` would therefore be FALSE here even
+    though the route writes nothing -- the same judgement the Overleaf
+    diff already records.
+
+    Instrumented at ``flistVerifyManifest`` rather than by matching
+    command text, because the hash travels base64-encoded inside a
+    ``python3 -c "import base64; exec(...)"`` shell, the shape
+    ``repoFiles`` uses for every embedded script.
+
+    Kills: reverting ``_fdictVerifyManifestUnderTheDrain`` to the two
+    ``await asyncio.to_thread(...)`` hops it replaced.
+    """
+    client, _connectionDocker = tclientLevelThree
+    from vaibify.reproducibility import manifestWriter
+    listCalls = []
+    fnReal = manifestWriter.flistVerifyManifest
+
+    def flistRecordThenVerify(filesRepo):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            S_CONTAINER_ID,
+        )
+        listCalls.append("" if admission is None else admission.sMode)
+        return fnReal(filesRepo)
+
+    with patch.object(
+        manifestWriter, "flistVerifyManifest", flistRecordThenVerify,
+    ):
+        client.post(f"/api/workflow/{S_CONTAINER_ID}/manifest/verify")
+    assert listCalls, (
+        "the route never reached the manifest verify, so this asserts "
+        "nothing about the admission it runs under"
+    )
+    assert listCalls == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+    ] * len(listCalls), (
+        f"the manifest verify ran outside the drain: {listCalls}"
+    )
+
+
+@pytest.mark.falsification
+def testAMissingManifestIsRefusedWithoutQuarantining(tclientLevelThree):
+    """The manifest verify's 409 is carried back, never poisoned.
+
+    A missing MANIFEST.sha256 is decided with the container untouched:
+    the verify read for a file and did not find it. Raising it out of
+    the worker would settle through the failure path and quarantine the
+    container until the researcher ran ``vaibify reconcile`` -- over a
+    manifest that simply has not been generated yet, which is the
+    ordinary state of a workflow before its first run.
+
+    Kills: dropping the ``fdictCarryARefusalBackInsteadOfRaising``
+    wrapper from ``fdictVerifyTheManifest``, which turns the 409 into a
+    500 and poisons the journal record.
+    """
+    client, _connectionDocker = tclientLevelThree
+    responseHttp = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/manifest/verify",
+    )
+    assert responseHttp.status_code == 409, (
+        "a workflow with no manifest must be told to generate one, not "
+        f"handed a 500: {responseHttp.status_code} {responseHttp.text}"
+    )
+    # The STATUS is not the guarantee -- a 409 raised out of the worker
+    # still renders as a 409 -- so the JOURNAL is what this asserts.
+    # See the sibling declaration test for the failed kill-confirm that
+    # established this.
+    from vaibify.config import operationJournal
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        S_CONTAINER_NAME,
+    )
+    assert dictResolution["sResolution"] != (
+        operationJournal.S_RESOLUTION_QUARANTINED
+    ), (
+        "a missing MANIFEST.sha256 quarantined the container: "
+        f"{dictResolution}. A workflow that has not run yet has no "
+        "manifest, so this would quarantine on the ordinary path."
     )

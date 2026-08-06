@@ -375,9 +375,7 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/containers/{sName}/start/cancel"),
     ("POST", "/api/containers/{sName}/stop"),
     ("POST", "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"),
-    ("POST", "/api/workflow/{sContainerId}/ai-declaration/generate-template"),
     ("POST", "/api/workflow/{sContainerId}/level3/verify"),
-    ("POST", "/api/workflow/{sContainerId}/manifest/verify"),
     ("POST", "/api/zenodo/{sContainerId}/download"),
 })
 

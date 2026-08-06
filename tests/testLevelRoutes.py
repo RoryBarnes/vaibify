@@ -31,6 +31,22 @@ def _fdictBuildWorkflow(sProjectRepo):
     }
 
 
+from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.gui.routes import levelRoutes
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the routes this module drives bare.
+
+    The AI-declaration template generation now probes and writes under one carrier drain, which needs an owner record this module's bare ``FastAPI()`` has not got. Requested only by the tests that reach a carrier, so the
+    ones asserting a refusal BEFORE it still prove that. What this
+    module proves is what the route DOES, and nothing about the
+    admission it runs under; that lives in
+    ``tests/testCarrierMigratedRoutes.py``. See
+    ``tests/carrierStandDown.py`` for what the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, levelRoutes)
+
+
 @pytest.fixture
 def fixtureProjectRepo(tmp_path):
     """Create a tmpdir to act as the project repo root."""
@@ -108,7 +124,7 @@ def test_level2_readiness_unknown_container_id_404(fixtureClient):
 
 
 def test_generate_template_writes_default_file(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     """The default path AI_USAGE.md is written under the project repo."""
     response = fixtureClient.post(
@@ -123,7 +139,7 @@ def test_generate_template_writes_default_file(
 
 
 def test_generate_template_custom_relative_path(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     """A custom repo-relative path is honored."""
     response = fixtureClient.post(
@@ -166,7 +182,7 @@ def test_generate_template_rejects_backslash_dotdot(fixtureClient):
 
 
 def test_generate_template_refuses_to_overwrite(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     """A subsequent generate against the same path returns 409."""
     fixtureClient.post(
@@ -194,7 +210,7 @@ def test_generate_template_no_project_repo_returns_409(fixtureClient):
 
 
 def test_generate_template_handles_oserror_during_write(
-    fixtureClient,
+    fixtureClient, fixtureCarrierStoodDown,
 ):
     """An OSError surface as 500 with sanitized message."""
     with patch(

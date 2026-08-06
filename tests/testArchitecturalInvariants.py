@@ -4057,7 +4057,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # carrier, injected into the reader rather than performed by the
     # route. Dropping the reconciling reader would have been smaller and
     # would have made the dashboard say "killed (130)" over a crash.
-    "routes/pipelineRoutes.py": 3020,
+    # +50 (2026-08-06): the manifest verify, the last awaiting route in
+    # this module. It reads like a read and is not one at the boundary
+    # that decides — flistVerifyManifest re-hashes every pinned file
+    # through the GENERAL exec primitive — so it needed a real mode-(b)
+    # worker rather than a typed-read declaration, and the two to_thread
+    # hops it used to make became direct calls inside that worker.
+    # **No route in this module is awaiting any longer.**
+    "routes/pipelineRoutes.py": 3070,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

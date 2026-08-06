@@ -35,6 +35,22 @@ def _fnWriteFile(sPath, sContent):
         fileHandle.write(sContent)
 
 
+from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.gui.routes import pipelineRoutes
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the routes this module drives bare.
+
+    The manifest verify now re-hashes the repo inside a carrier drain, which needs an owner record this module's bare ``FastAPI()`` has not got. Requested only by the tests that reach a carrier, so the
+    ones asserting a refusal BEFORE it still prove that. What this
+    module proves is what the route DOES, and nothing about the
+    admission it runs under; that lives in
+    ``tests/testCarrierMigratedRoutes.py``. See
+    ``tests/carrierStandDown.py`` for what the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, pipelineRoutes)
+
+
 @pytest.fixture
 def fixtureProjectRepo(tmp_path):
     """Create a temp project repo with two output files."""
@@ -73,7 +89,7 @@ def fixtureClient(fixtureProjectRepo):
 
 
 def testVerifyManifestReturnsEmptyOnHappyPath(
-    fixtureProjectRepo, fixtureClient,
+    fixtureProjectRepo, fixtureClient, fixtureCarrierStoodDown,
 ):
     """Manifest is current → response reports zero mismatches."""
     manifestWriter.fnWriteManifest(
@@ -91,7 +107,7 @@ def testVerifyManifestReturnsEmptyOnHappyPath(
 
 
 def testVerifyManifestReportsDriftedFile(
-    fixtureProjectRepo, fixtureClient,
+    fixtureProjectRepo, fixtureClient, fixtureCarrierStoodDown,
 ):
     """A file modified after manifest write surfaces in listMismatches."""
     manifestWriter.fnWriteManifest(
@@ -120,7 +136,9 @@ def testVerifyManifestReturns404ForUnknownWorkflow(fixtureClient):
     assert response.status_code == 404
 
 
-def testVerifyManifestReturns409WhenManifestMissing(fixtureClient):
+def testVerifyManifestReturns409WhenManifestMissing(
+    fixtureClient, fixtureCarrierStoodDown,
+):
     """No MANIFEST.sha256 yields a 409 with an actionable message."""
     response = fixtureClient.post(
         f"/api/workflow/{S_CONTAINER_ID}/manifest/verify",
@@ -130,7 +148,7 @@ def testVerifyManifestReturns409WhenManifestMissing(fixtureClient):
 
 
 def testVerifyManifestITotalMatchesManifestCountNotWorkflowOutputs(
-    fixtureProjectRepo, fixtureClient,
+    fixtureProjectRepo, fixtureClient, fixtureCarrierStoodDown,
 ):
     """iTotal reflects manifest entry count, not workflow output count."""
     sManifest = os.path.join(fixtureProjectRepo, "MANIFEST.sha256")
@@ -149,7 +167,7 @@ def testVerifyManifestITotalMatchesManifestCountNotWorkflowOutputs(
 
 
 def testVerifyManifestReturns422WhenManifestIsMalformed(
-    fixtureProjectRepo, fixtureClient,
+    fixtureProjectRepo, fixtureClient, fixtureCarrierStoodDown,
 ):
     """A malformed manifest line yields 422, not 500.
 
@@ -173,7 +191,7 @@ def testVerifyManifestReturns422WhenManifestIsMalformed(
 
 
 def testVerifyManifestSurfacesIncompletePathsInPayload(
-    fixtureProjectRepo, fixtureClient,
+    fixtureProjectRepo, fixtureClient, fixtureCarrierStoodDown,
 ):
     """A legacy manifest pinning only a subset is reported via saIncomplete.
 
@@ -200,7 +218,7 @@ def testVerifyManifestSurfacesIncompletePathsInPayload(
 
 
 def testVerifyManifestSaIncompleteEmptyOnFullCoverage(
-    fixtureProjectRepo, fixtureClient,
+    fixtureProjectRepo, fixtureClient, fixtureCarrierStoodDown,
 ):
     """A current manifest reports an empty saIncomplete list."""
     manifestWriter.fnWriteManifest(

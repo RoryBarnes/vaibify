@@ -2853,35 +2853,85 @@ def _fnRegisterManifestVerify(app, dictCtx):
 
     @fnAgentAction("verify-manifest")
     @app.post("/api/workflow/{sContainerId}/manifest/verify")
-    async def fdictVerifyManifest(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictVerifyManifest(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        filesRepo = ffilesForWorkflow(
-            dictCtx, sContainerId, dictWorkflow,
-        )
-        listMismatches, listIncomplete = await _ftRunManifestVerify(
-            manifestWriter, dictWorkflow, filesRepo,
-        )
-        return _fdictBuildManifestVerifyResult(
-            filesRepo, listMismatches, listIncomplete,
+        return await _fdictVerifyManifestUnderTheDrain(
+            manifestWriter, dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            sContainerId, requestHttp,
         )
 
 
-async def _ftRunManifestVerify(manifestWriter, dictWorkflow, filesRepo):
-    """Run the verify+gap queries off the loop and translate failures.
+async def _fdictVerifyManifestUnderTheDrain(
+    manifestWriter, dictWorkflow, filesRepo, sContainerId, requestHttp,
+):
+    """Verify the manifest and count its entries under one drain.
+
+    This route reads like a read and is not one at the boundary that
+    decides: ``flistVerifyManifest`` re-hashes every pinned file by
+    running a script through the GENERAL exec primitive, which the gate
+    must treat as mutating because command text cannot be told apart
+    from a delete. So ``typed-read`` would be false here even though
+    nothing is written -- the same judgement the Overleaf diff already
+    records.
+
+    One carrier across the verify, the gap query and the entry count,
+    because they are three readings of ONE manifest and a report that
+    mixed two versions of it would be worse than a slower one: the
+    dashboard shows ``iMatching = iTotal - len(listMismatches)``, an
+    arithmetic that is only meaningful when both come from the same
+    file.
+
+    Every refusal here is decided before anything is written -- a
+    missing manifest (409), a malformed one (422) -- so all are carried
+    back rather than raised into a quarantine.
+    """
+    def fdictVerifyTheManifest(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictVerifyManifestBlocking(
+                manifestWriter, dictWorkflow, filesRepo,
+            ),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fdictVerifyTheManifest, "manifest-verify",
+        requestHttp,
+    )
+
+
+def _fdictVerifyManifestBlocking(manifestWriter, dictWorkflow, filesRepo):
+    """Run the verify and compose its result on one thread.
+
+    Synchronous because a mode-(b) worker runs in a thread and cannot
+    await the two ``to_thread`` hops this chain used to make.
+    """
+    listMismatches, listIncomplete = _ftRunManifestVerify(
+        manifestWriter, dictWorkflow, filesRepo,
+    )
+    return _fdictBuildManifestVerifyResult(
+        filesRepo, listMismatches, listIncomplete,
+    )
+
+
+def _ftRunManifestVerify(manifestWriter, dictWorkflow, filesRepo):
+    """Run the verify+gap queries and translate failures.
 
     Raises ``HTTPException`` 409 on missing manifest, 422 on a
     malformed manifest. Returns ``(listMismatches, listIncomplete)``
     on success.
     """
     try:
-        listMismatches = await asyncio.to_thread(
-            manifestWriter.flistVerifyManifest, filesRepo,
-        )
-        listIncomplete = await asyncio.to_thread(
-            manifestWriter.flistDeclaredButMissingFromManifest,
-            filesRepo, dictWorkflow,
+        listMismatches = manifestWriter.flistVerifyManifest(filesRepo)
+        listIncomplete = (
+            manifestWriter.flistDeclaredButMissingFromManifest(
+                filesRepo, dictWorkflow,
+            )
         )
     except FileNotFoundError as errorMissing:
         raise HTTPException(

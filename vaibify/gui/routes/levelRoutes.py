@@ -27,9 +27,15 @@ from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
 )
-from ..routeContext import ffilesForWorkflow, fnCommitWorkflowSave
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    ffilesForWorkflow,
+    fnCommitWorkflowSave,
+    fobjRunWorkerUnderTheDrain,
+)
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
     fnDeclareCarrierMode,
 )
 from ...reproducibility.aiDeclarationStep import (
@@ -162,40 +168,83 @@ def _fnRegisterGenerateTemplate(app, dictCtx):
         "/api/workflow/{sContainerId}"
         "/ai-declaration/generate-template"
     )
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnGenerateTemplate(
         sContainerId: str,
         request: AiDeclarationTemplateRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         _fsRequireProjectRepo(dictWorkflow)
-        filesRepo = ffilesForWorkflow(
-            dictCtx, sContainerId, dictWorkflow,
+        return await _fdictGenerateTemplateUnderTheDrain(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            sContainerId,
+            _fsValidateRelativePath(request.sRelativePath),
+            requestHttp,
         )
-        sRelative = _fsValidateRelativePath(request.sRelativePath)
-        if fbDeclarationFileExists(filesRepo, sRelative):
-            raise HTTPException(
-                409,
-                f"Declaration file already exists at '{sRelative}'; "
-                f"edit it in place rather than regenerating.",
-            )
-        try:
-            sAbsolute = fnWriteDeclarationTemplate(
-                filesRepo, sRelative,
-            )
-        except (OSError, ValueError) as error:
-            raise HTTPException(
-                500,
-                f"Template generation failed: "
-                f"{_fsSanitizeServerError(str(error))}",
-            )
-        return {
-            "bSuccess": True,
-            "sRelativePath": sRelative,
-            "sAbsolutePath": sAbsolute,
-        }
+
+
+async def _fdictGenerateTemplateUnderTheDrain(
+    filesRepo, sContainerId, sRelative, requestHttp,
+):
+    """Probe for an existing declaration, then write, under one drain.
+
+    The probe is the GUARD -- "generate only if absent" -- so it and
+    the write belong to one carrier: split across two, a second tab or
+    the in-container agent could pass the absence check between them
+    and the loser's template would overwrite a declaration the
+    researcher had already started editing. The generator's own
+    ``FileExistsError`` is a second line of defence, not a substitute:
+    it raises AFTER the drain would already have been released.
+
+    Mode (b) because the adapter spends three container round-trips per
+    logical write (``mkdir -p``, the ``.tmp`` write, ``mv -f``) plus
+    two typed reads for the probe, all of which belong in a worker.
+
+    Both refusals are carried back rather than raised. The 409 is
+    decided with the container untouched -- the file is simply already
+    there -- and the 500 is raised for a template generation that
+    refused to overwrite or was handed an empty path, which is equally
+    a decision made BEFORE any byte is written. Neither is the unknown
+    state a quarantine exists for.
+    """
+    def fnGenerateTheTemplate(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictProbeThenWriteTemplate(filesRepo, sRelative),
+            setAlsoCarriedStatusCodes=frozenset({500}),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnGenerateTheTemplate, "ai-declaration-template",
+        requestHttp,
+    )
+
+
+def _fdictProbeThenWriteTemplate(filesRepo, sRelative):
+    """Refuse an existing declaration, else write the starter template."""
+    if fbDeclarationFileExists(filesRepo, sRelative):
+        raise HTTPException(
+            409,
+            f"Declaration file already exists at '{sRelative}'; "
+            f"edit it in place rather than regenerating.",
+        )
+    try:
+        sAbsolute = fnWriteDeclarationTemplate(filesRepo, sRelative)
+    except (OSError, ValueError) as error:
+        raise HTTPException(
+            500,
+            f"Template generation failed: "
+            f"{_fsSanitizeServerError(str(error))}",
+        )
+    return {
+        "bSuccess": True,
+        "sRelativePath": sRelative,
+        "sAbsolutePath": sAbsolute,
+    }
 
 
 def _fnRefuseDuplicateAiDeclarationStep(dictWorkflow):

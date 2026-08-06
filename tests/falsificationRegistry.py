@@ -7096,4 +7096,91 @@ def _fdictEntry(sRel):
             '    )[0] != 0:\n'
         ),
     ),
+
+    # -------- phase 2: the two routes left over from the group edges --
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeclarationTemplateProbeAndWriteShareOneDrain'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnGenerateTheTemplate, '
+            '"ai-declaration-template",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictProbeThenWriteTemplate(filesRepo, sRelative)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnExistingDeclarationIsRefusedWithoutQuarantining'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: _fdictProbeThenWriteTemplate('
+            'filesRepo, sRelative),\n'
+            '            setAlsoCarriedStatusCodes=frozenset({500}),\n'
+            '        )\n'
+        ),
+        new=(
+            '        return {\n'
+            '            "errorRefused": None,\n'
+            '            "objResult": _fdictProbeThenWriteTemplate(\n'
+            '                filesRepo, sRelative,\n'
+            '            ),\n'
+            '        }\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheManifestVerifyRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictVerifyTheManifest, '
+            '"manifest-verify",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await asyncio.to_thread(\n'
+            '        _fdictVerifyManifestBlocking,\n'
+            '        manifestWriter, dictWorkflow, filesRepo,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAMissingManifestIsRefusedWithoutQuarantining'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: _fdictVerifyManifestBlocking(\n'
+            '                manifestWriter, dictWorkflow, filesRepo,\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        return {\n'
+            '            "errorRefused": None,\n'
+            '            "objResult": _fdictVerifyManifestBlocking(\n'
+            '                manifestWriter, dictWorkflow, filesRepo,\n'
+            '            ),\n'
+            '        }\n'
+        ),
+    ),
 ]
