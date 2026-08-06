@@ -15,6 +15,7 @@ lives here, beneath them.
 
 __all__ = [
     "RouteContext",
+    "fdictCarryARefusalBackInsteadOfRaising",
     "fdictRequireLaneTupleForCommit",
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
@@ -82,6 +83,48 @@ def fdictRequireLaneTupleForCommit(
             "record; claim or connect first.",
         )
     return dictLaneTuple
+
+
+def fdictCarryARefusalBackInsteadOfRaising(
+    fnEffect, setAlsoCarriedStatusCodes=frozenset(),
+):
+    """Run a carrier worker's effect, carrying a refusal back as a value.
+
+    A carrier worker that RAISES is settled through the failure path,
+    which marks its journal record NEEDS RECONCILIATION and QUARANTINES
+    the container until the researcher runs ``vaibify reconcile``. That
+    is exactly right for an effect whose state nobody knows, and badly
+    wrong for "no such repository" or "the remote is unreachable": an
+    ordinary refusal would take a working container out of service.
+
+    The default split is by STATUS, and the line is 4xx/5xx because that
+    is the line between the two meanings. A 4xx is a refusal decided
+    BEFORE anything was written -- the directory already exists, the
+    repository is not tracked, the name is invalid -- so the container is
+    untouched and there is nothing to reconcile. A 5xx is raised
+    MID-EFFECT (``mkdir`` failed, ``git init`` failed halfway), which is
+    precisely the unknown state the quarantine exists for, so it is left
+    to propagate and poison.
+
+    ``setAlsoCarriedStatusCodes`` names the 5xx codes a particular caller
+    has judged to be decided rather than unknown, and every caller that
+    passes one must say why at its call site. The git panel is the case
+    that needed it: a failed ``git fetch`` answers 502, but the git
+    process RAN TO COMPLETION and reported a non-zero exit, so the
+    container's state is known and a researcher whose network blipped
+    must not be told to reconcile.
+
+    Returns ``{"errorRefused": HTTPException|None, "objResult": ...}``.
+    """
+    try:
+        return {"errorRefused": None, "objResult": fnEffect()}
+    except HTTPException as errorHttp:
+        if (
+            errorHttp.status_code >= 500
+            and errorHttp.status_code not in setAlsoCarriedStatusCodes
+        ):
+            raise
+        return {"errorRefused": errorHttp, "objResult": None}
 
 
 def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):

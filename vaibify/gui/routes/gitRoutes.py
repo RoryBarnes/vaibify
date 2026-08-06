@@ -33,7 +33,7 @@ import time
 
 from typing import List, Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
 from .. import (
@@ -47,15 +47,34 @@ from .. import (
 from ..actionCatalog import fnAgentAction
 from ..pipelineServer import fdictRequireWorkflow, fnBumpSyncEpoch
 from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
+    fnCommitWorkflowSave,
     fsRefreshVerifyCacheAfterPush,
 )
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    fnDeclareCarrierMode,
+)
+from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility.manifestPaths import flistStepDeclarationRepoPaths
 
 logger = logging.getLogger("vaibify")
 
 
 F_FETCH_CACHE_SECONDS = 30.0
+# The 5xx this panel's carrier workers carry BACK as a value rather than
+# raise. Every route here answers 502 when ``git fetch`` or ``git pull``
+# reports a non-zero exit, which is almost always an unreachable remote
+# -- and a 5xx raised inside a carrier worker poisons its journal record
+# and QUARANTINES the container until the researcher runs ``vaibify
+# reconcile``. A network blip must not cost anybody their container. The
+# refusal is safe to carry because the git process ran to completion and
+# reported its own failure: the repository's state is known, which is
+# exactly what the default 4xx/5xx split cannot express.
+_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})
 # Canonical state vocabulary emitted by ``gitStatus._fsStateFromXy`` and
 # the porcelain parser is {"committed", "uncommitted", "dirty",
 # "untracked", "ignored", "conflict"}. ``uncommitted`` covers index-only
@@ -342,64 +361,142 @@ def _fnRegisterManifestCheck(app, dictCtx):
         )
 
 
+async def _fobjRunGitWorkerUnderTheDrain(
+    sContainerId, fnEffect, sOperationTarget, requestHttp,
+):
+    """Run one git-panel mutation under the drain; re-raise its refusal.
+
+    Mode (b) rather than mode (a) for every route in this panel. Each is
+    a sequence of git commands against a remote or an index, any of
+    which can run for as long as the network takes, and mode (a) runs
+    its effect on the event loop. More importantly the drain has to be
+    held for the WORKER's life, so an ownership hand-over or a Run Step
+    arriving mid-fetch is refused and told what is running rather than
+    landing underneath a git process that keeps writing.
+
+    The refusal is re-raised OUTSIDE the carrier deliberately: by then
+    the supervisor has settled its journal record normally, so the
+    researcher gets their 409 or their 502 and their container stays
+    usable.
+
+    ``sOperationTarget`` is a compile-time constant at every call site
+    below, never a remote URL or anything else derived from the request,
+    so nothing this writes into the journal needs redacting.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationTarget,
+    )
+
+    def fnRunTheEffect(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            fnEffect, _SET_GIT_REMOTE_REFUSAL_STATUSES,
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", sOperationTarget,
+        fnRunTheEffect,
+    )
+    dictCarried = dictOutcome["result"]
+    if dictCarried["errorRefused"] is not None:
+        raise dictCarried["errorRefused"]
+    return dictCarried["objResult"]
+
+
 def _fnRegisterCommitCanonical(app, dictCtx):
     """Register POST /api/git/{sContainerId}/commit-canonical."""
 
     @fnAgentAction("commit-canonical")
     @app.post("/api/git/{sContainerId}/commit-canonical")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnCommitCanonical(
         sContainerId: str, request: CommitCanonicalRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
+        # Resolved out here because it reaches no container at all: a
+        # workflow outside a git work tree is a 409 without a journal
+        # record ever existing.
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        docker = dictCtx["docker"]
-        dictGit = await asyncio.to_thread(
-            containerGit.fdictGitStatusInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
+        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fdictScanThenCommitCanonical(
+                dictCtx["docker"], sContainerId, dictWorkflow, sRepo,
+                request,
+            ),
+            "commit-canonical", requestHttp,
         )
-        if not dictGit.get("bIsRepo"):
-            raise HTTPException(
-                status_code=409,
-                detail="Workspace is not a git repository.",
-            )
-        listTracked = await asyncio.to_thread(
-            _flistCanonicalFromContainer,
-            docker, sContainerId, dictWorkflow, sRepo,
-        )
-        dictReport = manifestCheck.fdictBuildManifestReportFromStatus(
-            dictGit, listTracked,
-        )
-        listNeedsCommit = [
-            dictEntry["sPath"]
-            for dictEntry in dictReport["listNeedsCommit"]
-        ]
-        if request.listOnlyPaths is not None:
-            setOnly = set(request.listOnlyPaths)
-            listNeedsCommit = [
-                sPath for sPath in listNeedsCommit if sPath in setOnly
-            ]
-        if not listNeedsCommit:
-            return _fdictCommitCanonicalSuccess(
-                dictReport["sHeadSha"], 0,
-            )
-        sMessage = request.sCommitMessage or _fsDefaultCommitMessage()
-        await _fnApplyCanonicalGitAddCommit(
-            docker, sContainerId, sRepo, listNeedsCommit, sMessage,
-        )
-        sCommitHash = await asyncio.to_thread(
-            containerGit.fsGitHeadShaInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
-        )
-        fnBumpSyncEpoch(dictCtx, sContainerId)
-        return _fdictCommitCanonicalSuccess(
-            sCommitHash, len(listNeedsCommit),
-        )
+        if dictResponse["iFilesCommitted"]:
+            fnBumpSyncEpoch(dictCtx, sContainerId)
+        return dictResponse
 
 
-async def _fnApplyCanonicalGitAddCommit(
+def _fdictScanThenCommitCanonical(
+    docker, sContainerId, dictWorkflow, sRepo, request,
+):
+    """Scan the repo for canonical changes and commit them, in one worker.
+
+    The scan reaches the general exec primitive three times over -- a
+    porcelain status, two glob listings, a head-sha read -- which the
+    gate treats as mutating because a primitive handed command text
+    cannot know what the text does. A scan left outside the carrier
+    would be refused on the enforced branch, and it belongs inside the
+    SAME held drain as the commit in any case: with the lock dropped
+    between "these are the files that need committing" and the commit
+    itself, another session's write lands in the gap and rides into a
+    commit that never inspected it.
+    """
+    dictGit = containerGit.fdictGitStatusInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    if not dictGit.get("bIsRepo"):
+        raise HTTPException(
+            status_code=409,
+            detail="Workspace is not a git repository.",
+        )
+    listTracked = _flistCanonicalFromContainer(
+        docker, sContainerId, dictWorkflow, sRepo,
+    )
+    dictReport = manifestCheck.fdictBuildManifestReportFromStatus(
+        dictGit, listTracked,
+    )
+    listNeedsCommit = _flistNarrowToRequestedPaths(
+        dictReport["listNeedsCommit"], request.listOnlyPaths,
+    )
+    if not listNeedsCommit:
+        return _fdictCommitCanonicalSuccess(dictReport["sHeadSha"], 0)
+    _fnApplyCanonicalGitAddCommit(
+        docker, sContainerId, sRepo, listNeedsCommit,
+        request.sCommitMessage or _fsDefaultCommitMessage(),
+    )
+    return _fdictCommitCanonicalSuccess(
+        containerGit.fsGitHeadShaInContainer(
+            docker, sContainerId, sWorkspace=sRepo,
+        ),
+        len(listNeedsCommit),
+    )
+
+
+def _flistNarrowToRequestedPaths(listNeedsCommit, listOnlyPaths):
+    """Return the needs-commit paths, narrowed to a requested subset.
+
+    The server-derived list stays authoritative: a requested path
+    outside it is ignored, so the filter can narrow the commit but
+    never widen it.
+    """
+    listPaths = [dictEntry["sPath"] for dictEntry in listNeedsCommit]
+    if listOnlyPaths is None:
+        return listPaths
+    setOnly = set(listOnlyPaths)
+    return [sPath for sPath in listPaths if sPath in setOnly]
+
+
+def _fnApplyCanonicalGitAddCommit(
     docker, sContainerId, sRepo, listNeedsCommit, sMessage,
 ):
     """Run git add + commit, raising HTTPException on either failure.
@@ -409,9 +506,12 @@ async def _fnApplyCanonicalGitAddCommit(
     other explicit canonical entries) so any pre-staged user files are
     not swept into the canonical commit. See TUPLE_CURATED_COMMIT_KINDS
     for the contract.
+
+    Both failures are 500 and are therefore NOT carried back: a ``git
+    add`` that failed partway leaves an index nobody has inspected, and
+    that unknown state is exactly what the quarantine exists for.
     """
-    iExit, sOut = await asyncio.to_thread(
-        containerGit.ftResultGitAddInContainer,
+    iExit, sOut = containerGit.ftResultGitAddInContainer(
         docker, sContainerId, listNeedsCommit, sWorkspace=sRepo,
     )
     if iExit != 0:
@@ -419,8 +519,7 @@ async def _fnApplyCanonicalGitAddCommit(
             status_code=500,
             detail="git add failed: " + (sOut or "").strip(),
         )
-    iExit, sOut = await asyncio.to_thread(
-        containerGit.ftResultGitCommitInContainer,
+    iExit, sOut = containerGit.ftResultGitCommitInContainer(
         docker, sContainerId, sMessage, sWorkspace=sRepo,
         listFilePaths=listNeedsCommit,
     )
@@ -453,65 +552,84 @@ def _fnRegisterUntrackAiDeclaration(app, dictCtx):
 
     @fnAgentAction("untrack-ai-declaration")
     @app.post("/api/git/{sContainerId}/untrack-ai-declaration")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnUntrackAiDeclaration(
         sContainerId: str, request: UntrackAiDeclarationRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
+        # Both guards read the workflow dict alone and reach no
+        # container, so they answer before any journal record exists.
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         _fnRequireDeclarationPath(dictWorkflow, request.sPath)
-        docker = dictCtx["docker"]
-        # The removal is committed WITHOUT a pathspec: `git commit --
-        # <path>` records the path's WORKING-TREE content, not the
-        # staged deletion — on a clean file it fails with "nothing to
-        # commit", and on a modified file it silently commits the
-        # file instead of removing it (found by adversarial review
-        # against real git, 2026-07-03). A bare commit is safe only
-        # because an already-dirty index is refused first.
-        iExit, sOut = await asyncio.to_thread(
-            containerGit.ftResultGitDiffCachedQuietInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
-        )
-        if iExit != 0:
-            raise HTTPException(
-                status_code=409,
-                detail="Other changes are already staged in the "
-                       "repo — commit or unstage them first, then "
-                       "retry the removal.",
-            )
-        iExit, sOut = await asyncio.to_thread(
-            containerGit.ftResultGitRemoveCachedInContainer,
-            docker, sContainerId, [request.sPath], sWorkspace=sRepo,
-        )
-        if iExit != 0:
-            raise HTTPException(
-                status_code=409,
-                detail="git rm --cached failed: " + (sOut or "").strip(),
-            )
-        iExit, sOut = await asyncio.to_thread(
-            containerGit.ftResultGitCommitInContainer,
-            docker, sContainerId,
-            "[vaibify] remove AI declaration from the repo",
-            sWorkspace=sRepo,
-        )
-        if iExit != 0:
-            await asyncio.to_thread(
-                containerGit.ftResultGitRestoreStagedInContainer,
-                docker, sContainerId, [request.sPath],
-                sWorkspace=sRepo,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="git commit failed: " + (sOut or "").strip(),
-            )
-        sCommitHash = await asyncio.to_thread(
-            containerGit.fsGitHeadShaInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
+        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fdictRemoveDeclarationFromTheIndex(
+                dictCtx["docker"], sContainerId, sRepo, request.sPath,
+            ),
+            "untrack-ai-declaration", requestHttp,
         )
         fnBumpSyncEpoch(dictCtx, sContainerId)
-        return {"bSuccess": True, "sCommitHash": sCommitHash}
+        return dictResponse
+
+
+def _fdictRemoveDeclarationFromTheIndex(
+    docker, sContainerId, sRepo, sPath,
+):
+    """Refuse a dirty index, untrack the declaration, commit the removal.
+
+    One worker rather than four because the sequence is a
+    read-modify-write over the git index: the dirty-index refusal is
+    what makes the bare commit below safe, and with the drain dropped
+    between the two, another session stages a change in the gap and it
+    rides into this commit.
+
+    The removal is committed WITHOUT a pathspec: ``git commit --
+    <path>`` records the path's WORKING-TREE content, not the staged
+    deletion — on a clean file it fails with "nothing to commit", and
+    on a modified file it silently commits the file instead of removing
+    it (found by adversarial review against real git, 2026-07-03).
+    """
+    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Other changes are already staged in the "
+                   "repo — commit or unstage them first, then "
+                   "retry the removal.",
+        )
+    iExit, sOut = containerGit.ftResultGitRemoveCachedInContainer(
+        docker, sContainerId, [sPath], sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        raise HTTPException(
+            status_code=409,
+            detail="git rm --cached failed: " + (sOut or "").strip(),
+        )
+    iExit, sOut = containerGit.ftResultGitCommitInContainer(
+        docker, sContainerId,
+        "[vaibify] remove AI declaration from the repo",
+        sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        containerGit.ftResultGitRestoreStagedInContainer(
+            docker, sContainerId, [sPath], sWorkspace=sRepo,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="git commit failed: " + (sOut or "").strip(),
+        )
+    return {
+        "bSuccess": True,
+        "sCommitHash": containerGit.fsGitHeadShaInContainer(
+            docker, sContainerId, sWorkspace=sRepo,
+        ),
+    }
 
 
 def _fnRequireDeclarationPath(dictWorkflow, sPath):
@@ -560,15 +678,17 @@ def _fnRecordFetchTime(sContainerId):
     _DICT_LAST_FETCH[sContainerId] = time.time()
 
 
-async def _fnRunGitFetchOrFail(docker, sContainerId, sRepo):
+def _fnRunGitFetchOrFail(docker, sContainerId, sRepo):
     """Run ``git fetch`` in the container, raising HTTP 502 on failure.
 
     The failure detail is scrubbed of URL userinfo because git's
     "unable to access" errors echo the remote URL verbatim, which
-    would leak an embedded credential to the client and the log.
+    would leak an embedded credential to the client and the log. That
+    scrubbing is why the 502 is safe to carry back through the carrier:
+    the message a researcher sees is the same one that would have
+    reached the journal, minus the credential either way.
     """
-    iExit, sOut = await asyncio.to_thread(
-        containerGit.ftResultGitFetchInContainer,
+    iExit, sOut = containerGit.ftResultGitFetchInContainer(
         docker, sContainerId, sWorkspace=sRepo,
     )
     if iExit != 0:
@@ -596,8 +716,9 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
 
     @fnAgentAction("fetch-project-repo")
     @app.post("/api/git/{sContainerId}/fetch-project-repo")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnFetchProjectRepo(
-        sContainerId: str,
+        sContainerId: str, requestHttp: Request,
         request: FetchProjectRepoRequest = FetchProjectRepoRequest(),
     ):
         dictCtx["require"]()
@@ -605,35 +726,50 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        docker = dictCtx["docker"]
         bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
-        if not bCacheUsed:
-            await _fnRunGitFetchOrFail(
-                docker, sContainerId, sRepo,
-            )
-            _fnRecordFetchTime(sContainerId)
-            fnBumpSyncEpoch(dictCtx, sContainerId)
-        dictGit = await asyncio.to_thread(
-            containerGit.fdictGitStatusInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
+        return await _fobjRunGitWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fdictFetchThenReadStatus(
+                dictCtx, sContainerId, sRepo, bCacheUsed,
+            ),
+            "git-fetch", requestHttp,
         )
-        return _fdictFetchStatusView(dictGit, bCacheUsed)
 
 
-async def _fdictCollectRefreshRemotesView(
+def _fdictFetchThenReadStatus(dictCtx, sContainerId, sRepo, bCacheUsed):
+    """Fetch unless the TTL is still warm, then read the repo status.
+
+    The status read is inside the carrier with the fetch because it is
+    an ordinary container exec, and on the enforced branch an exec left
+    outside a carrier is refused at the primitive. Both host-side
+    bookkeeping calls stay in their original order relative to the git
+    commands, so a fetch that succeeded and a status read that then
+    failed still records the fetch — as it did before this migration.
+    """
+    docker = dictCtx["docker"]
+    if not bCacheUsed:
+        _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
+        _fnRecordFetchTime(sContainerId)
+        fnBumpSyncEpoch(dictCtx, sContainerId)
+    return _fdictFetchStatusView(
+        containerGit.fdictGitStatusInContainer(
+            docker, sContainerId, sWorkspace=sRepo,
+        ),
+        bCacheUsed,
+    )
+
+
+def _fdictCollectRefreshRemotesView(
     docker, sContainerId, sRepo, bCacheUsed,
 ):
     """Gather remote heads, repo status, and remote URL after a fetch."""
-    dictRemoteHeads = await asyncio.to_thread(
-        containerGit.fdictRemoteHeadsInContainer,
+    dictRemoteHeads = containerGit.fdictRemoteHeadsInContainer(
         docker, sContainerId, sWorkspace=sRepo,
     )
-    dictGit = await asyncio.to_thread(
-        containerGit.fdictGitStatusInContainer,
+    dictGit = containerGit.fdictGitStatusInContainer(
         docker, sContainerId, sWorkspace=sRepo,
     )
-    sRemoteUrl = await asyncio.to_thread(
-        containerGit.fsRemoteUrlInContainer,
+    sRemoteUrl = containerGit.fsRemoteUrlInContainer(
         docker, sContainerId, sRepo,
     )
     return {
@@ -649,8 +785,9 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
 
     @fnAgentAction("refresh-remotes")
     @app.post("/api/git/{sContainerId}/refresh-remotes")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnRefreshRemotes(
-        sContainerId: str,
+        sContainerId: str, requestHttp: Request,
         request: RefreshRemotesRequest = RefreshRemotesRequest(),
     ):
         dictCtx["require"]()
@@ -658,17 +795,36 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        docker = dictCtx["docker"]
         bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
-        if not bCacheUsed:
-            await _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
-            _fnRecordFetchTime(sContainerId)
-        dictResponse = await _fdictCollectRefreshRemotesView(
-            docker, sContainerId, sRepo, bCacheUsed,
+        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fdictFetchThenCollectRemotes(
+                dictCtx["docker"], sContainerId, sRepo, bCacheUsed,
+            ),
+            "git-fetch", requestHttp,
         )
         if not bCacheUsed:
             fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictResponse
+
+
+def _fdictFetchThenCollectRemotes(
+    docker, sContainerId, sRepo, bCacheUsed,
+):
+    """Fetch unless the TTL is warm, then read the remote-heads view.
+
+    Bumping the sync epoch is left to the caller, because the two
+    routes sharing this worker bump at different points: refresh-remotes
+    bumps only when it actually fetched, while reconcile bumps once at
+    the very end, after its verify and its bookkeeping save. Bumping
+    here would give reconcile two epochs for one action.
+    """
+    if not bCacheUsed:
+        _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
+        _fnRecordFetchTime(sContainerId)
+    return _fdictCollectRefreshRemotesView(
+        docker, sContainerId, sRepo, bCacheUsed,
+    )
 
 
 def _fdictDirtyRefusalResponse(dictGit, listDirty):
@@ -682,10 +838,9 @@ def _fdictDirtyRefusalResponse(dictGit, listDirty):
     }
 
 
-async def _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo):
+def _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo):
     """Run ``git pull --ff-only`` in the container, raising HTTP 502 on failure."""
-    iExit, sOut = await asyncio.to_thread(
-        containerGit.ftResultGitPullFastForwardInContainer,
+    iExit, sOut = containerGit.ftResultGitPullFastForwardInContainer(
         docker, sContainerId, sWorkspace=sRepo,
     )
     if iExit != 0:
@@ -701,40 +856,56 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
 
     @fnAgentAction("pull-project-repo")
     @app.post("/api/git/{sContainerId}/pull-project-repo")
-    async def fnPullProjectRepo(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnPullProjectRepo(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        docker = dictCtx["docker"]
-        dictGit = await asyncio.to_thread(
-            containerGit.fdictGitStatusInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
+        return await _fobjRunGitWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fdictCheckCleanThenFastForward(
+                dictCtx, sContainerId, sRepo,
+            ),
+            "git-pull", requestHttp,
         )
-        listDirty = _flistTrackedDirtyPaths(dictGit)
-        if listDirty:
-            return _fdictDirtyRefusalResponse(dictGit, listDirty)
-        await _fnRunGitPullFastForwardOrFail(
-            docker, sContainerId, sRepo,
-        )
-        _fnRecordFetchTime(sContainerId)
-        fnBumpSyncEpoch(dictCtx, sContainerId)
-        sNewHead = await asyncio.to_thread(
-            containerGit.fsGitHeadShaInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
-        )
-        dictGitAfter = await asyncio.to_thread(
-            containerGit.fdictGitStatusInContainer,
-            docker, sContainerId, sWorkspace=sRepo,
-        )
-        return {
-            "bSuccess": True,
-            "sNewHeadSha": sNewHead,
-            "sBranch": dictGitAfter.get("sBranch", ""),
-            "iBehind": dictGitAfter.get("iBehind", 0),
-            "iAhead": dictGitAfter.get("iAhead", 0),
-        }
+
+
+def _fdictCheckCleanThenFastForward(dictCtx, sContainerId, sRepo):
+    """Refuse a dirty work tree, then fast-forward and re-read the state.
+
+    The dirty check and the pull share one held drain because they are
+    a check-then-act pair: with the lock dropped between them, a write
+    lands in the gap and ``git pull --ff-only`` clobbers or refuses
+    against a tree the check said was clean.
+
+    The dirty refusal is an ordinary 200 body rather than an exception,
+    so it needs no carry-back — it is simply this worker's return value.
+    """
+    docker = dictCtx["docker"]
+    dictGit = containerGit.fdictGitStatusInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    listDirty = _flistTrackedDirtyPaths(dictGit)
+    if listDirty:
+        return _fdictDirtyRefusalResponse(dictGit, listDirty)
+    _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo)
+    _fnRecordFetchTime(sContainerId)
+    fnBumpSyncEpoch(dictCtx, sContainerId)
+    sNewHead = containerGit.fsGitHeadShaInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    dictGitAfter = containerGit.fdictGitStatusInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    return {
+        "bSuccess": True,
+        "sNewHeadSha": sNewHead,
+        "sBranch": dictGitAfter.get("sBranch", ""),
+        "iBehind": dictGitAfter.get("iBehind", 0),
+        "iAhead": dictGitAfter.get("iAhead", 0),
+    }
 
 
 def _flistProvenGithubSyncedPaths(dictWorkflow, dictStatus):
@@ -763,7 +934,7 @@ def _flistProvenGithubSyncedPaths(dictWorkflow, dictStatus):
 
 
 def _fdictReconcileSyncStatusFromVerify(
-    dictCtx, sContainerId, dictWorkflow,
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
 ):
     """Record the refreshed GitHub verify into the workflow's sync status.
 
@@ -772,6 +943,17 @@ def _fdictReconcileSyncStatusFromVerify(
     else. Bookkeeping failures are logged rather than raised: the
     remote state was still reconciled, and turning that into a 500
     would hide the reconciliation that did happen.
+
+    The cache READ is a typed read (``fbIsFile`` then a base64 fetch),
+    which the audited-read carve-out exempts, so it needs no carrier.
+    The SAVE is a container write and gets mode (a), the same carrier
+    every other ``project.json`` save in the hub uses.
+
+    A carrier refusal is re-raised rather than swallowed. The broad
+    handler exists to keep a bookkeeping failure from hiding a
+    reconciliation that happened — but a refusal is not a bookkeeping
+    failure, and letting this swallow one would delete the migration's
+    only proof: forget the carrier and nothing would raise at all.
     """
     from vaibify.reproducibility import scheduledReverify
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
@@ -785,8 +967,12 @@ def _fdictReconcileSyncStatusFromVerify(
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, listProven, "Github",
         )
-        dictCtx["save"](sContainerId, dictWorkflow)
-    except Exception:
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The reconcile bookkeeping save",
+        )
+    except Exception as error:
+        fnReRaiseControlPlaneRefusal(error)
         logger.warning(
             "Reconcile bookkeeping failed for container %s; the "
             "remote state was refreshed but dictSyncStatus lags.",
@@ -807,26 +993,39 @@ def _fnRegisterReconcileRemoteState(app, dictCtx):
 
     @fnAgentAction("reconcile-remote-state")
     @app.post("/api/git/{sContainerId}/reconcile-remote-state")
-    async def fnReconcileRemoteState(sContainerId: str):
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
+    async def fnReconcileRemoteState(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        docker = dictCtx["docker"]
-        await _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
-        _fnRecordFetchTime(sContainerId)
-        dictResponse = await _fdictCollectRefreshRemotesView(
-            docker, sContainerId, sRepo, False,
+        # Three mutations, deliberately SEQUENTIAL rather than nested:
+        # the fetch and the verify each take the container's mutation
+        # drain, and a mode-(b) carrier opened inside another's held
+        # lock would deadlock on it. Each completes before the next
+        # begins.
+        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fdictFetchThenCollectRemotes(
+                dictCtx["docker"], sContainerId, sRepo, False,
+            ),
+            "git-fetch", requestHttp,
         )
         dictResponse["sVerifyWarning"] = (
             await fsRefreshVerifyCacheAfterPush(
                 dictCtx, sContainerId, dictWorkflow, "github",
+                requestHttp,
             )
         )
-        dictResponse["dictVerifyStatus"] = await asyncio.to_thread(
-            _fdictReconcileSyncStatusFromVerify,
-            dictCtx, sContainerId, dictWorkflow,
+        dictResponse["dictVerifyStatus"] = (
+            _fdictReconcileSyncStatusFromVerify(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+            )
         )
         fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictResponse

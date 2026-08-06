@@ -13,7 +13,10 @@ from .. import browserSession
 from .. import containerOwnership
 from .. import workflowManager
 from ..actionCatalog import fnAgentAction
-from ..routeContext import fdictRequireLaneTupleForCommit
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
+)
 from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_SEPARATE_AUTHORITY,
@@ -214,10 +217,10 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
         dictOutcome = await _fdictCreateWorkflowUnderTheDrain(
             dictCtx, sContainerId, request, sFileName, requestHttp,
         )
-        if dictOutcome.get("errorRefusal") is not None:
-            raise dictOutcome["errorRefusal"]
+        if dictOutcome["errorRefused"] is not None:
+            raise dictOutcome["errorRefused"]
         return _fdictCreateWorkflowResponse(
-            dictOutcome["sFullPath"], request.sWorkflowName,
+            dictOutcome["objResult"], request.sWorkflowName,
         )
 
 
@@ -241,7 +244,9 @@ async def _fdictCreateWorkflowUnderTheDrain(
     quarantines the container, so a researcher who picked a name that
     was already taken would be told to run ``vaibify reconcile``. A 5xx
     is re-raised and does poison, which is correct: nobody knows then
-    whether the file landed.
+    whether the file landed. That split is the shared carry-back's
+    default, so this passes no extra statuses: every 5xx reachable here
+    is a write that failed partway.
     """
     from .. import commitCarrier
     dictLaneTuple = fdictRequireLaneTupleForCommit(
@@ -250,16 +255,11 @@ async def _fdictCreateWorkflowUnderTheDrain(
 
     def fnProbeThenCreate(supervisor=None):
         del supervisor
-        try:
-            return {
-                "sFullPath": _fsProbeThenWriteNewWorkflow(
-                    dictCtx["docker"], sContainerId, request, sFileName,
-                ),
-            }
-        except HTTPException as errorRefusal:
-            if errorRefusal.status_code >= 500:
-                raise
-            return {"errorRefusal": errorRefusal}
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fsProbeThenWriteNewWorkflow(
+                dictCtx["docker"], sContainerId, request, sFileName,
+            ),
+        )
 
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],

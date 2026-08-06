@@ -21,6 +21,7 @@ from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fnBumpSyncEpoch
 from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     fsRefreshVerifyCacheAfterPush,
 )
@@ -445,35 +446,6 @@ def _fnRegisterTrack(app, dictCtx):
         )
 
 
-def _fdictCarryARefusalBackInsteadOfRaising(fnEffect):
-    """Run a worker's effect, carrying a DECLINED refusal back as a value.
-
-    A carrier worker that raises is settled through the failure path,
-    which marks its journal record NEEDS RECONCILIATION and QUARANTINES
-    the container until the researcher runs ``vaibify reconcile``. That
-    is exactly right for an effect whose state nobody knows, and badly
-    wrong for "no such repository": an ordinary 404 would take a working
-    container out of service.
-
-    The split is by STATUS, not by exception type, and the line is
-    4xx/5xx because that is the line between the two meanings. A 4xx
-    from these routes is a refusal decided BEFORE anything was written
-    -- the directory already exists, the repo is not there, the name is
-    invalid -- so the container is untouched and there is nothing to
-    reconcile. A 5xx is raised MID-EFFECT (``mkdir`` failed, ``git
-    init`` failed halfway), which is precisely the unknown state the
-    quarantine exists for, so it is left to propagate and poison.
-
-    Returns ``{"errorRefused": HTTPException|None, "objResult": ...}``.
-    """
-    try:
-        return {"errorRefused": None, "objResult": fnEffect()}
-    except HTTPException as errorHttp:
-        if errorHttp.status_code >= 500:
-            raise
-        return {"errorRefused": errorHttp, "objResult": None}
-
-
 async def _fobjRunRepoWorkerUnderTheDrain(
     sContainerId, fnEffect, sOperationTarget, requestHttp,
 ):
@@ -490,7 +462,7 @@ async def _fobjRunRepoWorkerUnderTheDrain(
 
     def fnRunTheEffect(supervisor=None):
         del supervisor
-        return _fdictCarryARefusalBackInsteadOfRaising(fnEffect)
+        return fdictCarryARefusalBackInsteadOfRaising(fnEffect)
 
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
@@ -656,7 +628,7 @@ def _fdictResolveRemoteThenPush(
             )
         return fnPush()
 
-    return _fdictCarryARefusalBackInsteadOfRaising(fnCheckTrackedThenPush)
+    return fdictCarryARefusalBackInsteadOfRaising(fnCheckTrackedThenPush)
 
 
 async def _fdictPushRepositoryUnderTheDrain(

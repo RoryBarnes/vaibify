@@ -1904,14 +1904,14 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_rm_failure_detail_carries_git_output',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='                detail="git rm --cached failed: " + (sOut or "").strip(),',
-        new='                detail="git rm --cached failed: " + (sOut and "").strip(),',
+        old='            detail="git rm --cached failed: " + (sOut or "").strip(),',
+        new='            detail="git rm --cached failed: " + (sOut and "").strip(),',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_commit_failure_detail_carries_git_output',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='                detail="git commit failed: " + (sOut or "").strip(),',
-        new='                detail="git commit failed: " + (sOut and "").strip(),',
+        old='            docker, sContainerId, [sPath], sWorkspace=sRepo,\n        )\n        raise HTTPException(\n            status_code=500,\n            detail="git commit failed: " + (sOut or "").strip(),',
+        new='            docker, sContainerId, [sPath], sWorkspace=sRepo,\n        )\n        raise HTTPException(\n            status_code=500,\n            detail="git commit failed: " + (sOut and "").strip(),',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_after_push_gate_is_exact_equality_not_ordering',
@@ -1990,20 +1990,20 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_clean_declaration_really_untracks_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo,\n        )',
-        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo, listFilePaths=[request.sPath],\n        )',
+        old='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo,\n    )',
+        new='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo, listFilePaths=[sPath],\n    )',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_modified_declaration_untracks_not_commits_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo,\n        )',
-        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo, listFilePaths=[request.sPath],\n        )',
+        old='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo,\n    )',
+        new='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo, listFilePaths=[sPath],\n    )',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_refuses_when_other_changes_staged_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if iExit != 0:',
-        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if False and iExit != 0:',
+        old='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if iExit != 0:',
+        new='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if False and iExit != 0:',
     ),
 
     # --- 2026-07-11: per-step falsification attestation honesty guards ---
@@ -2655,11 +2655,20 @@ def _fdictEntry(sRel):
         # the only thing that can invalidate an open tab.
         nodeid='tests/testSyncEpoch.py::test_reconcile_remote_state_bumps_sync_epoch',
         source='vaibify/gui/routes/gitRoutes.py',
-        old="""        )
-        fnBumpSyncEpoch(dictCtx, sContainerId)
-        return dictResponse""",
-        new="""        )
-        return dictResponse""",
+        # Disambiguated 2026-08-05: the migrated untrack route grew an
+        # identical three-line tail, so the snippet now names the
+        # verify-status assignment this route alone performs.
+        old="""        dictResponse["dictVerifyStatus"] = (
+            _fdictReconcileSyncStatusFromVerify(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+            )
+        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)""",
+        new="""        dictResponse["dictVerifyStatus"] = (
+            _fdictReconcileSyncStatusFromVerify(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+            )
+        )""",
     ),
     Falsification(
         # A file the verify never looked at must not be recorded as
@@ -5031,15 +5040,20 @@ def _fdictEntry(sRel):
             'testAnExpectedRefusalLeavesTheContainerUsable'
         ),
         source='vaibify/gui/routes/repoRoutes.py',
+        # Retargeted 2026-08-05: the 4xx/5xx split moved to
+        # routeContext.fdictCarryARefusalBackInsteadOfRaising when
+        # gitRoutes became its third caller. Mutating the shared helper
+        # would kill this test AND the workflow-creation and git ones,
+        # isolating nothing, so each caller's entry now names its OWN
+        # call site: bypassing the capture here re-raises the 409 inside
+        # the worker and quarantines the container.
         old=(
-            '    except HTTPException as errorHttp:\n'
-            '        if errorHttp.status_code >= 500:\n'
-            '            raise\n'
-            '        return {"errorRefused": errorHttp, "objResult": None}\n'
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fnEffect)\n'
         ),
         new=(
-            '    except HTTPException:\n'
-            '        raise\n'
+            '        return {"errorRefused": None, '
+            '"objResult": fnEffect()}\n'
         ),
     ),
     Falsification(
@@ -5389,15 +5403,23 @@ def _fdictEntry(sRel):
             'testARefusedProjectCreationLeavesTheContainerUsable'
         ),
         source='vaibify/gui/routes/workflowRoutes.py',
+        # Retargeted 2026-08-05 for the same reason as the repoRoutes
+        # entry above: the split now lives in the shared
+        # routeContext helper, so this names THIS route's call of it.
         old=(
-            '        except HTTPException as errorRefusal:\n'
-            '            if errorRefusal.status_code >= 500:\n'
-            '                raise\n'
-            '            return {"errorRefusal": errorRefusal}\n'
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: _fsProbeThenWriteNewWorkflow(\n'
+            '                dictCtx["docker"], sContainerId, request, '
+            'sFileName,\n'
+            '            ),\n'
+            '        )\n'
         ),
         new=(
-            '        except HTTPException:\n'
-            '            raise\n'
+            '        return {"errorRefused": None, "objResult":\n'
+            '            _fsProbeThenWriteNewWorkflow(\n'
+            '                dictCtx["docker"], sContainerId, request, '
+            'sFileName,\n'
+            '            )}\n'
         ),
     ),
 
@@ -5591,5 +5613,183 @@ def _fdictEntry(sRel):
             '        dictCtx["dictProjectCreationRequests"]'
             '[sContainerId] = {\n'
         ),
+    ),
+
+    # --- The git panel's six mutating routes, carrier modes (a) and
+    # (b) (2026-08-05). Every mutant is that ROUTE's own call of
+    # _fobjRunGitWorkerUnderTheDrain reverted to a direct call of its
+    # worker, so each kills exactly its own test. Mutating the shared
+    # wrapper -- or the shared
+    # routeContext.fdictCarryARefusalBackInsteadOfRaising it calls --
+    # legitimately kills all of them at once, which is one guard
+    # reported once per route that depends on it, not six guards none
+    # of which is proven.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectRepoFetchRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        return await _fobjRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictFetchThenReadStatus(\n'
+            '                dictCtx, sContainerId, sRepo, bCacheUsed,\n'
+            '            ),\n'
+            '            "git-fetch", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return _fdictFetchThenReadStatus(\n'
+            '            dictCtx, sContainerId, sRepo, bCacheUsed,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectRepoPullRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        return await _fobjRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictCheckCleanThenFastForward(\n'
+            '                dictCtx, sContainerId, sRepo,\n'
+            '            ),\n'
+            '            "git-pull", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return _fdictCheckCleanThenFastForward(\n'
+            '            dictCtx, sContainerId, sRepo,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteRefreshRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictFetchThenCollectRemotes(\n'
+            '                dictCtx["docker"], sContainerId, sRepo, '
+            'bCacheUsed,\n'
+            '            ),\n'
+            '            "git-fetch", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictFetchThenCollectRemotes(\n'
+            '            dictCtx["docker"], sContainerId, sRepo, '
+            'bCacheUsed,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCanonicalCommitRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictScanThenCommitCanonical(\n'
+            '                dictCtx["docker"], sContainerId, '
+            'dictWorkflow, sRepo,\n'
+            '                request,\n'
+            '            ),\n'
+            '            "commit-canonical", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictScanThenCommitCanonical(\n'
+            '            dictCtx["docker"], sContainerId, dictWorkflow, '
+            'sRepo,\n'
+            '            request,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeclarationUntrackRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictRemoveDeclarationFromTheIndex(\n'
+            '                dictCtx["docker"], sContainerId, sRepo, '
+            'request.sPath,\n'
+            '            ),\n'
+            '            "untrack-ai-declaration", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictRemoveDeclarationFromTheIndex(\n'
+            '            dictCtx["docker"], sContainerId, sRepo, '
+            'request.sPath,\n'
+            '        )\n'
+        ),
+    ),
+    # This mutant kills BOTH reconcile tests, and that is straight-line
+    # sequencing rather than drift: the fetch runs first, so an
+    # unadmitted exec 500s the handler before the bookkeeping save the
+    # sibling test asserts on can run. The isolation is one-directional
+    # -- removing the SAVE's carrier below fails only its own test.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteReconcileFetchesUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictFetchThenCollectRemotes(\n'
+            '                dictCtx["docker"], sContainerId, sRepo, '
+            'False,\n'
+            '            ),\n'
+            '            "git-fetch", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictFetchThenCollectRemotes(\n'
+            '            dictCtx["docker"], sContainerId, sRepo, False,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheReconcileBookkeepingSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        fnCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '            "The reconcile bookkeeping save",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+    # The panel's own 5xx carry-back. Dropping 502 from the carried set
+    # sends a failed git fetch back through the default 4xx/5xx split,
+    # which re-raises it inside the worker -- poisoning the journal and
+    # quarantining the container over an unreachable remote.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnreachableRemoteLeavesTheContainerUsable'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})\n',
+        new='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset()\n',
     ),
 ]

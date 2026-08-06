@@ -3094,3 +3094,352 @@ def testTheProjectCreationRequestMutatesOnlyHubState(tclientGated):
         "mutation-capable container primitive: "
         f"{connectionDocker.listAdmittedPrimitives}"
     )
+
+
+# ---------------------------------------------------------------------
+# Group 7 -- the git panel's six mutating routes, mode (b).
+#
+# Every one is a SEQUENCE of git commands against a remote or an index,
+# so all six are mode (b): the drain is held for the worker's whole
+# life, and a hand-over or a Run Step arriving mid-fetch is refused and
+# told what is running rather than landing underneath a git process that
+# keeps writing. Reconcile additionally saves project.json, so it
+# declares mode (a) as well and its two carriers are asserted
+# separately.
+#
+# The panel also carries the migration's first 5xx carry-back. A failed
+# ``git fetch`` answers 502, and a 5xx raised inside a carrier worker
+# poisons its journal record and QUARANTINES the container -- so before
+# this group, a researcher whose network blipped would have been told to
+# run ``vaibify reconcile``. That is asserted on the JOURNAL, not on the
+# status code, for the same reason the repo-init refusal test is.
+# ---------------------------------------------------------------------
+
+S_MARKER_GIT_FETCH = "fetch --no-tags origin"
+S_MARKER_GIT_PULL = "pull --ff-only"
+
+
+def _fnAssertGitExecsRanUnderTheDrain(connectionDocker, sCommandMarker):
+    """Assert every exec naming the marker ran lock-held."""
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, sCommandMarker,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testTheProjectRepoFetchRunsUnderTheDrain(tclientGated):
+    """POST /api/git/{id}/fetch-project-repo runs git fetch under mode (b).
+
+    The marker is this route's own ``fetch --no-tags origin``, not the
+    bare word ``git``: the connect handler runs ``git rev-parse
+    --show-toplevel`` against the same double, and a loose marker was
+    what turned an assertion elsewhere in this file into noise.
+
+    Kills: reverting ``_fdictFetchThenReadStatus`` to the coroutine
+    chain it replaced, whose ``await asyncio.to_thread(...)`` hops reach
+    the exec primitive with no admission open at all.
+    """
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/git/{S_CONTAINER_ID}/fetch-project-repo",
+        json={"bForce": True},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertGitExecsRanUnderTheDrain(
+        connectionDocker, S_MARKER_GIT_FETCH,
+    )
+
+
+@pytest.mark.falsification
+def testTheProjectRepoPullRunsUnderTheDrain(tclientGated):
+    """POST /api/git/{id}/pull-project-repo fast-forwards under mode (b).
+
+    The dirty check and the pull share one held drain, which is the
+    point: with the lock dropped between them a write lands in the gap
+    and ``git pull --ff-only`` runs against a tree the check called
+    clean. The double reports no dirty files, so the pull is reached.
+
+    Kills: reverting ``_fdictCheckCleanThenFastForward`` to the
+    ``await asyncio.to_thread(...)`` chain it replaced.
+    """
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/git/{S_CONTAINER_ID}/pull-project-repo",
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertGitExecsRanUnderTheDrain(
+        connectionDocker, S_MARKER_GIT_PULL,
+    )
+
+
+@pytest.mark.falsification
+def testTheRemoteRefreshRunsUnderTheDrain(tclientGated):
+    """POST /api/git/{id}/refresh-remotes fetches under mode (b).
+
+    A separate shape from fetch-project-repo even though both begin
+    with the same fetch: this one goes on to read the remote-heads view
+    in the SAME worker, so a migration that carried only the fetch
+    would leave three further execs refused at the primitive.
+
+    Kills: reverting ``_fdictFetchThenCollectRemotes`` to the coroutine
+    chain it replaced.
+    """
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/git/{S_CONTAINER_ID}/refresh-remotes",
+        json={"bForce": True},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertGitExecsRanUnderTheDrain(
+        connectionDocker, S_MARKER_GIT_FETCH,
+    )
+    _fnAssertGitExecsRanUnderTheDrain(
+        connectionDocker, "git remote get-url origin",
+    )
+
+
+@pytest.mark.falsification
+def testTheCanonicalCommitRunsUnderTheDrain(tclientGated):
+    """POST /api/git/{id}/commit-canonical commits under mode (b).
+
+    The manifest report is stubbed to name one file that needs
+    committing. Without it the double's clean repo produces an empty
+    needs-commit list, the route returns before ``git add`` ever runs,
+    and the assertion would be about a commit that never happened --
+    the vacuity ``_fnAssertSelectedRanUnder`` reports as a failure
+    rather than passing. The stub is an upstream PURE function, so
+    everything this test is about still runs for real.
+
+    Kills: reverting ``_fdictScanThenCommitCanonical`` to the coroutine
+    chain it replaced, whose ``git add`` and ``git commit`` reach the
+    exec primitive with no admission open.
+    """
+    from vaibify.gui.routes import gitRoutes
+
+    client, connectionDocker = tclientGated
+    with patch.object(
+        gitRoutes.manifestCheck, "fdictBuildManifestReportFromStatus",
+        lambda dictGit, listTracked: {
+            "listNeedsCommit": [{"sPath": "stepA/output.dat"}],
+            "sHeadSha": "0" * 40,
+        },
+    ):
+        response = client.post(
+            f"/api/git/{S_CONTAINER_ID}/commit-canonical",
+            json={"sCommitMessage": "carried canonical"},
+        )
+    assert response.status_code == 200, response.text
+    # The marker carries the request's own commit MESSAGE and the
+    # pathspec. ``git add`` matches nothing, because the dispatcher
+    # interposes four ``-c`` hardening flags between the program and
+    # its subcommand -- the same trap the add-file test records.
+    _fnAssertGitExecsRanUnderTheDrain(
+        connectionDocker, "commit -m 'carried canonical' -- ",
+    )
+
+
+def _fdictWorkflowWithAnAiDeclaration():
+    """Return the draft workflow carrying one ai-declaration step.
+
+    ``untrack-ai-declaration`` refuses 403 for any path the workflow
+    does not itself declare, so without this the route answers before
+    reaching a container primitive and its assertion is vacuous.
+    """
+    dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+    dictWorkflow["listSteps"].append({
+        "sName": "Declare AI Use",
+        "sDirectory": "DeclareAIUse",
+        "sStepKind": S_AI_DECLARATION_STEP_KIND,
+        "sDeclarationFile": "AI_DECLARATION.md",
+        "bPlotOnly": False,
+        "bRunEnabled": True,
+        "bInteractive": False,
+        "saDataCommands": [],
+        "saOutputDataFiles": [],
+        "saTestCommands": [],
+        "saPlotCommands": [],
+        "saPlotFiles": [],
+        "dictRunStats": {},
+        "dictVerification": {
+            "sUnitTest": "untested", "sUser": "untested",
+        },
+    })
+    return dictWorkflow
+
+
+class DockerDoubleServingAnAiDeclaration(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gated double over a workflow declaring a declaration file."""
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
+            self._dictFiles[sPath] = json.dumps(
+                _fdictWorkflowWithAnAiDeclaration(),
+            ).encode("utf-8")
+        return DockerDoubleThatCallsTheRealGates.fbaFetchFile(
+            self, sContainerId, sPath, iMaxBytes,
+        )
+
+
+@pytest.fixture
+def tclientDeclaring():
+    """The gated client over a workflow with an ai-declaration step."""
+    return _tConnectGatedClient(DockerDoubleServingAnAiDeclaration())
+
+
+@pytest.mark.falsification
+def testTheDeclarationUntrackRunsUnderTheDrain(tclientDeclaring):
+    """POST /api/git/{id}/untrack-ai-declaration removes under mode (b).
+
+    Three git commands that MUST share one drain: the dirty-index
+    refusal is the only thing that makes the pathspec-free commit safe,
+    and with the lock dropped between them another session stages a
+    change in the gap and it rides into this commit.
+
+    Kills: reverting ``_fdictRemoveDeclarationFromTheIndex`` to the
+    coroutine chain it replaced.
+    """
+    client, connectionDocker = tclientDeclaring
+    response = client.post(
+        f"/api/git/{S_CONTAINER_ID}/untrack-ai-declaration",
+        json={"sPath": "AI_DECLARATION.md"},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertGitExecsRanUnderTheDrain(connectionDocker, "rm --cached")
+
+
+@pytest.mark.falsification
+def testTheRemoteReconcileFetchesUnderTheDrain(tclientGated):
+    """POST /api/git/{id}/reconcile-remote-state fetches under mode (b).
+
+    The first of this handler's TWO carriers, asserted on the fetch
+    alone so a defect in the sibling mode-(a) save cannot also fail it.
+
+    Kills: reverting the reconcile fetch to the
+    ``await asyncio.to_thread(containerGit.ftResultGitFetchInContainer,
+    ...)`` it replaced.
+    """
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/git/{S_CONTAINER_ID}/reconcile-remote-state",
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertGitExecsRanUnderTheDrain(
+        connectionDocker, S_MARKER_GIT_FETCH,
+    )
+
+
+@contextlib.contextmanager
+def _fnGithubVerifyProvesOnePath():
+    """Report a GitHub verify that covered every declared canonical path.
+
+    Reconcile only writes ``dictSyncStatus`` when the cached verify
+    proves the FULL canonical set, so without this its mode-(a) save
+    never runs and the declaration would be unproven. Both stubs are
+    pure readers upstream of the carrier: what the test is about --
+    which admission the resulting project.json write runs under -- is
+    untouched.
+    """
+    from vaibify.reproducibility import manifestWriter, scheduledReverify
+    with patch.object(
+        manifestWriter, "flistCollectCanonicalRepoPaths",
+        lambda dictWorkflow: ["stepA/output.dat"],
+    ), patch.object(
+        scheduledReverify, "fdictReadCachedSyncStatus",
+        lambda filesRepo, sService: {
+            "sService": sService,
+            "sLastVerified": _fsFreshIsoTimestamp(),
+            "iTotalFiles": 1,
+            "listDiverged": [],
+        },
+    ):
+        yield
+
+
+@pytest.mark.falsification
+def testTheReconcileBookkeepingSaveCommitsSynchronously(tclientGated):
+    """Reconcile's project.json save runs under mode (a).
+
+    This handler's OTHER carrier. Recording what the verify proved is a
+    single atomic write whose bytes the journal can adjudicate, which is
+    a different mutation from the fetch that runs for as long as the
+    network takes -- so it gets mode (a) rather than sharing the fetch's
+    drain, and a migration that carried only the fetch would leave this
+    write refused at the primitive.
+
+    The isolation is ONE-DIRECTIONAL, as it is for the arXiv pair above.
+    Removing the FETCH's carrier fails both tests, because the fetch
+    runs first: an unadmitted exec raises at the primitive, the handler
+    500s, and the save never runs. So the diagnosis to remember is that
+    both reconcile tests failing means the FETCH, while only this one
+    failing means the bookkeeping save.
+
+    Kills: reverting ``_fdictReconcileSyncStatusFromVerify``'s
+    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    """
+    client, connectionDocker = tclientGated
+    with _fnGithubVerifyProvesOnePath():
+        response = client.post(
+            f"/api/git/{S_CONTAINER_ID}/reconcile-remote-state",
+        )
+    assert response.status_code == 200, response.text
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_WORKFLOW_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        f"write to {S_WORKFLOW_PATH}",
+    )
+
+
+@pytest.mark.falsification
+def testAnUnreachableRemoteLeavesTheContainerUsable(tclientGated):
+    """A 502 from inside a carrier worker must not quarantine anything.
+
+    THE hazard this panel introduced, and the first 5xx the migration
+    carries back as a value. Every git route here answers 502 when
+    ``git fetch`` reports a non-zero exit, which for a researcher on a
+    train is simply "the network is down" -- and a 5xx raised inside a
+    carrier worker is settled through the failure path, which marks the
+    journal record NEEDS RECONCILIATION and QUARANTINES the container.
+    Losing a container because a fetch could not reach GitHub is not a
+    trade anybody would make.
+
+    So the assertion is on the JOURNAL, not on the status code. A test
+    that only checked for 502 would pass just as happily against a
+    handler that quarantined the container on its way to returning one,
+    which is precisely the bug.
+
+    Kills: emptying ``_SET_GIT_REMOTE_REFUSAL_STATUSES``, so the default
+    4xx/5xx split re-raises the fetch failure inside the worker.
+    """
+    from vaibify.config import operationJournal
+    from vaibify.gui import containerGit
+
+    client, connectionDocker = tclientGated
+    with patch.object(
+        containerGit, "ftResultGitFetchInContainer",
+        lambda docker, sContainerId, sWorkspace=None: (
+            128, "fatal: unable to access 'https://example.invalid/'",
+        ),
+    ):
+        response = client.post(
+            f"/api/git/{S_CONTAINER_ID}/fetch-project-repo",
+            json={"bForce": True},
+        )
+    assert response.status_code == 502, response.text
+
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        S_CONTAINER_NAME,
+    )
+    assert dictResolution["sResolution"] != (
+        operationJournal.S_RESOLUTION_QUARANTINED
+    ), (
+        "an unreachable remote quarantined the container: "
+        f"{dictResolution}. The researcher now has to run 'vaibify "
+        "reconcile' because their network dropped."
+    )

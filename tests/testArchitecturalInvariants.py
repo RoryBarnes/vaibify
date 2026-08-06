@@ -4517,7 +4517,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sibling route module may not import them. Same cohesive
     # responsibility — reconciling the dashboard with origin — not a
     # second concern.
-    "routes/gitRoutes.py": 845,
+    # +199 (2026-08-05): carrier plumbing for all six mutating routes
+    # (phase 2, under the 2026-08-05 ruling above). The whole rise is
+    # the shape the carrier forces: each handler's `await
+    # asyncio.to_thread(...)` chain becomes a SYNCHRONOUS worker
+    # function -- mode (b) runs workers in a thread and a coroutine
+    # would be refused -- so every route grows a named worker plus the
+    # docstring saying which commands share its held drain and why. The
+    # module's responsibility is unchanged; only the call shape is.
+    "routes/gitRoutes.py": 1044,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one

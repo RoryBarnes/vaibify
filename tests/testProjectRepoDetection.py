@@ -19,8 +19,22 @@ import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui import containerGit
 from vaibify.gui.routes import gitRoutes
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the git routes driven bare here.
+
+    ``commit-canonical`` and ``untrack-ai-declaration`` do their git
+    work through carrier mode (b), and this module builds a bare
+    ``FastAPI()`` with no owner record for the request to bind to.
+    Requested only by the tests that reach the carrier. See
+    ``tests/carrierStandDown.py``.
+    """
+    fnStandCarrierDown(monkeypatch, gitRoutes)
 
 
 # ----------------------------------------------------------------------
@@ -201,7 +215,9 @@ def test_commit_canonical_409_when_project_repo_missing():
     assert "Project repo not detected" in response.json()["detail"]
 
 
-def test_commit_canonical_restricts_commit_to_curated_pathspec():
+def test_commit_canonical_restricts_commit_to_curated_pathspec(
+    fixtureCarrierStoodDown,
+):
     """Pre-staged user file (data/evil.py) does NOT end up in the commit."""
     sRepo = "/workspace/DemoRepo"
     dictWorkflow = {
@@ -263,7 +279,9 @@ def test_commit_canonical_restricts_commit_to_curated_pathspec():
         assert " -- " in sCmd
 
 
-def test_commit_canonical_listOnlyPaths_narrows_never_widens():
+def test_commit_canonical_listOnlyPaths_narrows_never_widens(
+    fixtureCarrierStoodDown,
+):
     """FALSIFICATION TARGET: the declaration button's scoped commit.
     ``listOnlyPaths`` must restrict the commit to the requested
     subset of the server-derived canonical needs-commit list, and a
@@ -377,7 +395,9 @@ def test_untrack_ai_declaration_refuses_non_declaration_path():
     )
 
 
-def test_untrack_ai_declaration_removes_only_the_declaration():
+def test_untrack_ai_declaration_removes_only_the_declaration(
+    fixtureCarrierStoodDown,
+):
     """Happy path: git rm --cached plus a commit scoped to the
     declaration pathspec, inside the project repo."""
     sRepo = "/workspace/DemoRepo"
@@ -425,7 +445,9 @@ def test_untrack_ai_declaration_removes_only_the_declaration():
     )
 
 
-def test_untrack_ai_declaration_surfaces_git_failure():
+def test_untrack_ai_declaration_surfaces_git_failure(
+    fixtureCarrierStoodDown,
+):
     """A failed git rm (e.g. the file is not tracked) must surface as
     an error, never a silent success — the dashboard is ground truth."""
     dictWorkflow = _fdictBuildDeclarationWorkflow("/workspace/DemoRepo")
@@ -499,7 +521,9 @@ def test_untrack_git_command_disables_pathspec_magic():
     )
 
 
-def test_untrack_ai_declaration_ignores_other_steps_files():
+def test_untrack_ai_declaration_ignores_other_steps_files(
+    fixtureCarrierStoodDown,
+):
     """Guard hardening (review 2026-07-02): with TWO declaration
     steps, untracking one file must never sweep the other into the
     git command — kills a mutant that passes listDeclared instead of
@@ -544,7 +568,9 @@ def test_untrack_ai_declaration_ignores_other_steps_files():
         )
 
 
-def test_untrack_ai_declaration_surfaces_commit_failure():
+def test_untrack_ai_declaration_surfaces_commit_failure(
+    fixtureCarrierStoodDown,
+):
     """The rm-succeeded-but-commit-failed branch must return 500 with
     the git message, never a silent success (review 2026-07-02)."""
     dictWorkflow = _fdictBuildDeclarationWorkflow("/workspace/DemoRepo")
