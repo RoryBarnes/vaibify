@@ -46,6 +46,89 @@ LIST_FALSIFICATIONS = [
 
     Falsification(
         nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesFnReturningValue'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '            if listValueReturns:\n'
+            '                self.fnRecord(sIdentity, S_CLASS_FN_RETURN,\n'
+        ),
+        new=(
+            '            if False:\n'
+            '                self.fnRecord(sIdentity, S_CLASS_FN_RETURN,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesLiteralReturnMismatch'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '    if sLiteralType == "NoneType":\n'
+            '        return True\n'
+        ),
+        new=(
+            '    if sLiteralType == "NoneType" or True:\n'
+            '        return True\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesReturnAnnotationMismatch'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '        if not all(fbAnnotationPartAgrees(sPrefix, tPart)\n'
+            '                   for tPart in listParts):\n'
+            '            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n'
+        ),
+        new=(
+            '        if False and not all(fbAnnotationPartAgrees(sPrefix, tPart)\n'
+            '                   for tPart in listParts):\n'
+            '            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesBarePrefixlessFunction'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '        else:\n'
+            '            self.fnRecord(sIdentity, S_CLASS_NAME,\n'
+            '                          "no valid prefix in the closed vocabulary")\n'
+        ),
+        new=(
+            '        else:\n'
+            '            pass\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesMisprefixedContextManager'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '        if bContextDecorated and sPrefix != "context":\n'
+            '            self.fnRecord(sIdentity, S_CLASS_YIELD,\n'
+        ),
+        new=(
+            '        if False:\n'
+            '            self.fnRecord(sIdentity, S_CLASS_YIELD,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
             'testTheGuideDoesNotAdvertiseTheWithdrawnDirector'
         ),

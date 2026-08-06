@@ -803,7 +803,13 @@ def _fbSyntheticCaught(sSource, sDebtClass, sNameFragment):
     )
 
 
+@pytest.mark.falsification
 def testScannerCatchesFnReturningValue():
+    """A value-returning fn* must be caught.
+
+    Kills: disabling the fn-return record in the scanner
+    (if listValueReturns -> if False).
+    """
     assert _fbSyntheticCaught(
         "def fnLeaky():\n    return 1\n", "legacy-fn-return", "fnLeaky")
 
@@ -813,12 +819,23 @@ def testScannerCatchesFnYielding():
         "def fnYields():\n    yield 1\n", "legacy-yield", "fnYields")
 
 
+@pytest.mark.falsification
 def testScannerCatchesLiteralReturnMismatch():
+    """A literal return contradicting the prefix must be caught.
+
+    Kills: making fbLiteralAgreesWithPrefix unconditionally True.
+    """
     assert _fbSyntheticCaught(
         "def fbFlag():\n    return []\n", "legacy-literal-return", "fbFlag")
 
 
+@pytest.mark.falsification
 def testScannerCatchesReturnAnnotationMismatch():
+    """A return annotation contradicting the prefix must be caught.
+
+    Kills: short-circuiting the return-annotation agreement branch
+    (if False and not all(...)).
+    """
     assert _fbSyntheticCaught(
         "def fsBuild() -> dict:\n    return fdictCompute()\n",
         "legacy-return-annotation", "fsBuild")
@@ -829,7 +846,12 @@ def testScannerCatchesVariableAnnotationMismatch():
         "dictThing: int = 0\n", "legacy-annotation-mismatch", "dictThing")
 
 
+@pytest.mark.falsification
 def testScannerCatchesBarePrefixlessFunction():
+    """A bare f+Capital name with no type letters must be caught.
+
+    Kills: replacing the legacy-name record with pass in the scanner.
+    """
     assert _fbSyntheticCaught(
         "def fReadValue():\n    pass\n", "legacy-name", "fReadValue")
 
@@ -840,7 +862,13 @@ def testScannerCatchesUnregisteredPrefix():
         "fzzUnregistered")
 
 
+@pytest.mark.falsification
 def testScannerCatchesMisprefixedContextManager():
+    """A contextmanager-decorated function not named context must be caught.
+
+    Kills: disabling the decorated branch of the yield rules
+    (if bContextDecorated... -> if False).
+    """
     sSource = ("from contextlib import contextmanager\n"
                "@contextmanager\n"
                "def fiterWrong():\n    yield\n")
