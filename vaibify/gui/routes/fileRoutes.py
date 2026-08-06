@@ -20,6 +20,7 @@ from ..routeContext import (
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_SEPARATE_AUTHORITY,
     fnDeclareCarrierMode,
 )
 from .. import pipelineServer as _pipelineServer
@@ -410,7 +411,19 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/pull."""
 
     @fnAgentAction("pull-file")
+    # separate-authority, not typed-read. Nothing this route does to
+    # the CONTAINER is a mutation -- the stream is a read and the
+    # directory probe is a typed read -- so `typed-read` would be
+    # literally true of it and would still be the wrong record, because
+    # any reader would take it to mean the route writes nothing. It
+    # writes to the researcher's own machine. What governs it is
+    # therefore not the commit carrier but the host-side authorities:
+    # ``fnValidatePathWithinRoot`` on the container side,
+    # ``_fnValidateHostDestination`` on the host side, and for the agent
+    # lane the narrower export root ``_fnValidateAgentPullDestination``
+    # enforces. Ruling 2026-08-05.
     @app.post("/api/files/{sContainerId}/pull")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnPullFile(
         requestHttp: Request,
         sContainerId: str, request: FilePullRequest,

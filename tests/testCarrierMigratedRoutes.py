@@ -38,6 +38,7 @@ import copy
 import hashlib
 import json
 import logging
+import os
 import posixpath
 import threading
 import time
@@ -188,6 +189,41 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         return MockDockerDraft.fbaFetchFile(
             self, sContainerId, sPath, iMaxBytes,
         )
+
+    def flistDirectoryEntries(self, sContainerId, sPath):
+        """List a directory the way the real typed-read adapter does.
+
+        Raises ``FileNotFoundError`` for anything that is not a
+        directory, which is the answer the real adapter gives and the
+        one ``_fnRefuseDirectorySource`` reads as "this is a file".
+        Gated through the audited-read carve-out, like every other
+        typed read here, so a caller that reached it OUTSIDE the
+        adapter would still be refused.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.append(sPath)
+        raise FileNotFoundError(f"Not a directory: {sPath}")
+
+    def fnIterStreamFile(
+        self, sContainerId, sPath, iChunkSizeBytes=1048576,
+    ):
+        """Stream a file out the way ``get_archive`` does: ungated.
+
+        Deliberately NOT gated, because the real one is not: it reads
+        through the Docker SDK's ``get_archive`` rather than through
+        exec, so it never reaches the command gate. Modelling it as
+        gated would invent a refusal production does not have, and
+        would make the pull route look mutation-capable when the whole
+        point of streaming instead of ``docker cp`` was that it cannot
+        travel the other way.
+        """
+        yield MockDockerDraft.fbaFetchFile(self, sContainerId, sPath)
 
     def fbContainerPathIsFile(self, sContainerId, sPath):
         """Probe a path the way the real typed-read adapter does.
@@ -2956,4 +2992,105 @@ def testTheArxivCacheRewriteRunsUnderTheDrain(tclientGated):
         ),
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
         "write to the sync-status cache",
+    )
+
+
+# ---------------------------------------------------------------------
+# Group 6 -- the two routes the researcher ruled are WRITES governed
+# elsewhere (2026-08-05).
+#
+# Both reach no mutation-capable CONTAINER primitive, so `typed-read`
+# would have passed its own rule -- and would have been the wrong
+# record, because a reader takes `typed-read` to mean "this only
+# looks", and both of these write. One writes to the researcher's own
+# machine; the other writes hub state a browser poll then acts on. The
+# researcher's words: "any user would think that a read-only command
+# would also not write on the host machine."
+#
+# So the assertion for them is not a MODE. It is that the enforced
+# branch is survivable without one -- an empty gated ledger -- paired
+# with evidence the route did its work, so an early return cannot pass
+# the first assertion vacuously. That pairing is the same discipline
+# the plot-standards typed-read test uses, for the same reason.
+# ---------------------------------------------------------------------
+
+@pytest.mark.falsification
+def testTheHostFilePullReachesNoMutatingContainerPrimitive(
+    tclientGated, tmp_path,
+):
+    """POST /api/files/{id}/pull writes the HOST, never the container.
+
+    Two assertions, because either alone is satisfiable by a defect.
+    The gated ledger must be EMPTY -- the pull streams bytes out
+    through ``get_archive`` and probes the source with a typed read,
+    neither of which is mutation-capable -- and the file must actually
+    have LANDED on the host, or a route that refused early would pass
+    the first assertion perfectly while writing nothing.
+
+    That the bytes land is also the whole reason this route is not
+    declared ``typed-read``: it is a write, just not one the container
+    carrier governs.
+
+    Kills: reverting ``_fsPullContainerFileToHost``'s ``get_archive``
+    stream to a ``docker cp`` assembled and run through the general
+    exec primitive, which is bidirectional and therefore a container
+    write however this call site uses it.
+    """
+    client, connectionDocker = tclientGated
+    sHostDestination = str(tmp_path / "pulled.json")
+    # HOME is redirected rather than the validator stubbed, so the real
+    # ``_fnValidateHostDestination`` -- one of the two authorities this
+    # route's declaration NAMES -- runs for real and admits the
+    # destination on its own terms.
+    with patch.dict(os.environ, {"HOME": str(tmp_path)}):
+        response = client.post(
+            f"/api/files/{S_CONTAINER_ID}/pull",
+            json={
+                "sContainerPath": S_WORKFLOW_PATH,
+                "sHostDestination": sHostDestination,
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared separate-authority reached a "
+        "mutation-capable container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )
+    assert os.path.exists(response.json()["sHostPath"]), (
+        "the pull landed no file on the host, so the empty gated "
+        "ledger above asserts nothing -- the route returned before "
+        "doing the work this test exists to characterise"
+    )
+
+
+@pytest.mark.falsification
+def testTheProjectCreationRequestMutatesOnlyHubState(tclientGated):
+    """POST .../request-creation records a request and touches no container.
+
+    The agent cannot create a project; it can only ask, and the
+    researcher confirms in the wizard. So the mutation is entirely
+    inside the hub's in-process request map -- which IS a mutation, and
+    is why this is ``separate-authority`` rather than the literally-true
+    ``typed-read``.
+
+    Paired assertions again: an empty gated ledger is only meaningful
+    beside evidence the request was actually recorded.
+
+    Kills: making the handler create the project.json directly (any
+    call reaching ``fnWriteFile``), which is the behaviour this route
+    exists to refuse and which would show up in the gated ledger.
+    """
+    client, connectionDocker = tclientGated
+    response = client.post(
+        f"/api/workflows/{S_CONTAINER_ID}/request-creation",
+        json={"sWorkflowName": "Asked For", "sRepoDirectory": "asked"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["bCreated"] is False, (
+        "the agent must never be told a project was created"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route declared separate-authority reached a "
+        "mutation-capable container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
     )

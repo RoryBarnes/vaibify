@@ -16,6 +16,7 @@ from ..actionCatalog import fnAgentAction
 from ..routeContext import fdictRequireLaneTupleForCommit
 from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_SEPARATE_AUTHORITY,
     S_SCOPE_OWNER_ESTABLISHING,
     fnDeclareCarrierMode,
     fnRouteScope,
@@ -302,8 +303,20 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
     suggested name, for the researcher to review and confirm.
     """
 
+    # separate-authority, not typed-read. This route reaches no
+    # container primitive at all, so `typed-read` would pass its own
+    # rule -- and would be read by the next person as "this only looks",
+    # which is false: it WRITES, into
+    # ``app.state``-adjacent hub state that the browser's discovery poll
+    # then acts on. What governs it is not the commit carrier but the
+    # hub's own in-process request map plus the researcher confirmation
+    # the wizard requires before anything is created; the agent cannot
+    # complete the action, only ask for it. Declaring the literally-true
+    # thing here would have made the record misleading (ruling
+    # 2026-08-05).
     @fnAgentAction("create-project")
     @app.post("/api/workflows/{sContainerId}/request-creation")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
     ):

@@ -5545,4 +5545,51 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
     ),
+
+    # --- The two routes ruled WRITES governed elsewhere (2026-08-05) ---
+    # Neither is a carrier migration, so neither mutant removes a
+    # carrier. What each proves is that the route's separate-authority
+    # claim is checkable: reach a mutation-capable container primitive
+    # and the enforced branch refuses, which is what makes an empty
+    # gated ledger evidence rather than an assumption.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheHostFilePullReachesNoMutatingContainerPrimitive'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '    with open(sTargetPath, "wb") as fileTarget:\n'
+            '        for baChunk in connectionDocker.fnIterStreamFile(\n'
+            '            sContainerId, sContainerPath,\n'
+            '        ):\n'
+            '            fileTarget.write(baChunk)\n'
+        ),
+        new=(
+            '    iExit, sOut = connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, "cat " + sContainerPath,\n'
+            '    )\n'
+            '    with open(sTargetPath, "wb") as fileTarget:\n'
+            '        fileTarget.write(sOut.encode("utf-8"))\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectCreationRequestMutatesOnlyHubState'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '        dictCtx["dictProjectCreationRequests"]'
+            '[sContainerId] = {\n'
+        ),
+        new=(
+            '        dictCtx["docker"].fnWriteFile(\n'
+            '            sContainerId, "/workspace/project.json", b"{}",\n'
+            '        )\n'
+            '        dictCtx["dictProjectCreationRequests"]'
+            '[sContainerId] = {\n'
+        ),
+    ),
 ]
