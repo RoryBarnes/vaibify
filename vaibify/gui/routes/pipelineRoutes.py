@@ -57,7 +57,7 @@ from ..fileStatusManager import (
     fbReconcileUserVerificationTimestamps,
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
-    fnCollectMarkerPathsByStep,
+    fdictCollectMarkerPathsByStep,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
@@ -208,7 +208,7 @@ def _fnRegisterPipelineState(app, dictCtx):
 
     @fnAgentAction("get-pipeline-state")
     @app.get("/api/pipeline/{sContainerId}/state")
-    async def fnGetPipelineState(sContainerId: str):
+    async def fdictGetPipelineState(sContainerId: str):
         from ..pipelineState import fdictReadReconciledState
         dictCtx["require"]()
         dictState = await fdictReadReconciledState(
@@ -301,7 +301,7 @@ def _fnRegisterHostLogTail(app, dictCtx):
 
     @fnAgentAction("get-host-log-tail")
     @app.get("/api/pipeline/{sContainerId}/host-log-tail")
-    async def fnGetHostLogTail(
+    async def fdictGetHostLogTail(
         request: Request,
         sContainerId: str,
         iLines: int = I_HOST_LOG_TAIL_DEFAULT_LINES,
@@ -341,7 +341,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
 
     @fnAgentAction("kill-pipeline")
     @app.post("/api/pipeline/{sContainerId}/kill")
-    async def fnKillRunningTasks(sContainerId: str):
+    async def fdictKillRunningTasks(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -373,7 +373,7 @@ def _fnRegisterPipelineClean(app, dictCtx):
 
     @fnAgentAction("clean-outputs")
     @app.post("/api/pipeline/{sContainerId}/clean")
-    async def fnCleanOutputs(sContainerId: str):
+    async def fdictCleanOutputs(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -449,7 +449,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         "/api/pipeline/{sContainerId}"
         "/acknowledge-step/{iStepIndex}"
     )
-    async def fnAcknowledgeStep(
+    async def fdictAcknowledgeStep(
         sContainerId: str, iStepIndex: int,
     ):
         from .. import syncDispatcher as _syncDispatcher
@@ -510,12 +510,12 @@ def _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow):
         for dictStep in dictWorkflow.get("listSteps", [])
     ]
 
-    def fnReadFile(sPath):
+    def fsReadLintFile(sPath):
         return fsReadFileFromContainer(
             dictCtx["docker"], sContainerId, sPath,
         )
 
-    fnApplyRandomnessLintToWorkflow(dictWorkflow, fnReadFile)
+    fnApplyRandomnessLintToWorkflow(dictWorkflow, fsReadLintFile)
     listAfter = [
         dictStep.get("dictVerification", {}).get(
             "bUnseededRandomnessWarning", False,
@@ -592,7 +592,7 @@ def _fnRegisterFileStatus(app, dictCtx):
     """
 
     @app.get("/api/pipeline/{sContainerId}/file-status")
-    async def fnGetFileStatus(
+    async def fresponseHandleGetFileStatus(
         sContainerId: str, request: Request, response: Response,
         iWorkflowEpoch: int = -1,
     ):
@@ -657,7 +657,7 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
     """
 
     @app.get("/api/pipeline/{sContainerId}/workflow-discovery")
-    async def fnGetWorkflowDiscovery(sContainerId: str):
+    async def fdictGetWorkflowDiscovery(sContainerId: str):
         dictCtx["require"]()
         dictResult = await asyncio.to_thread(
             fdictDetectNewlyAvailableWorkflows,
@@ -782,7 +782,7 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     listOutputPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
     listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
-    listMarkerPaths = list(fnCollectMarkerPathsByStep(
+    listMarkerPaths = list(fdictCollectMarkerPathsByStep(
         dictWorkflow, sRepoRoot, sWorkflowPath,
     ).values())
     listTestSourcePaths = []
@@ -1224,7 +1224,7 @@ def _fnAppendSupervisionFlags(
     from ..routeContext import ffilesForWorkflow
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
     if bChainBroken:
-        attributionLog.fnAppendFlag(
+        attributionLog.fdictAppendFlag(
             filesRepo, "attribution-log-tampered",
             "the recorded-event chain no longer verifies",
         )
@@ -1236,7 +1236,7 @@ def _fnAppendSupervisionFlags(
         sDetail = ", ".join(
             _flistRepoRelativePaths(dictWorkflow, listUnattributed),
         )
-        attributionLog.fnAppendFlag(
+        attributionLog.fdictAppendFlag(
             filesRepo, "unattributed-modification", sDetail,
         )
         logger.warning(
@@ -1396,7 +1396,7 @@ def _ftSplitCachedAndChanged(listRelPaths, dictMtimesRel, dictShaCache):
     return dictSeed, listNeedHash
 
 
-def _fnUpdateShaCache(dictShaCache, filesPoll, listHashed, dictMtimesRel):
+def _fbUpdateShaCache(dictShaCache, filesPoll, listHashed, dictMtimesRel):
     """Record freshly hashed outputs in the in-memory cache.
 
     Returns True iff any cache entry was added or refreshed; the
@@ -1472,7 +1472,7 @@ def _ffilesFetchPollSnapshot(
         dictSeedHashes=dictSeed,
         listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
     )
-    bShaCacheChanged = _fnUpdateShaCache(
+    bShaCacheChanged = _fbUpdateShaCache(
         dictShaCache, filesPoll, listNeedHash, dictMtimesRel,
     )
     if bShaCacheChanged:
@@ -1587,7 +1587,7 @@ def _ftComputePollScriptContext(
     sRepoRoot, filesPoll,
 ):
     """Compute the per-step mtimes and script status for one poll."""
-    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
+    dictMarkerPathsByStep = fdictCollectMarkerPathsByStep(
         dictWorkflow, sRepoRoot, sWorkflowPath,
     )
     dictMtimes = _fdictComputeAllPerStepMtimes(
@@ -2224,7 +2224,7 @@ async def _fdictFetchTestStatus(
         dictWorkflow, dictTestInfo,
         dictMaxOutputMtimeByStep=dictMaxOutputMtimeByStep,
     )
-    bChanged = _fnApplyExternalTestResults(
+    bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
     bChanged = fbRefreshAggregateTestStates(dictWorkflow) or bChanged
@@ -2473,18 +2473,18 @@ _LIST_MARKER_CATEGORY_KEYS = [
 ]
 
 
-def _fnApplyAllMarkerCategories(dictVerify, dictCategories):
+def _fbApplyAllMarkerCategories(dictVerify, dictCategories):
     """Apply all marker categories to a verification dict."""
     bChanged = False
     for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
-        if _fnApplyMarkerCategory(
+        if _fbApplyMarkerCategory(
             dictVerify, dictCategories, sCategory, sVerifyKey,
         ):
             bChanged = True
     return bChanged
 
 
-def _fnClearStaleMarkerCategories(dictVerify, dictCategories):
+def _fbClearStaleMarkerCategories(dictVerify, dictCategories):
     """Reset to "untested" any category the stale marker would touch.
 
     A stale marker isn't trustworthy enough to apply, but it does tell
@@ -2507,7 +2507,7 @@ def _fnClearStaleMarkerCategories(dictVerify, dictCategories):
     return bChanged
 
 
-def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
+def _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers):
     """Update workflow dictVerification from external test markers.
 
     Returns True when any verification field was modified, so the
@@ -2526,19 +2526,19 @@ def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
             "dictCategories", {},
         )
         if dictEntry.get("bStale"):
-            if _fnClearStaleMarkerCategories(
+            if _fbClearStaleMarkerCategories(
                 dictVerify, dictCategories,
             ):
                 bChanged = True
             continue
-        if _fnApplyAllMarkerCategories(
+        if _fbApplyAllMarkerCategories(
             dictVerify, dictCategories,
         ):
             bChanged = True
     return bChanged
 
 
-def _fnApplyMarkerCategory(
+def _fbApplyMarkerCategory(
     dictVerify, dictCategories, sCategory, sVerifyKey,
 ):
     """Apply a single category result from a marker; return True if changed.
@@ -2752,7 +2752,7 @@ def _fnRegisterManifestText(app, dictCtx):
     """
 
     @app.get("/api/workflow/{sContainerId}/manifest/text")
-    async def fnGetManifestText(
+    async def fdictGetManifestText(
         sContainerId: str, iMaxBytes: int = _I_MANIFEST_TEXT_DEFAULT_MAX_BYTES,
     ):
         dictCtx["require"]()

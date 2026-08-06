@@ -16,7 +16,7 @@ from vaibify.gui.containerOwnership import (
     OwnerRecord,
     PoisonRecord,
     fbOwnerIsReapable,
-    fnReleaseOwnership,
+    fbReleaseOwnership,
     ftClaim,
 )
 from vaibify.gui.registryRoutes import _fnAnnotateOwnershipState
@@ -53,7 +53,7 @@ def test_a_poisoned_record_refuses_every_claim_including_its_own_lease():
 
 def test_a_poisoned_record_refuses_release_even_to_its_owner():
     dictOwners = _fdictOwnersWithPoisonedRecord()
-    bReleased = fnReleaseOwnership(
+    bReleased = fbReleaseOwnership(
         dictOwners, S_PROJECT, "LEASE-A", sBrowserSessionId="session-a",
     )
     assert bReleased is False

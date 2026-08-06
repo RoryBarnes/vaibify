@@ -434,7 +434,7 @@ def testAgentPullMustLandInTheExportDirectory(
     shell profile or an authorized-keys file -- host code execution out
     of the sandbox.
 
-    Kills: fileRoutes.fnPullFile: the agent-lane branch
+    Kills: fileRoutes.fdictPullFile: the agent-lane branch
     `if fbRequestRidesAgentLane(requestHttp):` neutralized to
     `if False:`.
     """
@@ -552,7 +552,7 @@ def testFigureProbeValidatesTheWorkdirFallback(clientBrowser):
     container paths.
 
     Kills: figureRoutes._flistBuildFigureCheckPaths: the fallback
-    validation `fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))`
+    validation `fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))`
     replaced by the bare `sFallback)`.
     """
     _fresponseConnect(clientBrowser)
@@ -576,7 +576,7 @@ def test_host_log_tail_agent_lane_is_sanitized(clientAgent, tmp_path):
     which may hold a secret, a host path, or ANOTHER container's id. This
     plants all three and asserts none reaches the agent.
 
-    Kills: in pipelineRoutes.fnGetHostLogTail, neutralize the
+    Kills: in pipelineRoutes.fdictGetHostLogTail, neutralize the
     ``if serverMiddleware.fbRequestRidesAgentLane(request):`` branch so
     the agent lane falls through to the raw-log response.
     """

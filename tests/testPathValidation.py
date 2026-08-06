@@ -1,4 +1,4 @@
-"""Coverage tests for ``fnValidatePathWithinRoot`` containment guard.
+"""Coverage tests for ``fsValidatePathWithinRoot`` containment guard.
 
 These close mutation-testing holes in the host-path traversal guard
 cited in CLAUDE.md (file pulls, directory browsing, sync, workspace
@@ -11,7 +11,7 @@ on a stable form.
 import pytest
 from fastapi import HTTPException
 
-from vaibify.gui.pipelineServer import fnValidatePathWithinRoot
+from vaibify.gui.pipelineServer import fsValidatePathWithinRoot
 
 
 pytestmark = pytest.mark.falsification
@@ -35,7 +35,7 @@ def testRejectsRootEmbeddedAsInteriorSubstring(sOutsidePath):
     startswith(sRoot+'/') to substring (sRoot+'/') in sNormalized
     """
     with pytest.raises(HTTPException) as excinfo:
-        fnValidatePathWithinRoot(sOutsidePath, "/workspace")
+        fsValidatePathWithinRoot(sOutsidePath, "/workspace")
     assert excinfo.value.status_code == 403
 
 
@@ -48,7 +48,7 @@ def testNormalizesTrailingSlashRoot():
     Kills: Line 267: root normalization removed — sRoot = sAllowedRoot
     instead of posixpath.normpath(sAllowedRoot)
     """
-    sResult = fnValidatePathWithinRoot(
+    sResult = fsValidatePathWithinRoot(
         "/workspace/project/file.txt", "/workspace/"
     )
     assert sResult == "/workspace/project/file.txt"
@@ -60,7 +60,7 @@ def testNormalizesDotBearingRoot():
     Kills: Line 267: root normalization removed — sRoot = sAllowedRoot
     instead of posixpath.normpath(sAllowedRoot)
     """
-    sResult = fnValidatePathWithinRoot(
+    sResult = fsValidatePathWithinRoot(
         "/workspace/logs/run.txt", "/workspace/./logs"
     )
     assert sResult == "/workspace/logs/run.txt"
@@ -75,7 +75,7 @@ def testReturnsNormalizedPathNotRawInput():
     Kills: Line 272: return raw sResolvedPath instead of normalized
     sNormalized
     """
-    sResult = fnValidatePathWithinRoot(
+    sResult = fsValidatePathWithinRoot(
         "/workspace/./project//file.txt", "/workspace"
     )
     assert sResult == "/workspace/project/file.txt"

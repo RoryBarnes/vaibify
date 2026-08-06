@@ -98,7 +98,7 @@ def _fsRetrieveViaGhAuth():
 
 def _fsRetrieveViaKeyring(sName):
     """Retrieve a secret from the OS keyring."""
-    keyringModule = _fnLoadKeyringModule()
+    keyringModule = _fmoduleLoadKeyring()
     sValue = keyringModule.get_password("vaibify", sName)
     if sValue is None:
         raise KeyError(
@@ -132,7 +132,7 @@ def fnStoreSecret(sName, sValue, sMethod):
 
 def _fnStoreViaKeyring(sName, sValue):
     """Set a password in the OS keyring under service 'vaibify'."""
-    keyringModule = _fnLoadKeyringModule()
+    keyringModule = _fmoduleLoadKeyring()
     keyringModule.set_password("vaibify", sName, sValue)
 
 
@@ -149,7 +149,7 @@ def fnDeleteSecret(sName, sMethod):
 
 def _fnDeleteViaKeyring(sName):
     """Delete a keyring entry, suppressing the absent-entry error."""
-    keyringModule = _fnLoadKeyringModule()
+    keyringModule = _fmoduleLoadKeyring()
     from keyring.errors import PasswordDeleteError
     try:
         keyringModule.delete_password("vaibify", sName)
@@ -172,7 +172,7 @@ def fbSecretExists(sName, sMethod):
 def _fbKeyringHasSecret(sName):
     """Return True if the OS keyring has an entry for sName."""
     try:
-        keyringModule = _fnLoadKeyringModule()
+        keyringModule = _fmoduleLoadKeyring()
         return keyringModule.get_password("vaibify", sName) is not None
     except Exception:
         return False
@@ -191,7 +191,7 @@ def _fbDockerSecretExists(sName):
     return Path(f"/run/secrets/{sName}").exists()
 
 
-def _fnLoadKeyringModule():
+def _fmoduleLoadKeyring():
     """Import and return the keyring module with a helpful error."""
     try:
         import keyring

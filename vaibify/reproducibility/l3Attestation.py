@@ -53,7 +53,7 @@ __all__ = [
     "fdictBuildAttestation",
     "fdictReadAttestation",
     "flistReadAttestationHistory",
-    "fnInvalidateAttestation",
+    "fbInvalidateAttestation",
     "fnWriteAttestation",
     "fsCurrentManifestDigest",
 ]
@@ -219,7 +219,7 @@ def fnWriteAttestation(filesRepo, dictAttestation):
     )
 
 
-def fnInvalidateAttestation(filesRepo):
+def fbInvalidateAttestation(filesRepo):
     """Remove the top-level attestation file (history is preserved).
 
     Used by the dashboard when a researcher explicitly clears an

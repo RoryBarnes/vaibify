@@ -220,7 +220,7 @@ async def testCorrectGenerationActiveTransferSucceedsAndRevokes():
     REVOKED and the new session-bound lease authorizes release while
     the old one is refused.
 
-    Kills: dropping ``fnRevokeSessionById`` from ``_ftCommitTransfer``
+    Kills: dropping ``fbRevokeSessionById`` from ``_ftCommitTransfer``
     (the old credential would keep authorizing after the transfer).
     """
     stateApp = _fstateBuildAppState()

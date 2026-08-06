@@ -22,7 +22,7 @@ from ..pipelineServer import (
     WORKSPACE_ROOT,
     flistQueryDirectory,
     fnRejectWriteDenylistedPath,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     fsResolveFigurePath,
     _fsSanitizeServerError,
 )
@@ -76,7 +76,7 @@ def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
     else:
         sBase = sProjectRepoPath or sWorkspaceRoot
         sAbs = posixpath.join(sBase, sRawPath)
-    return fnValidatePathWithinRoot(sAbs, sWorkspaceRoot)
+    return fsValidatePathWithinRoot(sAbs, sWorkspaceRoot)
 
 
 def _fdictTestExistenceBatch(
@@ -105,7 +105,7 @@ def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("check-files-exist")
     @app.post("/api/files/{sContainerId}/exist")
-    async def fnCheckFilesExist(
+    async def fdictCheckFilesExist(
         sContainerId: str, request: FileExistenceRequest,
     ):
         import asyncio
@@ -139,7 +139,7 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
     """Register GET /api/files route."""
 
     @app.get("/api/files/{sContainerId}/{sDirectoryPath:path}")
-    async def fnListDirectory(
+    async def flistListDirectory(
         sContainerId: str, sDirectoryPath: str
     ):
         import asyncio
@@ -149,7 +149,7 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
             if not sDirectoryPath.startswith("/")
             else sDirectoryPath
         )
-        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        fsValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         return await asyncio.to_thread(
             flistQueryDirectory,
             dictCtx["docker"], sContainerId, sAbsPath,
@@ -162,7 +162,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("upload-file")
     @app.post("/api/files/{sContainerId}/upload")
-    async def fnUploadFile(
+    async def fdictUploadFile(
         sContainerId: str, request: FileUploadRequest,
     ):
         import asyncio
@@ -172,7 +172,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         sSafeFilename = posixpath.basename(request.sFilename)
         sDestPath = posixpath.join(
             request.sDestination, sSafeFilename)
-        sNormalized = fnValidatePathWithinRoot(
+        sNormalized = fsValidatePathWithinRoot(
             sDestPath, sProjectRepoPath)
         fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         try:
@@ -187,7 +187,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         return {"bSuccess": True, "sPath": sNormalized}
 
 
-def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
+def _ftProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
     """Open the streaming iterator and pull the first chunk eagerly.
 
     docker-py raises ``NotFound`` / ``APIError`` from
@@ -214,7 +214,7 @@ async def _ftIterStreamOrRaiseHttp(
     import asyncio
     try:
         return await asyncio.to_thread(
-            _fnProbeFirstChunk,
+            _ftProbeFirstChunk,
             connectionDocker, sContainerId, sAbsPath,
         )
     except Exception as error:
@@ -246,14 +246,14 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
     @app.get(
         "/api/files/{sContainerId}/download/{sFilePath:path}"
     )
-    async def fnDownloadFile(
+    async def fresponseDownloadFile(
         sContainerId: str, sFilePath: str
     ):
         dictCtx["require"]()
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath,
         )
-        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        fsValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         baFirst, iterChunks = await _ftIterStreamOrRaiseHttp(
             dictCtx["docker"], sContainerId, sAbsPath,
         )
@@ -303,13 +303,13 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("pull-file")
     @app.post("/api/files/{sContainerId}/pull")
-    async def fnPullFile(
+    async def fdictPullFile(
         requestHttp: Request,
         sContainerId: str, request: FilePullRequest,
     ):
         import asyncio
         dictCtx["require"]()
-        fnValidatePathWithinRoot(
+        fsValidatePathWithinRoot(
             request.sContainerPath, sWorkspaceRoot)
         sHostDest = os.path.realpath(
             os.path.expanduser(request.sHostDestination))
@@ -401,7 +401,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("write-file")
     @app.put("/api/file/{sContainerId}/{sFilePath:path}")
-    async def fnWriteFile(
+    async def fdictWriteFile(
         sContainerId: str, sFilePath: str,
         request: FileWriteRequest, sWorkdir: str = "",
     ):
@@ -411,7 +411,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath
         )
-        sNormalized = fnValidatePathWithinRoot(
+        sNormalized = fsValidatePathWithinRoot(
             sAbsPath, sProjectRepoPath)
         fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         _fnRaiseConflictIfBaseHashMismatch(

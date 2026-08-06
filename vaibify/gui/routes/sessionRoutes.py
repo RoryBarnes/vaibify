@@ -84,7 +84,7 @@ def _fbIsPortAcceptingConnections(iPort):
         sock.close()
 
 
-async def _fnAwaitChildReady(iPort, fTimeoutSeconds):
+async def _fbAwaitChildReady(iPort, fTimeoutSeconds):
     """Poll until the child's port accepts connections or timeout elapses.
 
     Returning early avoids the browser hitting a transient "unable to
@@ -118,7 +118,7 @@ def _fnRegisterSpawn(app):
         iPort = fiPickFreePort(iPreferred=8050)
         child = _fnLaunchDetachedHub(iPort)
         listChildren.append(child)
-        await _fnAwaitChildReady(iPort, _F_READY_TIMEOUT_SECONDS)
+        await _fbAwaitChildReady(iPort, _F_READY_TIMEOUT_SECONDS)
         return {
             "sUrl": f"http://127.0.0.1:{iPort}",
             "iPort": iPort,

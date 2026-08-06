@@ -365,7 +365,7 @@ def _fnPatchRunAllStepsWithExit(iExitCode):
     async def _fiRunAllSteps(*args, **kwargs):
         return iExitCode
     return patch(
-        "vaibify.gui.pipelineRunner.fnRunAllSteps",
+        "vaibify.gui.pipelineRunner.fiRunAllSteps",
         side_effect=_fiRunAllSteps,
     )
 

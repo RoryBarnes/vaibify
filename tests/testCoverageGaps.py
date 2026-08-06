@@ -463,7 +463,7 @@ def test_fsRetrieveViaKeyring_missing_package():
         _fsRetrieveViaKeyring,
     )
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         side_effect=ImportError("keyring package is not installed"),
     ):
         with pytest.raises(ImportError, match="keyring"):
@@ -927,11 +927,11 @@ def test_fnGrantLocalUserXhostAccess_no_user(mockRun):
 
 def test_fnEnsureLogsDirectory():
     from vaibify.gui.pipelineRunner import (
-        _fnEnsureLogsDirectory,
+        _fsEnsureLogsDirectory,
     )
     mockDocker = _fMockDocker()
     sLogsDir = _fnRunAsync(
-        _fnEnsureLogsDirectory(mockDocker, "cid")
+        _fsEnsureLogsDirectory(mockDocker, "cid")
     )
     assert "logs" in sLogsDir
     mockDocker.ftResultExecuteCommand.assert_called_once()
@@ -1059,7 +1059,7 @@ def test_fiRunWithLogging_preflight_fails(
     assert iResult == 1
 
 
-@patch("vaibify.gui.pipelineRunner._fnRunOneStep",
+@patch("vaibify.gui.pipelineRunner._fiRunOneStep",
        new_callable=AsyncMock, return_value=0)
 @patch("vaibify.gui.pipelineRunner._fbShouldRunStep",
        return_value=True)
@@ -1079,7 +1079,7 @@ def test_fiRunStepList_runs_steps(mockShould, mockRunOne):
     assert iResult == 0
 
 
-@patch("vaibify.gui.pipelineRunner._fnRunOneStep",
+@patch("vaibify.gui.pipelineRunner._fiRunOneStep",
        new_callable=AsyncMock, return_value=1)
 @patch("vaibify.gui.pipelineRunner._fbShouldRunStep",
        return_value=True)
@@ -1104,14 +1104,14 @@ def test_fiRunStepList_records_failure(mockShould, mockRunOne):
 @patch("vaibify.gui.pipelineRunner._fiCheckDependencies",
        new_callable=AsyncMock, return_value=0)
 def test_fnRunOneStep_executes(mockDeps, mockExecute):
-    from vaibify.gui.pipelineRunner import _fnRunOneStep
+    from vaibify.gui.pipelineRunner import _fiRunOneStep
     mockDocker = _fMockDocker()
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {
         "sName": "Compute", "bRunEnabled": True,
         "sDirectory": "/w",
     }
-    iResult = _fnRunAsync(_fnRunOneStep(
+    iResult = _fnRunAsync(_fiRunOneStep(
         mockDocker, "cid", dictStep, 1,
         "/work", {}, fnCallback,
     ))
@@ -1121,11 +1121,11 @@ def test_fnRunOneStep_executes(mockDeps, mockExecute):
 
 
 def test_fnRunOneStep_interactive_returns_zero():
-    from vaibify.gui.pipelineRunner import _fnRunOneStep
+    from vaibify.gui.pipelineRunner import _fiRunOneStep
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictStep = {"bInteractive": True, "sName": "Human"}
-    iResult = _fnRunAsync(_fnRunOneStep(
+    iResult = _fnRunAsync(_fiRunOneStep(
         mockDocker, "cid", dictStep, 1,
         "/work", {}, fnCallback,
     ))
@@ -1161,7 +1161,7 @@ def test_fnVerifyOnly_verifies_all_steps():
     mock returns the path list as the xargs output so the helper sees
     every declared output as present.
     """
-    from vaibify.gui.pipelineRunner import fnVerifyOnly
+    from vaibify.gui.pipelineRunner import fiVerifyOnly
     dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [
@@ -1173,7 +1173,7 @@ def test_fnVerifyOnly_verifies_all_steps():
     # declared outputs land in the output so they read as present.
     mockDocker = _fMockDocker(0, "/w/a.pdf\n/w/b.pdf\n")
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(fnVerifyOnly(
+    iResult = _fnRunAsync(fiVerifyOnly(
         mockDocker, "cid", dictWorkflow, "/w/test.json",
         "/w", fnCallback,
     ))

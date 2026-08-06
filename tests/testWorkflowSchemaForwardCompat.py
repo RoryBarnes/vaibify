@@ -1,6 +1,6 @@
 """Forward compatibility: a future-version workflow fails closed.
 
-``fnApplyMigrations`` used to stamp the version DOWN to the current one at
+``fiApplyMigrations`` used to stamp the version DOWN to the current one at
 the end, so a ``project.json`` written by a newer vaibify and opened by an
 older one was silently downgraded and, on the next save, persisted with
 the lower number and every field this build does not understand dropped.
@@ -21,7 +21,7 @@ from vaibify.gui import workflowMigrations
 def test_future_schema_version_is_refused_not_downgraded():
     """A version above the current must raise, leaving the dict untouched.
 
-    Kills: in workflowMigrations.fnApplyMigrations, neutralize the
+    Kills: in workflowMigrations.fiApplyMigrations, neutralize the
     ``if iVersion > I_CURRENT_WORKFLOW_VERSION:`` guard, so a future
     version falls through to the final stamp and is silently downgraded.
     """
@@ -34,7 +34,7 @@ def test_future_schema_version_is_refused_not_downgraded():
     }
     dictBefore = copy.deepcopy(dictFuture)
     with pytest.raises(ValueError):
-        workflowMigrations.fnApplyMigrations(dictFuture)
+        workflowMigrations.fiApplyMigrations(dictFuture)
     assert dictFuture == dictBefore, (
         "a refused future workflow was mutated before the raise"
     )
@@ -47,7 +47,7 @@ def test_current_and_older_versions_still_migrate():
         "sWorkflowName": "Old",
         "listSteps": [],
     }
-    iReturned = workflowMigrations.fnApplyMigrations(dictOld)
+    iReturned = workflowMigrations.fiApplyMigrations(dictOld)
     assert iReturned == workflowMigrations.I_CURRENT_WORKFLOW_VERSION
     assert dictOld[workflowMigrations.S_VERSION_KEY] == (
         workflowMigrations.I_CURRENT_WORKFLOW_VERSION

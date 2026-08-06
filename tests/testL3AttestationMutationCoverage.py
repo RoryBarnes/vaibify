@@ -18,7 +18,7 @@ from vaibify.reproducibility.l3Attestation import (
     fbL3AttestationCurrent,
     fdictBuildAttestation,
     fdictReadAttestation,
-    fnInvalidateAttestation,
+    fbInvalidateAttestation,
     fnWriteAttestation,
     fsCurrentManifestDigest,
 )
@@ -85,10 +85,10 @@ def test_invalidate_returns_false_when_no_file(tmp_path):
     """Invalidating when no attestation exists must report False so
     the dashboard does not claim it cleared something.
 
-    Kills: Make fnInvalidateAttestation always return True regardless
+    Kills: Make fbInvalidateAttestation always return True regardless
     of fbRemoveFile's result (lines 213-215).
     """
-    assert fnInvalidateAttestation(str(tmp_path)) is False
+    assert fbInvalidateAttestation(str(tmp_path)) is False
 
 
 def test_current_manifest_digest_has_sha256_prefix(tmp_path):

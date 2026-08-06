@@ -130,7 +130,7 @@ def test_release_verifies_lease_frees_flock_and_drops_record(tmp_lock_dir):
         dictContainerOwners, "demo", None, 8050,
     )
     sLeaseId = dictFirst["sLeaseId"]
-    bReleased = containerOwnership.fnReleaseOwnership(
+    bReleased = containerOwnership.fbReleaseOwnership(
         dictContainerOwners, "demo", sLeaseId,
     )
     assert bReleased is True
@@ -148,7 +148,7 @@ def test_release_by_non_owner_is_rejected(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
     containerOwnership.ftClaim(dictContainerOwners, "demo", None, 8050)
     try:
-        bReleased = containerOwnership.fnReleaseOwnership(
+        bReleased = containerOwnership.fbReleaseOwnership(
             dictContainerOwners, "demo", "not-the-owner-lease",
         )
         assert bReleased is False
@@ -159,7 +159,7 @@ def test_release_by_non_owner_is_rejected(tmp_lock_dir):
 
 def test_release_unknown_container_is_rejected(tmp_lock_dir):
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
-    bReleased = containerOwnership.fnReleaseOwnership(
+    bReleased = containerOwnership.fbReleaseOwnership(
         dictContainerOwners, "absent", "any-lease",
     )
     assert bReleased is False
@@ -373,7 +373,7 @@ def test_release_stops_keep_alive(tmp_lock_dir, monkeypatch):
     )
     sLeaseId = dictFirst["sLeaseId"]
     try:
-        bReleased = containerOwnership.fnReleaseOwnership(
+        bReleased = containerOwnership.fbReleaseOwnership(
             dictContainerOwners, "demo", sLeaseId,
         )
         assert bReleased is True

@@ -232,7 +232,7 @@ def testSessionOwnerIndexTracksClaimAndRelease():
     )
     assert iStatusCode == 200
     assert dictSessionOwner == {"session-a": S_PROJECT_NAME}
-    bReleased = containerOwnership.fnReleaseOwnership(
+    bReleased = containerOwnership.fbReleaseOwnership(
         dictOwners, S_PROJECT_NAME, dictPayload["sLeaseId"],
         sBrowserSessionId="session-a", dictSessionOwner=dictSessionOwner,
     )
@@ -249,7 +249,7 @@ def testSessionOwnerIndexSurvivesAForeignReleaseAttempt():
         sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         dictSessionOwner=dictSessionOwner,
     )
-    bReleased = containerOwnership.fnReleaseOwnership(
+    bReleased = containerOwnership.fbReleaseOwnership(
         dictOwners, S_PROJECT_NAME, "not-the-lease",
         sBrowserSessionId="session-b", dictSessionOwner=dictSessionOwner,
     )
@@ -360,7 +360,7 @@ def testNoRouteModuleCallsTheReleasePrimitivesDirectly():
             continue
         sSource = pathFile.read_text(encoding="utf-8")
         if (
-            "fnReleaseOwnership(" in sSource
+            "fbReleaseOwnership(" in sSource
             or "_fnForceReleaseOwnership(" in sSource
         ):
             listOffenders.append(pathFile.name)

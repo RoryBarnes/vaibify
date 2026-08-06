@@ -20,7 +20,7 @@ def _fdictCommonPatches(dictCommon=None):
         "_flistCollectOutputPaths",
         "ftGetModTimesAndFingerprint",
         "fdictCollectOutputPathsByStep",
-        "fnCollectMarkerPathsByStep",
+        "fdictCollectMarkerPathsByStep",
         "_fbCheckStaleUserVerification",
         "_fdictDetectAndInvalidate",
         "_fdictComputeMaxMtimeByStep",

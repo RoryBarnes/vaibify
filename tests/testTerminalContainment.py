@@ -352,7 +352,7 @@ def test_undiscovered_group_settles_only_a_dead_exec():
 
 
 def test_drain_session_record_ignores_test_doubles():
-    assert terminalContainment.fnDrainSessionRecord(MagicMock()) is None
+    assert terminalContainment.fdictDrainSessionRecord(MagicMock()) is None
 
 
 # ---------------------------------------------------------------------
@@ -645,7 +645,7 @@ def test_socket_close_drains_the_containment_record():
     must drain the containment record, not merely send exit
     keystrokes and close the socket.
 
-    Kills: dropping the ``fnDrainSessionRecord`` call from
+    Kills: dropping the ``fdictDrainSessionRecord`` call from
     ``pipelineServer.fnRunTerminalSession``'s ``finally``.
     """
     import asyncio

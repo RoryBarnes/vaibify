@@ -105,13 +105,13 @@ def _fnHandleDockerRuntimeError(error, sProjectName):
     sys.exit(1)
 
 
-def _fnAcquireProjectLockOrExit(sProjectName, iPort):
+def _ffileAcquireProjectLockOrExit(sProjectName, iPort):
     """Acquire the per-container lock or exit with a clear message."""
     from vaibify.config.containerLock import (
-        ContainerLockedError, fnAcquireContainerLock,
+        ContainerLockedError, ffileAcquireContainerLock,
     )
     try:
-        return fnAcquireContainerLock(sProjectName, iPort)
+        return ffileAcquireContainerLock(sProjectName, iPort)
     except ContainerLockedError as error:
         click.echo(
             f"Error: {error}\n"
@@ -122,13 +122,13 @@ def _fnAcquireProjectLockOrExit(sProjectName, iPort):
         sys.exit(1)
 
 
-def _fnAcquireGuiSessionSlotOrExit(iPort):
+def _ffileAcquireGuiSessionSlotOrExit(iPort):
     """Acquire a session slot for the workflow viewer or exit nonzero."""
     from vaibify.config.sessionRegistry import (
-        SessionLimitExceededError, fnAcquireSessionSlot,
+        SessionLimitExceededError, ffileAcquireSessionSlot,
     )
     try:
-        return fnAcquireSessionSlot("viewer", iPort)
+        return ffileAcquireSessionSlot("viewer", iPort)
     except SessionLimitExceededError as error:
         click.echo(f"Error: {error}", err=True)
         sys.exit(1)
@@ -140,7 +140,7 @@ def _fiResolveLaunchPortOrExit(config, iExplicitPort, sConfigPath):
     try:
         return fiResolveProjectPort(
             config, iExplicitPort, sConfigPath,
-            fnSaveConfig=fnSaveToFile,
+            fdictSaveConfig=fnSaveToFile,
         )
     except PortInUseError as errorPort:
         click.echo(f"Error: {errorPort}", err=True)
@@ -152,7 +152,7 @@ def _fnServeGuiUnderLock(config, iPort):
     from vaibify.gui.pipelineServer import fappCreateApplication
     from vaibify.config.containerLock import fnReleaseContainerLock
     import uvicorn
-    fileHandleLock = _fnAcquireProjectLockOrExit(
+    fileHandleLock = _ffileAcquireProjectLockOrExit(
         config.sProjectName, iPort,
     )
     try:
@@ -172,7 +172,7 @@ def fnLaunchGui(config, iExplicitPort, sConfigPath=None):
     from vaibify.config.sessionRegistry import fnReleaseSessionSlot
     click.echo("Launching workflow viewer ...")
     iPort = _fiResolveLaunchPortOrExit(config, iExplicitPort, sConfigPath)
-    fileHandleSession = _fnAcquireGuiSessionSlotOrExit(iPort)
+    fileHandleSession = _ffileAcquireGuiSessionSlotOrExit(iPort)
     try:
         _fnServeGuiUnderLock(config, iPort)
     finally:

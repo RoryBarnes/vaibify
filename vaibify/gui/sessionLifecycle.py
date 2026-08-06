@@ -38,7 +38,7 @@ Two invariants (design §3.5), recorded while they are true:
    future "move my session to container B" must be release-A then
    claim-B, never a combined switch holding both.
 2. **The locks live here, wrapping the SYNCHRONOUS ownership
-   primitives.** ``ftClaim``, ``fnReleaseOwnership``, and
+   primitives.** ``ftClaim``, ``fbReleaseOwnership``, and
    ``flistReapIdleOwnerships`` stay synchronous; the ``asyncio.Lock``s
    are taken in this lifecycle layer around those calls, never pushed
    down into them. Corollary: build is browser-hub scoped and takes no
@@ -405,7 +405,7 @@ async def ftSettleFailedStartOwnership(
                 return
             if not bMayRelease:
                 return
-            containerOwnership.fnReleaseOwnership(
+            containerOwnership.fbReleaseOwnership(
                 dictOwners, sName, recordOwner.sLeaseId,
                 sBrowserSessionId=recordOwner.sBrowserSessionId,
                 dictSessionOwner=getattr(appState, "dictSessionOwner", None),
@@ -489,7 +489,7 @@ async def ftReleaseExplicit(
             return (S_RELEASE_BUSY, {"sMessage": sBusyMessage})
         await _fnDrainAndCloseBeforeRelease(appState, sName)
         async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fnReleaseOwnership(
+            bReleased = containerOwnership.fbReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
@@ -928,7 +928,7 @@ def _ftCommitTransfer(
     listDetached = _flistDetachOldSessionConnections(
         appState, recordOwner, sOldSessionId,
     )
-    browserSession.fnRevokeSessionById(dictStore, sOldSessionId)
+    browserSession.fbRevokeSessionById(dictStore, sOldSessionId)
     browserSession.fnStoreTransferResult(
         dictStore, sCapability, sNewSessionId, sNewCredential, sNewLease,
         iNewGeneration,
@@ -1075,7 +1075,7 @@ def _flistCommitOrphanSynchronously(appState, sName, fbStillWarranted):
     dictStore = getattr(appState, "dictBrowserSessions", None) or {}
     sSessionId = recordOwner.sBrowserSessionId
     # (a) The credential authorizes nothing from this statement on.
-    browserSession.fnRevokeSessionById(dictStore, sSessionId)
+    browserSession.fbRevokeSessionById(dictStore, sSessionId)
     # (d) Unused capabilities die with the session (tickets and
     # download capabilities join this call when their slices land).
     browserSession.fnExpireCapabilitiesForSession(dictStore, sSessionId)
@@ -1271,7 +1271,7 @@ async def _fnCommitSessionExpiry(
 ):
     """Commit one expired session: orphan its owner, or revoke it bare."""
     if not _fbOwnerRecordIsOwnedByActiveSession(recordOwner, sSessionId):
-        browserSession.fnRevokeSessionById(dictStore, sSessionId)
+        browserSession.fbRevokeSessionById(dictStore, sSessionId)
         return
 
     def fbStillOwnedByThisSession(recordAny):

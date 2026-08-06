@@ -53,7 +53,7 @@ __all__ = [
     "fbEventsAccountForChange",
     "fbAnyEventWithinWindow",
     "fbVerifyEventChain",
-    "fnAppendFlag",
+    "fdictAppendFlag",
     "flistLoadFlags",
     "fbVerifyFlagChain",
     "fdictSummarizeSupervisionEvidence",
@@ -293,7 +293,7 @@ def fbAnyEventWithinWindow(
     )
 
 
-def fnAppendFlag(filesRepo, sFlagKind, sDetail):
+def fdictAppendFlag(filesRepo, sFlagKind, sDetail):
     """Append one permanent, chained flag record and return it."""
     listFlags = flistLoadFlags(filesRepo)
     dictFlag = {

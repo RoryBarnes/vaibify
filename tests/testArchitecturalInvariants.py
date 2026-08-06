@@ -1878,7 +1878,7 @@ def testPipelineStateCarriesLivenessFields():
         ROUTES_DIR / "pipelineRoutes.py",
     )
     assert "fdictReadReconciledState" in sPipelineRoutesSource, (
-        "pipelineRoutes.fnGetPipelineState must delegate to "
+        "pipelineRoutes.fdictGetPipelineState must delegate to "
         "pipelineState.fdictReadReconciledState so the /state endpoint "
         "and every other state reader share one reconciliation path."
     )
@@ -2789,13 +2789,13 @@ SET_REPRO_FILES_ENTRY_POINTS = frozenset({
     "fbEnvironmentDigestPinned", "fdictCaptureSystemTools",
     "fdictCaptureHostBinaryHashes", "fdictCaptureSingleBinary",
     "fdictReadAttestation", "fnWriteAttestation",
-    "fnInvalidateAttestation", "flistReadAttestationHistory",
+    "fbInvalidateAttestation", "flistReadAttestationHistory",
     "fsCurrentManifestDigest", "fbL3AttestationCurrent",
     "fdictReadCachedSyncStatus", "fnWriteSyncStatus",
     "fdictVerifyRemoteService", "fdictLoadManifestExpectedHashes",
     "fnGenerateReproducibilityEnvelope",
     "fbManifestExists", "fsetStaleOutputsAgainstManifest",
-    "fbDeclarationFileExists", "fnWriteDeclarationTemplate",
+    "fbDeclarationFileExists", "fsWriteDeclarationTemplate",
     "fdictClassifyFalsificationApplicability",
     "fdictBuildFalsificationStatus",
     "fdictReadFalsificationRecord", "fnWriteFalsificationRecord",
@@ -2906,7 +2906,7 @@ def _fsExtractFunctionBody(sSource, sFunctionName):
 
 
 def testStepCountCapEnforcedOnAddRoutes():
-    """Both fnCreateStep and fnInsertStep must reference _I_STEP_COUNT_MAX.
+    """Both fdictHandleCreateStep and fnInsertStep must reference _I_STEP_COUNT_MAX.
 
     The 500-step hard cap is server-authoritative: the client UX
     check can be bypassed by a direct API call, so the routes that
@@ -2915,7 +2915,7 @@ def testStepCountCapEnforcedOnAddRoutes():
     """
     sPath = GUI_DIR / "routes" / "stepRoutes.py"
     sSource = Path(sPath).read_text(encoding="utf-8")
-    for sFunctionName in ("fnCreateStep", "fnInsertStep"):
+    for sFunctionName in ("fdictHandleCreateStep", "fdictInsertStep"):
         sBody = _fsExtractFunctionBody(sSource, sFunctionName)
         assert sBody, (
             f"{sFunctionName} not found in stepRoutes.py — cannot "
@@ -3049,7 +3049,7 @@ def testClaimRejectsForeignLease():
 def testReleaseRejectsNonOwner():
     """Release verifies the lease, closing the append-only authz leak.
 
-    ``fnReleaseOwnership`` must return False and retain the record when
+    ``fbReleaseOwnership`` must return False and retain the record when
     the caller does not present the owning lease, so a non-owner can
     never drop another session's authorization. The old model left
     ``setAllowedContainers`` populated for the whole process lifetime;
@@ -3057,13 +3057,13 @@ def testReleaseRejectsNonOwner():
     """
     from vaibify.gui import containerOwnership
     dictOwners = {"Proj": _frecordSeedOwner("LEASE-A")}
-    bForeign = containerOwnership.fnReleaseOwnership(
+    bForeign = containerOwnership.fbReleaseOwnership(
         dictOwners, "Proj", "LEASE-B",
     )
     assert bForeign is False and "Proj" in dictOwners, (
         "a non-owner release must be rejected and must not drop the record"
     )
-    bMissing = containerOwnership.fnReleaseOwnership(
+    bMissing = containerOwnership.fbReleaseOwnership(
         dictOwners, "Absent", "LEASE-A",
     )
     assert bMissing is False
@@ -3075,14 +3075,14 @@ def testReleaseRejectsNonOwner():
         "the release route must commit through the sessionLifecycle "
         "authority (fb/ftReleaseExplicit), never an inline drop"
     )
-    assert "fnReleaseOwnership" not in sSource, (
+    assert "fbReleaseOwnership" not in sSource, (
         "no route may call the containerOwnership release primitives "
         "directly; sessionLifecycle is the single transition authority"
     )
     sLifecycleSource = fsReadSource(GUI_DIR / "sessionLifecycle.py")
-    assert "fnReleaseOwnership" in sLifecycleSource, (
+    assert "fbReleaseOwnership" in sLifecycleSource, (
         "sessionLifecycle.fbReleaseExplicit must delegate the lease "
-        "arbitration to containerOwnership.fnReleaseOwnership"
+        "arbitration to containerOwnership.fbReleaseOwnership"
     )
 
 
@@ -3773,21 +3773,21 @@ def testConnectHandlerGatesOnTheOwningLease():
         node.name: node for node in ast.walk(treeAst)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    nodeConnect = dictFunctionByName.get("fnConnect")
+    nodeConnect = dictFunctionByName.get("fdictHandleConnectRequest")
     assert nodeConnect is not None, (
         "workflowRoutes must still register a connect handler named "
-        "fnConnect"
+        "fdictHandleConnectRequest"
     )
     sConnectBody = ast.unparse(nodeConnect)
     assert "_fnRequireOwningLeaseForConnect" in sConnectBody, (
-        "fnConnect must call _fnRequireOwningLeaseForConnect; without "
+        "fdictHandleConnectRequest must call _fnRequireOwningLeaseForConnect; without "
         "it a second browser tab connects to a container another "
         "session owns and the claim route's 409 means nothing"
     )
     assert "requestHttp" in {
         arg.arg for arg in nodeConnect.args.args
     }, (
-        "fnConnect must accept the Request so the presented lease is "
+        "fdictHandleConnectRequest must accept the Request so the presented lease is "
         "visible to the gate"
     )
     nodeGate = dictFunctionByName.get("_fnRequireOwningLeaseForConnect")
@@ -4158,7 +4158,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the reconnect interval check (manifest-digest compare →
     # unsupervised-gap flag) inside the connect flow.
     # +61 (2026-07-25): three path-safety guards hoisted to sit beside
-    # fnValidatePathWithinRoot — the control-character rejection behind
+    # fsValidatePathWithinRoot — the control-character rejection behind
     # the heredoc-injection fix, the write denylist (moved out of
     # fileRoutes so testRoutes can share it without a route-to-route
     # import), and the parsed loopback-origin predicate replacing a

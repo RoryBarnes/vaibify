@@ -29,7 +29,7 @@ from vaibify.gui.attributionLog import (
     flistLoadAttributionEvents,
     flistLoadFlags,
     fnAppendAttributionEvent,
-    fnAppendFlag,
+    fdictAppendFlag,
 )
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
@@ -93,8 +93,8 @@ def test_event_append_and_window_check(tmp_path):
 
 def test_flag_chain_survives_appends_and_detects_tampering(tmp_path):
     filesRepo = ffilesEnsureRepoFiles(str(tmp_path))
-    fnAppendFlag(filesRepo, "unattributed-modification", "fileA")
-    fnAppendFlag(filesRepo, "unsupervised-gap", "digest changed")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "fileA")
+    fdictAppendFlag(filesRepo, "unsupervised-gap", "digest changed")
     listFlags = flistLoadFlags(filesRepo)
     assert len(listFlags) == 2
     assert fbVerifyFlagChain(listFlags)
@@ -273,7 +273,7 @@ def test_event_chain_detects_editing_and_truncation(tmp_path):
 def test_evidence_summary_flags_a_count_that_disagrees(tmp_path):
     """The persisted count is an anchor, never the grader."""
     filesRepo = ffilesEnsureRepoFiles(str(tmp_path))
-    fnAppendFlag(filesRepo, "unattributed-modification", "stepA/out.csv")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "stepA/out.csv")
     dictWorkflow = {"dictAiProvenance": {"dictSupervision": {
         "bEnabled": True, "iUnattributedFlagCount": 1,
     }}}
@@ -295,12 +295,12 @@ def test_evidence_summary_flags_a_count_that_disagrees(tmp_path):
 def test_nothing_in_the_module_removes_flags(tmp_path):
     """A clean follow-up append leaves earlier flags in place."""
     filesRepo = ffilesEnsureRepoFiles(str(tmp_path))
-    fnAppendFlag(filesRepo, "unattributed-modification", "fileA")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "fileA")
     fnAppendAttributionEvent(
         filesRepo, _fdictSupervisedWorkflow(), "pipeline", "hub",
         "runAll",
     )
-    fnAppendFlag(filesRepo, "unattributed-modification", "fileB")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "fileB")
     listFlags = flistLoadFlags(filesRepo)
     assert [dictFlag["sDetail"] for dictFlag in listFlags] == [
         "fileA", "fileB",

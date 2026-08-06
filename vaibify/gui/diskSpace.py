@@ -19,7 +19,7 @@ import logging
 __all__ = [
     "I_DEFAULT_MIN_FREE_BYTES",
     "F_HEADROOM_MULTIPLIER",
-    "fnCheckWorkspaceFreeBytes",
+    "fiCheckWorkspaceFreeBytes",
     "fdictAssertSpaceForOutputs",
 ]
 
@@ -31,7 +31,7 @@ F_HEADROOM_MULTIPLIER = 2.0
 _S_WORKSPACE_PATH = "/workspace"
 
 
-def fnCheckWorkspaceFreeBytes(connectionDocker, sContainerId):
+def fiCheckWorkspaceFreeBytes(connectionDocker, sContainerId):
     """Return free bytes in ``/workspace`` as int, or -1 on failure.
 
     Runs ``df -B1 /workspace`` inside the container and parses the
@@ -82,7 +82,7 @@ def fdictAssertSpaceForOutputs(
     pre-flight banner, the agent CLI) render an actionable message
     without re-deriving the thresholds.
     """
-    iFreeBytes = fnCheckWorkspaceFreeBytes(
+    iFreeBytes = fiCheckWorkspaceFreeBytes(
         connectionDocker, sContainerId,
     )
     if iFreeBytes < 0:

@@ -235,7 +235,7 @@ def test_prover_reports_survivors_after_exec_inspect_says_dead(
     )
     assert dictResolution["sResolution"] == "QUARANTINED"
     from vaibify.gui import terminalContainment
-    terminalContainment.fnDrainSessionRecord(session)
+    terminalContainment.fdictDrainSessionRecord(session)
 
 
 # ---------------------------------------------------------------------
@@ -401,7 +401,7 @@ def test_two_real_terminals_and_a_pipeline_record_settle_independently(
         sName, sPipelineOperationId, {"sDockerExecId": sPipelineExecId},
     )
     assert len(_fdictJournalOperations(sName)) == 3
-    dictOutcome = terminalContainment.fnDrainSessionRecord(sessionFirst)
+    dictOutcome = terminalContainment.fdictDrainSessionRecord(sessionFirst)
     assert dictOutcome["bProvenEmpty"] is True, dictOutcome
     dictRemaining = _fdictJournalOperations(sName)
     assert len(dictRemaining) == 2
@@ -413,7 +413,7 @@ def test_two_real_terminals_and_a_pipeline_record_settle_independently(
     ).get("Running") is True, (
         "settling the first terminal must not have touched the second"
     )
-    terminalContainment.fnDrainSessionRecord(sessionSecond)
+    terminalContainment.fdictDrainSessionRecord(sessionSecond)
 
 
 # ---------------------------------------------------------------------

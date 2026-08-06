@@ -41,7 +41,7 @@ __all__ = [
     "fnSignalTerminalAbnormalExit",
     "fnTerminalInputLoop",
     "fnTerminalReadLoop",
-    "fnValidatePathWithinRoot",
+    "fsValidatePathWithinRoot",
     "fbHasAgentToken",
     "fbOriginIsLoopback",
     "fbValidateWebSocketOrigin",
@@ -79,11 +79,11 @@ from . import workflowManager
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
-    fnRunAllSteps,
-    fnRunFromStep,
-    fnRunSelectedSteps,
-    fnRunAllTests,
-    fnVerifyOnly,
+    fiRunAllSteps,
+    fiRunFromStep,
+    fiRunSelectedSteps,
+    fiRunAllTests,
+    fiVerifyOnly,
 )
 from .pipelineUtils import fsShellQuote
 from .resourceMonitor import fdictGetContainerStats
@@ -327,7 +327,7 @@ def _fnRejectControlCharactersInPath(sResolvedPath):
             )
 
 
-def fnValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
+def fsValidatePathWithinRoot(sResolvedPath, sAllowedRoot):
     """Raise 403 if sResolvedPath escapes sAllowedRoot via traversal."""
     _fnRejectControlCharactersInPath(sResolvedPath)
     sNormalized = posixpath.normpath(sResolvedPath)
@@ -347,7 +347,7 @@ def fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
     match the basename ``project.json`` (which must only be edited via
     the dedicated project routes) are rejected with HTTP 403.
 
-    Lives beside :func:`fnValidatePathWithinRoot` because every route
+    Lives beside :func:`fsValidatePathWithinRoot` because every route
     that writes caller-supplied content into the project repo must
     apply both, and route modules may not import from one another.
     ``.git/hooks/`` is code execution on the next commit; ``.vaibify/``
@@ -489,7 +489,7 @@ def _fbaFetchFallback(
     else:
         sFallback = posixpath.join(
             sWorkflowDirectory, sWorkdir, sFilePath)
-    fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT)
+    fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT)
     try:
         return connectionDocker.fbaFetchFile(
             sContainerId, sFallback, iMaxBytes=None,
@@ -580,7 +580,7 @@ async def _fnDispatchRunFrom(
 ):
     """Dispatch runFrom with the start step from the request."""
     iStartStep = _fiResolveStartStep(dictRequest, dictWorkflow)
-    await fnRunFromStep(
+    await fiRunFromStep(
         connectionDocker, sContainerId, iStartStep,
         dictWorkflow, sWorkflowPath,
         sWorkflowDirectory, fnCallback,
@@ -637,12 +637,12 @@ async def fnDispatchAction(
         sAction, sContainerId, sWorkflowPath,
     )
     if sAction == "runAll":
-        await fnRunAllSteps(
+        await fiRunAllSteps(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
             sWorkflowDirectory, fnCallback,
             dictInteractive=dictInteractive)
     elif sAction == "forceRunAll":
-        await fnRunAllSteps(
+        await fiRunAllSteps(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
             sWorkflowDirectory, fnCallback, bForceRun=True,
             dictInteractive=dictInteractive)
@@ -652,11 +652,11 @@ async def fnDispatchAction(
             dictWorkflow, sWorkflowPath, sWorkflowDirectory, fnCallback,
             dictInteractive=dictInteractive)
     elif sAction == "verify":
-        await fnVerifyOnly(
+        await fiVerifyOnly(
             connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
             sWorkflowDirectory, fnCallback)
     elif sAction == "runAllTests":
-        await fnRunAllTests(
+        await fiRunAllTests(
             connectionDocker, sContainerId, dictWorkflow,
             sWorkflowDirectory, fnCallback)
     elif sAction == "runSelected":
@@ -682,7 +682,7 @@ async def _fnDispatchSelected(
             f"Unknown sRunMode: {sRunMode!r}. "
             f"Valid values: {sorted(SET_VALID_RUN_MODES)}"
         )
-    await fnRunSelectedSteps(
+    await fiRunSelectedSteps(
         connectionDocker, sContainerId,
         listIndices,
         dictWorkflow, dictWorkflowPathCache.get(sContainerId),
@@ -791,7 +791,7 @@ async def fnPipelineMessageLoop(
       ``pipelineRunner`` every ``F_WS_HEARTBEAT_INTERVAL`` seconds
       while a single command is running. Pure keepalive: clients must
       ignore it (frontend filter in ``scriptPipelineRunner.js``,
-      ``vaibify-do`` filter in ``_fnStreamWsEvents``).
+      ``vaibify-do`` filter in ``_fiStreamWsEvents``).
     """
     from .pipelineRunner import (
         fdictCreateInteractiveContext,
@@ -1376,7 +1376,7 @@ async def fnRunTerminalSession(
     finally:
         taskReader.cancel()
         await asyncio.to_thread(
-            terminalContainment.fnDrainSessionRecord, session,
+            terminalContainment.fdictDrainSessionRecord, session,
         )
         session.fnClose()
         dictTerminalSessions.pop(sSessionId, None)
@@ -1629,7 +1629,7 @@ def _fdictInvertDeps(dictUpToDown, iStepCount):
 def _fsValidateConnectWorkflowPath(sWorkflowPath):
     """Normalize and validate a connect-supplied workflow path."""
     sNormalized = posixpath.normpath(sWorkflowPath)
-    fnValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)
+    fsValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)
     if not sNormalized.endswith(".json"):
         raise HTTPException(
             400, "sWorkflowPath must point at a .json file")
@@ -1674,7 +1674,7 @@ def _fnCheckSupervisedIntervalAtConnect(
         )
         sRecorded = dictSupervision.get("sLastManifestDigest") or ""
         if sRecorded and sRecorded != sLiveDigest:
-            attributionLog.fnAppendFlag(
+            attributionLog.fdictAppendFlag(
                 filesRepo, "unsupervised-gap",
                 "manifest digest changed while the hub was not "
                 "watching (" + sRecorded + " -> " + sLiveDigest + ")",
@@ -1731,7 +1731,7 @@ async def fdictHandleConnect(
             dictCtx, sContainerId,
             dictWorkflow.get("_sSourceFingerprint", ""),
         )
-        if workflowManager.fnMigrateArchiveToTracking(dictWorkflow):
+        if workflowManager.fbMigrateArchiveToTracking(dictWorkflow):
             dictCtx["save"](sContainerId, dictWorkflow)
         if workflowManager.fbMigrateModifiedFilesToRepoRelative(
             dictWorkflow,
@@ -1890,7 +1890,7 @@ def fbOriginIsLoopback(sOrigin):
     """Return True when an Origin header names an http(s) loopback host.
 
     A prefix comparison would accept ``http://localhost.evil.example``
-    — the same prefix-attack class ``fnValidatePathWithinRoot`` already
+    — the same prefix-attack class ``fsValidatePathWithinRoot`` already
     defends against — so the origin is parsed and its host must equal a
     loopback name exactly. ``urlsplit`` strips the brackets from an
     IPv6 authority, hence the bare ``::1``.
@@ -1961,7 +1961,7 @@ def _fnRegisterStaticFiles(app, dictCtx):
     """Register index page, token endpoint, and static file mount."""
 
     @app.get("/")
-    async def fnServeIndex():
+    async def fresponseServeIndex():
         sIndexPath = os.path.join(STATIC_DIRECTORY, "index.html")
         with open(sIndexPath, "r") as fileIndex:
             sContent = fileIndex.read()
@@ -1974,7 +1974,7 @@ def _fnRegisterStaticFiles(app, dictCtx):
         )
 
     @app.post("/api/bootstrap")
-    async def fnBootstrapSession(request: Request):
+    async def fdictBootstrapSession(request: Request):
         """Exchange a launch capability for a per-browser credential.
 
         The capability is carried in the browser's URL fragment and
@@ -2006,7 +2006,7 @@ def _fnRegisterStaticFiles(app, dictCtx):
         return {"sSessionId": sSessionId, "sCredential": sCredential}
 
     @app.post("/api/transfer")
-    async def fnRedeemTransferCapability(request: Request):
+    async def fresponseRedeemTransferCapability(request: Request):
         """Redeem a host-minted transfer capability (design §6, slice 5).
 
         The commit half of ``vaibify open``: the capability was minted
@@ -2083,9 +2083,9 @@ from .fileStatusManager import (  # noqa: F401
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     flistStepRemoteFiles,
-    fnCollectMarkerPathsByStep,
-    fnCollectScriptPathsByStep,
-    fnMaybeAutoArchive,
+    fdictCollectMarkerPathsByStep,
+    fdictCollectScriptPathsByStep,
+    fbMaybeAutoArchive,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
@@ -2119,9 +2119,9 @@ _DICT_ROUTE_RE_EXPORTS = {
     "_flistExtractKillPatterns": "routes.pipelineRoutes",
     "_flistExtractStepDirectories": "routes.pipelineRoutes",
     "_flistFindCustomTestFiles": "routes.pipelineRoutes",
-    "_fnApplyAllMarkerCategories": "routes.pipelineRoutes",
-    "_fnApplyExternalTestResults": "routes.pipelineRoutes",
-    "_fnApplyMarkerCategory": "routes.pipelineRoutes",
+    "_fbApplyAllMarkerCategories": "routes.pipelineRoutes",
+    "_fbApplyExternalTestResults": "routes.pipelineRoutes",
+    "_fbApplyMarkerCategory": "routes.pipelineRoutes",
     "_fnMarkPipelineStopped": "routes.pipelineRoutes",
     "_fsetExtractRegisteredTestFiles": "routes.pipelineRoutes",
     # syncRoutes
@@ -2353,7 +2353,7 @@ def _fnRegisterLastResortExceptionHandler(app):
     from fastapi.responses import JSONResponse
 
     @app.exception_handler(Exception)
-    async def fnHandleUnexpectedRouteException(request, exc):
+    async def fresponseHandleUnexpectedRouteException(request, exc):
         logger.error(
             "Unhandled exception on %s %s",
             request.method, request.url.path, exc_info=exc,

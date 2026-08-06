@@ -40,7 +40,7 @@ __all__ = [
     "fnExpireCapabilitiesForSession",
     "ftMintDetachedSessionRecord",
     "fnDiscardSessionRecord",
-    "fnRevokeSessionById",
+    "fbRevokeSessionById",
     "fnStoreTransferResult",
     "fbValidateCredential",
     "fsSessionIdForCredential",
@@ -391,7 +391,7 @@ def fnDiscardSessionRecord(dictStore, sCredential):
         dictStore.get("dictSessionsByCredential", {}).pop(sCredential, None)
 
 
-def fnRevokeSessionById(dictStore, sSessionId):
+def fbRevokeSessionById(dictStore, sSessionId):
     """Revoke every ACTIVE record of a session id; return True if any."""
     if not sSessionId:
         return False

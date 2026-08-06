@@ -889,7 +889,7 @@ var VaibifyProofTab = (function () {
     return {
         fnSetContainerId: fnSetContainerId,
         fnRender: fnRender,
-        fnGenerateTemplate: _fnHandleGenerateTemplate,
+        fdictGenerateTemplate: _fnHandleGenerateTemplate,
         fdictGetL3Snapshot: fdictGetL3Snapshot,
     };
 })();

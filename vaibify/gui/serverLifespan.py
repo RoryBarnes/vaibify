@@ -118,7 +118,7 @@ F_CONTAINER_SWEEP_INTERVAL_SECONDS = 60.0
 def _fnRegisterPeriodicContainerSweep(app, dictCtx, fInterval=None):
     """Install a background asyncio task that evicts caches on a timer.
 
-    Today ``fnSweepAllContainerCaches`` only fires on
+    Today ``fsetSweepAllContainerCaches`` only fires on
     ``GET /api/registry``; a user who never reopens the picker leaves
     every per-container cache dormant. This loop calls the sweep every
     ``fInterval`` seconds so eviction tracks reality even on idle hubs.
@@ -144,7 +144,7 @@ def _fnRegisterPeriodicContainerSweep(app, dictCtx, fInterval=None):
 
 
 async def _fnPeriodicContainerSweepLoop(dictCtx, fInterval):
-    """Run ``fnSweepAllContainerCaches`` forever on a fixed cadence.
+    """Run ``fsetSweepAllContainerCaches`` forever on a fixed cadence.
 
     Exits cleanly on ``CancelledError`` (lifespan shutdown). Any other
     exception is logged but the loop continues — a transient docker
@@ -166,7 +166,7 @@ async def _fnPeriodicContainerSweepLoop(dictCtx, fInterval):
 
 async def _fnRunOneContainerSweep(dictCtx):
     """Execute a single sweep tick against the current running set."""
-    from .fileStatusManager import fnSweepAllContainerCaches
+    from .fileStatusManager import fsetSweepAllContainerCaches
     connectionDocker = dictCtx.get("docker") if dictCtx else None
     if connectionDocker is None:
         return
@@ -183,7 +183,7 @@ async def _fnRunOneContainerSweep(dictCtx):
     listIds = [
         dictRow.get("sContainerId", "") for dictRow in listContainers
     ]
-    fnSweepAllContainerCaches(
+    fsetSweepAllContainerCaches(
         dictCtx, [sId for sId in listIds if sId],
     )
 

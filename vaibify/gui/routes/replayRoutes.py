@@ -122,7 +122,7 @@ def _fnRegisterDeclareAiModel(app, dictCtx):
 
     @fnAgentAction("declare-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/declare")
-    async def fnDeclareAiModel(sContainerId: str, request: dict):
+    async def fdictDeclareAiModel(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -144,7 +144,7 @@ def _fnRegisterRemoveAiModel(app, dictCtx):
 
     @fnAgentAction("remove-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/remove")
-    async def fnRemoveAiModel(sContainerId: str, request: dict):
+    async def fdictRemoveAiModel(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -207,7 +207,7 @@ def _fnRegisterReadProjectContext(app, dictCtx):
 
     @fnAgentAction("read-project-context")
     @app.get("/api/workflow/{sContainerId}/project-context")
-    async def fnReadProjectContext(sContainerId: str):
+    async def fdictReadProjectContext(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -226,7 +226,7 @@ def _fnRegisterUpdateProjectContext(app, dictCtx):
 
     @fnAgentAction("update-project-context")
     @app.put("/api/workflow/{sContainerId}/project-context")
-    async def fnUpdateProjectContext(sContainerId: str, request: dict):
+    async def fdictUpdateProjectContext(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -248,7 +248,7 @@ def _fnRegisterContextTemplate(app, dictCtx):
 
     @fnAgentAction("generate-project-context-template")
     @app.post("/api/workflow/{sContainerId}/project-context/template")
-    async def fnGenerateContextTemplate(sContainerId: str):
+    async def fdictGenerateContextTemplate(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -339,7 +339,7 @@ def _fnRegisterContextImport(app, dictCtx):
     """
 
     @app.post("/api/workflow/{sContainerId}/project-context/import")
-    async def fnImportProjectContext(
+    async def fdictImportProjectContext(
         sContainerId: str, request: dict, requestHttp: Request,
     ):
         _fnRejectAgentTokenLane(requestHttp)
@@ -424,7 +424,7 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
 
     @fnAgentAction("configure-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/configure")
-    async def fnConfigurePromptRecord(sContainerId: str, request: dict):
+    async def fdictConfigurePromptRecord(sContainerId: str, request: dict):
         # Late-bound so an install of vaibify[replay] (or a test
         # patch) takes effect without restarting the hub.
         from .. import transcriptSanitizer
@@ -459,7 +459,7 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
 
     @fnAgentAction("capture-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/capture")
-    async def fnCapturePromptRecord(sContainerId: str):
+    async def fdictCapturePromptRecord(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -493,7 +493,7 @@ def _fnRegisterPromptRecordApprove(app, dictCtx):
         "/api/workflow/{sContainerId}/prompt-record/"
         "approve-first-capture"
     )
-    async def fnApproveFirstCapture(sContainerId: str):
+    async def fdictApproveFirstCapture(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -513,7 +513,7 @@ def _fnRegisterPromptRecordStatus(app, dictCtx):
 
     @fnAgentAction("view-prompt-record-status")
     @app.get("/api/workflow/{sContainerId}/prompt-record/status")
-    async def fnPromptRecordStatus(sContainerId: str):
+    async def fdictPromptRecordStatus(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -576,7 +576,7 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
     """
 
     @app.post("/api/workflow/{sContainerId}/supervision/configure")
-    async def fnConfigureSupervision(sContainerId: str, request: dict):
+    async def fdictConfigureSupervision(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -633,7 +633,7 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
 
     @fnAgentAction("declare-personal-layer")
     @app.post("/api/workflow/{sContainerId}/personal-layer/declare")
-    async def fnDeclarePersonalLayer(sContainerId: str, request: dict):
+    async def fdictDeclarePersonalLayer(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -713,7 +713,7 @@ def _fnRegisterHashPersonalLayerFile(app, dictCtx):
     import asyncio
 
     @app.post("/api/workflow/{sContainerId}/personal-layer/hash")
-    async def fnHashPersonalLayerFile(
+    async def fdictHashPersonalLayerFile(
         sContainerId: str, request: dict, requestHttp: Request,
     ):
         _fnRejectAgentTokenLane(requestHttp)

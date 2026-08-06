@@ -24,7 +24,7 @@ def test_v10_to_v11_drops_the_pre_rename_level_key():
         "iAICSLevel": 3,
         "listSteps": [],
     }
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert "iAICSLevel" not in dictWorkflow
     assert dictWorkflow["iWorkflowSchemaVersion"] == (
         workflowMigrations.I_CURRENT_WORKFLOW_VERSION
@@ -43,7 +43,7 @@ def test_v10_to_v11_does_not_carry_the_value_to_the_new_key():
         "iAICSLevel": 3,
         "listSteps": [],
     }
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert "iProofLevel" not in dictWorkflow
 
 
@@ -53,7 +53,7 @@ def test_v10_to_v11_is_a_no_op_when_the_legacy_key_is_absent():
         "iWorkflowSchemaVersion": 10,
         "listSteps": [{"sName": "A", "sDirectory": "A"}],
     }
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert "iAICSLevel" not in dictWorkflow
     assert "iProofLevel" not in dictWorkflow
     assert dictWorkflow["iWorkflowSchemaVersion"] == (
@@ -69,7 +69,7 @@ def test_legacy_document_reaches_v11_through_the_whole_chain():
     the oldest thing on disk and must survive every migrator in order.
     """
     dictWorkflow = {"iAICSLevel": 2, "listSteps": []}
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert "iAICSLevel" not in dictWorkflow
     assert dictWorkflow["iWorkflowSchemaVersion"] == (
         workflowMigrations.I_CURRENT_WORKFLOW_VERSION

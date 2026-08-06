@@ -1,7 +1,7 @@
 """Schema versioning and migrations for project.json.
 
 Each persisted workflow file carries an integer version under the
-``iWorkflowSchemaVersion`` top-level key. ``fnApplyMigrations`` runs
+``iWorkflowSchemaVersion`` top-level key. ``fiApplyMigrations`` runs
 the registered migrators in order until the dict is at
 ``I_CURRENT_WORKFLOW_VERSION``. Migrations are pure transformations of
 the in-memory dict and need not be idempotent — the version field
@@ -32,12 +32,12 @@ __all__ = [
     "fbWorkflowNeedsMigration",
     "fdictMigrateTestFormat",
     "fiGetSchemaVersion",
-    "fnApplyMigrations",
+    "fiApplyMigrations",
     "fnEnsureStepIds",
     "fnRewritePositionalToSymbolic",
     "fnMigrateAbsoluteContainerPaths",
     "fnMigrateAbsoluteTestPaths",
-    "fnMigrateArchiveToTracking",
+    "fbMigrateArchiveToTracking",
     "fnMigrateRunEnabledKey",
     "fnNormalizeInteractiveFlags",
     "fnNormalizeSceneReferences",
@@ -69,7 +69,7 @@ def fnStampCurrentVersion(dictWorkflow):
     dictWorkflow[S_VERSION_KEY] = I_CURRENT_WORKFLOW_VERSION
 
 
-def fnApplyMigrations(dictWorkflow, sProjectRepoPath=""):
+def fiApplyMigrations(dictWorkflow, sProjectRepoPath=""):
     """Run every needed migration in order; stamp the new version.
 
     ``sProjectRepoPath`` provides container-side context for path
@@ -197,7 +197,7 @@ def fnNormalizeSceneReferences(dictStep):
         ]
 
 
-def fnMigrateArchiveToTracking(dictWorkflow):
+def fbMigrateArchiveToTracking(dictWorkflow):
     """One-shot: promote legacy 'archive' categories to tracking flags.
 
     Before the badge rework, each output file carried an "archive"
@@ -463,16 +463,16 @@ def _fnMigrateV0ToV1(dictWorkflow, sProjectRepoPath):
     """Apply the legacy unconditional migrations.
 
     The two legacy helpers that use the project repo root
-    (``fnMigrateArchiveToTracking``, ``fbMigrateModifiedFilesToRepoRelative``)
+    (``fbMigrateArchiveToTracking``, ``fbMigrateModifiedFilesToRepoRelative``)
     historically read it from ``dictWorkflow["sProjectRepoPath"]``.
-    During load that key is not yet populated; ``fnApplyMigrations``
+    During load that key is not yet populated; ``fiApplyMigrations``
     threads the root in via ``sProjectRepoPath`` instead, so this stage
     sets it on the dict for the duration of the legacy calls and
     restores the prior value afterwards.
     """
     fnMigrateRunEnabledKey(dictWorkflow)
     with _fcontextTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
-        fnMigrateArchiveToTracking(dictWorkflow)
+        fbMigrateArchiveToTracking(dictWorkflow)
         fbMigrateModifiedFilesToRepoRelative(dictWorkflow)
     for dictStep in dictWorkflow.get("listSteps", []):
         fdictMigrateTestFormat(dictStep)
@@ -557,7 +557,7 @@ def fnRewritePositionalToSymbolic(dictWorkflow):
     """
     listSteps = dictWorkflow.get("listSteps", []) or []
 
-    def fnReplace(resultMatch):
+    def fsReplaceMatch(resultMatch):
         iIndex = int(resultMatch.group(1)) - 1
         sVariable = resultMatch.group(2)
         if 0 <= iIndex < len(listSteps):
@@ -578,7 +578,7 @@ def fnRewritePositionalToSymbolic(dictWorkflow):
             if not listValues:
                 continue
             dictStep[sKey] = [
-                re.sub(r"\{Step(\d+)\.([^}]+)\}", fnReplace, s)
+                re.sub(r"\{Step(\d+)\.([^}]+)\}", fsReplaceMatch, s)
                 if isinstance(s, str) else s
                 for s in listValues
             ]

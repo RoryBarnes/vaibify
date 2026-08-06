@@ -62,8 +62,8 @@ _LIST_CATEGORY_KEYS = (
 __all__ = [
     "fdictCollectOutputPathsByStep",
     "fdictCollectInputPathsByStep",
-    "fnCollectScriptPathsByStep",
-    "fnCollectMarkerPathsByStep",
+    "fdictCollectScriptPathsByStep",
+    "fdictCollectMarkerPathsByStep",
     "fsMarkerNameFromStepDirectory",
     "fsWorkflowSlugFromPath",
     "fbReconcileUpstreamFlags",
@@ -72,7 +72,7 @@ __all__ = [
     "fbStepTimingClean",
     "fbStepUserApproved",
     "flistStepRemoteFiles",
-    "fnMaybeAutoArchive",
+    "fbMaybeAutoArchive",
 ]
 
 def fsMarkerNameFromStepDirectory(sStepDirectory):
@@ -96,7 +96,7 @@ def fsWorkflowSlugFromPath(sWorkflowPath):
     return sBase
 
 
-def fnCollectMarkerPathsByStep(
+def fdictCollectMarkerPathsByStep(
     dictWorkflow, sProjectRepoPath, sWorkflowPath,
 ):
     """Return {iStepIndex: sMarkerPath} for each step with a directory.
@@ -138,7 +138,7 @@ _T_DATA_SCRIPT_KEYS = ("saDataCommands", "saSetupCommands", "saCommands")
 _T_PLOT_SCRIPT_KEYS = ("saPlotCommands",)
 
 
-def fnCollectScriptPathsByStep(dictWorkflow):
+def fdictCollectScriptPathsByStep(dictWorkflow):
     """Return {iStepIndex: {"data": [paths...], "plot": [paths...]}}."""
     dictResult = {}
     for iIndex, dictStep in enumerate(
@@ -1216,7 +1216,7 @@ def _fdictBuildScriptStatus(
     manifest short-circuit reads container truth instead of probing
     the host filesystem at a container path.
     """
-    dictScriptsByStep = fnCollectScriptPathsByStep(dictWorkflow)
+    dictScriptsByStep = fdictCollectScriptPathsByStep(dictWorkflow)
     dictOutputsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
@@ -1622,7 +1622,7 @@ def _flistEvictAbsentKeys(dictAll, setKeysToKeep):
 # Authoritative list of every container-id-keyed dict that lives on
 # the shared ``dictCtx`` and grows once per container forever unless
 # swept. Two side effects:
-#   1. ``fnSweepAllContainerCaches`` iterates this list to evict stale
+#   1. ``fsetSweepAllContainerCaches`` iterates this list to evict stale
 #      keys from each dict in lockstep with the running-container set.
 #   2. ``fdictBuildContext`` in ``pipelineServer`` initializes most of
 #      these keys eagerly. ``dictManifestShaCache`` is the exception:
@@ -1650,7 +1650,7 @@ _LIST_CONTAINER_KEYED_CACHES = (
 )
 
 
-def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
+def fsetSweepAllContainerCaches(dictCtx, listRunningContainers):
     """Fan eviction across every per-container cache vaibify keeps.
 
     Without one coordinator the docker-substrate cache, the state-lock
@@ -1837,7 +1837,7 @@ def flistStepRemoteFiles(dictWorkflow, iStepIndex, sService):
     return listResult
 
 
-async def _fnPushOverleafForAutoArchive(
+async def _fbPushOverleafForAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, listFiles,
 ):
     """Push files to Overleaf for the auto-archive flow."""
@@ -1863,7 +1863,7 @@ async def _fnPushOverleafForAutoArchive(
     return True
 
 
-async def _fnArchiveZenodoForAutoArchive(
+async def _fbArchiveZenodoForAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, listFiles,
 ):
     """Archive files to Zenodo for the auto-archive flow."""
@@ -2030,7 +2030,7 @@ async def _fbDispatchOverleafAutoPush(
     if not listOverleaf:
         return False
     try:
-        return await _fnPushOverleafForAutoArchive(
+        return await _fbPushOverleafForAutoArchive(
             connectionDocker, sContainerId, dictWorkflow, listOverleaf,
         )
     except Exception as error:
@@ -2054,7 +2054,7 @@ async def _fbDispatchZenodoAutoArchive(
     if not listZenodo:
         return False
     try:
-        return await _fnArchiveZenodoForAutoArchive(
+        return await _fbArchiveZenodoForAutoArchive(
             connectionDocker, sContainerId, dictWorkflow, listZenodo,
         )
     except Exception as error:
@@ -2065,7 +2065,7 @@ async def _fbDispatchZenodoAutoArchive(
         return False
 
 
-async def fnMaybeAutoArchive(
+async def fbMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     iProofLevelBefore,
 ):

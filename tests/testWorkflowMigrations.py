@@ -6,7 +6,7 @@ from vaibify.gui.workflowMigrations import (
     S_VERSION_KEY,
     fbWorkflowNeedsMigration,
     fiGetSchemaVersion,
-    fnApplyMigrations,
+    fiApplyMigrations,
     fnMigrateAbsoluteContainerPaths,
     fnStampCurrentVersion,
 )
@@ -93,7 +93,7 @@ def test_fnStampCurrentVersion_sets_field():
 
 def test_fnApplyMigrations_brings_legacy_to_current():
     dictWorkflow = _fdictBuildLegacyV0Fixture()
-    iVersion = fnApplyMigrations(
+    iVersion = fiApplyMigrations(
         dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
     )
     assert iVersion == I_CURRENT_WORKFLOW_VERSION
@@ -102,7 +102,7 @@ def test_fnApplyMigrations_brings_legacy_to_current():
 
 def test_v0_to_v1_renames_bEnabled_and_creates_dictTests():
     dictWorkflow = _fdictBuildLegacyV0Fixture()
-    fnApplyMigrations(dictWorkflow)
+    fiApplyMigrations(dictWorkflow)
     dictStep = dictWorkflow["listSteps"][0]
     assert "bEnabled" not in dictStep
     assert dictStep["bRunEnabled"] is True
@@ -111,7 +111,7 @@ def test_v0_to_v1_renames_bEnabled_and_creates_dictTests():
 
 def test_v1_to_v2_strips_absolute_workspace_prefix_from_step_dir():
     dictWorkflow = _fdictBuildLegacyV0Fixture()
-    fnApplyMigrations(
+    fiApplyMigrations(
         dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
     )
     dictStep = dictWorkflow["listSteps"][0]
@@ -123,7 +123,7 @@ def test_v1_to_v2_strips_absolute_workspace_prefix_from_step_dir():
 def test_v1_to_v2_infers_repo_root_when_context_missing():
     """Migrator strips legacy /workspace/<repo>/ prefix even without sRepoPath."""
     dictWorkflow = _fdictBuildLegacyV0Fixture()
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="")
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["sDirectory"] == "Analysis"
     assert dictStep["saOutputDataFiles"] == ["out.npz"]
@@ -153,7 +153,7 @@ def test_v0_to_v1_archive_tracking_uses_supplied_repo_path():
             },
         ],
     }
-    fnApplyMigrations(
+    fiApplyMigrations(
         dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
     )
     listKeys = list(dictWorkflow.get("dictSyncStatus", {}).keys())
@@ -201,7 +201,7 @@ def test_v4_to_v5_strips_absolute_prefix_from_test_paths():
             },
         ],
     }
-    fnApplyMigrations(
+    fiApplyMigrations(
         dictWorkflow, sProjectRepoPath="/workspace/SampleProject",
     )
     dictTests = dictWorkflow["listSteps"][0]["dictTests"]
@@ -220,7 +220,7 @@ def test_fnApplyMigrations_is_no_op_on_current_version():
     dictWorkflow = _fdictBuildModernV2Fixture()
     dictBefore = dict(dictWorkflow)
     listStepsBefore = [dict(s) for s in dictWorkflow["listSteps"]]
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert dictWorkflow[S_VERSION_KEY] == I_CURRENT_WORKFLOW_VERSION
     assert dictWorkflow["sPlotDirectory"] == dictBefore["sPlotDirectory"]
     assert dictWorkflow["listSteps"][0] == listStepsBefore[0]
@@ -293,7 +293,7 @@ def test_ensure_step_ids_falls_back_for_nameless_step():
 def test_v5_to_v6_migration_assigns_ids_and_bumps_version():
     dictWorkflow = _fdictWorkflowWithNames(["Alpha", "Beta"])
     dictWorkflow[S_VERSION_KEY] = 5
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert dictWorkflow[S_VERSION_KEY] == I_CURRENT_WORKFLOW_VERSION
     assert [s["sStepId"] for s in dictWorkflow["listSteps"]] == [
         "alpha", "beta",
@@ -335,7 +335,7 @@ def test_rewrite_positional_is_idempotent_and_leaves_symbolic():
 
 def test_full_migration_from_v0_produces_symbolic_tokens():
     """The whole chain: a legacy positional workflow migrates to
-    stable ids + symbolic tokens in one fnApplyMigrations pass."""
+    stable ids + symbolic tokens in one fiApplyMigrations pass."""
     dictWorkflow = {
         "sPlotDirectory": "Plot",
         "listSteps": [
@@ -345,7 +345,7 @@ def test_full_migration_from_v0_produces_symbolic_tokens():
              "saPlotCommands": ["plot {Step01.samples}"]},
         ],
     }
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert dictWorkflow["listSteps"][0]["sStepId"] == "generate-samples"
     assert dictWorkflow["listSteps"][0]["saOutputDataFiles"] == [
         "samples.npy",
@@ -441,7 +441,7 @@ def test_ai_declaration_step_kind_survives_migration_run():
     """Migrators don't touch ``sStepKind`` or ``sDeclarationFile``.
 
     A user-added ai-declaration step must round-trip through
-    ``fnApplyMigrations`` unchanged; otherwise the L2 gate would drop
+    ``fiApplyMigrations`` unchanged; otherwise the L2 gate would drop
     every time the schema version bumps.
     """
     dictWorkflow = {
@@ -458,7 +458,7 @@ def test_ai_declaration_step_kind_survives_migration_run():
             },
         ],
     }
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["sStepKind"] == "ai-declaration"
     assert dictStep["sDeclarationFile"] == "AI_USAGE.md"
@@ -534,7 +534,7 @@ def test_v7_to_v8_renames_data_files_and_merges_legacy_outputs():
             },
         ],
     }
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["saOutputDataFiles"] == [
         "samples.npy", "shared.csv", "extra.log",
@@ -563,7 +563,7 @@ def test_v7_to_v8_preserves_existing_new_key_entries():
             },
         ],
     }
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert dictWorkflow["listSteps"][0]["saOutputDataFiles"] == [
         "already.npz", "late.npy",
     ]
@@ -587,7 +587,7 @@ def test_current_version_document_is_untouched_by_reapplied_migrations():
         ],
     }
     listStepsBefore = [dict(s) for s in dictWorkflow["listSteps"]]
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert dictWorkflow["listSteps"][0] == listStepsBefore[0]
 
 
@@ -605,7 +605,7 @@ def test_v8_to_v9_seeds_input_declaration_fields():
             },
         ],
     }
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["saInputDataFiles"] == []
     assert dictStep["bNoInputData"] is False
@@ -630,7 +630,7 @@ def test_v8_to_v9_preserves_existing_declarations():
             },
         ],
     }
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     dictStep = dictWorkflow["listSteps"][0]
     assert dictStep["saInputDataFiles"] == ["data/raw.csv"]
     assert dictStep["bNoInputData"] is True
@@ -661,7 +661,7 @@ def test_v9_to_v10_coerces_hand_edited_interactive_flags():
     dictWorkflow = _fdictWorkflowWithInteractiveFlags(
         [None, "true", "false", 1],
     )
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     listFlags = [
         dictStep["bInteractive"]
         for dictStep in dictWorkflow["listSteps"]
@@ -680,6 +680,6 @@ def test_v9_to_v10_leaves_booleans_and_absent_flags_alone():
              "bInteractive": True},
         ],
     }
-    fnApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
+    fiApplyMigrations(dictWorkflow, sProjectRepoPath="/workspace/X")
     assert "bInteractive" not in dictWorkflow["listSteps"][0]
     assert dictWorkflow["listSteps"][1]["bInteractive"] is True

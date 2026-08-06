@@ -20,7 +20,7 @@ def _fnRegisterScriptRoutes(app, dictCtx):
     """Register script listing and scanning routes."""
 
     @app.get("/api/sync/{sContainerId}/scripts")
-    async def fnGetScripts(sContainerId: str):
+    async def flistGetScripts(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -45,7 +45,7 @@ def _fnRegisterScriptRoutes(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"
     )
-    async def fnScanScripts(
+    async def fdictScanScripts(
         sContainerId: str, iStepIndex: int
     ):
         dictCtx["require"]()
@@ -75,7 +75,7 @@ def _fnRegisterScriptRoutes(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/scan-dependencies"
     )
-    async def fnScanDependencies(
+    async def fdictHandleScanDependencies(
         sContainerId: str,
         iStepIndex: int,
         request: DependencyScanRequest,

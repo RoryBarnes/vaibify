@@ -27,7 +27,7 @@ def _fnRegisterMonitor(app):
     """Register GET /api/monitor route."""
 
     @app.get("/api/monitor/{sContainerId}")
-    async def fnGetMonitorStats(sContainerId: str):
+    async def fdictGetMonitorStats(sContainerId: str):
         return await asyncio.to_thread(
             fdictGetContainerStats, sContainerId,
         )
@@ -37,7 +37,7 @@ def _fnRegisterRuntimeInfo(app, dictCtx):
     """Register GET /api/runtime endpoint."""
 
     @app.get("/api/runtime")
-    async def fnGetRuntimeInfo():
+    async def fdictGetRuntimeInfo():
         return await asyncio.to_thread(fdictDetectDockerRuntime)
 
 
@@ -45,7 +45,7 @@ def _fnRegisterUserInfo(app):
     """Register GET /api/user route."""
 
     @app.get("/api/user")
-    async def fnGetUser():
+    async def fdictGetUser():
         return {
             "sUserName": getattr(app.state, "sTerminalUser", None) or "User"
         }
@@ -300,7 +300,7 @@ def _fnRegisterContainerReady(app, dictCtx):
     """Register GET /api/containers/{id}/ready readiness probe."""
 
     @app.get("/api/containers/{sContainerId}/ready")
-    async def fnContainerReady(sContainerId: str):
+    async def fdictContainerReady(sContainerId: str):
         dictCtx["require"]()
         return await asyncio.to_thread(
             _fdictProbeContainerReadiness,
@@ -329,7 +329,7 @@ def _fnRegisterContainerIsolation(app, dictCtx):
     """
 
     @app.get("/api/containers/{sContainerId}/isolation")
-    async def fnContainerIsolation(sContainerId: str):
+    async def fdictContainerIsolation(sContainerId: str):
         dictCtx["require"]()
         return await asyncio.to_thread(
             _fdictReadIsolationFlag, sContainerId,
@@ -346,11 +346,11 @@ def _fnRegisterDockerStatus(app, dictCtx):
     """
 
     @app.get("/api/system/docker-status")
-    async def fnGetDockerStatus():
+    async def fdictHandleGetDockerStatus():
         return await asyncio.to_thread(fdictGetDockerStatus)
 
     @app.post("/api/system/docker-status/retry")
-    async def fnPostDockerStatusRetry():
+    async def fdictPostDockerStatusRetry():
         return await asyncio.to_thread(
             fdictRetryDockerConnection, dictCtx,
         )

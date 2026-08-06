@@ -28,7 +28,7 @@ first pass. The completion stamp is persisted to
 ``~/.vaibify/reverifyState.json`` so a restart RESUMES the cadence
 instead of restarting it, and so the dashboard can say "never run"
 instead of leaving a stale per-service age to imply otherwise.
-:func:`fnRunReverifyOnce` is a pure function of its inputs so tests
+:func:`fdictRunReverifyOnce` is a pure function of its inputs so tests
 can drive a single iteration without touching the event loop.
 """
 
@@ -65,7 +65,7 @@ __all__ = [
     "fnRecordLastReverifyIso",
     "fnWriteSyncStatus",
     "fdictRunReverifyForWorkflow",
-    "fnRunReverifyOnce",
+    "fdictRunReverifyOnce",
     "fnScheduleReverify",
     "fsArxivCacheDir",
     "fsReadLastReverifyIso",
@@ -568,7 +568,7 @@ def _fsRedactError(sMessage):
     return overleafMirror.fsRedactStderr(sRedacted)
 
 
-def fnRunReverifyOnce(dictCtx, listWorkflows, sNowIso=None):
+def fdictRunReverifyOnce(dictCtx, listWorkflows, sNowIso=None):
     """Run one scheduler iteration; return the aggregated report.
 
     ``listWorkflows`` entries are either bare workflow dicts (legacy
@@ -749,7 +749,7 @@ async def _fnReverifyLoop(dictCtx, fHoursCadence):
         listWorkflows = _flistEnumerateWorkflows(dictCtx)
         try:
             await asyncio.to_thread(
-                fnRunReverifyOnce, dictCtx, listWorkflows,
+                fdictRunReverifyOnce, dictCtx, listWorkflows,
             )
         except Exception:
             continue

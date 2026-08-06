@@ -52,12 +52,12 @@ def _fdictWorkflow(iSteps=2):
 # ---------------------------------------------------------------
 
 
-def test_fiRunPipeline_calls_fnRunAllSteps_when_neither_step_nor_from():
+def test_fiRunPipeline_calls_fiRunAllSteps_when_neither_step_nor_from():
     from vaibify.cli import commandRun
     mockRunAll = AsyncMock(return_value=0)
     dictWorkflow = _fdictWorkflow(2)
     with patch(
-        "vaibify.gui.pipelineRunner.fnRunAllSteps", mockRunAll,
+        "vaibify.gui.pipelineRunner.fiRunAllSteps", mockRunAll,
     ), patch.object(
         commandRun, "_ftLoadFirstContainerWorkflow",
         return_value=("/workspace/wf.json", dictWorkflow),
@@ -76,7 +76,7 @@ def test_fiRunPipeline_calls_fnRunFromStep_when_iFrom():
     mockFromStep = AsyncMock(return_value=0)
     dictWorkflow = _fdictWorkflow(2)
     with patch(
-        "vaibify.gui.pipelineRunner.fnRunFromStep", mockFromStep,
+        "vaibify.gui.pipelineRunner.fiRunFromStep", mockFromStep,
     ), patch.object(
         commandRun, "_ftLoadFirstContainerWorkflow",
         return_value=("/workspace/wf.json", dictWorkflow),
@@ -178,7 +178,7 @@ def test_fiRunSingleStep_valid_step_runs_selected():
         ".fdictLoadWorkflowFromContainer",
         return_value=_fdictWorkflow(2),
     ), patch(
-        "vaibify.gui.pipelineRunner.fnRunSelectedSteps", mockSelected,
+        "vaibify.gui.pipelineRunner.fiRunSelectedSteps", mockSelected,
     ):
         iResult = commandRun._fiRunSingleStep(
             _fMockDocker(), "ctn", 2, "/workspace",

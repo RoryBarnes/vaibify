@@ -15,7 +15,7 @@ def _fnHoldLockInChildProcess(sTempDir, sProjectName, iPort, eventReady):
     """Child: acquire the lock and block until the parent sets event."""
     import vaibify.config.containerLock as childLockModule
     childLockModule._S_LOCK_DIRECTORY = sTempDir
-    fileHandleChildLock = childLockModule.fnAcquireContainerLock(
+    fileHandleChildLock = childLockModule.ffileAcquireContainerLock(
         sProjectName, iPort,
     )
     eventReady.wait(timeout=10)

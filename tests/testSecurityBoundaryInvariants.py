@@ -26,7 +26,7 @@ The four classes, and why the standing suite does not see them:
    fake fails closed on its ordinary exec API but not on its streamed
    exec API.
 
-4. ``workflowMigrations.fnApplyMigrations`` unconditionally stamps the
+4. ``workflowMigrations.fiApplyMigrations`` unconditionally stamps the
    current version at the end, silently DOWNGRADING a future-version
    workflow. ``testFutureSchemaVersionIsNotSilentlyDowngraded`` pins it.
 
@@ -635,7 +635,7 @@ def testFutureSchemaVersionIsNotSilentlyDowngraded():
     ``falsification`` marker so it does not claim a second, redundant
     registry entry for the identical mutant.
 
-    THE GENERAL RULE. ``fnApplyMigrations`` runs forward migrators until
+    THE GENERAL RULE. ``fiApplyMigrations`` runs forward migrators until
     the dict reaches ``I_CURRENT_WORKFLOW_VERSION`` and then
     unconditionally stamps that version. When the input's version already
     EXCEEDS the current — a project.json written by a newer vaibify,
@@ -647,7 +647,7 @@ def testFutureSchemaVersionIsNotSilentlyDowngraded():
     workflow is refused or left untouched, never quietly downgraded.
 
     Reproduced and pinned here: a version ``I_CURRENT + 1`` document is
-    passed through ``fnApplyMigrations``; today the version field comes
+    passed through ``fiApplyMigrations``; today the version field comes
     back as ``I_CURRENT`` (a downgrade) and the dict is mutated, so this
     FAILS. A fix that leaves the dict untouched — or raises a refusal —
     makes it pass. (Raising is an equally valid fix; this asserts the
@@ -663,24 +663,24 @@ def testFutureSchemaVersionIsNotSilentlyDowngraded():
     dictBefore = copy.deepcopy(dictFuture)
 
     try:
-        iReturned = workflowMigrations.fnApplyMigrations(dictFuture)
+        iReturned = workflowMigrations.fiApplyMigrations(dictFuture)
     except (ValueError, RuntimeError):
         # Refusing to touch a future schema is an acceptable fix.
         return
 
     assert dictFuture.get(workflowMigrations.S_VERSION_KEY) >= iFutureVersion, (
-        "fnApplyMigrations silently DOWNGRADED a future-version workflow "
+        "fiApplyMigrations silently DOWNGRADED a future-version workflow "
         f"from {iFutureVersion} to "
         f"{dictFuture.get(workflowMigrations.S_VERSION_KEY)}; a newer "
         "project.json opened by an older build must fail closed, not be "
         "re-stamped to this build's schema."
     )
     assert iReturned >= iFutureVersion, (
-        f"fnApplyMigrations reported version {iReturned} for a "
+        f"fiApplyMigrations reported version {iReturned} for a "
         f"{iFutureVersion} workflow — the future version was lost."
     )
     assert dictFuture == dictBefore, (
-        "fnApplyMigrations mutated a future-version workflow it does not "
+        "fiApplyMigrations mutated a future-version workflow it does not "
         "understand; unknown-future documents must be left untouched. "
         f"before={dictBefore} after={dictFuture}"
     )

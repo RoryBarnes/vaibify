@@ -672,7 +672,7 @@ def test_generate_reproduce_script_handles_oserror(
 ):
     """An OSError during write surfaces as 500."""
     with patch(
-        "vaibify.gui.routes.reproducibilityRoutes.fnGenerateReproduceScript",
+        "vaibify.gui.routes.reproducibilityRoutes.fsGenerateReproduceScript",
         side_effect=OSError("disk full"),
     ):
         response = fixtureClient.post(

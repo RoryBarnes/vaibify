@@ -8,7 +8,7 @@ from vaibify.gui.fileStatusManager import (
     _LIST_CONTAINER_KEYED_CACHES,
     _fdictGetModTimes,
     _fdictStatViaPathfile,
-    fnSweepAllContainerCaches,
+    fsetSweepAllContainerCaches,
 )
 
 
@@ -156,7 +156,7 @@ def testGetModTimesEmptyPathlistDoesNoWork():
 
 
 # ---------------------------------------------------------------
-# Lifecycle completeness: fnSweepAllContainerCaches fans across every
+# Lifecycle completeness: fsetSweepAllContainerCaches fans across every
 # container-keyed dict and out to sibling modules (docker pool +
 # host incidents).
 # ---------------------------------------------------------------
@@ -178,7 +178,7 @@ def test_sweep_evicts_stale_from_every_container_keyed_cache():
     listRunning = ["alive-1", "alive-2"]
     dictCtx = _fdictBuildStaleAndRunningCtx(listStale, listRunning)
 
-    setEvicted = fnSweepAllContainerCaches(dictCtx, listRunning)
+    setEvicted = fsetSweepAllContainerCaches(dictCtx, listRunning)
 
     for sCacheName in _LIST_CONTAINER_KEYED_CACHES:
         assert set(dictCtx[sCacheName].keys()) == set(listRunning), (
@@ -194,7 +194,7 @@ def test_sweep_includes_interactive_contexts_dict():
     dictContexts["ghost-cid"] = {"fake": True}
     dictContexts["live-cid"] = {"fake": True}
     try:
-        fnSweepAllContainerCaches({"docker": None}, ["live-cid"])
+        fsetSweepAllContainerCaches({"docker": None}, ["live-cid"])
         assert "ghost-cid" not in dictContexts
         assert "live-cid" in dictContexts
     finally:
@@ -208,7 +208,7 @@ def test_sweep_fans_out_to_host_incidents():
     try:
         hostIncidents.fnRecordHostIncident("zombie", {"sMessage": "x"})
         hostIncidents.fnRecordHostIncident("alive", {"sMessage": "y"})
-        fnSweepAllContainerCaches({"docker": None}, ["alive"])
+        fsetSweepAllContainerCaches({"docker": None}, ["alive"])
         assert hostIncidents.flistIncidentsForContainer("zombie") == []
         assert (
             hostIncidents.flistIncidentsForContainer("alive")[0]["sMessage"]
@@ -222,7 +222,7 @@ def test_sweep_fans_out_to_docker_pool_eviction():
     """The docker connection.fnEvictAbsentContainers receives the running set."""
     mockConnection = MagicMock()
     dictCtx = {"docker": mockConnection}
-    fnSweepAllContainerCaches(dictCtx, ["a", "b"])
+    fsetSweepAllContainerCaches(dictCtx, ["a", "b"])
     mockConnection.fnEvictAbsentContainers.assert_called_once_with(
         {"a", "b"},
     )

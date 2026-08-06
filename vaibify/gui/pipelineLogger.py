@@ -202,7 +202,7 @@ async def fnPruneOldLogs(
     )
 
 
-async def _fnEnsureLogsDirectory(connectionDocker, sContainerId):
+async def _fsEnsureLogsDirectory(connectionDocker, sContainerId):
     """Create .vaibify/logs/ directory if it does not exist."""
     sLogsDir = posixpath.join(
         workflowManager.DEFAULT_SEARCH_ROOT,

@@ -34,7 +34,7 @@ from ...reproducibility.aiDeclarationStep import (
     fbDeclarationFileExists,
     fbStepIsAiDeclaration,
     fdictBuildAiDeclarationStep,
-    fnWriteDeclarationTemplate,
+    fsWriteDeclarationTemplate,
 )
 from ...reproducibility.levelGates import (
     fdictLevel2Gaps,
@@ -135,7 +135,7 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
     @app.get(
         "/api/workflow/{sContainerId}/level2/readiness"
     )
-    async def fnLevel2Readiness(sContainerId: str):
+    async def fdictLevel2Readiness(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -158,7 +158,7 @@ def _fnRegisterGenerateTemplate(app, dictCtx):
         "/api/workflow/{sContainerId}"
         "/ai-declaration/generate-template"
     )
-    async def fnGenerateTemplate(
+    async def fdictGenerateTemplate(
         sContainerId: str,
         request: AiDeclarationTemplateRequest,
     ):
@@ -178,7 +178,7 @@ def _fnRegisterGenerateTemplate(app, dictCtx):
                 f"edit it in place rather than regenerating.",
             )
         try:
-            sAbsolute = fnWriteDeclarationTemplate(
+            sAbsolute = fsWriteDeclarationTemplate(
                 filesRepo, sRelative,
             )
         except (OSError, ValueError) as error:
@@ -228,7 +228,7 @@ def _fnRegisterAddStep(app, dictCtx):
         "/api/workflow/{sContainerId}"
         "/ai-declaration/add-step"
     )
-    async def fnAddAiDeclarationStep(
+    async def fdictAddAiDeclarationStep(
         sContainerId: str,
         request: AiDeclarationAddStepRequest,
     ):

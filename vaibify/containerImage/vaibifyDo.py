@@ -363,7 +363,7 @@ def _fsAppendQueryString(sUrl, dictParams):
     return sUrl + sJoiner + sQuery
 
 
-def fnSendHttp(dictTarget, sToken, sMethod, bJsonMode):
+def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
     """Perform the HTTP call and print the response.
 
     For GET requests, fields parsed from key=value CLI args become
@@ -388,13 +388,13 @@ def fnSendHttp(dictTarget, sToken, sMethod, bJsonMode):
             _fnPrintHttpBody(resp.read(), bJsonMode)
             return 0
     except urllib.error.HTTPError as errHttp:
-        return _fnHandleHttpError(errHttp, bJsonMode)
+        return _fiHandleHttpError(errHttp, bJsonMode)
     except (urllib.error.URLError, socket.timeout, OSError):
         fnFail("vaibify host unreachable at " + dictTarget["sUrl"]
                + "; reconnect the container from the dashboard", iCode=4)
 
 
-def _fnHandleHttpError(errHttp, bJsonMode):
+def _fiHandleHttpError(errHttp, bJsonMode):
     if errHttp.code == 401:
         fnFail("vaibify session token rejected; reconnect the "
                "container from the dashboard", iCode=4)
@@ -485,7 +485,7 @@ def _fnSendWsFrame(sockConn, iOpcodeByte, dataPayload):
     sockConn.sendall(dataHeader + dataMask + dataMasked)
 
 
-def _fnRecvExact(sockConn, iCount):
+def _fbaRecvExact(sockConn, iCount):
     dataBuffer = b""
     while len(dataBuffer) < iCount:
         dataChunk = sockConn.recv(iCount - len(dataBuffer))
@@ -504,16 +504,16 @@ def ftRecvWsFrame(sockConn):
     frames it is the raw ``bytes`` that must be echoed back in the PONG
     per RFC 6455 §5.5.3.
     """
-    dataHeader = _fnRecvExact(sockConn, 2)
+    dataHeader = _fbaRecvExact(sockConn, 2)
     if len(dataHeader) < 2:
         return ("close", b"")
     iOpcode = dataHeader[0] & 0x0F
     iLength = dataHeader[1] & 0x7F
     if iLength == 126:
-        iLength = int.from_bytes(_fnRecvExact(sockConn, 2), "big")
+        iLength = int.from_bytes(_fbaRecvExact(sockConn, 2), "big")
     elif iLength == 127:
-        iLength = int.from_bytes(_fnRecvExact(sockConn, 8), "big")
-    dataPayload = _fnRecvExact(sockConn, iLength) if iLength else b""
+        iLength = int.from_bytes(_fbaRecvExact(sockConn, 8), "big")
+    dataPayload = _fbaRecvExact(sockConn, iLength) if iLength else b""
     if iOpcode == 0x8:
         return ("close", b"")
     if iOpcode == 0x9:
@@ -539,7 +539,7 @@ def fnRunWebsocket(dictEnv, dictPayload, bJsonMode):
     fnEnableTcpKeepalive(sockConn)
     fnWebsocketHandshake(sockConn, sHost, iPort, sPath)
     fnSendWsText(sockConn, json.dumps(dictPayload))
-    return _fnStreamWsEvents(sockConn, bJsonMode)
+    return _fiStreamWsEvents(sockConn, bJsonMode)
 
 
 def fnEnableTcpKeepalive(sockConn):
@@ -559,7 +559,7 @@ def fnEnableTcpKeepalive(sockConn):
             sockConn.setsockopt(socket.IPPROTO_TCP, iOpt, iValue)
 
 
-def _fnStreamWsEvents(sockConn, bJsonMode):
+def _fiStreamWsEvents(sockConn, bJsonMode):
     """Read events until 'completed' or error; return exit code."""
     while True:
         sKind, dataFrame = ftRecvWsFrame(sockConn)
@@ -640,7 +640,7 @@ def fnDispatch(dictEntry, listArgs, dictEnv, bJsonMode):
         dictPayload = fdictResolveWsPayload(dictEntry, listArgs)
         sys.exit(fnRunWebsocket(dictEnv, dictPayload, bJsonMode))
     dictTarget = fdictResolveHttpTarget(dictEntry, listArgs, dictEnv)
-    sys.exit(fnSendHttp(dictTarget, dictEnv["VAIBIFY_SESSION_TOKEN"],
+    sys.exit(fiSendHttpRequest(dictTarget, dictEnv["VAIBIFY_SESSION_TOKEN"],
                         dictEntry["sMethod"], bJsonMode))
 
 

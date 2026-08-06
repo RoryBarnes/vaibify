@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from vaibify.gui.pipelineRunner import (
     _fiCheckDependencies,
     _ftRunSetupIfNeeded,
-    _fnRunOneStep,
+    _fiRunOneStep,
     _fsMissingDependencyFile,
     _ftRunSingleCommand,
     ftRunStepCommands,
@@ -255,7 +255,7 @@ def test_fsMissingDependencyFile_skips_ref_with_empty_path():
 
 
 # ---------------------------------------------------------------
-# _fnRunOneStep: skip-on-missing-dependency short-circuit (line 458)
+# _fiRunOneStep: skip-on-missing-dependency short-circuit (line 458)
 # ---------------------------------------------------------------
 
 
@@ -276,7 +276,7 @@ def test_fnRunOneStep_returns_one_when_dependency_missing():
         "vaibify.gui.pipelineRunner._fiExecuteAndRecord",
         new=AsyncMock(return_value=0),
     ) as mockExecute:
-        iResult = _fnRunAsync(_fnRunOneStep(
+        iResult = _fnRunAsync(_fiRunOneStep(
             mockDocker, "cid", dictStep, 2,
             "/ws", dictVars, fnCallback,
         ))
@@ -306,7 +306,7 @@ def test_fnRunOneStep_proceeds_when_dependencies_present():
         "vaibify.gui.pipelineRunner._fiExecuteAndRecord",
         new=AsyncMock(return_value=0),
     ) as mockExecute:
-        iResult = _fnRunAsync(_fnRunOneStep(
+        iResult = _fnRunAsync(_fiRunOneStep(
             mockDocker, "cid", dictStep, 1,
             "/ws", {}, fnCallback,
         ))

@@ -76,7 +76,7 @@ def _fnRegisterTemplateRoutes(app):
     """Register template listing and loading routes."""
 
     @app.get("/api/setup/templates")
-    async def fnGetTemplates():
+    async def flistHandleGetTemplates():
         try:
             listNames = flistAvailableTemplates()
             return [
@@ -87,7 +87,7 @@ def _fnRegisterTemplateRoutes(app):
             return []
 
     @app.get("/api/setup/templates/{sTemplateName}")
-    async def fnGetTemplateConfig(sTemplateName: str):
+    async def fdictHandleGetTemplateConfig(sTemplateName: str):
         try:
             dictTemplate = fdictLoadTemplateConfig(sTemplateName)
             return _fdictTemplateToWizardFormat(
@@ -101,7 +101,7 @@ def _fnRegisterConfigRoutes(app, sOutputDirectory):
     """Register config load, validate, and save routes."""
 
     @app.get("/api/setup/config")
-    async def fnGetExistingConfig():
+    async def fdictGetExistingConfig():
         sPath = str(Path(sOutputDirectory) / "vaibify.yml")
         if not Path(sPath).is_file():
             return {}
@@ -112,7 +112,7 @@ def _fnRegisterConfigRoutes(app, sOutputDirectory):
             return {}
 
     @app.get("/api/setup/defaults")
-    async def fnGetDefaults():
+    async def fdictGetDefaults():
         return fdictLoadDefaults()
 
     @app.post(
@@ -126,7 +126,7 @@ def _fnRegisterConfigRoutes(app, sOutputDirectory):
         )
 
     @app.post("/api/setup/save")
-    async def fnSaveConfig(request: WizardConfigRequest):
+    async def fdictSaveConfig(request: WizardConfigRequest):
         listErrors = _flistCollectErrors(request)
         if listErrors:
             raise HTTPException(
@@ -144,7 +144,7 @@ def _fnRegisterBuildRoute(app, sOutputDirectory):
     """Register the build route."""
 
     @app.post("/api/setup/build")
-    async def fnBuildContainer(request: WizardConfigRequest):
+    async def fdictHandleBuildContainer(request: WizardConfigRequest):
         listErrors = _flistCollectErrors(request)
         if listErrors:
             raise HTTPException(
@@ -166,7 +166,7 @@ def _fnRegisterStaticFiles(app):
     """Serve the setup wizard HTML and static assets."""
 
     @app.get("/")
-    async def fnServeIndex():
+    async def fresponseHandleServeIndex():
         return FileResponse(
             os.path.join(_STATIC_DIR, "setupWizard.html")
         )

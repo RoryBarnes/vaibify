@@ -336,7 +336,7 @@ def test_hub_shutdown_retains_flock_while_guarded_worker_lives(
             lambda: MagicMock(),
         ):
             app = appFactory.fappCreateHubApplication()
-        fileHandleLock = containerLock.fnAcquireContainerLock(
+        fileHandleLock = containerLock.ffileAcquireContainerLock(
             S_CONTAINER_NAME, 8137,
         )
         app.state.dictContainerOwners[S_CONTAINER_NAME] = OwnerRecord(
@@ -367,7 +367,7 @@ def test_hub_shutdown_retains_flock_while_guarded_worker_lives(
             await fnShutdown(app)
         assert S_CONTAINER_NAME in app.state.dictContainerOwners
         with pytest.raises(containerLock.ContainerLockedError):
-            containerLock.fnAcquireContainerLock(S_CONTAINER_NAME, 9999)
+            containerLock.ffileAcquireContainerLock(S_CONTAINER_NAME, 9999)
         eventRelease.set()
         dictOutcome = await asyncio.wait_for(taskRequest, 5)
         assert dictOutcome["bCommitted"] is True

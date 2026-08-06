@@ -1009,7 +1009,7 @@ def testTheScannerSeesAPrimitivePassedAsACallback(moduleGenerator):
     deletion, were absent from a record that claimed completeness.
     """
     listRows = _flistScanSource(moduleGenerator, """
-        async def fnCleanOutputs(connectionDocker, sContainerId, sCommand):
+        async def fdictCleanOutputs(connectionDocker, sContainerId, sCommand):
             await asyncio.to_thread(
                 connectionDocker.ftResultExecuteCommand,
                 sContainerId, sCommand,

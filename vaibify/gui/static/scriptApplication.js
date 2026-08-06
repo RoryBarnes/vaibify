@@ -1837,7 +1837,7 @@ const VaibifyApp = (function () {
             'Align directories (' + iCount + ')</button>';
     }
 
-    async function fnAlignStepDirectories() {
+    async function fdictAlignStepDirectories() {
         var sContainerId = _dictSessionState.sContainerId;
         if (!sContainerId) return;
         try {
@@ -4628,7 +4628,7 @@ const VaibifyApp = (function () {
 
     var fnShowErrorModal = VaibifyModals.fnShowErrorModal;
 
-    async function fnAddAiDeclarationStep() {
+    async function fdictAddAiDeclarationStep() {
         var sContainerId = _dictSessionState.sContainerId;
         if (!sContainerId || !_dictWorkflowState.dictWorkflow) return;
         try {
@@ -4875,7 +4875,7 @@ const VaibifyApp = (function () {
         fdictBlockerGlyphCatalog: fdictBlockerGlyphCatalog,
         fsBlockerHintForStep: fsBlockerHintForStep,
         fsBlockerHintForFile: fsBlockerHintForFile,
-        fnAddAiDeclarationStep: fnAddAiDeclarationStep,
+        fdictAddAiDeclarationStep: fdictAddAiDeclarationStep,
         fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,
 
         /* New public methods for extracted modules */
@@ -4903,7 +4903,7 @@ const VaibifyApp = (function () {
         fnExpandStepLevelSection: fnExpandStepLevelSection,
         fnToggleStepDescription: fnToggleStepDescription,
         fnBeginStepDescriptionEdit: fnBeginStepDescriptionEdit,
-        fnAlignStepDirectories: fnAlignStepDirectories,
+        fdictAlignStepDirectories: fdictAlignStepDirectories,
         fnShowStepLevelRequirementsModal:
             fnShowStepLevelRequirementsModal,
         fnShowContextMenu: fnShowContextMenu,

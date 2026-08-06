@@ -49,11 +49,11 @@ def _fnRegisterReadRoutes(app):
     """Register template listing and validation routes."""
 
     @app.get("/api/setup/templates")
-    async def fnListTemplates():
+    async def flistListTemplates():
         return flistAvailableTemplates()
 
     @app.post("/api/setup/validate")
-    async def fnValidate(request: ValidateRequest):
+    async def fdictHandleValidate(request: ValidateRequest):
         return {"bValid": fbValidateConfig(request.dictConfig)}
 
 
@@ -61,7 +61,7 @@ def _fnRegisterWriteRoutes(app):
     """Register save and build routes."""
 
     @app.post("/api/setup/save")
-    async def fnSave(request: SaveRequest):
+    async def fdictHandleSave(request: SaveRequest):
         _fnValidateProjectDirectory(request.sProjectDirectory)
         fnWriteConfigToDirectory(
             request.sProjectDirectory, request.dictConfig
@@ -69,7 +69,7 @@ def _fnRegisterWriteRoutes(app):
         return {"bSuccess": True}
 
     @app.post("/api/setup/build")
-    async def fnBuild(request: BuildRequest):
+    async def fdictHandleBuild(request: BuildRequest):
         _fnValidateProjectDirectory(request.sProjectDirectory)
         return fdictProcessBuild(request.sProjectDirectory)
 
@@ -83,7 +83,7 @@ def _fnRegisterSessionTokenRoute(app, sSessionToken):
     """
 
     @app.get("/api/session-token")
-    async def fnGetSessionToken():
+    async def fdictGetSessionToken():
         return {"sToken": sSessionToken}
 
 
@@ -91,7 +91,7 @@ def _fnRegisterIndexRoute(app):
     """Register the setup wizard index page."""
 
     @app.get("/")
-    async def fnServeSetupIndex():
+    async def fresponseServeSetupIndex():
         sPath = os.path.join(STATIC_DIRECTORY, "setupWizard.html")
         if not os.path.isfile(sPath):
             raise HTTPException(404, "setupWizard.html not found")

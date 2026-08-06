@@ -330,7 +330,7 @@ Overleaf, GitHub, and Zenodo. Failure modes to audit against:
   mounts. Any path that originated from a user-facing source (HTTP
   request body, project.json, config file) must be validated
   against its intended root before being opened, read, written, or
-  listed. The existing helper `fnValidatePathWithinRoot(sAbsPath,
+  listed. The existing helper `fsValidatePathWithinRoot(sAbsPath,
   WORKSPACE_ROOT)` in `pipelineServer.py` does this — do not remove
   or weaken it.
 - Credential leakage through logs, error messages, or generated test

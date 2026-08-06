@@ -521,7 +521,7 @@ def testPerFrameCheckTracksTheCredentialAndExemptsTheAgentLane():
         _connectionBuildBrowserConnection(sCredential), dictStore,
     )
     assert fbCheck() is True
-    browserSession.fnRevokeSessionById(dictStore, sSessionId)
+    browserSession.fbRevokeSessionById(dictStore, sSessionId)
     assert fbCheck() is False, (
         "a revoked session's frames must stop authorizing"
     )

@@ -119,7 +119,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
     """
 
     @app.get("/api/registry")
-    async def fnGetRegistry(request: Request):
+    async def fdictGetRegistry(request: Request):
         from vaibify.config.registryManager import (
             flistGetAllProjectsWithStatus,
         )
@@ -380,9 +380,9 @@ def _fnRegisterAddProject(app, dictCtx):
     """Register POST /api/registry — add a project directory."""
 
     @app.post("/api/registry")
-    async def fnAddProject(request: AddProjectRequest):
+    async def fdictAddProject(request: AddProjectRequest):
         from vaibify.config.registryManager import (
-            fnAddProject, fdictGetProject,
+            fdictGetProject, fnAddProject,
         )
         try:
             fnAddProject(request.sDirectory)
@@ -409,7 +409,7 @@ def _fnRegisterRemoveProject(app, dictCtx):
     """Register DELETE /api/registry/{sName}."""
 
     @app.delete("/api/registry/{sName}")
-    async def fnRemoveProject(sName: str):
+    async def fdictRemoveProject(sName: str):
         from vaibify.config.registryManager import (
             fnRemoveProject,
         )
@@ -444,7 +444,7 @@ def _fnRegisterStartContainer(app, dictCtx):
     """
 
     @app.post("/api/containers/{sName}/start")
-    async def fnStartContainer(
+    async def fresponseStartContainer(
         request: Request, sName: str,
         requestStart: Optional[StartContainerRequest] = None,
     ):
@@ -470,7 +470,7 @@ def _fnRegisterStartContainer(app, dictCtx):
         return JSONResponse(status_code=iStatusCode, content=dictBody)
 
     @app.post("/api/containers/{sName}/start/cancel")
-    async def fnCancelStartContainer(
+    async def fresponseHandleCancelStartContainer(
         request: Request, sName: str, sReservationId: str = "",
     ):
         from fastapi.responses import JSONResponse
@@ -487,7 +487,7 @@ def _fnRegisterStartContainer(app, dictCtx):
         return dictBody
 
     @app.get("/api/containers/{sName}/start-status")
-    async def fnGetStartStatus(request: Request, sName: str):
+    async def fresponseHandleGetStartStatus(request: Request, sName: str):
         from fastapi.responses import JSONResponse
         from vaibify.gui import startReservation
         _fnRejectInvalidProjectName(sName)
@@ -520,7 +520,7 @@ def _fnRegisterStopContainer(app, dictCtx):
     """Register POST /api/containers/{sName}/stop."""
 
     @app.post("/api/containers/{sName}/stop")
-    async def fnStopContainer(sName: str):
+    async def fdictStopContainer(sName: str):
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         sContainerName = dictProject["sContainerName"]
@@ -568,7 +568,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
     """Register GET and POST /api/containers/{sName}/settings."""
 
     @app.get("/api/containers/{sName}/settings")
-    async def fnGetContainerSettings(sName: str):
+    async def fdictGetContainerSettings(sName: str):
         dictProject = _fdictRequireProject(sName)
         from vaibify.config.projectConfig import fconfigLoadFromFile
         configProject = fconfigLoadFromFile(
@@ -590,7 +590,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
         return dictResult
 
     @app.post("/api/containers/{sName}/settings")
-    async def fnSetContainerSettings(
+    async def fdictSetContainerSettings(
         sName: str, request: ContainerSettingsRequest
     ):
         dictProject = _fdictRequireProject(sName)
@@ -780,11 +780,11 @@ def _fnSweepSiblingContainerCaches(dictCtx, listContainers):
     light-weight when no GUI features are exercised.
     """
     try:
-        from .fileStatusManager import fnSweepAllContainerCaches
+        from .fileStatusManager import fsetSweepAllContainerCaches
     except ImportError:
         return
     listIds = [d.get("sContainerId", "") for d in listContainers]
-    fnSweepAllContainerCaches(dictCtx, [s for s in listIds if s])
+    fsetSweepAllContainerCaches(dictCtx, [s for s in listIds if s])
 
 
 def _ftSplitContainers(connectionDocker, listContainers):
@@ -868,7 +868,7 @@ def _fnRegisterHostDirectories(app, dictCtx):
     """Register GET /api/host-directories for browsing host dirs."""
 
     @app.get("/api/host-directories")
-    async def fnGetHostDirectories(
+    async def fdictGetHostDirectories(
         sPath: Optional[str] = None,
         bIncludeFiles: bool = False,
     ):
@@ -888,10 +888,10 @@ def _fnRegisterCreateHostDirectory(app, dictCtx):
     """Register POST /api/host-directories/create."""
 
     @app.post("/api/host-directories/create")
-    async def fnCreateHostDirectory(request: CreateHostDirectoryRequest):
+    async def fdictCreateHostDirectory(request: CreateHostDirectoryRequest):
         _fnValidateHostPath(request.sParentPath)
         _fnValidateFolderName(request.sFolderName)
-        sNewPath = _fnCreateHostFolder(
+        sNewPath = _fsCreateHostFolder(
             request.sParentPath, request.sFolderName,
         )
         return {"sNewPath": sNewPath}
@@ -912,7 +912,7 @@ def _fnValidateFolderName(sFolderName):
         raise HTTPException(400, "Invalid folder name")
 
 
-def _fnCreateHostFolder(sParentPath, sFolderName):
+def _fsCreateHostFolder(sParentPath, sFolderName):
     """Create a new directory under sParentPath; return the new path."""
     sNewPath = os.path.join(sParentPath, sFolderName.strip())
     if os.path.exists(sNewPath):
@@ -1013,7 +1013,7 @@ def _fnRegisterGetTemplates(app, dictCtx):
     """Register GET /api/setup/templates."""
 
     @app.get("/api/setup/templates")
-    async def fnGetTemplates():
+    async def fdictGetTemplates():
         from vaibify.config.templateManager import (
             flistAvailableTemplates,
         )
@@ -1028,7 +1028,7 @@ def _fnRegisterGetTemplateConfig(app, dictCtx):
     """Register GET /api/setup/templates/{sName}."""
 
     @app.get("/api/setup/templates/{sName}")
-    async def fnGetTemplateConfig(sName: str):
+    async def fdictGetTemplateConfig(sName: str):
         from vaibify.config.templateManager import (
             fdictLoadTemplateConfig,
         )
@@ -1043,7 +1043,7 @@ def _fnRegisterCreateProject(app, dictCtx):
     """Register POST /api/projects/create."""
 
     @app.post("/api/projects/create")
-    async def fnCreateProject(request: CreateProjectRequest):
+    async def fdictCreateProject(request: CreateProjectRequest):
         _fnValidateCreateDirectory(request.sDirectory)
         _fnRequireValidResourceLimits(
             request.iCpuLimit, request.fMemoryLimitGigabytes,

@@ -10,7 +10,7 @@ The script lives at ``<projectRepo>/reproduce.sh`` so it is part of
 the repo (and therefore pinned in ``MANIFEST.sha256``). The
 ``manifestWriter`` envelope already covers files at the repo root, so
 no additional wiring is needed beyond regenerating the manifest after
-``fnGenerateReproduceScript`` writes a new script body.
+``fsGenerateReproduceScript`` writes a new script body.
 
 Note on host-vs-container paths: ``sProjectRepo`` here is the
 container-side path (e.g. ``/workspace/foo``). The FastAPI process
@@ -30,7 +30,7 @@ from vaibify.reproducibility.repoFiles import fsShellQuotePosix
 
 __all__ = [
     "S_REPRODUCE_SCRIPT_FILENAME",
-    "fnGenerateReproduceScript",
+    "fsGenerateReproduceScript",
     "fsRenderReproduceScript",
     "flistRenderStepCommands",
 ]
@@ -77,7 +77,7 @@ sha256sum -c MANIFEST.sha256
 """.format(sDelimiter=_S_HEREDOC_DELIMITER)
 
 
-def fnGenerateReproduceScript(
+def fsGenerateReproduceScript(
     sProjectRepo, dictWorkflow,
     connectionDocker=None, sContainerId="",
 ):
@@ -97,7 +97,7 @@ def fnGenerateReproduceScript(
     """
     if connectionDocker is None or not sContainerId:
         raise ValueError(
-            "fnGenerateReproduceScript requires a docker connection "
+            "fsGenerateReproduceScript requires a docker connection "
             "and container id; reproduce.sh must be written inside "
             "the container because sProjectRepo is a container path."
         )

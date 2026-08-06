@@ -118,7 +118,7 @@ when a researcher clicks **Run All** in the browser.
    backend. The payload is `{sAction: "runAll"}`.
 
 3. On the backend, the WebSocket handler in `pipelineServer.py`
-   dispatches actions to `pipelineRunner.fnRunAllSteps()`. The runner
+   dispatches actions to `pipelineRunner.fiRunAllSteps()`. The runner
    validates the project (via `pipelineValidator`), opens a log file
    (via `pipelineLogger`), and walks the step list.
 
@@ -148,7 +148,7 @@ User clicks "Run All"
   -> VaibifyPipelineRunner.fnRunAll()
   -> VaibifyWebSocket.fnSend({sAction: "runAll"})
   -> Backend: pipelineServer WebSocket handler
-  -> pipelineRunner.fnRunAllSteps()
+  -> pipelineRunner.fiRunAllSteps()
   -> For each step: backend emits stepStarted, output, stepPass or
      stepFail via WebSocket
   -> Frontend: VaibifyWebSocket dispatches to registered handlers
@@ -300,7 +300,7 @@ files to host, browse host directories, and sync to GitHub possible at
 all. The cost is that path traversal is a live concern: any path that
 originates from an HTTP request body, a `project.json` field, or a
 config file must be validated against its intended root before the
-backend opens it. `fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)`
+backend opens it. `fsValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)`
 in `pipelineServer.py` is the canonical guard; the trap list in
 [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) flags this explicitly.
 
@@ -510,7 +510,7 @@ replaying a *copied lease value* is refused, because connect would take
 over the workflow and the container's agent session, and release would
 drop the owner record. Connect enforces this in
 `workflowRoutes._fnRequireOwningLeaseForConnect`; release enforces it in
-`containerOwnership.fnReleaseOwnership`.
+`containerOwnership.fbReleaseOwnership`.
 
 The name-keyed container-lifecycle routes — `start`, `stop`, `build`,
 `settings`, and the ownership-*establishing* `claim` — are classified
@@ -856,8 +856,8 @@ list and each module's public API.
 These carry the core execution logic:
 
 - `pipelineRunner.py` — pipeline step execution orchestrator. Public
-  API: `fnRunAllSteps`, `fnRunFromStep`, `fnRunSelectedSteps`,
-  `fnVerifyOnly`, `fnRunAllTests`.
+  API: `fiRunAllSteps`, `fiRunFromStep`, `fiRunSelectedSteps`,
+  `fiVerifyOnly`, `fiRunAllTests`.
 - `pipelineUtils.py` — deliberate leaf module with zero intra-package
   imports. Contains `fsShellQuote` and all `_fnEmit*` event helpers.
   Exists to break circular import cycles. Do not add imports from

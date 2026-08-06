@@ -275,28 +275,28 @@ def test_fnValidateHostDestination_root_path():
 
 
 # -----------------------------------------------------------------------
-# pipelineServer: fnValidatePathWithinRoot
+# pipelineServer: fsValidatePathWithinRoot
 # -----------------------------------------------------------------------
 
 
 def test_fnValidatePathWithinRoot_valid():
-    from vaibify.gui.pipelineServer import fnValidatePathWithinRoot
-    sResult = fnValidatePathWithinRoot(
+    from vaibify.gui.pipelineServer import fsValidatePathWithinRoot
+    sResult = fsValidatePathWithinRoot(
         "/workspace/step1/data.csv", "/workspace")
     assert sResult == "/workspace/step1/data.csv"
 
 
 def test_fnValidatePathWithinRoot_exact_root():
-    from vaibify.gui.pipelineServer import fnValidatePathWithinRoot
-    sResult = fnValidatePathWithinRoot("/workspace", "/workspace")
+    from vaibify.gui.pipelineServer import fsValidatePathWithinRoot
+    sResult = fsValidatePathWithinRoot("/workspace", "/workspace")
     assert sResult == "/workspace"
 
 
 def test_fnValidatePathWithinRoot_traversal():
     from fastapi import HTTPException
-    from vaibify.gui.pipelineServer import fnValidatePathWithinRoot
+    from vaibify.gui.pipelineServer import fsValidatePathWithinRoot
     with pytest.raises(HTTPException) as excInfo:
-        fnValidatePathWithinRoot(
+        fsValidatePathWithinRoot(
             "/workspace/../etc/passwd", "/workspace")
     assert excInfo.value.status_code == 403
 
@@ -304,9 +304,9 @@ def test_fnValidatePathWithinRoot_traversal():
 def test_fnValidatePathWithinRoot_partial_prefix():
     """Paths like /workspace2 should be rejected (not a subdirectory)."""
     from fastapi import HTTPException
-    from vaibify.gui.pipelineServer import fnValidatePathWithinRoot
+    from vaibify.gui.pipelineServer import fsValidatePathWithinRoot
     with pytest.raises(HTTPException) as excInfo:
-        fnValidatePathWithinRoot("/workspace2/data", "/workspace")
+        fsValidatePathWithinRoot("/workspace2/data", "/workspace")
     assert excInfo.value.status_code == 403
 
 

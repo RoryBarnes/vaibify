@@ -28,7 +28,7 @@ from vaibify.gui.pipelineServer import (
     fdictExtractSettings,
     fdictFilterNonNone,
     fdictRequireWorkflow,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     fsResolveFigurePath,
     fsSanitizeExceptionForClient,
 )
@@ -250,18 +250,18 @@ class TestFdictFilterNonNone:
 
 class TestFnValidatePathWithinRoot:
     def test_valid_path(self):
-        sResult = fnValidatePathWithinRoot(
+        sResult = fsValidatePathWithinRoot(
             "/workspace/project/file.py", "/workspace")
         assert sResult == "/workspace/project/file.py"
 
     def test_traversal_rejected(self):
         from fastapi import HTTPException
         with pytest.raises(HTTPException):
-            fnValidatePathWithinRoot(
+            fsValidatePathWithinRoot(
                 "/workspace/../etc/passwd", "/workspace")
 
     def test_root_itself_allowed(self):
-        sResult = fnValidatePathWithinRoot(
+        sResult = fsValidatePathWithinRoot(
             "/workspace", "/workspace")
         assert sResult == "/workspace"
 

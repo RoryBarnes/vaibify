@@ -1001,9 +1001,9 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteAuthGate::test_unauthorized_kill_rejected_before_count_exec',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""    async def fnKillRunningTasks(sContainerId: str):
+        old="""    async def fdictKillRunningTasks(sContainerId: str):
         dictCtx["require"]()""",
-        new='    async def fnKillRunningTasks(sContainerId: str):',
+        new='    async def fdictKillRunningTasks(sContainerId: str):',
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteActuallyKills::test_kill_exec_issued_when_count_positive',
@@ -1399,7 +1399,7 @@ LIST_FALSIFICATIONS = [
         old='        iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)',
         new='        iExitCode, sStdout = (0, "ok")',
     ),
-    # fnApplyMigrations stamped the version DOWN to the current at the
+    # fiApplyMigrations stamped the version DOWN to the current at the
     # end, silently downgrading a future-version project.json and dropping
     # fields this build does not understand on the next save.
     Falsification(
@@ -2532,7 +2532,7 @@ def _fdictEntry(sRel):
         # an existence oracle over arbitrary container paths.
         nodeid='tests/testAgentLaneEnforcement.py::testFigureProbeValidatesTheWorkdirFallback',
         source='vaibify/gui/routes/figureRoutes.py',
-        old='            fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
+        old='            fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
         new='            sFallback)',
     ),
     Falsification(
@@ -2546,7 +2546,7 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         # A prefix compare accepts http://localhost.evil.example, the
-        # same prefix-attack class fnValidatePathWithinRoot defends
+        # same prefix-attack class fsValidatePathWithinRoot defends
         # against.
         nodeid='tests/testInjectionGuards.py::testLoopbackOriginRejectsASuffixDomain',
         source='vaibify/gui/pipelineServer.py',
@@ -3481,7 +3481,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/pipelineServer.py',
         old='''        taskReader.cancel()
         await asyncio.to_thread(
-            terminalContainment.fnDrainSessionRecord, session,
+            terminalContainment.fdictDrainSessionRecord, session,
         )
         session.fnClose()''',
         new='''        taskReader.cancel()
@@ -3590,7 +3590,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCorrectGenerationActiveTransferSucceedsAndRevokes',
         source='vaibify/gui/sessionLifecycle.py',
-        old='    browserSession.fnRevokeSessionById(dictStore, sOldSessionId)',
+        old='    browserSession.fbRevokeSessionById(dictStore, sOldSessionId)',
         new='    pass',
     ),
     # Case 3 (bounded replay returns the STORED tuple):
@@ -4022,7 +4022,7 @@ def _fdictEntry(sRel):
         old='''    await fnOrphanSession(
         appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
     )''',
-        new='''    browserSession.fnRevokeSessionById(dictStore, sSessionId)''',
+        new='''    browserSession.fbRevokeSessionById(dictStore, sSessionId)''',
     ),
     # A live WebSocket vetoes sliding idle: the socket layer never
     # refreshes the credential stamp, so without the veto a streaming
@@ -4117,13 +4117,13 @@ def _fdictEntry(sRel):
         source='vaibify/gui/sessionLifecycle.py',
         old='''        await _fnDrainAndCloseBeforeRelease(appState, sName)
         async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fnReleaseOwnership(
+            bReleased = containerOwnership.fbReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
             )''',
         new='''        async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fnReleaseOwnership(
+            bReleased = containerOwnership.fbReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,

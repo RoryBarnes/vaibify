@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from vaibify.gui.routes.sessionRoutes import (
-    _fnAwaitChildReady as _FN_AWAIT_REAL,
+    _fbAwaitChildReady as _FN_AWAIT_REAL,
 )
 
 
@@ -23,7 +23,7 @@ def fixtureSkipChildReadyWait(monkeypatch):
     async def _fnReadyNoOp(iPort, fTimeoutSeconds):
         return True
     monkeypatch.setattr(
-        "vaibify.gui.routes.sessionRoutes._fnAwaitChildReady",
+        "vaibify.gui.routes.sessionRoutes._fbAwaitChildReady",
         _fnReadyNoOp,
     )
 
@@ -178,7 +178,7 @@ def _fbRunCoroutine(coroutine):
 
 
 def test_fnAwaitChildReady_returns_true_when_port_opens(monkeypatch):
-    """_fnAwaitChildReady returns True on the first successful probe."""
+    """_fbAwaitChildReady returns True on the first successful probe."""
     from vaibify.gui.routes import sessionRoutes as sessionRoutesModule
     listProbeResults = [False, False, True]
 
@@ -192,7 +192,7 @@ def test_fnAwaitChildReady_returns_true_when_port_opens(monkeypatch):
 
 
 def test_fnAwaitChildReady_returns_false_on_timeout(monkeypatch):
-    """_fnAwaitChildReady returns False when the port never opens."""
+    """_fbAwaitChildReady returns False when the port never opens."""
     from vaibify.gui.routes import sessionRoutes as sessionRoutesModule
     monkeypatch.setattr(
         sessionRoutesModule,
@@ -249,7 +249,7 @@ def test_spawned_child_shutdown_hook_survives_terminate_failure():
 
 
 def testSpawnRouteAwaitsChildReadyBeforeReturning(fixtureClient, monkeypatch):
-    """The spawn handler must await _fnAwaitChildReady before returning."""
+    """The spawn handler must await _fbAwaitChildReady before returning."""
     dictProbeCalls = {"iCount": 0}
 
     async def _fnTrackedAwait(iPort, fTimeoutSeconds):
@@ -257,7 +257,7 @@ def testSpawnRouteAwaitsChildReadyBeforeReturning(fixtureClient, monkeypatch):
         return True
 
     monkeypatch.setattr(
-        "vaibify.gui.routes.sessionRoutes._fnAwaitChildReady",
+        "vaibify.gui.routes.sessionRoutes._fbAwaitChildReady",
         _fnTrackedAwait,
     )
     with patch(

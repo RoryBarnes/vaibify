@@ -8,7 +8,7 @@ host clone (``HostRepoFiles``), inside a running container
 repo-relative POSIX strings; the adapter owns the root.
 
 ``ContainerRepoFiles`` takes a duck-typed docker connection (the same
-contract as ``reproduceScriptGenerator.fnGenerateReproduceScript``) so
+contract as ``reproduceScriptGenerator.fsGenerateReproduceScript``) so
 this module never imports ``vaibify.docker``. Symlink-component and
 realpath-escape enforcement live in the adapter: the container
 implementation runs them *inside* the container, where the truth

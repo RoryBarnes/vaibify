@@ -14,11 +14,11 @@ from . import workflowManager
 __all__ = [
     "fdictMapOutputTokenStems",
     "fsShellQuote",
-    "fnRunAllSteps",
-    "fnRunFromStep",
-    "fnRunSelectedSteps",
-    "fnVerifyOnly",
-    "fnRunAllTests",
+    "fiRunAllSteps",
+    "fiRunFromStep",
+    "fiRunSelectedSteps",
+    "fiVerifyOnly",
+    "fiRunAllTests",
     "fsGenerateLogFilename",
     "fdictCreateInteractiveContext",
     "fnSetInteractiveResponse",
@@ -74,7 +74,7 @@ from .pipelineLogger import (  # noqa: F401
     ffBuildLoggingCallback,
     _fsExtractLogLine,
     fnWriteLogToContainer,
-    _fnEnsureLogsDirectory,
+    _fsEnsureLogsDirectory,
     fsGenerateLogFilename,
     fnPruneOldLogs,
     I_MAX_LOG_LINES,
@@ -93,7 +93,7 @@ from .pipelineTestRunner import (  # noqa: F401
     _flistCollectCategoryLogs,
     _fnWriteTestLog,
     _flistResolveTestCommands,
-    fnRunAllTests,
+    fiRunAllTests,
 )
 
 from .interactiveSteps import (  # noqa: F401
@@ -968,7 +968,7 @@ async def _fiCheckDependencies(
 # Single-step execution
 # ---------------------------------------------------------------------------
 
-async def _fnRunOneStep(
+async def _fiRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
@@ -1014,7 +1014,7 @@ async def _fiExecuteAndRecord(
         dictStep.get("sDirectory", sWorkdir), dictVariables,
     )
     await asyncio.to_thread(
-        workflowManager.fnCleanStepScratchDirs,
+        workflowManager.flistCleanStepScratchDirs,
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
     setFilesBefore = await _fsetSnapshotDirectory(
@@ -1159,7 +1159,7 @@ async def _fiRunStepList(
             fBudget = workflowManager.ffResolveStepWallClockBudget(
                 dictWorkflow, dictStep,
             )
-            iExitCode = await _fnRunOneStep(
+            iExitCode = await _fiRunOneStep(
                 connectionDocker, sContainerId, dictStep,
                 iStepNumber, sWorkdir, dictVariables,
                 fnStatusCallback, sStepLabel=sStepLabel,
@@ -1300,7 +1300,7 @@ async def _ftPrepareLogAndVariables(
     """Set up log path, logging callback, variables, and clear output flags."""
     from .pipelineLogger import fnPruneOldLogs
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
-    sLogsDir = await _fnEnsureLogsDirectory(
+    sLogsDir = await _fsEnsureLogsDirectory(
         connectionDocker, sContainerId
     )
     await fnPruneOldLogs(connectionDocker, sContainerId, sLogsDir)
@@ -1369,7 +1369,7 @@ async def _fiRunWithLogging(
 # incident where a container held two workflows and the alphabetical
 # first was silently run instead of the dashboard-selected one.
 
-async def fnRunAllSteps(
+async def fiRunAllSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
     bForceRun=False, dictInteractive=None, iSourceDateEpochOverride=0,
@@ -1394,7 +1394,7 @@ async def fnRunAllSteps(
     )
 
 
-async def fnRunFromStep(
+async def fiRunFromStep(
     connectionDocker, sContainerId, iStartStep,
     dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback, dictInteractive=None,
@@ -1409,7 +1409,7 @@ async def fnRunFromStep(
     )
 
 
-async def fnVerifyOnly(
+async def fiVerifyOnly(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
 ):
@@ -1431,7 +1431,7 @@ async def fnVerifyOnly(
 # Selected-steps execution
 # ---------------------------------------------------------------------------
 
-async def fnRunSelectedSteps(
+async def fiRunSelectedSteps(
     connectionDocker, sContainerId, listStepIndices,
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
     sRunMode="full",

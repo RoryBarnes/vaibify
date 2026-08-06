@@ -309,7 +309,7 @@ def test_parse_positional_args_unknown_long_flag_kept_as_camelcase(modCli):
     assert listPos == []
 
 
-def test_fnSendHttp_get_method_promotes_body_to_query_string(modCli):
+def test_fiSendHttpRequest_get_method_promotes_body_to_query_string(modCli):
     """GET requests put dictBody contents into the URL query string."""
     dictTarget = {
         "sUrl": "http://x/api/pipeline/c-1/host-log-tail",
@@ -325,13 +325,13 @@ def test_fnSendHttp_get_method_promotes_body_to_query_string(modCli):
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=fnFakeUrlopen,
     ):
-        iCode = modCli.fnSendHttp(dictTarget, "tok", "GET", False)
+        iCode = modCli.fiSendHttpRequest(dictTarget, "tok", "GET", False)
     assert iCode == 0
     assert "iLines=200" in dictCapturedRequests["sUrl"]
     assert dictCapturedRequests["dataBody"] is None
 
 
-def test_fnSendHttp_post_method_still_uses_json_body(modCli):
+def test_fiSendHttpRequest_post_method_still_uses_json_body(modCli):
     """POST keeps the JSON body path; GET behavior must be isolated."""
     dictTarget = {
         "sUrl": "http://x/api/anything",
@@ -347,7 +347,7 @@ def test_fnSendHttp_post_method_still_uses_json_body(modCli):
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=fnFakeUrlopen,
     ):
-        modCli.fnSendHttp(dictTarget, "tok", "POST", False)
+        modCli.fiSendHttpRequest(dictTarget, "tok", "POST", False)
     assert "sFoo" not in dictCaptured["sUrl"]
     assert dictCaptured["dataBody"] is not None
     import json as jsonModule
@@ -621,7 +621,7 @@ def test_fnDryRun_ws(
 
 
 # -----------------------------------------------------------------------
-# fnSendHttp + _fnHandleHttpError + _fnPrintHttpBody
+# fiSendHttpRequest + _fiHandleHttpError + _fnPrintHttpBody
 # -----------------------------------------------------------------------
 
 
@@ -639,47 +639,47 @@ class _MockResponse:
         return False
 
 
-def test_fnSendHttp_success_prints_body(modCli, capsys):
+def test_fiSendHttpRequest_success_prints_body(modCli, capsys):
     dictTarget = {"sUrl": "http://x/api", "dictBody": {"a": 1}}
     with patch.object(
         modCli.urllib.request, "urlopen",
         return_value=_MockResponse(b'{"ok":true}'),
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             dictTarget, "tok", "POST", False,
         )
     assert iCode == 0
     assert "ok" in capsys.readouterr().out
 
 
-def test_fnSendHttp_4xx_returns_one(modCli, capsys):
+def test_fiSendHttpRequest_4xx_returns_one(modCli, capsys):
     err = urllib.error.HTTPError(
         "http://x", 404, "Not Found", {}, io.BytesIO(b'{"detail":"nope"}'),
     )
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             {"sUrl": "http://x", "dictBody": {}}, "tok", "GET", False,
         )
     assert iCode == 1
     assert "nope" in capsys.readouterr().out
 
 
-def test_fnSendHttp_5xx_returns_two(modCli, capsys):
+def test_fiSendHttpRequest_5xx_returns_two(modCli, capsys):
     err = urllib.error.HTTPError(
         "http://x", 503, "down", {}, io.BytesIO(b""),
     )
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             {"sUrl": "http://x", "dictBody": {}}, "tok", "POST", False,
         )
     assert iCode == 2
 
 
-def test_fnSendHttp_http_error_with_broken_body_swallowed(modCli, capsys):
+def test_fiSendHttpRequest_http_error_with_broken_body_swallowed(modCli, capsys):
     """A broken ``errHttp.read()`` must not propagate; body becomes empty."""
     err = urllib.error.HTTPError(
         "http://x", 500, "down", {}, None,
@@ -692,13 +692,13 @@ def test_fnSendHttp_http_error_with_broken_body_swallowed(modCli, capsys):
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             {"sUrl": "http://x", "dictBody": {}}, "tok", "POST", False,
         )
     assert iCode == 2
 
 
-def test_fnSendHttp_401_exits_with_auth_message(modCli, capsys):
+def test_fiSendHttpRequest_401_exits_with_auth_message(modCli, capsys):
     err = urllib.error.HTTPError(
         "http://x", 401, "no", {}, io.BytesIO(b""),
     )
@@ -706,7 +706,7 @@ def test_fnSendHttp_401_exits_with_auth_message(modCli, capsys):
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnSendHttp(
+            modCli.fiSendHttpRequest(
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
@@ -714,13 +714,13 @@ def test_fnSendHttp_401_exits_with_auth_message(modCli, capsys):
     assert "token rejected" in capsys.readouterr().err.lower()
 
 
-def test_fnSendHttp_connection_timeout_exits(modCli, capsys):
+def test_fiSendHttpRequest_connection_timeout_exits(modCli, capsys):
     with patch.object(
         modCli.urllib.request, "urlopen",
         side_effect=socket.timeout("slow"),
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnSendHttp(
+            modCli.fiSendHttpRequest(
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
@@ -728,13 +728,13 @@ def test_fnSendHttp_connection_timeout_exits(modCli, capsys):
     assert "unreachable" in capsys.readouterr().err.lower()
 
 
-def test_fnSendHttp_urlerror_exits(modCli, capsys):
+def test_fiSendHttpRequest_urlerror_exits(modCli, capsys):
     with patch.object(
         modCli.urllib.request, "urlopen",
         side_effect=urllib.error.URLError("boom"),
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnSendHttp(
+            modCli.fiSendHttpRequest(
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
@@ -903,7 +903,7 @@ def test_fnSendWsPong_echoes_payload_with_pong_opcode(modCli):
 
 def test_recv_exact_returns_empty_on_short_read(modCli):
     sock = _MockSocket([b"ab", b""])
-    assert modCli._fnRecvExact(sock, 4) == b""
+    assert modCli._fbaRecvExact(sock, 4) == b""
 
 
 def test_ws_handshake_happy_path(modCli):
@@ -1075,7 +1075,7 @@ def test_stream_ws_events_closed_connection_returns_one(
     modCli, capsys,
 ):
     sock = _MockSocket([b""])  # immediate close
-    assert modCli._fnStreamWsEvents(sock, False) == 1
+    assert modCli._fiStreamWsEvents(sock, False) == 1
 
 
 def test_stream_ws_events_skips_non_json(modCli):
@@ -1085,13 +1085,13 @@ def test_stream_ws_events_skips_non_json(modCli):
         bytes([0x81, len(dataBad)]) + dataBad,
         bytes([0x81, len(dataDone)]) + dataDone,
     ])
-    assert modCli._fnStreamWsEvents(sock, False) == 7
+    assert modCli._fiStreamWsEvents(sock, False) == 7
 
 
 def test_stream_ws_events_pipeline_error_returns_one(modCli):
     data = b'{"sType":"pipelineError"}'
     sock = _MockSocket([bytes([0x81, len(data)]) + data])
-    assert modCli._fnStreamWsEvents(sock, False) == 1
+    assert modCli._fiStreamWsEvents(sock, False) == 1
 
 
 def test_stream_ws_events_pongs_ping_and_skips_binary(modCli):
@@ -1103,7 +1103,7 @@ def test_stream_ws_events_pongs_ping_and_skips_binary(modCli):
         bytes([0x82, 0x00]),  # binary -> skip
         bytes([0x81, len(dataDone)]) + dataDone,
     ])
-    assert modCli._fnStreamWsEvents(sock, False) == 0
+    assert modCli._fiStreamWsEvents(sock, False) == 0
     # Exactly one frame was sent in reply: the PONG echoing dataPing.
     assert len(sock.listSent) == 1
     dataFrame = sock.listSent[0]
@@ -1124,7 +1124,7 @@ def test_stream_ws_events_drops_ws_heartbeat_silently(modCli, capsys):
         bytes([0x81, len(dataBeat)]) + dataBeat,
         bytes([0x81, len(dataDone)]) + dataDone,
     ])
-    assert modCli._fnStreamWsEvents(sock, False) == 0
+    assert modCli._fiStreamWsEvents(sock, False) == 0
     sOut = capsys.readouterr().out
     assert "wsHeartbeat" not in sOut
 

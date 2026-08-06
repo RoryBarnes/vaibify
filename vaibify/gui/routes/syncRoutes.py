@@ -36,7 +36,7 @@ from ..pipelineServer import (
     ZenodoMetadataRequest,
     fdictRequireWorkflow,
     fnBumpSyncEpoch,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
 )
 from .scriptRoutes import _fnStoreCommitHash
 
@@ -131,7 +131,7 @@ def _fnValidateOverleafFilePaths(listFilePaths):
 
     Raises HTTP 400 when a caller submits a path that would exfiltrate
     host files (e.g. ``/etc/passwd``) through the push or diff flow.
-    The existing HTTP 403 from ``fnValidatePathWithinRoot`` is
+    The existing HTTP 403 from ``fsValidatePathWithinRoot`` is
     translated to 400 here so the GUI treats the request as
     input-validation error and surfaces a clear message.
     """
@@ -149,7 +149,7 @@ def _fnValidateOverleafFilePaths(listFilePaths):
                 detail="File path must not contain null bytes.",
             )
         try:
-            fnValidatePathWithinRoot(sFilePath, WORKSPACE_ROOT)
+            fsValidatePathWithinRoot(sFilePath, WORKSPACE_ROOT)
         except HTTPException as error:
             raise HTTPException(
                 status_code=400,
@@ -186,7 +186,7 @@ def _fnValidateGithubPushPaths(listFilePaths, sWorkdir):
                 posixpath.join(sWorkdir or WORKSPACE_ROOT, sFilePath)
             )
         try:
-            fnValidatePathWithinRoot(sAbs, WORKSPACE_ROOT)
+            fsValidatePathWithinRoot(sAbs, WORKSPACE_ROOT)
         except HTTPException as error:
             raise HTTPException(
                 status_code=400,
@@ -312,7 +312,7 @@ async def _ftRunOverleafPushCall(
     ``to_thread`` path — an unenforced lane, named in the carrier's
     documented remainder, never a pretend-guarded one.
     """
-    def fnPushWorker(supervisor=None):
+    def ftPushWorker(supervisor=None):
         del supervisor
         return syncDispatcher.ftResultPushToOverleaf(
             connectionDocker, sContainerId,
@@ -321,7 +321,7 @@ async def _ftRunOverleafPushCall(
         )
 
     if requestHttp is None:
-        return await asyncio.to_thread(fnPushWorker)
+        return await asyncio.to_thread(ftPushWorker)
     from .. import commitCarrier
     appState = requestHttp.app.state
     dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromRequest(
@@ -333,7 +333,7 @@ async def _ftRunOverleafPushCall(
             "container's owner record; claim or connect first.")
     dictCommit = await commitCarrier.fdictRunLockHeldMutation(
         appState, dictLaneTuple["sContainerName"], sContainerId,
-        dictLaneTuple, "helper", "overleaf-push", fnPushWorker,
+        dictLaneTuple, "helper", "overleaf-push", ftPushWorker,
     )
     return dictCommit["result"]
 
@@ -577,7 +577,7 @@ def _fnRegisterPullManuscript(app, dictCtx):
 
     @fnAgentAction("pull-manuscript")
     @app.post("/api/overleaf/{sContainerId}/pull-manuscript")
-    async def fnPullManuscript(sContainerId: str):
+    async def fdictPullManuscript(sContainerId: str):
         return await _fdictHandlePullManuscript(
             syncDispatcher, dictCtx, sContainerId,
         )
@@ -589,7 +589,7 @@ def _fnRegisterOverleafPush(app, dictCtx):
 
     @fnAgentAction("push-to-overleaf")
     @app.post("/api/overleaf/{sContainerId}/push")
-    async def fnOverleafPush(
+    async def fdictOverleafPush(
         sContainerId: str, request: SyncPushRequest,
         requestHttp: Request,
     ):
@@ -633,7 +633,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
 
     @fnAgentAction("publish-to-zenodo")
     @app.post("/api/zenodo/{sContainerId}/archive")
-    async def fnZenodoArchive(
+    async def fdictZenodoArchive(
         sContainerId: str, request: SyncPushRequest,
     ):
         dictCtx["require"]()
@@ -699,7 +699,7 @@ def _fnRegisterZenodoDeposit(app, dictCtx):
     """Register GET /api/zenodo/{id}/deposit endpoint."""
 
     @app.get("/api/zenodo/{sContainerId}/deposit")
-    async def fnGetZenodoDeposit(sContainerId: str):
+    async def fdictGetZenodoDeposit(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -724,7 +724,7 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
     """Register GET/POST /api/zenodo/{id}/metadata endpoints."""
 
     @app.get("/api/zenodo/{sContainerId}/metadata")
-    async def fnGetZenodoMetadata(sContainerId: str):
+    async def fdictHandleGetZenodoMetadata(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -739,7 +739,7 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
 
     @fnAgentAction("set-zenodo-metadata")
     @app.post("/api/zenodo/{sContainerId}/metadata")
-    async def fnSetZenodoMetadata(
+    async def fdictSetZenodoMetadata(
         sContainerId: str, request: ZenodoMetadataRequest,
     ):
         dictCtx["require"]()
@@ -1060,7 +1060,7 @@ def _fnRegisterGithubPush(app, dictCtx):
 
     @fnAgentAction("push-to-github")
     @app.post("/api/github/{sContainerId}/push")
-    async def fnGithubPush(
+    async def fdictGithubPush(
         sContainerId: str, request: SyncPushRequest,
     ):
         dictCtx["require"]()
@@ -1137,7 +1137,7 @@ def _fnRegisterGithubIdentity(app, dictCtx):
 
     @fnAgentAction("set-git-identity")
     @app.post("/api/github/{sContainerId}/identity")
-    async def fnGithubIdentity(
+    async def fdictGithubIdentity(
         sContainerId: str, request: GitIdentityRequest,
     ):
         dictCtx["require"]()
@@ -1201,14 +1201,14 @@ def _fnRegisterGithubAddFile(app, dictCtx):
 
     @fnAgentAction("add-file-to-github")
     @app.post("/api/github/{sContainerId}/add-file")
-    async def fnGithubAddFile(
+    async def fdictGithubAddFile(
         sContainerId: str, request: GitAddFileRequest,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         sWorkdir = _fsRequireProjectRepoForGit(dictWorkflow)
-        fnValidatePathWithinRoot(
+        fsValidatePathWithinRoot(
             posixpath.normpath(
                 posixpath.join(sWorkdir, request.sFilePath)
             ),
@@ -1575,13 +1575,13 @@ def _fnRegisterSyncRoutes(app, dictCtx):
     from .. import syncDispatcher
 
     @app.get("/api/sync/{sContainerId}/status")
-    async def fnGetSyncStatus(sContainerId: str):
+    async def fdictHandleGetSyncStatus(sContainerId: str):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         return workflowManager.fdictGetSyncStatus(dictWorkflow)
 
     @app.get("/api/sync/{sContainerId}/files")
-    async def fnGetSyncFiles(
+    async def flistGetSyncFiles(
         sContainerId: str, sService: str = "",
     ):
         dictWorkflow = fdictRequireWorkflow(
@@ -1596,7 +1596,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         )
 
     @app.post("/api/sync/{sContainerId}/setup")
-    async def fnSetupConnection(
+    async def fdictSetupConnection(
         sContainerId: str, request: SyncSetupRequest,
     ):
         dictCtx["require"]()
@@ -1638,7 +1638,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
             _fnPersistZenodoService(dictCtx, sContainerId, request)
 
     @app.get("/api/sync/{sContainerId}/check/{sService}")
-    async def fnCheckConnection(
+    async def fdictCheckConnection(
         sContainerId: str, sService: str,
     ):
         dictCtx["require"]()
@@ -1666,7 +1666,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         return dictResult
 
     @app.get("/api/sync/{sContainerId}/has-credential/{sService}")
-    async def fnHasCredential(sContainerId: str, sService: str):
+    async def fdictHasCredential(sContainerId: str, sService: str):
         dictCtx["require"]()
         syncDispatcher.fnValidateServiceName(sService)
         return {
@@ -1674,7 +1674,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
         }
 
     @app.post("/api/sync/{sContainerId}/track")
-    async def fnSetTracking(
+    async def fdictSetTracking(
         sContainerId: str, request: SyncTrackingRequest,
     ):
         dictCtx["require"]()
@@ -1841,7 +1841,7 @@ def _fnRegisterDag(app, dictCtx):
     from .. import syncDispatcher
 
     @app.get("/api/workflow/{sContainerId}/dag")
-    async def fnGetDag(sContainerId: str):
+    async def fresponseGetDag(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
@@ -1864,7 +1864,7 @@ def _fnRegisterDagExport(app, dictCtx):
     from .. import syncDispatcher
 
     @app.get("/api/workflow/{sContainerId}/dag/export")
-    async def fnExportDag(
+    async def fresponseExportDag(
         sContainerId: str, sFormat: str = "svg",
     ):
         dictCtx["require"]()
@@ -1901,7 +1901,7 @@ def _fnRegisterDatasetDownload(app, dictCtx):
 
     @fnAgentAction("download-zenodo-dataset")
     @app.post("/api/zenodo/{sContainerId}/download")
-    async def fnDownloadDataset(
+    async def fdictDownloadDataset(
         sContainerId: str, request: DatasetDownloadRequest,
     ):
         dictCtx["require"]()
@@ -1938,7 +1938,7 @@ def _fnValidateZenodoDestination(sDestination, dictWorkflow):
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if sProjectRepoPath:
         sCandidate = posixpath.join(sProjectRepoPath, sNorm)
-        fnValidatePathWithinRoot(sCandidate, sProjectRepoPath)
+        fsValidatePathWithinRoot(sCandidate, sProjectRepoPath)
 
 
 def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
@@ -1947,7 +1947,7 @@ def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
 
     @fnAgentAction("refresh-overleaf-mirror")
     @app.post("/api/overleaf/{sContainerId}/mirror/refresh")
-    async def fnRefreshMirror(sContainerId: str):
+    async def fdictRefreshMirror(sContainerId: str):
         dictCtx["require"]()
         _fnRequireNetworkAccess(sContainerId)
         sProjectId = _fsRequireOverleafProjectId(
@@ -2001,7 +2001,7 @@ def _fnRegisterOverleafMirrorTree(app, dictCtx):
     from .. import syncDispatcher
 
     @app.get("/api/overleaf/{sContainerId}/mirror/tree")
-    async def fnGetMirrorTree(sContainerId: str):
+    async def fdictGetMirrorTree(sContainerId: str):
         dictCtx["require"]()
         sProjectId = _fsRequireOverleafProjectId(
             dictCtx, sContainerId)
@@ -2027,7 +2027,7 @@ def _fnRegisterOverleafDiff(app, dictCtx):
     from .. import syncDispatcher
 
     @app.post("/api/overleaf/{sContainerId}/diff")
-    async def fnOverleafDiff(
+    async def fdictOverleafDiff(
         sContainerId: str, request: OverleafDiffRequest,
     ):
         dictCtx["require"]()
@@ -2104,7 +2104,7 @@ def _fnRegisterOverleafMirrorDelete(app, dictCtx):
 
     @fnAgentAction("delete-overleaf-mirror")
     @app.delete("/api/overleaf/{sContainerId}/mirror")
-    async def fnDeleteMirror(sContainerId: str):
+    async def fdictDeleteMirror(sContainerId: str):
         dictCtx["require"]()
         sProjectId = _fsRequireOverleafProjectId(
             dictCtx, sContainerId)
@@ -2218,7 +2218,7 @@ def _fnRegisterRemoteVerify(app, dictCtx):
 
     @fnAgentAction("verify-remote")
     @app.post("/api/sync/{sContainerId}/{sService}/verify")
-    async def fnVerifyRemote(sContainerId: str, sService: str):
+    async def fdictHandleVerifyRemote(sContainerId: str, sService: str):
         dictCtx["require"]()
         _fnValidateVerifyService(sService)
         _fnRequireNetworkAccess(sContainerId)
@@ -2245,7 +2245,7 @@ def _fnRegisterRemoteVerifyStatus(app, dictCtx):
     from vaibify.reproducibility import scheduledReverify
 
     @app.get("/api/sync/{sContainerId}/{sService}/status")
-    async def fnGetRemoteVerifyStatus(
+    async def fdictGetRemoteVerifyStatus(
         sContainerId: str, sService: str,
     ):
         _fnValidateVerifyService(sService)
@@ -2271,7 +2271,7 @@ def _fnRegisterReverifySchedule(app, dictCtx):
     from vaibify.reproducibility import scheduledReverify
 
     @app.get("/api/sync/{sContainerId}/reverify-schedule")
-    async def fnGetReverifySchedule(sContainerId: str):
+    async def fdictGetReverifySchedule(sContainerId: str):
         return await asyncio.to_thread(
             scheduledReverify.fdictDescribeReverifySchedule,
         )
@@ -2390,7 +2390,7 @@ def _fnRegisterArxivConfigure(app, dictCtx):
 
     @fnAgentAction("configure-arxiv")
     @app.post("/api/sync/{sContainerId}/arxiv/configure")
-    async def fnConfigureArxiv(
+    async def fdictConfigureArxiv(
         sContainerId: str, request: ArxivConfigureRequest,
     ):
         dictCtx["require"]()

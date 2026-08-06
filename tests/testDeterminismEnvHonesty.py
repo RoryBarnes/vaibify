@@ -124,7 +124,7 @@ def _ftRunStepWithVariables(dictVariables):
         "vaibify.gui.pipelineRunner._fnRecordRemoteDataProvenance",
         new=AsyncMock(),
     ), patch(
-        "vaibify.gui.workflowManager.fnCleanStepScratchDirs",
+        "vaibify.gui.workflowManager.flistCleanStepScratchDirs",
         new=MagicMock(),
     ):
         _fnRunAsync(_fiExecuteAndRecord(
@@ -187,7 +187,7 @@ def _ftPrepareWithGitExit(iGitExit):
     fnCallback, listCaptured = _fMockCallback()
     mockDocker = _fMockDocker(iGitExit, f"{I_EPOCH}\n" if not iGitExit else "")
     with patch(
-        "vaibify.gui.pipelineRunner._fnEnsureLogsDirectory",
+        "vaibify.gui.pipelineRunner._fsEnsureLogsDirectory",
         new=AsyncMock(return_value="/ws/.vaibify/logs"),
     ), patch(
         "vaibify.gui.pipelineLogger.fnPruneOldLogs",

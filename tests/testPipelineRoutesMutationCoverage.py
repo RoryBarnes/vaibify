@@ -12,7 +12,7 @@ applied. The holes covered here are:
   tests are, not merely ``pytest.raises``,
 * every non-L1 signal in the file-status ETag,
 * mtime revalidation in ``_ftSplitCachedAndChanged``,
-* single-field change detection in ``_fnUpdateShaCache``.
+* single-field change detection in ``_fbUpdateShaCache``.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,7 +32,7 @@ class TestKillRouteAuthGate:
     """An unauthorized caller is rejected before the kill exec runs."""
 
     def test_unauthorized_kill_rejected_before_count_exec(self):
-        """Kills: Delete the dictCtx['require']() auth gate at the top of fnKillRunningTasks."""
+        """Kills: Delete the dictCtx['require']() auth gate at the top of fdictKillRunningTasks."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
@@ -290,7 +290,7 @@ class TestSplitCachedAndChanged:
         assert "out/a.dat" not in listNeedHash
 
 
-# ── Hole 6: _fnUpdateShaCache detects a single-field change ──────
+# ── Hole 6: _fbUpdateShaCache detects a single-field change ──────
 
 
 class _FakeFilesFixedSha:
@@ -314,18 +314,18 @@ class TestUpdateShaCacheSingleFieldChange:
     """A change in either sha or mtime alone signals persistence."""
 
     def test_mtime_only_change_signals_persistence(self):
-        """Kills: Change the change-detection disjunction in _fnUpdateShaCache from OR to AND."""
+        """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-        bChanged = pipelineRoutes._fnUpdateShaCache(
+        bChanged = pipelineRoutes._fbUpdateShaCache(
             dictCache, _FakeFilesFixedSha("aa"),
             ["out/a.dat"], {"out/a.dat": "1800"},
         )
         assert bChanged is True
 
     def test_sha_only_change_signals_persistence(self):
-        """Kills: Change the change-detection disjunction in _fnUpdateShaCache from OR to AND."""
+        """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-        bChanged = pipelineRoutes._fnUpdateShaCache(
+        bChanged = pipelineRoutes._fbUpdateShaCache(
             dictCache, _FakeFilesFixedSha("bb"),
             ["out/a.dat"], {"out/a.dat": "1700"},
         )

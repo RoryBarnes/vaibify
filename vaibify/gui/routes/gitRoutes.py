@@ -204,7 +204,7 @@ def _fnRegisterGitStatus(app, dictCtx):
     """Register GET /api/git/{sContainerId}/status."""
 
     @app.get("/api/git/{sContainerId}/status")
-    async def fnGitStatus(sContainerId: str):
+    async def fdictHandleGitStatus(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -267,7 +267,7 @@ def _fnRegisterGitBadges(app, dictCtx):
     """Register GET /api/git/{sContainerId}/badges."""
 
     @app.get("/api/git/{sContainerId}/badges")
-    async def fnGitBadges(sContainerId: str):
+    async def fdictGitBadges(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -307,7 +307,7 @@ def _fnRegisterManifestCheck(app, dictCtx):
     """Register GET /api/git/{sContainerId}/manifest-check."""
 
     @app.get("/api/git/{sContainerId}/manifest-check")
-    async def fnManifestCheck(
+    async def fdictManifestCheck(
         sContainerId: str, sService: str = "",
     ):
         dictCtx["require"]()
@@ -347,7 +347,7 @@ def _fnRegisterCommitCanonical(app, dictCtx):
 
     @fnAgentAction("commit-canonical")
     @app.post("/api/git/{sContainerId}/commit-canonical")
-    async def fnCommitCanonical(
+    async def fdictHandleCommitCanonical(
         sContainerId: str, request: CommitCanonicalRequest,
     ):
         dictCtx["require"]()
@@ -453,7 +453,7 @@ def _fnRegisterUntrackAiDeclaration(app, dictCtx):
 
     @fnAgentAction("untrack-ai-declaration")
     @app.post("/api/git/{sContainerId}/untrack-ai-declaration")
-    async def fnUntrackAiDeclaration(
+    async def fdictUntrackAiDeclaration(
         sContainerId: str, request: UntrackAiDeclarationRequest,
     ):
         dictCtx["require"]()
@@ -596,7 +596,7 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
 
     @fnAgentAction("fetch-project-repo")
     @app.post("/api/git/{sContainerId}/fetch-project-repo")
-    async def fnFetchProjectRepo(
+    async def fdictFetchProjectRepo(
         sContainerId: str,
         request: FetchProjectRepoRequest = FetchProjectRepoRequest(),
     ):
@@ -649,7 +649,7 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
 
     @fnAgentAction("refresh-remotes")
     @app.post("/api/git/{sContainerId}/refresh-remotes")
-    async def fnRefreshRemotes(
+    async def fdictRefreshRemotes(
         sContainerId: str,
         request: RefreshRemotesRequest = RefreshRemotesRequest(),
     ):
@@ -701,7 +701,7 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
 
     @fnAgentAction("pull-project-repo")
     @app.post("/api/git/{sContainerId}/pull-project-repo")
-    async def fnPullProjectRepo(sContainerId: str):
+    async def fdictPullProjectRepo(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -807,7 +807,7 @@ def _fnRegisterReconcileRemoteState(app, dictCtx):
 
     @fnAgentAction("reconcile-remote-state")
     @app.post("/api/git/{sContainerId}/reconcile-remote-state")
-    async def fnReconcileRemoteState(sContainerId: str):
+    async def fdictReconcileRemoteState(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,

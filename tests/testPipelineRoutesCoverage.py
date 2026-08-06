@@ -18,9 +18,9 @@ from vaibify.gui.routes.pipelineRoutes import (
     _flistExtractKillPatterns,
     _flistExtractStepDirectories,
     _flistFindCustomTestFiles,
-    _fnApplyAllMarkerCategories,
-    _fnApplyExternalTestResults,
-    _fnApplyMarkerCategory,
+    _fbApplyAllMarkerCategories,
+    _fbApplyExternalTestResults,
+    _fbApplyMarkerCategory,
     _fnEnsureConftestTemplate,
     _fnMarkPipelineStopped,
     _fsetExtractRegisteredTestFiles,
@@ -338,7 +338,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -404,7 +404,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -472,7 +472,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -553,7 +553,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -631,7 +631,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -703,7 +703,7 @@ class TestFdictFetchOutputStatus:
             return_value=["step01/run.py"],
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictCollectMarkerPathsByStep",
             return_value={0: sMarkerPath},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -1443,7 +1443,7 @@ class TestWorkflowDiscoveryRoute:
 
 _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
     "fdictCollectOutputPathsByStep",
-    "fnCollectMarkerPathsByStep",
+    "fdictCollectMarkerPathsByStep",
     "_fdictDetectAndInvalidate",
     "_fdictLoadMarkersForPoll",
     "_fdictLoadMtimeCacheForPoll",

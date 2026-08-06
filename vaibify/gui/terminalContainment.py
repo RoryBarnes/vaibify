@@ -56,7 +56,7 @@ __all__ = [
     "fdictTerminateAndProveRecord",
     "fdictDrainTerminalRecordsForContainer",
     "fdictDrainAllTerminalRecords",
-    "fnDrainSessionRecord",
+    "fdictDrainSessionRecord",
     "fbContainerHasLiveTerminalRecords",
     "fsetNamesWithLiveTerminalRecords",
 ]
@@ -555,7 +555,7 @@ def fdictDrainAllTerminalRecords(appState):
     return dictOutcomes
 
 
-def fnDrainSessionRecord(session):
+def fdictDrainSessionRecord(session):
     """Drain the containment record attached to one terminal session.
 
     The socket-close path (§7: a socket closing is not a terminal

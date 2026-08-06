@@ -60,7 +60,7 @@ Notes:
 - For container-path joins use `posixpath`, never `os.path`. The
   workspace root and path-validation helpers live in
   `vaibify.gui.pipelineServer` (`WORKSPACE_ROOT`,
-  `fnValidatePathWithinRoot`, `fsResolveFigurePath`,
+  `fsValidatePathWithinRoot`, `fsResolveFigurePath`,
   `fbaFetchFigureWithFallback`).
 - For shell-quoting container command arguments, use
   `fsShellQuote` from `vaibify.gui.pipelineRunner`.

@@ -103,7 +103,7 @@ def fixtureProjectRepo(tmp_path):
     return sRepo
 
 
-# --------- fnRunReverifyOnce: happy path ---------
+# --------- fdictRunReverifyOnce: happy path ---------
 
 
 def testRunReverifyOnceCoversAllConfiguredServices(tmp_path):
@@ -134,7 +134,7 @@ def testRunReverifyOnceCoversAllConfiguredServices(tmp_path):
         "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
         return_value=dictMatch,
     ):
-        dictReport = scheduledReverify.fnRunReverifyOnce(
+        dictReport = scheduledReverify.fdictRunReverifyOnce(
             {"workflows": {}}, listWorkflows,
         )
     assert len(dictReport["listResults"]) == 8
@@ -143,7 +143,7 @@ def testRunReverifyOnceCoversAllConfiguredServices(tmp_path):
     assert dictReport["sNowIso"]
 
 
-# --------- fnRunReverifyOnce: one bad remote isolated ---------
+# --------- fdictRunReverifyOnce: one bad remote isolated ---------
 
 
 def testRunReverifyOnceCapturesPerServiceFailures(tmp_path):
@@ -174,7 +174,7 @@ def testRunReverifyOnceCapturesPerServiceFailures(tmp_path):
         "vaibify.reproducibility.arxivClient.fdictFetchRemoteHashes",
         return_value=dictMatch,
     ):
-        dictReport = scheduledReverify.fnRunReverifyOnce(
+        dictReport = scheduledReverify.fdictRunReverifyOnce(
             {"workflows": {}}, listWorkflows,
         )
     listResults = dictReport["listResults"]
@@ -498,7 +498,7 @@ def test_reverify_loop_uses_to_thread():
             "vaibify.reproducibility.scheduledReverify.asyncio.to_thread",
             mockToThread,
         ), patch(
-            "vaibify.reproducibility.scheduledReverify.fnRunReverifyOnce",
+            "vaibify.reproducibility.scheduledReverify.fdictRunReverifyOnce",
             mockReverify,
         ), patch(
             "vaibify.reproducibility.scheduledReverify."
@@ -921,7 +921,7 @@ def _fnDriveOneScheduledPass(dictCtx, mockRunOnce):
             "vaibify.reproducibility.scheduledReverify.asyncio.to_thread",
             _fnFakeToThread,
         ), patch(
-            "vaibify.reproducibility.scheduledReverify.fnRunReverifyOnce",
+            "vaibify.reproducibility.scheduledReverify.fdictRunReverifyOnce",
             mockRunOnce,
         ), patch(
             "vaibify.reproducibility.scheduledReverify."

@@ -147,14 +147,14 @@ def main(ctx, sConfigPath, iPort):
         fnLaunchHub(iPort)
 
 
-def _fnAcquireHubSessionSlotOrExit(sRole, iPort):
+def _ffileAcquireHubSessionSlotOrExit(sRole, iPort):
     """Acquire a session slot or exit nonzero with a clear message."""
     import sys
     from vaibify.config.sessionRegistry import (
-        SessionLimitExceededError, fnAcquireSessionSlot,
+        SessionLimitExceededError, ffileAcquireSessionSlot,
     )
     try:
-        return fnAcquireSessionSlot(sRole, iPort)
+        return ffileAcquireSessionSlot(sRole, iPort)
     except SessionLimitExceededError as error:
         click.echo(f"Error: {error}", err=True)
         sys.exit(1)
@@ -210,7 +210,7 @@ def fnLaunchHub(iExplicitPort):
     from vaibify.gui.pipelineServer import fappCreateHubApplication
     from .portAllocator import fiResolveHubPort
     iPort = fiResolveHubPort(iExplicitPort)
-    fileHandleSession = _fnAcquireHubSessionSlotOrExit("hub", iPort)
+    fileHandleSession = _ffileAcquireHubSessionSlotOrExit("hub", iPort)
     try:
         sUrl = f"http://127.0.0.1:{iPort}"
         click.echo(f"Starting Vaibify hub at {sUrl}")

@@ -119,7 +119,7 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
     """Register GET /api/workflows route."""
 
     @app.get("/api/workflows/{sContainerId}")
-    async def fnFindWorkflows(sContainerId: str):
+    async def flistHandleFindWorkflows(sContainerId: str):
         dictCtx["require"]()
         try:
             return workflowManager.flistFindWorkflowsInContainer(
@@ -194,7 +194,7 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
     """Register POST /api/workflows/{id}/create route."""
 
     @app.post("/api/workflows/{sContainerId}/create")
-    async def fnCreateWorkflow(
+    async def fdictHandleCreateWorkflow(
         sContainerId: str, request: CreateWorkflowRequest
     ):
         dictCtx["require"]()
@@ -233,7 +233,7 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
 
     @fnAgentAction("create-project")
     @app.post("/api/workflows/{sContainerId}/request-creation")
-    async def fnRequestProjectCreation(
+    async def fdictRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
     ):
         dictCtx["require"]()
@@ -337,7 +337,7 @@ def _fnRegisterConnect(app, dictCtx):
 
     @app.post("/api/connect/{sContainerId}")
     @fnRouteScope(S_SCOPE_OWNER_ESTABLISHING, "sContainerId", "id")
-    async def fnConnect(
+    async def fdictHandleConnectRequest(
         requestHttp: Request,
         sContainerId: str,
         sWorkflowPath: Optional[str] = None,

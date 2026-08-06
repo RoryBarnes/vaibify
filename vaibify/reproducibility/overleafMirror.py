@@ -268,7 +268,7 @@ def fsReadMirrorHeadSha(sProjectId):
     return (result.stdout or "").strip()
 
 
-def _fnCountMirrorFiles(sProjectId):
+def _fiCountMirrorFiles(sProjectId):
     """Return the number of blob entries currently tracked in the mirror."""
     listEntries = flistListMirrorTree(sProjectId)
     return sum(1 for d in listEntries if d["sType"] == "blob")
@@ -301,7 +301,7 @@ def _fdictBuildRefreshSummary(sProjectId):
     """Build the success payload returned by fbRefreshMirror."""
     return {
         "sHeadSha": fsReadMirrorHeadSha(sProjectId),
-        "iFileCount": _fnCountMirrorFiles(sProjectId),
+        "iFileCount": _fiCountMirrorFiles(sProjectId),
         "sRefreshedAt": _fsIsoTimestampNow(),
     }
 

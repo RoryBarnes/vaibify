@@ -338,13 +338,13 @@ def _fnRunAsync(coro):
 @patch("vaibify.gui.pipelineRunner._fiCheckDependencies",
        new_callable=AsyncMock, return_value=0)
 def test_step_started_event_carries_the_budget(mockDeps, mockExec):
-    from vaibify.gui.pipelineRunner import _fnRunOneStep
+    from vaibify.gui.pipelineRunner import _fiRunOneStep
     listEvents = []
 
     async def fnCallback(dictEvent):
         listEvents.append(dictEvent)
 
-    _fnRunAsync(_fnRunOneStep(
+    _fnRunAsync(_fiRunOneStep(
         MagicMock(), "cid", {"sName": "Compute"}, 1,
         "/work", {}, fnCallback, fWallClockBudgetSeconds=45,
     ))
@@ -354,7 +354,7 @@ def test_step_started_event_carries_the_budget(mockDeps, mockExec):
     assert dictStarted["fWallClockBudgetSeconds"] == 45
 
 
-@patch("vaibify.gui.pipelineRunner._fnRunOneStep",
+@patch("vaibify.gui.pipelineRunner._fiRunOneStep",
        new_callable=AsyncMock, return_value=0)
 @patch("vaibify.gui.pipelineRunner._fbShouldRunStep", return_value=True)
 def test_run_loop_resolves_and_passes_budget(mockShould, mockRunOne):

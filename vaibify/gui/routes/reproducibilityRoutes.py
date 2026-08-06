@@ -66,7 +66,7 @@ from ...reproducibility.rerunVerification import (
 )
 from ...reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
-    fnGenerateReproduceScript,
+    fsGenerateReproduceScript,
 )
 
 
@@ -98,7 +98,7 @@ def _fnRegisterReadiness(app, dictCtx):
 
     @fnAgentAction("check-l3-readiness")
     @app.get("/api/workflow/{sContainerId}/level3/readiness")
-    async def fnL3Readiness(sContainerId: str):
+    async def fdictHandleL3Readiness(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -116,7 +116,7 @@ def _fnRegisterAttestation(app, dictCtx):
 
     @fnAgentAction("view-l3-attestation")
     @app.get("/api/workflow/{sContainerId}/level3/attestation")
-    async def fnL3AttestationGet(sContainerId: str):
+    async def fdictL3AttestationGet(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -155,7 +155,7 @@ def _fnRegisterVerify(app, dictCtx):
 
     @fnAgentAction("verify-l3-reproducibility")
     @app.post("/api/workflow/{sContainerId}/level3/verify")
-    async def fnL3Verify(sContainerId: str):
+    async def fdictL3Verify(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -396,14 +396,14 @@ def _fnRegisterGenerateScript(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/level3/reproduce-script"
     )
-    async def fnL3GenerateReproduceScript(sContainerId: str):
+    async def fdictL3GenerateReproduceScript(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
         try:
-            sPathWritten = fnGenerateReproduceScript(
+            sPathWritten = fsGenerateReproduceScript(
                 sProjectRepo, dictWorkflow,
                 connectionDocker=dictCtx["docker"],
                 sContainerId=sContainerId,
@@ -446,7 +446,7 @@ def _fnRegisterDeclareBinaries(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/binaries/declare"
     )
-    async def fnDeclareBinaries(sContainerId: str, request: dict):
+    async def fdictDeclareBinaries(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -514,7 +514,7 @@ def _fnRegisterCaptureBinary(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/binaries/capture"
     )
-    async def fnCaptureBinary(sContainerId: str, request: dict):
+    async def fdictCaptureBinary(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -622,7 +622,7 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/determinism/declare"
     )
-    async def fnDeclareDeterminism(sContainerId: str, request: dict):
+    async def fdictDeclareDeterminism(sContainerId: str, request: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -656,7 +656,7 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/level3/envelope"
     )
-    async def fnRegenerateEnvelope(sContainerId: str):
+    async def fdictRegenerateEnvelope(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -689,7 +689,7 @@ def _fnRegisterDeleteDeterminism(app, dictCtx):
     @app.delete(
         "/api/workflow/{sContainerId}/determinism"
     )
-    async def fnDeleteDeterminism(sContainerId: str):
+    async def fdictDeleteDeterminism(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -711,7 +711,7 @@ def _fnRegisterVerifyDependencyLock(app, dictCtx):
     @app.post(
         "/api/workflow/{sContainerId}/dependencies/verify"
     )
-    async def fnVerifyDependencyLock(sContainerId: str):
+    async def fdictVerifyDependencyLock(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,

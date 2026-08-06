@@ -238,7 +238,7 @@ def _fnPatchContainerLane(
             side_effect=_fdictLoad,
         ),
         patch(
-            "vaibify.gui.pipelineRunner.fnRunAllSteps",
+            "vaibify.gui.pipelineRunner.fiRunAllSteps",
             side_effect=_fiRunAllSteps,
         ),
     ]
@@ -629,7 +629,7 @@ def test_dashboard_verify_reruns_the_workflow_it_was_given(
         return 0
 
     with patch(
-        "vaibify.gui.pipelineRunner.fnRunAllSteps",
+        "vaibify.gui.pipelineRunner.fiRunAllSteps",
         side_effect=_fiRunAllSteps,
     ):
         dictResult = _fdictRunReproductionSync(

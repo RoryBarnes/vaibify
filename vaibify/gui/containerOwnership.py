@@ -45,7 +45,7 @@ __all__ = [
     "ftClaim",
     "fbBrowserSessionOwnsLease",
     "fbReleaseWouldBePermitted",
-    "fnReleaseOwnership",
+    "fbReleaseOwnership",
     "fbSessionOwnsContainer",
     "fiOwnerGenerationForName",
     "fnIncrementLiveConnection",
@@ -71,7 +71,7 @@ from vaibify.config import pidFileRegistry
 from vaibify.config.containerLock import (
     ContainerLockedError,
     ContainerQuarantinedError,
-    fnAcquireContainerLock,
+    ffileAcquireContainerLock,
     fnReleaseContainerLock,
 )
 from vaibify.config.keepAliveManager import fnStopKeepAlive
@@ -444,19 +444,19 @@ def _ftClaimUnowned(
     past operation outlives the process that held the flock.
     """
     try:
-        fileHandleLock = fnAcquireContainerLock(sName, iPort, connectionDocker)
+        fileHandleLock = ffileAcquireContainerLock(sName, iPort, connectionDocker)
     except ContainerQuarantinedError as error:
         return (409, _fdictQuarantineRefused(sName, error))
     except ContainerLockedError as error:
         return (409, _fdictCrossHubRefused(sName, error))
-    sLeaseId = _fnRecordNewOwner(
+    sLeaseId = _fsRecordNewOwner(
         dictContainerOwners, sName, fileHandleLock, sContainerId,
         sBrowserSessionId, dictSessionOwner,
     )
     return (200, _fdictClaimGranted(sName, sLeaseId))
 
 
-def _fnRecordNewOwner(
+def _fsRecordNewOwner(
     dictContainerOwners, sName, fileHandleLock, sContainerId="",
     sBrowserSessionId="", dictSessionOwner=None,
 ):
@@ -586,7 +586,7 @@ def fbReleaseWouldBePermitted(
 ):
     """Return True when a release by this caller would be committed.
 
-    The arbitration half of :func:`fnReleaseOwnership`, exposed so the
+    The arbitration half of :func:`fbReleaseOwnership`, exposed so the
     release authority can run its terminal drain (design §10) only for
     a caller that will actually be permitted — an unauthorized release
     attempt must never terminate the true owner's terminals.
@@ -611,7 +611,7 @@ def fbReleaseWouldBePermitted(
     return bBoundOwner or bUnboundOwner
 
 
-def fnReleaseOwnership(
+def fbReleaseOwnership(
     dictContainerOwners, sName, sLeaseId, sBrowserSessionId="",
     dictSessionOwner=None,
 ):

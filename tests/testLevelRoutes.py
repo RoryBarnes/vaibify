@@ -198,7 +198,7 @@ def test_generate_template_handles_oserror_during_write(
 ):
     """An OSError surface as 500 with sanitized message."""
     with patch(
-        "vaibify.gui.routes.levelRoutes.fnWriteDeclarationTemplate",
+        "vaibify.gui.routes.levelRoutes.fsWriteDeclarationTemplate",
         side_effect=OSError("disk full"),
     ):
         response = fixtureClient.post(

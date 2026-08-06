@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 from .. import stepRename, workflowManager
 from ..actionCatalog import fnAgentAction
-from ..fileStatusManager import fnMaybeAutoArchive
+from ..fileStatusManager import fbMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiProofLevel
 from ..routeContext import ffilesForWorkflow
 from ..pipelineServer import (
@@ -57,14 +57,14 @@ def _fnRegisterStepsList(app, dictCtx):
     """Register GET /api/steps and validate routes."""
 
     @app.get("/api/steps/{sContainerId}")
-    async def fnGetSteps(sContainerId: str):
+    async def flistGetSteps(sContainerId: str):
         return workflowManager.flistExtractStepNames(
             fdictRequireWorkflow(
                 dictCtx["workflows"], sContainerId)
         )
 
     @app.get("/api/steps/{sContainerId}/validate")
-    async def fnValidateReferences(sContainerId: str):
+    async def fdictValidateReferences(sContainerId: str):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         return {
@@ -77,7 +77,7 @@ def _fnRegisterStepsList(app, dictCtx):
 
     @app.get("/api/steps/{sContainerId}/resolve-commands")
     @fnAgentAction("resolve-commands")
-    async def fnResolveCommands(sContainerId: str):
+    async def fdictResolveCommands(sContainerId: str):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         return workflowManager.fdictResolveWorkflowCommands(
@@ -85,7 +85,7 @@ def _fnRegisterStepsList(app, dictCtx):
         )
 
     @app.get("/api/steps/{sContainerId}/by-label/{sLabel}")
-    async def fnResolveStepLabel(sContainerId: str, sLabel: str):
+    async def fdictResolveStepLabel(sContainerId: str, sLabel: str):
         from ..pipelineUtils import fiStepIndexFromLabel
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -100,7 +100,7 @@ def _fnRegisterStepGet(app, dictCtx):
     """Register GET /api/steps/{id}/{index} route."""
 
     @app.get("/api/steps/{sContainerId}/{iStepIndex}")
-    async def fnGetStep(sContainerId: str, iStepIndex: int):
+    async def fdictHandleGetStep(sContainerId: str, iStepIndex: int):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         try:
@@ -141,7 +141,7 @@ def _fnRegisterStepCreate(app, dictCtx):
 
     @fnAgentAction("create-step")
     @app.post("/api/steps/{sContainerId}/create")
-    async def fnCreateStep(
+    async def fdictHandleCreateStep(
         sContainerId: str, request: StepCreateRequest
     ):
         dictCtx["require"]()
@@ -169,7 +169,7 @@ def _fnRegisterStepInsert(app, dictCtx):
 
     @fnAgentAction("insert-step")
     @app.post("/api/steps/{sContainerId}/insert/{iPosition}")
-    async def fnInsertStep(
+    async def fdictInsertStep(
         sContainerId: str, iPosition: int,
         request: StepCreateRequest,
     ):
@@ -199,7 +199,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
 
     @fnAgentAction("update-step")
     @app.put("/api/steps/{sContainerId}/{iStepIndex}")
-    async def fnUpdateStep(
+    async def fdictUpdateStep(
         sContainerId: str, iStepIndex: int,
         request: StepUpdateRequest,
     ):
@@ -226,7 +226,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
         except IndexError as error:
             raise HTTPException(404, str(error))
         dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
+        await fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
@@ -334,7 +334,7 @@ def _fnRegisterStepDelete(app, dictCtx):
 
     @fnAgentAction("delete-step")
     @app.delete("/api/steps/{sContainerId}/{iStepIndex}")
-    async def fnDeleteStep(sContainerId: str, iStepIndex: int):
+    async def fdictDeleteStep(sContainerId: str, iStepIndex: int):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -355,7 +355,7 @@ def _fnRegisterStepReorder(app, dictCtx):
 
     @fnAgentAction("reorder-steps")
     @app.post("/api/steps/{sContainerId}/reorder")
-    async def fnReorderSteps(
+    async def fdictReorderSteps(
         sContainerId: str, request: ReorderRequest
     ):
         dictCtx["require"]()
@@ -377,7 +377,7 @@ def _fnRegisterInputDataAdd(app, dictCtx):
 
     @fnAgentAction("add-input-data-file")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/input-data")
-    async def fnAddInputDataFile(
+    async def fdictAddInputDataFile(
         sContainerId: str, iStepIndex: int,
         request: InputDataAddRequest,
     ):
@@ -410,7 +410,7 @@ def _fnRegisterStepRename(app, dictCtx):
 
     @fnAgentAction("rename-step")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/rename")
-    async def fnRenameStep(
+    async def fdictRenameStep(
         sContainerId: str, iStepIndex: int,
         request: StepRenameRequest,
     ):
@@ -474,7 +474,7 @@ def _fnRegisterAlignDirectories(app, dictCtx):
 
     @fnAgentAction("align-step-directories")
     @app.post("/api/steps/{sContainerId}/align-directories")
-    async def fnAlignStepDirectories(sContainerId: str):
+    async def fdictAlignStepDirectories(sContainerId: str):
         """Migrate every nonconforming step to the slug contract.
 
         Each step runs the full rename cascade (git mv, marker,
@@ -546,7 +546,7 @@ def _fnRegisterDeclareNoInputData(app, dictCtx):
 
     @fnAgentAction("declare-no-input-data")
     @app.post("/api/steps/{sContainerId}/declare-no-input-data")
-    async def fnDeclareNoInputData(sContainerId: str):
+    async def fdictDeclareNoInputData(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)

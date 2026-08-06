@@ -42,7 +42,7 @@ def fixtureIsolateJournalAndLockDirectories(tmp_path, monkeypatch):
 def _fbFlockIsStillHeld(sName):
     """Return True when the container's host flock cannot be acquired."""
     try:
-        fileHandle = containerLock.fnAcquireContainerLock(
+        fileHandle = containerLock.ffileAcquireContainerLock(
             sName, I_OWNER_PORT + 1,
         )
     except containerLock.ContainerLockedError:
@@ -68,7 +68,7 @@ def _fstateBuildOwnedState():
     stateApp.dictContainerOwners[S_PROJECT_NAME] = (
         containerOwnership.OwnerRecord(
             sLeaseId=S_LEASE_ID,
-            fileHandleLock=containerLock.fnAcquireContainerLock(
+            fileHandleLock=containerLock.ffileAcquireContainerLock(
                 S_PROJECT_NAME, I_OWNER_PORT,
             ),
             sAgentToken=containerOwnership.fsMintAgentToken(),

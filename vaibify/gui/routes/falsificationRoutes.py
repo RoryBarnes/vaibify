@@ -102,7 +102,7 @@ def _fnRegisterView(app, dictCtx):
     @app.get(
         "/api/steps/{sContainerId}/{iStepIndex}/falsification"
     )
-    async def fnFalsificationGet(sContainerId: str, iStepIndex: int):
+    async def fdictFalsificationGet(sContainerId: str, iStepIndex: int):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -123,7 +123,7 @@ def _fnRegisterRun(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"
     )
-    async def fnRunFalsification(sContainerId: str, iStepIndex: int):
+    async def fdictRunFalsification(sContainerId: str, iStepIndex: int):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,

@@ -16,7 +16,7 @@ def _fdictOwners():
 
 def _fnRecord(dictOwners, sName, sSessionId):
     """Record an unowned claim bound to a browser session; return its lease."""
-    return containerOwnership._fnRecordNewOwner(
+    return containerOwnership._fsRecordNewOwner(
         dictOwners, sName, fileHandleLock=None, sContainerId="cid-" + sName,
         sBrowserSessionId=sSessionId,
     )

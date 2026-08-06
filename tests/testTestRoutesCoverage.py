@@ -1287,7 +1287,7 @@ class TestRunTestsNeverReportsUnexecutedAsPassed:
             "vaibify.gui.routes.testRoutes.ffilesForWorkflow",
             return_value=[],
         ), patch(
-            "vaibify.gui.routes.testRoutes.fnMaybeAutoArchive",
+            "vaibify.gui.routes.testRoutes.fbMaybeAutoArchive",
             new_callable=AsyncMock,
         ):
             return await fnHandler("cid-1", 0)

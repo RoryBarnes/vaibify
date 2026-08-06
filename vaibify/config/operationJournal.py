@@ -10,7 +10,7 @@ the intended target BEFORE anything launches; promotion to
 ``IN_FLIGHT`` adds the real holder identity (a recycle-proof PID plus
 process group, or a Docker exec/container id, per kind). A crash at
 any point naturally leaves the record behind, so the next acquisition
-of the container — ``containerLock.fnAcquireContainerLock`` — refuses
+of the container — ``containerLock.ffileAcquireContainerLock`` — refuses
 a container whose past operations cannot be proven settled, even
 though the crashed holder's flock was auto-released by the kernel.
 

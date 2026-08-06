@@ -9,7 +9,7 @@ from fastapi import HTTPException, Request
 
 from ..actionCatalog import fnAgentAction
 from ..fileStatusManager import (
-    fnMaybeAutoArchive,
+    fbMaybeAutoArchive,
     fsWorkflowSlugFromPath,
 )
 from vaibify.reproducibility.levelGates import fiProofLevel
@@ -27,7 +27,7 @@ from ..pipelineServer import (
     WORKSPACE_ROOT,
     fdictRequireWorkflow,
     fnRejectWriteDenylistedPath,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     _fsSanitizeServerError,
 )
 from ..testStatusManager import (
@@ -199,7 +199,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/generate-test"
     )
-    async def fnGenerateTest(
+    async def fdictHandleGenerateTest(
         sContainerId: str, iStepIndex: int,
         request: TestGenerateRequest,
     ):
@@ -233,7 +233,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
     @app.delete(
         "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
     )
-    async def fnDeleteGeneratedTest(
+    async def fdictDeleteGeneratedTest(
         sContainerId: str, iStepIndex: int,
     ):
         dictCtx["require"]()
@@ -292,7 +292,7 @@ def _fsResolveTestFilePath(sFilePath, sProjectRepoPath):
         sFilePath if sFilePath.startswith("/")
         else posixpath.join(sRoot, sFilePath)
     )
-    sNormalized = fnValidatePathWithinRoot(sCandidate, sRoot)
+    sNormalized = fsValidatePathWithinRoot(sCandidate, sRoot)
     fnRejectWriteDenylistedPath(sNormalized, sRoot)
     return sNormalized
 
@@ -447,7 +447,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/save-and-run-test"
     )
-    async def fnSaveAndRunTest(
+    async def fdictSaveAndRunTest(
         sContainerId: str, iStepIndex: int,
         request: SaveAndRunTestRequest,
     ):
@@ -475,7 +475,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         _fnRecordTestResult(dictStep, bPassed, dictWorkflow, iStepIndex)
         _fnRegisterTestCommand(dictStep, bPassed, sFilePath)
         dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
+        await fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
@@ -489,7 +489,7 @@ def _fnRegisterTestRun(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
     )
-    async def fnRunTests(
+    async def fdictHandleRunTests(
         sContainerId: str, iStepIndex: int
     ):
         from ..workflowManager import flistBuildTestCommands
@@ -524,7 +524,7 @@ def _fnRegisterTestRun(app, dictCtx):
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
         dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
+        await fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
@@ -536,7 +536,7 @@ def _fnRegisterTestRun(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/run-test-category"
     )
-    async def fnRunTestCategory(
+    async def fdictRunTestCategory(
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
@@ -554,7 +554,7 @@ def _fnRegisterTestRun(app, dictCtx):
             dictStep, dictCat, sVerifKey, bPassed, sOutput,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
-        await fnMaybeAutoArchive(
+        await fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )

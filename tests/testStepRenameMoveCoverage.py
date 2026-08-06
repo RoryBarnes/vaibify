@@ -60,7 +60,7 @@ def test_move_command_prefers_git_mv_with_plain_mv_fallback():
     assert "cd " in sCommand
 
 
-# --- _fnMoveStepDirectory ---
+# --- _fbMoveStepDirectory ---
 
 def _fdictPlan():
     return {"sOldDirectory": "Old", "sNewDirectory": "New"}
@@ -69,24 +69,24 @@ def _fdictPlan():
 def test_move_refuses_to_clobber_an_existing_target():
     conn = _fnConnection([(0, "")])  # test -e new → exists
     with pytest.raises(ValueError):
-        stepRename._fnMoveStepDirectory(conn, "cid", "/repo", _fdictPlan())
+        stepRename._fbMoveStepDirectory(conn, "cid", "/repo", _fdictPlan())
 
 
 def test_move_is_json_only_when_old_directory_absent():
     # test -e new → absent (1); test -d old → absent (non-zero).
     conn = _fnConnection([(1, ""), (1, "")])
-    assert stepRename._fnMoveStepDirectory(
+    assert stepRename._fbMoveStepDirectory(
         conn, "cid", "/repo", _fdictPlan()) is False
 
 
 def test_move_succeeds_when_directory_present():
     # test -e new absent; test -d old present; git mv exit 0.
     conn = _fnConnection([(1, ""), (0, ""), (0, "")])
-    assert stepRename._fnMoveStepDirectory(
+    assert stepRename._fbMoveStepDirectory(
         conn, "cid", "/repo", _fdictPlan()) is True
 
 
 def test_move_raises_when_git_mv_fails():
     conn = _fnConnection([(1, ""), (0, ""), (1, "permission denied")])
     with pytest.raises(RuntimeError):
-        stepRename._fnMoveStepDirectory(conn, "cid", "/repo", _fdictPlan())
+        stepRename._fbMoveStepDirectory(conn, "cid", "/repo", _fdictPlan())

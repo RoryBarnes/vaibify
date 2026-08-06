@@ -18,7 +18,7 @@ pytestmark = pytest.mark.falsification
 
 from vaibify.gui.pipelineRunner import (
     ftRunStepCommands,
-    fnVerifyOnly,
+    fiVerifyOnly,
     _fiExecuteAndRecord,
     _fsetSnapshotDirectory,
     _ftAppendAndMaybeDrainBatch,
@@ -100,7 +100,7 @@ def _ftRunExecuteAndRecordWithFailure(iFailureExit):
         "vaibify.gui.pipelineRunner._fnEmitDiscoveredOutputs",
         new=AsyncMock(),
     ), patch(
-        "vaibify.gui.workflowManager.fnCleanStepScratchDirs",
+        "vaibify.gui.workflowManager.flistCleanStepScratchDirs",
         new=MagicMock(),
     ):
         iReturned = _fnRunAsync(_fiExecuteAndRecord(
@@ -189,7 +189,7 @@ def test_fnVerifyOnly_missing_output_emits_stepFail_badge():
     }
     mockDocker = _fMockDocker(1, "")
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(fnVerifyOnly(
+    iResult = _fnRunAsync(fiVerifyOnly(
         mockDocker, "cid", dictWorkflow, "/w/test.json",
         "/work", fnCallback,
     ))

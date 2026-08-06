@@ -23,7 +23,7 @@ from typing import Optional
 from ..actionCatalog import fnAgentAction
 from .. import draftManager
 from ..pipelineServer import (
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     _fsSanitizeServerError,
 )
 
@@ -41,7 +41,7 @@ def _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     connect handler is the only place it's resolved authoritatively;
     the cached workflow dict does not carry it directly. The slug
     derivation in :mod:`vaibify.gui.draftManager` mirrors what
-    ``fnCollectMarkerPathsByStep`` uses for test markers, so drafts
+    ``fdictCollectMarkerPathsByStep`` uses for test markers, so drafts
     namespace by the same workflow basename as markers.
     """
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
@@ -74,7 +74,7 @@ def _ftResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
     sDraftPath = posixpath.join(
         sDraftDir, draftManager.fsDraftFilename(sFilePath, sWorkdir),
     )
-    fnValidatePathWithinRoot(sDraftPath, sDraftDir)
+    fsValidatePathWithinRoot(sDraftPath, sDraftDir)
     return sDraftDir, sDraftPath
 
 
@@ -112,7 +112,7 @@ def _fnRegisterDraftWrite(app, dictCtx):
 
     @fnAgentAction("write-draft")
     @app.put("/api/draft/{sContainerId}/{sFilePath:path}")
-    async def fnWriteDraft(
+    async def fdictWriteDraft(
         sContainerId: str, sFilePath: str,
         request: DraftWriteRequest,
     ):
@@ -144,7 +144,7 @@ def _fnRegisterDraftRead(app, dictCtx):
     """Register GET /api/draft/{sContainerId}/{sFilePath:path}."""
 
     @app.get("/api/draft/{sContainerId}/{sFilePath:path}")
-    async def fnReadDraft(
+    async def fdictReadDraft(
         sContainerId: str, sFilePath: str,
         sWorkdir: str = "",
     ):
@@ -173,7 +173,7 @@ def _fnRegisterDraftDelete(app, dictCtx):
 
     @fnAgentAction("delete-draft")
     @app.delete("/api/draft/{sContainerId}/{sFilePath:path}")
-    async def fnDeleteDraft(
+    async def fdictDeleteDraft(
         sContainerId: str, sFilePath: str,
         sWorkdir: str = "",
     ):
@@ -198,7 +198,7 @@ def _fnRegisterDraftList(app, dictCtx):
     """Register GET /api/drafts/{sContainerId}."""
 
     @app.get("/api/drafts/{sContainerId}")
-    async def fnListDrafts(sContainerId: str):
+    async def fdictHandleListDrafts(sContainerId: str):
         dictCtx["require"]()
         sProjectRepoPath, sWorkflowPath = (
             _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)

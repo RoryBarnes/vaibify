@@ -143,7 +143,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/standardize-plots"
     )
-    async def fnStandardizePlots(
+    async def fdictStandardizePlots(
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
@@ -185,7 +185,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"
     )
-    async def fnComparePlot(
+    async def fdictComparePlot(
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
@@ -214,7 +214,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
     @app.get(
         "/api/steps/{sContainerId}/{iStepIndex}/plot-standards"
     )
-    async def fnCheckPlotStandards(
+    async def fdictCheckPlotStandards(
         sContainerId: str, iStepIndex: int,
     ):
         dictCtx["require"]()

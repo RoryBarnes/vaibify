@@ -219,7 +219,7 @@ def _fnRegisterStatus(app, dictCtx):
     """Register GET /api/repos/{id}/status route."""
 
     @app.get("/api/repos/{sContainerId}/status")
-    async def fnRepoStatus(sContainerId: str):
+    async def fdictHandleRepoStatus(sContainerId: str):
         dictCtx["require"]()
         return await asyncio.to_thread(
             _fdictBuildStatusResponse,
@@ -227,7 +227,7 @@ def _fnRegisterStatus(app, dictCtx):
         )
 
 
-def _fnDoTrackRepo(dictCtx, sContainerId, sRepoName):
+def _fdictDoTrackRepo(dictCtx, sContainerId, sRepoName):
     """Validate and add sRepoName to the tracked sidecar list."""
     _fnRequireValidRepoName(sRepoName)
     dictStatus = trackedReposManager.fdictComputeRepoStatus(
@@ -350,7 +350,7 @@ def _fnRunGitInitWithInitialCommit(
         )
 
 
-def _fnDoInitProjectRepo(
+def _fdictDoInitProjectRepo(
     connectionDocker, sContainerId, sDirectory, bCreateIfMissing,
 ):
     """Validate and initialize /workspace/<sDirectory> as a git repo.
@@ -391,12 +391,12 @@ def _fnRegisterInit(app, dictCtx):
 
     @fnAgentAction("init-project-repo")
     @app.post("/api/repos/{sContainerId}/init")
-    async def fnInitProjectRepo(
+    async def fdictInitProjectRepo(
         sContainerId: str, request: InitRepoRequest,
     ):
         dictCtx["require"]()
         return await asyncio.to_thread(
-            _fnDoInitProjectRepo,
+            _fdictDoInitProjectRepo,
             dictCtx["docker"], sContainerId,
             request.sDirectory, request.bCreateIfMissing,
         )
@@ -406,10 +406,10 @@ def _fnRegisterTrack(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/track route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/track")
-    async def fnTrackRepo(sContainerId: str, sRepoName: str):
+    async def fdictTrackRepo(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
         return await asyncio.to_thread(
-            _fnDoTrackRepo, dictCtx, sContainerId, sRepoName,
+            _fdictDoTrackRepo, dictCtx, sContainerId, sRepoName,
         )
 
 
@@ -417,7 +417,7 @@ def _fnRegisterIgnore(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/ignore route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/ignore")
-    async def fnIgnoreRepo(sContainerId: str, sRepoName: str):
+    async def fdictIgnoreRepo(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
         await asyncio.to_thread(
@@ -431,7 +431,7 @@ def _fnRegisterUntrack(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/untrack route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/untrack")
-    async def fnUntrackRepo(sContainerId: str, sRepoName: str):
+    async def fdictUntrackRepo(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
         await asyncio.to_thread(
@@ -482,7 +482,7 @@ def _fnRegisterPushStaged(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/push-staged route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/push-staged")
-    async def fnPushStaged(
+    async def fdictPushStaged(
         sContainerId: str, sRepoName: str,
         request: PushStagedRequest,
     ):
@@ -504,7 +504,7 @@ def _fnRegisterPushFiles(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/push-files route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/push-files")
-    async def fnPushFiles(
+    async def fdictPushFiles(
         sContainerId: str, sRepoName: str,
         request: PushFilesRequest,
     ):
@@ -532,7 +532,7 @@ def _fnRegisterDirtyFiles(app, dictCtx):
     """Register GET /api/repos/{id}/{name}/dirty-files route."""
 
     @app.get("/api/repos/{sContainerId}/{sRepoName}/dirty-files")
-    async def fnDirtyFiles(sContainerId: str, sRepoName: str):
+    async def fdictDirtyFiles(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
         _fnRequireTracked(

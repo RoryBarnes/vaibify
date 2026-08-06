@@ -346,7 +346,7 @@ var VaibifyTestManager = (function () {
         }
     }
 
-    async function fnRunFalsification(iStepIndex) {
+    async function fdictRunFalsification(iStepIndex) {
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
@@ -760,7 +760,7 @@ var VaibifyTestManager = (function () {
         dictStep.dictVerification = dictVerify;
         var dictCategories = dictMarker.dictCategories || {};
         if (dictEntry.bStale) {
-            // Mirror backend _fnClearStaleMarkerCategories: a stale
+            // Mirror backend _fbClearStaleMarkerCategories: a stale
             // marker's previously-applied "passed"/"failed" no longer
             // reflects current state, so reset to "untested" here too.
             // Without this, the in-memory dictVerification keeps the
@@ -914,7 +914,7 @@ var VaibifyTestManager = (function () {
         fnRunCategoryTests: fnRunCategoryTests,
         fdictGetFalsificationState: fdictGetFalsificationState,
         fnFetchFalsificationState: fnFetchFalsificationState,
-        fnRunFalsification: fnRunFalsification,
+        fdictRunFalsification: fdictRunFalsification,
         fnRunStepTests: fnRunStepTests,
         fnApplyCategoryResults: fnApplyCategoryResults,
         fsCollectTestOutput: fsCollectTestOutput,

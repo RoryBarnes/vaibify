@@ -150,7 +150,7 @@ I_REJECT_STARTING = 409
 # single-user, so for both the browser credential is the boundary and the
 # lease is live-session coordination. ``connect`` and ``release`` are
 # session-bound by their own authorities (owner-establishing / the
-# bound-lease check in ``fnReleaseOwnership``). See docs/architecture.md,
+# bound-lease check in ``fbReleaseOwnership``). See docs/architecture.md,
 # "Single browser session per container".
 DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
@@ -486,7 +486,7 @@ class ContainerAwareRoute(APIRoute):
     def get_route_handler(self):
         fnOriginalHandler = super().get_route_handler()
 
-        async def fnAuthorizedHandler(request):
+        async def fresponseHandleAuthorized(request):
             from . import commitCarrier
             dictScope = fdictResolveRouteScope(
                 self.methods, self.path, self.endpoint,
@@ -513,7 +513,7 @@ class ContainerAwareRoute(APIRoute):
             finally:
                 commitCarrier.fnResetEnforcedRequestLane(tokenLane)
 
-        return fnAuthorizedHandler
+        return fresponseHandleAuthorized
 
 
 def _fiAuthorizeForScope(request, appState, dictScope):

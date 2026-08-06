@@ -17,7 +17,7 @@ from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
     _S_HEREDOC_DELIMITER,
     flistRenderStepCommands,
-    fnGenerateReproduceScript,
+    fsGenerateReproduceScript,
     fsRenderReproduceScript,
 )
 
@@ -120,7 +120,7 @@ def test_generate_writes_into_container_not_host(tmp_path):
     dictWorkflow = _fdictBuildWorkflow([])
     fakeConnection = _FakeDockerConnection()
     sContainerRepo = "/workspace/foo"
-    sReturned = fnGenerateReproduceScript(
+    sReturned = fsGenerateReproduceScript(
         sContainerRepo, dictWorkflow,
         connectionDocker=fakeConnection,
         sContainerId="cid-xyz",
@@ -136,7 +136,7 @@ def test_generate_chmods_inside_container(tmp_path):
     """Executable bits must be set via docker exec, not host chmod."""
     dictWorkflow = _fdictBuildWorkflow([])
     fakeConnection = _FakeDockerConnection()
-    fnGenerateReproduceScript(
+    fsGenerateReproduceScript(
         "/workspace/foo", dictWorkflow,
         connectionDocker=fakeConnection,
         sContainerId="cid-xyz",
@@ -156,7 +156,7 @@ def test_generate_never_writes_to_host_at_container_path(tmp_path):
     bExistedBefore = os.path.exists(sHostShadow)
     dictWorkflow = _fdictBuildWorkflow([])
     fakeConnection = _FakeDockerConnection()
-    fnGenerateReproduceScript(
+    fsGenerateReproduceScript(
         "/workspace/foo", dictWorkflow,
         connectionDocker=fakeConnection,
         sContainerId="cid-xyz",
@@ -169,7 +169,7 @@ def test_generate_refuses_when_docker_connection_missing():
     """Caller must provide a docker connection — no host fallback."""
     dictWorkflow = _fdictBuildWorkflow([])
     with pytest.raises(ValueError):
-        fnGenerateReproduceScript("/workspace/foo", dictWorkflow)
+        fsGenerateReproduceScript("/workspace/foo", dictWorkflow)
 
 
 def test_generate_refuses_when_container_id_empty():
@@ -177,7 +177,7 @@ def test_generate_refuses_when_container_id_empty():
     dictWorkflow = _fdictBuildWorkflow([])
     fakeConnection = _FakeDockerConnection()
     with pytest.raises(ValueError):
-        fnGenerateReproduceScript(
+        fsGenerateReproduceScript(
             "/workspace/foo", dictWorkflow,
             connectionDocker=fakeConnection,
             sContainerId="",
