@@ -3857,3 +3857,278 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
         "level with no admission at all, and an empty list means the "
         "handler never read it."
     )
+
+
+# ---------------------------------------------------------------------
+# Group 9 -- the Replay axis's five remaining routes.
+#
+# Four write into the container and one does not touch it at all. The
+# four split three ways rather than one, and the split is the point:
+#
+# * the plain context UPDATE is a single write with a hash the journal
+#   can adjudicate, so it is mode (a) -- but through its OWN record, not
+#   through fnCommitWorkflowSave, whose expected hash belongs to
+#   project.json;
+# * the TEMPLATE and the IMPORT are probe-then-write sequences whose
+#   probe IS the guard ("only if absent"), so each holds one drain
+#   across both halves or two sessions both read absent and one
+#   silently overwrites the other;
+# * the prompt-record CAPTURE is unbounded work over every transcript in
+#   the container, so the drain is held for the worker's life.
+#
+# The fifth, the personal-layer hash, reaches the container not at all
+# and is recorded separate-authority. Its assertion is the inverse of
+# the others' and is written to be non-vacuous in both directions: the
+# gated ledger must be EMPTY and the response must carry a real hash.
+# ---------------------------------------------------------------------
+
+S_CONTEXT_ABS_PATH = S_PROJECT_REPO + "/.vaibify/AGENTS.md"
+S_ADOPTABLE_ROOT_PATH = S_PROJECT_REPO + "/AGENTS.md"
+
+DICT_WORKFLOW_FOR_REPLAY = copy.deepcopy(DICT_WORKFLOW)
+DICT_WORKFLOW_FOR_REPLAY["sProjectRepoPath"] = S_PROJECT_REPO
+DICT_WORKFLOW_FOR_REPLAY["dictAiProvenance"] = {
+    "dictPromptRecord": {"bEnabled": True, "bFirstCaptureReviewed": True},
+}
+
+
+class DockerDoubleForTheReplayAxis(DockerDoubleThatCallsTheRealGates):
+    """The gate-faithful double over a workflow with a project repo.
+
+    Every context route resolves its target through
+    ``sProjectRepoPath`` and answers 400 without one, so the plain draft
+    workflow would make all four of these tests assert nothing. The
+    prompt record is pre-enabled for the same reason: the capture route
+    refuses 409 while it is off, and driving the sibling CONFIGURE route
+    to turn it on first would make a defect in that route's carrier fail
+    the capture's test too.
+    """
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH:
+            return json.dumps(DICT_WORKFLOW_FOR_REPLAY).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@pytest.fixture
+def tclientReplay():
+    """The gated client over a Replay-axis workflow with a repo path."""
+    return _tConnectGatedClient(DockerDoubleForTheReplayAxis())
+
+
+@pytest.mark.falsification
+def testTheProjectContextUpdateCommitsThroughTheSynchronousCarrier(
+    tclientReplay,
+):
+    """PUT .../project-context writes AGENTS.md under mode (a).
+
+    Mode (a) rather than (b) because this is one write whose expected
+    hash IS the sha256 of the bytes going in, so a crash inside the
+    commit window resolves to "landed" or "did not" instead of to a
+    quarantine.
+
+    Kills: replacing ``_fnCommitContextWrite``'s
+    fdictCommitSynchronousMutation call with a direct call to
+    ``_fnWriteContextFile``.
+    """
+    client, connectionDocker = tclientReplay
+    response = client.put(
+        f"/api/workflow/{S_CONTAINER_ID}/project-context",
+        json={"sContent": "# Standing instructions\n"},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_CONTEXT_ABS_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        "write of the project-context file",
+    )
+
+
+@pytest.mark.falsification
+def testTheContextTemplateProbeAndWriteShareOneDrain(tclientReplay):
+    """POST .../project-context/template holds one drain across both.
+
+    The probe is the guard -- this route exists to create the file ONLY
+    if it is absent -- so the assertion is that the probe's own exec and
+    the write ran under the SAME lock-held admission. With the drain
+    dropped between them two sessions both read absent, and the second
+    overwrites a context the first researcher just wrote.
+
+    Kills: replacing ``_fnWriteTheTemplateUnderTheDrain``'s
+    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    """
+    client, connectionDocker = tclientReplay
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/project-context/template",
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == S_CONTEXT_ABS_PATH
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "write of the context template",
+    )
+
+
+@pytest.mark.falsification
+def testTheContextImportRePointsTheRootUnderTheSameDrain(tclientReplay):
+    """POST .../project-context/import writes and re-links as one.
+
+    The symlink replacement is why this matters more than the other
+    context routes. It deletes the adopted root file and recreates it
+    pointing at the canonical context, so between the write and the
+    symlink the repository holds two real files with different contents
+    -- exactly the divergence the symlink exists to prevent. Asserting
+    the ``ln -s`` exec specifically, rather than any exec, is what makes
+    the claim about that window rather than about the write alone.
+
+    Kills: replacing ``_fnImportTheContextUnderTheDrain``'s
+    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    """
+    client, connectionDocker = tclientReplay
+    connectionDocker._dictFiles[S_ADOPTABLE_ROOT_PATH] = (
+        b"# adopted from the repo root\n"
+    )
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/project-context/import",
+        json={"bAdoptRepoRoot": True, "sRootBasename": "AGENTS.md"},
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "ln -s",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testAnUnadoptableRootFileIsRefusedWithoutQuarantining(tclientReplay):
+    """The import's 404 must not take the container out of service.
+
+    The refusal is decided INSIDE the worker -- the route asks the
+    container whether the named root file exists -- so it travels the
+    carry-back path, and a raise there would settle through the failure
+    path and quarantine the container for the ordinary case of naming a
+    file that is not in the repository.
+
+    Kills: dropping ``fdictCarryARefusalBackInsteadOfRaising`` from
+    ``fnRunTheImport``, so the 404 is re-raised inside the worker.
+    """
+    from vaibify.config import operationJournal
+
+    client, _connectionDocker = tclientReplay
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/project-context/import",
+        json={"bAdoptRepoRoot": True, "sRootBasename": "CLAUDE.md"},
+    )
+    assert 400 <= response.status_code < 500, (
+        f"expected a declined refusal, got {response.status_code}: "
+        f"{response.text}"
+    )
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        S_CONTAINER_NAME,
+    )
+    assert dictResolution["sResolution"] != (
+        operationJournal.S_RESOLUTION_QUARANTINED
+    ), (
+        "asking to adopt a file that is not there quarantined the "
+        f"container: {dictResolution}"
+    )
+
+
+@pytest.mark.falsification
+def testThePromptRecordCaptureRunsUnderTheDrain(tclientReplay):
+    """POST .../prompt-record/capture runs its pass under mode (b).
+
+    This carrier was reached by NO test when it was written -- verified
+    by planting an unconditional raise in it and watching every replay,
+    project-context and transcript test stay green. A carrier nothing
+    executes is indistinguishable from one that was never added.
+
+    The capture PASS is stubbed, and the stub is not a stand-down: it
+    replaces only ``fdictRunCapturePass``, is called by the real handler
+    inside the real carrier, and does a real container write through the
+    real gate, so the admission asserted below is the one production
+    would have. It is stubbed because the genuine pass reads every agent
+    transcript in the container, and this harness models no transcripts
+    at all -- against it the real pass writes nothing and the assertion
+    would be about work that never happened.
+
+    Kills: replacing ``_fdictRunTheCaptureUnderTheDrain``'s
+    fdictRunLockHeldMutation call with a direct call to its worker.
+    """
+    from vaibify.gui import promptRecordManager
+
+    client, connectionDocker = tclientReplay
+    sIndexPath = S_PROJECT_REPO + "/.vaibify/promptRecord/index.json"
+
+    def fdictWriteAnIndexInstead(
+        connectionDockerArg, sContainerIdArg, filesRepoArg, listSecrets,
+    ):
+        connectionDockerArg.fnWriteFile(
+            sContainerIdArg, sIndexPath, b"{}",
+        )
+        return {"iTranscriptsCaptured": 0}
+
+    with patch.object(
+        promptRecordManager, "fdictRunCapturePass",
+        fdictWriteAnIndexInstead,
+    ):
+        response = client.post(
+            f"/api/workflow/{S_CONTAINER_ID}/prompt-record/capture",
+        )
+    assert response.status_code == 200, response.text
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"] == sIndexPath
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "write from the capture pass",
+    )
+
+
+def testThePersonalLayerHashReachesNoContainerPrimitive(
+    tclientReplay, tmp_path, monkeypatch,
+):
+    """The hash route is separate-authority: it touches no container.
+
+    Both halves are asserted, because either alone is satisfiable by a
+    route that does nothing. The gated ledger must be EMPTY -- that is
+    what ``separate-authority`` claims about the container -- AND the
+    response must carry a real sha256, which is what proves the request
+    did its work rather than returning early.
+
+    Not marked falsification: there is no guard here to break. The
+    declaration records that the commit carrier is not this route's
+    authority, and the authority that IS -- the agent-lane rejection --
+    already has its own coverage in tests/testAgentLaneEnforcement.py.
+    """
+    import hashlib
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    pathSecret = tmp_path / "privateInstructions.md"
+    pathSecret.write_text("private layer\n")
+
+    client, connectionDocker = tclientReplay
+    connectionDocker.listAdmittedPrimitives.clear()
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/personal-layer/hash",
+        json={"sLabel": "personal", "sHostPath": str(pathSecret)},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["dictHashCommitment"]["sSha256"] == (
+        hashlib.sha256(b"private layer\n").hexdigest()
+    ), response.text
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route recorded separate-authority reached a "
+        "mutation-capable container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}"
+    )

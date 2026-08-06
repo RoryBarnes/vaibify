@@ -45,7 +45,26 @@ class _StubDockerFiles:
 
 
 @pytest.fixture
-def fixtureHarness():
+def fixtureHarness(monkeypatch):
+    """Return ``(client, stubDocker)`` over a bare app, carrier stood down.
+
+    The three context-write routes now commit through carriers -- the
+    plain update through mode (a), the template and the import through
+    mode (b), each holding one drain across its probe and its write. A
+    bare ``FastAPI()`` over a stub docker has no owner record to bind a
+    request to, so all three would answer 403.
+
+    What that costs, stated plainly: these tests prove what the routes
+    DO -- which bodies are refused, what lands in the stub, and above
+    all that the host-import jail rejects traversal and symlink escapes
+    -- and NOTHING about the admission the write runs under. That
+    guarantee is asserted in ``tests/testCarrierMigratedRoutes.py``
+    against a double that calls the real gates.
+    """
+    from tests.carrierStandDown import fnStandCarrierDown
+    from vaibify.gui.routes import replayRoutes
+
+    fnStandCarrierDown(monkeypatch, replayRoutes)
     app = FastAPI()
     stubDocker = _StubDockerFiles()
     dictWorkflow = {"sProjectRepoPath": S_REPO_PATH, "listSteps": []}

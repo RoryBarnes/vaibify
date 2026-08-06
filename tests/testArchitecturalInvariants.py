@@ -4556,6 +4556,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reader must not have to re-derive. Same cohesive responsibility:
     # step CRUD, in the module that owns it.
     "routes/stepRoutes.py": 808,
+    # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
+    # five remaining routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above). Three of the five are probe-then-write
+    # sequences whose probe is the GUARD -- "create the context only if
+    # it is absent", "import only if absent or bOverwrite" -- so each
+    # became a named worker holding one drain across both halves, plus
+    # the docstring recording which refusals are carried and which
+    # poison. The context write also needed its own mode-(a) commit:
+    # it writes .vaibify/AGENTS.md, not project.json, so it could not
+    # reuse fnCommitWorkflowSave's record without handing the journal
+    # probe a hash belonging to a different file. Same cohesive
+    # responsibility: the Replay axis, in the module that owns it.
+    "routes/replayRoutes.py": 962,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

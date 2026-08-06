@@ -400,14 +400,9 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/workflow/{sContainerId}/level3/reproduce-script"),
     ("POST", "/api/workflow/{sContainerId}/level3/verify"),
     ("POST", "/api/workflow/{sContainerId}/manifest/verify"),
-    ("POST", "/api/workflow/{sContainerId}/personal-layer/hash"),
-    ("POST", "/api/workflow/{sContainerId}/project-context/import"),
-    ("POST", "/api/workflow/{sContainerId}/project-context/template"),
-    ("POST", "/api/workflow/{sContainerId}/prompt-record/capture"),
     ("POST", "/api/zenodo/{sContainerId}/archive"),
     ("POST", "/api/zenodo/{sContainerId}/download"),
     ("POST", "/api/zenodo/{sContainerId}/metadata"),
-    ("PUT", "/api/workflow/{sContainerId}/project-context"),
 })
 
 

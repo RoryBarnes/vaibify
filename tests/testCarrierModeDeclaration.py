@@ -194,12 +194,8 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/workflow/{sContainerId}/level3/verify"),
     ("POST", "/api/workflow/{sContainerId}/manifest/verify"),
     ("POST", "/api/workflow/{sContainerId}/personal-layer/declare"),
-    ("POST", "/api/workflow/{sContainerId}/personal-layer/hash"),
-    ("POST", "/api/workflow/{sContainerId}/project-context/import"),
-    ("POST", "/api/workflow/{sContainerId}/project-context/template"),
     ("POST",
      "/api/workflow/{sContainerId}/prompt-record/approve-first-capture"),
-    ("POST", "/api/workflow/{sContainerId}/prompt-record/capture"),
     ("POST", "/api/workflow/{sContainerId}/prompt-record/configure"),
     ("POST", "/api/workflow/{sContainerId}/supervision/configure"),
     ("POST", "/api/workflows/{sContainerId}/create"),
@@ -210,7 +206,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("PUT", "/api/draft/{sContainerId}/{sFilePath:path}"),
     ("PUT", "/api/file/{sContainerId}/{sFilePath:path}"),
     ("PUT", "/api/settings/{sContainerId}"),
-    ("PUT", "/api/workflow/{sContainerId}/project-context"),
 })
 
 

@@ -6031,4 +6031,115 @@ def _fdictEntry(sRel):
             '        raise dictCarried["errorRefused"]\n'
         ),
     ),
+    # --- Replay-axis routes (phase 2, 2026-08-05) ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectContextUpdateCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    return commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sAbsPath,\n'
+            '        lambda: _fnWriteContextFile(\n'
+            '            dictCtx, sContainerId, sAbsPath, sContent,\n'
+            '        ),\n'
+            '        {\n'
+            '            "sDockerContainerId": sContainerId,\n'
+            '            "sExpectedSha256": hashlib.sha256(\n'
+            '                sContent.encode("utf-8"),\n'
+            '            ).hexdigest(),\n'
+            '            "sPriorSha256": fsHashContainerFileOrEmpty(\n'
+            '                dictCtx, sContainerId, sAbsPath,\n'
+            '            ),\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new=(
+            '    del dictLaneTuple\n'
+            '    return _fnWriteContextFile(\n'
+            '        dictCtx, sContainerId, sAbsPath, sContent,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheContextTemplateProbeAndWriteShareOneDrain'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fnWriteTheTemplate, '
+            '"project-context-template",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    del requestHttp\n'
+            '    dictCarried = fnWriteTheTemplate()\n'
+            '    if dictCarried["errorRefused"] is not None:\n'
+            '        raise dictCarried["errorRefused"]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheContextImportRePointsTheRootUnderTheSameDrain'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        # The symlink replacement leaves the worker and runs after the
+        # drain is released, which is the plausible reading of it as a
+        # tidy-up rather than part of the transaction. The write still
+        # commits under the drain, so the refusal test is untouched.
+        old=(
+            '        _fnReplaceRootWithSymlink(\n'
+            '            dictCtx, sContainerId, dictWorkflow, request,\n'
+            '        )\n'
+            '\n'
+            '    def fnRunTheImport(supervisor=None):\n'
+        ),
+        new=(
+            '\n'
+            '    def fnRunTheImport(supervisor=None):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnadoptableRootFileIsRefusedWithoutQuarantining'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fnImportTheContent)\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, '
+            '"objResult": fnImportTheContent()}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePromptRecordCaptureRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"prompt-record-capture",\n'
+            '        fnRunTheCapturePass,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new=(
+            '    del dictLaneTuple\n'
+            '    return fnRunTheCapturePass()\n'
+        ),
+    ),
 ]
