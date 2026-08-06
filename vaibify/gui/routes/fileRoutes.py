@@ -21,6 +21,7 @@ from ..routeContext import (
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_SEPARATE_AUTHORITY,
+    S_CARRIER_TYPED_READ,
     fnDeclareCarrierMode,
 )
 from .. import pipelineServer as _pipelineServer
@@ -138,29 +139,42 @@ def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
 def _fdictTestExistenceBatch(
     connectionDocker, sContainerId, listAbsPaths,
 ):
-    """Run a single shell loop to test each path; return ``{path: bool}``."""
+    """Probe every path in one typed read; return ``{path: bool}``.
+
+    This was a shell heredoc with the paths interpolated raw between
+    ``<<'__VAIBIFY_EOF__'`` and its terminator, which had two problems
+    the typed read removes together. A path containing that terminator
+    on a line of its own ended the heredoc and made the remainder shell.
+    And the whole thing went through the general exec primitive, which
+    the mutation gate treats as mutating -- because a primitive handed
+    command text cannot know what the text does -- so on the enforced
+    branch a file-existence probe would have been refused outright.
+
+    It also lost duplicate and blank paths: the answer was set
+    membership over the ECHOED lines, so a path that echoed nothing
+    distinguishable read as absent. The typed read answers positionally,
+    one boolean per requested path.
+    """
     if not listAbsPaths:
         return {}
-    sJoined = "\n".join(listAbsPaths)
-    sScript = (
-        "while IFS= read -r p; do "
-        "if [ -e \"$p\" ]; then echo \"$p\"; fi; "
-        "done <<'__VAIBIFY_EOF__'\n" + sJoined + "\n__VAIBIFY_EOF__"
+    listExists = connectionDocker.flistContainerPathsExist(
+        sContainerId, listAbsPaths,
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sScript,
-    )
-    setExisting = set(
-        sLine for sLine in sOutput.splitlines() if sLine
-    )
-    return {sPath: (sPath in setExisting) for sPath in listAbsPaths}
+    return dict(zip(listAbsPaths, listExists))
 
 
 def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/exist for batched existence checks."""
 
+    # typed-read: after the heredoc was replaced by the batched
+    # existence probe, the only container work this route does is that
+    # one declared read operation, built by its adapter from the paths
+    # it was given. It reaches no mutation-capable primitive, so it
+    # needs no carrier -- and unlike a `separate-authority` route it
+    # writes nothing anywhere, which is what `typed-read` claims.
     @fnAgentAction("check-files-exist")
     @app.post("/api/files/{sContainerId}/exist")
+    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fnCheckFilesExist(
         sContainerId: str, request: FileExistenceRequest,
     ):

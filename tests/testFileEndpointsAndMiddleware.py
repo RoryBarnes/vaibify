@@ -642,18 +642,22 @@ def _fnConnectAndPostExistence(clientHttp, dictPayload):
 
 
 def test_files_exist_returns_dict_keyed_on_input(clientHttp):
-    """Returned dictExists must use the input strings as keys."""
+    """Returned dictExists must use the input strings as keys.
+
+    Driven through the BATCHED typed-read adapter, which replaced the
+    shell heredoc this test used to stub. The adapter answers
+    positionally -- one boolean per requested path, in order -- which is
+    why the stub returns a list rather than a set of echoed lines.
+    """
     _fnConnectToContainer(clientHttp)
     listInput = ["/workspace/stepA/output.dat", "stepA/missing.dat"]
-    fnOriginalExec = MockDockerTransfer.ftResultExecuteCommand
 
-    def _fakeExec(self, sContainerId, sCommand, sWorkdir=None):
-        if "while IFS=" in sCommand:
-            return (0, "/workspace/stepA/output.dat\n")
-        return fnOriginalExec(self, sContainerId, sCommand, sWorkdir)
+    def _flistFakeExistence(self, sContainerId, listPaths):
+        return [sPath.endswith("output.dat") for sPath in listPaths]
 
     with patch.object(
-        MockDockerTransfer, "ftResultExecuteCommand", _fakeExec,
+        MockDockerTransfer, "flistContainerPathsExist",
+        _flistFakeExistence, create=True,
     ):
         responseHttp = clientHttp.post(
             f"/api/files/{S_CONTAINER_ID}/exist",

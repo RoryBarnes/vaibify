@@ -108,7 +108,12 @@ I_UNCLASSIFIED_ROW_BUDGET = 299
 # Seeded at 217 on 2026-08-03, down from 218 when the file pull stopped
 # assembling `docker cp`; 217 -> 216 when the dashboard's disk tile
 # stopped assembling `docker exec ... df` and became a typed read.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 215
+# 215 -> 214 on 2026-08-05 when the file panel's batched existence probe
+# stopped building a shell heredoc with up to a thousand caller-derived
+# paths interpolated raw and became a typed read. Strictly less
+# authority for the same answer, which is the shape this ratchet exists
+# to record.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 214
 
 
 # Every acquisition of a declared capability that still has no reviewed

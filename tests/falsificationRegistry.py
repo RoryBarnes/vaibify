@@ -1432,11 +1432,20 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_file_fetch_does_not_execute_injected_payload',
         source='vaibify/docker/dockerConnection.py',
+        # Re-anchored 2026-08-05: the slot is filled by
+        # _fsTypedReadPathLiteral rather than by a bare repr(), because
+        # the exemption's path parameter widened to accept a collection
+        # for the batched existence probe. The mutation is unchanged in
+        # meaning -- drop the literal-ization and the shell quoting, so
+        # a path becomes program text.
         old="""        sCommand = "python3 -c " + shlex.quote(
-            sTemplate.replace(_S_TYPED_READ_PATH_SLOT, repr(sPath)),
+            sTemplate.replace(
+                _S_TYPED_READ_PATH_SLOT,
+                _fsTypedReadPathLiteral(objPaths),
+            ),
         )""",
         new="""        sCommand = "python3 -c \\"" + sTemplate.replace(
-            _S_TYPED_READ_PATH_SLOT, sPath,
+            _S_TYPED_READ_PATH_SLOT, objPaths,
         ) + "\\"" """,
     ),
     # The ownerless-connect exception is the viewer's bootstrap; extending
@@ -6140,6 +6149,63 @@ def _fdictEntry(sRel):
         new=(
             '    del dictLaneTuple\n'
             '    return fnRunTheCapturePass()\n'
+        ),
+    ),
+    # --- The batched existence probe (ruling 3, 2026-08-05) ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheExistenceBatchIsATypedReadAndNotAnExec'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # Reverts the route to the shell heredoc the typed read
+        # replaced: caller-derived paths interpolated raw, run through
+        # the general exec primitive, which the enforced branch refuses.
+        #
+        # RECORDED COLLATERAL, not drift: this also fails
+        # testFileEndpointsAndMiddleware.py::
+        # test_files_exist_returns_dict_keyed_on_input, which stubs the
+        # batched adapter the mutant stops calling. That is the same
+        # guarantee seen from the route's side, and there is no way to
+        # remove the adapter without both noticing.
+        old=(
+            '    listExists = connectionDocker.flistContainerPathsExist(\n'
+            '        sContainerId, listAbsPaths,\n'
+            '    )\n'
+            '    return dict(zip(listAbsPaths, listExists))\n'
+        ),
+        new=(
+            '    sScript = (\n'
+            '        "while IFS= read -r p; do "\n'
+            '        "if [ -e \\"$p\\" ]; then echo \\"$p\\"; fi; "\n'
+            '        "done <<\'__VAIBIFY_EOF__\'\\n"\n'
+            '        + "\\n".join(listAbsPaths) + "\\n__VAIBIFY_EOF__"\n'
+            '    )\n'
+            '    _iExitCode, sOutput = '
+            'connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, sScript,\n'
+            '    )\n'
+            '    setExisting = set(sOutput.splitlines())\n'
+            '    return {s: (s in setExisting) for s in listAbsPaths}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationBoundary.py::'
+            'testTheExemptionRefusesAnythingButPathStrings'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # The widened parameter accepts whatever it is handed and calls
+        # repr on it -- which is what the single-path form did, and is
+        # exactly what stops being safe once a COLLECTION may arrive:
+        # repr of an arbitrary object is whatever its class prints.
+        old=(
+            '    if isinstance(objPaths, str):\n'
+            '        return repr(objPaths)\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return repr(objPaths)\n'
         ),
     ),
 ]

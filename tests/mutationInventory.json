@@ -654,7 +654,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 1744,
+      "iLine": 1856,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -4999,7 +4999,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -5010,17 +5010,17 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "e2118d33e8c3fba1",
+      "sFingerprint": "a783217bf48d484d",
       "sFunction": "_fdictTestExistenceBatch",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8998,7 +8998,7 @@
       "sScopeFingerprint": "877030e7968f6632"
     },
     {
-      "iLine": 518,
+      "iLine": 567,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9007,7 +9007,7 @@
       "sScopeFingerprint": "557a2728caf5eb2c"
     },
     {
-      "iLine": 382,
+      "iLine": 431,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9016,7 +9016,7 @@
       "sScopeFingerprint": "0524d95927d35112"
     },
     {
-      "iLine": 922,
+      "iLine": 1023,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9025,7 +9025,7 @@
       "sScopeFingerprint": "9c5865a393cf0190"
     },
     {
-      "iLine": 352,
+      "iLine": 401,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9034,7 +9034,7 @@
       "sScopeFingerprint": "307cc8fa4deecaa8"
     },
     {
-      "iLine": 910,
+      "iLine": 1011,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9043,7 +9043,7 @@
       "sScopeFingerprint": "75b18a46492cbca3"
     },
     {
-      "iLine": 897,
+      "iLine": 998,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9052,7 +9052,7 @@
       "sScopeFingerprint": "bcdb2d354b818c52"
     },
     {
-      "iLine": 904,
+      "iLine": 1005,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9061,7 +9061,7 @@
       "sScopeFingerprint": "468376d923521926"
     },
     {
-      "iLine": 486,
+      "iLine": 535,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9070,7 +9070,7 @@
       "sScopeFingerprint": "f0ad85dd026fbe9a"
     },
     {
-      "iLine": 481,
+      "iLine": 530,
       "iOrdinal": 1,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",

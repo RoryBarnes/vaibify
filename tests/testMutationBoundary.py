@@ -206,10 +206,18 @@ def testTheExemptionCannotCarryACommandAtAll():
     losing game against a parameter that accepts arbitrary text.
 
     So the parameter is gone. The exemption takes an operation NAME and
-    a PATH; the command is fixed module source text with the path
+    a PATH — or, since the batched existence probe, a flat sequence of
+    paths; the command is fixed module source text with that value
     embedded as a Python literal. There is no shape of caller input
     that can become a command, which is a guarantee a reader can check
     by looking at one signature.
+
+    The widening to a collection is asserted here rather than merely
+    allowed, in both directions. The path parameter may be named for
+    one path or for several, and NOTHING else; and it must still be
+    impossible for it to be command text. A test that only checked for
+    a three-parameter signature would have let ``sCommand`` back in
+    under a different arity.
     """
     import inspect as inspectModule
 
@@ -219,14 +227,58 @@ def testTheExemptionCannotCarryACommandAtAll():
     listParameters = [
         sName for sName in tSignature.parameters if sName != "self"
     ]
-    assert listParameters == ["sContainerId", "sOperation", "sPath"], (
-        f"the exemption must take an operation name and a path, never "
-        f"a command; it takes {listParameters}"
+    assert listParameters[:2] == ["sContainerId", "sOperation"], (
+        f"the exemption must take a container and an operation NAME "
+        f"before anything else; it takes {listParameters}"
+    )
+    assert listParameters[2:] in (["sPath"], ["objPaths"]), (
+        f"the exemption's third parameter must be the path, or the "
+        f"paths, and nothing else; it takes {listParameters}"
     )
     for sName in listParameters:
         assert "command" not in sName.lower(), (
             f"{sName} reintroduces caller-supplied command text"
         )
+
+
+def testTheExemptionRefusesAnythingButPathStrings():
+    """The widened parameter admits paths, and only paths.
+
+    The batched probe embeds a LIST in the program's literal slot, and
+    the slot is filled with ``repr``. ``repr`` of an arbitrary object is
+    whatever that object's class chooses to print, so an object with a
+    hostile ``__repr__`` -- or a nested list, or bytes -- would write
+    its own text into the program. Only ``str`` has a ``repr`` that is a
+    quoted string literal and nothing else.
+
+    This is the half of the widening that a signature check cannot see,
+    and it is strictly tighter than the single-path form it generalized:
+    that one called ``repr`` on whatever it was handed.
+
+    Kills: replacing ``_fsTypedReadPathLiteral``'s body with a bare
+    ``return repr(objPaths)``.
+    """
+    from vaibify.docker.dockerConnection import _fsTypedReadPathLiteral
+
+    assert _fsTypedReadPathLiteral("/workspace/a b.txt") == (
+        repr("/workspace/a b.txt")
+    )
+    assert _fsTypedReadPathLiteral(["/a", "/b"]) == repr(["/a", "/b"])
+
+    class _HostileRepr:
+        def __repr__(self):
+            return "__import__('os').system('touch /tmp/pwned')"
+
+    for objRejected in (
+        _HostileRepr(),
+        [_HostileRepr()],
+        [["/nested"]],
+        b"/bytes",
+        ["/ok", 7],
+        None,
+    ):
+        with pytest.raises(TypeError):
+            _fsTypedReadPathLiteral(objRejected)
 
 
 def testEveryTypedReadNamesADeclaredOperation():

@@ -148,7 +148,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/containers/{sName}/settings"),
     ("POST", "/api/containers/{sName}/start/cancel"),
     ("POST", "/api/containers/{sName}/stop"),
-    ("POST", "/api/files/{sContainerId}/exist"),
     ("POST", "/api/files/{sContainerId}/pull"),
     ("POST", "/api/files/{sContainerId}/upload"),
     ("POST", "/api/git/{sContainerId}/commit-canonical"),

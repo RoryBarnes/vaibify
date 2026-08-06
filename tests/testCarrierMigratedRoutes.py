@@ -4132,3 +4132,64 @@ def testThePersonalLayerHashReachesNoContainerPrimitive(
         "mutation-capable container primitive: "
         f"{connectionDocker.listAdmittedPrimitives}"
     )
+
+
+@pytest.mark.falsification
+def testTheExistenceBatchIsATypedReadAndNotAnExec(tclientGated):
+    """POST /api/files/{id}/exist probes through the typed-read adapter.
+
+    The route used to build a shell heredoc with every requested path
+    interpolated raw and run it through the general exec primitive. On
+    the enforced branch that is refused outright -- the gate treats an
+    exec as mutating, because a primitive handed command text cannot
+    know what the text does -- so the file panel's existence probe would
+    simply have stopped working. Making it a declared typed read is what
+    removes both problems at once.
+
+    Both halves are asserted, because either alone is satisfiable by a
+    route that does nothing. The gated ledger must be EMPTY, which is
+    what ``typed-read`` claims; and the response must carry an answer
+    for the requested path, which is what proves it did the work. The
+    double's typed-read adapter answers False for everything, so the
+    assertion is on the KEY being present, never on its value.
+
+    Kills: reverting ``_fdictTestExistenceBatch`` to the heredoc it
+    replaced, which reaches ``ftResultExecuteCommand`` and is refused
+    with no admission open.
+    """
+    client, connectionDocker = tclientGated
+
+    def _flistAnswerAbsent(self, sContainerIdArg, listPaths):
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerIdArg, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.extend(listPaths)
+        return [False for _sPath in listPaths]
+
+    connectionDocker.listAdmittedPrimitives.clear()
+    connectionDocker.listTypedPathProbes.clear()
+    with patch.object(
+        DockerDoubleThatCallsTheRealGates, "flistContainerPathsExist",
+        _flistAnswerAbsent, create=True,
+    ):
+        response = client.post(
+            f"/api/files/{S_CONTAINER_ID}/exist",
+            json={"saRelativePaths": ["stepA/results.json"]},
+        )
+    assert response.status_code == 200, response.text
+    assert "stepA/results.json" in response.json()["dictExists"], (
+        f"the route answered nothing for the requested path: "
+        f"{response.text}"
+    )
+    assert connectionDocker.listTypedPathProbes, (
+        "the route reached no typed read at all, so the empty-ledger "
+        "assertion below would pass for a request that returned early"
+    )
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a route recorded typed-read reached a mutation-capable "
+        f"container primitive: {connectionDocker.listAdmittedPrimitives}"
+    )

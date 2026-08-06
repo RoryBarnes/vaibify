@@ -249,6 +249,7 @@ S_TYPED_READ_DIRECTORY = "listDirectory"
 S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
 S_TYPED_READ_FILE_EXISTS = "fileExists"
 S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
+S_TYPED_READ_PATHS_EXIST = "pathsExist"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -294,7 +295,55 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write('1' if os.path.isdir("
         + _S_TYPED_READ_PATH_SLOT + ") else '0')"
     ),
+    # The BATCHED existence probe. It is a separate program rather than
+    # a loop over the single-path one because the dashboard's file
+    # panel probes up to a thousand paths on a debounced keystroke, and
+    # a thousand container round-trips is not a UI. `os.path.exists`
+    # matches `test -e` -- file OR directory, following symlinks --
+    # which is what the route it replaces asked.
+    #
+    # What that route did before is the reason this exists. It built a
+    # shell heredoc with every path interpolated raw between
+    # `<<'__VAIBIFY_EOF__'` and its terminator, so a path that
+    # contained that terminator on a line of its own ended the heredoc
+    # and the remainder of the path became shell. Here the paths are a
+    # Python list literal inside a program that is quoted whole as one
+    # argument: there is no layer left for a path to escape into.
+    S_TYPED_READ_PATHS_EXIST: (
+        "import json,os,sys; "
+        "sys.stdout.write(json.dumps("
+        "[os.path.exists(s) for s in "
+        + _S_TYPED_READ_PATH_SLOT + "]))"
+    ),
 }
+
+
+def _fsTypedReadPathLiteral(objPaths):
+    """Return the Python literal a typed-read program embeds for its paths.
+
+    One path string, or a list/tuple of path strings for a batched
+    operation. **Anything else raises**, and the type check is the
+    load-bearing part rather than defensive tidiness: the value is
+    embedded in the program through ``repr``, and ``repr`` of an
+    arbitrary object is whatever that object's class chooses to print.
+    Only ``str`` has a ``repr`` that is a quoted string literal and
+    nothing else, so only ``str`` may reach the slot.
+
+    This is strictly tighter than the single-path form it generalizes,
+    which called ``repr`` on whatever it was handed.
+    """
+    if isinstance(objPaths, str):
+        return repr(objPaths)
+    if isinstance(objPaths, (list, tuple)) and all(
+        isinstance(sPath, str) for sPath in objPaths
+    ):
+        return repr(list(objPaths))
+    raise TypeError(
+        "A typed read takes a path string or a flat sequence of path "
+        f"strings; it was given {type(objPaths).__name__}. Only str has "
+        "a repr that is a string literal, so nothing else may be "
+        "embedded in the program."
+    )
 
 
 def _fbInterpretPathProbe(resultExec, sPath):
@@ -592,14 +641,24 @@ class DockerConnection:
         sOutput = resultExec.sStdout + resultExec.sStderr
         return (resultExec.iExitCode, sOutput)
 
-    def _texecRunTypedRead(self, sContainerId, sOperation, sPath):
-        """Run one NAMED read operation against a path, as a read.
+    def _texecRunTypedRead(self, sContainerId, sOperation, objPaths):
+        """Run one NAMED read operation against a path or paths, as a read.
 
         The single place the audited-read exemption is granted, and it
         does not accept a command. It accepts the NAME of an operation
-        from :data:`_DICT_TYPED_READ_PROGRAMS` and a path, and builds
-        the command itself from fixed module source text with the path
+        from :data:`_DICT_TYPED_READ_PROGRAMS` and a path — or, for a
+        batched operation, a flat sequence of paths — and builds the
+        command itself from fixed module source text with the value
         embedded as a Python literal.
+
+        Widening the third parameter to a COLLECTION changes nothing
+        about that property, because the parameter never carried a
+        command and still cannot: what varies is the literal in the
+        slot, never the program around it, and
+        :func:`_fsTypedReadPathLiteral` admits only strings into the
+        literal. A batched program exists because the alternative was
+        looping this method once per path, which on the file panel's
+        debounced probe is up to a thousand container round-trips.
 
         The earlier shape took adapter-built command TEXT, guarded by a
         source check that no caller-derived value reached it. That check
@@ -619,7 +678,10 @@ class DockerConnection:
                 f"{sorted(_DICT_TYPED_READ_PROGRAMS)}"
             )
         sCommand = "python3 -c " + shlex.quote(
-            sTemplate.replace(_S_TYPED_READ_PATH_SLOT, repr(sPath)),
+            sTemplate.replace(
+                _S_TYPED_READ_PATH_SLOT,
+                _fsTypedReadPathLiteral(objPaths),
+            ),
         )
         tokenRead = mutationAdmission.ftokenEnterAuditedRead()
         try:
@@ -729,6 +791,45 @@ class DockerConnection:
             ),
             sPath,
         )
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        """Return one exists/absent answer per path, in the order given.
+
+        The BATCHED sibling of the two probes above, and the reason the
+        exemption takes a collection at all: the file panel probes up to
+        a thousand paths on one debounced keystroke, and looping a
+        single-path adapter would be a thousand container round-trips.
+        The caller still supplies only PATHS, and this method still
+        supplies only the NAME of a declared read operation.
+
+        It replaced a shell heredoc that interpolated every path raw,
+        which meant a path containing the heredoc's own terminator on a
+        line of its own ended the heredoc and turned the rest into
+        shell.
+
+        A failed READ raises ``OSError``; absent paths come back False.
+        An answer count that does not match the request is also an
+        ``OSError`` -- a short list would otherwise silently realign
+        every answer after the gap onto the wrong path.
+        """
+        if not listPaths:
+            return []
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_PATHS_EXIST, list(listPaths),
+        )
+        if resultExec.iExitCode != 0:
+            raise OSError(
+                "Cannot probe paths in container "
+                f"({resultExec.sStderr.strip()})"
+            )
+        listAnswers = json.loads(resultExec.sStdout.strip() or "[]")
+        if len(listAnswers) != len(listPaths):
+            raise OSError(
+                f"The batched existence probe answered {len(listAnswers)} "
+                f"of {len(listPaths)} paths; refusing to realign the "
+                "answers onto the wrong paths."
+            )
+        return [bool(bExists) for bExists in listAnswers]
 
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path.

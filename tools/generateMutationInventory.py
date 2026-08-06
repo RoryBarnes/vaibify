@@ -179,6 +179,13 @@ DICT_PRIMITIVE_ACCESS = {
     # OSError) reported the workflow unverified rather than raising.
     "fbContainerPathIsFile": S_ACCESS_TYPED_READ,
     "fbContainerPathIsDirectory": S_ACCESS_TYPED_READ,
+    # The BATCHED existence probe, on the same terms. It replaced a
+    # shell heredoc in fileRoutes that interpolated up to a thousand
+    # caller-derived paths raw between the heredoc marker and its
+    # terminator -- so a path carrying that terminator on a line of its
+    # own ended the heredoc and made the rest shell, and the whole
+    # thing went through the general exec primitive besides.
+    "flistContainerPathsExist": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,

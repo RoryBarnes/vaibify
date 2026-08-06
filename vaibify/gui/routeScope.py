@@ -377,7 +377,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/containers/{sName}/settings"),
     ("POST", "/api/containers/{sName}/start/cancel"),
     ("POST", "/api/containers/{sName}/stop"),
-    ("POST", "/api/files/{sContainerId}/exist"),
     ("POST", "/api/github/{sContainerId}/push"),
     ("POST", "/api/overleaf/{sContainerId}/diff"),
     ("POST", "/api/overleaf/{sContainerId}/mirror/refresh"),
