@@ -267,28 +267,8 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnFiles",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnVariables",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineServer.py::_ftBuildHelpers.fnWorkflowDir",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/pipelineServer.py::fnPipelineMessageLoop.fnStartDispatchTask",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.files",
-      "sDebtClass": "legacy-name",
       "sReason": ""
     },
     {
@@ -315,16 +295,6 @@
       "sIdentity": "vaibify/gui/routeContext.py::RouteContext.setdefault",
       "sDebtClass": "interface-method",
       "sReason": "dict-compatible accessor kept for mapping-style callers"
-    },
-    {
-      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.variables",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.workflowDir",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
     },
     {
       "sIdentity": "vaibify/gui/routeScope.py::ContainerAwareRoute.get_route_handler",
@@ -433,8 +403,8 @@
     }
   ],
   "dictBudgets": {
-    "legacy-name": 13,
-    "legacy-fn-return": 24,
+    "legacy-name": 10,
+    "legacy-fn-return": 21,
     "legacy-yield": 0,
     "legacy-literal-return": 0,
     "legacy-return-annotation": 0,

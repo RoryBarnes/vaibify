@@ -2224,10 +2224,10 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
             ),
         )
 
-    def fnVariables(sContainerId):
+    def fdictBuildVariables(sContainerId):
         return fdictResolveVariables(dictWorkflows, dictPaths, sContainerId)
 
-    def fnWorkflowDir(sContainerId):
+    def fsBuildWorkflowDirectory(sContainerId):
         sPath = dictPaths.get(sContainerId)
         if not sPath:
             return WORKSPACE_ROOT
@@ -2237,7 +2237,7 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
                 :sWorkflowDirectory.index("/.vaibify")]
         return sWorkflowDirectory
 
-    def fnFiles(sContainerId):
+    def ffilesBuildRepoFiles(sContainerId):
         from vaibify.reproducibility.repoFiles import ContainerRepoFiles
         dictWorkflow = dictWorkflows.get(sContainerId) or {}
         sRepoPath = dictWorkflow.get("sProjectRepoPath", "")
@@ -2245,7 +2245,7 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
             dictRaw["docker"], sContainerId, sRepoPath,
         )
 
-    return fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles
+    return fnRequire, fnSave, fdictBuildVariables, fsBuildWorkflowDirectory, ffilesBuildRepoFiles
 
 
 def fnBumpSyncEpoch(dictCtx, sContainerId):
@@ -2293,14 +2293,14 @@ def fdictBuildContext(connectionDocker):
         "dictSyncEpochs": {},
         "dictWorkflowEpochs": {},
     }
-    fnRequire, fnSave, fnVariables, fnWorkflowDir, fnFiles = (
+    fnRequire, fnSave, fdictBuildVariables, fsBuildWorkflowDirectory, ffilesBuildRepoFiles = (
         _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths)
     )
     dictRaw["require"] = fnRequire
     dictRaw["save"] = fnSave
-    dictRaw["variables"] = fnVariables
-    dictRaw["workflowDir"] = fnWorkflowDir
-    dictRaw["files"] = fnFiles
+    dictRaw["variables"] = fdictBuildVariables
+    dictRaw["workflowDir"] = fsBuildWorkflowDirectory
+    dictRaw["files"] = ffilesBuildRepoFiles
     return RouteContext(dictRaw)
 
 

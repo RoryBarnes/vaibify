@@ -69,12 +69,12 @@ class TestTypedPropertyAccess:
 
     def test_variables(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        dictVars = ctx.variables("cid1")
+        dictVars = ctx.fdictGetVariables("cid1")
         assert dictVars["sUser"] == "rory"
 
     def test_workflow_dir(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.workflowDir("cid1") == "/workspace/cid1"
+        assert ctx.fsGetWorkflowDirectory("cid1") == "/workspace/cid1"
 
 
 class TestDictCompatibleAccess:

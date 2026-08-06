@@ -2869,7 +2869,7 @@ def testGuiNeverPassesRawRepoPathToReproducibilityIO():
     a reproducibility entry point wraps into a host adapter that probes
     the host filesystem at a container path — every conjunct then fails
     conservatively forever (the dirty-banner bug class). Production
-    callers must pass ``dictCtx.files(sContainerId)``, the poll
+    callers must pass ``dictCtx.ffilesGetRepoFiles(sContainerId)``, the poll
     snapshot, or another ``repoFiles`` adapter.
     """
     listAllViolations = []

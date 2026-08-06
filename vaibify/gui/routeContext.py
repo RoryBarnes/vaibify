@@ -191,15 +191,15 @@ class RouteContext:
         """Persist workflow to container."""
         return self._dictRaw["save"](sContainerId, dictWorkflow)
 
-    def variables(self, sContainerId):
+    def fdictGetVariables(self, sContainerId):
         """Build variable substitution dict for a container."""
         return self._dictRaw["variables"](sContainerId)
 
-    def workflowDir(self, sContainerId):
+    def fsGetWorkflowDirectory(self, sContainerId):
         """Return the workflow directory path for a container."""
         return self._dictRaw["workflowDir"](sContainerId)
 
-    def files(self, sContainerId):
+    def ffilesGetRepoFiles(self, sContainerId):
         """Return a ContainerRepoFiles rooted at the workflow's project repo."""
         return self._dictRaw["files"](sContainerId)
 

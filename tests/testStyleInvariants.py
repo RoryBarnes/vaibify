@@ -151,8 +151,8 @@ DICT_TIER_TWO_REGISTRY_COPY = {
 # Lower the matching constant in the same commit as every burn-down.
 # ---------------------------------------------------------------------------
 
-I_LEGACY_NAME_BUDGET = 13
-I_LEGACY_FN_RETURN_BUDGET = 24
+I_LEGACY_NAME_BUDGET = 10
+I_LEGACY_FN_RETURN_BUDGET = 21
 I_LEGACY_YIELD_BUDGET = 0
 I_LEGACY_LITERAL_RETURN_BUDGET = 0
 I_LEGACY_RETURN_ANNOTATION_BUDGET = 0
