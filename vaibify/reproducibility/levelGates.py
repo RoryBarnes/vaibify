@@ -95,7 +95,7 @@ __all__ = [
     "flistLevel2Blockers",
     "flistLevel3Blockers",
     "fnClearLevelBlockerCache",
-    "fnLevelComputationContext",
+    "fcontextLevelComputation",
 ]
 
 
@@ -107,7 +107,7 @@ F_MAX_STALE_HOURS = 24.0
 # ``fiProofLevel`` evaluates L1, then L2 (which internally calls L1),
 # then L3 (which internally calls L2, which calls L1). At N=100 steps
 # the inner L1 calls iterate the verifications three times even though
-# the answer is identical. ``fnLevelComputationContext`` activates a
+# the answer is identical. ``fcontextLevelComputation`` activates a
 # thread-local memo dict that ``fbAtLeastLevel1`` / ``fbAtLeastLevel2``
 # consult before recomputing. The memo lives only for the lifetime of
 # the context — no cross-poll state, no stale-cache risk.
@@ -115,7 +115,7 @@ _THREAD_LOCAL = threading.local()
 
 
 @contextmanager
-def fnLevelComputationContext():
+def fcontextLevelComputation():
     """Activate a per-call memo for ``fbAtLeastLevel{1,2}``.
 
     Use inside ``fiProofLevel`` or any other path that drives the L1/L2/L3
@@ -275,7 +275,7 @@ def fiProofLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
     """Return the integer PROOF level (0..3) for a workflow.
 
     Short-circuits up the ladder so each gate runs at most once. Wraps
-    the L1/L2/L3 chain in ``fnLevelComputationContext`` so the inner
+    the L1/L2/L3 chain in ``fcontextLevelComputation`` so the inner
     recursive calls (L2 -> L1, L3 -> L2 -> L1) hit a memo instead of
     re-iterating every step. ``dictScriptStatus`` threads through to
     L1 so callers with mtime info honor the script-stale criterion.
@@ -283,7 +283,7 @@ def fiProofLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
     ``repoFiles`` adapter (container or poll snapshot).
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    with fnLevelComputationContext():
+    with fcontextLevelComputation():
         if not fbAtLeastLevel1(
             dictWorkflow, filesRepo, dictScriptStatus,
         ):

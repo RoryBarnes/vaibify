@@ -46,7 +46,7 @@ I_DOCKER_POOL_MAX_SIZE = 32
 # stdout, which peaks at roughly 3x the file size in RAM (raw +
 # base64-encoded + decoded). Cap the small-file path at 64 MB so a
 # caller cannot accidentally pull a multi-GB output file through it;
-# large files must go through :meth:`DockerConnection.fnIterStreamFile`
+# large files must go through :meth:`DockerConnection.fiterStreamFile`
 # instead, which streams via ``container.get_archive``.
 I_MAX_FETCH_FILE_BYTES = 64 * 1024 * 1024
 
@@ -579,7 +579,7 @@ class DockerConnection:
 
         Use this for state JSON, markers, configs, and anything else that
         is bounded in size by design. Large files (HDF5, NetCDF, plot
-        bundles) must go through :meth:`fnIterStreamFile` instead — this
+        bundles) must go through :meth:`fiterStreamFile` instead — this
         path round-trips through base64 over exec stdout which inflates
         memory by ~3x.
 
@@ -604,7 +604,7 @@ class DockerConnection:
             raise ValueError(
                 f"File exceeds fbaFetchFile cap "
                 f"({len(baContent)} > {iMaxBytes} bytes): "
-                f"{sFilePath}; use fnIterStreamFile for large files"
+                f"{sFilePath}; use fiterStreamFile for large files"
             )
         return baContent
 
@@ -638,7 +638,7 @@ class DockerConnection:
             sEntry for sEntry in resultExec.sStdout.split("\n") if sEntry
         ]
 
-    def fnIterStreamFile(
+    def fiterStreamFile(
         self, sContainerId, sFilePath, iChunkSizeBytes=1048576,
     ):
         """Yield the container file's bytes in chunks via get_archive.

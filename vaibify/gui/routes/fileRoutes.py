@@ -197,7 +197,7 @@ def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
     truncated body instead of an error. Pulling one chunk here forces
     the iterator to materialise the get_archive call.
     """
-    iterChunks = connectionDocker.fnIterStreamFile(
+    iterChunks = connectionDocker.fiterStreamFile(
         sContainerId, sAbsPath,
     )
     try:

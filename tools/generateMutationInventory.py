@@ -158,7 +158,7 @@ DICT_PRIMITIVE_ACCESS = {
     "flistGetRunningContainers": S_ACCESS_TYPED_READ,
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
-    "fnIterStreamFile": S_ACCESS_TYPED_READ,
+    "fiterStreamFile": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,
     # The audited adapter behind `vaibify ls`: the caller supplies a

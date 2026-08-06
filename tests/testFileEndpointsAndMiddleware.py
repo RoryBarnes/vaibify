@@ -85,7 +85,7 @@ class MockDockerTransfer:
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         raise FileNotFoundError(f"Not found: {sPath}")
 
-    def fnIterStreamFile(
+    def fiterStreamFile(
         self, sContainerId, sPath, iChunkSizeBytes=1048576,
     ):
         baBytes = self.fbaFetchFile(sContainerId, sPath)

@@ -381,7 +381,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 84,
+      "iLine": 85,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -2076,13 +2076,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "f7b024ff99feddd8",
-      "sFunction": "flistGetRunningContainers",
+      "sFingerprint": "ebee0c2530b36d1a",
+      "sFunction": "fiterStreamFile",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnEvictAbsentContainers",
+      "sPrimitive": "fcontainerGetById",
       "sReferenceKind": "direct-call"
     },
     {
@@ -2102,13 +2102,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "ebee0c2530b36d1a",
-      "sFunction": "fnIterStreamFile",
+      "sFingerprint": "f7b024ff99feddd8",
+      "sFunction": "flistGetRunningContainers",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fcontainerGetById",
+      "sPrimitive": "fnEvictAbsentContainers",
       "sReferenceKind": "direct-call"
     },
     {
@@ -5066,13 +5066,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "83fbd621a08c0dc4",
+      "sFingerprint": "6cc7931e2d972b7b",
       "sFunction": "_fnProbeFirstChunk",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnIterStreamFile",
+      "sPrimitive": "fiterStreamFile",
       "sReferenceKind": "direct-call"
     },
     {
@@ -9019,7 +9019,7 @@
       "sScopeFingerprint": "6535cacbfa91dba8"
     },
     {
-      "iLine": 931,
+      "iLine": 932,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/commitCarrier.py",

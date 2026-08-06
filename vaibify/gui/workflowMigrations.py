@@ -437,7 +437,7 @@ def _fsJoinRepoRelPath(sStepDir, sFile):
 
 
 @contextlib.contextmanager
-def _fnTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
+def _fcontextTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
     """Inject ``sProjectRepoPath`` into the dict for the duration of a block.
 
     Restores the prior key state on exit. A no-op when the caller did
@@ -471,7 +471,7 @@ def _fnMigrateV0ToV1(dictWorkflow, sProjectRepoPath):
     restores the prior value afterwards.
     """
     fnMigrateRunEnabledKey(dictWorkflow)
-    with _fnTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
+    with _fcontextTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
         fnMigrateArchiveToTracking(dictWorkflow)
         fbMigrateModifiedFilesToRepoRelative(dictWorkflow)
     for dictStep in dictWorkflow.get("listSteps", []):

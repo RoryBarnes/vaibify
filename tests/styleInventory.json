@@ -317,11 +317,6 @@
       "sReason": "the typed-read exemption grant point; its literal name is pinned by S_EXEMPTION_METHOD in tests/testMutationBoundary.py and an AGENTS.md paragraph (ruling R10)"
     },
     {
-      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.fnIterStreamFile",
-      "sDebtClass": "legacy-yield",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection.ftupleRunRootShellProbe",
       "sDebtClass": "legacy-name",
       "sReason": ""
@@ -1972,11 +1967,6 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/workflowMigrations.py::_fnTemporaryProjectRepoPath",
-      "sDebtClass": "legacy-yield",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/workflowMigrations.py::fnApplyMigrations",
       "sDebtClass": "legacy-fn-return",
       "sReason": ""
@@ -2059,11 +2049,6 @@
     {
       "sIdentity": "vaibify/reproducibility/l3Attestation.py::fnInvalidateAttestation",
       "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/levelGates.py::fnLevelComputationContext",
-      "sDebtClass": "legacy-yield",
       "sReason": ""
     },
     {
@@ -2225,7 +2210,7 @@
   "dictBudgets": {
     "legacy-name": 143,
     "legacy-fn-return": 249,
-    "legacy-yield": 3,
+    "legacy-yield": 0,
     "legacy-literal-return": 0,
     "legacy-return-annotation": 0,
     "legacy-annotation-mismatch": 1

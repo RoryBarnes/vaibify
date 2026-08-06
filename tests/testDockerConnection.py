@@ -630,7 +630,7 @@ def _fnBuildTarStream(sFilename, baContent, iChunkSizeBytes=512):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnIterStreamFile_yields_identical_bytes(mockGetDocker):
+def test_fiterStreamFile_yields_identical_bytes(mockGetDocker):
     """Streaming fetch reconstructs the same bytes the small path returns."""
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
@@ -642,7 +642,7 @@ def test_fnIterStreamFile_yields_identical_bytes(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
     baReceived = b"".join(
-        conn.fnIterStreamFile(
+        conn.fiterStreamFile(
             "abc123", "/workspace/payload.bin", iChunkSizeBytes=1024,
         )
     )
@@ -650,7 +650,7 @@ def test_fnIterStreamFile_yields_identical_bytes(mockGetDocker):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnIterStreamFile_emits_bounded_chunks(mockGetDocker):
+def test_fiterStreamFile_emits_bounded_chunks(mockGetDocker):
     """No yielded chunk exceeds the caller's requested chunk size."""
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
@@ -663,7 +663,7 @@ def test_fnIterStreamFile_emits_bounded_chunks(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
     listChunks = list(
-        conn.fnIterStreamFile(
+        conn.fiterStreamFile(
             "abc123", "/workspace/payload.bin", iChunkSizeBytes=1024,
         )
     )
@@ -672,7 +672,7 @@ def test_fnIterStreamFile_emits_bounded_chunks(mockGetDocker):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnIterStreamFile_raises_filenotfound_on_missing(mockGetDocker):
+def test_fiterStreamFile_raises_filenotfound_on_missing(mockGetDocker):
     """A missing path surfaces as FileNotFoundError, not a docker exception."""
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
@@ -681,7 +681,7 @@ def test_fnIterStreamFile_raises_filenotfound_on_missing(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
     with pytest.raises(FileNotFoundError):
-        next(conn.fnIterStreamFile("abc123", "/nope"))
+        next(conn.fiterStreamFile("abc123", "/nope"))
 
 
 # -----------------------------------------------------------------------

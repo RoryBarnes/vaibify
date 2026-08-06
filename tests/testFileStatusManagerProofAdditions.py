@@ -148,7 +148,7 @@ def test_auto_archive_promoted_runs_envelope_refresh():
 def test_fiProofLevel_evaluates_L1_once_per_call():
     """Switch-time perf invariant: when L2 and L3 also call into L1
     via their internal short-circuits, the per-step iteration only
-    runs once thanks to fnLevelComputationContext.
+    runs once thanks to fcontextLevelComputation.
     """
     from vaibify.reproducibility import levelGates
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
