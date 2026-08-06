@@ -52,9 +52,20 @@ SET_EXCLUDED_TREE_PARTS = (".git", "worktrees")
 
 
 def fbPathIsInsideExcludedTree(pathCandidate):
-    """Return True when a path lies inside .git or an agent worktree."""
+    """Return True when a path lies inside .git or an agent worktree.
+
+    Only components BELOW the repo root count: judging the absolute
+    path would exclude every file when the checkout itself sits under
+    a directory named for an excluded part (e.g. a git worktree at
+    .claude/worktrees/<name>/), making every bare-filename reference
+    look broken.
+    """
+    try:
+        pathRelative = pathCandidate.resolve().relative_to(REPO_ROOT)
+    except ValueError:
+        pathRelative = pathCandidate
     return any(
-        sPart in SET_EXCLUDED_TREE_PARTS for sPart in pathCandidate.parts
+        sPart in SET_EXCLUDED_TREE_PARTS for sPart in pathRelative.parts
     )
 
 
