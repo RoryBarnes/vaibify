@@ -516,10 +516,16 @@ an empty violation list is not compliance —
 observation records what its entry point DECLARED, never *which* entry
 point it was, so a violation cannot be narrowed between two routes
 sharing a declaration; migrating one route at a time is what bounds the
-diagnosis. And 20 mutation-capable rows are structurally unattributable
-— a primitive bound into `asyncio.to_thread` loses its row, though its
-mode survives — so they must be traced by hand and will never be
-observed. The semantic classification of the inventory is unfinished
+diagnosis. And some mutation-capable rows are **structurally**
+unattributable: a primitive bound into `asyncio.to_thread` loses its
+row, because inside the worker the frames above it are executor
+infrastructure rather than the expression the row records. Its carrier
+MODE survives, so the event is still routed correctly — the row is what
+is lost, and those must be traced by hand and will never be observed.
+Migrating a route can *recover* one, by turning the passed callable into
+a direct call the scanner can read; the current set is every
+`passed-callable` row in `tests/mutationInventory.json`. The semantic
+classification of the inventory is unfinished
 and ratcheted: the count may only go down, and it is the input to that
 migration, not a substitute for it.
 
@@ -959,12 +965,31 @@ correct approach.
   so two identical-order runs failing in *different* tests cannot be
   an ordering problem — that pattern means something outside pytest is
   editing the sources.
+- **A count of code facts written into this file is wrong within
+  weeks.** The carrier migration's route totals were re-typed and wrong
+  four times in a single session (14/116, 31/99, 53/77, 60/70), each
+  corrected only because somebody happened to notice; auditing for that
+  found two more already stale — a "27 test files" that was 28, and a
+  "20 unattributable rows" that migrations had reduced to 10. None was
+  wrong in substance and all were wrong in fact, which is worse, because
+  a reader who checks one and finds it false stops trusting the ones
+  they cannot check. **State the mechanism, not the tally**, and where a
+  number is genuinely wanted give the command that computes it —
+  `PYTHONPATH=. python tools/carrierIntentAudit.py` for carrier
+  coverage, `python tools/listModules.py` for structure. This is the
+  deterministic-versus-stochastic split from
+  [docs/vibeCoding.md](docs/vibeCoding.md) applied to this file: a fact
+  that changes when the code changes does not belong in prose that
+  does not.
 - The carrier migration's only proof was unobservable in the tests that
   would have to observe it. "Forget a carrier and the primitive raises
-  loudly" is true of the real `DockerConnection` and false of every
-  route test: **27 test files define a `fnWriteFile` mock and not one
-  references `mutationAdmission`.** A migrated route with its carrier
-  call deleted outright still passed its whole route-test file. The fix
+  loudly" is true of the real `DockerConnection` and false of nearly
+  every route test: **the route-test doubles answer a write by storing
+  bytes and never consult the admission gate at all.** (Confirm with
+  `grep -l 'def fnWriteFile' tests/test*.py | xargs grep -L
+  mutationAdmission` — at the time of writing, all but one.) A migrated
+  route with its carrier call deleted outright still passed its whole
+  route-test file. The fix
   is `tests/testCarrierMigratedRoutes.py` — a double calling the same
   gates, under the same primitive names, at the same points the real
   connection calls them, recording the live admission MODE at each. Assert
