@@ -12,6 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui import containerGit
 from vaibify.gui.routes import gitRoutes
 
@@ -20,6 +21,18 @@ S_CONTAINER_ID = "cid"
 S_REPO = "/workspace/myrepo"
 S_HEAD_SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
 S_UPSTREAM_SHA = "f0e1d2c3b4a5968778695a4b3c2d1e0f12345678"
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the refresh route driven bare here.
+
+    ``refresh-remotes`` does its fetch through carrier mode (b), and
+    this module builds a bare ``FastAPI()`` with no owner record for
+    the request to bind to. Requested only by the tests that reach the
+    carrier. See ``tests/carrierStandDown.py``.
+    """
+    fnStandCarrierDown(monkeypatch, gitRoutes)
 
 
 @pytest.fixture(autouse=True)
@@ -108,7 +121,7 @@ def _fdictPostRefresh(clientHttp, dictBody=None):
     )
 
 
-def test_refresh_remotes_response_shape():
+def test_refresh_remotes_response_shape(fixtureCarrierStoodDown):
     """Response carries remote heads plus the project git view."""
     dictCtx = _fdictBuildGitContext()
     clientHttp = _fclientBuildGitClient(dictCtx)
@@ -130,7 +143,7 @@ def test_refresh_remotes_response_shape():
     assert dictGit["sRemoteUrl"].startswith("https://github.com/")
 
 
-def test_refresh_remotes_threads_project_repo_into_fetch():
+def test_refresh_remotes_threads_project_repo_into_fetch(fixtureCarrierStoodDown):
     """The fetch must run against the project repo, never /workspace."""
     dictCtx = _fdictBuildGitContext()
     clientHttp = _fclientBuildGitClient(dictCtx)
@@ -141,7 +154,7 @@ def test_refresh_remotes_threads_project_repo_into_fetch():
     assert dictCaptured["listFetchWorkspaces"] == [S_REPO]
 
 
-def test_refresh_remotes_respects_fetch_cache_without_force():
+def test_refresh_remotes_respects_fetch_cache_without_force(fixtureCarrierStoodDown):
     """A recent fetch is reused when bForce is false."""
     dictCtx = _fdictBuildGitContext()
     clientHttp = _fclientBuildGitClient(dictCtx)
@@ -155,7 +168,7 @@ def test_refresh_remotes_respects_fetch_cache_without_force():
     assert "listFetchWorkspaces" not in dictCaptured
 
 
-def test_refresh_remotes_force_bypasses_fetch_cache():
+def test_refresh_remotes_force_bypasses_fetch_cache(fixtureCarrierStoodDown):
     """bForce true refetches even inside the 30 s cache window."""
     dictCtx = _fdictBuildGitContext()
     clientHttp = _fclientBuildGitClient(dictCtx)
@@ -177,7 +190,7 @@ def test_refresh_remotes_409_without_project_repo():
     assert "Project repo not detected" in responseHttp.text
 
 
-def test_refresh_remotes_502_when_fetch_fails():
+def test_refresh_remotes_502_when_fetch_fails(fixtureCarrierStoodDown):
     """A failing git fetch surfaces as 502, not a silent success."""
     dictCtx = _fdictBuildGitContext()
     clientHttp = _fclientBuildGitClient(dictCtx)

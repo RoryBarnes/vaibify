@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes import pipelineRoutes
 
 pytestmark = pytest.mark.falsification
@@ -88,10 +89,16 @@ class _RecordingKillDocker:
 class TestKillRouteActuallyKills:
     """When processes match, a real ``xargs kill -9`` is issued."""
 
-    def _fnPostKill(self, sCountOutput):
+    def _fnPostKill(self, sCountOutput, monkeypatch):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
+        # The sweep is carried now, and this app has no owner record,
+        # so the real carrier would answer 403 before any exec ran.
+        # These tests are about WHICH commands the sweep issues, not
+        # about the admission -- that lives in
+        # tests/testCarrierMigratedRoutes.py.
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
         app = FastAPI()
         recordingDocker = _RecordingKillDocker(sCountOutput)
         dictWorkflow = {
@@ -118,9 +125,9 @@ class TestKillRouteActuallyKills:
             response = client.post("/api/pipeline/cid1/kill")
         return response, recordingDocker.listCommands
 
-    def test_kill_exec_issued_when_count_positive(self):
+    def test_kill_exec_issued_when_count_positive(self, monkeypatch):
         """Kills: Neutralize the iCountBefore>0 guard body so _fnKillMatchingProcesses is never awaited (if iCountBefore > 0 -> if False)."""
-        response, listCommands = self._fnPostKill("3\n")
+        response, listCommands = self._fnPostKill("3\n", monkeypatch)
         assert response.status_code == 200
         assert response.json()["iProcessesKilled"] == 3
         listKillCommands = [
@@ -136,9 +143,9 @@ class TestKillRouteActuallyKills:
             for sCommand in listKillCommands
         )
 
-    def test_no_kill_exec_when_count_zero(self):
+    def test_no_kill_exec_when_count_zero(self, monkeypatch):
         """Kills: Force the iCountBefore>0 guard always-true so a kill exec runs even when no processes match (if iCountBefore > 0 -> if True)."""
-        response, listCommands = self._fnPostKill("0\n")
+        response, listCommands = self._fnPostKill("0\n", monkeypatch)
         assert response.status_code == 200
         assert response.json()["iProcessesKilled"] == 0
         assert not any(

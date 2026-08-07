@@ -17,6 +17,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
     fsRepoRootOf,
@@ -471,7 +472,8 @@ def fdictReadEnvironmentJson(filesRepo):
         return None
     try:
         dictPayload = json.loads(filesRepo.fsReadText(sRelPath))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return None
     if not isinstance(dictPayload, dict):
         return None

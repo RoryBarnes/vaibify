@@ -1100,3 +1100,92 @@ def testAnAwaitableWithoutCloseStillRaisesTypeError():
 
     with pytest.raises(TypeError, match="awaitable"):
         commitCarrier._fgenericCallWorkerSynchronously(_fnWorker, object())
+
+
+# ---------------------------------------------------------------------
+# The gated helper is an EXCEPTIONAL AUTHORITY, and this is its
+# constraint.
+#
+# fdictLaunchGatedHelperProcess spawns any argv a caller hands it: it is
+# the one generic command authority under vaibify/gui/, and the
+# inventory records it as a blind spot because no scan can read what it
+# will run. tests/testBlindSpotDispositions.py disposes of it on the
+# strength of a STRUCTURAL constraint rather than an argument about the
+# command, and these are the tests that constraint is cited to. Without
+# them the disposition is an assertion about code nobody drove.
+# ---------------------------------------------------------------------
+
+def testTheGatedHelperIsConstrainedByItsHolderIdentity(tmp_path, monkeypatch):
+    """A different holder may not commit under this operation's record.
+
+    The identity gate is half of why an arbitrary-argv spawn is
+    tolerable: the record names the pid and process group that were
+    journaled, and an operation presenting anything else is refused
+    before it can act. Driven with a MISMATCHED pid rather than a
+    missing one, because a check that only noticed absence would pass
+    every impersonation.
+    """
+    monkeypatch.setattr(
+        operationJournal, "_S_JOURNAL_DIRECTORY",
+        str(tmp_path / "journal"),
+    )
+    sOperationId = operationJournal.fsPrepareOperation(
+        S_CONTAINER_NAME, "helper", "identityTest",
+    )
+    operationJournal.fnPromoteOperationToInFlight(
+        S_CONTAINER_NAME, sOperationId,
+        {"iHolderPid": 4242, "iHolderProcessGroup": 4242},
+    )
+    fnAssertOperationAdmittedByIdentity(
+        S_CONTAINER_NAME, sOperationId,
+        {"iHolderPid": 4242, "iHolderProcessGroup": 4242},
+    )
+    with pytest.raises(MutationNotAdmittedError, match="holder identity"):
+        fnAssertOperationAdmittedByIdentity(
+            S_CONTAINER_NAME, sOperationId,
+            {"iHolderPid": 9999, "iHolderProcessGroup": 9999},
+        )
+
+
+def testTheGatedHelperNeverActsWhenTheJournalRefusesIt(tmp_path, monkeypatch):
+    """A refused launch leaves a REAL child that did nothing.
+
+    The other half: the child blocks on a stdin gate and only the
+    release line lets it run its argv, so a refusal between the spawn
+    and the release means the command never happens. Asserted on the
+    EFFECT -- a file the argv would have written -- and not on the
+    exception, because a gate placed after the release would raise the
+    same error with the work already done.
+
+    The refusal is induced by quarantining an unrelated record, which is
+    the real production trigger: a container carrying an operation that
+    needs reconciliation admits no new one.
+    """
+    monkeypatch.setattr(
+        operationJournal, "_S_JOURNAL_DIRECTORY",
+        str(tmp_path / "journal"),
+    )
+    pathEffect = tmp_path / "theHelperActed"
+    sQuarantined = operationJournal.fsPrepareOperation(
+        S_CONTAINER_NAME, "helper", "unrelated",
+    )
+    operationJournal.fnPromoteOperationToInFlight(
+        S_CONTAINER_NAME, sQuarantined,
+        {"iHolderPid": 1, "iHolderProcessGroup": 1},
+    )
+    operationJournal.fnMarkOperationNeedsReconciliation(
+        S_CONTAINER_NAME, sQuarantined, "left behind by a crash",
+    )
+
+    with pytest.raises(MutationNotAdmittedError, match="reconcil"):
+        commitCarrier.fdictLaunchGatedHelperProcess(
+            S_CONTAINER_NAME, "quarantinedTest",
+            [sys.executable, "-c",
+             "open(%r, 'w').write('acted')" % str(pathEffect)],
+        )
+
+    time.sleep(0.5)
+    assert not pathEffect.exists(), (
+        "the helper ran its argv even though the journal refused the "
+        "operation -- the stdin gate is not holding it"
+    )

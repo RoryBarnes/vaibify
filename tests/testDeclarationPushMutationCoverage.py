@@ -21,10 +21,24 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui import containerGit, routeContext, syncDispatcher
 from vaibify.gui.actionCatalog import LIST_AGENT_ACTIONS
 from vaibify.gui.routes import gitRoutes, repoRoutes
 from vaibify.reproducibility import levelGates
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the untrack route driven bare here.
+
+    ``untrack-ai-declaration`` runs its three git commands through
+    carrier mode (b), and these tests build a bare ``FastAPI()``
+    with no owner record for the request to bind to. Requested only
+    by the tests that reach the carrier. See
+    ``tests/carrierStandDown.py``.
+    """
+    fnStandCarrierDown(monkeypatch, gitRoutes)
 
 pytestmark = pytest.mark.falsification
 
@@ -147,7 +161,9 @@ def _fnBuildGitRoutesClient(mockDocker, dictWorkflow):
     return TestClient(app)
 
 
-def test_untrack_rm_failure_detail_carries_git_output():
+def test_untrack_rm_failure_detail_carries_git_output(
+    fixtureCarrierStoodDown,
+):
     """The 409 must relay git's own explanation — a researcher cannot
     act on 'failed' without the reason git printed.
 
@@ -172,7 +188,9 @@ def test_untrack_rm_failure_detail_carries_git_output():
     assert "did not match" in response.json()["detail"]
 
 
-def test_untrack_commit_failure_detail_carries_git_output():
+def test_untrack_commit_failure_detail_carries_git_output(
+    fixtureCarrierStoodDown,
+):
     """Same contract for the 500 branch: rm succeeded, commit failed,
     and the git message must reach the researcher.
 
@@ -238,12 +256,32 @@ def test_after_push_gate_is_exact_equality_not_ordering():
     )
 
 
+async def _fdictRunPushWorkerWithoutTheDrain(
+    appState, sName, sContainerId, dictLaneTuple, sOperationKind,
+    sTarget, fnWorker, dictHolderIdentity=None, fnTerminateWorker=None,
+):
+    """Run a carrier worker inline, standing the drain down.
+
+    The push routes are migrated onto carrier mode (b), so on a bare
+    ``FastAPI()`` with no owner map they refuse before their handler
+    body runs. What this test claims is the WARNING contract, not the
+    admission — the admission is asserted in
+    ``tests/testCarrierMigratedRoutes.py`` against a double that calls
+    the real gates — so the carrier is stood down here exactly as
+    ``tests/testRepoRoutes.py::fixtureCarrierStoodDown`` stands it
+    down, rather than the fixture being taught to mint a lease.
+    """
+    return {"bCommitted": True, "result": fnWorker(None)}
+
+
 def test_push_files_response_carries_verify_warning():
     """The per-file push shares the warning contract: a failed
     post-push check must reach the response, or the panel toasts a
     success while L2 silently stays unknown.
 
-    Kills: repoRoutes.py push-files 'if sWarning:' attach -> inverted.
+    Kills: repoRoutes.py the post-push success gate in
+    _fdictFinishRepoPush -> inverted, so a successful push returns
+    before the warning is ever attached.
     """
     sWarning = "Pushed, but the github status check failed"
     app = FastAPI()
@@ -254,7 +292,13 @@ def test_push_files_response_carries_verify_warning():
     }
     repoRoutes.fnRegisterAll(app, dictCtx)
     with patch(
-        "vaibify.gui.routes.repoRoutes._fnRequireTracked",
+        "vaibify.gui.routes.repoRoutes._fnRequireTrackedInSidecar",
+    ), patch(
+        "vaibify.gui.routes.repoRoutes.fdictRequireLaneTupleForCommit",
+        return_value={"sContainerName": "fake-container"},
+    ), patch(
+        "vaibify.gui.commitCarrier.fdictRunLockHeldMutation",
+        _fdictRunPushWorkerWithoutTheDrain,
     ), patch(
         "vaibify.gui.syncDispatcher.ftResultPushToGithub",
         return_value=(0, "ok"),
@@ -266,7 +310,7 @@ def test_push_files_response_carries_verify_warning():
             "/api/repos/cid/alpha/push-files",
             json={"sCommitMessage": "m", "listFilePaths": ["a.txt"]},
         )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json()["sPostPushVerifyWarning"] == sWarning
 
 
@@ -590,7 +634,9 @@ def _tBuildDeclarationRepo(pathTmp):
     return TestClient(app), sRepo
 
 
-def test_untrack_clean_declaration_really_untracks_real_git(tmp_path):
+def test_untrack_clean_declaration_really_untracks_real_git(
+    tmp_path, fixtureCarrierStoodDown,
+):
     """THE 2026-07-03 high-severity finding, against real git: a
     clean, committed declaration file must actually leave git
     tracking while staying on disk. The pathspec-commit variant
@@ -622,7 +668,7 @@ def test_untrack_clean_declaration_really_untracks_real_git(tmp_path):
 
 
 def test_untrack_modified_declaration_untracks_not_commits_real_git(
-    tmp_path,
+    tmp_path, fixtureCarrierStoodDown,
 ):
     """The false-success case: with local modifications, the pathspec
     commit SUCCEEDS by committing the file's new content — reporting
@@ -651,7 +697,9 @@ def test_untrack_modified_declaration_untracks_not_commits_real_git(
     )
 
 
-def test_untrack_refuses_when_other_changes_staged_real_git(tmp_path):
+def test_untrack_refuses_when_other_changes_staged_real_git(
+    tmp_path, fixtureCarrierStoodDown,
+):
     """A bare commit is only safe behind the staged-index refusal: a
     pre-staged unrelated file must produce a 409 and stay staged,
     never be swept into the removal commit.

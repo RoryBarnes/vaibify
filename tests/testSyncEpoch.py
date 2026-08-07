@@ -11,8 +11,23 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui import containerGit, pipelineServer
 from vaibify.gui.routes import gitRoutes, pipelineRoutes, syncRoutes
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the migrated routes driven bare here.
+
+    ``add-file``, ``verify``, the bulk GitHub push and the whole git
+    panel now do their
+    container work through carrier mode (b); this module builds a bare
+    ``FastAPI()`` with no owner record for any of them to bind to.
+    Requested only by the tests that reach a carrier. See
+    ``tests/carrierStandDown.py``.
+    """
+    fnStandCarrierDown(monkeypatch, gitRoutes, syncRoutes)
 
 
 S_CONTAINER_ID = "cid"
@@ -75,7 +90,7 @@ def test_helpers_count_from_zero_per_container():
     assert pipelineServer.fiGetSyncEpoch(dictCtx, "other") == 0
 
 
-def test_push_bumps_sync_epoch():
+def test_push_bumps_sync_epoch(fixtureCarrierStoodDown):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     with patch(
@@ -100,7 +115,7 @@ def test_push_bumps_sync_epoch():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_push_bumps_epoch_even_on_failure():
+def test_push_bumps_epoch_even_on_failure(fixtureCarrierStoodDown):
     """A failed push may still have created a local commit."""
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
@@ -121,7 +136,7 @@ def test_push_bumps_epoch_even_on_failure():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_add_file_bumps_sync_epoch():
+def test_add_file_bumps_sync_epoch(fixtureCarrierStoodDown):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     with patch(
@@ -142,7 +157,7 @@ def test_add_file_bumps_sync_epoch():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_commit_canonical_bumps_sync_epoch():
+def test_commit_canonical_bumps_sync_epoch(fixtureCarrierStoodDown):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     dictReport = {
@@ -177,7 +192,9 @@ def test_commit_canonical_bumps_sync_epoch():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_fetch_project_repo_bumps_epoch_only_when_fetching():
+def test_fetch_project_repo_bumps_epoch_only_when_fetching(
+    fixtureCarrierStoodDown,
+):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     with patch.object(
@@ -199,7 +216,7 @@ def test_fetch_project_repo_bumps_epoch_only_when_fetching():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_pull_project_repo_bumps_sync_epoch():
+def test_pull_project_repo_bumps_sync_epoch(fixtureCarrierStoodDown):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     with patch.object(
@@ -219,7 +236,7 @@ def test_pull_project_repo_bumps_sync_epoch():
     assert _fiEpochOf(dictCtx) == 1
 
 
-def test_pull_dirty_refusal_does_not_bump_epoch():
+def test_pull_dirty_refusal_does_not_bump_epoch(fixtureCarrierStoodDown):
     """A refused pull changed nothing, so the epoch must hold still."""
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
@@ -234,7 +251,7 @@ def test_pull_dirty_refusal_does_not_bump_epoch():
     assert _fiEpochOf(dictCtx) == 0
 
 
-def test_refresh_remotes_bumps_sync_epoch():
+def test_refresh_remotes_bumps_sync_epoch(fixtureCarrierStoodDown):
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
     with patch.object(
@@ -331,7 +348,7 @@ def _fiReadEpochFromStatePoll(clientHttp):
 
 
 @pytest.mark.falsification
-def test_verify_remote_bumps_sync_epoch():
+def test_verify_remote_bumps_sync_epoch(fixtureCarrierStoodDown):
     """A completed remote verify must invalidate the dashboard.
 
     Drives the real route through TestClient and reads the epoch back
@@ -363,7 +380,7 @@ def test_verify_remote_bumps_sync_epoch():
     assert _fiReadEpochFromStatePoll(clientHttp) == 1
 
 
-def test_failed_verify_does_not_bump_sync_epoch():
+def test_failed_verify_does_not_bump_sync_epoch(fixtureCarrierStoodDown):
     """A verify that never reached the remote changed no cached state."""
     dictCtx = _fdictBuildEpochContext()
     clientHttp = _fclientBuildEpochClient(dictCtx)
@@ -384,8 +401,15 @@ def test_failed_verify_does_not_bump_sync_epoch():
 
 
 async def _fsRefreshVerifyStub(
-    dictCtx, sContainerId, dictWorkflow, sService,
+    dictCtx, sContainerId, dictWorkflow, sService, requestHttp=None,
 ):
+    """Mirror the real signature, including the request the drain needs.
+
+    Reconcile now threads its request through so the post-push verify
+    runs under its own mode-(b) carrier rather than a bare
+    ``to_thread``; a stub that stopped at four arguments turned that
+    into a ``TypeError`` reported as a route failure.
+    """
     return ""
 
 
@@ -436,7 +460,7 @@ def _fresponsePostReconcile(clientHttp, dictStatus):
 
 
 @pytest.mark.falsification
-def test_reconcile_remote_state_bumps_sync_epoch():
+def test_reconcile_remote_state_bumps_sync_epoch(fixtureCarrierStoodDown):
     """The out-of-band-push repair action must repaint the dashboard.
 
     An agent or a researcher who runs ``git push`` in the container
@@ -458,7 +482,9 @@ def test_reconcile_remote_state_bumps_sync_epoch():
 
 
 @pytest.mark.falsification
-def test_reconcile_marks_only_paths_the_verify_actually_covered():
+def test_reconcile_marks_only_paths_the_verify_actually_covered(
+    fixtureCarrierStoodDown,
+):
     """Sync status may only record what the verify proved.
 
     ``iTotalFiles`` counts the declared canonical paths that existed
@@ -485,7 +511,9 @@ def test_reconcile_marks_only_paths_the_verify_actually_covered():
     assert dictWorkflow.get("dictSyncStatus", {}) == {}
 
 
-def test_reconcile_records_the_files_the_verify_matched():
+def test_reconcile_records_the_files_the_verify_matched(
+    fixtureCarrierStoodDown,
+):
     """Full coverage marks the matching paths and skips the diverged one."""
     dictCtx = _fdictBuildEpochContext()
     dictWorkflow = dictCtx["workflows"][S_CONTAINER_ID]

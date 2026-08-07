@@ -712,8 +712,12 @@ WebSocket actions are outside it — every WS catalog entry is
 agent-safe today and `testEveryWebSocketActionIsAgentSafe` fails CI if
 a user-only one appears, but that is a tripwire, not enforcement. And
 routes that read host state need their own refusal at the handler
-(`_fnRejectAgentTokenLane`), because a host-file read is a capability
-question the catalog alone cannot express.
+(`routeContext.fnRejectAgentTokenLane`), because a host read is a
+capability question the catalog alone cannot express. That includes
+routes that read no file at all: `has-credential` asks the host
+keyring whether a service token exists, which is one bit about the
+researcher's own machine, and a GET is never state-mutating so the
+catalog gate never sees it.
 
 ### The four release triggers
 
@@ -813,6 +817,106 @@ never reaped. No new dependency is introduced; the probe shells out to
 The `vaibify sessions` CLI (see [CLI Reference](cli.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
+
+## Container mutations announce themselves
+
+The section above says a container is owned by one session at a time
+and that ownership can be handed over. That is only half a guarantee.
+The other half is that a hand-over must not commit while the previous
+owner's work is still running -- and until the 2026-08 migration,
+nothing enforced it.
+
+The concrete failure: "clean outputs" started a `rm` on a worker thread
+that nothing tracked, and answered immediately. A hand-over arriving a
+second later asked "is anything running in this container?", saw an
+idle container because the delete was invisible, and committed. The new
+owner then held a container quietly deleting the previous owner's
+files, and neither session was told. On a single desktop this is not
+two researchers fighting over a server; it is the in-container AI agent
+and the dashboard acting at once, or a researcher reclaiming a
+container after a reload.
+
+**The carrier is the thing that makes work visible.** A route that
+mutates a container opens an admission through
+`vaibify/gui/commitCarrier.py` around each logical mutation, in one of
+three shapes:
+
+| Mode | Shape | Used when |
+|---|---|---|
+| (a) synchronous | linearized commit plus journal transition, inside the request | one bounded write, e.g. saving `project.json` |
+| (b) lock-held | holds the container mutation lock for the worker's whole lifetime, and registers what it is doing | work that crosses a thread boundary or runs long -- a delete, a push, a test run |
+| (c) durable | registers the work before the response returns | a background job the request does not wait for |
+
+Mode (b) registers an operation kind and target, because an
+`asyncio.Lock` knows only that it is held: a refusal that can only say
+"busy" tells a researcher nothing. A run arriving while a mode-(b)
+worker holds the drain is refused at dispatch and told which operation
+holds it, rather than queued behind it -- and that refusal deliberately
+does not offer the Kill button, because Kill stops a pipeline action
+and does nothing to a carrier worker.
+
+**A declaration authorizes nothing.** `routeScope.ffnDeclareCarrierMode`
+stamps intent from a closed set (`typed-read`, `mode-a-synchronous`,
+`mode-b-lock-held`, `mode-c-durable`, `lifecycle-transaction`,
+`separate-authority`); a route may carry several, because a handler
+that writes synchronously and then starts durable work is a real shape.
+The stamp routes the request to a branch with **no** admission, so the
+handler must open one per mutation. Forget one and the primitive raises
+`MutationNotAdmittedError`. **That refusal is the proof** -- a
+decorator that pre-admitted the handler would delete it, which is the
+`bAgentSafe` mistake one level up.
+
+Three rules follow from what the migration found, and each exists
+because the obvious alternative was demonstrated wrong.
+
+**A refusal is not an I/O error.** `MutationNotAdmittedError` and
+`CommitRefusedError` derive from `ControlPlaneRefusalError(Exception)`,
+not `PermissionError`. They used to subclass `PermissionError`, which
+reads well and is an `OSError` -- so all 85 `except OSError` /
+`except PermissionError` clauses in the package swallowed them,
+including a dozen written to answer conservatively when a file cannot
+be read. That is how a carrier refusal came to silently DOWNGRADE a
+workflow's reproducibility badge.
+
+**A carrier worker must not raise an expected refusal.** A worker that
+raises poisons its journal record and quarantines the container until
+`vaibify reconcile`. An expected 4xx or 502 -- a duplicate project
+name, an unreachable git remote, a bad step index -- is carried back as
+a value through `routeContext.fdictCarryARefusalBackInsteadOfRaising`
+and re-raised outside, after the record settles. A genuinely
+half-finished write still poisons, correctly: nobody knows what state
+it left behind. Deciding which is which is done by reading the
+failure paths, never by inferring from the shape.
+
+**A typed read is exempt only inside its adapter.**
+`DockerConnection._ftRunTypedRead` is the single grant point. It
+takes an operation name from a fixed table plus a path or a flat
+sequence of paths, and BUILDS the command; it never accepts one. That
+distinction is what keeps the carve-out from becoming a general bypass.
+
+**Scope, stated so the record is not read as more than it is.** The
+migration was scoped to the routes that mutate. 83 of 130
+container-scoped routes are declared; the 46 read-only ones stay on the
+legacy ambient admission by decision (2026-08-05), so
+`SET_ROUTES_AWAITING_CARRIER_MODE` bottoms out at 46 rather than empty.
+Read-only routes cannot cause the hand-over failure; declaring them
+would have caught a *future* mistake where somebody adds a write to a
+shared helper, which is worth having and was not worth the remaining
+cost. `POST /api/zenodo/{id}/download` is the one mutating route left
+undeclared, deliberately: it calls a function that does not exist, so
+migrating it would quarantine a working container over a broken button.
+
+**Nothing here is verified by the ordinary route tests.** 27 test files
+define a `fnWriteFile` mock and none of them consults the admission
+gate, so "forget a carrier and the primitive raises loudly" is true of
+the real `DockerConnection` and false of every route test -- a migrated
+route with its carrier call deleted outright passed its whole test
+file. `tests/testCarrierMigratedRoutes.py` is the verification path: a
+double that calls the same gates, under the same primitive names, at
+the same points the real connection calls them, recording the live
+admission MODE at each. It asserts the mode, never merely that nothing
+raised, because "no exception" is equally true of a route riding the
+ambient mint.
 
 ## Python backend
 
@@ -1225,6 +1329,53 @@ after rendering.
 Every render calls `fnUpdateHighlightState()` to synchronize the
 toolbar verification indicator (checkmark and color shift) with the
 current project state.
+
+## Packaging: why runtime resources live inside the package
+
+`vaibify/templates/` and `vaibify/containerImage/` are data trees that
+ship in the wheel. They used to sit at the repository root and be
+reached with `Path(__file__).resolve().parents[2]` — which is the
+repository root only in a checkout. From an installed wheel it is
+`site-packages`, so **no wheel ever contained them**: `vaibify init`
+printed "No templates found" and exited 0, and the Docker-context lookup
+landed on `site-packages/docker`, the Docker SDK's own source directory,
+which exists, so an `is_dir()` check passed.
+
+Two resources were reached from the repository root the same way and
+were therefore missing from every distribution: the curated agent docs
+staged into `/usr/share/vaibify/docs`, and the shell completions. The
+docs case was the worse one, because the bundled `vaibify-doc-map` skill
+told the in-container agent all six documents were present — so a
+wheel-built image did not merely lack docs, it *misdirected the agent*,
+and differed materially from a checkout-built image. Those docs now live
+at `vaibify/docs/` as symlinks onto the Sphinx sources, so there is one
+file to edit and both builders dereference them into real files.
+
+The build context is staged per *build*, not per project, because the
+GUI starts builds in worker threads with no serialization: two dashboard
+clicks race, and refreshing a shared directory begins with `rmtree`,
+which would delete a context out from under a running `docker build`.
+
+**Checking a shipped file is not the same as checking the artifact built
+from it.** The release workflow once validated every distribution with
+`import vaibify`, which passes for a wheel containing no templates —
+exactly what every wheel contained. Its replacement,
+`tools/checkInstalledDistribution.py`, resolves every tree, runs
+`vaibify init`, executes the shipped example workflow to a figure, and
+*assembles a real build context* to check that no curated doc and no
+Dockerfile `COPY` source is missing. The first version of that script
+spot-checked three files, which is why it passed a distribution whose
+assembled context was missing five of six agent documents.
+
+That job is **release-only** by decision (2026-07-28), matching `vspace`,
+`bigplanet` and `multi-planet`: a release runs the full support matrix, a
+manual run the corners. So a packaging regression can sit on `main` until
+the next version is cut. `upload_pypi` needs `build` and `test`, so it is
+caught while cutting the release and nothing broken is published — but
+the diagnosis arrives during a release rather than beside the change that
+caused it. It cannot be a required status check, because it cannot report
+on a pull request and every PR would wait on it forever.
+
 
 ## Testing
 

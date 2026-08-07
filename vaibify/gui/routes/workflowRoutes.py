@@ -13,7 +13,18 @@ from .. import browserSession
 from .. import containerOwnership
 from .. import workflowManager
 from ..actionCatalog import ffnAgentAction
-from ..routeScope import ffnRouteScope, fsLeaseFromRequest, S_SCOPE_OWNER_ESTABLISHING
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_SEPARATE_AUTHORITY,
+    S_SCOPE_OWNER_ESTABLISHING,
+    ffnDeclareCarrierMode,
+    ffnRouteScope,
+    fsLeaseFromRequest,
+)
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     CreateWorkflowRequest,
@@ -194,31 +205,92 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
     """Register POST /api/workflows/{id}/create route."""
 
     @app.post("/api/workflows/{sContainerId}/create")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictHandleCreateWorkflow(
-        sContainerId: str, request: CreateWorkflowRequest
+        sContainerId: str, request: CreateWorkflowRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
-        _fnRejectDuplicateWorkflowName(
-            dictCtx["docker"], sContainerId, request.sWorkflowName,
-        )
-        sRepoDirectory = _fsValidateRepoDirectory(
-            dictCtx["docker"], sContainerId, request.sRepoDirectory,
-        )
+        # Validated out here because it reaches no container at all: a
+        # bad filename is a 400 without a journal record ever existing.
         sFileName = _fsValidateAndNormalizeFileName(request.sFileName)
-        sWorkflowDir = _fsEnsureWorkflowDir(
-            dictCtx["docker"], sContainerId, sRepoDirectory,
+        dictOutcome = await _fdictCreateWorkflowUnderTheDrain(
+            dictCtx, sContainerId, request, sFileName, requestHttp,
         )
-        sFullPath = posixpath.join(sWorkflowDir, sFileName)
-        _fnAssertWorkflowAbsent(dictCtx["docker"], sContainerId, sFullPath)
-        sContent = json.dumps(
-            _fdictBlankWorkflowContent(request), indent=2,
-        ) + "\n"
-        dictCtx["docker"].fnWriteFile(
-            sContainerId, sFullPath, sContent.encode("utf-8"),
-        )
+        if dictOutcome["errorRefused"] is not None:
+            raise dictOutcome["errorRefused"]
         return _fdictCreateWorkflowResponse(
-            sFullPath, request.sWorkflowName,
+            dictOutcome["objResult"], request.sWorkflowName,
         )
+
+
+async def _fdictCreateWorkflowUnderTheDrain(
+    dictCtx, sContainerId, request, sFileName, requestHttp,
+):
+    """Probe, make the directory, and write project.json under one drain.
+
+    Every probe in the sequence reaches the general exec primitive -- a
+    duplicate-name search, a directory test, a ``git rev-parse``, an
+    existence test -- which the gate treats as mutating because a
+    primitive handed command text cannot know what the text does. A
+    probe left outside the carrier would be refused on the enforced
+    branch. The two that GUARD the write belong inside the SAME held
+    drain as the write in any case: with the lock dropped between the
+    "this name is free" check and the write, a second session creates
+    the same project in the gap and one of the two silently wins.
+
+    Refusals are RETURNED, never raised out of the worker. An expected
+    4xx raised from a carrier worker poisons its journal record and
+    quarantines the container, so a researcher who picked a name that
+    was already taken would be told to run ``vaibify reconcile``. A 5xx
+    is re-raised and does poison, which is correct: nobody knows then
+    whether the file landed. That split is the shared carry-back's
+    default, so this passes no extra statuses: every 5xx reachable here
+    is a write that failed partway.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Creating the project",
+    )
+
+    def fdictProbeThenCreate(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fsProbeThenWriteNewWorkflow(
+                dictCtx["docker"], sContainerId, request, sFileName,
+            ),
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "create-project",
+        fdictProbeThenCreate,
+    )
+    return dictOutcome["result"]
+
+
+def _fsProbeThenWriteNewWorkflow(
+    connectionDocker, sContainerId, request, sFileName,
+):
+    """Return the container path of the project.json this writes."""
+    _fnRejectDuplicateWorkflowName(
+        connectionDocker, sContainerId, request.sWorkflowName,
+    )
+    sRepoDirectory = _fsValidateRepoDirectory(
+        connectionDocker, sContainerId, request.sRepoDirectory,
+    )
+    sWorkflowDir = _fsEnsureWorkflowDir(
+        connectionDocker, sContainerId, sRepoDirectory,
+    )
+    sFullPath = posixpath.join(sWorkflowDir, sFileName)
+    _fnAssertWorkflowAbsent(connectionDocker, sContainerId, sFullPath)
+    sContent = json.dumps(
+        _fdictBlankWorkflowContent(request), indent=2,
+    ) + "\n"
+    connectionDocker.fnWriteFile(
+        sContainerId, sFullPath, sContent.encode("utf-8"),
+    )
+    return sFullPath
 
 
 def _fnRegisterWorkflowCreationRequest(app, dictCtx):
@@ -231,8 +303,20 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
     suggested name, for the researcher to review and confirm.
     """
 
+    # separate-authority, not typed-read. This route reaches no
+    # container primitive at all, so `typed-read` would pass its own
+    # rule -- and would be read by the next person as "this only looks",
+    # which is false: it WRITES, into
+    # ``app.state``-adjacent hub state that the browser's discovery poll
+    # then acts on. What governs it is not the commit carrier but the
+    # hub's own in-process request map plus the researcher confirmation
+    # the wizard requires before anything is created; the agent cannot
+    # complete the action, only ask for it. Declaring the literally-true
+    # thing here would have made the record misleading (ruling
+    # 2026-08-05).
     @ffnAgentAction("create-project")
     @app.post("/api/workflows/{sContainerId}/request-creation")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
     ):

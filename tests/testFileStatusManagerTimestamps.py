@@ -9,8 +9,8 @@ from vaibify.gui.fileStatusManager import (
     _fdictComputeTestCategoryMtimes,
     _flistResolveTestSourcePaths,
     fbReconcileUserVerificationTimestamps,
-    fdictCollectMarkerPathsByStep,
-    fdictCollectScriptPathsByStep,
+    fdictHandleCollectMarkerPathsByStep,
+    fdictHandleCollectScriptPathsByStep,
     fsMarkerNameFromStepDirectory,
 )
 
@@ -39,7 +39,7 @@ def _fdictBuildStep(dictOverrides=None):
 
 def _tBuildScriptPaths(dictStep):
     dictWorkflow = {"listSteps": [dictStep]}
-    return fdictCollectScriptPathsByStep(dictWorkflow)[0]
+    return fdictHandleCollectScriptPathsByStep(dictWorkflow)[0]
 
 
 def test_unset_validators_never_stale():
@@ -403,7 +403,7 @@ def test_collect_marker_paths_uses_helper():
             {"sDirectory": "stepB"},
         ],
     }
-    dictResult = fdictCollectMarkerPathsByStep(
+    dictResult = fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/DemoRepo",
         "/workspace/DemoRepo/.vaibify/workflows/demo.json",
     )
@@ -418,7 +418,7 @@ def test_collect_marker_paths_uses_helper():
 
 def test_collect_marker_paths_empty_repo_returns_empty():
     dictWorkflow = {"listSteps": [{"sDirectory": "stepA"}]}
-    assert fdictCollectMarkerPathsByStep(
+    assert fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "",
         "/workspace/Repo/.vaibify/workflows/demo.json",
     ) == {}
@@ -426,18 +426,18 @@ def test_collect_marker_paths_empty_repo_returns_empty():
 
 def test_collect_marker_paths_empty_workflow_path_returns_empty():
     dictWorkflow = {"listSteps": [{"sDirectory": "stepA"}]}
-    assert fdictCollectMarkerPathsByStep(
+    assert fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/Repo", "",
     ) == {}
 
 
 def test_collect_marker_paths_namespace_separates_workflows():
     dictWorkflow = {"listSteps": [{"sDirectory": "shared"}]}
-    dictResultA = fdictCollectMarkerPathsByStep(
+    dictResultA = fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/Repo",
         "/workspace/Repo/.vaibify/workflows/wfa.json",
     )
-    dictResultB = fdictCollectMarkerPathsByStep(
+    dictResultB = fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/Repo",
         "/workspace/Repo/.vaibify/workflows/wfb.json",
     )

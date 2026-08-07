@@ -2,10 +2,13 @@
 
 import contextlib
 import json
+from types import SimpleNamespace
 
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
+from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.gui.routes import pipelineRoutes
 from vaibify.gui.routes.pipelineRoutes import (
     _S_LEVEL_RATCHET_FLAG_KEY,
     _fnSaveIfLevelHighWaterChanged,
@@ -33,12 +36,30 @@ from vaibify.gui.routes.pipelineRoutes import (
 )
 
 
+def _frequestBuildStoodDownRequest():
+    """Return the minimal request a stood-down carrier still reaches for.
+
+    ``fgenericRunWorkerUnderTheDrain`` passes ``requestHttp.app.state`` to
+    the carrier before the stand-down's replacement discards it, so the
+    attribute chain has to exist even though nothing reads it.
+    """
+    return SimpleNamespace(app=SimpleNamespace(state=None))
+
+
 # ── Line 73: _fnMarkPipelineStopped when dictState is running ─────
 
 class TestFnMarkPipelineStopped:
+    """What the stopped-state write DOES; not how it is admitted.
+
+    Stood down through the shared helper because these build no owner
+    record — the admission itself is proven over real HTTP in
+    ``tests/testCarrierMigratedRoutes.py``.
+    """
+
     @pytest.mark.asyncio
-    async def test_state_is_running_writes_completed(self):
+    async def test_state_is_running_writes_completed(self, monkeypatch):
         """A live pipeline gets flipped to bRunning=False on kill."""
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
         mockDocker = MagicMock()
         dictCtx = {"docker": mockDocker}
         with patch(
@@ -50,11 +71,14 @@ class TestFnMarkPipelineStopped:
             "vaibify.gui.pipelineState.fdictBuildCompletedState",
             return_value={"bRunning": False},
         ):
-            await _fnMarkPipelineStopped(dictCtx, "cid1")
+            await _fnMarkPipelineStopped(
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+            )
             mockUpdate.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_state_none_returns_early(self):
+    async def test_state_none_returns_early(self, monkeypatch):
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
         mockDocker = MagicMock()
         dictCtx = {"docker": mockDocker}
         with patch(
@@ -63,11 +87,14 @@ class TestFnMarkPipelineStopped:
         ), patch(
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
-            await _fnMarkPipelineStopped(dictCtx, "cid1")
+            await _fnMarkPipelineStopped(
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+            )
             mockUpdate.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_state_not_running_returns_early(self):
+    async def test_state_not_running_returns_early(self, monkeypatch):
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
         mockDocker = MagicMock()
         dictCtx = {"docker": mockDocker}
         with patch(
@@ -76,30 +103,30 @@ class TestFnMarkPipelineStopped:
         ), patch(
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
-            await _fnMarkPipelineStopped(dictCtx, "cid1")
+            await _fnMarkPipelineStopped(
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+            )
             mockUpdate.assert_not_called()
 
 
 # ── Lines 117-118: _fiCountMatchingProcesses ValueError branch ───
 
 class TestFiCountMatchingProcesses:
-    @pytest.mark.asyncio
-    async def test_valid_count(self):
+    def test_valid_count(self):
         mockDocker = MagicMock()
         mockDocker.ftResultExecuteCommand.return_value = (0, "5\n")
-        iResult = await _fiCountMatchingProcesses(
+        iResult = _fiCountMatchingProcesses(
             mockDocker, "cid", "pattern"
         )
         assert iResult == 5
 
-    @pytest.mark.asyncio
-    async def test_value_error_returns_zero(self):
+    def test_value_error_returns_zero(self):
         """Cover lines 117-118: ValueError -> return 0."""
         mockDocker = MagicMock()
         mockDocker.ftResultExecuteCommand.return_value = (
             0, "not-a-number\n"
         )
-        iResult = await _fiCountMatchingProcesses(
+        iResult = _fiCountMatchingProcesses(
             mockDocker, "cid", "pattern"
         )
         assert iResult == 0
@@ -108,15 +135,12 @@ class TestFiCountMatchingProcesses:
 # ── Lines 125-132: _fnKillMatchingProcesses ──────────────────────
 
 class TestFnKillMatchingProcesses:
-    @pytest.mark.asyncio
-    async def test_kills_each_pattern(self):
+    def test_kills_each_pattern(self):
         """Cover lines 125-132."""
         mockDocker = MagicMock()
         mockDocker.ftResultExecuteCommand.return_value = (0, "")
         listPatterns = ["myScript.py", "otherTool"]
-        await _fnKillMatchingProcesses(
-            mockDocker, "cid", listPatterns
-        )
+        _fnKillMatchingProcesses(mockDocker, "cid", listPatterns)
         assert mockDocker.ftResultExecuteCommand.call_count == 2
 
 
@@ -174,8 +198,9 @@ class TestPipelineStateRoute:
 # ── Line 172: kill route with processes > 0 ──────────────────────
 
 class TestPipelineKillRoute:
-    def test_kill_with_matching_processes(self):
+    def test_kill_with_matching_processes(self, monkeypatch):
         """Cover line 172: processes > 0 triggers kill."""
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
@@ -260,10 +285,21 @@ class TestPipelineWsRoute:
 # ── Lines 236-257: acknowledge step route ────────────────────────
 
 class TestAcknowledgeStepRoute:
-    def test_acknowledge_step_success(self):
-        """Cover lines 236-257."""
+    def test_acknowledge_step_success(self, monkeypatch):
+        """Cover lines 236-257.
+
+        The carrier is stood down because this builds a bare
+        ``FastAPI()`` with no owner record and no lease; see
+        ``tests/carrierStandDown.py`` for what that costs. The route's
+        ADMISSION is asserted in ``tests/testCarrierMigratedRoutes.py``,
+        never here.
+        """
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+
+        from tests.carrierStandDown import fnStandCarrierDown
+        from vaibify.gui.routes import pipelineRoutes
+        fnStandCarrierDown(monkeypatch, pipelineRoutes)
 
         app = FastAPI()
         dictWorkflow = {
@@ -338,7 +374,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fdictCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -404,7 +440,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fdictCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -472,7 +508,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fdictCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -553,7 +589,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fdictCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -631,7 +667,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fdictCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -703,7 +739,7 @@ class TestFdictFetchOutputStatus:
             return_value=["step01/run.py"],
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fdictCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={0: sMarkerPath},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -1272,9 +1308,9 @@ class TestFdictReadReconciledStateShortCircuit:
         import asyncio
         import json
         connection = MagicMock()
-        connection.ftResultExecuteCommand.return_value = (
-            0, json.dumps({"bRunning": False}),
-        )
+        connection.fbaFetchFile.return_value = json.dumps(
+            {"bRunning": False},
+        ).encode("utf-8")
         dictResult = asyncio.run(
             fdictReadReconciledState({"docker": connection}, "cid"),
         )
@@ -1443,7 +1479,7 @@ class TestWorkflowDiscoveryRoute:
 
 _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
     "fdictCollectOutputPathsByStep",
-    "fdictCollectMarkerPathsByStep",
+    "fdictHandleCollectMarkerPathsByStep",
     "_fdictDetectAndInvalidate",
     "_fdictLoadMarkersForPoll",
     "_fdictLoadMtimeCacheForPoll",

@@ -229,12 +229,12 @@ def test_evict_state_lock_unknown_container_is_no_op():
 
 
 def test_read_state_absorbs_docker_api_error():
-    """A docker APIError during the cat must degrade to None, not raise."""
+    """A docker APIError during the read must degrade to None, not raise."""
     import docker.errors
     from vaibify.gui.pipelineState import fdictReadState
 
     class MockBadDocker:
-        def ftResultExecuteCommand(self, sContainerId, sCommand):
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
             raise docker.errors.APIError("docker daemon contention")
 
     assert fdictReadState(MockBadDocker(), "ctr1") is None

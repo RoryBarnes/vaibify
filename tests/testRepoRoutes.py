@@ -157,7 +157,46 @@ def fixtureDocker():
 
 
 @pytest.fixture
-def fixtureClient(fixtureDocker):
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the commit-guard carrier down for this module's bare app.
+
+    Four repo routes are migrated onto the carrier, which binds a
+    request to its container's owner record and holds the container's
+    mutation lock. None of that exists in a bare ``FastAPI()`` over a
+    fake docker, so the lane tuple resolves to a fixed stand-in and the
+    carrier runs the worker directly.
+
+    What that costs is stated plainly, because a permissive mock left
+    unexplained is how this suite acquired ~20 of them. These tests
+    prove what the routes DO -- to the sidecar, to the git tree -- and
+    NOTHING about the admission the mutation runs under; a route whose
+    carrier call was deleted outright would pass every one of them.
+    That guarantee is asserted in
+    ``tests/testCarrierMigratedRoutes.py``, against a double that calls
+    the real gates.
+
+    It is a named fixture rather than an autouse one so that a test
+    which has not asked for the stand-down still meets the real
+    refusal, and rather than inline setup in one client builder because
+    the module has two and only one of them had it -- which showed up
+    as five push tests failing on a `track` call they make as SETUP.
+
+    It delegates to the SHARED stand-down rather than keeping its own
+    patches, and the reason is a divergence that has now happened
+    twice. This copy patched only ``repoRoutes``' imported binding of
+    the lane-tuple resolver; when the drain wrapper was lifted into
+    ``routeContext``, the resolution moved to the definition this copy
+    left live and eighteen tests answered 403 from a carrier the module
+    believed it had stood down.
+    """
+    from tests.carrierStandDown import fnStandCarrierDown
+    from vaibify.gui.routes import repoRoutes
+
+    fnStandCarrierDown(monkeypatch, repoRoutes)
+
+
+@pytest.fixture
+def fixtureClient(fixtureDocker, fixtureCarrierStoodDown):
     """FastAPI TestClient wired to the fake docker."""
     app = FastAPI()
     dictCtx = {
@@ -674,7 +713,7 @@ def _fnBuildClientWithCtx(dictCtx):
     return TestClient(app)
 
 
-def testPushStagedVerifiesGithubForProjectRepo(fixtureDocker):
+def testPushStagedVerifiesGithubForProjectRepo(fixtureDocker, fixtureCarrierStoodDown):
     """FALSIFICATION TARGET (2026-07-02): the Repos panel is the push
     path researchers actually use; after a successful push of the
     active workflow's project repo it must re-verify GitHub (so the
@@ -700,7 +739,7 @@ def testPushStagedVerifiesGithubForProjectRepo(fixtureDocker):
     assert dictCtx["dictSyncEpochs"]["cid1"] == 1
 
 
-def testPushStagedSkipsVerifyForNonProjectRepo(fixtureDocker):
+def testPushStagedSkipsVerifyForNonProjectRepo(fixtureDocker, fixtureCarrierStoodDown):
     """Pushing a tracked repo that is NOT the active workflow's
     project repo must not touch the workflow's GitHub verify cache
     (the epoch still bumps — badges cover all tracked repos)."""
@@ -722,7 +761,7 @@ def testPushStagedSkipsVerifyForNonProjectRepo(fixtureDocker):
     assert dictCtx["dictSyncEpochs"]["cid1"] == 1
 
 
-def testPushStagedFailureSkipsVerifyAndReportsFailure(fixtureDocker):
+def testPushStagedFailureSkipsVerifyAndReportsFailure(fixtureDocker, fixtureCarrierStoodDown):
     """A failed push must return bSuccess false (the panel toast
     relays it) and must not re-verify — nothing reached the remote.
     The epoch still bumps: push-staged can land its commit and then
@@ -753,7 +792,7 @@ def testPushStagedFailureSkipsVerifyAndReportsFailure(fixtureDocker):
     )
 
 
-def testPushFilesVerifiesGithubForProjectRepo(fixtureDocker):
+def testPushFilesVerifiesGithubForProjectRepo(fixtureDocker, fixtureCarrierStoodDown):
     """The per-file push shares the post-push refresh contract."""
     from unittest.mock import AsyncMock, patch
     fixtureDocker.fnAddRepo("alpha")
@@ -776,7 +815,7 @@ def testPushFilesVerifiesGithubForProjectRepo(fixtureDocker):
     assert mockVerify.await_count == 1
 
 
-def testPushStagedSurfacesVerifyWarningInResponse(fixtureDocker):
+def testPushStagedSurfacesVerifyWarningInResponse(fixtureDocker, fixtureCarrierStoodDown):
     """FALSIFICATION TARGET (2026-07-02): the post-push verify failed
     silently (manifest missing) while the toast said success. When
     the verify returns a warning, the push response must carry it so

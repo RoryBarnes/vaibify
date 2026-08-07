@@ -32,7 +32,7 @@ def test_v10_to_v11_drops_the_pre_rename_level_key():
 
 
 def test_v10_to_v11_does_not_carry_the_value_to_the_new_key():
-    """The stale integer must not be renamed into ``iProofLevel``.
+    """The stale integer must not be renamed into ``iAICSLevel``.
 
     Carrying it across would defeat the derivation hook, which is the
     only authority on the level, and would let a hand-edited file
@@ -44,7 +44,7 @@ def test_v10_to_v11_does_not_carry_the_value_to_the_new_key():
         "listSteps": [],
     }
     workflowMigrations.fiApplyMigrations(dictWorkflow)
-    assert "iProofLevel" not in dictWorkflow
+    assert "iAICSLevel" not in dictWorkflow
 
 
 def test_v10_to_v11_is_a_no_op_when_the_legacy_key_is_absent():
@@ -55,7 +55,7 @@ def test_v10_to_v11_is_a_no_op_when_the_legacy_key_is_absent():
     }
     workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert "iAICSLevel" not in dictWorkflow
-    assert "iProofLevel" not in dictWorkflow
+    assert "iAICSLevel" not in dictWorkflow
     assert dictWorkflow["iWorkflowSchemaVersion"] == (
         workflowMigrations.I_CURRENT_WORKFLOW_VERSION
     )

@@ -239,7 +239,7 @@ def test_overleaf_push_triggers_post_push_verify(clientHttp):
         listCallOrder.append("finalize")
 
     async def _fsFakeRefresh(
-        dictCtx, sContainerId, dictWorkflow, sService,
+        dictCtx, sContainerId, dictWorkflow, sService, requestHttp=None,
     ):
         listCallOrder.append("refresh:" + sService)
         return ""
@@ -2353,25 +2353,23 @@ def test_fdictComputePostArchiveZenodoDigests_missing_sha_yields_empty():
 # ----------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_ftRunOverleafValidation_empty_project_returns_false():
+def test_fbRunOverleafValidation_empty_project_returns_false():
     from vaibify.gui.routes.syncRoutes import (
         _ftRunOverleafValidation,
     )
     from unittest.mock import MagicMock as _MM
-    bPass, sDetail = await _ftRunOverleafValidation(
+    bPass, sDetail = _ftRunOverleafValidation(
         _MM(), _MM(), "cid", "",
     )
     assert bPass is False
     assert sDetail == ""
 
 
-@pytest.mark.asyncio
-async def test_ftRunServiceValidation_unknown_service_returns_pass():
+def test_ftRunServiceValidation_unknown_service_returns_pass():
     """Services other than zenodo/overleaf skip validation."""
     from vaibify.gui.routes.syncRoutes import _ftRunServiceValidation
     from unittest.mock import MagicMock as _MM
-    bPass, sDetail = await _ftRunServiceValidation(
+    bPass, sDetail = _ftRunServiceValidation(
         _MM(), "github", _MM(), "cid", "",
     )
     assert bPass is True
@@ -2423,8 +2421,7 @@ def test_fnCleanupOverleafHostCredential_swallows_delete_failure():
         _fnCleanupOverleafHostCredential("overleaf_token")
 
 
-@pytest.mark.asyncio
-async def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
+def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
     from vaibify.gui.routes.syncRoutes import (
         _fdictValidateStoredCredential,
     )
@@ -2437,7 +2434,7 @@ async def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
     ), patch(
         "vaibify.gui.routes.syncRoutes._ftRunServiceValidation",
     ) as mockValidate:
-        dictResult = await _fdictValidateStoredCredential(
+        dictResult = _fdictValidateStoredCredential(
             dictCtx, "cid", "zenodo", "", "sandbox",
         )
     assert dictResult["bConnected"] is False
@@ -2458,7 +2455,7 @@ def test_fnPersistZenodoService_non_zenodo_request_is_noop():
         "workflows": {},
         "save": MagicMock(),
     }
-    _fnPersistZenodoService(dictCtx, "cid", requestOther)
+    _fnPersistZenodoService(dictCtx, "cid", requestOther, MagicMock())
     dictCtx["save"].assert_not_called()
 
 

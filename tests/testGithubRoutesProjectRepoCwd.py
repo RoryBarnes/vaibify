@@ -14,7 +14,23 @@ import pytest
 from fastapi import HTTPException
 from unittest.mock import patch
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes import syncRoutes
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the routes this module drives bare.
+
+    ``identity``, ``add-file`` and the bulk push now run their
+    container work through carrier mode (b), which a bare
+    ``FastAPI()`` cannot
+    satisfy. Requested only by the tests that reach the carrier, so
+    the ones asserting a 400 or 409 still prove the route refuses
+    BEFORE it gets there. See ``tests/carrierStandDown.py`` for what
+    the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, syncRoutes)
 
 
 def test_helper_returns_project_repo_when_set():
@@ -97,7 +113,7 @@ def _fnRunAddFileRoute(
 
 
 def test_add_file_uses_project_repo_path_not_workflow_dirname(
-    fixtureCapturedAddFileArgs,
+    fixtureCapturedAddFileArgs, fixtureCarrierStoodDown,
 ):
     """sWorkdir handed to the dispatcher must be the project repo root."""
     dictCtx = _fdictBuildContextWithRepoAt(
@@ -177,7 +193,7 @@ def _fnRunIdentityRoute(
 
 
 def test_identity_writes_git_config_in_project_repo(
-    fixtureCapturedIdentityCommand,
+    fixtureCapturedIdentityCommand, fixtureCarrierStoodDown,
 ):
     dictCtx = _fdictBuildContextWithRepoAt(
         "/workspace/myrepo",
@@ -241,7 +257,7 @@ def test_identity_returns_409_when_no_project_repo(
 
 
 def test_identity_shell_metacharacters_stay_inside_single_quotes(
-    fixtureCapturedIdentityCommand,
+    fixtureCapturedIdentityCommand, fixtureCarrierStoodDown,
 ):
     """Shell metacharacters in sName survive only as literal payload.
 
@@ -268,7 +284,7 @@ def test_identity_shell_metacharacters_stay_inside_single_quotes(
 
 
 def test_identity_shell_dollar_and_backtick_stay_inside_quotes(
-    fixtureCapturedIdentityCommand,
+    fixtureCapturedIdentityCommand, fixtureCarrierStoodDown,
 ):
     """``$(...)`` and backticks in sEmail must not be evaluated."""
     sName = "Name $USER `whoami` $(id)"
@@ -295,7 +311,7 @@ def test_identity_shell_dollar_and_backtick_stay_inside_quotes(
     "x@y.z",
 ])
 def test_identity_accepts_realistic_emails(
-    fixtureCapturedIdentityCommand, sEmail,
+    fixtureCapturedIdentityCommand, sEmail, fixtureCarrierStoodDown,
 ):
     """Validator must not reject ordinary researcher email shapes."""
     dictCtx = _fdictBuildContextWithRepoAt(
@@ -342,7 +358,7 @@ def test_identity_rejects_obvious_malformed_emails(
 
 
 def test_identity_command_omits_global_flag(
-    fixtureCapturedIdentityCommand,
+    fixtureCapturedIdentityCommand, fixtureCarrierStoodDown,
 ):
     """``--global`` must never appear; outside a repo git itself errors."""
     dictCtx = _fdictBuildContextWithRepoAt(
@@ -361,7 +377,7 @@ def test_identity_command_omits_global_flag(
 
 
 def test_identity_surfaces_git_failure_as_502(
-    fixtureCapturedIdentityCommand,
+    fixtureCapturedIdentityCommand, fixtureCarrierStoodDown,
 ):
     """Non-zero git config exit (e.g. cwd not a repo) returns 502."""
     from fastapi import FastAPI
@@ -390,7 +406,7 @@ def test_identity_surfaces_git_failure_as_502(
 
 
 def test_push_uses_project_repo_path_not_workflow_dirname(
-    fixtureCapturedPushArgs,
+    fixtureCapturedPushArgs, fixtureCarrierStoodDown,
 ):
     """The bulk push route shares the same cwd discipline."""
     from fastapi import FastAPI
@@ -470,7 +486,7 @@ def _fnRunPushRoute(dictCtx, sContainerId, fixtureCapturedPushArgs,
 
 
 def test_push_success_refreshes_github_verify_cache(
-    fixtureCapturedPushArgs,
+    fixtureCapturedPushArgs, fixtureCarrierStoodDown,
 ):
     """FALSIFICATION TARGET: after a successful push the route must
     re-verify GitHub once, so the L2 cells clear their stale unknown
@@ -494,7 +510,7 @@ def test_push_success_refreshes_github_verify_cache(
 
 
 def test_push_failure_skips_the_verify_refresh(
-    fixtureCapturedPushArgs,
+    fixtureCapturedPushArgs, fixtureCarrierStoodDown,
 ):
     """A failed push must not re-verify: nothing reached the remote,
     so the cached status is as fresh as it was before."""
@@ -515,7 +531,7 @@ def test_push_failure_skips_the_verify_refresh(
 
 
 def test_push_missing_manifest_warns_in_response(
-    fixtureCapturedPushArgs,
+    fixtureCapturedPushArgs, fixtureCarrierStoodDown,
 ):
     """FALSIFICATION TARGET (live gap 2026-07-02): the post-push
     verify died on a missing MANIFEST.sha256 with only a hub-log
@@ -577,7 +593,7 @@ def test_push_missing_manifest_warns_in_response(
 
 
 def test_push_skips_verify_when_github_not_configured(
-    fixtureCapturedPushArgs,
+    fixtureCapturedPushArgs, fixtureCarrierStoodDown,
 ):
     """A workflow with no dictRemotes.github entry has nothing to
     verify against: the post-push check must be skipped silently —

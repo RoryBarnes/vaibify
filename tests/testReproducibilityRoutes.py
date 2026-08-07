@@ -18,6 +18,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.gui.routes import reproducibilityRoutes
 from vaibify.gui.routes.reproducibilityRoutes import (
     _DICT_VERIFY_TASKS,
     _fdictBuildAttestationResponse,
@@ -58,6 +60,24 @@ def fixtureProjectRepo(tmp_path):
     sRepo = str(tmp_path / "project")
     os.makedirs(sRepo, exist_ok=True)
     return sRepo
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the routes this module drives bare.
+
+    Every mutating route in reproducibilityRoutes now binds its work to
+    the container's owner record, which this module's bare
+    ``FastAPI()`` has not got. Requested only by the tests that reach a
+    carrier, so the ones asserting a 400/409 still prove the route
+    refuses BEFORE it gets there. What this module proves is what each
+    route DOES -- where the script is written, what the readiness
+    payload says, that the declaration is cleared -- and nothing about
+    the admission it runs under; that lives in
+    ``tests/testCarrierMigratedRoutes.py``. See
+    ``tests/carrierStandDown.py`` for what the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, reproducibilityRoutes)
 
 
 @pytest.fixture(autouse=True)
@@ -266,7 +286,9 @@ def test_l3_verify_without_project_repo_returns_409(
     assert "no project repo" in response.text.lower()
 
 
-def test_l3_verify_without_readiness_returns_409(fixtureClient):
+def test_l3_verify_without_readiness_returns_409(
+    fixtureClient, fixtureCarrierStoodDown,
+):
     """Failing readiness checks block verify with 409."""
     response = fixtureClient.post(
         f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
@@ -276,7 +298,7 @@ def test_l3_verify_without_readiness_returns_409(fixtureClient):
 
 
 def test_l3_verify_returns_202_with_handle_when_ready(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     """An L3-ready workflow accepts the verify request and returns a handle."""
     _fnSeedReadyL3Repo(fixtureWorkflow["sProjectRepoPath"])
@@ -620,7 +642,7 @@ class _FakeDockerForScript:
 
 
 def test_generate_reproduce_script_writes_to_container_not_host(
-    fixtureWorkflow, tmp_path,
+    fixtureWorkflow, tmp_path, fixtureCarrierStoodDown,
 ):
     """The endpoint must write inside the container, never to the host."""
     fakeDocker = _FakeDockerForScript()
@@ -668,7 +690,7 @@ def test_generate_reproduce_script_requires_project_repo(
 
 
 def test_generate_reproduce_script_handles_oserror(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     """An OSError during write surfaces as 500."""
     with patch(
@@ -814,7 +836,7 @@ def test_register_verify_task_old_callback_does_not_evict_new_entry():
 # --- delete-determinism / verify-dependency-lock / regenerate-envelope ---
 
 def test_delete_determinism_clears_the_declaration(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     fixtureWorkflow["dictDeterminism"] = {"iOmpNumThreads": 4}
     response = fixtureClient.delete(
@@ -837,7 +859,9 @@ def test_verify_dependency_lock_reports_problems(fixtureClient):
     assert response.json()["listProblems"] == ["numpy is unpinned"]
 
 
-def test_regenerate_envelope_runs_and_returns_readiness(fixtureClient):
+def test_regenerate_envelope_runs_and_returns_readiness(
+    fixtureClient, fixtureCarrierStoodDown,
+):
     from unittest.mock import patch
     with patch(
         "vaibify.reproducibility.dataArchiver."

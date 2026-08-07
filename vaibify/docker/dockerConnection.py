@@ -17,6 +17,7 @@ on their own schedule (audit finding F-R-01).
 """
 
 import base64
+import json
 import shlex
 import warnings
 from dataclasses import dataclass
@@ -245,6 +246,10 @@ def _fnEnsureDockerHost():
 _S_TYPED_READ_PATH_SLOT = "<<PATH>>"
 S_TYPED_READ_FILE_BASE64 = "readFileBase64"
 S_TYPED_READ_DIRECTORY = "listDirectory"
+S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
+S_TYPED_READ_FILE_EXISTS = "fileExists"
+S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
+S_TYPED_READ_PATHS_EXIST = "pathsExist"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -257,7 +262,106 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write(chr(10).join(sorted(os.listdir("
         + _S_TYPED_READ_PATH_SLOT + "))))"
     ),
+    # The three figures `df` reports, computed the way `df` computes
+    # them. Free is f_bavail -- the space available to an unprivileged
+    # user -- because that is what df's Available column has always
+    # meant, and the dashboard's low-disk warning is calibrated to it.
+    S_TYPED_READ_FILESYSTEM_USAGE: (
+        "import json,os,sys; "
+        "st=os.statvfs(" + _S_TYPED_READ_PATH_SLOT + "); "
+        "sys.stdout.write(json.dumps({"
+        "'iTotalBytes': st.f_blocks*st.f_frsize, "
+        "'iUsedBytes': (st.f_blocks-st.f_bfree)*st.f_frsize, "
+        "'iFreeBytes': st.f_bavail*st.f_frsize}))"
+    ),
+    # Existence probes, replacing `test -f` / `test -d` assembled by a
+    # repo-files adapter and run through the general exec primitive.
+    # They are reads by any reading, but the primitive cannot know that
+    # from command text, so under an enforced lane every one of them was
+    # refused -- and a level gate that catches OSError turned the
+    # refusal into "not verified", quietly downgrading a workflow's
+    # reproducibility level. `os.path.isfile`/`isdir` follow symlinks
+    # exactly as `test -f`/`test -d` do, so the answer is unchanged.
+    # The result travels as stdout rather than an exit code because a
+    # non-zero exit is how this layer spells "the read itself failed",
+    # and "the file is absent" must not be the same answer.
+    S_TYPED_READ_FILE_EXISTS: (
+        "import os,sys; "
+        "sys.stdout.write('1' if os.path.isfile("
+        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+    ),
+    S_TYPED_READ_DIRECTORY_EXISTS: (
+        "import os,sys; "
+        "sys.stdout.write('1' if os.path.isdir("
+        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+    ),
+    # The BATCHED existence probe. It is a separate program rather than
+    # a loop over the single-path one because the dashboard's file
+    # panel probes up to a thousand paths on a debounced keystroke, and
+    # a thousand container round-trips is not a UI. `os.path.exists`
+    # matches `test -e` -- file OR directory, following symlinks --
+    # which is what the route it replaces asked.
+    #
+    # What that route did before is the reason this exists. It built a
+    # shell heredoc with every path interpolated raw between
+    # `<<'__VAIBIFY_EOF__'` and its terminator, so a path that
+    # contained that terminator on a line of its own ended the heredoc
+    # and the remainder of the path became shell. Here the paths are a
+    # Python list literal inside a program that is quoted whole as one
+    # argument: there is no layer left for a path to escape into.
+    S_TYPED_READ_PATHS_EXIST: (
+        "import json,os,sys; "
+        "sys.stdout.write(json.dumps("
+        "[os.path.exists(s) for s in "
+        + _S_TYPED_READ_PATH_SLOT + "]))"
+    ),
 }
+
+
+def _fsTypedReadPathLiteral(objPaths):
+    """Return the Python literal a typed-read program embeds for its paths.
+
+    One path string, or a list/tuple of path strings for a batched
+    operation. **Anything else raises**, and the type check is the
+    load-bearing part rather than defensive tidiness: the value is
+    embedded in the program through ``repr``, and ``repr`` of an
+    arbitrary object is whatever that object's class chooses to print.
+    Only ``str`` has a ``repr`` that is a quoted string literal and
+    nothing else, so only ``str`` may reach the slot.
+
+    This is strictly tighter than the single-path form it generalizes,
+    which called ``repr`` on whatever it was handed.
+    """
+    if isinstance(objPaths, str):
+        return repr(objPaths)
+    if isinstance(objPaths, (list, tuple)) and all(
+        isinstance(sPath, str) for sPath in objPaths
+    ):
+        return repr(list(objPaths))
+    raise TypeError(
+        "A typed read takes a path string or a flat sequence of path "
+        f"strings; it was given {type(objPaths).__name__}. Only str has "
+        "a repr that is a string literal, so nothing else may be "
+        "embedded in the program."
+    )
+
+
+def _fbInterpretPathProbe(tExecResult, sPath):
+    """Return the yes/no answer a declared path probe printed.
+
+    Shared by the two existence adapters, and deliberately takes the
+    RESULT rather than the operation name: threading the name through a
+    helper would make the call to the exemption pass a variable, and
+    ``testEveryTypedReadNamesADeclaredOperation`` fails on that -- a
+    computed name would put the choice of program back in a caller's
+    hands, which is the property that makes the exemption enumerable.
+    """
+    if tExecResult.iExitCode != 0:
+        raise OSError(
+            f"Cannot probe path in container: {sPath} "
+            f"({tExecResult.sStderr.strip()})"
+        )
+    return tExecResult.sStdout.strip() == "1"
 
 
 class DockerConnection:
@@ -537,14 +641,24 @@ class DockerConnection:
         sOutput = tExecResult.sStdout + tExecResult.sStderr
         return (tExecResult.iExitCode, sOutput)
 
-    def _ftRunTypedRead(self, sContainerId, sOperation, sPath):
-        """Run one NAMED read operation against a path, as a read.
+    def _ftRunTypedRead(self, sContainerId, sOperation, objPaths):
+        """Run one NAMED read operation against a path or paths, as a read.
 
         The single place the audited-read exemption is granted, and it
         does not accept a command. It accepts the NAME of an operation
-        from :data:`_DICT_TYPED_READ_PROGRAMS` and a path, and builds
-        the command itself from fixed module source text with the path
+        from :data:`_DICT_TYPED_READ_PROGRAMS` and a path — or, for a
+        batched operation, a flat sequence of paths — and builds the
+        command itself from fixed module source text with the value
         embedded as a Python literal.
+
+        Widening the third parameter to a COLLECTION changes nothing
+        about that property, because the parameter never carried a
+        command and still cannot: what varies is the literal in the
+        slot, never the program around it, and
+        :func:`_fsTypedReadPathLiteral` admits only strings into the
+        literal. A batched program exists because the alternative was
+        looping this method once per path, which on the file panel's
+        debounced probe is up to a thousand container round-trips.
 
         The earlier shape took adapter-built command TEXT, guarded by a
         source check that no caller-derived value reached it. That check
@@ -564,7 +678,10 @@ class DockerConnection:
                 f"{sorted(_DICT_TYPED_READ_PROGRAMS)}"
             )
         sCommand = "python3 -c " + shlex.quote(
-            sTemplate.replace(_S_TYPED_READ_PATH_SLOT, repr(sPath)),
+            sTemplate.replace(
+                _S_TYPED_READ_PATH_SLOT,
+                _fsTypedReadPathLiteral(objPaths),
+            ),
         )
         tokenRead = mutationAdmission.ftokenEnterAuditedRead()
         try:
@@ -637,6 +754,106 @@ class DockerConnection:
         return [
             sEntry for sEntry in tExecResult.sStdout.split("\n") if sEntry
         ]
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        """Return True iff the container path is an existing file.
+
+        An AUDITED ADAPTER on the same terms as the other three: the
+        caller supplies a PATH, this method supplies only the NAME of a
+        declared read operation, and the program is fixed source text.
+
+        It replaced ``"test -f " + fsShellQuotePosix(sPath)`` assembled
+        by ``ContainerRepoFiles`` and run through the general exec
+        primitive. That made an existence check indistinguishable from
+        an arbitrary command, so under an enforced lane it was refused
+        -- and its caller, a level gate catching ``OSError``, read the
+        refusal as "unverified" and downgraded the workflow's badge.
+
+        A failed READ raises ``OSError``; an ABSENT path returns False.
+        Collapsing the two would put the old bug back one layer down.
+        """
+        return _fbInterpretPathProbe(
+            self._ftRunTypedRead(
+                sContainerId, S_TYPED_READ_FILE_EXISTS, sPath,
+            ),
+            sPath,
+        )
+
+    def fbContainerPathIsDirectory(self, sContainerId, sPath):
+        """Return True iff the container path is an existing directory.
+
+        The ``test -d`` half of :meth:`fbContainerPathIsFile`; see there
+        for why these are typed reads rather than execs.
+        """
+        return _fbInterpretPathProbe(
+            self._ftRunTypedRead(
+                sContainerId, S_TYPED_READ_DIRECTORY_EXISTS, sPath,
+            ),
+            sPath,
+        )
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        """Return one exists/absent answer per path, in the order given.
+
+        The BATCHED sibling of the two probes above, and the reason the
+        exemption takes a collection at all: the file panel probes up to
+        a thousand paths on one debounced keystroke, and looping a
+        single-path adapter would be a thousand container round-trips.
+        The caller still supplies only PATHS, and this method still
+        supplies only the NAME of a declared read operation.
+
+        It replaced a shell heredoc that interpolated every path raw,
+        which meant a path containing the heredoc's own terminator on a
+        line of its own ended the heredoc and turned the rest into
+        shell.
+
+        A failed READ raises ``OSError``; absent paths come back False.
+        An answer count that does not match the request is also an
+        ``OSError`` -- a short list would otherwise silently realign
+        every answer after the gap onto the wrong path.
+        """
+        if not listPaths:
+            return []
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_PATHS_EXIST, list(listPaths),
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot probe paths in container "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        listAnswers = json.loads(tExecResult.sStdout.strip() or "[]")
+        if len(listAnswers) != len(listPaths):
+            raise OSError(
+                f"The batched existence probe answered {len(listAnswers)} "
+                f"of {len(listPaths)} paths; refusing to realign the "
+                "answers onto the wrong paths."
+            )
+        return [bool(bExists) for bExists in listAnswers]
+
+    def fdictReadFilesystemUsage(self, sContainerId, sPath):
+        """Return total/used/free bytes for the filesystem holding a path.
+
+        An AUDITED ADAPTER, on the same terms as the other two: the
+        caller supplies a PATH and this method supplies only the NAME of
+        a declared read operation, so a path cannot become program or
+        shell syntax.
+
+        This replaced ``docker exec -u <user> <id> df -PB1 /`` assembled
+        in a GUI module. That was a container EXEC outside every guarded
+        primitive, and a disk reading is the least of what an exec can
+        do -- which is precisely why the boundary treats arbitrary
+        command execution as mutating and why a read has to be typed
+        rather than trusted.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_FILESYSTEM_USAGE, sPath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot stat filesystem in container: {sPath}"
+            )
+        return json.loads(tExecResult.sStdout.strip())
 
     def fiterStreamFile(
         self, sContainerId, sFilePath, iChunkSizeBytes=1048576,
@@ -842,7 +1059,7 @@ class DockerConnection:
                 sContainerId, sScript,
             )
         except Exception as error:
-            if _fbErrorMeansContainerGone(error):
+            if fbErrorMeansContainerGone(error):
                 return {
                     "bConclusive": True, "iMemberCount": 0,
                     "sDetail": f"container is gone or stopped: {error}",
@@ -939,7 +1156,7 @@ def _fiParseMemberCount(sOutput):
     return -1
 
 
-def _fbErrorMeansContainerGone(error):
+def fbErrorMeansContainerGone(error):
     """Return True when an exec error proves the container has no processes.
 
     A 404 (no such container) or a 409 "is not running" both mean no

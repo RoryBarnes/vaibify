@@ -62,7 +62,70 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # change for an unrelated reason, and with
 # I_UNDISPOSED_ACQUISITION_BUDGET, which is the record that is now
 # completeness-critical.
-I_UNCLASSIFIED_ROW_BUDGET = 307
+#
+# 307 -> 308 on 2026-08-03, and this one is worth reading carefully
+# because a RISE in a ratchet is normally the thing a ratchet exists to
+# refuse. The file-pull route's `docker cp` -- one raw, mutation-capable,
+# bidirectional row -- became two TYPED-READ rows through the gateway
+# (flistDirectoryEntries, then fiterStreamFile). More rows, strictly
+# less authority. That is the shape a carrier migration has, so the
+# number that actually holds the property is
+# I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET below, which fell in the same
+# change and may only ever fall.
+#
+# 308 -> 305 on 2026-08-04, the first fall from the migration itself
+# rather than from the record getting more honest. Phase 2's group 1
+# moved four routes onto the enforced branch; three call sites moved
+# from a handler into a carrier's effect closure and one new typed read
+# appeared (the prior-content hash a file-write record carries), and all
+# four were classified in the same change. That is the shape every group
+# should have: the facts originate at the carrier invocation, where they
+# are known by construction, so a migration that leaves rows
+# UNCLASSIFIED has deferred the part only its author could do.
+# 305 -> 304 with group 2's lock-held migration of the clean route. The
+# row did not merely move: it was a `passed-callable` -- a bound
+# primitive handed to asyncio.to_thread, one of the shapes declared
+# structurally UNATTRIBUTABLE because the row is lost inside the
+# executor -- and it is now a direct call inside a carrier's worker,
+# which the scan reads exactly. A migration can recover an
+# unattributable row, not only classify a legible one.
+# 301 -> 300 with the file upload's mode-(a) migration, the same
+# recovery again: the upload's write was a `passed-callable` handed to
+# asyncio.to_thread and is now a direct call inside the carrier's effect
+# closure, so the scan reads it and its facts were recorded in the same
+# change that created them.
+# 300 -> 299 with the project-create route's mode-(b) migration: the
+# blank project.json write moved out of the handler into the carrier's
+# worker and was classified in the same change.
+I_UNCLASSIFIED_ROW_BUDGET = 299
+
+
+# Mutation-capable rows that are NOT inside the two gateway modules: the
+# count of places outside the boundary that can change a container. This
+# is the ratchet the migration is judged by, and unlike the row total it
+# cannot be raised by splitting one call into two safer ones.
+#
+# Seeded at 217 on 2026-08-03, down from 218 when the file pull stopped
+# assembling `docker cp`; 217 -> 216 when the dashboard's disk tile
+# stopped assembling `docker exec ... df` and became a typed read.
+# 215 -> 214 on 2026-08-05 when the file panel's batched existence probe
+# stopped building a shell heredoc with up to a thousand caller-derived
+# paths interpolated raw and became a typed read. Strictly less
+# authority for the same answer, which is the shape this ratchet exists
+# to record.
+# 214 -> 213 on 2026-08-06 when ``scan-scripts`` stopped sending
+# ``find … -printf … || ls …/*.py | xargs -n1 basename`` through the
+# general exec primitive and became a directory typed read. Same
+# answer, no command text, and it fixes a step directory containing a
+# space listing nothing.
+# 213 -> 212 on 2026-08-06 when ``pipelineState.fdictReadState`` stopped
+# assembling ``cat /workspace/.vaibify/pipeline_state.json`` and became
+# a ``fbaFetchFile`` typed read. The dashboard's own liveness read was
+# the last general exec on the badge-poll path, and it was refused
+# outright on an enforced lane -- so migrating the Kill route meant
+# either carrying a READ or removing its command authority. This is the
+# second.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -75,7 +138,12 @@ I_UNCLASSIFIED_ROW_BUDGET = 307
 # created: 37 process-launch, 11 Docker-client, 17 reflection, 1
 # Unix-socket. None of them is reviewed yet, and the number says so out
 # loud rather than shipping a record that implies a review nobody did.
-I_UNDISPOSED_ACQUISITION_BUDGET = 66
+#
+# 66 -> 65 -> 64: the stop route's own `docker stop` and the file pull's
+# own `docker cp` were routed through gateway primitives, so neither
+# registryRoutes nor routes/fileRoutes imports subprocess any more.
+# Neither acquisition became disposed of; both stopped existing.
+I_UNDISPOSED_ACQUISITION_BUDGET = 64
 
 
 def _fmoduleGenerator():
@@ -166,6 +234,34 @@ def testTheUnclassifiedBudgetOnlyEverShrinks(moduleGenerator):
             f"{len(listUnclassified)} rows are now classified, which is "
             f"progress -- lower I_UNCLASSIFIED_ROW_BUDGET to "
             f"{len(listUnclassified)} so the ratchet holds the gain."
+        )
+
+
+def testMutationCapableReachOutsideTheGatewaysOnlyEverShrinks(
+    moduleGenerator,
+):
+    """The count that a safer rewrite cannot inflate.
+
+    The row total rises when one raw mutation becomes two typed reads,
+    which is the migration working and reads on the ratchet like debt
+    arriving. This counts only what can still CHANGE a container from
+    outside the boundary, so routing a site through a gateway lowers it
+    and nothing else does.
+    """
+    listOutside = [
+        dictRow for dictRow in moduleGenerator.fdictLoadInventory()["listRows"]
+        if dictRow["bMutationCapable"] and not dictRow["bInsideGateway"]
+    ]
+    assert len(listOutside) <= I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET, (
+        f"{len(listOutside)} mutation-capable call sites sit outside the "
+        f"gateways, over the budget of "
+        f"{I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET}."
+    )
+    if len(listOutside) < I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET:
+        pytest.fail(
+            f"only {len(listOutside)} mutation-capable sites remain "
+            f"outside the gateways -- lower "
+            f"I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET to hold the gain."
         )
 
 
@@ -1411,4 +1507,7 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     "read",
     "close",
     "fsResolveDockerHost",
+    # A pure predicate over an exception object. It reads a status code
+    # that a daemon call already returned; it makes no call of its own.
+    "fbErrorMeansContainerGone",
 }

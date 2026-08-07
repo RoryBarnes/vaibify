@@ -13,8 +13,26 @@ before the workflow save.
 import asyncio
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.gui.routes import syncRoutes
 from vaibify.gui.routes.syncRoutes import _fnFinalizeOverleafPush
 from vaibify.reproducibility import overleafSync
+
+
+@pytest.fixture(autouse=True)
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down: this module calls the finalize directly.
+
+    The finalize now runs its digest+provenance pair under a mode-(b)
+    drain and its save through the mode-(a) commit, both of which bind
+    to an owner record no direct call has. Autouse here, unlike every
+    other module using this, because EVERY test in this file calls the
+    finalize and none of them is about the admission. See
+    ``tests/carrierStandDown.py`` for what the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, syncRoutes)
 
 
 def _fdictBuildWorkflow(sRepo):
@@ -38,7 +56,7 @@ def _fnRunFinalize(dictCtx, dictWorkflow, listFilePaths, sHeadSha):
     ):
         asyncio.run(_fnFinalizeOverleafPush(
             dictCtx, "cid1", dictWorkflow, "ol1234",
-            listFilePaths, "figures",
+            listFilePaths, "figures", MagicMock(),
         ))
 
 

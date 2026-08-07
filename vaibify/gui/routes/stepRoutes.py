@@ -2,16 +2,26 @@
 
 __all__ = ["fnRegisterAll"]
 
-import asyncio
 import posixpath
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from .. import stepRename, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import fbMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiProofLevel
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
+    ffilesForWorkflow,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    ffnDeclareCarrierMode,
+)
 from ..pipelineServer import (
     InputDataAddRequest,
     ReorderRequest,
@@ -141,8 +151,10 @@ def _fnRegisterStepCreate(app, dictCtx):
 
     @ffnAgentAction("create-step")
     @app.post("/api/steps/{sContainerId}/create")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fdictHandleCreateStep(
-        sContainerId: str, request: StepCreateRequest
+        sContainerId: str, request: StepCreateRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -150,13 +162,19 @@ def _fnRegisterStepCreate(app, dictCtx):
         _fnRaiseIfAtStepCap(dictWorkflow)
         dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         dictWorkflow["listSteps"].append(dictStep)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step creation",
+        )
         iIndex = len(dictWorkflow["listSteps"]) - 1
         iCount = len(dictWorkflow["listSteps"])
         bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
         if bShouldWarn:
             dictWorkflow["bWarnedHundredSteps"] = True
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fdictCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The hundred-step warning flag",
+            )
         return {
             "iIndex": iIndex,
             "dictStep": fdictStepWithLabel(dictWorkflow, iIndex),
@@ -169,9 +187,10 @@ def _fnRegisterStepInsert(app, dictCtx):
 
     @ffnAgentAction("insert-step")
     @app.post("/api/steps/{sContainerId}/insert/{iPosition}")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fdictInsertStep(
         sContainerId: str, iPosition: int,
-        request: StepCreateRequest,
+        request: StepCreateRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -180,12 +199,18 @@ def _fnRegisterStepInsert(app, dictCtx):
         dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         workflowManager.fnInsertStep(
             dictWorkflow, iPosition, dictStep)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step insertion",
+        )
         iCount = len(dictWorkflow["listSteps"])
         bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
         if bShouldWarn:
             dictWorkflow["bWarnedHundredSteps"] = True
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fdictCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The hundred-step warning flag",
+            )
         return {
             "iIndex": iPosition,
             "dictStep": fdictStepWithLabel(dictWorkflow, iPosition),
@@ -199,9 +224,12 @@ def _fnRegisterStepUpdate(app, dictCtx):
 
     @ffnAgentAction("update-step")
     @app.put("/api/steps/{sContainerId}/{iStepIndex}")
+    @ffnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
     async def fdictUpdateStep(
         sContainerId: str, iStepIndex: int,
-        request: StepUpdateRequest,
+        request: StepUpdateRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -215,6 +243,44 @@ def _fnRegisterStepUpdate(app, dictCtx):
             dictWorkflow, iStepIndex, dictUpdates,
             request.bConfirmDestructive,
         )
+        await _fnUpdateThenArchiveUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex,
+            dictUpdates, requestHttp,
+        )
+        dictResult = fdictStepWithLabel(dictWorkflow, iStepIndex)
+        dictResult["sWorkflowFingerprint"] = (
+            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+        )
+        return dictResult
+
+
+async def _fnUpdateThenArchiveUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex, dictUpdates,
+    requestHttp,
+):
+    """Read the level, apply the edit, save, and auto-archive as one.
+
+    Three container-reaching operations that only mean anything
+    together. ``fiProofLevel`` runs the L1/L2/L3 gates, which hash the
+    repo through the container once a workflow is L2, so the
+    level-BEFORE read is itself a guarded operation and not a free
+    lookup. ``fbMaybeAutoArchive`` then reads the level AGAIN and
+    archives only on the before/after transition across 1 — so the two
+    readings must see the same world apart from this edit. Dropping the
+    drain between them lets another session's write move the level in
+    the gap, and the promotion is then detected, or missed, for a change
+    the researcher never made.
+
+    So the whole sequence is one mode-(b) worker. The SAVE inside it
+    still goes through ``fdictCommitWorkflowSave`` rather than a bare
+    write: that is what records the ``file-write`` journal entry whose
+    expected and prior hashes let the probe prove afterwards whether the
+    bytes landed, and losing it would leave a crash mid-save
+    unresolvable. Its mode-(a) record nests inside the held drain, which
+    is why this route declares both modes.
+    """
+    def fnUpdateSaveAndArchive(supervisor=None):
+        del supervisor
         iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
@@ -224,17 +290,25 @@ def _fnRegisterStepUpdate(app, dictCtx):
                 dictWorkflow, iStepIndex, dictUpdates,
             )
         except IndexError as error:
-            raise HTTPException(404, str(error))
-        dictCtx["save"](sContainerId, dictWorkflow)
-        await fbMaybeAutoArchive(
+            raise HTTPException(404, str(error)) from error
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step update",
+        )
+        fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
-        dictResult = fdictStepWithLabel(dictWorkflow, iStepIndex)
-        dictResult["sWorkflowFingerprint"] = (
-            workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
+
+    def fdictRunTheUpdate(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            fnUpdateSaveAndArchive,
         )
-        return dictResult
+
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictRunTheUpdate, "update-step", requestHttp,
+    )
 
 
 def _fdictExtractStepUpdates(request):
@@ -334,7 +408,10 @@ def _fnRegisterStepDelete(app, dictCtx):
 
     @ffnAgentAction("delete-step")
     @app.delete("/api/steps/{sContainerId}/{iStepIndex}")
-    async def fdictDeleteStep(sContainerId: str, iStepIndex: int):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeleteStep(
+        sContainerId: str, iStepIndex: int, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -343,7 +420,10 @@ def _fnRegisterStepDelete(app, dictCtx):
                 dictWorkflow, iStepIndex)
         except IndexError as error:
             raise HTTPException(404, str(error))
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step deletion",
+        )
         return {
             "bSuccess": True,
             "listSteps": flistStepsWithLabels(dictWorkflow),
@@ -355,8 +435,10 @@ def _fnRegisterStepReorder(app, dictCtx):
 
     @ffnAgentAction("reorder-steps")
     @app.post("/api/steps/{sContainerId}/reorder")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fdictReorderSteps(
-        sContainerId: str, request: ReorderRequest
+        sContainerId: str, request: ReorderRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -368,7 +450,10 @@ def _fnRegisterStepReorder(app, dictCtx):
             )
         except IndexError as error:
             raise HTTPException(400, str(error))
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The step reorder",
+        )
         return {"listSteps": flistStepsWithLabels(dictWorkflow)}
 
 
@@ -377,9 +462,10 @@ def _fnRegisterInputDataAdd(app, dictCtx):
 
     @ffnAgentAction("add-input-data-file")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/input-data")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fdictAddInputDataFile(
         sContainerId: str, iStepIndex: int,
-        request: InputDataAddRequest,
+        request: InputDataAddRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -398,7 +484,10 @@ def _fnRegisterInputDataAdd(app, dictCtx):
         bAdded = sPath not in listInputs
         if bAdded:
             listInputs.append(sPath)
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fdictCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The input-data declaration",
+            )
         return {
             "bAdded": bAdded,
             "dictStep": fdictStepWithLabel(dictWorkflow, iStepIndex),
@@ -410,9 +499,10 @@ def _fnRegisterStepRename(app, dictCtx):
 
     @ffnAgentAction("rename-step")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/rename")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictRenameStep(
         sContainerId: str, iStepIndex: int,
-        request: StepRenameRequest,
+        request: StepRenameRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -434,33 +524,17 @@ def _fnRegisterStepRename(app, dictCtx):
         except ValueError as error:
             raise HTTPException(400, str(error))
         if request.bDryRun:
-            dictPlan["listScriptWarnings"] = await asyncio.to_thread(
-                stepRename.flistScanScriptsForOldName,
-                dictCtx["docker"], sContainerId, dictWorkflow,
-                dictPlan,
+            dictPlan["listScriptWarnings"] = (
+                await _flistScanScriptsUnderTheDrain(
+                    dictCtx, sContainerId, dictWorkflow, dictPlan,
+                    requestHttp,
+                )
             )
             return dictPlan
-        filesRepo = ffilesForWorkflow(
-            dictCtx, sContainerId, dictWorkflow)
-        try:
-            dictReport = await asyncio.to_thread(
-                stepRename.fdictApplyStepRename,
-                dictCtx["docker"], sContainerId, filesRepo,
-                dictWorkflow, iStepIndex, dictPlan,
-                dictCtx["paths"].get(sContainerId, ""),
-            )
-        except stepRename.StepRenameSplitError as error:
-            # The directory moved and could not be put back. The
-            # workflow now records where the bytes actually are, so it
-            # has to be PERSISTED or the nonconforming warning that
-            # leads the researcher to the repair is lost on reload.
-            dictCtx["save"](sContainerId, dictWorkflow)
-            raise HTTPException(500, str(error))
-        except ValueError as error:
-            raise HTTPException(409, str(error))
-        except RuntimeError as error:
-            raise HTTPException(500, str(error))
-        dictCtx["save"](sContainerId, dictWorkflow)
+        dictReport = await _fdictApplyRenameUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, iStepIndex, dictPlan,
+            requestHttp,
+        )
         dictReport["dictStep"] = fdictStepWithLabel(
             dictWorkflow, iStepIndex)
         dictReport["sWorkflowFingerprint"] = (
@@ -469,12 +543,108 @@ def _fnRegisterStepRename(app, dictCtx):
         return dictReport
 
 
+async def _flistScanScriptsUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, dictPlan, requestHttp,
+):
+    """Run the dry run's script scan under the drain.
+
+    A preview, and still a carrier: the scan greps every declared script
+    for the old directory name, one general exec per script, and the gate
+    treats an exec as mutating because a primitive handed command text
+    cannot know what the text does. Left outside a carrier the preview
+    would be refused on the enforced branch, and the researcher would be
+    unable to look before leaping. Mode (b) rather than (a) because the
+    loop is one container round-trip per declared script.
+    """
+    def fdictScanTheScripts(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: stepRename.flistScanScriptsForOldName(
+                dictCtx["docker"], sContainerId, dictWorkflow, dictPlan,
+            ),
+        )
+
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictScanTheScripts, "rename-step-preview", requestHttp,
+    )
+
+
+async def _fdictApplyRenameUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, iStepIndex, dictPlan,
+    requestHttp,
+):
+    """Run the rename cascade and its save under one held drain.
+
+    Mode (b), and the whole cascade in ONE worker, because the cascade is
+    already a transaction: the directory moves, then the marker and the
+    manifest follow, and a failure in either is undone by moving the
+    bytes back. Dropping the drain anywhere inside that would let another
+    session's write land between the move and its undo, so the undo would
+    put back a directory that is no longer what it moved.
+
+    Which failures are carried and which poison is decided from
+    ``fdictApplyStepRename``'s source, not from the shape of its
+    exceptions:
+
+    * Every ``ValueError`` reaching the 409 is a refusal DECIDED with the
+      container untouched. Three of them fire before anything moves (no
+      project repo, no workflow slug, the target directory already
+      exists); the fourth -- an unreadable verification marker -- fires
+      after the move but is reached only through the cascade's own
+      rollback, which puts the directory back before the error escapes.
+      So a researcher who picks a taken name gets a 409 and a working
+      container, not a quarantine and an instruction to run ``vaibify
+      reconcile``.
+    * Every 500 is genuinely mid-effect -- a ``git mv`` that exited
+      non-zero, or a manifest rewrite that failed after the marker had
+      already moved -- so it propagates and poisons, which is what the
+      quarantine is for.
+    * ``StepRenameSplitError`` is the case that needs both. The bytes
+      moved and could not be put back, so the workflow now records where
+      they actually are and that MUST be persisted or the nonconforming
+      warning that leads the researcher to the repair is lost on reload.
+      The save therefore runs inside the worker, under this same
+      admission, and only then does the error escape to poison the
+      record. Save first, poison second -- in that order, or the
+      researcher loses the only pointer to the split.
+    """
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+
+    def fdictRenameThenSave():
+        try:
+            dictReport = stepRename.fdictApplyStepRename(
+                dictCtx["docker"], sContainerId, filesRepo,
+                dictWorkflow, iStepIndex, dictPlan,
+                dictCtx["paths"].get(sContainerId, ""),
+            )
+        except stepRename.StepRenameSplitError as error:
+            dictCtx["save"](sContainerId, dictWorkflow)
+            raise HTTPException(500, str(error)) from error
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(500, str(error)) from error
+        dictCtx["save"](sContainerId, dictWorkflow)
+        return dictReport
+
+    def fdictApplyTheRename(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(fdictRenameThenSave)
+
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictApplyTheRename, "rename-step", requestHttp,
+    )
+
+
 def _fnRegisterAlignDirectories(app, dictCtx):
     """Register POST /api/steps/{id}/align-directories route."""
 
     @ffnAgentAction("align-step-directories")
     @app.post("/api/steps/{sContainerId}/align-directories")
-    async def fdictAlignStepDirectories(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleAlignStepDirectories(
+        sContainerId: str, requestHttp: Request,
+    ):
         """Migrate every nonconforming step to the slug contract.
 
         Each step runs the full rename cascade (git mv, marker,
@@ -492,48 +662,12 @@ def _fnRegisterAlignDirectories(app, dictCtx):
                 409, "A pipeline action is running in this "
                 "container — wait for it to finish before aligning "
                 "directories.")
-        filesRepo = ffilesForWorkflow(
-            dictCtx, sContainerId, dictWorkflow)
-        listAligned, listSkipped = [], []
-        bSplitRecorded = False
-        for iIndex, dictStep in enumerate(
-            dictWorkflow.get("listSteps", [])
-        ):
-            if fbStepDirectoryConforms(dictStep):
-                continue
-            sLabel = dictStep.get("sLabel") or f"step {iIndex}"
-            try:
-                dictPlan = stepRename.fdictPlanDirectoryAlignment(
-                    dictWorkflow, iIndex)
-                if not dictPlan["bDirectoryRenamed"]:
-                    continue
-                await asyncio.to_thread(
-                    stepRename.fdictApplyStepRename,
-                    dictCtx["docker"], sContainerId, filesRepo,
-                    dictWorkflow, iIndex, dictPlan,
-                    dictCtx["paths"].get(sContainerId, ""),
-                )
-                listAligned.append({
-                    "sLabel": sLabel,
-                    "sOldDirectory": dictPlan["sOldDirectory"],
-                    "sNewDirectory": dictPlan["sNewDirectory"],
-                })
-            except stepRename.StepRenameSplitError as error:
-                # The batch continues, but this step's workflow entry
-                # was rewritten to match disk and must be saved.
-                bSplitRecorded = True
-                listSkipped.append({
-                    "sLabel": sLabel, "sReason": str(error),
-                })
-            except (ValueError, RuntimeError) as error:
-                listSkipped.append({
-                    "sLabel": sLabel, "sReason": str(error),
-                })
-        if listAligned or bSplitRecorded:
-            dictCtx["save"](sContainerId, dictWorkflow)
+        dictBatch = await _fdictAlignDirectoriesUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+        )
         return {
-            "listAligned": listAligned,
-            "listSkipped": listSkipped,
+            "listAligned": dictBatch["listAligned"],
+            "listSkipped": dictBatch["listSkipped"],
             "listSteps": flistStepsWithLabels(dictWorkflow),
             "sWorkflowFingerprint":
                 workflowManager.fsComputeWorkflowFingerprint(
@@ -541,12 +675,103 @@ def _fnRegisterAlignDirectories(app, dictCtx):
         }
 
 
+async def _fdictAlignDirectoriesUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Run the whole alignment batch under ONE held drain.
+
+    One worker for the batch, not one per step, and the deciding reason
+    is the shared workflow dict. Every iteration rewrites the SAME
+    in-memory workflow and the batch ends in a single save, so a
+    per-step carrier would drop the drain between two renames of one
+    workflow: another session's save landing in a gap would be silently
+    overwritten by the save at the end, which by then describes a
+    workflow assembled across the gap. The alternative — saving after
+    every step — would multiply the container writes by the number of
+    nonconforming steps to protect against a hand-over the drain
+    already prevents.
+
+    It also matches what the batch already is. Each iteration carries
+    its own recovery (a failed step is reported skipped and the batch
+    continues), so per-step records would buy N journal entries for one
+    logical migration and no extra recoverability.
+
+    Nothing is carried back, because nothing refuses: the loop catches
+    ``ValueError``, ``RuntimeError`` and ``StepRenameSplitError`` itself
+    and reports them per step. Anything that escapes it is unexpected,
+    leaves the batch half-applied, and poisons — which is correct, and
+    is why this calls the carrier directly rather than wrapping a
+    carry-back that could never fire.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Aligning the step directories",
+    )
+
+    def fdictAlignEveryStep(supervisor=None):
+        del supervisor
+        return _fdictAlignEveryNonconformingStep(
+            dictCtx, sContainerId, dictWorkflow,
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "align-step-directories",
+        fdictAlignEveryStep,
+    )
+    return dictOutcome["result"]
+
+
+def _fdictAlignEveryNonconformingStep(dictCtx, sContainerId, dictWorkflow):
+    """Apply the alignment cascade to each nonconforming step, then save.
+
+    Synchronous by carrier requirement: mode (b) runs its worker in a
+    thread, which cannot await, so the cascade is called directly where
+    the route used to wrap each iteration in ``asyncio.to_thread``.
+    """
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    listAligned, listSkipped = [], []
+    bSplitRecorded = False
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        if fbStepDirectoryConforms(dictStep):
+            continue
+        sLabel = dictStep.get("sLabel") or f"step {iIndex}"
+        try:
+            dictPlan = stepRename.fdictPlanDirectoryAlignment(
+                dictWorkflow, iIndex)
+            if not dictPlan["bDirectoryRenamed"]:
+                continue
+            stepRename.fdictApplyStepRename(
+                dictCtx["docker"], sContainerId, filesRepo,
+                dictWorkflow, iIndex, dictPlan,
+                dictCtx["paths"].get(sContainerId, ""),
+            )
+            listAligned.append({
+                "sLabel": sLabel,
+                "sOldDirectory": dictPlan["sOldDirectory"],
+                "sNewDirectory": dictPlan["sNewDirectory"],
+            })
+        except stepRename.StepRenameSplitError as error:
+            # The batch continues, but this step's workflow entry
+            # was rewritten to match disk and must be saved.
+            bSplitRecorded = True
+            listSkipped.append({"sLabel": sLabel, "sReason": str(error)})
+        except (ValueError, RuntimeError) as error:
+            listSkipped.append({"sLabel": sLabel, "sReason": str(error)})
+    if listAligned or bSplitRecorded:
+        dictCtx["save"](sContainerId, dictWorkflow)
+    return {"listAligned": listAligned, "listSkipped": listSkipped}
+
+
 def _fnRegisterDeclareNoInputData(app, dictCtx):
     """Register POST /api/steps/{id}/declare-no-input-data route."""
 
     @ffnAgentAction("declare-no-input-data")
     @app.post("/api/steps/{sContainerId}/declare-no-input-data")
-    async def fdictDeclareNoInputData(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclareNoInputData(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -561,7 +786,10 @@ def _fnRegisterDeclareNoInputData(app, dictCtx):
             dictStep["bNoInputData"] = True
             listDeclared.append(iIndex)
         if listDeclared:
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fdictCommitWorkflowSave(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+                "The no-input-data declaration",
+            )
         return {"listDeclaredStepIndices": listDeclared}
 
 

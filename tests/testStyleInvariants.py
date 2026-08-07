@@ -177,7 +177,7 @@ I_LEGACY_YIELD_BUDGET = 0
 I_LEGACY_LITERAL_RETURN_BUDGET = 0
 I_LEGACY_RETURN_ANNOTATION_BUDGET = 0
 I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
-I_LEGACY_VARIABLE_BUDGET = 380
+I_LEGACY_VARIABLE_BUDGET = 388
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,
@@ -687,6 +687,18 @@ SET_FROZEN_SEED_PAIRS = _fsetParseFrozenSeed()
 # by explicit reviewed decision; burn-down lowers the budget and
 # regenerates the inventory but leaves this text alone.
 S_FROZEN_VARIABLE_SEED_TEXT = """\
+legacy-variable	vaibify/docker/dockerConnection.py::DockerConnection._ftRunTypedRead::objPaths
+legacy-variable	vaibify/docker/dockerConnection.py::_fsTypedReadPathLiteral::objPaths
+legacy-variable	vaibify/gui/resourceMonitor.py::_ftReadFilesystemUsage.executorPool
+legacy-variable	vaibify/gui/resourceMonitor.py::_ftReadFilesystemUsage.future
+legacy-variable	vaibify/gui/routeScope.py::_fbServeOnAmbientAdmission::route
+legacy-variable	vaibify/gui/routes/pipelineRoutes.py::_fdictVerifyManifestBlocking::manifestWriter
+legacy-variable	vaibify/gui/routes/pipelineRoutes.py::_fdictVerifyManifestUnderTheDrain::manifestWriter
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fdictPullManuscriptBlocking::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fdictPullManuscriptUnderTheDrain::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnRegisterDag.fresponseHandleGetDag.result
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnRegisterDagExport.fresponseHandleExportDag.result
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafMirrorRefresh.fdictHandleRefreshMirror.result
 legacy-variable	vaibify/cli/actionCommands.py::fnDoCommand::ctx
 legacy-variable	vaibify/cli/actionCommands.py::fnRegisterGeneratedActions::groupParent
 legacy-variable	vaibify/cli/actionCommands.py::fsAppendQueryString.objValue

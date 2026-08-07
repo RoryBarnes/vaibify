@@ -73,8 +73,9 @@ Examples of stochastic signals in vaibify:
 
 - "Container paths use `posixpath`; host paths use `os.path`."
 - "Never reassign `setExpandedSteps`; mutate it in place."
-- "`director.py` intentionally duplicates two functions from
-  `workflowManager.py` because it operates on host filesystem paths."
+- "A host-path module may duplicate two functions from
+  `workflowManager.py` rather than share them, because the two operate
+  on different filesystems."
 
 None of those rules are visible by reading any one file. All three
 have caused real bugs when an agent or a new developer ignored them.
@@ -220,16 +221,22 @@ consequence of getting it wrong.
 
 Examples from vaibify:
 
-- Container paths use `posixpath`; host paths use `os.path`.
-  `workflowManager.py` and `director.py` contain similarly named
-  functions because one operates on container paths and the other
-  on host paths. Using the wrong one silently produces wrong file
-  paths on Windows, or on any host where the separator differs.
+- Container paths use `posixpath`; host paths use `os.path`. A module
+  on each side will grow similarly named functions, and unifying them
+  silently produces wrong file paths on Windows, or on any host where
+  the separator differs. (Vaibify carried exactly this pair until the
+  host-side runner was withdrawn in August 2026 — the trap outlived
+  the example, which is why it is stated as a shape rather than as
+  two filenames.)
 
-- `director.py` looks like a CLI helper but is actually a parallel
-  workflow runner with its own variable resolution. Do not unify it
-  with `workflowManager.py` without understanding why the two
-  resolve variables differently.
+- A test double that answers a call is not a stand-in for the thing it
+  doubles. Vaibify's Docker mocks accept a file write and store the
+  bytes; the real connection also asks an admission gate whether the
+  write was authorized. Twenty-seven test files defined such a mock
+  and not one called the gate, so a route could lose its authorization
+  entirely and its whole test file still passed. The mock looks like
+  the real object at the surface the test reads and differs at the
+  boundary the test exists to protect.
 
 - `_dictUiState` contains several `Set` objects. These sets are
   captured by reference in the render closure. Reassigning a set
@@ -273,6 +280,29 @@ stochastic prose (which can be ignored) into deterministic enforcement
 well will find that most of its Layer 1 content slowly migrates into
 Layer 2 tests, leaving behind only the rules that genuinely resist
 mechanization.
+
+One qualification, learned the hard way. Promoting a rule into a test
+converts it into enforcement *only if the test can observe the
+failure*. Vaibify built a rule that a container mutation must be
+opened through a commit carrier, and relied for proof on the
+primitive raising when a carrier was missing — a refusal that is real,
+loud, and in the right place. It was also invisible: the suite's Docker
+doubles never consulted the gate, so deleting a route's carrier call
+outright left its entire test file green. The rule had been promoted
+to Layer 2 in form and remained prose in effect, and it would have
+governed a hundred-and-thirty-route migration in that state.
+
+The check on this is cheap and worth making a habit: after writing a
+test for a rule, break the rule on purpose and watch that specific
+test fail. If it does not, the test's premise is wrong, not the
+rule's. Two further sharpenings follow from repeating this often
+enough. Assert on the *state* the rule is about, never merely that
+nothing raised — "no exception" is equally true of code that satisfies
+the rule and code the harness cannot see. And if a mutation kills two
+tests, the shape is protected by two guards and neither is proven, so
+split until each isolates one. A guard nobody has watched fail is a
+guard nobody has tested, and a green suite full of them reads exactly
+like a green suite that means something.
 
 ## 7. Tradeoffs and limits
 

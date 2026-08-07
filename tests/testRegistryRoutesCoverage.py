@@ -10,7 +10,6 @@ from vaibify.gui.buildRoutes import _fnExecuteBuild
 from vaibify.gui.registryRoutes import (
     _fbDockerContainerExists,
     _fdictRequireProject,
-    _fnDockerStopCommand,
     _fnExecuteStop,
     _fnRegisterNewProject,
     _fnRejectDuplicateProjectName,
@@ -88,7 +87,7 @@ class TestExecuteStop:
             "vaibify.docker.containerManager.fdictGetContainerStatus",
             return_value={"bExists": True, "bRunning": True},
         ), patch(
-            "vaibify.gui.registryRoutes._fnDockerStopCommand",
+            "vaibify.docker.containerManager.fnStopContainer",
         ) as mockStop, patch(
             "vaibify.docker.containerManager.fnRemoveStopped",
         ), patch(
@@ -102,7 +101,7 @@ class TestExecuteStop:
             "vaibify.docker.containerManager.fdictGetContainerStatus",
             return_value={"bExists": True, "bRunning": False},
         ), patch(
-            "vaibify.gui.registryRoutes._fnDockerStopCommand",
+            "vaibify.docker.containerManager.fnStopContainer",
         ) as mockStop, patch(
             "vaibify.docker.containerManager.fnRemoveStopped",
         ) as mockRemove, patch(
@@ -112,25 +111,20 @@ class TestExecuteStop:
             mockStop.assert_not_called()
             mockRemove.assert_called_once()
 
+    def test_the_route_no_longer_assembles_its_own_docker_stop(self):
+        """The removal is not merely a refactor; it is the R4 rule.
 
-# ---------------------------------------------------------------
-# _fnDockerStopCommand (lines 277-283)
-# ---------------------------------------------------------------
-
-class TestDockerStopCommand:
-    def test_success(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 0
-        with patch("subprocess.run", return_value=mockResult):
-            _fnDockerStopCommand("proj")
-
-    def test_raises_on_failure(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 1
-        mockResult.stderr = "cannot stop\n"
-        with patch("subprocess.run", return_value=mockResult):
-            with pytest.raises(RuntimeError, match="docker stop failed"):
-                _fnDockerStopCommand("proj")
+        A route module holding `subprocess.run(["docker", "stop", ...])`
+        is a container mutation outside every guarded primitive, and the
+        copy this replaced was byte-identical to the gateway's own first
+        half. Asserted on the source so that reintroducing it fails here
+        as well as in testCapabilityAuthorities.
+        """
+        import inspect
+        from vaibify.gui import registryRoutes
+        sSource = inspect.getsource(registryRoutes._fnExecuteStop)
+        assert "subprocess" not in sSource
+        assert "containerManager.fnStopContainer(" in sSource
 
 
 # ---------------------------------------------------------------

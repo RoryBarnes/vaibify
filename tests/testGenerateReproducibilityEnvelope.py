@@ -1,6 +1,5 @@
-"""Tests for the PROOF L3 reproducibility envelope generator."""
+"""Tests for the AICS L3 reproducibility envelope generator."""
 
-import asyncio
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -299,8 +298,8 @@ def test_all_green_refresh_writes_environment_json(tmp_path):
         "fdictCaptureHostBinaryHashes",
         return_value={"/usr/bin/git": "abc"},
     ):
-        asyncio.run(fileStatusManager.fbMaybeAutoArchive(
+        fileStatusManager.fbMaybeAutoArchive(
             None, "container-id-123",
             dictWorkflow, 0, iProofLevelBefore=0,
-        ))
+        )
     assert (tmp_path / _ENVIRONMENT_RELPATH).is_file()

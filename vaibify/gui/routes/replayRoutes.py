@@ -38,7 +38,21 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
 
-from ..actionCatalog import S_SESSION_HEADER_NAME, ffnAgentAction
+from ..actionCatalog import ffnAgentAction
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
+    fdictCommitWorkflowSave,
+    fnRejectAgentTokenLane,
+    fgenericRunWorkerUnderTheDrain,
+    fsHashContainerFileOrEmpty,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_SEPARATE_AUTHORITY,
+    ffnDeclareCarrierMode,
+)
 from ..personalLayerManager import (
     fdictComputeHashCommitment,
     fdictValidateHashCommitment,
@@ -122,7 +136,10 @@ def _fnRegisterDeclareAiModel(app, dictCtx):
 
     @ffnAgentAction("declare-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/declare")
-    async def fdictDeclareAiModel(sContainerId: str, dictBody: dict):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclareAiModel(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -133,7 +150,10 @@ def _fnRegisterDeclareAiModel(app, dictCtx):
             list(dictProvenance.get(S_DECLARED_MODELS_KEY) or []),
             dictModel,
         )
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI-model declaration",
+        )
         return {
             "listDeclaredModels": dictProvenance[S_DECLARED_MODELS_KEY],
         }
@@ -144,7 +164,10 @@ def _fnRegisterRemoveAiModel(app, dictCtx):
 
     @ffnAgentAction("remove-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/remove")
-    async def fdictRemoveAiModel(sContainerId: str, dictBody: dict):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictRemoveAiModel(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -160,7 +183,10 @@ def _fnRegisterRemoveAiModel(app, dictCtx):
         if len(listRemaining) == len(listModels):
             raise HTTPException(404, "No such declared model.")
         dictProvenance[S_DECLARED_MODELS_KEY] = listRemaining
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI-model removal",
+        )
         return {"listDeclaredModels": listRemaining}
 
 
@@ -191,6 +217,45 @@ def _fnWriteContextFile(dictCtx, sContainerId, sAbsPath, sContent):
     """Write the context file with the container-user ownership default."""
     dictCtx["docker"].fnWriteFile(
         sContainerId, sAbsPath, sContent.encode("utf-8"),
+    )
+
+
+def _fdictCommitContextWrite(
+    dictCtx, sContainerId, sAbsPath, sContent, requestHttp,
+    sOperationName,
+):
+    """Commit one context-file write through carrier mode (a).
+
+    Mode (a) because this is a single write with a hash the journal can
+    adjudicate afterwards: the expected sha256 IS the sha256 of the
+    bytes about to be written, so a crash inside the commit window
+    resolves to "landed" or "did not" rather than to a quarantine.
+
+    Deliberately NOT routed through ``fdictCommitWorkflowSave``: that
+    helper's target is project.json and its expected hash is the
+    workflow's fingerprint, so reusing it would hand the probe a hash
+    belonging to a different file.
+    """
+    from .. import commitCarrier
+    import hashlib
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationName,
+    )
+    return commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sAbsPath,
+        lambda: _fnWriteContextFile(
+            dictCtx, sContainerId, sAbsPath, sContent,
+        ),
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": hashlib.sha256(
+                sContent.encode("utf-8"),
+            ).hexdigest(),
+            "sPriorSha256": fsHashContainerFileOrEmpty(
+                dictCtx, sContainerId, sAbsPath,
+            ),
+        },
     )
 
 
@@ -226,7 +291,10 @@ def _fnRegisterUpdateProjectContext(app, dictCtx):
 
     @ffnAgentAction("update-project-context")
     @app.put("/api/workflow/{sContainerId}/project-context")
-    async def fdictUpdateProjectContext(sContainerId: str, dictBody: dict):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictUpdateProjectContext(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -234,7 +302,10 @@ def _fnRegisterUpdateProjectContext(app, dictCtx):
         sContent = str(dictBody.get("sContent") or "")
         _fnRequireContentWithinCap(sContent)
         sAbsPath = _fsContextAbsolutePath(dictWorkflow)
-        _fnWriteContextFile(dictCtx, sContainerId, sAbsPath, sContent)
+        _fdictCommitContextWrite(
+            dictCtx, sContainerId, sAbsPath, sContent, requestHttp,
+            "The project-context update",
+        )
         from ..routeContext import fnRecordAttributionEvent
         fnRecordAttributionEvent(
             dictCtx, sContainerId, dictWorkflow,
@@ -248,12 +319,40 @@ def _fnRegisterContextTemplate(app, dictCtx):
 
     @ffnAgentAction("generate-project-context-template")
     @app.post("/api/workflow/{sContainerId}/project-context/template")
-    async def fdictGenerateContextTemplate(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictGenerateContextTemplate(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         sAbsPath = _fsContextAbsolutePath(dictWorkflow)
+        await _fnWriteTheTemplateUnderTheDrain(
+            dictCtx, sContainerId, sAbsPath, requestHttp,
+        )
+        return {"bOk": True}
+
+
+async def _fnWriteTheTemplateUnderTheDrain(
+    dictCtx, sContainerId, sAbsPath, requestHttp,
+):
+    """Probe for an existing context file and write the template as one.
+
+    Mode (b) rather than (a) because the probe and the write must share
+    ONE held drain. The probe IS the guard -- the whole contract of this
+    route is "create it only if it is not there" -- so with the drain
+    dropped between them two sessions both read "absent" and the second
+    silently overwrites the first researcher's freshly written context.
+    Mode (a) could hold them together too, but it runs its effect on the
+    event loop, and the probe is a container round-trip.
+
+    The 409 is carried back rather than raised out of the worker.
+    Nothing has been written when it fires, so there is nothing to
+    reconcile, and a raise would quarantine the container for the
+    ordinary case of asking twice.
+    """
+    def fnProbeThenWrite():
         if _fsFetchContextOrNone(
             dictCtx, sContainerId, sAbsPath,
         ) is not None:
@@ -263,7 +362,15 @@ def _fnRegisterContextTemplate(app, dictCtx):
         _fnWriteContextFile(
             dictCtx, sContainerId, sAbsPath, S_CONTEXT_TEMPLATE,
         )
-        return {"bOk": True}
+
+    def fdictWriteTheTemplate(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(fnProbeThenWrite)
+
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictWriteTheTemplate, "project-context-template",
+        requestHttp,
+    )
 
 
 _SET_ADOPTABLE_ROOT_BASENAMES = frozenset({"CLAUDE.md", "AGENTS.md"})
@@ -339,15 +446,46 @@ def _fnRegisterContextImport(app, dictCtx):
     """
 
     @app.post("/api/workflow/{sContainerId}/project-context/import")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictImportProjectContext(
         sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
-        _fnRejectAgentTokenLane(requestHttp)
+        fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sAbsPath = _fsContextAbsolutePath(dictWorkflow)
+        await _fnImportTheContextUnderTheDrain(
+            dictCtx, sContainerId, dictWorkflow, dictBody, requestHttp,
+        )
+        return {"bOk": True}
+
+
+async def _fnImportTheContextUnderTheDrain(
+    dictCtx, sContainerId, dictWorkflow, dictBody, requestHttp,
+):
+    """Probe, read the source, write, and re-point the root as one.
+
+    Four operations that must not be separated. The overwrite probe
+    guards the write, so a dropped drain between them lets a second
+    import land on top of the first without ever seeing it. The symlink
+    replacement is stranger and more important: it deletes the adopted
+    root file and recreates it pointing at the canonical context, so
+    between the write and the symlink there is a window in which the
+    repository holds two real files with different contents -- exactly
+    the divergence the symlink exists to prevent.
+
+    The 4xx refusals are carried back: a missing root file, a bad
+    basename, an unreadable host path and "it already exists" are all
+    decided before any container write, so none is a state to
+    reconcile. The 500 from a failed symlink replacement is NOT carried,
+    and must not be -- the content has landed by then and the root file
+    has been removed, so nobody knows what the repository holds. That is
+    the quarantine's whole purpose.
+    """
+    sAbsPath = _fsContextAbsolutePath(dictWorkflow)
+
+    def fnImportTheContent():
         sExisting = _fsFetchContextOrNone(
             dictCtx, sContainerId, sAbsPath,
         )
@@ -364,7 +502,15 @@ def _fnRegisterContextImport(app, dictCtx):
         _fnReplaceRootWithSymlink(
             dictCtx, sContainerId, dictWorkflow, dictBody,
         )
-        return {"bOk": True}
+
+    def fdictRunTheImport(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(fnImportTheContent)
+
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictRunTheImport, "project-context-import",
+        requestHttp,
+    )
 
 
 def _fdictPromptRecordOf(dictWorkflow):
@@ -424,7 +570,10 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
 
     @ffnAgentAction("configure-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/configure")
-    async def fdictConfigurePromptRecord(sContainerId: str, dictBody: dict):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictConfigurePromptRecord(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
+    ):
         # Late-bound so an install of vaibify[replay] (or a test
         # patch) takes effect without restarting the hub.
         from .. import transcriptSanitizer
@@ -447,19 +596,24 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
                 timezone.utc,
             ).isoformat()
         dictRecord.setdefault("bFirstCaptureReviewed", False)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The Prompt Record setting",
+        )
         return {"dictPromptRecord": dictRecord}
 
 
 def _fnRegisterPromptRecordCapture(app, dictCtx):
     """Register POST .../prompt-record/capture (one capture pass)."""
-    import asyncio
     from .. import promptRecordManager
     from ..routeContext import ffilesForWorkflow
 
     @ffnAgentAction("capture-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/capture")
-    async def fdictCapturePromptRecord(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictCapturePromptRecord(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -469,15 +623,54 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
             raise HTTPException(409, "The Prompt Record is not enabled.")
         _fsContextAbsolutePath(dictWorkflow)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        dictSummary = await asyncio.to_thread(
-            promptRecordManager.fdictRunCapturePass,
-            dictCtx["docker"], sContainerId, filesRepo,
-            _flistGatherSessionSecrets(dictCtx, sContainerId),
+
+        def fdictRunTheCapturePass(supervisor=None):
+            del supervisor
+            return promptRecordManager.fdictRunCapturePass(
+                dictCtx["docker"], sContainerId, filesRepo,
+                _flistGatherSessionSecrets(dictCtx, sContainerId),
+            )
+
+        # The journal target is the compile-time constant below, never
+        # a transcript path or any part of a captured prompt: this
+        # route's whole subject matter is text that may contain
+        # secrets, and the journal is an on-disk record with a
+        # different lifetime from the sanitized transcript.
+        dictSummary = await _fdictRunTheCaptureUnderTheDrain(
+            sContainerId, fdictRunTheCapturePass, requestHttp,
         )
         dictSummary["bPendingReview"] = (
             dictRecord.get("bFirstCaptureReviewed") is not True
         )
         return dictSummary
+
+
+async def _fdictRunTheCaptureUnderTheDrain(
+    sContainerId, fdictRunTheCapturePass, requestHttp,
+):
+    """Run one Prompt Record capture pass under the drain.
+
+    Mode (b): the pass reads every agent transcript in the container,
+    scans each for secrets, and writes the sanitized copies plus an
+    index. It is unbounded in the number of transcripts, so an ownership
+    hand-over landing mid-capture would otherwise hand somebody else a
+    container still having transcripts written into it.
+
+    Nothing is carried back because the pass raises no HTTPException --
+    this route's one refusal is decided in the handler, before the
+    carrier exists. Anything escaping the pass leaves a partially
+    written transcript set and poisons, which is correct.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The Prompt Record capture",
+    )
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "prompt-record-capture",
+        fdictRunTheCapturePass,
+    )
+    return dictOutcome["result"]
 
 
 def _fnRegisterPromptRecordApprove(app, dictCtx):
@@ -493,7 +686,10 @@ def _fnRegisterPromptRecordApprove(app, dictCtx):
         "/api/workflow/{sContainerId}/prompt-record/"
         "approve-first-capture"
     )
-    async def fdictApproveFirstCapture(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictApproveFirstCapture(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -502,7 +698,10 @@ def _fnRegisterPromptRecordApprove(app, dictCtx):
         if dictRecord.get("bEnabled") is not True:
             raise HTTPException(409, "The Prompt Record is not enabled.")
         dictRecord["bFirstCaptureReviewed"] = True
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The first-capture approval",
+        )
         return {"dictPromptRecord": dictRecord}
 
 
@@ -576,7 +775,10 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
     """
 
     @app.post("/api/workflow/{sContainerId}/supervision/configure")
-    async def fdictConfigureSupervision(sContainerId: str, dictBody: dict):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictConfigureSupervision(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -601,7 +803,10 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
                 timezone.utc,
             ).isoformat()
         dictProvenance["dictSupervision"] = dictSupervision
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The Supervised-mode setting",
+        )
         return {"dictSupervision": dictSupervision}
 
 
@@ -633,7 +838,10 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
 
     @ffnAgentAction("declare-personal-layer")
     @app.post("/api/workflow/{sContainerId}/personal-layer/declare")
-    async def fdictDeclarePersonalLayer(sContainerId: str, dictBody: dict):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclarePersonalLayer(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -680,25 +888,11 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
             except ValueError as error:
                 raise HTTPException(400, str(error))
         dictProvenance[S_PERSONAL_LAYER_KEY] = dictLayer
-        dictCtx["save"](sContainerId, dictWorkflow)
-        return {"dictPersonalLayer": dictLayer}
-
-
-def _fnRejectAgentTokenLane(requestHttp):
-    """Raise HTTP 403 when the dictBody rides the in-container agent lane.
-
-    The agent authenticates REST calls with the per-container
-    ``X-Vaibify-Session`` header; a browser session never sends that
-    header (it presents the hub token separately). Its presence
-    therefore marks the agent lane — the same discriminator the
-    ``/api/session-token`` guard uses — and a host-reading route must
-    fail it closed.
-    """
-    if requestHttp.headers.get(S_SESSION_HEADER_NAME.lower(), ""):
-        raise HTTPException(
-            403, "The in-container agent must not read or hash "
-            "host files.",
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The personal-layer declaration",
         )
+        return {"dictPersonalLayer": dictLayer}
 
 
 def _fnRegisterHashPersonalLayerFile(app, dictCtx):
@@ -712,11 +906,24 @@ def _fnRegisterHashPersonalLayerFile(app, dictCtx):
     """
     import asyncio
 
+    # separate-authority, not typed-read. This route reaches the
+    # container NOT AT ALL: it reads a file on the researcher's own
+    # machine and returns a hash, persisting nothing. `typed-read`
+    # would be doubly wrong -- it claims container reads through the
+    # typed adapter, of which this makes none, and any reader takes it
+    # to mean "the route is harmless", which is the opposite of the
+    # concern here. What governs it is a separate authority: the
+    # agent-lane rejection on the first line, without which a
+    # compromised in-container agent would hold a hash oracle over the
+    # researcher's home directory, plus fdictComputeHashCommitment's own
+    # host-path handling. Ruling 2026-08-05, same reasoning as
+    # fileRoutes' pull route.
     @app.post("/api/workflow/{sContainerId}/personal-layer/hash")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictHashPersonalLayerFile(
         sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
-        _fnRejectAgentTokenLane(requestHttp)
+        fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
         fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
         sLabel = str(dictBody.get("sLabel") or "").strip()

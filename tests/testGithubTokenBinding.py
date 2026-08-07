@@ -14,8 +14,25 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes import syncRoutes
 from vaibify.reproducibility import githubAuth
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the push, driven here bare.
+
+    The bulk push now runs its whole sequence -- dedupe probe, token
+    binding, push, commit-state reads -- inside one carrier mode-(b)
+    worker, which needs an owner record this module's bare
+    ``FastAPI()`` has not got. What must still be proven here is that
+    the 409 comes from the TOKEN BINDING: the worker carries that
+    refusal back as a value and the drain re-raises it after settling,
+    so a container is never quarantined over a mismatched credential.
+    See ``tests/carrierStandDown.py`` for what the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, syncRoutes)
 
 
 @pytest.fixture(autouse=True)
@@ -79,7 +96,9 @@ def _fnSetupPushApp(dictCtx, dictCaptured):
     return app
 
 
-def test_push_refuses_with_409_when_token_belongs_to_wrong_user():
+def test_push_refuses_with_409_when_token_belongs_to_wrong_user(
+    fixtureCarrierStoodDown,
+):
     """Token login 'attacker' on a remote owned by 'victim' must 409."""
     dictCaptured = {}
     dictCtx = _fdictBuildPushContext()
@@ -111,7 +130,9 @@ def test_push_refuses_with_409_when_token_belongs_to_wrong_user():
     assert "called" not in dictCaptured
 
 
-def test_push_proceeds_when_token_owner_matches_remote_owner():
+def test_push_proceeds_when_token_owner_matches_remote_owner(
+    fixtureCarrierStoodDown,
+):
     """When the /user login matches the remote owner, push runs."""
     dictCaptured = {}
     dictCtx = _fdictBuildPushContext()
@@ -143,7 +164,9 @@ def test_push_proceeds_when_token_owner_matches_remote_owner():
     assert dictCaptured.get("called") is True
 
 
-def test_push_refuses_when_user_endpoint_is_unreachable():
+def test_push_refuses_when_user_endpoint_is_unreachable(
+    fixtureCarrierStoodDown,
+):
     """An empty login from /user must fail closed with 409."""
     dictCaptured = {}
     dictCtx = _fdictBuildPushContext()

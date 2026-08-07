@@ -1084,9 +1084,12 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteAuthGate::test_unauthorized_kill_rejected_before_count_exec',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""    async def fdictKillRunningTasks(sContainerId: str):
+        old="""    async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()""",
-        new='    async def fdictKillRunningTasks(sContainerId: str):',
+        new=(
+            '    async def fdictHandleKillRunningTasks('
+            'sContainerId: str, requestHttp: Request):'
+        ),
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteActuallyKills::test_kill_exec_issued_when_count_positive',
@@ -1515,11 +1518,20 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testDataPreviewInjection.py::test_file_fetch_does_not_execute_injected_payload',
         source='vaibify/docker/dockerConnection.py',
+        # Re-anchored 2026-08-05: the slot is filled by
+        # _fsTypedReadPathLiteral rather than by a bare repr(), because
+        # the exemption's path parameter widened to accept a collection
+        # for the batched existence probe. The mutation is unchanged in
+        # meaning -- drop the literal-ization and the shell quoting, so
+        # a path becomes program text.
         old="""        sCommand = "python3 -c " + shlex.quote(
-            sTemplate.replace(_S_TYPED_READ_PATH_SLOT, repr(sPath)),
+            sTemplate.replace(
+                _S_TYPED_READ_PATH_SLOT,
+                _fsTypedReadPathLiteral(objPaths),
+            ),
         )""",
         new="""        sCommand = "python3 -c \\"" + sTemplate.replace(
-            _S_TYPED_READ_PATH_SLOT, sPath,
+            _S_TYPED_READ_PATH_SLOT, objPaths,
         ) + "\\"" """,
     ),
     # The ownerless-connect exception is the viewer's bootstrap; extending
@@ -1987,14 +1999,14 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_rm_failure_detail_carries_git_output',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='                detail="git rm --cached failed: " + (sOut or "").strip(),',
-        new='                detail="git rm --cached failed: " + (sOut and "").strip(),',
+        old='            detail="git rm --cached failed: " + (sOut or "").strip(),',
+        new='            detail="git rm --cached failed: " + (sOut and "").strip(),',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_commit_failure_detail_carries_git_output',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='                detail="git commit failed: " + (sOut or "").strip(),',
-        new='                detail="git commit failed: " + (sOut and "").strip(),',
+        old='            docker, sContainerId, [sPath], sWorkspace=sRepo,\n        )\n        raise HTTPException(\n            status_code=500,\n            detail="git commit failed: " + (sOut or "").strip(),',
+        new='            docker, sContainerId, [sPath], sWorkspace=sRepo,\n        )\n        raise HTTPException(\n            status_code=500,\n            detail="git commit failed: " + (sOut and "").strip(),',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_after_push_gate_is_exact_equality_not_ordering',
@@ -2005,8 +2017,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_push_files_response_carries_verify_warning',
         source='vaibify/gui/routes/repoRoutes.py',
-        old='        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)\n        fnBumpSyncEpoch(dictCtx, sContainerId)\n        if dictResult.get("bSuccess"):',
-        new='        dictResult = syncDispatcher.fdictSyncResult(iExit, sOut)\n        fnBumpSyncEpoch(dictCtx, sContainerId)\n        if not dictResult.get("bSuccess"):',
+        old='    fnBumpSyncEpoch(dictCtx, sContainerId)\n    if not dictResult.get("bSuccess"):\n        return dictResult',
+        new='    fnBumpSyncEpoch(dictCtx, sContainerId)\n    if dictResult.get("bSuccess"):\n        return dictResult',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_unattested_blocker_requires_a_declaration_step',
@@ -2073,20 +2085,20 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_clean_declaration_really_untracks_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo,\n        )',
-        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo, listFilePaths=[request.sPath],\n        )',
+        old='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo,\n    )',
+        new='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo, listFilePaths=[sPath],\n    )',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_modified_declaration_untracks_not_commits_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo,\n        )',
-        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitCommitInContainer,\n            docker, sContainerId,\n            "[vaibify] remove AI declaration from the repo",\n            sWorkspace=sRepo, listFilePaths=[request.sPath],\n        )',
+        old='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo,\n    )',
+        new='    iExit, sOut = containerGit.ftResultGitCommitInContainer(\n        docker, sContainerId,\n        "[vaibify] remove AI declaration from the repo",\n        sWorkspace=sRepo, listFilePaths=[sPath],\n    )',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_untrack_refuses_when_other_changes_staged_real_git',
         source='vaibify/gui/routes/gitRoutes.py',
-        old='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if iExit != 0:',
-        new='        iExit, sOut = await asyncio.to_thread(\n            containerGit.ftResultGitDiffCachedQuietInContainer,\n            docker, sContainerId, sWorkspace=sRepo,\n        )\n        if False and iExit != 0:',
+        old='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if iExit != 0:',
+        new='    iExit, sOut = containerGit.ftResultGitDiffCachedQuietInContainer(\n        docker, sContainerId, sWorkspace=sRepo,\n    )\n    if False and iExit != 0:',
     ),
 
     # --- 2026-07-11: per-step falsification attestation honesty guards ---
@@ -2204,8 +2216,18 @@ def _fdictEntry(sRel):
         # route test — the unit fixtures had encoded the same wrong key.
         nodeid='tests/testStepRoutes.py::testAlignRouteMovesTheMarkerThroughRealWiring',
         source='vaibify/gui/routes/stepRoutes.py',
-        old='                    dictCtx["paths"].get(sContainerId, ""),',
-        new='                    dictWorkflow.get("sPath", ""),',
+        # Re-anchored 2026-08-05: the alignment loop moved out of the
+        # handler into the mode-(b) worker, so the line dedented, and
+        # the path expression alone now occurs twice (the rename cascade
+        # passes it too). The preceding argument line disambiguates.
+        old=(
+            '                dictWorkflow, iIndex, dictPlan,\n'
+            '                dictCtx["paths"].get(sContainerId, ""),'
+        ),
+        new=(
+            '                dictWorkflow, iIndex, dictPlan,\n'
+            '                dictWorkflow.get("sPath", ""),'
+        ),
     ),
     Falsification(
         # A short-circuited warnings builder makes a manual
@@ -2223,7 +2245,7 @@ def _fdictEntry(sRel):
         nodeid='tests/testReplayRoutes.py::test_hash_route_rejects_agent_token_lane',
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
-            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"]()\n'
             '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
         ),
@@ -2419,13 +2441,15 @@ def _fdictEntry(sRel):
         # cascade recorded is lost on the next load.
         nodeid='tests/testStepRoutes.py::testRenameRoutePersistsAnUnrecoverableSplit',
         source='vaibify/gui/routes/stepRoutes.py',
+        # Re-anchored 2026-08-05: the branch moved into the mode-(b)
+        # worker and its comment moved up into the wrapper's docstring,
+        # where the save-then-poison ordering is now explained in full.
+        # The mutation is unchanged in meaning -- delete the branch and
+        # StepRenameSplitError falls through to the generic RuntimeError
+        # clause, which 500s without ever saving.
         old="""        except stepRename.StepRenameSplitError as error:
-            # The directory moved and could not be put back. The
-            # workflow now records where the bytes actually are, so it
-            # has to be PERSISTED or the nonconforming warning that
-            # leads the researcher to the repair is lost on reload.
             dictCtx["save"](sContainerId, dictWorkflow)
-            raise HTTPException(500, str(error))
+            raise HTTPException(500, str(error)) from error
 """,
         new='',
     ),
@@ -2531,7 +2555,7 @@ def _fdictEntry(sRel):
         nodeid='tests/testReplayRoutes.py::test_context_import_rejects_agent_token_lane',
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
-            '        _fnRejectAgentTokenLane(requestHttp)\n'
+            '        fnRejectAgentTokenLane(requestHttp)\n'
             '        dictCtx["require"]()\n'
             '        dictWorkflow = fdictRequireWorkflow('
         ),
@@ -2730,19 +2754,28 @@ def _fdictEntry(sRel):
         nodeid='tests/testSyncEpoch.py::test_verify_remote_bumps_sync_epoch',
         source='vaibify/gui/routes/syncRoutes.py',
         old="""        fnBumpSyncEpoch(dictCtx, sContainerId)
-        return dictStatus""",
-        new="""        return dictStatus""",
+        return dictCarried["dictStatus"]""",
+        new="""        return dictCarried["dictStatus"]""",
     ),
     Falsification(
         # An out-of-band push produces no HTTP traffic; this route is
         # the only thing that can invalidate an open tab.
         nodeid='tests/testSyncEpoch.py::test_reconcile_remote_state_bumps_sync_epoch',
         source='vaibify/gui/routes/gitRoutes.py',
-        old="""        )
-        fnBumpSyncEpoch(dictCtx, sContainerId)
-        return dictResponse""",
-        new="""        )
-        return dictResponse""",
+        # Disambiguated 2026-08-05: the migrated untrack route grew an
+        # identical three-line tail, so the snippet now names the
+        # verify-status assignment this route alone performs.
+        old="""        dictResponse["dictVerifyStatus"] = (
+            _fdictReconcileSyncStatusFromVerify(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+            )
+        )
+        fnBumpSyncEpoch(dictCtx, sContainerId)""",
+        new="""        dictResponse["dictVerifyStatus"] = (
+            _fdictReconcileSyncStatusFromVerify(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+            )
+        )""",
     ),
     Falsification(
         # A file the verify never looked at must not be recorded as
@@ -4468,5 +4501,2823 @@ def _fdictEntry(sRel):
         source='tools/mutationAttribution.py',
         old='        "sCarrierInvocation": sCarrierInvocation,',
         new='        "sCarrierInvocationDropped": sCarrierInvocation,',
+    ),
+    Falsification(
+        nodeid='tests/testSkillIntegrity.py::testThePathCheckerRefusesToPassOnAnEmptyScan',
+        source='tools/checkAgentDocsPaths.py',
+        old='    if not listDocs:',
+        new='    if False:',
+    ),
+    Falsification(
+        nodeid='tests/testSkillIntegrity.py::testTheTreeExclusionIsRelativeToTheRepositoryRoot',
+        source='tools/checkAgentDocsPaths.py',
+        old='for sPart in pathRelative.parts',
+        new='for sPart in pathCandidate.parts',
+    ),
+
+    # --- R4: no unauthorised capability anywhere the hub can reach ---
+    #
+    # The unnamed-authority mutation is applied to the SOURCE, not to the
+    # record: an authority arriving in a hub-reachable module is the
+    # event the rule exists for, and mutating the record instead would
+    # only prove the record can be edited. pipelineUtils is the leaf
+    # module -- it holds no capability of any kind, so a subprocess
+    # import there is unambiguously new.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testEveryHubReachableRawCapabilityIsNamedIndividually'
+        ),
+        source='vaibify/gui/pipelineUtils.py',
+        old='"""Pure utility functions for pipeline execution (leaf module).',
+        new=(
+            'import subprocess\n\n'
+            '"""Pure utility functions for pipeline execution (leaf module).'
+        ),
+    ),
+    # The transitive half. buildRoutes imports imageBuilder directly for
+    # an unrelated helper, so the real chain is only visible with that
+    # shortcut edge set aside -- which is why a one-hop reading of
+    # reachability passes every other check here and still authorises
+    # `docker build` by omission.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testTheRealBuildChainIsReachedThroughItsMiddleModule'
+        ),
+        source='tests/testCapabilityAuthorities.py',
+        old='    while listStack:\n        sModule = listStack.pop()',
+        new='    while False and listStack:\n        sModule = listStack.pop()',
+    ),
+    # The synthetic chain, unrelated to the build chain, driven route ->
+    # helper -> raw authority through the same closure.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testAnUnnamedAuthorityBehindAHelperIsStillReported'
+        ),
+        source='tests/testCapabilityAuthorities.py',
+        old='    setSeen = set(setSeeds)\n    listStack = list(setSeen)',
+        new='    setSeen = set(setSeeds)\n    listStack = []',
+    ),
+    # The one CLASS disposition, kept from stretching. The mutation is on
+    # the record because the record IS the artifact this guard polices:
+    # filing a real client under the exception-type class is the failure
+    # mode, and it can only be written there.
+    Falsification(
+        nodeid=(
+            'tests/testCapabilityAuthorities.py::'
+            'testTheExceptionTypeClassOnlyEverCoversAnException'
+        ),
+        source='tests/testCapabilityAuthorities.py',
+        old=(
+            '    "cli/configLoader.py|fbDockerAvailable|docker-client|'
+            'docker|import|0":\n        _fdictAuthority(\n'
+            '            ["host-cli", "http"],'
+        ),
+        new=(
+            '    "cli/configLoader.py|fbDockerAvailable|docker-client|'
+            'docker|import|0":\n        _fdictAuthority(\n'
+            '            [S_LANE_EXCEPTION_TYPE],'
+        ),
+    ),
+
+    # --- Blind-spot dispositions: a ruling bound to what it read ---
+    #
+    # The gated helper is the one generic command authority under
+    # vaibify/gui/. It is disposed of as an EXCEPTIONAL authority on the
+    # strength of two structural constraints, and these are the mutants
+    # that prove each constraint is real rather than described.
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testTheGatedHelperNeverActsWhenTheJournalRefusesIt'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    "import os, sys, subprocess\\n"\n'
+            '    "sGateLine = sys.stdin.readline()\\n"\n'
+        ),
+        new=(
+            '    "import os, sys, subprocess\\n"\n'
+            '    "subprocess.call(sys.argv[1:])\\n"\n'
+            '    "sGateLine = sys.stdin.readline()\\n"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommitCarrier.py::'
+            'testTheGatedHelperIsConstrainedByItsHolderIdentity'
+        ),
+        source='vaibify/config/mutationAdmission.py',
+        old='        if dictOwnRecord.get(sIdentityKey) != valueExpected:',
+        new=(
+            '        if False and dictOwnRecord.get(sIdentityKey) != '
+            'valueExpected:'
+        ),
+    ),
+    # A fingerprint proves "same site". It does not preserve "somebody
+    # reviewed this", and the gap is a constant two files away from the
+    # call: "the executable is git and the flags are a module constant"
+    # is a claim about THAT symbol, which the site hashes never see.
+    Falsification(
+        nodeid=(
+            'tests/testBlindSpotDispositions.py::'
+            'testADispositionExpiresWhenItsSupportingSymbolsChange'
+        ),
+        source='vaibify/reproducibility/gitHardening.py',
+        old='LIST_GIT_CREDENTIAL_ISOLATION_CONFIG = [',
+        new=(
+            'LIST_GIT_CREDENTIAL_ISOLATION_CONFIG = [\n'
+            '    "-c", "credential.helper=osxkeychain",'
+        ),
+    ),
+    # --- The lifecycle audit: findings, not a family declaration ---
+    #
+    # The population is resolved from the live application, so the mutant
+    # is a route JOINING the family rather than a list somebody forgot to
+    # extend -- which is the way an unaudited lifecycle route would
+    # actually arrive.
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleRouteAuthority.py::'
+            'testEveryLifecycleRouteHasBeenAuditedIndividually'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    ("POST", "/api/containers/{sName}/build"): '
+            'S_SCOPE_BROWSER_HUB,'
+        ),
+        new=(
+            '    ("POST", "/api/containers/{sName}/build"): '
+            'S_SCOPE_CONTAINER_LIFECYCLE,'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleRouteAuthority.py::'
+            'testTheRecordedLockAndJournalFactsMatchTheSource'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    from vaibify.docker import containerManager\n'
+            '    from vaibify.config.keepAliveManager import fnStopKeepAlive'
+        ),
+        new=(
+            '    from vaibify.gui.sessionLifecycle import '
+            'flockContainerMutationForAppState  # noqa: F401\n'
+            '    from vaibify.docker import containerManager\n'
+            '    from vaibify.config.keepAliveManager import fnStopKeepAlive'
+        ),
+    ),
+    # The pin on a documented refusal that no state transition reaches.
+    # It fires the moment somebody makes it reachable, which is exactly
+    # when the cancel route's recorded transfer behaviour needs re-reading.
+    Falsification(
+        nodeid=(
+            'tests/testLifecycleRouteAuthority.py::'
+            'testTheTransferRefusalForACancellingTaskCannotFire'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old='def _fbDurableTaskStillCurrent(appState, recordTask):',
+        new=(
+            'def _fnCancelDurableTask(recordTask):\n'
+            '    recordTask.sState = "cancelling"\n\n\n'
+            'def _fbDurableTaskStillCurrent(appState, recordTask):'
+        ),
+    ),
+
+    # ------------------------------------------------------------------
+    # Phase 1c: the carrier-mode declaration mechanism.
+    #
+    # The two audit mutants below are deliberately separate branches of
+    # _ftJudgeOneObservation, and each was confirmed to kill ONLY its own
+    # test: a shape protected by two guards survives every single
+    # mutation and proves nothing about either.
+    # ------------------------------------------------------------------
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testDeclaringMintsNoAdmission'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    if ftResolveCarrierDeclaration(route.endpoint):\n'
+            '        return False\n'
+            '    return fbRouteAwaitsCarrierMode(route.methods, route.path)\n'
+        ),
+        new='    del route\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testARouteNeitherDeclaredNorAwaitingFailsClosed'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    setKeys = {(sMethod, sPath) for sMethod in '
+            '(setMethods or ())}\n'
+            '    if not setKeys:\n'
+            '        return False\n'
+            '    return setKeys <= SET_ROUTES_AWAITING_CARRIER_MODE\n'
+        ),
+        new='    del setMethods, sPath\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testEveryContainerScopedRouteEitherDeclaresOrIsRecordedAsAwaiting'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # Anchored on two adjacent CONTAINER-READ entries, which are
+        # the members that stay awaiting by decision (2026-08-05). The
+        # entry named the pipeline kill route until phase 2 migrated
+        # it, and would have gone stale again on every migration; the
+        # read pair cannot. Two lines rather than one because every
+        # awaiting GET also appears in SET_CONTAINER_READ_ROUTES, and
+        # only the ADJACENCY of these two is unique to the allow-list
+        # (the read set separates them with plot-standards).
+        #
+        # RECORDED COLLATERAL, intrinsic rather than drift: also fails
+        # testTheDeclaringPopulationPartitionsWithNothingLeftOver and
+        # testTheDeclarationIndexReadsTheLiveApplication. Dropping a
+        # route from the allow-list without declaring it is exactly the
+        # state those two exist to detect, so no mutation can produce
+        # this one's failure without producing theirs. The entry's
+        # previous form had the same collateral, unrecorded.
+        old=(
+            '    ("GET", "/api/steps/{sContainerId}/{iStepIndex}'
+            '/falsification"),\n'
+            '    ("GET", "/api/sync/{sContainerId}/check/{sService}"),\n'
+        ),
+        new=(
+            '    ("GET", "/api/steps/{sContainerId}/{iStepIndex}'
+            '/falsification"),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierModeDeclaration.py::'
+            'testTheAwaitingAllowListMayOnlyShrink'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old='SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({\n',
+        new=(
+            'SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({\n'
+            '    ("POST", "/api/newly-invented/{sContainerId}/action"),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierIntentAudit.py::'
+            'testATypedReadDeclarationThatMutatesIsAViolation'
+        ),
+        source='tools/carrierIntentAudit.py',
+        old=(
+            '        return ("listViolations", _fdictRecordJudgement(\n'
+            '            dictObservation, S_VIOLATION_TYPED_READ_MUTATED,\n'
+            '        ))\n'
+        ),
+        new=(
+            '        return ("listConfirmed", _fdictRecordJudgement(\n'
+            '            dictObservation, "",\n'
+            '        ))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierIntentAudit.py::'
+            'testADeclaredModeObservedOnTheAmbientAdmissionIsAViolation'
+        ),
+        source='tools/carrierIntentAudit.py',
+        old=(
+            '    return ("listViolations", _fdictRecordJudgement(\n'
+            '        dictObservation, S_VIOLATION_MODE_UNDECLARED,\n'
+            '    ))\n'
+        ),
+        new=(
+            '    return ("listConfirmed", _fdictRecordJudgement(\n'
+            '        dictObservation, "",\n'
+            '    ))\n'
+        ),
+    ),
+
+    # ------------------------------------------------------------------
+    # Phase 2 group 1: the routes migrated onto the enforced branch.
+    #
+    # Each mutant deletes ONE route's carrier call, and each was
+    # confirmed to kill ONLY its own test. The first attempt at these
+    # kills failed to kill at all: it was run against
+    # tests/testDraftRoutes.py, whose Docker mock answers a write by
+    # storing bytes and never calls the admission gate, so deleting the
+    # carrier outright left 17 tests passing. The double in
+    # testCarrierMigratedRoutes.py calls the same gates the real
+    # DockerConnection calls, which is why these kills are kills.
+    # ------------------------------------------------------------------
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDraftSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/draftRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+            '        fnWriteTheDraft,\n'
+        ),
+        new=(
+            '    fnWriteTheDraft()\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDraftDeleteCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/draftRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+            '        fnRemoveTheDraft,\n'
+        ),
+        new=(
+            '    fnRemoveTheDraft()\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sDraftPath,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheFileSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sNormalized,'
+            '\n'
+            '        fnWriteTheFile,\n'
+        ),
+        new=(
+            '    fnWriteTheFile()\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sNormalized,'
+            '\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSettingsSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/settingsRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        appState, dictLaneTuple["sContainerName"], '
+            'sContainerId,\n'
+            '        dictLaneTuple, "file-write",\n'
+        ),
+        new=(
+            '    dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '    _tupleUncarriedArguments = (\n'
+            '        appState, dictLaneTuple["sContainerName"], '
+            'sContainerId,\n'
+            '        dictLaneTuple, "file-write",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnmigratedRouteStillReachesThePrimitiveOnTheAmbientMint'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    if ftResolveCarrierDeclaration(route.endpoint):\n'
+            '        return False\n'
+            '    return fbRouteAwaitsCarrierMode(route.methods, route.path)\n'
+        ),
+        new=(
+            '    if ftResolveCarrierDeclaration(route.endpoint):\n'
+            '        return False\n'
+            '    return False\n'
+        ),
+    ),
+
+    # ------------------------------------------------------------------
+    # Phase 2 group 2: the lock-held migration of the clean route.
+    #
+    # The recorded mutation for the transfer test restores the EXACT
+    # pre-migration code -- a bare asyncio.to_thread holding no lock --
+    # so the kill re-creates the named live exploit rather than an
+    # approximation of it. It kills the mode test too, and correctly:
+    # dropping the drain breaks both the refusal and the observed mode.
+    # Each test also has an isolating mutant, checked by hand: the save
+    # bypass below fails only the mode test, and making
+    # fsDescribeLiveMutationWork return a bare "a guarded operation"
+    # fails only the transfer test (its naming assertion).
+    # ------------------------------------------------------------------
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testATransferArrivingMidCleanIsRefusedAndNamesTheClean'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    return await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"clean-outputs",\n'
+            '        ftDeleteTheOutputs,\n'
+            '    )\n'
+        ),
+        new='    return await asyncio.to_thread(ftDeleteTheOutputs, None)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCleanDeletesUnderTheDrainAndSavesSynchronously'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the cleaned outputs",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePlotConversionRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"standardize-plots",\n'
+            '        flistConvertThePlots,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"standardize-plots",\n'
+            '        flistConvertThePlots, {"sDockerContainerId": '
+            'sContainerId},\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePlotStandardizationSavesSynchronously'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n            dictCtx, sContainerId, dictWorkflow, request,\n            "Recording the standardized plots",\n        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRepoSidecarRewriteRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    return await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            'sOperationTarget,\n'
+            '        fgenericRewriteTheSidecar,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await asyncio.to_thread(fgenericRewriteTheSidecar, None)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePlotStandardsCheckReachesNoMutatingPrimitive'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        old=(
+            '    listExists = await asyncio.gather(*[\n'
+            '        asyncio.to_thread(\n'
+            '            dictCtx["docker"].fbContainerPathIsFile,\n'
+            '            sContainerId, _fsStandardPathForPlot('
+            'sResolved, sBasename),\n'
+            '        )\n'
+            '        for sResolved, sBasename in listPlots\n'
+            '    ])\n'
+            '    return dict(zip(listBasenames, listExists))\n'
+        ),
+        new=(
+            '    sCheckCommand = " && ".join(\n'
+            '        f\'test -f {fsShellQuote('
+            '_fsStandardPathForPlot(s, b))}\'\n'
+            '        f\' && echo "Y" || echo "N"\'\n'
+            '        for s, b in listPlots\n'
+            '    )\n'
+            '    tResult = await asyncio.to_thread(\n'
+            '        dictCtx["docker"].ftResultExecuteCommand,\n'
+            '        sContainerId, sCheckCommand,\n'
+            '    )\n'
+            '    listLines = (tResult[1] if tResult else "").strip()'
+            '.split("\\n")\n'
+            '    return {\n'
+            '        sBasename: (\n'
+            '            listLines[iIdx].strip() == "Y" '
+            'if iIdx < len(listLines)\n'
+            '            else False\n'
+            '        )\n'
+            '        for iIdx, sBasename in enumerate(listBasenames)\n'
+            '    }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypeAloneStopsTheSwallow.py::'
+            'testARefusalIsNotCaughtByABareExceptOsError'
+        ),
+        source='vaibify/config/mutationAdmission.py',
+        old='class ControlPlaneRefusalError(Exception):',
+        new='class ControlPlaneRefusalError(PermissionError):',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRepoTrackRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        # Retargeted 2026-08-05: the settle-then-raise ordering moved to
+        # routeContext.fgenericRunWorkerUnderTheDrain on its fourth caller,
+        # so the drain invocation this used to mutate no longer lives in
+        # repoRoutes. The DELEGATION to it does, and is this module's
+        # own call site. It swaps the MODE rather than dropping the
+        # admission, for the reason the test's own docstring gives:
+        # reaching the exec unadmitted 500s the route before its refusal
+        # can be observed, so that mutant fails
+        # testAnExpectedRefusalLeavesTheContainerUsable too and isolates
+        # neither. Verified: this one fails that test alone.
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictHandleRunTheEffect, sOperationTarget, requestHttp,\n    )\n'
+        ),
+        new=(
+            '    from .. import commitCarrier\n    dictLaneTuple = fdictRequireLaneTupleForCommit(\n        requestHttp, sContainerId, sOperationTarget,\n    )\n    dictCarried = commitCarrier.fdictCommitSynchronousMutation(\n        requestHttp.app.state, dictLaneTuple["sContainerName"],\n        sContainerId, dictLaneTuple, "helper", sOperationTarget,\n        fdictHandleRunTheEffect, {"sDockerContainerId": sContainerId},\n    )["result"]\n    if dictCarried["errorRefused"] is not None:\n        raise dictCarried["errorRefused"]\n    return dictCarried["objResult"]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRepositoryPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper",\n'
+            '        _fsDescribePushTarget(sRepoName, ""), '
+            'fdictPushUnderTheSupervisor,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper",\n'
+            '        _fsDescribePushTarget(sRepoName, ""), '
+            'fdictPushUnderTheSupervisor,\n'
+            '        {"sDockerContainerId": sContainerId},\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePostPushVerifyRewritesTheSyncCacheUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    return await fsRefreshVerifyCacheAfterPush(\n'
+            '        dictCtx, sContainerId, dictWorkflow, "github",\n'
+            '        requestHttp=requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await fsRefreshVerifyCacheAfterPush(\n'
+            '        dictCtx, sContainerId, dictWorkflow, "github",\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testALivePushNamesItsRemoteWithoutLeakingItsToken'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        old=(
+            '    return (\n'
+            '        "github-push " + sRepoName + " -> "\n'
+            '        + fsRedactCredentials(sRemoteUrl)\n'
+            '    )\n'
+        ),
+        new=(
+            '    return (\n'
+            '        "github-push " + sRepoName + " -> "\n'
+            '        + sRemoteUrl\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnExpectedRefusalLeavesTheContainerUsable'
+        ),
+        source='vaibify/gui/routes/repoRoutes.py',
+        # Retargeted 2026-08-05: the 4xx/5xx split moved to
+        # routeContext.fdictCarryARefusalBackInsteadOfRaising when
+        # gitRoutes became its third caller. Mutating the shared helper
+        # would kill this test AND the workflow-creation and git ones,
+        # isolating nothing, so each caller's entry now names its OWN
+        # call site: bypassing the capture here re-raises the 409 inside
+        # the worker and quarantines the container.
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fnEffect)\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, '
+            '"objResult": fnEffect()}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationBoundary.py::'
+            'testAnExistenceProbeSurvivesAnEnforcedLane'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '        return self.connectionDocker.fbContainerPathIsFile(\n'
+            '            self.sContainerId, self._fsAbsolute(sRelPath),\n'
+            '        )\n'
+        ),
+        new=(
+            '        iExitCode, _s = self._ftExec(\n'
+            '            "test -f " + fsShellQuotePosix('
+            'self._fsAbsolute(sRelPath)),\n'
+            '        )\n'
+            '        return iExitCode == 0\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelGatesRefusalPropagation.py::'
+            'testAGateNeverSwallowsAnAdmissionRefusal'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        dictEntries = filesRepo.fdictHashFiles(listRelPaths)\n'
+            '    except (OSError, ValueError) as error:\n'
+            '        fnReRaiseControlPlaneRefusal(error)\n'
+            '        return None\n'
+        ),
+        new=(
+            '        dictEntries = filesRepo.fdictHashFiles(listRelPaths)\n'
+            '    except (OSError, ValueError):\n'
+            '        return None\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testBlindSpotDispositions.py::'
+            'testEveryGuiBlindSpotCarriesADisposition'
+        ),
+        source='vaibify/gui/workspacePath.py',
+        old='import subprocess',
+        new=(
+            'import subprocess\n\n\n'
+            'def fnLaunchAnythingAtAll(listCommand):\n'
+            '    """A launch whose argv nobody can read."""\n'
+            '    return subprocess.run(listCommand, capture_output=True)'
+        ),
+    ),
+
+    # The three test-execution routes. Each mutant below was confirmed
+    # to kill EXACTLY ONE of the three tests -- a clean diagonal. The
+    # obvious mutants (delete the carrier call) were tried first and
+    # rejected: an unadmitted mutation refuses, and a refusal empties
+    # the hash ledger every later test reads, so one defect killed two
+    # or three tests and none of them was isolated. All three are mode
+    # SWAPS for that reason, which is also the sharper claim -- the
+    # route reached the container under a real admission, just the
+    # wrong one, so "it did not raise" would not catch any of them.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", sTarget, '
+            'ftProbeThenRun,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", sTarget, '
+            'ftProbeThenRun,\n'
+            '        {"iHolderPid": __import__("os").getpid(),\n'
+            '         "iHolderProcessGroup": __import__("os").getpgrp()},\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheAutoArchiveProbeRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '    await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", "auto-archive", '
+            'fbArchive,\n'
+            '    )\n'
+        ),
+        new=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", "auto-archive", '
+            'fbArchive,\n'
+            '        {"iHolderPid": __import__("os").getpid(),\n'
+            '         "iHolderProcessGroup": __import__("os").getpgrp()},\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheTestResultSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the test results",\n'
+            '        )\n'
+        ),
+        new=(
+            '        await _ftProbeLevelThenRunUnderTheDrain(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "run-tests-save",\n'
+            '            lambda: dictCtx["save"](sContainerId, dictWorkflow),\n'
+            '        )\n'
+        ),
+    ),
+
+    # The run-dispatch gate over the carrier's live-work registry. The
+    # two mutants are deliberately opposite in direction -- one makes
+    # the refusal uninformative, the other makes it fire when it must
+    # not -- because a gate like this has two ways to be wrong and only
+    # one of them looks like a failure. A third mutant (degrade to
+    # fbContainerHasLiveMutationWork plus a generic string) was tried
+    # and lands on the naming test, not the false-refusal one; it is
+    # recorded in that test's docstring rather than here, since a
+    # second entry for the same kill would double-count one guard.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARunArrivingUnderALiveCarrierWorkerIsRefusedAndNamesIt'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '                await fnCallback(\n'
+            '                    _fdictBusyRefusalEvent(\n'
+            '                        sAction, dictRequest, sBusyWork,\n'
+            '                    ),\n'
+            '                )\n'
+        ),
+        new=(
+            '                await fnCallback(\n'
+            '                    _fdictBusyRefusalEvent(\n'
+            '                        sAction, dictRequest,\n'
+            '                    ),\n'
+            '                )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testASynchronousSaveNeverMakesTheRunGateRefuse'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    return commitCarrier.fsDescribeLiveMutationWork(\n'
+            '        dictDurableContext["appState"], '
+            'dictDurableContext["sName"],\n'
+            '    )\n'
+        ),
+        new=(
+            '    from vaibify.config import mutationAdmission\n'
+            '    if mutationAdmission.fbLaneEnforced():\n'
+            '        return "a guarded operation"\n'
+            '    return commitCarrier.fsDescribeLiveMutationWork(\n'
+            '        dictDurableContext["appState"], '
+            'dictDurableContext["sName"],\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        # has-credential reads the researcher's HOST keyring and
+        # ignores the container id in its own path. It is a GET, so
+        # the catalog's agent-lane gate never sees it; without the
+        # handler's own refusal an in-container agent learns whether
+        # the researcher stores an Overleaf token.
+        nodeid=(
+            'tests/testAgentLaneEnforcement.py::'
+            'test_has_credential_refuses_the_agent_lane'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fnRejectAgentTokenLane(requestHttp)\n'
+            '        dictCtx["require"]()\n'
+            '        syncDispatcher.fnValidateServiceName(sService)\n'
+            '        return {\n'
+            '            "bHasCredential": '
+            '_fbServiceHasStoredCredential(sService),\n'
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        syncDispatcher.fnValidateServiceName(sService)\n'
+            '        return {\n'
+            '            "bHasCredential": '
+            '_fbServiceHasStoredCredential(sService),\n'
+        ),
+    ),
+
+    # --- The seven declaration saves, carrier mode (a) (2026-08-05) ---
+    # One entry for a parametrized family, matching the convention the
+    # two push families already use: the invariant requires exactly one
+    # entry per marked FUNCTION. The registered mutant reverts the
+    # ai-models/declare call site; the other six call sites were each
+    # kill-confirmed by hand on 2026-08-05 and each killed only its own
+    # parameter case, which is what establishes that sharing
+    # fdictCommitWorkflowSave did not collapse seven guards into one
+    # untested claim.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeclarationSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The AI-model declaration",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    # --- The six step-CRUD saves, carrier mode (a) (2026-08-05) ---
+    # One entry for the parametrized family, same convention as above.
+    # The registered mutant reverts the create call site. All six were
+    # kill-confirmed by hand on 2026-08-05 and each killed only its own
+    # parameter case (create additionally kills the warning-flag test
+    # below, which must drive create to reach the flag at all).
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepEditCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The step creation",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    # The create route's SECOND save. Registered separately because it
+    # is a separate call site, and because this mutant is what proves
+    # the family above does NOT cover it: reverting the warning-flag
+    # save kills ONLY this test and none of the six parameter cases.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheHundredStepWarningSaveIsCarriedToo'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '            fdictCommitWorkflowSave(\n'
+            '                dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '                "The hundred-step warning flag",\n'
+            '            )\n'
+            '        return {\n'
+            '            "iIndex": iIndex,\n'
+        ),
+        new=(
+            '            dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '        return {\n'
+            '            "iIndex": iIndex,\n'
+        ),
+    ),
+
+    # --- The file upload, carrier mode (a) (2026-08-05) ---
+    # Measured while confirming this: with the carrier call removed the
+    # twelve upload tests in tests/testFileEndpointsAndMiddleware.py
+    # ALL still passed, and only the test below failed. That is the
+    # finding tests/testCarrierMigratedRoutes.py exists for, reproduced
+    # on a fresh route rather than taken on trust.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheFileUploadCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '    commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, '
+            'dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "file-write", '
+            'sNormalized,\n'
+            '        fnWriteTheUpload,\n'
+            '        {\n'
+            '            "sDockerContainerId": sContainerId,\n'
+            '            "sExpectedSha256": '
+            'hashlib.sha256(baContent).hexdigest(),\n'
+            '            "sPriorSha256": sPriorSha256,\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new='    fnWriteTheUpload()\n',
+    ),
+
+    # --- Project creation, carrier mode (b) (2026-08-05) ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectCreationRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '    dictOutcome = await '
+            'commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, '
+            'dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"create-project",\n'
+            '        fdictProbeThenCreate,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new='    return fdictProbeThenCreate()\n',
+    ),
+
+    # The separate guard inside that route: an expected 4xx must be
+    # RETURNED from the worker, never raised out of it. Raising poisons
+    # the journal record and quarantines the container, so a researcher
+    # who picked a filename already in use is told to reconcile. This
+    # mutant kills ONLY the refusal test, which is what establishes the
+    # two guards are separately proven rather than jointly assumed.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARefusedProjectCreationLeavesTheContainerUsable'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        # Retargeted 2026-08-05 for the same reason as the repoRoutes
+        # entry above: the split now lives in the shared
+        # routeContext helper, so this names THIS route's call of it.
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: _fsProbeThenWriteNewWorkflow(\n'
+            '                dictCtx["docker"], sContainerId, request, '
+            'sFileName,\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, "objResult":\n'
+            '            _fsProbeThenWriteNewWorkflow(\n'
+            '                dictCtx["docker"], sContainerId, request, '
+            'sFileName,\n'
+            '            )}\n'
+        ),
+    ),
+
+    # --- Five Sync-panel routes, carrier modes (a) and (b)
+    # (2026-08-05) ---
+    # Each mutant below was applied by hand, the whole
+    # testCarrierMigratedRoutes.py file run, the source restored from an
+    # in-memory copy and re-hashed byte-identical. Every one killed
+    # EXACTLY its own test, with one stated exception recorded on the
+    # arXiv save's entry.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSyncTrackingToggleCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The sync-tracking change",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGitIdentityWriteRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        iExit, sOut = await _ftWriteGitIdentityUnderTheDrain(\n'
+            '            dictCtx, sContainerId, sWorkdir,\n'
+            '            request.sName.strip(), request.sEmail.strip(), '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        iExit, sOut = await asyncio.to_thread(\n'
+            '            _ftWriteGitIdentity,\n'
+            '            dictCtx["docker"], sContainerId, sWorkdir,\n'
+            '            request.sName.strip(), request.sEmail.strip(),\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSingleFileGithubPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictResult = await _fdictRunAddFileUnderTheDrain(\n'
+            '            dictCtx, sContainerId, sWorkdir, request, '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResult = await asyncio.to_thread(\n'
+            '            _fdictRunGithubAddFileBlocking,\n'
+            '            dictCtx, sContainerId, sWorkdir, request,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteVerifyRewritesItsCacheUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictCarried = await _fdictVerifyRemoteUnderTheDrain(\n'
+            '            dictWorkflow, sService, filesRepo, sContainerId, '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCarried = {\n'
+            '            "dictStatus": await asyncio.to_thread(\n'
+            '                fdictRunRemoteVerifyBlocking, dictWorkflow, '
+            'sService,\n'
+            '                filesRepo,\n'
+            '            ),\n'
+            '            "errorRemote": None,\n'
+            '        }\n'
+        ),
+    ),
+
+    # The arXiv handler's mode-(a) half. This mutant kills BOTH arXiv
+    # tests, not one, and the reason is sequencing rather than a weak
+    # assertion: the save runs first, so an unadmitted write 500s the
+    # handler before the verify that would rewrite the cache can run.
+    # Recorded here so a re-confirmation run does not read the second
+    # failure as drift. The reverse direction DOES isolate -- see the
+    # entry below.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheArxivConfigureSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictRemotes["arxiv"] = dictConfig\n'
+            '    fdictCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The arXiv configuration",\n'
+            '    )\n'
+        ),
+        new=(
+            '        dictRemotes["arxiv"] = dictConfig\n'
+            '    dictCtx["save"](sContainerId, dictWorkflow)\n'
+        ),
+    ),
+
+    # The arXiv handler's mode-(b) half, and the entry that proves the
+    # two are separately guarded: removing this carrier failed ONLY this
+    # test while the save's test still passed. It isolates because
+    # _fdictRunArxivVerifyAfterConfig catches the refusal and reports it
+    # as sVerifyError, so the response stays 200 and only the cache
+    # write goes missing from the ledger.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheArxivCacheRewriteRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictVerify = await _fgenericRunArxivCacheWorkUnderTheDrain(\n'
+            '            sContainerId, requestHttp, "arxiv-verify",\n'
+            '            lambda: _fdictRunArxivVerifyAfterConfig(\n'
+            '                dictWorkflow,\n'
+            '                ffilesForWorkflow(dictCtx, sContainerId, '
+            'dictWorkflow),\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictVerify = await asyncio.to_thread(\n'
+            '            _fdictRunArxivVerifyAfterConfig, dictWorkflow,\n'
+            '            ffilesForWorkflow(dictCtx, sContainerId, '
+            'dictWorkflow),\n'
+            '        )\n'
+        ),
+    ),
+
+    # --- The two routes ruled WRITES governed elsewhere (2026-08-05) ---
+    # Neither is a carrier migration, so neither mutant removes a
+    # carrier. What each proves is that the route's separate-authority
+    # claim is checkable: reach a mutation-capable container primitive
+    # and the enforced branch refuses, which is what makes an empty
+    # gated ledger evidence rather than an assumption.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheHostFilePullReachesNoMutatingContainerPrimitive'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '    with open(sTargetPath, "wb") as fileTarget:\n'
+            '        for baChunk in connectionDocker.fiterStreamFile(\n'
+            '            sContainerId, sContainerPath,\n'
+            '        ):\n'
+            '            fileTarget.write(baChunk)\n'
+        ),
+        new=(
+            '    iExit, sOut = connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, "cat " + sContainerPath,\n'
+            '    )\n'
+            '    with open(sTargetPath, "wb") as fileTarget:\n'
+            '        fileTarget.write(sOut.encode("utf-8"))\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectCreationRequestMutatesOnlyHubState'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '        dictCtx["dictProjectCreationRequests"]'
+            '[sContainerId] = {\n'
+        ),
+        new=(
+            '        dictCtx["docker"].fnWriteFile(\n'
+            '            sContainerId, "/workspace/project.json", b"{}",\n'
+            '        )\n'
+            '        dictCtx["dictProjectCreationRequests"]'
+            '[sContainerId] = {\n'
+        ),
+    ),
+
+    # --- The git panel's six mutating routes, carrier modes (a) and
+    # (b) (2026-08-05). Every mutant is that ROUTE's own call of
+    # _fgenericRunGitWorkerUnderTheDrain reverted to a direct call of its
+    # worker, so each kills exactly its own test. Mutating the shared
+    # wrapper -- or the shared
+    # routeContext.fdictCarryARefusalBackInsteadOfRaising it calls --
+    # legitimately kills all of them at once, which is one guard
+    # reported once per route that depends on it, not six guards none
+    # of which is proven.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectRepoFetchRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        return await _fgenericRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictFetchThenReadStatus(\n'
+            '                dictCtx, sContainerId, sRepo, bCacheUsed,\n'
+            '            ),\n'
+            '            "git-fetch", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return _fdictFetchThenReadStatus(\n'
+            '            dictCtx, sContainerId, sRepo, bCacheUsed,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectRepoPullRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        return await _fgenericRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictCheckCleanThenFastForward(\n'
+            '                dictCtx, sContainerId, sRepo,\n'
+            '            ),\n'
+            '            "git-pull", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return _fdictCheckCleanThenFastForward(\n'
+            '            dictCtx, sContainerId, sRepo,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteRefreshRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictFetchThenCollectRemotes(\n'
+            '                dictCtx["docker"], sContainerId, sRepo, '
+            'bCacheUsed,\n'
+            '            ),\n'
+            '            "git-fetch", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictFetchThenCollectRemotes(\n'
+            '            dictCtx["docker"], sContainerId, sRepo, '
+            'bCacheUsed,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCanonicalCommitRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictScanThenCommitCanonical(\n'
+            '                dictCtx["docker"], sContainerId, '
+            'dictWorkflow, sRepo,\n'
+            '                request,\n'
+            '            ),\n'
+            '            "commit-canonical", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictScanThenCommitCanonical(\n'
+            '            dictCtx["docker"], sContainerId, dictWorkflow, '
+            'sRepo,\n'
+            '            request,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeclarationUntrackRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictRemoveDeclarationFromTheIndex(\n'
+            '                dictCtx["docker"], sContainerId, sRepo, '
+            'request.sPath,\n'
+            '            ),\n'
+            '            "untrack-ai-declaration", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictRemoveDeclarationFromTheIndex(\n'
+            '            dictCtx["docker"], sContainerId, sRepo, '
+            'request.sPath,\n'
+            '        )\n'
+        ),
+    ),
+    # This mutant kills BOTH reconcile tests, and that is straight-line
+    # sequencing rather than drift: the fetch runs first, so an
+    # unadmitted exec 500s the handler before the bookkeeping save the
+    # sibling test asserts on can run. The isolation is one-directional
+    # -- removing the SAVE's carrier below fails only its own test.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRemoteReconcileFetchesUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda: _fdictFetchThenCollectRemotes(\n'
+            '                dictCtx["docker"], sContainerId, sRepo, '
+            'False,\n'
+            '            ),\n'
+            '            "git-fetch", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResponse = _fdictFetchThenCollectRemotes(\n'
+            '            dictCtx["docker"], sContainerId, sRepo, False,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheReconcileBookkeepingSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '            "The reconcile bookkeeping save",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+    # The panel's own 5xx carry-back. Dropping 502 from the carried set
+    # sends a failed git fetch back through the default 4xx/5xx split,
+    # which re-raises it inside the worker -- poisoning the journal and
+    # quarantining the container over an unreachable remote.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnreachableRemoteLeavesTheContainerUsable'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})\n',
+        new='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset()\n',
+    ),
+    # --- Step routes that are not a plain save (phase 2, 2026-08-05) ---
+    #
+    # Each entry mutates the route's OWN call site. The rename has three
+    # separable guarantees -- the cascade's drain, the save sharing it,
+    # and the refusal being carried -- so each has its own lever; a
+    # single mutant covering all three would isolate none of them.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepRenameCascadeRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # Swaps the MODE rather than dropping the admission. Running the
+        # worker inline was tried first: the cascade then reaches the
+        # exec unadmitted and 500s, which fails the carried-refusal and
+        # split tests too, so one mutant landed on four shapes and
+        # isolated none.
+        #
+        # RECORDED COLLATERAL, and it is intrinsic rather than drift:
+        # this also fails testTheRenameCascadeSaveSharesTheCascadesDrain.
+        # The cascade and its save are ONE worker by design -- that IS
+        # the guarantee -- so no mutation can change the cascade's
+        # admission without changing the save's.
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictApplyTheRename, "rename-step", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    from .. import commitCarrier\n'
+            '    dictLaneTuple = fdictRequireLaneTupleForCommit(\n'
+            '        requestHttp, sContainerId, "rename-step",\n'
+            '    )\n'
+            '    dictCarried = commitCarrier.fdictCommitSynchronousMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", "rename-step",\n'
+            '        fdictApplyTheRename, {"sDockerContainerId": '
+            'sContainerId},\n'
+            '    )["result"]\n'
+            '    if dictCarried["errorRefused"] is not None:\n'
+            '        raise dictCarried["errorRefused"]\n'
+            '    return dictCarried["objResult"]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRenameCascadeSaveSharesTheCascadesDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # The save leaves the worker and becomes its OWN mode-(a)
+        # commit after the drain is released -- which is exactly what a
+        # reviewer would write if they read the cascade as "container
+        # work, then bookkeeping", and is a design that looks correct:
+        # the save is still carried, still journaled with its hash
+        # postcondition, and the route still answers 200. What it loses
+        # is the only thing that matters here, the drain held ACROSS
+        # both. A bare uncarried save was tried first and 500s the
+        # route, which fails the cascade's own test too.
+        old=(
+            '        dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '        return dictReport\n'
+            '\n'
+            '    def fdictApplyTheRename(supervisor=None):\n'
+            '        del supervisor\n'
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fdictRenameThenSave)\n'
+            '\n'
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictApplyTheRename, "rename-step", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '        return dictReport\n'
+            '\n'
+            '    def fdictApplyTheRename(supervisor=None):\n'
+            '        del supervisor\n'
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fdictRenameThenSave)\n'
+            '\n'
+            '    dictReportDone = await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictApplyTheRename, "rename-step", '
+            'requestHttp,\n'
+            '    )\n'
+            '    fdictCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The rename save",\n'
+            '    )\n'
+            '    return dictReportDone\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheRenamePreviewScanRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictScanTheScripts, '
+            '"rename-step-preview", requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    del requestHttp\n'
+            '    return stepRename.flistScanScriptsForOldName(\n'
+            '        dictCtx["docker"], sContainerId, dictWorkflow, '
+            'dictPlan,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDirectoryAlignmentBatchRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"align-step-directories",\n'
+            '        fdictAlignEveryStep,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new=(
+            '    return fdictAlignEveryStep()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testATakenStepNameIsRefusedWithoutQuarantiningTheContainer'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # Bypassing the capture re-raises the 409 inside the worker,
+        # which settles through the failure path and quarantines the
+        # container over a name that was already taken.
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fdictRenameThenSave)\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, '
+            '"objResult": fdictRenameThenSave()}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnrecoverableSplitSavesUnderTheDrainAndThenPoisons'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # Raise first, save second: the poison still happens, but the
+        # save never does, so the only pointer to the split is lost.
+        #
+        # RECORDED COLLATERAL, not drift: this also fails
+        # testStepRoutes.py::testRenameRoutePersistsAnUnrecoverableSplit,
+        # which has defended the same save since before the migration.
+        # The two are complementary rather than redundant -- that one
+        # proves the save happens, this one proves it happens BEFORE the
+        # record poisons -- but a single deletion of the save is
+        # correctly visible to both.
+        old=(
+            '        except stepRename.StepRenameSplitError as error:\n'
+            '            dictCtx["save"](sContainerId, dictWorkflow)\n'
+            '            raise HTTPException(500, str(error)) from error\n'
+        ),
+        new=(
+            '        except stepRename.StepRenameSplitError as error:\n'
+            '            raise HTTPException(500, str(error)) from error\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepUpdateSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The step update",\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCtx["save"](sContainerId, dictWorkflow)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old=(
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictRunTheUpdate, "update-step", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictCarried = fdictRunTheUpdate()\n'
+            '    if dictCarried["errorRefused"] is not None:\n'
+            '        raise dictCarried["errorRefused"]\n'
+        ),
+    ),
+    # --- Replay-axis routes (phase 2, 2026-08-05) ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheProjectContextUpdateCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    return commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "file-write", sAbsPath,\n'
+            '        lambda: _fnWriteContextFile(\n'
+            '            dictCtx, sContainerId, sAbsPath, sContent,\n'
+            '        ),\n'
+            '        {\n'
+            '            "sDockerContainerId": sContainerId,\n'
+            '            "sExpectedSha256": hashlib.sha256(\n'
+            '                sContent.encode("utf-8"),\n'
+            '            ).hexdigest(),\n'
+            '            "sPriorSha256": fsHashContainerFileOrEmpty(\n'
+            '                dictCtx, sContainerId, sAbsPath,\n'
+            '            ),\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new=(
+            '    del dictLaneTuple\n'
+            '    return _fnWriteContextFile(\n'
+            '        dictCtx, sContainerId, sAbsPath, sContent,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheContextTemplateProbeAndWriteShareOneDrain'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictWriteTheTemplate, '
+            '"project-context-template",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    del requestHttp\n'
+            '    dictCarried = fdictWriteTheTemplate()\n'
+            '    if dictCarried["errorRefused"] is not None:\n'
+            '        raise dictCarried["errorRefused"]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheContextImportRePointsTheRootUnderTheSameDrain'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        # The symlink replacement leaves the worker and runs after the
+        # drain is released, which is the plausible reading of it as a
+        # tidy-up rather than part of the transaction. The write still
+        # commits under the drain, so the refusal test is untouched.
+        old=(
+            '        _fnReplaceRootWithSymlink(\n'
+            '            dictCtx, sContainerId, dictWorkflow, dictBody,\n'
+            '        )\n'
+            '\n'
+            '    def fdictRunTheImport(supervisor=None):\n'
+        ),
+        new=(
+            '\n'
+            '    def fdictRunTheImport(supervisor=None):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnUnadoptableRootFileIsRefusedWithoutQuarantining'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising('
+            'fnImportTheContent)\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, '
+            '"objResult": fnImportTheContent()}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePromptRecordCaptureRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"prompt-record-capture",\n'
+            '        fdictRunTheCapturePass,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new=(
+            '    del dictLaneTuple\n'
+            '    return fdictRunTheCapturePass()\n'
+        ),
+    ),
+    # --- The batched existence probe (ruling 3, 2026-08-05) ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheExistenceBatchIsATypedReadAndNotAnExec'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # Reverts the route to the shell heredoc the typed read
+        # replaced: caller-derived paths interpolated raw, run through
+        # the general exec primitive, which the enforced branch refuses.
+        #
+        # RECORDED COLLATERAL, not drift: this also fails
+        # testFileEndpointsAndMiddleware.py::
+        # test_files_exist_returns_dict_keyed_on_input, which stubs the
+        # batched adapter the mutant stops calling. That is the same
+        # guarantee seen from the route's side, and there is no way to
+        # remove the adapter without both noticing.
+        old=(
+            '    listExists = connectionDocker.flistContainerPathsExist(\n'
+            '        sContainerId, listAbsPaths,\n'
+            '    )\n'
+            '    return dict(zip(listAbsPaths, listExists))\n'
+        ),
+        new=(
+            '    sScript = (\n'
+            '        "while IFS= read -r p; do "\n'
+            '        "if [ -e \\"$p\\" ]; then echo \\"$p\\"; fi; "\n'
+            '        "done <<\'__VAIBIFY_EOF__\'\\n"\n'
+            '        + "\\n".join(listAbsPaths) + "\\n__VAIBIFY_EOF__"\n'
+            '    )\n'
+            '    _iExitCode, sOutput = '
+            'connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, sScript,\n'
+            '    )\n'
+            '    setExisting = set(sOutput.splitlines())\n'
+            '    return {s: (s in setExisting) for s in listAbsPaths}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationBoundary.py::'
+            'testTheExemptionRefusesAnythingButPathStrings'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # The widened parameter accepts whatever it is handed and calls
+        # repr on it -- which is what the single-path form did, and is
+        # exactly what stops being safe once a COLLECTION may arrive:
+        # repr of an arbitrary object is whatever its class prints.
+        old=(
+            '    if isinstance(objPaths, str):\n'
+            '        return repr(objPaths)\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return repr(objPaths)\n'
+        ),
+    ),
+
+    # --- Group 6 (2026-08-06): the step panel's probe-and-record
+    # routes, and the three POSTs that turn out to be reads. ---
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheAcknowledgeStepProbeRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Back to the bare to_thread the route used before: the stat
+        # probe's scratch-file write then reaches the primitive with no
+        # admission, which is the exploit shape -- a hand-over arriving
+        # mid-probe sees an unlocked container.
+        #
+        # RECORDED COLLATERAL, intrinsic rather than drift: this also
+        # fails testTheAcknowledgeStepSaveCommitsThroughTheSynchronous-
+        # Carrier, because the probe runs FIRST and its refusal 500s the
+        # handler before the save happens. No mutation can separate a
+        # downstream carrier from an upstream refusal in a straight-line
+        # handler; the reverse direction DOES isolate.
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation('
+            '\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"acknowledge-step",\n'
+            '        fdictStatTheOutputs,\n'
+            '    )\n'
+            '    return dictOutcome["result"]\n'
+        ),
+        new='    return await asyncio.to_thread(fdictStatTheOutputs)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheAcknowledgeStepSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the acknowledged step",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheKillProcessSweepRunsUnderOneHeldDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Back to the bare to_thread the sweep used before, which is
+        # the exploit shape: a hand-over arriving between the count and
+        # the kill sees an unlocked container and commits, while the
+        # former owner's `kill -9` carries on into it.
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictCountThenKill, "kill-pipeline", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictCarried = await asyncio.to_thread(fdictCountThenKill)\n'
+            '    return dictCarried["objResult"]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheKillStoppedStateWriteRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictWriteTheStoppedState,\n'
+            '        "pipeline-state-kill", requestHttp,\n'
+            '    )\n'
+        ),
+        new='    await asyncio.to_thread(fdictWriteTheStoppedState)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheKillReconcileWriteKeepsTheRunnersRealCauseOfDeath'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # Drop the injected persister and the reconciling write falls
+        # back to the reader's own background lane, which holds no
+        # admission -- so on the enforced branch the write that records
+        # the runner's real exit code is refused at the primitive.
+        old=(
+            '    dictState = await pipelineState.fdictReadReconciledState(\n'
+            '        dictCtx, sContainerId,\n'
+            '        fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
+            '            dictCtx, sContainerId, requestHttp,\n'
+            '        ),\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictState = await pipelineState.fdictReadReconciledState(\n'
+            '        dictCtx, sContainerId,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGeneratedTestRemovalCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testTheGeneratedTestRemovalSaveCommitsThroughItsOwnCarrier for
+        # the same straight-line reason as the acknowledge-step pair --
+        # the rm runs first and its refusal 500s the handler.
+        old=(
+            '    return commitCarrier.fdictCommitSynchronousMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
+            '\n'
+            '        sContainerId, dictLaneTuple, "helper", '
+            '"delete-generated-tests",\n'
+            '        lambda: _fnRemoveTestDirectory(\n'
+            '            dictCtx["docker"], sContainerId, dictStep,\n'
+            '            sProjectRepoPath=dictWorkflow.get('
+            '"sProjectRepoPath", ""),\n'
+            '        ),\n'
+            '        {\n'
+            '            "iHolderPid": os.getpid(),\n'
+            '            "iHolderProcessGroup": os.getpgrp(),\n'
+            '        },\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fnRemoveTestDirectory(\n'
+            '        dictCtx["docker"], sContainerId, dictStep,\n'
+            '        sProjectRepoPath=dictWorkflow.get('
+            '"sProjectRepoPath", ""),\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGeneratedTestRemovalSaveCommitsThroughItsOwnCarrier'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "Recording the deleted tests",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheTestGenerationRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # Back to the bare to_thread the generator used before: the
+        # tests directory, the conftest marker and three test files are
+        # then written with nothing holding the container.
+        #
+        # RECORDED COLLATERAL, intrinsic rather than drift: also fails
+        # testTheGeneratedTestsAreRecordedSynchronously, because the
+        # generation runs FIRST and its refusal 500s the handler before
+        # the save. No mutation can separate a downstream carrier from
+        # an upstream refusal in a straight-line handler; the reverse
+        # direction DOES isolate.
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictGenerateTheTests, "generate-tests", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictCarried = await asyncio.to_thread(fdictGenerateTheTests)\n'
+            '    return dictCarried["objResult"]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGeneratedTestsAreRecordedSynchronously'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old=(
+            '    fdictCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "Recording the generated tests",\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnOutOfRangeStepIsRefusedBeforeTheContainerIsTouched'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # Ruling 6's separation, deleted: the bad index then travels
+        # into the carrier, where _ftExtractStepInfo's IndexError
+        # settles as a FAILED worker and quarantines the container over
+        # a typo in the URL.
+        old=(
+            '        _fnRequireStepIndexBeforeGenerating('
+            'dictWorkflow, iStepIndex)\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheScriptScanIsATypedReadAndNotAnExec'
+        ),
+        source='vaibify/gui/routes/scriptRoutes.py',
+        # A directory listing written as command text again. It is not
+        # merely refused: it is INDISTINGUISHABLE at the primitive from
+        # an rm, which is why the typed-read adapter exists.
+        old=(
+            '    try:\n'
+            '        listEntries = connectionDocker.flistDirectoryEntries(\n'
+            '            sContainerId, sDirectory,\n'
+            '        )\n'
+            '    except FileNotFoundError:\n'
+            '        return []\n'
+        ),
+        new=(
+            '    _iExitCode, sOutput = '
+            'connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, "ls -1 " + sDirectory,\n'
+            '    )\n'
+            '    listEntries = [s for s in sOutput.split("\\n") if s]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDependencyScanReachesNoMutatingPrimitive'
+        ),
+        source='vaibify/gui/routes/scriptRoutes.py',
+        # Reading a script with `cat` through the general exec, which is
+        # how a file read becomes an arbitrary command. Note what this
+        # mutant also exposes: _fsReadContainerFile's bare
+        # `except Exception` SWALLOWS the resulting refusal and answers
+        # None, so the route reports "no dependencies found" rather than
+        # failing. The response assertion is what catches it.
+        #
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testDependencyScanRoutes' test_scan_dependencies_finds_upstream_match
+        # and test_scan_dependencies_reports_unmatched. Both assert on
+        # what the scan DETECTED, and the mutant stops it reading the
+        # script at all, so no mutation can break the read without
+        # breaking them.
+        old=(
+            '        baContent = await asyncio.to_thread(\n'
+            '            dictCtx["docker"].fbaFetchFile,\n'
+            '            sContainerId, sFilePath,\n'
+            '        )\n'
+            '        return baContent.decode("utf-8")\n'
+        ),
+        new=(
+            '        _iExitCode, sOutput = await asyncio.to_thread(\n'
+            '            dictCtx["docker"].ftResultExecuteCommand,\n'
+            '            sContainerId, "cat " + sFilePath,\n'
+            '        )\n'
+            '        return sOutput\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheComparePlotRouteOpensNoContainerConnectionAtAll'
+        ),
+        source='vaibify/gui/routes/plotRoutes.py',
+        # The route grows a container touch. Its typed-read declaration
+        # takes it off the ambient mint, so the touch has no admission
+        # to make and the enforced branch refuses -- which is what makes
+        # the empty gated ledger a standing guard, not a snapshot.
+        #
+        # RECORDED COLLATERAL, intrinsic: also fails testPlotRoutes'
+        # test_compare_success and test_compare_no_standard_raises_404.
+        # Adding a container call to a handler those tests drive with a
+        # context that has no docker connection cannot leave them
+        # standing, so the collateral is the mutation's shape rather
+        # than a weakness in the isolation.
+        old=(
+            '        listPlots = _flistResolvePlotPaths(dictStep, dictVars)\n'
+            '        sPlotPath = _fsFindPlotPath(listPlots, sFileName)\n'
+            '        sStandardPath = _fsFindStandardForFile(\n'
+            '            listPlots, sFileName)\n'
+        ),
+        new=(
+            '        listPlots = _flistResolvePlotPaths(dictStep, dictVars)\n'
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "test -f " + sFileName,\n'
+            '        )\n'
+            '        sPlotPath = _fsFindPlotPath(listPlots, sFileName)\n'
+            '        sStandardPath = _fsFindStandardForFile(\n'
+            '            listPlots, sFileName)\n'
+        ),
+    ),
+
+    # --- The Sync panel's remaining Overleaf and Zenodo routes ---
+    # (2026-08-06). Each mode-(b) mutant reverts the route to the bare
+    # ``asyncio.to_thread`` it used before migration, which is the
+    # state the migration exists to leave behind: no mutation lock, no
+    # journal record, so a transfer arriving mid-flight sees an idle
+    # container. Each mode-(a) mutant reverts a ``fdictCommitWorkflowSave``
+    # to the raw ``dictCtx["save"]``.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafDiffDigestsItsFilesUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        return await _fdictBuildDiffUnderTheDrain(\n'
+            '            dictCtx, sContainerId, sProjectId, request, '
+            'requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return await asyncio.to_thread(\n'
+            '            _fdictBuildDiffResult,\n'
+            '            dictCtx, sContainerId, sProjectId, request,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheManuscriptPullWritesItsIgnoreUnderTheSameDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    return await _fdictPullManuscriptUnderTheDrain(\n'
+            '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
+            '        listPullPaths, sTargetDirectory, requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await asyncio.to_thread(\n'
+            '        _fdictPullManuscriptBlocking,\n'
+            '        syncDispatcher, dictCtx, sContainerId, sProjectId,\n'
+            '        listPullPaths, sTargetDirectory,\n'
+            '    )\n'
+        ),
+    ),
+
+    # The two mirror mutants are not carrier removals -- these routes
+    # HAVE no carrier, which is the claim. Each gives the route a
+    # container touch, and the enforced branch refuses it, which is
+    # what makes an empty gated ledger evidence rather than an
+    # assumption.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheMirrorRefreshReachesNoContainerPrimitive'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        bSuccess, result = await asyncio.to_thread(\n'
+            '            syncDispatcher.ftRefreshOverleafMirror, '
+            'sProjectId,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "git fetch --all",\n'
+            '        )\n'
+            '        bSuccess, result = await asyncio.to_thread(\n'
+            '            syncDispatcher.ftRefreshOverleafMirror, '
+            'sProjectId,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheMirrorDeleteReachesNoContainerPrimitive'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        await asyncio.to_thread(\n'
+            '            overleafMirror.fnDeleteMirror, sProjectId,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "rm -rf /tmp/mirror",\n'
+            '        )\n'
+            '        await asyncio.to_thread(\n'
+            '            overleafMirror.fnDeleteMirror, sProjectId,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoMetadataSaveCommitsThroughTheSynchronousCarrier'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '            "The Zenodo metadata save",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCredentialSetupProbesTheServiceUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictResult = await _fdictRunSetupUnderTheDrain(\n'
+            '            dictCtx, sContainerId, request, requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictResult = await asyncio.to_thread(\n'
+            '            _fdictRunSetupBlocking, dictCtx, sContainerId, '
+            'request,\n'
+            '        )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheCredentialSetupSavesItsBindingSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '            fdictCommitWorkflowSave(\n'
+            '                dictCtx, sContainerId, dictWorkflow, '
+            'requestHttp,\n'
+            '                "The Overleaf project binding",\n'
+            '            )\n'
+        ),
+        new='            dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    # The archive handler carries THREE mutations and the three mutants
+    # below cascade in one direction, which is the diagnosis to keep:
+    # the upload's mutant fails all three tests, the digests' fails two,
+    # and the save's fails one. That is sequencing -- an unadmitted exec
+    # 500s the handler before the next carrier is reached -- and no test
+    # can separate a downstream carrier from an upstream refusal in a
+    # straight-line handler.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoUploadRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testTheZenodoDigestPassRunsUnderItsOwnDrain and
+        # testTheZenodoArchiveRecordCommitsSynchronously, both of which
+        # need the upload to have succeeded before their own carrier
+        # runs at all.
+        old=(
+            '    iExit, sOut = await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictArchiveToZenodo, "zenodo-archive", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    iExit, sOut = await asyncio.to_thread(\n'
+            '        syncDispatcher.ftResultArchiveToZenodo,\n'
+            '        dictCtx["docker"], sContainerId, sZenodoService,\n'
+            '        request.listFilePaths, dictMetadata, '
+            'iParentDepositId,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoDigestPassRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # RECORDED COLLATERAL, intrinsic: also fails
+        # testTheZenodoArchiveRecordCommitsSynchronously -- the refused
+        # digest exec 500s the handler before the save is reached.
+        old=(
+            '    dictDigests = await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictComputeTheDigests, '
+            '"zenodo-archive-digests",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictDigests = await asyncio.to_thread(\n'
+            '        _fdictComputePostArchiveZenodoDigests,\n'
+            '        dictCtx, sContainerId, dictWorkflow, '
+            'request.listFilePaths,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheZenodoArchiveRecordCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    fdictCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The Zenodo archive record",\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    # ---------------- phase 2 group 1: the two repository pushes -----
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGithubPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictHandlePushToGithub, "github-push", requestHttp,\n    )\n'
+        ),
+        new=(
+            '    return (await asyncio.to_thread(fdictHandlePushToGithub))["objResult"]\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheGithubPushBookkeepingSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The GitHub push bookkeeping save",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBookkeepingSaveRefusalIsNotAbsorbedIntoAWarning'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    except Exception as error:\n'
+            '        fnReRaiseControlPlaneRefusal(error)\n'
+            '        logger.error(\n'
+            '            "GitHub push bookkeeping failed for container %s",\n'
+        ),
+        new=(
+            '    except Exception as error:\n'
+            '        del error\n'
+            '        logger.error(\n'
+            '            "GitHub push bookkeeping failed for container %s",\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePushedTokenReachesNoJournalRecordOrResponse'
+        ),
+        # INTRINSIC COLLATERAL, recorded so a re-confirmation run does
+        # not read it as drift: routing container-derived text into the
+        # journal target necessarily ADDS a container read to the push
+        # path, and the ~18 other push tests drive doubles that do not
+        # answer it. There is no lower-collateral realization -- a
+        # constant cannot carry a runtime token, so the mutant must
+        # make the target container-derived, which is the defect.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        sContainerId, fdictHandlePushToGithub, "github-push", requestHttp,\n'
+        ),
+        new=(
+            '        sContainerId, fdictHandlePushToGithub,\n        containerGit.fsRemoteUrlInContainer(\n            dictCtx["docker"], sContainerId, sWorkdir,\n        ), requestHttp,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePushedTokenReachesNoLogLine'
+        ),
+        # Mutated where the URL is ALREADY in scope, so the mutant
+        # adds no container call and breaks nothing: it is a pure
+        # logging change, and it kills this test alone.
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)\n'
+        ),
+        new=(
+            '    logger.info("binding token to remote %s", sRemoteUrl)\n'
+            '    sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(sRemoteUrl)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafPushRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    dictCommit = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        appState, dictLaneTuple["sContainerName"], '
+            'sContainerId,\n'
+            '        dictLaneTuple, "helper", "overleaf-push", '
+            'ftPushWorker,\n'
+            '    )\n'
+            '    return dictCommit["result"]\n'
+        ),
+        new='    return await asyncio.to_thread(ftPushWorker)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafPushProvenanceRunsUnderItsOwnDrain'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictRecordTheBookkeeping, '
+            '"overleaf-push-provenance",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new='    await asyncio.to_thread(fdictRecordTheBookkeeping, None)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOverleafPushBookkeepingSaveCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '    fdictCommitWorkflowSave(\n'
+            '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '        "The Overleaf push bookkeeping save",\n'
+            '    )\n'
+        ),
+        new='    dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    # ------- phase 2 group 2: the AICS Level 3 reproducibility surface
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeterminismDeletionCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        dictWorkflow["dictDeterminism"] = {}\n'
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The determinism deletion",\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictWorkflow["dictDeterminism"] = {}\n'
+            '        dictCtx["save"](sContainerId, dictWorkflow)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeterminismDeclarationCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The determinism declaration",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBinaryDeclarationCommitsSynchronously'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        fdictCommitWorkflowSave(\n'
+            '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
+            '            "The standalone-binary declaration",\n'
+            '        )\n'
+        ),
+        new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBinaryCaptureRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictCaptureTheBinary, "binary-capture", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictCaptureAndRecordBinary(filesRepo, '
+            'sBinaryPath)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheReproduceScriptAndItsManifestRepinShareOneDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictGenerateTheScript, "reproduce-script", '
+            'requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictWriteScriptThenRepinManifest(\n'
+            '        dictCtx, sContainerId, dictWorkflow, sProjectRepo,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAReproduceScriptRepinRefusalIsNotAbsorbedIntoAFlag'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    except Exception as errorCaught:\n        fnReRaiseControlPlaneRefusal(errorCaught)\n        logging.getLogger("vaibify").warning(\n'
+        ),
+        new=(
+            '    except Exception as errorCaught:\n        logging.getLogger("vaibify").warning(\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheEnvelopeRegenerationRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictRegenerateTheEnvelope, '
+            '"level3-envelope",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictGenerateEnvelopeThenReadGaps(\n'
+            '        filesRepo, dictWorkflow, sContainerId,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheEnvelopeReadinessReReadJoinsTheSameCarrier'
+        ),
+        # The re-read offloaded to a BARE thread, which is the
+        # realistic way it leaves the carrier: a fresh thread inherits
+        # no contextvars, so the admission is absent and the hash exec
+        # is refused. Chosen over simply deleting the call because this
+        # mutant kills on the MODE -- the guarantee -- rather than on
+        # the re-read merely being absent.
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return {\n'
+            '        "dictL3ReadinessGaps": fdictL3ReadinessGaps(\n'
+            '            dictWorkflow, filesRepo,\n'
+            '        ),\n'
+            '    }\n'
+        ),
+        new=(
+            '    import concurrent.futures\n'
+            '    with concurrent.futures.ThreadPoolExecutor(1) as pool:\n'
+            '        return {\n'
+            '            "dictL3ReadinessGaps": pool.submit(\n'
+            '                fdictL3ReadinessGaps, dictWorkflow, filesRepo,\n'
+            '            ).result(),\n'
+            '        }\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDependencyLockVerifyReachesNoMutatingPrimitive'
+        ),
+        # The typed-read claim broken the way a maintainer would break
+        # it: an existence check reimplemented as a shell test through
+        # the GENERAL exec primitive, which the gate must treat as
+        # mutating because command text cannot be told apart from a
+        # delete. INTRINSIC COLLATERAL, recorded so a re-confirmation
+        # run does not read it as drift: the L3 readiness gate reads
+        # the same lock through the same helper, so
+        # test_l3_verify_returns_202_with_handle_when_ready fails too.
+        source='vaibify/reproducibility/dependencyPinning.py',
+        old='    if not filesRepo.fbIsFile(_S_LOCK_FILENAME):\n',
+        new=(
+            '    if filesRepo.ftRunCommand(\n'
+            '        ["test", "-f", _S_LOCK_FILENAME], 5.0,\n'
+            '    )[0] != 0:\n'
+        ),
+    ),
+
+    # -------- phase 2: the two routes left over from the group edges --
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheDeclarationTemplateProbeAndWriteShareOneDrain'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictGenerateTheTemplate, '
+            '"ai-declaration-template",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fdictProbeThenWriteTemplate(filesRepo, sRelative)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnExistingDeclarationIsRefusedWithoutQuarantining'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: _fdictProbeThenWriteTemplate('
+            'filesRepo, sRelative),\n'
+            '            setAlsoCarriedStatusCodes=frozenset({500}),\n'
+            '        )\n'
+        ),
+        new=(
+            '        return {\n'
+            '            "errorRefused": None,\n'
+            '            "objResult": _fdictProbeThenWriteTemplate(\n'
+            '                filesRepo, sRelative,\n'
+            '            ),\n'
+            '        }\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheManifestVerifyRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictVerifyTheManifest, '
+            '"manifest-verify",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return await asyncio.to_thread(\n'
+            '        _fdictVerifyManifestBlocking,\n'
+            '        manifestWriter, dictWorkflow, filesRepo,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAMissingManifestIsRefusedWithoutQuarantining'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: _fdictVerifyManifestBlocking(\n'
+            '                manifestWriter, dictWorkflow, filesRepo,\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        return {\n'
+            '            "errorRefused": None,\n'
+            '            "objResult": _fdictVerifyManifestBlocking(\n'
+            '                manifestWriter, dictWorkflow, filesRepo,\n'
+            '            ),\n'
+            '        }\n'
+        ),
+    ),
+
+    # -------------- phase 2 group 3: the two durable launches --------
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheFalsificationPreflightRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, ftClassifyThenProbe, '
+            '"falsification-preflight",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _ftRequireApplicableAndInstalled(\n'
+            '        dictCtx, sContainerId, dictStep, filesRepo,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheLaunchedFalsificationRunIsVisibleAsLiveWork'
+        ),
+        # The bare launch this replaced: a create_task recorded only in
+        # a module-global dict, invisible to every authority that asks
+        # whether the container is busy.
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old=(
+            '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, ftaskStartFalsification,\n'
+            '    )\n'
+            '    if not dictLaunched["bLaunched"]:\n'
+            '        raise HTTPException(\n'
+            '            409,\n'
+            '            "This container is busy: " '
+            '+ dictLaunched["sReason"] + ".",\n'
+            '        )\n'
+        ),
+        new='    ftaskStartFalsification()\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheVerifyReadinessGateRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fsGateThenSnapshot, '
+            '"level3-verify-readiness",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fsRequireReadinessThenDigest('
+            'dictWorkflow, filesRepo)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheLaunchedVerificationIsVisibleAsLiveWork'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, ftaskStartVerification,\n'
+            '    )\n'
+            '    if not dictLaunched["bLaunched"]:\n'
+            '        raise HTTPException(\n'
+            '            409,\n'
+            '            "This container is busy: " '
+            '+ dictLaunched["sReason"] + ".",\n'
+            '        )\n'
+        ),
+        new='    ftaskStartVerification()\n',
     ),
 ]

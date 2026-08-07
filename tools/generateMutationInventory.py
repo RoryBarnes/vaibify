@@ -165,6 +165,27 @@ DICT_PRIMITIVE_ACCESS = {
     # PATH, never a command, so it is a typed read even though it uses
     # the raw executor internally.
     "flistDirectoryEntries": S_ACCESS_TYPED_READ,
+    # The audited adapter behind the dashboard's disk tile, on the same
+    # terms: a PATH and a declared operation name, never a command. It
+    # replaced `docker exec -u <user> <id> df -PB1 /` assembled in a GUI
+    # module, which the boundary had to read as an arbitrary command
+    # because a primitive cannot tell a df from an rm -rf.
+    "fdictReadFilesystemUsage": S_ACCESS_TYPED_READ,
+    # The two existence probes, on the same terms again. They replaced
+    # `test -f`/`test -d` assembled by ContainerRepoFiles and run
+    # through the general exec primitive -- which the boundary had to
+    # read as an arbitrary command, so under an enforced lane a level
+    # gate's existence check was REFUSED, and the gate (catching
+    # OSError) reported the workflow unverified rather than raising.
+    "fbContainerPathIsFile": S_ACCESS_TYPED_READ,
+    "fbContainerPathIsDirectory": S_ACCESS_TYPED_READ,
+    # The BATCHED existence probe, on the same terms. It replaced a
+    # shell heredoc in fileRoutes that interpolated up to a thousand
+    # caller-derived paths raw between the heredoc marker and its
+    # terminator -- so a path carrying that terminator on a line of its
+    # own ended the heredoc and made the rest shell, and the whole
+    # thing went through the general exec primitive besides.
+    "flistContainerPathsExist": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,

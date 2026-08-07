@@ -497,6 +497,11 @@
       "sReason": ""
     },
     {
+      "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._ftRunTypedRead::objPaths",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
       "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._ftStreamExecLines.generator",
       "sDebtClass": "legacy-variable",
       "sReason": ""
@@ -523,6 +528,11 @@
     },
     {
       "sIdentity": "vaibify/docker/dockerConnection.py::_fnTuneDockerSessionPool::clientDocker",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/docker/dockerConnection.py::_fsTypedReadPathLiteral::objPaths",
       "sDebtClass": "legacy-variable",
       "sReason": ""
     },
@@ -1087,6 +1097,16 @@
       "sReason": ""
     },
     {
+      "sIdentity": "vaibify/gui/resourceMonitor.py::_ftReadFilesystemUsage.executorPool",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/resourceMonitor.py::_ftReadFilesystemUsage.future",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
       "sIdentity": "vaibify/gui/routeContext.py::RouteContext.__setitem__::value",
       "sDebtClass": "legacy-variable",
       "sReason": ""
@@ -1127,6 +1147,11 @@
       "sReason": ""
     },
     {
+      "sIdentity": "vaibify/gui/routeScope.py::_fbServeOnAmbientAdmission::route",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
       "sIdentity": "vaibify/gui/routeScope.py::fnValidateRouteScopesOrRaise.route",
       "sDebtClass": "legacy-variable",
       "sReason": ""
@@ -1147,17 +1172,22 @@
       "sReason": ""
     },
     {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fdictVerifyManifestBlocking::manifestWriter",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fdictVerifyManifestUnderTheDrain::manifestWriter",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
       "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fiCoercePollMtime::mtimeValue",
       "sDebtClass": "legacy-variable",
       "sReason": ""
     },
     {
       "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_ftRunManifestVerify::manifestWriter",
-      "sDebtClass": "legacy-variable",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fdictKickOffVerification.coroutineWorker",
       "sDebtClass": "legacy-variable",
       "sReason": ""
     },
@@ -1212,6 +1242,16 @@
       "sReason": ""
     },
     {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fdictPullManuscriptBlocking::syncDispatcher",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fdictPullManuscriptUnderTheDrain::syncDispatcher",
+      "sDebtClass": "legacy-variable",
+      "sReason": ""
+    },
+    {
       "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fdictResolveZenodoMetadataForArchive.c",
       "sDebtClass": "legacy-variable",
       "sReason": ""
@@ -1257,17 +1297,17 @@
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterDag.fresponseGetDag.result",
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterDag.fresponseHandleGetDag.result",
       "sDebtClass": "legacy-variable",
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterDagExport.fresponseExportDag.result",
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterDagExport.fresponseHandleExportDag.result",
       "sDebtClass": "legacy-variable",
       "sReason": ""
     },
     {
-      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafMirrorRefresh.fdictRefreshMirror.result",
+      "sIdentity": "vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafMirrorRefresh.fdictHandleRefreshMirror.result",
       "sDebtClass": "legacy-variable",
       "sReason": ""
     },
@@ -1964,6 +2004,6 @@
     "legacy-literal-return": 0,
     "legacy-return-annotation": 0,
     "legacy-annotation-mismatch": 0,
-    "legacy-variable": 380
+    "legacy-variable": 388
   }
 }

@@ -1141,7 +1141,7 @@ def testNoRootUserInDispatcherCalls():
     ``sudo`` was deliberately removed in commit 426f6b7).
 
     If a future feature genuinely needs root, fix the entrypoint root
-    phase or extend ``fnMigrateWorkspaceOwnership`` — fnDoCommand not punch a
+    phase or extend ``fnMigrateWorkspaceOwnership`` — do not punch a
     hole at the runtime-exec layer.
 
     ``dockerConnection.py`` itself is exempt: its docstrings reference
@@ -1287,7 +1287,7 @@ def _fappBuildApplication():
 def testAgentActionRegistered():
     """Every state-mutating route must be in the agent catalog or excluded.
 
-    The in-container ``vaibify-fnDoCommand`` CLI reads
+    The in-container ``vaibify-do`` CLI reads
     ``vaibify.gui.actionCatalog.LIST_AGENT_ACTIONS`` to translate
     researcher intent into backend calls. A state-mutating HTTP route
     that is neither decorated with ``@ffnAgentAction`` nor declared in
@@ -1369,8 +1369,8 @@ def testAgentActionCatalogShape():
 def testEveryCatalogActionHasCliCommand():
     """Every catalog action must be reachable from the host CLI.
 
-    ``LIST_AGENT_ACTIONS`` is the inventory of what a researcher can fnDoCommand
-    from the dashboard, and ``vaibify fnDoCommand`` is generated from it, so a
+    ``LIST_AGENT_ACTIONS`` is the inventory of what a researcher can do
+    from the dashboard, and ``vaibify do`` is generated from it, so a
     researcher can drive the same actions from a script. An entry the
     generator cannot dispatch — an unsupported transport, a path
     placeholder no CLI argument supplies — would otherwise disappear
@@ -1378,7 +1378,7 @@ def testEveryCatalogActionHasCliCommand():
     escape hatch is ``SET_ACTIONS_WITHOUT_CLI``, which must name real
     actions and carry a written rationale.
 
-    WHAT THIS DOES AND DOES NOT PROVE. Because ``vaibify fnDoCommand`` is
+    WHAT THIS DOES AND DOES NOT PROVE. Because ``vaibify do`` is
     *generated* from the catalog, a well-formed entry on a supported
     transport gets a command automatically, and this test passes for it
     by construction. Verified: adding a fake POST action leaves this
@@ -1528,7 +1528,7 @@ def _fbParameterIsNotAQueryField(sName, parameter, typeBaseModel):
 
 
 def testGeneratedActionsNeverShadowTopLevelCommands():
-    """Generated action commands must stay nested under ``vaibify fnDoCommand``.
+    """Generated action commands must stay nested under ``vaibify do``.
 
     Several catalog names mean something different from the top-level
     command they resemble — ``vaibify push`` copies host files into the
@@ -2481,6 +2481,12 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         def ftResultExecuteCommand(self, sId, sCmd):
             return (1, "")
 
+        def fbaFetchFile(self, sId, sPath, iMaxBytes=None):
+            # The pipeline-state read is a typed read, and the typed-read
+            # adapter spells "absent" as FileNotFoundError rather than a
+            # non-zero exit code.
+            raise FileNotFoundError(sPath)
+
     def _fnSave(sId, dictWf):
         return
 
@@ -2625,7 +2631,7 @@ def testTemplateCommandsUseStepTokens():
     """Vaibify-shipped templates only reference paths via {StepNN.*} tokens.
 
     The dashboard's dependency parser only sees `{StepNN.varname}`
-    tokens; hardcoded cross-step paths break the PROOF Level 1
+    tokens; hardcoded cross-step paths break the AICS Level 1
     contract. Enforce the doctrine on every workflow.json under
     `vaibify/templates/`.
     """
@@ -2789,13 +2795,13 @@ SET_REPRO_FILES_ENTRY_POINTS = frozenset({
     "fbEnvironmentDigestPinned", "fdictCaptureSystemTools",
     "fdictCaptureHostBinaryHashes", "fdictCaptureSingleBinary",
     "fdictReadAttestation", "fnWriteAttestation",
-    "fbInvalidateAttestation", "flistReadAttestationHistory",
+    "fnInvalidateAttestation", "flistReadAttestationHistory",
     "fsCurrentManifestDigest", "fbL3AttestationCurrent",
     "fdictReadCachedSyncStatus", "fnWriteSyncStatus",
     "fdictVerifyRemoteService", "fdictLoadManifestExpectedHashes",
     "fnGenerateReproducibilityEnvelope",
     "fbManifestExists", "fsetStaleOutputsAgainstManifest",
-    "fbDeclarationFileExists", "fsWriteDeclarationTemplate",
+    "fbDeclarationFileExists", "fnWriteDeclarationTemplate",
     "fdictClassifyFalsificationApplicability",
     "fdictBuildFalsificationStatus",
     "fdictReadFalsificationRecord", "fnWriteFalsificationRecord",
@@ -2869,7 +2875,7 @@ def testGuiNeverPassesRawRepoPathToReproducibilityIO():
     a reproducibility entry point wraps into a host adapter that probes
     the host filesystem at a container path — every conjunct then fails
     conservatively forever (the dirty-banner bug class). Production
-    callers must pass ``dictCtx.ffilesGetRepoFiles(sContainerId)``, the poll
+    callers must pass ``dictCtx.files(sContainerId)``, the poll
     snapshot, or another ``repoFiles`` adapter.
     """
     listAllViolations = []
@@ -2906,7 +2912,7 @@ def _fsExtractFunctionBody(sSource, sFunctionName):
 
 
 def testStepCountCapEnforcedOnAddRoutes():
-    """Both fdictHandleCreateStep and fnInsertStep must reference _I_STEP_COUNT_MAX.
+    """Both fdictHandleCreateStep and fdictInsertStep must reference _I_STEP_COUNT_MAX.
 
     The 500-step hard cap is server-authoritative: the client UX
     check can be bypassed by a direct API call, so the routes that
@@ -3561,7 +3567,7 @@ _REGEX_HOST_FILESYSTEM_CLAIM = re.compile(
 # confines what the agent may reach. Both consult the same lane
 # authority the middleware used rather than re-reading raw headers.
 _T_AGENT_LANE_GUARD_NAMES = (
-    "_fnRejectAgentTokenLane",
+    "fnRejectAgentTokenLane",
     "fbRequestRidesAgentLane",
 )
 
@@ -3620,7 +3626,7 @@ def testHostFilesystemRoutesRejectTheAgentLane():
     which the agent-safe read and push actions then expose.
 
     Catalog exclusion is metadata, not a gate. This invariant fails when
-    a THIRD such route appears without ``_fnRejectAgentTokenLane`` (which
+    a THIRD such route appears without ``fnRejectAgentTokenLane`` (which
     refuses the lane) or ``fbRequestRidesAgentLane`` (which confines it),
     so the promise can never again outrun its enforcement.
     """
@@ -3647,7 +3653,7 @@ def testHostFilesystemRoutesRejectTheAgentLane():
     assert listOffenders == [], (
         "A route whose documentation promises the agent cannot reach "
         "host files must enforce that promise at the route. Call "
-        "_fnRejectAgentTokenLane(requestHttp) as the handler's first "
+        "fnRejectAgentTokenLane(requestHttp) as the handler's first "
         "statement, or confine the agent with fbRequestRidesAgentLane:"
         "\n  " + "\n  ".join(listOffenders)
     )
@@ -3873,6 +3879,41 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 # cohesive-but-large file today. The grandfathered numbers are known
 # debt: they may go DOWN (split or trim), never up. Raising one is a
 # deliberate act that should be justified, not a reflex.
+#
+# RULING 2026-08-05, for the carrier migration only. Five route modules
+# reached their entries within a few lines of each other, and between
+# them held 32 of the 57 routes still to migrate: syncRoutes (15),
+# reproducibilityRoutes (8), gitRoutes (6), pipelineRoutes (3). Each
+# migration adds a handful of lines to a module it does not otherwise
+# change, so the ratchet had begun rising by accretion -- a few lines at
+# a time, each individually justified, which is how a size limit stops
+# meaning anything.
+#
+# The researcher's decision was to raise the affected entries ONCE,
+# deliberately, rather than split. The reasoning is the one AGENTS.md
+# already gives: these modules are cohesive, and splitting a file to
+# satisfy a NUMBER is the premature-abstraction failure the guidance
+# warns about -- the work here is many small tasks across a few
+# concepts, not a new responsibility arriving. A split may still be
+# right later; it should be triggered by a real seam, not by this.
+#
+# What this ruling does NOT license: a NEW module written over the cap,
+# a rise for any reason other than adding carrier plumbing to an
+# existing route, or letting these entries drift upward again
+# afterwards. When the migration stops, these numbers are debt like
+# every other entry here and may only fall.
+#
+# Clarified 2026-08-06, because an agent read the line above as
+# ambiguous and was right to ask. "A new module over the cap" means a
+# newly WRITTEN module, not an existing module taking its first entry
+# here. An existing module that crosses 800 for the first time while
+# gaining carrier plumbing takes an entry like any other — testRoutes.py
+# did, at 802. The agent that hit it first trimmed to exactly 800 and
+# then reverted, because reaching the number required deleting the blank
+# line after each docstring summary. That reversal was correct and is
+# the point of the whole ruling: deforming source to satisfy a count is
+# the outcome this exists to prevent, and a two-line overshoot is not
+# evidence of a god module.
 # ---------------------------------------------------------------------
 
 I_MODULE_LINE_CAP = 800
@@ -3984,7 +4025,59 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +18 (2026-08-02): the pipeline WebSocket refuses a poisoned
     # container at the gate and hands the per-frame backstop the
     # generation admitted at accept, so a transfer fences a live socket.
-    "routes/pipelineRoutes.py": 2826,
+    # +58 (2026-08-04): _fdictDeleteOutputsUnderTheDrain, the mode-(b)
+    # carrier call that closes the migration plan's named live exploit —
+    # the clean route's `rm` used to run on a bare asyncio.to_thread,
+    # holding no lock, so a transfer arriving mid-delete saw an idle
+    # container and committed over it. Justified rather than split: the
+    # helper is a single-call extraction from fnCleanOutputs that
+    # carries on its parent's one purpose, so splitting would create the
+    # artificial seam AGENTS.md warns against, and most of the growth is
+    # the docstring recording WHY the drain is held for the worker's
+    # life rather than the request's. NOTE FOR THE NEXT MIGRATION GROUP:
+    # this module has ten workflow saves and several more routes still
+    # awaiting a carrier, so it will keep pressing this ratchet. The
+    # next bump should be a conversation about splitting the file, not
+    # another line here.
+    # +42 (2026-08-06): the conversation happened, and the 2026-08-05
+    # ruling atop this table is its outcome — raise once for carrier
+    # plumbing, do not split to satisfy a number. This bump is
+    # acknowledge-step's mode-(b) helper, whose docstring is most of it:
+    # `_fdictGetModTimes` LOOKS like a read and WRITES a scratch path
+    # file into the container before it stats, so a route that carried
+    # only its workflow save would have been refused at the probe, and
+    # that is the trap worth recording where the next reader will meet
+    # it.
+    # +94 (2026-08-06): the Kill route's three carriers. Two of them are
+    # the sweep and the stopped-state write; the third is the one worth
+    # recording here, because the cheap migration would not have had it.
+    # Kill reads through the RECONCILING reader, so a Kill issued over a
+    # runner that already died must still persist that runner's real
+    # exit code and sFailureCauseHost — and that write needs its own
+    # carrier, injected into the reader rather than performed by the
+    # route. Dropping the reconciling reader would have been smaller and
+    # would have made the dashboard say "killed (130)" over a crash.
+    # +50 (2026-08-06): the manifest verify, the last awaiting route in
+    # this module. It reads like a read and is not one at the boundary
+    # that decides — flistVerifyManifest re-hashes every pinned file
+    # through the GENERAL exec primitive — so it needed a real mode-(b)
+    # worker rather than a typed-read declaration, and the two to_thread
+    # hops it used to make became direct calls inside that worker.
+    # **No route in this module is awaiting any longer.**
+    "routes/pipelineRoutes.py": 3070,
+    # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
+    # generate-test migration, under the 2026-08-05 ruling above — an
+    # existing route module, carrier plumbing, raised once rather than
+    # split. It is +2 over the cap and the two lines are the reason the
+    # migration is not the cheap one: a PRE-FLIGHT that rejects an
+    # out-of-range step index before any carrier opens, so a typo in
+    # the URL answers 404 instead of quarantining an untouched
+    # container, and the docstring recording WHY that is the only
+    # failure the pre-flight can take (every other one the generator
+    # raises happens at or after a write). Reaching 800 exactly was
+    # possible only by deleting the blank line after each docstring's
+    # summary, which is deforming the source to satisfy a number.
+    "routes/testRoutes.py": 802,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4033,7 +4126,42 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # existing blocking dispatcher. Extends the push flow this module
     # already owns; the carrier machinery itself lives in
     # commitCarrier.py.
-    "routes/syncRoutes.py": 2508,
+    # +4 (2026-08-05): has-credential rejects the in-container agent
+    # lane. The route reads the researcher's HOST keyring and is a GET,
+    # so the catalog's agent-lane gate never sees it. Four lines: the
+    # shared guard's import, the Request parameter, the call. NOTE this
+    # is the fourth route module to reach its cap; whether to split
+    # syncRoutes along the credential/DAG seam is the researcher's
+    # decision, not a line this bump settles.
+    # +208 (2026-08-05): carrier plumbing for five of this module's
+    # routes, under the 2026-08-05 ruling at the head of this record.
+    # Each is one ``requestHttp`` parameter, one declaration, and one
+    # under-the-drain wrapper naming why its worker carries refusals
+    # back instead of raising them; ``add-file``'s chain also gained a
+    # synchronous twin, because a mode-(b) worker runs in a thread and
+    # cannot await the three ``to_thread`` hops it used to make. The
+    # remaining ten routes in this module have NOT been migrated, so
+    # this entry will need raising again before it may start falling.
+    # +257 (2026-08-06): carrier plumbing for eight more of this
+    # module's routes — the two Overleaf mirror routes (declaration
+    # and rationale only, both act on the HOST mirror), the diff, the
+    # manuscript pull, the credential setup, and the three Zenodo
+    # routes. The bulk is not the declarations: it is the synchronous
+    # twins a mode-(b) worker needs, because that worker runs in a
+    # thread and cannot await the ``to_thread`` hops these chains used
+    # to make. Two routes remain awaiting here — the GitHub and
+    # Overleaf pushes — after which this entry may start falling.
+    # +90 (2026-08-06): the GitHub and Overleaf pushes, the last two
+    # awaiting routes in this module. The GitHub push's whole sequence
+    # — dedupe probe, token-owner binding, push, commit-state reads —
+    # collapsed into one synchronous worker under one drain, and its
+    # bookkeeping save became a mode-(a) commit; the Overleaf push's
+    # digest and provenance halves joined one drain and its save the
+    # same mode-(a) commit. The now-dead ``_fdictHandlePushExecFailure``
+    # coroutine was removed, which is why the rise is smaller than the
+    # additions. **No route in this module is awaiting any longer, so
+    # this entry may only fall from here.**
+    "routes/syncRoutes.py": 3067,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -4204,7 +4332,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-08-01): the session-lifecycle evaluator joins the
     # serverLifespan re-export block (its registration and its loop),
     # like the sweep and the idle watchdog beside it.
-    "pipelineServer.py": 2437,
+    # +52 (2026-08-05): the run-dispatch gate over the carrier's
+    # live-work registry. Not a second responsibility: this module
+    # already owns two dispatch refusals for the same socket —
+    # _fbRefuseWhilePipelineTaskLive and the remote-overwrite gate —
+    # and this is the third source of the SAME refusal, emitting the
+    # same runRefused event through the same builder. It exists
+    # because the first of those sees only pipeline actions dispatched
+    # over this socket, so an HTTP route holding the container's
+    # mutation lock left a Run Step blocking on the lock instead of
+    # being refused. Splitting the three apart would put one refusal's
+    # reasons a call hop away from its siblings while they still share
+    # the event, the loop and the ordering between them.
+    "pipelineServer.py": 2489,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4223,9 +4363,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-08-02): the coroutine-worker refusal moved to the public
     # entrance as well, so a programming error cannot journal an
     # operation and quarantine a container before being caught.
-    "commitCarrier.py": 1062,
+    # +4 (2026-08-05): CommitRefusedError reparented off PermissionError
+    # onto ControlPlaneRefusalError, which is an import line and a
+    # three-line docstring pointing at the base. No responsibility
+    # moved in or out -- the module is still the §8 commit boundary --
+    # and the rationale lives once, on the base class, rather than
+    # being restated here.
+    "commitCarrier.py": 1066,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
-    # allowlisted operation, `mint-bootstrap` (the headless `vaibify fnDoCommand`
+    # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
     # closed operation schema plus the one peer-credential portability
     # shim that guards every operation in it; a handler homed elsewhere
@@ -4400,7 +4546,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-08-02): the release force flag's docstring records that
     # an unreadable body fails CLOSED, replacing a rationale that
     # named a pagehide beacon the frontend deliberately never sends.
-    "registryRoutes.py": 1237,
+    # 1237 -> 1281 on 2026-08-06, the last three routes of the carrier
+    # migration (stop, start/cancel, settings). Almost all of it is
+    # rationale rather than code: the stop route's entry records an
+    # AUDIT FINDING -- it holds no lock and writes no journal record,
+    # because `container-lifecycle` is authorized without being
+    # lease-enforced, so a stop must answer for a container nobody owns
+    # and cannot take a lock that needs an owner record. Trimming that
+    # to hit the number would delete the finding and leave the bare
+    # declaration reading like a guarantee.
+    "registryRoutes.py": 1288,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -4414,7 +4569,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # host-file hash oracle must never be agent-invokable.
     # +49 (2026-07-25): fbAgentLanePermitsRoute — the server-side
     # enforcement point for bAgentSafe, which until now existed only as
-    # client-side advice in vaibify-fnDoCommand. It belongs beside the data it
+    # client-side advice in vaibify-do. It belongs beside the data it
     # decides on; the catalog stays one cohesive responsibility.
     # +17 (2026-07-26): the reconcile-remote-state entry plus the
     # push-to-github description that now names it. One catalog
@@ -4446,7 +4601,93 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sibling route module may not import them. Same cohesive
     # responsibility — reconciling the dashboard with origin — not a
     # second concern.
-    "routes/gitRoutes.py": 845,
+    # +199 (2026-08-05): carrier plumbing for all six mutating routes
+    # (phase 2, under the 2026-08-05 ruling above). The whole rise is
+    # the shape the carrier forces: each handler's `await
+    # asyncio.to_thread(...)` chain becomes a SYNCHRONOUS worker
+    # function -- mode (b) runs workers in a thread and a coroutine
+    # would be refused -- so every route grows a named worker plus the
+    # docstring saying which commands share its held drain and why. The
+    # module's responsibility is unchanged; only the call shape is.
+    # −7 (2026-08-05): the settle-then-raise ordering lifted into
+    # routeContext.fgenericRunWorkerUnderTheDrain on its fourth caller. Both
+    # this module and repoRoutes are now fully migrated, so their
+    # entries are ratcheted back down to what they actually measure
+    # rather than left holding the migration's headroom.
+    "routes/gitRoutes.py": 1037,
+    # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
+    # two Repos-panel pushes were migrated onto carrier mode (b)
+    # (migration plan phase 2). The added lines are one worker, one
+    # carrier invocation, one shared post-push tail extracted from the
+    # two handlers that had it duplicated, and the function that names
+    # a push for the journal and the busy refusal without naming its
+    # credential. All of it is the Repos panel acting on a repository
+    # it already owns — the same cohesive responsibility, not a second
+    # concern arriving. There is no seam to split on: the push helpers
+    # thread the panel's own sidecar and remote through, and a
+    # sibling route module may not import them.
+    # −38 (2026-08-05): the lifted drain wrapper, as above.
+    "routes/repoRoutes.py": 786,
+    # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
+    # when its last three routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above). Two of the three could not stay inline:
+    # mode (b) runs its worker in a thread, so the rename cascade and
+    # the alignment batch each became a named synchronous worker where
+    # the handler used to `await asyncio.to_thread(...)`. The added
+    # lines are those two workers, the update-step worker, and the
+    # docstrings recording which failures are carried back and which
+    # poison -- a judgement read out of stepRename's source that a
+    # reader must not have to re-derive. Same cohesive responsibility:
+    # step CRUD, in the module that owns it.
+    "routes/stepRoutes.py": 808,
+    # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
+    # five remaining routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above). Three of the five are probe-then-write
+    # sequences whose probe is the GUARD -- "create the context only if
+    # it is absent", "import only if absent or bOverwrite" -- so each
+    # became a named worker holding one drain across both halves, plus
+    # the docstring recording which refusals are carried and which
+    # poison. The context write also needed its own mode-(a) commit:
+    # it writes .vaibify/AGENTS.md, not project.json, so it could not
+    # reuse fdictCommitWorkflowSave's record without handing the journal
+    # probe a hash belonging to a different file. Same cohesive
+    # responsibility: the Replay axis, in the module that owns it.
+    "routes/replayRoutes.py": 962,
+    # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
+    # when its eight remaining routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above and its 2026-08-06 clarification about a
+    # first entry). Three of the eight are one-line saves that gained
+    # only a requestHttp and a fdictCommitWorkflowSave; the +182 is almost
+    # entirely the other four, each of which needed a SYNCHRONOUS twin
+    # because a mode-(b) worker runs in a thread and cannot await the
+    # to_thread hop these chains used to make -- and, for the envelope
+    # and the reproduce-script, a worker spanning work that used to sit
+    # on BOTH sides of that hop, because the readiness re-read and the
+    # manifest re-pin reach the container exactly as the generation
+    # does. Same cohesive responsibility throughout: the AICS Level 3
+    # readiness and attestation surface, in the module that owns it.
+    # +82 (2026-08-06): the L3 verify, this module's last awaiting
+    # route and the migration's first mode-(c) durable launch. The rise
+    # is the readiness gate and the digest snapshot joining ONE
+    # mode-(b) drain -- they must agree, or the attestation is keyed to
+    # a digest from a tree the readiness check never saw -- plus the
+    # durable launch itself, which replaces a bare asyncio.create_task
+    # that no authority outside this module could see. **No route in
+    # this module is awaiting any longer.**
+    "routes/reproducibilityRoutes.py": 1005,
+    # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
+    # carrier-mode declaration joined it (migration plan phase 1c). 130
+    # of the ~145 added lines are ONE data record,
+    # SET_ROUTES_AWAITING_CARRIER_MODE, and it is deliberately here
+    # rather than in a module of its own for two reasons. It is read by
+    # exactly one function, _fbServeOnAmbientAdmission, whose branch a
+    # reader must understand together with the record — moving it away
+    # costs the hop and buys nothing. And it is TEMPORARY by
+    # construction: R6 makes it shrink by one on every phase-2
+    # migration, and phase 4 deletes it together with the ambient
+    # branch, at which point this entry goes with it. Creating a module
+    # in order to delete it is churn, not a seam.
+    "routeScope.py": 946,
 }
 
 

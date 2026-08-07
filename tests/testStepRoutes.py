@@ -66,7 +66,44 @@ def _fdictBuildContext(dictWorkflow, listSaves):
 
 
 @pytest.fixture
-def tClientAndWorkflow():
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the commit-guard carrier down for this module's bare app.
+
+    Every mutating step route now commits through a carrier — six saves
+    through mode (a), and the rename, the directory alignment and the
+    step update through mode (b) — each of which binds the request to
+    its container's owner record and writes a journal record against
+    the hub's application state. A bare ``FastAPI()`` has neither, so
+    the lane tuple resolves to a fixed stand-in and each carrier runs
+    its effect or worker directly.
+
+    What that costs is stated plainly, because an unexplained
+    permissive mock is how this suite acquired about twenty of them.
+    These tests prove what the routes DO -- the step cap, the
+    hundred-step warning, the input-data alphabet, which bodies are
+    refused -- and NOTHING about the admission the save runs under; a
+    route whose carrier call was deleted outright would pass every one
+    of them. That guarantee is asserted in
+    ``tests/testCarrierMigratedRoutes.py``, against a double that calls
+    the real gates.
+
+    Requested BY the harness rather than autouse, so a test that builds
+    its own client still meets the real refusal.
+
+    It delegates to the SHARED stand-down rather than keeping private
+    patches. This module's copy patched only ``routeContext``'s binding
+    of the lane-tuple resolver and only the mode-(a) commit, which was
+    enough while every migrated step route saved synchronously; the
+    moment ``stepRoutes`` imported its own binding and reached mode (b),
+    that copy would have stood down neither.
+    """
+    from tests.carrierStandDown import fnStandCarrierDown
+
+    fnStandCarrierDown(monkeypatch, stepRoutes)
+
+
+@pytest.fixture
+def tClientAndWorkflow(fixtureCarrierStoodDown):
     """Return ``(clientHttp, dictWorkflow, listSaves)`` factory builder.
 
     The fixture yields a callable so each test can size the workflow
@@ -275,7 +312,9 @@ class _FakeAlignDocker:
         return (0, "")       # git mv succeeds
 
 
-def testAlignRouteMovesTheMarkerThroughRealWiring(tmp_path):
+def testAlignRouteMovesTheMarkerThroughRealWiring(
+    tmp_path, fixtureCarrierStoodDown,
+):
     import json as moduleJson
 
     sMarkerDir = tmp_path / ".vaibify" / "test_markers" / "study"
@@ -338,7 +377,9 @@ def testAlignRouteMovesTheMarkerThroughRealWiring(tmp_path):
 
 
 @pytest.mark.falsification
-def testRenameRoutePersistsAnUnrecoverableSplit(monkeypatch):
+def testRenameRoutePersistsAnUnrecoverableSplit(
+    monkeypatch, fixtureCarrierStoodDown,
+):
     """The route saves the workflow before surfacing a split cascade.
 
     Kills: mapping StepRenameSplitError onto the generic RuntimeError
@@ -422,7 +463,9 @@ def _dictRenameWorkflow():
     }
 
 
-def test_rename_refused_while_pipeline_task_live():
+def test_rename_refused_while_pipeline_task_live(
+    fixtureCarrierStoodDown,
+):
     client = _tupleRenameClient(
         _dictRenameWorkflow(), {S_CONTAINER_ID: _LiveTask()})
     response = client.post(
@@ -432,7 +475,9 @@ def test_rename_refused_while_pipeline_task_live():
     assert "pipeline action is running" in response.json()["detail"]
 
 
-def test_align_refused_while_pipeline_task_live():
+def test_align_refused_while_pipeline_task_live(
+    fixtureCarrierStoodDown,
+):
     client = _tupleRenameClient(
         _dictRenameWorkflow(), {S_CONTAINER_ID: _LiveTask()})
     response = client.post(
@@ -441,7 +486,9 @@ def test_align_refused_while_pipeline_task_live():
     assert "pipeline action is running" in response.json()["detail"]
 
 
-def test_rename_dry_run_returns_a_plan_without_applying():
+def test_rename_dry_run_returns_a_plan_without_applying(
+    fixtureCarrierStoodDown,
+):
     client = _tupleRenameClient(_dictRenameWorkflow(), {})
     response = client.post(
         f"/api/steps/{S_CONTAINER_ID}/0/rename",
@@ -451,7 +498,7 @@ def test_rename_dry_run_returns_a_plan_without_applying():
     assert "listScriptWarnings" in dictPlan
 
 
-def test_rename_bad_index_is_404():
+def test_rename_bad_index_is_404(fixtureCarrierStoodDown):
     client = _tupleRenameClient(_dictRenameWorkflow(), {})
     response = client.post(
         f"/api/steps/{S_CONTAINER_ID}/99/rename",

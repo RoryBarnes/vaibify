@@ -21,6 +21,13 @@ The mechanism is a scope marker plus a route class:
   before any route registers, calls :func:`fiAuthorizeContainerHttp` before
   the endpoint body for every ``container-owner`` and ``container-read``
   route.
+* :func:`ffnDeclareCarrierMode` stamps a second, ORTHOGONAL declaration:
+  what the route DOES to its container, from the closed set the
+  migration plan's R2 defines. It authorizes nothing — the route class
+  reads it only to decide that the route no longer wants the legacy
+  ambient commit-guard admission, which
+  :data:`SET_ROUTES_AWAITING_CARRIER_MODE` still grants to every route
+  that has not declared. See that record's comment for the ratchet.
 
 A mutating route carries a ``container-owner`` scope implicitly when its path
 template carries ``{sContainerId}`` — the marker of a viewer container-session
@@ -52,12 +59,25 @@ __all__ = [
     "S_SCOPE_OWNER_ESTABLISHING",
     "S_SCOPE_CONTAINER_READ",
     "S_SCOPE_CONTAINER_LIFECYCLE",
+    "S_CARRIER_TYPED_READ",
+    "S_CARRIER_MODE_A_SYNCHRONOUS",
+    "S_CARRIER_MODE_B_LOCK_HELD",
+    "S_CARRIER_MODE_C_DURABLE",
+    "S_CARRIER_LIFECYCLE_TRANSACTION",
+    "S_CARRIER_SEPARATE_AUTHORITY",
+    "S_CARRIER_DECLARATION_SEPARATOR",
     "DICT_CONTROL_PLANE_SCOPES",
     "SET_CONTAINER_READ_ROUTES",
+    "SET_ROUTES_AWAITING_CARRIER_MODE",
     "ContainerAwareRoute",
     "ffnRouteScope",
     "ffnContainerOwner",
+    "ffnDeclareCarrierMode",
     "fdictResolveRouteScope",
+    "ftResolveCarrierDeclaration",
+    "fsFormatCarrierDeclaration",
+    "ftParseCarrierDeclaration",
+    "fbRouteAwaitsCarrierMode",
     "fiAuthorizeContainerHttp",
     "fiAuthorizeContainerLifecycleHttp",
     "fnValidateRouteScopesOrRaise",
@@ -150,7 +170,7 @@ I_REJECT_STARTING = 409
 # single-user, so for both the browser credential is the boundary and the
 # lease is live-session coordination. ``connect`` and ``release`` are
 # session-bound by their own authorities (owner-establishing / the
-# bound-lease check in ``fbReleaseOwnership``). See docs/architecture.md,
+# bound-lease check in ``fnReleaseOwnership``). See docs/architecture.md,
 # "Single browser session per container".
 DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
@@ -244,6 +264,117 @@ SET_CONTAINER_READ_ROUTES = frozenset({
 })
 
 
+# ---------------------------------------------------------------------
+# Carrier-mode declarations (migration plan phase 1c; rules R1, R2, R6).
+# ---------------------------------------------------------------------
+
+# R2's closed set. A declaration records what a container-scoped entry
+# point DOES. It authorizes NOTHING: it opens no admission, and no
+# authority consults it. The declared behaviour lives in the handler's
+# carrier calls, and a handler that forgets one is refused at the
+# primitive with MutationNotAdmittedError -- that refusal IS the proof,
+# and a declaration that pre-admitted the handler would delete it. This
+# is the bAgentSafe mistake one level up, and it has shipped here once.
+S_CARRIER_TYPED_READ = "typed-read"
+S_CARRIER_MODE_A_SYNCHRONOUS = "mode-a-synchronous"
+S_CARRIER_MODE_B_LOCK_HELD = "mode-b-lock-held"
+S_CARRIER_MODE_C_DURABLE = "mode-c-durable"
+S_CARRIER_LIFECYCLE_TRANSACTION = "lifecycle-transaction"
+S_CARRIER_SEPARATE_AUTHORITY = "separate-authority"
+
+_SET_VALID_CARRIER_DECLARATIONS = frozenset({
+    S_CARRIER_TYPED_READ,
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_MODE_C_DURABLE,
+    S_CARRIER_LIFECYCLE_TRANSACTION,
+    S_CARRIER_SEPARATE_AUTHORITY,
+})
+
+# One entry point may declare SEVERAL -- a handler that writes
+# synchronously and then starts durable work is a real shape, and
+# forcing it to pick one would make the record lie. The observation
+# artifact carries a declaration as a single string, so the several are
+# joined on this separator and split back on it here; one authority for
+# the encoding, never two derivations of it.
+S_CARRIER_DECLARATION_SEPARATOR = "+"
+
+# R6's ratchet. A container-scoped route keeps the legacy ambient
+# admission (``S_ADMISSION_MODE_REQUEST``, minted below by
+# :class:`ContainerAwareRoute`) only while it is recorded here. A route
+# that DECLARES takes the enforced branch instead, and a route that is
+# NEITHER declared nor recorded here also takes the enforced branch --
+# fail closed, so a route added later cannot inherit the ambient mint by
+# being forgotten.
+#
+# Seeded with the 130 container-scoped routes ``ContainerAwareRoute``
+# actually serves, measured from ``fappCreateHubApplication()`` rather
+# than transcribed. It may only ever SHRINK
+# (``tests/testCarrierModeDeclaration.py``); when it is empty, the
+# ambient branch and this set are deleted together (plan phase 4).
+#
+# The plan's population figure is 132 and it counts two routes this set
+# deliberately omits. Both are WebSocket routes that resolve to
+# ``container-read`` by the ``{sContainerId}`` convention, but an
+# ``APIWebSocketRoute`` is not an ``APIRoute``, so
+# ``app.router.route_class`` never governs them: they take NEITHER
+# branch and are gated by ``webSocketAuthorization`` instead. Seeding
+# them here would record an HTTP admission they never receive, and
+# nothing could ever migrate them out of it.
+# ``tests/testCarrierModeDeclaration.py`` names them and asserts the
+# three records still add back up to the resolved population, so
+# neither can quietly leave it.
+SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
+    ("GET", "/api/containers/{sContainerId}/isolation"),
+    ("GET", "/api/containers/{sContainerId}/ready"),
+    ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),
+    ("GET", "/api/drafts/{sContainerId}"),
+    ("GET", "/api/figure/{sContainerId}/{sFilePath:path}"),
+    ("GET", "/api/files/{sContainerId}/download/{sFilePath:path}"),
+    ("GET", "/api/files/{sContainerId}/{sDirectoryPath:path}"),
+    ("GET", "/api/git/{sContainerId}/badges"),
+    ("GET", "/api/git/{sContainerId}/manifest-check"),
+    ("GET", "/api/git/{sContainerId}/status"),
+    ("GET", "/api/logs/{sContainerId}"),
+    ("GET", "/api/logs/{sContainerId}/{sLogFilename}"),
+    ("GET", "/api/monitor/{sContainerId}"),
+    ("GET", "/api/overleaf/{sContainerId}/mirror/tree"),
+    ("GET", "/api/pipeline/{sContainerId}/file-status"),
+    ("GET", "/api/pipeline/{sContainerId}/host-log-tail"),
+    ("GET", "/api/pipeline/{sContainerId}/state"),
+    ("GET", "/api/pipeline/{sContainerId}/workflow-discovery"),
+    ("GET", "/api/repos/{sContainerId}/status"),
+    ("GET", "/api/repos/{sContainerId}/{sRepoName}/dirty-files"),
+    ("GET", "/api/settings/{sContainerId}"),
+    ("GET", "/api/steps/{sContainerId}"),
+    ("GET", "/api/steps/{sContainerId}/by-label/{sLabel}"),
+    ("GET", "/api/steps/{sContainerId}/resolve-commands"),
+    ("GET", "/api/steps/{sContainerId}/validate"),
+    ("GET", "/api/steps/{sContainerId}/{iStepIndex}"),
+    ("GET", "/api/steps/{sContainerId}/{iStepIndex}/falsification"),
+    ("GET", "/api/sync/{sContainerId}/check/{sService}"),
+    ("GET", "/api/sync/{sContainerId}/files"),
+    ("GET", "/api/sync/{sContainerId}/has-credential/{sService}"),
+    ("GET", "/api/sync/{sContainerId}/reverify-schedule"),
+    ("GET", "/api/sync/{sContainerId}/scripts"),
+    ("GET", "/api/sync/{sContainerId}/status"),
+    ("GET", "/api/sync/{sContainerId}/{sService}/status"),
+    ("GET", "/api/workflow/{sContainerId}/dag"),
+    ("GET", "/api/workflow/{sContainerId}/dag/export"),
+    ("GET", "/api/workflow/{sContainerId}/level2/readiness"),
+    ("GET", "/api/workflow/{sContainerId}/level3/attestation"),
+    ("GET", "/api/workflow/{sContainerId}/level3/readiness"),
+    ("GET", "/api/workflow/{sContainerId}/manifest/text"),
+    ("GET", "/api/workflow/{sContainerId}/project-context"),
+    ("GET", "/api/workflow/{sContainerId}/prompt-record/status"),
+    ("GET", "/api/workflows/{sContainerId}"),
+    ("GET", "/api/zenodo/{sContainerId}/deposit"),
+    ("GET", "/api/zenodo/{sContainerId}/metadata"),
+    ("HEAD", "/api/figure/{sContainerId}/{sFilePath:path}"),
+    ("POST", "/api/zenodo/{sContainerId}/download"),
+})
+
+
 def ffnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
     """Stamp an authorization scope onto an HTTP route endpoint.
 
@@ -291,6 +422,106 @@ def ffnContainerOwner(sTargetParam="sContainerId", sIdentityKind="id"):
     return ffnRouteScope(
         S_SCOPE_CONTAINER_OWNER, sTargetParam, sIdentityKind,
     )
+
+
+def ffnDeclareCarrierMode(*saDeclarations):
+    """Stamp what a container-scoped route DOES, from R2's closed set.
+
+    Metadata only, exactly like :func:`ffnRouteScope` and
+    ``actionCatalog.ffnAgentAction``. **A declaration authorizes
+    nothing.** It mints no admission and no authority reads it;
+    :class:`ContainerAwareRoute` consults it for one purpose only — to
+    learn that the route no longer wants the legacy ambient mint. The
+    declared behaviour lives in the handler's carrier calls, and
+    forgetting one raises ``MutationNotAdmittedError`` at the primitive.
+    That refusal is the proof, and a decorator that pre-admitted the
+    handler would delete it.
+
+    Placed BELOW the ``@app.<verb>(...)`` line, like the scope stamp, so
+    it marks the same function object FastAPI registers.
+    """
+    _fnValidateCarrierDeclarations(saDeclarations)
+
+    def _ffnDecorator(fnEndpoint):
+        if isinstance(fnEndpoint, APIRoute) or not callable(fnEndpoint):
+            raise TypeError(
+                "ffnDeclareCarrierMode must decorate an endpoint function, "
+                "below the @app.<verb> line; it received a "
+                f"{type(fnEndpoint).__name__}."
+            )
+        fnEndpoint._tupleCarrierDeclaration = tuple(saDeclarations)
+        return fnEndpoint
+    return _ffnDecorator
+
+
+def _fnValidateCarrierDeclarations(saDeclarations):
+    """Raise on an empty, unknown, or self-contradicting declaration.
+
+    ``typed-read`` is exclusive. It claims the entry point reaches no
+    mutation-capable primitive at all, so pairing it with a carrier mode
+    would state both that the route mutates and that it does not — and
+    would hand the intent-vs-execution comparison a declaration under
+    which the mode rule absorbs every typed-read violation.
+    """
+    if not saDeclarations:
+        raise ValueError(
+            "A carrier declaration must name at least one member of the "
+            f"closed set: {sorted(_SET_VALID_CARRIER_DECLARATIONS)}."
+        )
+    setUnknown = set(saDeclarations) - _SET_VALID_CARRIER_DECLARATIONS
+    if setUnknown:
+        raise ValueError(
+            f"Unknown carrier declaration(s): {sorted(setUnknown)}; the "
+            f"set is closed at {sorted(_SET_VALID_CARRIER_DECLARATIONS)}."
+        )
+    if S_CARRIER_TYPED_READ in saDeclarations and len(
+        set(saDeclarations),
+    ) > 1:
+        raise ValueError(
+            f"'{S_CARRIER_TYPED_READ}' claims the route reaches no "
+            "mutation-capable primitive, so it cannot be combined with a "
+            f"declaration saying it does: {sorted(set(saDeclarations))}."
+        )
+
+
+def ftResolveCarrierDeclaration(fnEndpoint):
+    """Return an endpoint's declarations, or ``()`` when it has none."""
+    return tuple(getattr(fnEndpoint, "_tupleCarrierDeclaration", ()) or ())
+
+
+def fsFormatCarrierDeclaration(tDeclarations):
+    """Return the single-string form an observation artifact records."""
+    return S_CARRIER_DECLARATION_SEPARATOR.join(sorted(tDeclarations))
+
+
+def ftParseCarrierDeclaration(sDeclaration):
+    """Return the declarations encoded in one artifact string.
+
+    Anything outside the closed set is dropped rather than returned, so
+    the absent-declaration mark an observation carries when its entry
+    point has not declared parses to ``()`` — the same answer as an
+    endpoint carrying no stamp.
+    """
+    return tuple(
+        sPart
+        for sPart in sDeclaration.split(S_CARRIER_DECLARATION_SEPARATOR)
+        if sPart in _SET_VALID_CARRIER_DECLARATIONS
+    )
+
+
+def fbRouteAwaitsCarrierMode(setMethods, sPath):
+    """Return True while a route is still recorded as awaiting (R6).
+
+    EVERY method the route serves must be recorded. A route that
+    acquired a new verb is only partly accounted for, and the honest
+    answer for the whole route is then "not awaiting" — which sends it
+    to the enforced branch, where a mutation it forgot to carry is
+    refused rather than silently admitted.
+    """
+    setKeys = {(sMethod, sPath) for sMethod in (setMethods or ())}
+    if not setKeys:
+        return False
+    return setKeys <= SET_ROUTES_AWAITING_CARRIER_MODE
 
 
 def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
@@ -474,13 +705,21 @@ class ContainerAwareRoute(APIRoute):
     through a registration-ordering accident. For a ``container-owner``
     or ``container-read`` route the wrapper runs
     :func:`fiAuthorizeContainerHttp` first and short-circuits the endpoint
-    on refusal, then serves the handler under a commit-guard request
-    admission (design §8) so the write funnel can revalidate the lane
-    tuple at each commit point; every other scope is served with the
-    request lane merely MARKED — a route without container authority
-    that reaches a container-mutating primitive is refused at the
-    funnel, which is what makes the primitives unreachable directly
-    from a route.
+    on refusal.
+
+    It then chooses between two lanes that both already existed
+    (migration plan phase 1c). A route still recorded in
+    :data:`SET_ROUTES_AWAITING_CARRIER_MODE` is served under the legacy
+    ambient commit-guard request admission (design §8), so the write
+    funnel can revalidate the lane tuple at each commit point. Every
+    other route — one that has DECLARED, and equally one that is
+    neither declared nor recorded as awaiting — is served with the
+    request lane merely MARKED and NO admission, so a container
+    mutation it did not carry through a carrier is refused at the
+    funnel. That is also how every non-container scope is served: a
+    route without container authority that reaches a container-mutating
+    primitive is refused there, which is what makes the primitives
+    unreachable directly from a route.
     """
 
     def get_route_handler(self):
@@ -491,15 +730,17 @@ class ContainerAwareRoute(APIRoute):
             dictScope = fdictResolveRouteScope(
                 self.methods, self.path, self.endpoint,
             )
-            if (
+            bContainerScoped = (
                 dictScope is not None
                 and dictScope["sScope"] in _SET_AUTHORIZED_CONTAINER_SCOPES
-            ):
+            )
+            if bContainerScoped:
                 iCode = _fiAuthorizeForScope(
                     request, request.app.state, dictScope,
                 )
                 if iCode:
                     return _fresponseRefused(iCode)
+            if bContainerScoped and _fbServeOnAmbientAdmission(self):
                 tAdmissionTokens = commitCarrier.ftOpenRequestAdmission(
                     request.app.state, dictScope, request,
                 )
@@ -514,6 +755,25 @@ class ContainerAwareRoute(APIRoute):
                 commitCarrier.fnResetEnforcedRequestLane(tokenLane)
 
         return fresponseHandleAuthorized
+
+
+def _fbServeOnAmbientAdmission(route):
+    """Return True while a route still holds the legacy ambient mint.
+
+    A DECLARED route never does: the enforced branch has no admission,
+    its handler opens one per operation through a carrier, and
+    forgetting raises ``MutationNotAdmittedError`` loudly. Pre-admitting
+    a declared route would delete exactly that proof (R1).
+
+    A route that is neither declared nor recorded in
+    :data:`SET_ROUTES_AWAITING_CARRIER_MODE` also fails to the enforced
+    branch. The allow-list is what GRANTS the legacy mint, not the
+    absence of a declaration, so a route added after this list was
+    seeded cannot inherit the ambient admission by being forgotten.
+    """
+    if ftResolveCarrierDeclaration(route.endpoint):
+        return False
+    return fbRouteAwaitsCarrierMode(route.methods, route.path)
 
 
 def _fiAuthorizeForScope(request, appState, dictScope):

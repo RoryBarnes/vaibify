@@ -429,7 +429,7 @@ def testAgentPullMustLandInTheExportDirectory(
 ):
     """An agent-lane pull may not write arbitrary host paths.
 
-    ``docker cp`` runs on the HOST and the agent authors the bytes, so
+    The pull writes on the HOST and the agent authors the bytes, so
     an unrestricted destination is agent-authored content landing in a
     shell profile or an authorized-keys file -- host code execution out
     of the sandbox.
@@ -438,7 +438,9 @@ def testAgentPullMustLandInTheExportDirectory(
     `if fbRequestRidesAgentLane(requestHttp):` neutralized to
     `if False:`.
     """
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseEscape = clientAgent.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -459,7 +461,9 @@ def testAgentPullIntoTheExportDirectoryIsAllowed(
         sHomeDirectory, ".vaibify", "exports",
         S_CONTAINER_ID, "result.csv",
     )
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseHttp = clientAgent.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -475,7 +479,9 @@ def testBrowserPullIsNotConfinedToTheExportDirectory(
 ):
     """The researcher's own pull keeps its full home-directory range."""
     _fnConnectAsOwner(clientBrowser)
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseHttp = clientBrowser.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -551,11 +557,22 @@ def testFigureProbeValidatesTheWorkdirFallback(clientBrowser):
     omission turned ``test -f`` into an existence oracle over arbitrary
     container paths.
 
+    The owning lease is held so the 403 comes from the path guard, not
+    the container-owner gate. It did not used to be: this test called
+    ``_fresponseConnect``, which connects without holding the lease, so
+    EVERY container-scoped request answered 403 "You do not hold this
+    container's lease" and the assertion passed no matter what the path
+    logic did. Deleting the fallback validation outright left it green,
+    and so did deleting the handler's primary validation -- the test
+    measured the authorization gate and reported it as a path guard.
+    The sibling denylist test three functions above already carried this
+    lesson in its own docstring; it was not applied here.
+
     Kills: figureRoutes._flistBuildFigureCheckPaths: the fallback
     validation `fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))`
     replaced by the bare `sFallback)`.
     """
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     responseHttp = clientBrowser.head(
         f"/api/figure/{S_CONTAINER_ID}/shadow",
         params={"sWorkdir": "/etc"},
@@ -652,3 +669,55 @@ def test_host_log_tail_browser_lane_keeps_raw_view(clientBrowser, tmp_path):
         assert len(dictBody["listLines"]) == 1
     finally:
         hostIncidents.fnResetHostIncidents()
+
+
+# ── has-credential answers about the HOST keyring ────────────────
+
+
+def _fresponseHasCredential(client):
+    """GET the has-credential probe with the host keyring reporting True.
+
+    The patch target is the authority the route consults, so a 200
+    carries the real answer rather than a fixture default. Patching it
+    to ``True`` is what makes a leak visible: an unguarded agent lane
+    would learn that the researcher stores an Overleaf token.
+    """
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists", return_value=True,
+    ):
+        return client.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/overleaf",
+        )
+
+
+@pytest.mark.falsification
+def test_has_credential_refuses_the_agent_lane(clientAgent):
+    """The agent must not learn whether the host keyring holds a token.
+
+    The route reads the RESEARCHER'S machine and ignores the container
+    id in its own path, so no agent token can authorize it -- yet it is
+    a GET, which the catalog's agent-lane gate never sees, and it
+    carried no guard of its own. The agent lane is authorized for this
+    container here (``clientAgent`` writes the owner record), so a 403
+    can only come from the handler's own refusal.
+
+    Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call from
+    ``fdictHasCredential`` in ``syncRoutes.py`` -- the request then answers
+    200 with ``bHasCredential`` true, which is the leak.
+    """
+    responseHttp = _fresponseHasCredential(clientAgent)
+    assert responseHttp.status_code == 403
+    assert "bHasCredential" not in responseHttp.text
+
+
+def test_has_credential_still_answers_the_browser_lane(clientBrowser):
+    """The researcher's own browser still gets the answer it needs.
+
+    The sync panel reads this probe to decide whether to prompt for a
+    token, so a guard that refused both lanes would be a regression,
+    not a fix.
+    """
+    _fnConnectAsOwner(clientBrowser)
+    responseHttp = _fresponseHasCredential(clientBrowser)
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"bHasCredential": True}

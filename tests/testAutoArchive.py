@@ -1,18 +1,16 @@
 """Tests for the Auto Archive helpers in fileStatusManager."""
 
-import asyncio
 from unittest.mock import MagicMock, patch
+
+from tests.dockerConnectionDoubles import (
+    fconnectionDoubleWithNoContainerPaths,
+)
 
 from vaibify.gui.fileStatusManager import (
     flistStepRemoteFiles,
     fbMaybeAutoArchive,
 )
 from vaibify.reproducibility.levelGates import fbStepIsAtLeastLevel1
-
-
-def _fnRunAsync(coroutine):
-    """Run an async coroutine synchronously."""
-    return asyncio.run(coroutine)
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +222,9 @@ def test_fnMaybeAutoArchive_noop_when_setting_off():
     dictWorkflow["bAutoArchive"] = False
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "passed"}
-    bResult = _fnRunAsync(fbMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0, 0,
-    ))
+    bResult = fbMaybeAutoArchive(
+        fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+    )
     assert bResult is False
 
 
@@ -235,10 +233,10 @@ def test_fnMaybeAutoArchive_noop_when_already_verified():
     dictWorkflow["bAutoArchive"] = True
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "passed"}
-    bResult = _fnRunAsync(fbMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0,
+    bResult = fbMaybeAutoArchive(
+        fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0,
         iProofLevelBefore=1,
-    ))
+    )
     assert bResult is False
 
 
@@ -247,9 +245,9 @@ def test_fnMaybeAutoArchive_noop_when_step_not_now_verified():
     dictWorkflow["bAutoArchive"] = True
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "untested"}
-    bResult = _fnRunAsync(fbMaybeAutoArchive(
-        MagicMock(), "cid", dictWorkflow, 0, 0,
-    ))
+    bResult = fbMaybeAutoArchive(
+        fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+    )
     assert bResult is False
 
 
@@ -263,9 +261,9 @@ def test_fnMaybeAutoArchive_pushes_overleaf_on_transition():
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
         return_value=(0, "ok"),
     ) as mockPush:
-        bResult = _fnRunAsync(fbMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
-        ))
+        bResult = fbMaybeAutoArchive(
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+        )
     assert bResult is True
     assert mockPush.called
     assert mockPush.call_args[0][3] == "abc123"
@@ -281,9 +279,9 @@ def test_fnMaybeAutoArchive_pushes_zenodo_on_transition():
         "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
         return_value=(0, "ok"),
     ) as mockArchive:
-        bResult = _fnRunAsync(fbMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
-        ))
+        bResult = fbMaybeAutoArchive(
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+        )
     assert bResult is True
     assert mockArchive.called
 
@@ -305,9 +303,9 @@ def test_fnMaybeAutoArchive_pushes_both_remotes():
         "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
         return_value=(0, "ok"),
     ) as mockZenodo:
-        bResult = _fnRunAsync(fbMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
-        ))
+        bResult = fbMaybeAutoArchive(
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+        )
     assert bResult is True
     assert mockOverleaf.called
     assert mockZenodo.called
@@ -323,9 +321,9 @@ def test_fnMaybeAutoArchive_swallows_overleaf_failure():
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
         side_effect=RuntimeError("network down"),
     ):
-        bResult = _fnRunAsync(fbMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
-        ))
+        bResult = fbMaybeAutoArchive(
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+        )
     assert bResult is False
 
 
@@ -338,8 +336,8 @@ def test_fnMaybeAutoArchive_no_remotes_configured_returns_false():
     with patch(
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
     ) as mockPush:
-        bResult = _fnRunAsync(fbMaybeAutoArchive(
-            MagicMock(), "cid", dictWorkflow, 0, 0,
-        ))
+        bResult = fbMaybeAutoArchive(
+            fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
+        )
     assert bResult is False
     assert not mockPush.called

@@ -1,6 +1,6 @@
-"""PROOF level readiness route handlers.
+"""AICS level readiness route handlers.
 
-Exposes the per-workflow Level 2 readiness rollup that the PROOF tab
+Exposes the per-workflow Level 2 readiness rollup that the AICS tab
 consumes, the AI Declaration starter-template generator that the
 "Generate template" button on the new step kind invokes, and the
 AI Declaration add-step route that appends the interactive
@@ -18,7 +18,7 @@ __all__ = ["fnRegisterAll"]
 
 import os
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
@@ -27,7 +27,17 @@ from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
 )
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    ffilesForWorkflow,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    ffnDeclareCarrierMode,
+)
 from ...reproducibility.aiDeclarationStep import (
     S_DEFAULT_DECLARATION_DIRECTORY,
     S_DEFAULT_DECLARATION_FILENAME,
@@ -158,40 +168,83 @@ def _fnRegisterGenerateTemplate(app, dictCtx):
         "/api/workflow/{sContainerId}"
         "/ai-declaration/generate-template"
     )
-    async def fdictGenerateTemplate(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleGenerateTemplate(
         sContainerId: str,
         request: AiDeclarationTemplateRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         _fsRequireProjectRepo(dictWorkflow)
-        filesRepo = ffilesForWorkflow(
-            dictCtx, sContainerId, dictWorkflow,
+        return await _fdictGenerateTemplateUnderTheDrain(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            sContainerId,
+            _fsValidateRelativePath(request.sRelativePath),
+            requestHttp,
         )
-        sRelative = _fsValidateRelativePath(request.sRelativePath)
-        if fbDeclarationFileExists(filesRepo, sRelative):
-            raise HTTPException(
-                409,
-                f"Declaration file already exists at '{sRelative}'; "
-                f"edit it in place rather than regenerating.",
-            )
-        try:
-            sAbsolute = fsWriteDeclarationTemplate(
-                filesRepo, sRelative,
-            )
-        except (OSError, ValueError) as error:
-            raise HTTPException(
-                500,
-                f"Template generation failed: "
-                f"{_fsSanitizeServerError(str(error))}",
-            )
-        return {
-            "bSuccess": True,
-            "sRelativePath": sRelative,
-            "sAbsolutePath": sAbsolute,
-        }
+
+
+async def _fdictGenerateTemplateUnderTheDrain(
+    filesRepo, sContainerId, sRelative, requestHttp,
+):
+    """Probe for an existing declaration, then write, under one drain.
+
+    The probe is the GUARD -- "generate only if absent" -- so it and
+    the write belong to one carrier: split across two, a second tab or
+    the in-container agent could pass the absence check between them
+    and the loser's template would overwrite a declaration the
+    researcher had already started editing. The generator's own
+    ``FileExistsError`` is a second line of defence, not a substitute:
+    it raises AFTER the drain would already have been released.
+
+    Mode (b) because the adapter spends three container round-trips per
+    logical write (``mkdir -p``, the ``.tmp`` write, ``mv -f``) plus
+    two typed reads for the probe, all of which belong in a worker.
+
+    Both refusals are carried back rather than raised. The 409 is
+    decided with the container untouched -- the file is simply already
+    there -- and the 500 is raised for a template generation that
+    refused to overwrite or was handed an empty path, which is equally
+    a decision made BEFORE any byte is written. Neither is the unknown
+    state a quarantine exists for.
+    """
+    def fdictGenerateTheTemplate(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictProbeThenWriteTemplate(filesRepo, sRelative),
+            setAlsoCarriedStatusCodes=frozenset({500}),
+        )
+
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictGenerateTheTemplate, "ai-declaration-template",
+        requestHttp,
+    )
+
+
+def _fdictProbeThenWriteTemplate(filesRepo, sRelative):
+    """Refuse an existing declaration, else write the starter template."""
+    if fbDeclarationFileExists(filesRepo, sRelative):
+        raise HTTPException(
+            409,
+            f"Declaration file already exists at '{sRelative}'; "
+            f"edit it in place rather than regenerating.",
+        )
+    try:
+        sAbsolute = fsWriteDeclarationTemplate(filesRepo, sRelative)
+    except (OSError, ValueError) as error:
+        raise HTTPException(
+            500,
+            f"Template generation failed: "
+            f"{_fsSanitizeServerError(str(error))}",
+        )
+    return {
+        "bSuccess": True,
+        "sRelativePath": sRelative,
+        "sAbsolutePath": sAbsolute,
+    }
 
 
 def _fnRefuseDuplicateAiDeclarationStep(dictWorkflow):
@@ -228,9 +281,11 @@ def _fnRegisterAddStep(app, dictCtx):
         "/api/workflow/{sContainerId}"
         "/ai-declaration/add-step"
     )
-    async def fdictAddAiDeclarationStep(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictHandleAddAiDeclarationStep(
         sContainerId: str,
         request: AiDeclarationAddStepRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -239,7 +294,10 @@ def _fnRegisterAddStep(app, dictCtx):
         _fnRefuseDuplicateAiDeclarationStep(dictWorkflow)
         dictStep = _fdictBuildStepFromAddRequest(dictWorkflow, request)
         dictWorkflow.setdefault("listSteps", []).append(dictStep)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI Declaration step",
+        )
         return {
             "iIndex": len(dictWorkflow["listSteps"]) - 1,
             "dictStep": dictStep,
@@ -247,7 +305,7 @@ def _fnRegisterAddStep(app, dictCtx):
 
 
 def fnRegisterAll(app, dictCtx):
-    """Register the PROOF level readiness routes."""
+    """Register the AICS level readiness routes."""
     _fnRegisterLevel2Readiness(app, dictCtx)
     _fnRegisterGenerateTemplate(app, dictCtx)
     _fnRegisterAddStep(app, dictCtx)

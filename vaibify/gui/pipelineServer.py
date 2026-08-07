@@ -833,6 +833,16 @@ async def fnPipelineMessageLoop(
                     _fdictBusyRefusalEvent(sAction, dictRequest),
                 )
                 continue
+            sBusyWork = _fsDescribeBlockingMutationWork(
+                dictDurableContext,
+            )
+            if sBusyWork:
+                await fnCallback(
+                    _fdictBusyRefusalEvent(
+                        sAction, dictRequest, sBusyWork,
+                    ),
+                )
+                continue
             dictOverwriteRefusal = await _fdictRemoteOverwriteRefusal(
                 sAction, dictRequest, connectionDocker,
                 sContainerId, dictWorkflow,
@@ -983,6 +993,35 @@ def _fbRefuseWhilePipelineTaskLive(dictPipelineTasks, sContainerId):
         return False
     taskLive = dictPipelineTasks.get(sContainerId)
     return taskLive is not None and not taskLive.done()
+
+
+def _fsDescribeBlockingMutationWork(dictDurableContext):
+    """Return what holds this container's mutation lock, or ``""``.
+
+    The blind spot beside :func:`_fbRefuseWhilePipelineTaskLive`, which
+    consults ``dictPipelineTasks`` and so sees only pipeline actions
+    dispatched over THIS WebSocket. An HTTP route holding the drain —
+    a test run, a plot conversion, a clean — is invisible to it, so a
+    Run Step arriving mid-test-suite was not refused: it reached
+    ``fdictLaunchDurableTask``, blocked on the mutation lock for as
+    long as that work took, and the researcher saw an unexplained wait
+    with no way to tell a slow container from a wedged one. Refusing at
+    once and naming the holder is the rule transfers already follow;
+    nothing here waits, and reading the registry cannot itself block.
+
+    Empty without a durable context (the direct-library and test path):
+    there is no app state to consult, and manufacturing a refusal would
+    refuse callers that never contended for a lock. Note the direction
+    that matters — mode-(a) commits (draft, file, settings and workflow
+    saves) register NO supervisor and take NO lock, so they never
+    appear here and must never block a run.
+    """
+    if dictDurableContext is None:
+        return ""
+    from . import commitCarrier
+    return commitCarrier.fsDescribeLiveMutationWork(
+        dictDurableContext["appState"], dictDurableContext["sName"],
+    )
 
 
 _SET_REMOTE_GATED_ACTIONS = frozenset({
@@ -1154,18 +1193,31 @@ def _fdictRemoteOverwriteEvent(
     }
 
 
-def _fdictBusyRefusalEvent(sAction, dictRequest):
-    """Return the honest refusal event for a run-while-running attempt.
+def _fdictBusyRefusalEvent(sAction, dictRequest, sBusyDescription=""):
+    """Return the honest refusal event for a run-while-busy attempt.
 
     Carries the refused step indices so the browser can reset only the
     lights it optimistically set to "queued", leaving the in-flight
     run's statuses untouched.
+
+    ``sBusyDescription`` NAMES what holds the container when the
+    blocker is a carrier worker rather than a pipeline action: an
+    ``asyncio.Lock`` knows only that it is held, and "busy" cannot tell
+    a researcher whether to wait two seconds or abandon the attempt.
+    The REMEDY differs with the blocker, so it is not shared text — the
+    Kill button stops a pipeline action and does nothing to a carrier
+    worker, and a refusal that misdescribes its own remedy sends the
+    researcher to a control that cannot help.
     """
     return {
         "sType": "runRefused",
         "sAction": sAction,
         "listStepIndices": dictRequest.get("listStepIndices", []),
         "sMessage": (
+            f"Refused '{sAction}': {sBusyDescription} is still running "
+            "in this container and holds it until it finishes. Retry "
+            "when it does."
+            if sBusyDescription else
             f"Refused '{sAction}': a pipeline action is already "
             "running in this container. Wait for it to finish, or "
             "stop it with the Kill button, then retry."
@@ -2083,8 +2135,8 @@ from .fileStatusManager import (  # noqa: F401
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     flistStepRemoteFiles,
-    fdictCollectMarkerPathsByStep,
-    fdictCollectScriptPathsByStep,
+    fdictHandleCollectMarkerPathsByStep,
+    fdictHandleCollectScriptPathsByStep,
     fbMaybeAutoArchive,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
@@ -2152,7 +2204,8 @@ _DICT_ROUTE_RE_EXPORTS = {
     # figureRoutes
     "_flistBuildFigureCheckPaths": "routes.figureRoutes",
     # fileRoutes
-    "_fnDockerCopy": "routes.fileRoutes",
+    "_fnRefuseDirectorySource": "routes.fileRoutes",
+    "_fsPullContainerFileToHost": "routes.fileRoutes",
     "_fnValidateHostDestination": "routes.fileRoutes",
     # workflowRoutes
     "_fnRejectDuplicateWorkflowName": "routes.workflowRoutes",

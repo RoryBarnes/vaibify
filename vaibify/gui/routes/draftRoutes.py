@@ -14,14 +14,23 @@ keeps user input from escaping the per-workflow draft directory.
 
 __all__ = ["fnRegisterAll"]
 
+import hashlib
 import posixpath
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
 from ..actionCatalog import ffnAgentAction
 from .. import draftManager
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    fsHashContainerFileOrEmpty,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    ffnDeclareCarrierMode,
+)
 from ..pipelineServer import (
     fsValidatePathWithinRoot,
     _fsSanitizeServerError,
@@ -41,7 +50,7 @@ def _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     connect handler is the only place it's resolved authoritatively;
     the cached workflow dict does not carry it directly. The slug
     derivation in :mod:`vaibify.gui.draftManager` mirrors what
-    ``fdictCollectMarkerPathsByStep`` uses for test markers, so drafts
+    ``fnCollectMarkerPathsByStep`` uses for test markers, so drafts
     namespace by the same workflow basename as markers.
     """
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
@@ -112,32 +121,77 @@ def _fnRegisterDraftWrite(app, dictCtx):
 
     @ffnAgentAction("write-draft")
     @app.put("/api/draft/{sContainerId}/{sFilePath:path}")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fdictWriteDraft(
         sContainerId: str, sFilePath: str,
-        request: DraftWriteRequest,
+        request: DraftWriteRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         _fnRejectOversize(request.sContent)
         sDraftDir, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, request.sWorkdir,
         )
-        _fnEnsureDraftDir(dictCtx, sContainerId, sDraftDir)
         sJsonPayload = draftManager.fsBuildDraftPayload(
             sFilePath, request.sWorkdir, request.sContent,
             request.sBaseHash,
         )
+        _fnCommitDraftWrite(
+            dictCtx, sContainerId, sDraftDir, sDraftPath,
+            sJsonPayload.encode("utf-8"), requestHttp,
+        )
+        return {"bSuccess": True, "sPath": sDraftPath}
+
+
+def _fnCommitDraftWrite(
+    dictCtx, sContainerId, sDraftDir, sDraftPath, baPayload, requestHttp,
+):
+    """Commit the draft save through carrier mode (a) (design §8).
+
+    One logical mutation, so one write-ahead record. Creating the
+    per-workflow draft directory is a precondition of the write rather
+    than an operation a researcher asks for on its own, and the
+    record's ``file-write`` postcondition covers the pair: a draft file
+    holding the intended bytes proves the ``mkdir`` ran AND the write
+    landed. Both reach container primitives, so both must run inside
+    the carrier's admission — the ``mkdir`` outside it is an arbitrary
+    exec, which the gate refuses.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The draft save",
+    )
+    sPriorSha256 = fsHashContainerFileOrEmpty(
+        dictCtx, sContainerId, sDraftPath,
+    )
+
+    def fnWriteTheDraft():
+        _fnEnsureDraftDir(dictCtx, sContainerId, sDraftDir)
         try:
             dictCtx["docker"].fnWriteFile(
-                sContainerId, sDraftPath,
-                sJsonPayload.encode("utf-8"),
+                sContainerId, sDraftPath, baPayload,
             )
+        except PermissionError:
+            # A carrier refusal is the migration's only proof that a
+            # mutation was carried; flattening it into a generic 500
+            # would hide exactly what this boundary exists to surface.
+            raise
         except Exception as error:
             raise HTTPException(
                 500,
                 f"Draft write failed: "
                 f"{_fsSanitizeServerError(str(error))}",
             )
-        return {"bSuccess": True, "sPath": sDraftPath}
+
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sDraftPath,
+        fnWriteTheDraft,
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": hashlib.sha256(baPayload).hexdigest(),
+            "sPriorSha256": sPriorSha256,
+        },
+    )
 
 
 def _fnRegisterDraftRead(app, dictCtx):
@@ -173,14 +227,38 @@ def _fnRegisterDraftDelete(app, dictCtx):
 
     @ffnAgentAction("delete-draft")
     @app.delete("/api/draft/{sContainerId}/{sFilePath:path}")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fdictDeleteDraft(
-        sContainerId: str, sFilePath: str,
+        sContainerId: str, sFilePath: str, requestHttp: Request,
         sWorkdir: str = "",
     ):
         dictCtx["require"]()
         _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
+        _fnCommitDraftDelete(dictCtx, sContainerId, sDraftPath, requestHttp)
+        return {"bSuccess": True}
+
+
+def _fnCommitDraftDelete(dictCtx, sContainerId, sDraftPath, requestHttp):
+    """Commit the draft removal through carrier mode (a) (design §8).
+
+    A delete is a ``file-write`` whose intended content is nothing, so
+    the expected hash is the empty string the journal uses for "this
+    file does not exist" — and the prior hash is what the draft holds
+    now. The two together make a crash inside the delete window
+    provable in either direction: the file gone reads as landed, the
+    file unchanged reads as never started.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The draft delete",
+    )
+    sPriorSha256 = fsHashContainerFileOrEmpty(
+        dictCtx, sContainerId, sDraftPath,
+    )
+
+    def fnRemoveTheDraft():
         sCommand = "rm -f " + _fsQuotePath(sDraftPath)
         iExitCode, sOutput = dictCtx["docker"].ftResultExecuteCommand(
             sContainerId, sCommand,
@@ -191,7 +269,17 @@ def _fnRegisterDraftDelete(app, dictCtx):
                 f"Draft delete failed: "
                 f"{_fsSanitizeServerError(sOutput)}",
             )
-        return {"bSuccess": True}
+
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sDraftPath,
+        fnRemoveTheDraft,
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": "",
+            "sPriorSha256": sPriorSha256,
+        },
+    )
 
 
 def _fnRegisterDraftList(app, dictCtx):

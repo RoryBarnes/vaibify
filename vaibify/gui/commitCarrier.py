@@ -89,6 +89,7 @@ import threading
 
 from vaibify.config import operationJournal
 from vaibify.config.mutationAdmission import (
+    ControlPlaneRefusalError,
     S_ADMISSION_MODE_DURABLE_TASK,
     S_ADMISSION_MODE_ESTABLISHING,
     S_ADMISSION_MODE_LOCK_HELD,
@@ -117,8 +118,11 @@ S_LANE_BROWSER = "browser"
 S_LANE_AGENT = "agent"
 
 
-class CommitRefusedError(PermissionError):
-    """The carrier refused to commit: stale lane, closed hub, or busy."""
+class CommitRefusedError(ControlPlaneRefusalError):
+    """The carrier refused to commit: stale lane, closed hub, or busy.
+
+    Not a ``PermissionError``; :class:`ControlPlaneRefusalError` says why.
+    """
 
 
 def fdictCreateMutationSupervisorRegistry():
