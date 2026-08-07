@@ -1,6 +1,57 @@
-MIT License
+vaibify Non-commercial License
 
-Copyright (c) 2026 Rory Barnes
+Copyright © 2026 University of Washington.
+
+Any recipient who accepts these terms is granted permission to use, copy, modify,
+and perform this software in source and binary forms, for internal non-commercial
+research purposes.
+
+1. Permission. The recipient may use the software solely for education, academic
+research, internal evaluation, experimentation, and other noncommercial research
+purposes.. For commercial use rights, contact University of Washington, CoMotion,
+at license@uw.edu or call 206-543-3970 and inquire about the vaibify project.
+
+2. Prohibited Uses. The recipient agrees that the following uses are prohibited: (1)
+use of the software for any commercial purposes, including indirect commercial uses
+including but not limited to development of commercial products, or on a website that
+accepts advertising money for content; (2) sell, sublicense, lease, or otherwise
+exploit the software for commercial gain; (3) distribute, publish, repost, mirror, or
+make the software available to any third party; (4) post the software or any
+substantial portion of it on the internet or in a public repository; or (5) provide access
+to the software to anyone outside your organization or research team except as
+needed for the permitted research use and subject to the same restrictions.
+
+3. AI-generated content. Some or all of the software may have been generated or
+assisted by artificial intelligence tools. The software is provided as-is, and no
+representation is made that any portion is free from third-party rights, errors,
+omissions, or model-generated defects.
+
+4. Retained rights. The University of Washington retains all rights not expressly
+provided in this license.
+
+5. Termination. This license will terminate automatically upon the breach of any of
+the terms herein, and all rights granted to the recipient will end. Upon termination
+the recipient agrees to delete all copies of the software.
+
+6. Use of Names. Neither the name of the University of Washington nor the names
+of its contributors may be used to endorse or promote products derived from this
+software without specific prior written permission.
+
+7. THIS SOFTWARE IS PROVIDED BY THE UNIVERSITY OF WASHINGTON
+AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE UNIVERSITY OF WASHINGTON OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+8. Acceptance. By using the software, you agree to these terms.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
