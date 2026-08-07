@@ -1330,6 +1330,53 @@ Every render calls `fnUpdateHighlightState()` to synchronize the
 toolbar verification indicator (checkmark and color shift) with the
 current project state.
 
+## Packaging: why runtime resources live inside the package
+
+`vaibify/templates/` and `vaibify/containerImage/` are data trees that
+ship in the wheel. They used to sit at the repository root and be
+reached with `Path(__file__).resolve().parents[2]` — which is the
+repository root only in a checkout. From an installed wheel it is
+`site-packages`, so **no wheel ever contained them**: `vaibify init`
+printed "No templates found" and exited 0, and the Docker-context lookup
+landed on `site-packages/docker`, the Docker SDK's own source directory,
+which exists, so an `is_dir()` check passed.
+
+Two resources were reached from the repository root the same way and
+were therefore missing from every distribution: the curated agent docs
+staged into `/usr/share/vaibify/docs`, and the shell completions. The
+docs case was the worse one, because the bundled `vaibify-doc-map` skill
+told the in-container agent all six documents were present — so a
+wheel-built image did not merely lack docs, it *misdirected the agent*,
+and differed materially from a checkout-built image. Those docs now live
+at `vaibify/docs/` as symlinks onto the Sphinx sources, so there is one
+file to edit and both builders dereference them into real files.
+
+The build context is staged per *build*, not per project, because the
+GUI starts builds in worker threads with no serialization: two dashboard
+clicks race, and refreshing a shared directory begins with `rmtree`,
+which would delete a context out from under a running `docker build`.
+
+**Checking a shipped file is not the same as checking the artifact built
+from it.** The release workflow once validated every distribution with
+`import vaibify`, which passes for a wheel containing no templates —
+exactly what every wheel contained. Its replacement,
+`tools/checkInstalledDistribution.py`, resolves every tree, runs
+`vaibify init`, executes the shipped example workflow to a figure, and
+*assembles a real build context* to check that no curated doc and no
+Dockerfile `COPY` source is missing. The first version of that script
+spot-checked three files, which is why it passed a distribution whose
+assembled context was missing five of six agent documents.
+
+That job is **release-only** by decision (2026-07-28), matching `vspace`,
+`bigplanet` and `multi-planet`: a release runs the full support matrix, a
+manual run the corners. So a packaging regression can sit on `main` until
+the next version is cut. `upload_pypi` needs `build` and `test`, so it is
+caught while cutting the release and nothing broken is published — but
+the diagnosis arrives during a release rather than beside the change that
+caused it. It cannot be a required status check, because it cannot report
+on a pull request and every PR would wait on it forever.
+
+
 ## Testing
 
 The test suite lives in `tests/`. Run all non-Docker tests with:

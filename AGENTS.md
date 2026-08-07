@@ -146,110 +146,47 @@ exercised. Concretely:
 
 ### Required after JS changes
 
-Type checking and string-presence contract tests do not validate UI
-correctness. Neither does the ordinary Python suite: it does not
-execute the frontend at all.
-
-**CI now does.** The browser lane (`tests/browser/`, run by
-`.github/workflows/browser.yml`) loads the real dashboard in real
-Chromium against a real uvicorn hub, and fails on any console error,
-uncaught promise rejection, or failed asset. Pushing a branch is
-therefore a genuine verification path, which it never used to be.
-
-Run it locally when you want the fast signal:
+**A green Python suite says nothing about the frontend** — it does not
+execute it at all. Five agents once changed JavaScript in one session,
+none could load a browser, and the merged branch was green with the
+frontend entirely unexecuted.
 
 ```bash
 pip install -e '.[browser]' && python -m playwright install chromium
 python -m pytest tests/browser -m browser
 ```
 
-**What the browser lane does not cover.** It drives a fail-closed fake
-Docker adapter, so it says nothing about container launch, file
-ownership on write, the real transport, terminal content, figure
-rendering, or the sync panel. Those belong to the container
-acceptance lane, which runs **nightly** — meaning drift between the
-fake and a real container is caught up to a day late. The browser lane
-failing blocks merge; the container-acceptance lane failing blocks the next release, not
-retroactively. Do not read a green browser lane as "the frontend is
-verified".
+**Do not read a green browser lane as "the frontend is verified."** It
+drives a fail-closed fake Docker adapter, so it says nothing about
+container launch, file ownership on write, the real transport, terminal
+content, figure rendering, or the sync panel. The manual walkthrough,
+the three lanes and what each proves are in
+[docs/developers.md](docs/developers.md) — "Verifying a change reaches
+the screen".
 
-The manual check below is still the right tool when you are working
-on something the lane does not assert — layout, wording, a specific
-interaction. It takes about a minute and needs no Docker:
+**If you are a delegated agent and cannot load a browser: push the
+branch and open a pull request**, then let the browser lane run it. The
+lane is `pull_request`-triggered, so a pushed branch with no PR runs
+nothing — do not read a quiet Actions tab as a pass. If you also cannot
+push, **say so explicitly and name the exact surface you did not
+verify** — "the three JS call sites in `scriptWorkflowManager.js` were
+not executed; no JS runtime and no push on this host." Silence about an
+unverified surface reads as verification. A rule nobody can follow is
+not a control, which is why this one has a fallback.
 
-```bash
-python -m vaibify --port 8137     # scratch port, not your usual hub
-```
-
-Then, in the browser at `http://127.0.0.1:8137/`:
-
-1. **Read the console.** Zero errors is the bar. A single
-   `ReferenceError` means a module failed to evaluate and every
-   feature below it in load order is dead.
-2. **Enumerate the globals.** In the console:
-   `Object.keys(window).filter(k => /^Vaibify/.test(k)).length`.
-   Then check any global your change touched resolves *as a bare
-   identifier*, not via `window.`: modules declared with `const`
-   create a global lexical binding, so `window.VaibifyApp` is
-   `undefined` while `VaibifyApp` works. Probing the wrong one
-   produces a false alarm.
-3. **Confirm any new cross-module call resolves**, e.g.
-   `typeof VaibifyApp.fsGetLeaseId` → `"function"`.
-4. **Look at the page.** It should render, and any unavailable
-   dependency (Docker down, no containers) must be reported honestly
-   on screen rather than hidden.
-
-Kill the scratch hub when done.
-
-**Container-dependent paths need a container.** Anything touching the
-lease, the WebSockets, or the file-status poll is not verified by the
-above. Start Docker, open a project, and exercise the specific path.
-
-#### If you are a delegated agent and cannot do this
-
-**Push the branch and open a pull request, then let the browser lane
-run it.** The lane is `pull_request`-triggered, so a pushed branch with
-no PR runs nothing — do not read a quiet Actions tab as a pass. That is
-now the answer, and it is why the lane exists: the old rule asked
-delegated agents to load a page they had no browser for, so five of
-them once changed JavaScript in one session, none could follow the
-rule, and the merged branch was green with the frontend entirely
-unexecuted. A rule nobody can follow is not a control.
-
-If you also cannot push, say so explicitly and name the exact surface
-you did not verify — "the three JS call sites in
-`scriptWorkflowManager.js` were not executed; no JS runtime and no
-push on this host." Silence about an unverified surface reads as
-verification.
-
-### The three execution lanes
-
-| Lane | What is real | When | What it proves |
-|---|---|---|---|
-| browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behaviour reach the screen honestly |
-| container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands The browser lane's fake models |
-| fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `vaibify/containerImage/**` PRs | the image still builds; the container user is unprivileged |
-
-Two properties hold these together and must not be weakened:
+Two properties hold the lanes together and **must not be weakened**:
 
 - **The browser lane's fake is fail-closed and declared.** Every command
   it answers is listed in `LIST_MODELLED_COMMANDS` with the container
   assertion that confirms it; anything else raises. Never give it a
   catch-all return — this suite already carries ~20 permissive Docker
-  mocks, and `testDockerConnectionLive.py` records where that habit
-  led. `tests/testBrowserLaneContract.py` enforces both halves,
-  including that each named container-acceptance assertion actually exists.
-- **No lane may skip itself green.** `VAIBIFY_REQUIRE_DOCKER_DAEMON`
-  and `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into
-  a failure in CI. The `docker info || exit 0` guard this replaced
+  mocks, and `testDockerConnectionLive.py` records where that habit led.
+  `tests/testBrowserLaneContract.py` enforces both halves.
+- **No lane may skip itself green.** `VAIBIFY_REQUIRE_DOCKER_DAEMON` and
+  `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into a
+  failure in CI. The `docker info || exit 0` guard this replaced
   reported success for having run nothing;
   `tests/testDockerLiveDaemonRequirement.py` forbids its return.
-
-- Docker-dependent tests (`tests/testContainerBuildIntegration.py`)
-  are excluded from routine runs and are the only tests that require
-  a live container. They are parametrized via the
-  `VAIBIFY_INTEGRATION_CONFIG` environment variable and skip when it
-  is unset.
 
 ## Traps
 
@@ -824,77 +761,43 @@ without revisiting that.
 
 ## Runtime resources live inside the package
 
-`vaibify/templates/` and `vaibify/containerImage/` are data trees that
-ship in the wheel. They used to sit at the repository root and be
-reached with `Path(__file__).resolve().parents[2]`, which is the
-repository root only in a checkout — from an installed wheel it is
-`site-packages`. So no wheel ever contained them: `vaibify init`
-printed "No templates found" and exited 0, and the Docker-context
-lookup landed on `site-packages/docker`, the Docker SDK's own source
-directory, which exists, so an `is_dir()` check passed.
-
-Three rules follow.
+`vaibify/templates/` and `vaibify/containerImage/` ship in the wheel.
+They used to be reached with `parents[N]` from the repository root,
+which resolves to `site-packages` in an install — so no wheel ever
+contained them and `vaibify init` printed "No templates found" and
+exited 0. Four rules follow; the full account is in
+[docs/architecture.md](docs/architecture.md) — "Packaging: why runtime
+resources live inside the package".
 
 **Locate them only through `vaibify/resources.py`.** It is the single
 place that names the trees, and `importlib.resources` resolves them
-identically from a checkout, an editable install, and a wheel. Never
-reintroduce a `parents[N]` walk to reach package data.
+identically from a checkout, an editable install, and a wheel. **Never
+reintroduce a `parents[N]` walk to reach package data** — and after
+fixing any resolution bug, grep for every other way the codebase reaches
+outside the package, not just the spelling that bit you.
 
-**Treat them as read-only, and give every build its own copy.** A
-wheel may be installed where the user cannot write, and `site-packages`
-is shared by every project on the machine, so `vaibify build` never
-writes into the packaged tree: `commandBuild.fsStageBuildContext`
-mkdtemps a private context under `~/.vaibify/build/`, and it is
-discarded on success and kept on failure with its path printed. The
-staging directory is per *build*, not per project — the GUI starts
-builds in worker threads with no serialization, so two dashboard
-clicks race, and refreshing a shared directory begins with `rmtree`,
-which would delete a context out from under a running `docker build`.
-Note also that generated context files sat untracked *and* unignored
-in the old `docker/` directory for months, then rode a `git mv` into a
-wheel. `tests/testPackagedResources.py` fails if any of this
-regresses.
+**Treat them as read-only, and give every build its own copy.**
+`commandBuild.fsStageBuildContext` mkdtemps a private context under
+`~/.vaibify/build/`, discarded on success and kept on failure with its
+path printed. It is per *build*, not per project — two dashboard clicks
+race, and refreshing a shared directory starts with `rmtree`.
+`tests/testPackagedResources.py` fails if this regresses.
 
-**Anything the image needs must live under `vaibify/`.** Two
-resources were reached from the repository root and therefore missing
-from every distribution: the five curated agent docs staged into
-`/usr/share/vaibify/docs`, and the shell completions. The docs case
-was the worse one, because the bundled `vaibify-doc-map` skill told
-the in-container agent all six documents were present — a wheel-built
-image did not merely lack docs, it misdirected the agent, and it
-differed materially from a checkout-built image. Those five now live
-at `vaibify/docs/` as **symlinks onto the Sphinx sources**, so there
-is exactly one file to edit and both builders dereference them into
-real files in the distribution. Never replace one with a real file;
-that is the shadowing trap, and
+**Anything the image needs must live under `vaibify/`.** The curated
+agent docs at `vaibify/docs/` are **symlinks onto the Sphinx sources** —
+never replace one with a real file, which is the shadowing trap;
 `testCuratedDocsRemainSymlinksOntoTheSphinxSources` fails if you do.
-When adding a curated doc, add the symlink, extend `T_STAGED_DOCS`,
-extend the doc-map skill's table, and add the *Sphinx source* path to
-`freshImageBuild.yml`'s triggers — an edit lands on the target, never
-on the symlink blob.
+When adding one: add the symlink, extend `T_STAGED_DOCS`, extend the
+doc-map skill's table, and add the *Sphinx source* path to
+`freshImageBuild.yml`'s triggers.
 
 **Prove the distribution, not the import.** `pip-install.yml` runs
 `tools/checkInstalledDistribution.py` against an installed sdist and
-an installed wheel: it resolves every tree, runs `vaibify init`,
-executes the shipped example workflow to a figure, *assembles a real
-build context* and checks that no curated doc and no Dockerfile `COPY`
-source is missing. The release workflow previously tested a
-distribution with `import vaibify`, which is why a wheel missing every
-template shipped without comment — and the first version of this
-script spot-checked three files, which is why it passed a
-distribution whose assembled context was missing five of six agent
-documents. Checking a shipped file is not the same as checking the
-artifact built from it. The job is **release-only** by decision
-(2026-07-28), matching `vspace`, `bigplanet` and `multi-planet`: a
-release runs the full support matrix, a manual run the corners. So a
-packaging regression can sit on `main` until the next version is cut.
-`upload_pypi` needs `build` and `test`, so it is caught while cutting
-the release and nothing broken is published — but the diagnosis arrives
-during a release rather than beside the change that caused it. After
-touching `vaibify/resources.py`, the packaged trees, or the Dockerfile
-`COPY` set, run `pip-install` by hand (`workflow_dispatch`) instead of
-waiting for release day. Never make it a required status check: it
-cannot report on a pull request, so every PR would wait on it forever.
+wheel. It is **release-only**, so a packaging regression can sit on
+`main` until a version is cut — after touching `vaibify/resources.py`,
+the packaged trees, or the Dockerfile `COPY` set, run it by hand
+(`workflow_dispatch`). Never make it a required status check: it cannot
+report on a pull request, so every PR would wait on it forever.
 
 ## Known technical debt
 
