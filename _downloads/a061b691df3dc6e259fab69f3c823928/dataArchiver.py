@@ -156,6 +156,8 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
             fdictCaptureContainerImageDigest(sContainerName),
         "dictSystemTools": environmentSnapshot.
             fdictCaptureSystemTools(filesRepo),
+        "iSourceDateEpoch": environmentSnapshot.
+            fiCaptureSourceDateEpoch(filesRepo),
     }
     if listHostBinaries:
         dictPayload["dictHostBinaries"] = environmentSnapshot.\
@@ -297,15 +299,38 @@ def _flistReadmeHeaderLines(sTitle, sTimestamp):
 
 
 def _flistReadmeFooterLines():
-    """Return the static reproduction-instruction lines for the README."""
+    """Return the static reproduction-instruction lines for the README.
+
+    This text goes into a Zenodo archive, so it is permanent, public,
+    and read by someone who was not here. It used to say ``python
+    director.py --config config/project.json`` -- a command that could
+    not run even when the file was shipped (package-relative imports,
+    no siblings staged) and that names a file no archive contains. A
+    reproduction instruction that fails on the first line is worse for
+    a reproducibility tool than none at all, and it fails in public.
+    """
     return [
         "",
         "## Reproduction",
         "",
-        "Install vaibify and run:",
+        "Install vaibify, then from the project repository:",
         "```",
-        "python director.py --config config/project.json",
+        "vaibify reproduce",
         "```",
+        "",
+        "This verifies the archive's reproducibility envelope without "
+        "recomputing anything, and is the instruction to follow.",
+        "",
+        "To also re-run the workflow and re-hash its outputs against "
+        "`MANIFEST.sha256`, add `--rerun` — but only against a "
+        "container that no vaibify session owns and that has no "
+        "operation in flight. `--rerun` drives the container directly "
+        "and does not yet coordinate with the hub, so it can act on a "
+        "container something else is already using. Closing the "
+        "dashboard is NOT sufficient: work started from it can outlive "
+        "the browser, and a closed tab proves nothing about whether "
+        "the container is quiet. Use a fresh container if you are not "
+        "certain.",
     ]
 
 

@@ -179,6 +179,15 @@ from three orthogonal capture helpers:
 - `fdictCaptureSystemTools()` — Python interpreter version, `gcc
   --version`, `platform.libc_ver()`, and the contents of
   `/etc/os-release` from inside the container.
+- `fiCaptureSourceDateEpoch(filesRepo)` — the repo's HEAD commit
+  epoch at capture time, recorded as `iSourceDateEpoch`. This is the
+  value the pipeline exported as `SOURCE_DATE_EPOCH` (and as
+  matplotlib's `svg.hashsalt`) when it produced the pinned artefacts.
+  It is recorded rather than re-derived at reproduction time, because
+  the commit that publishes the manifest moves HEAD — an epoch
+  re-derived on the reproducing side would differ from the one that
+  salted the pinned figures, so every timestamped artefact would
+  diverge on exactly the workflows the envelope exists to certify.
 
 This tier records what the container layer cannot pin by digest alone,
 without claiming to bit-pin floating-point arithmetic across CPU
@@ -187,25 +196,43 @@ architectures.
 ## The verification ceremony: `vaibify reproduce`
 
 For users who want one command instead of three,
-[vaibify reproduce](../vaibify/cli/commandReproduce.py) walks the
-three tiers in sequence and (optionally) re-runs the project:
+[vaibify reproduce](../vaibify/cli/commandReproduce.py) walks five
+tiers in sequence. Tiers 1–3 verify the three envelope files above;
+Tier 4 verifies L3 artifact coherence (the same seven readiness
+checks the dashboard's L3 gate applies: manifest completeness,
+dependency lock, environment-snapshot digest form, Dockerfile
+pinning, `reproduce.sh` present and in the manifest, determinism
+declared, and binaries declared or waived); Tier 5 optionally
+re-runs the project:
 
 ```
 $ git clone <project-url> && cd <project>
 $ vaibify reproduce
-[1/4] Verifying file integrity (MANIFEST.sha256) ... 47/47 OK
-[2/4] Reproducing Python env (requirements.lock) ... hashes verified OK
-[3/4] Pulling pinned container image ... python@sha256:1a2b... OK
-[4/4] Re-running workflow ... skipped (use --rerun)
+[1/5] Verifying file integrity (MANIFEST.sha256) ... 47/47 OK
+[2/5] Reproducing Python env (requirements.lock) ... hashes verified OK
+[3/5] Pulling pinned container image ... python@sha256:1a2b... OK
+[4/5] Verifying L3 artifact coherence ... 7/7 OK
+       - Manifest complete: OK
+       - Dependency lock: OK
+       - Environment snapshot digest-form: OK
+       - Dockerfile pinned: OK
+       - reproduce.sh present + in manifest: OK
+       - Determinism declared: OK
+       - Binaries declared or waived: OK
+[5/5] Re-running workflow ... skipped (use --rerun)
 
-L3 reproduction confirmed.
+L3 reproduction ready (no attestation on file — run --rerun to attest).
 ```
+
+With `--rerun`, a fully passing run instead ends with
+`L3 reproduction confirmed and attested.`; any failing tier ends with
+`L3 reproduction failed; see tier output above.`
 
 Flags:
 
 - `--repo <path>` — path to the repository (defaults to the current
   directory).
-- `--rerun` / `--no-rerun` — also run the last step, the full project
+- `--rerun` / `--no-rerun` — also run Tier 5, the full project
   re-execution. Off by default; opt-in because projects can be
   expensive and the re-run tier is best-effort (see [Known
   limitations](#known-limitations)). When enabled, vaibify dispatches
@@ -217,14 +244,35 @@ Flags:
   `/workspace` is a Docker-managed named volume and the two are
   different filesystems. The expected hashes are frozen before the run
   starts, so a step that re-pins the manifest over its own changed
-  output is reported as a divergence rather than blessed.
+  output is reported as a divergence rather than blessed. The rerun
+  exports the `SOURCE_DATE_EPOCH` recorded in
+  `.vaibify/environment.json` (`iSourceDateEpoch`) rather than
+  re-deriving it from HEAD, so timestamp-salted figures are salted
+  the way the pinned artefacts were.
+
+  A workflow the unattended runner cannot honestly execute is
+  **refused before any step runs**: interactive steps, steps
+  disabled in the dashboard, or a workflow with no steps at all. A
+  skipped step leaves its pinned outputs untouched, so every hash
+  would trivially match and the attestation would certify a rerun
+  that ran nothing. The refusal is reported (`rerun refused before
+  any step executed`) with one divergence line naming each
+  unexecutable step, and is recorded as a *failed* attestation.
+
+  Tier 5 always writes an attestation, pass or fail:
+  `.vaibify/l3_attestation.json` plus a timestamped copy archived
+  under `.vaibify/l3_attestations/`, recording the manifest digest
+  the comparison was made against, the image digest, the hash-match
+  counts, and every diverged path. Without `--rerun` no attestation
+  is written.
 - `--workflow <name>` — which workflow to re-run, when the container
   hosts more than one. Without it an ambiguous container is refused:
   attesting one workflow for a run of another produces a record that
   reads as complete and describes something that did not happen.
 - `--skip-tier 1|2|3|4` — skip a tier; may be repeated. Useful when a
   verifier only wants to confirm artefact identity without installing
-  Python packages.
+  Python packages. Tier 5 has no skip flag; it is opt-in via
+  `--rerun`.
 
 Exit codes:
 
@@ -278,11 +326,16 @@ resulting UI.
 
 ## Known limitations
 
-**Symbolic links are rejected.**
-[fnWriteManifest](../vaibify/reproducibility/manifestWriter.py) raises
-`ValueError` if any declared output is a symlink. Following them
-silently would let the manifest hash a target the declared path no
-longer points to; refusing is the only honest behaviour.
+**Symbolic links are resolved against the repo root.**
+[fnWriteManifest](../vaibify/reproducibility/manifestWriter.py)
+resolves a symlink anywhere on a declared path and checks the target
+against the repository root. A symlink resolving *inside* the root
+hashes the target's content, recorded under the declared (symlink)
+path. A symlink whose target escapes the root is never opened or
+hashed: that single entry is skipped as a logged per-file gap
+(surfaced by the manifest-completeness check) rather than aborting
+the whole manifest. Only a non-symlink declared path that escapes
+the root (`..` traversal) raises `ValueError`.
 
 **Tier 1 is bit-perfect; re-running the project is best-effort.**
 `MANIFEST.sha256` records the exact bytes a particular run produced,
@@ -292,7 +345,7 @@ toolchain may produce numerically near-identical but
 **byte-different** outputs because of floating-point order-of-operation
 variance. This is a science-of-reproducibility limitation, not a
 vaibify defect, and we document it rather than try to engineer around
-it. Tier 4 (project re-run via `vaibify reproduce --rerun`) is
+it. Tier 5 (project re-run via `vaibify reproduce --rerun`) is
 therefore advisory.
 
 **The unfixable failure mode.** If `vaibify reproduce` itself is

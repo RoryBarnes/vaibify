@@ -46,12 +46,17 @@ explains what the field controls.
 | 7. Packages | Extra apt or pip packages on top of the template. | — |
 | 8. Summary | Review the choices and create! | — |
 
-Click **Create** on the summary step. Vaibify builds the Docker image
-in the background. First builds take five to fifteen minutes depending
-on which features you enabled and your network speed; subsequent
-rebuilds are much faster because Docker caches the layers.
+Click **Create** on the summary step. Vaibify writes the project's
+configuration files, registers the project, closes the wizard, and
+shows a "Project created successfully" toast. A new tile for the
+project appears in the **Containers** list — nothing has been built
+yet.
 
-When the build finishes, the wizard closes and the dashboard opens.
+Click the new tile to build the Docker image. First builds take five
+to fifteen minutes (or more) depending on which features you enabled
+and your network speed; subsequent rebuilds are much faster because
+Docker caches the layers. Once the image exists, clicking the tile
+starts the container and opens its dashboard.
 
 You are now inside the container's dashboard. The toolbar shows the
 container name, the active project (for workflow projects) with its

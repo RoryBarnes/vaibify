@@ -135,8 +135,9 @@ def _fImportBuildOrExit():
         from vaibify.docker.imageBuilder import fnBuildImage
     except ImportError:
         click.echo(
-            "Error: Docker support is not installed. "
-            "Install with: pip install vaibify[docker]"
+            "Error: the docker Python package is missing. It installs "
+            "with vaibify itself, so this vaibify installation is "
+            "broken. Repair it with: pip install --force-reinstall vaibify"
         )
         sys.exit(1)
     return fnBuildImage
@@ -307,7 +308,6 @@ def fnPrepareBuildContext(config, sDockerDir):
     fnWritePythonPackages(config, sDockerDir)
     fnWritePipInstallFlags(config, sDockerDir)
     fnWriteBinariesEnv(config, sDockerDir)
-    fnCopyDirectorScript(sDockerDir)
     fnCopyContainerScripts(sDockerDir)
     fnStageCuratedDocs(sDockerDir)
 
@@ -375,16 +375,20 @@ def fnWriteBinariesEnv(config, sDockerDir):
     _fnWriteFile(sPath, sContent)
 
 
-def fnCopyDirectorScript(sDockerDir):
-    """Copy director.py into the Docker build context."""
-    import shutil
-    import pathlib
-    sSourcePath = str(
-        pathlib.Path(__file__).resolve().parents[1]
-        / "gui" / "director.py"
-    )
-    sDestPath = os.path.join(sDockerDir, "director.py")
-    shutil.copy2(sSourcePath, sDestPath)
+# ``director.py`` used to be staged here and installed into the
+# workspace as a "standalone pipeline executor". It never worked: the
+# file carries package-relative imports and the image staged none of
+# its siblings, so `python director.py --help` died with ImportError
+# before parsing an argument. The generated agent guide advertised the
+# command anyway, so an agent following its own instructions was sent
+# to something that could not start. The supported in-container path is
+# `vaibify-do`. Staging it is gone rather than repaired: making it run
+# would have meant shipping 700+ lines of workflow machinery, and an
+# arbitrary shell-command runner is not something to install inside a
+# container to satisfy a document nobody had executed. The module
+# itself was later deleted: it had no entry point on any lane, so the
+# feature had never once run for a user, and `vaibify reproduce
+# --rerun` re-runs a project through the container instead.
 
 
 # The reproducibility modules that ship into the image. Named here
@@ -393,6 +397,10 @@ def fnCopyDirectorScript(sDockerDir):
 # without changing the image key.
 T_CONTAINER_SCRIPT_SOURCES = (
     "overleafSync.py", "latexConnector.py", "zenodoClient.py",
+    # zenodoClient's redaction helpers. Staged because it imports them,
+    # and a staged module must be importable from this directory alone
+    # -- it was not, and shipped that way.
+    "credentialRedactor.py",
 )
 
 

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>External-service integrations: Overleaf, GitHub, Zenodo &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>External-service integrations: Overleaf, GitHub, Zenodo, arXiv &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,7 +57,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">External-service integrations: Overleaf, GitHub, Zenodo</a><ul>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#mental-model">Mental model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#reading-the-manuscript-back-pull-manuscript">Reading the manuscript back (pull-manuscript)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#what-to-reuse-from-overleaf">What to reuse from Overleaf</a><ul>
@@ -84,10 +84,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#what-to-modularize-vs-what-to-write-fresh">What to modularize vs. what to write fresh</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#credential-persistence-where-each-service-s-token-lives">Credential persistence: where each service’s token lives</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#already-consolidated-three-service-common-core">Already consolidated (three-service common core)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#still-candidates-to-extract-when-a-fourth-service-lands">Still candidates to extract (when a fourth service lands)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#still-candidates-to-extract-when-a-fourth-push-service-lands">Still candidates to extract (when a fourth <em>push</em> service lands)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#what-we-wrote-fresh-per-service">What we wrote fresh per service</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#ship-the-host-client-don-t-reimplement">Ship the host client, don’t reimplement</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#do-not-modularize-yet-wait-for-four">Do NOT modularize yet (wait for four)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#do-not-modularize-yet-wait-for-a-fourth-push-service">Do NOT modularize yet (wait for a fourth push service)</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#architectural-invariants-to-respect">Architectural invariants to respect</a></li>
@@ -119,7 +119,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">External-service integrations: Overleaf, GitHub, Zenodo</li>
+      <li class="breadcrumb-item active">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/externalServices.md.txt" rel="nofollow"> View page source</a>
       </li>
@@ -129,13 +129,20 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="external-service-integrations-overleaf-github-zenodo">
-<h1>External-service integrations: Overleaf, GitHub, Zenodo<a class="headerlink" href="#external-service-integrations-overleaf-github-zenodo" title="Link to this heading"></a></h1>
-<p>All three integrations are now landed (Overleaf first, then GitHub,
-then Zenodo). This document captures the patterns that survived
-three concrete implementations — the ones you can rely on when adding
-a fourth service — and the traps that only become visible after you
-have built more than one.</p>
+  <section id="external-service-integrations-overleaf-github-zenodo-arxiv">
+<h1>External-service integrations: Overleaf, GitHub, Zenodo, arXiv<a class="headerlink" href="#external-service-integrations-overleaf-github-zenodo-arxiv" title="Link to this heading"></a></h1>
+<p>Four integrations are now landed: Overleaf, GitHub, and Zenodo as
+read-write push targets, and arXiv as a <strong>read-only</strong> fourth service.
+arXiv has no write API for third-party tools — submission is a
+human-driven process — so
+<a class="reference download internal" download="" href="_downloads/ac7047d9c0673bac931a19dd8ff7beec/arxivClient.py"><span class="xref download myst">arxivClient.py</span></a> plugs into
+the verification side only: it exposes the same
+<code class="docutils literal notranslate"><span class="pre">fdictFetchRemoteHashes</span></code> shape as the other three remotes and hashes
+local figures against the published e-print tarball. This document
+captures the patterns that survived the three push-side
+implementations — the ones you can rely on when adding another
+service — and the traps that only become visible after you have built
+more than one.</p>
 <p>It is written to be <strong>actionable</strong>, not exhaustive. If a section seems
 too short, that’s intentional: the full source is the source of truth.</p>
 <section id="mental-model">
@@ -383,21 +390,22 @@ Overleaf’s “phantom push with no remote change” bug.</p>
 <tbody>
 <tr class="row-even"><td><p>Overleaf</p></td>
 <td><p>host OS keychain (<code class="docutils literal notranslate"><span class="pre">fnStoreSecret(&quot;overleaf_token&quot;,</span> <span class="pre">...)</span></code>)</p></td>
-<td><p><a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">syncRoutes.py:649</span></a></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">_fnDispatchStore</span></code> in <a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">syncRoutes.py</span></a></p></td>
 <td><p>Yes — host-side</p></td>
 </tr>
 <tr class="row-odd"><td><p>GitHub</p></td>
-<td><p>container keyring (<code class="docutils literal notranslate"><span class="pre">fnStoreCredentialInContainer</span></code>)</p></td>
-<td><p><a class="reference download internal" download="" href="_downloads/a28814810254a2dfa1290082d4a92dab/syncDispatcher.py"><span class="xref download myst">syncDispatcher.py:867</span></a></p></td>
+<td><p>container keyring (<code class="docutils literal notranslate"><span class="pre">fnStoreCredentialInContainer</span></code>, defined in <a class="reference download internal" download="" href="_downloads/a28814810254a2dfa1290082d4a92dab/syncDispatcher.py"><span class="xref download myst">syncDispatcher.py</span></a>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">_fnDispatchStore</span></code> in <a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">syncRoutes.py</span></a></p></td>
 <td><p>Yes — via named credentials volume</p></td>
 </tr>
 <tr class="row-even"><td><p>Zenodo</p></td>
-<td><p>container keyring (<code class="docutils literal notranslate"><span class="pre">fnStoreCredentialInContainer</span></code>)</p></td>
-<td><p><a class="reference download internal" download="" href="_downloads/a28814810254a2dfa1290082d4a92dab/syncDispatcher.py"><span class="xref download myst">syncDispatcher.py:867</span></a></p></td>
+<td><p>container keyring (<code class="docutils literal notranslate"><span class="pre">fnStoreCredentialInContainer</span></code>, per-instance slot via <code class="docutils literal notranslate"><span class="pre">fsZenodoTokenNameForInstance</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">_fnDispatchStore</span></code> in <a class="reference download internal" download="" href="_downloads/5f5b86cb85b69e462137ff5232eba06e/syncRoutes.py"><span class="xref download myst">syncRoutes.py</span></a></p></td>
 <td><p>Yes — via named credentials volume</p></td>
 </tr>
 </tbody>
 </table>
+<p>(arXiv needs no credential: it is read-only against public e-prints.)</p>
 <p>The GUI’s Restart and Rebuild actions both do <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">rm</span> <span class="pre">+</span> <span class="pre">docker</span> <span class="pre">run</span></code>, so in-container writable layers are ephemeral. Container-side
 credential stores must live on a named volume or they vanish every
 time the user Rebuilds. The fix is a second named volume next to the
@@ -433,8 +441,11 @@ reimplementing the HTTP surface. One bearer-token path for both
 host and container.</p></li>
 </ul>
 </section>
-<section id="still-candidates-to-extract-when-a-fourth-service-lands">
-<h3>Still candidates to extract (when a fourth service lands)<a class="headerlink" href="#still-candidates-to-extract-when-a-fourth-service-lands" title="Link to this heading"></a></h3>
+<section id="still-candidates-to-extract-when-a-fourth-push-service-lands">
+<h3>Still candidates to extract (when a fourth <em>push</em> service lands)<a class="headerlink" href="#still-candidates-to-extract-when-a-fourth-push-service-lands" title="Link to this heading"></a></h3>
+<p>arXiv, the fourth service overall, landed on the read-only
+verification side only, so these push-side helpers still have exactly
+three instances:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">fsRedactStderr</span></code> helper (overleafMirror / overleafSync; the
 container-shipped copy is deliberately divergent).</p></li>
@@ -489,10 +500,10 @@ grew optional <code class="docutils literal notranslate"><span class="pre">sToke
 imports, the archive script dropped from ~90 lines of inline HTTP
 to ~55 lines of method calls.</p>
 </section>
-<section id="do-not-modularize-yet-wait-for-four">
-<h3>Do NOT modularize yet (wait for four)<a class="headerlink" href="#do-not-modularize-yet-wait-for-four" title="Link to this heading"></a></h3>
+<section id="do-not-modularize-yet-wait-for-a-fourth-push-service">
+<h3>Do NOT modularize yet (wait for a fourth push service)<a class="headerlink" href="#do-not-modularize-yet-wait-for-a-fourth-push-service" title="Link to this heading"></a></h3>
 <p>These felt common across Overleaf and GitHub but may not transfer
-when the fourth service lands:</p>
+when another push-side service lands:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">flistDetectCaseCollisions</span></code> — Overleaf-specific case folding;
 didn’t need it for GitHub.</p></li>
@@ -572,6 +583,10 @@ narrowly to use valid input that still exercises the same behavior.</p></li>
 <ul class="simple">
 <li><p><a class="reference download internal" download="" href="_downloads/9d075668f16500f787afd9eab6b69054/zenodoClient.py"><span class="xref download myst">vaibify/reproducibility/zenodoClient.py</span></a> (host module AND container CLI — shipped in)</p></li>
 <li><p><a class="reference download internal" download="" href="_downloads/a061b691df3dc6e259fab69f3c823928/dataArchiver.py"><span class="xref download myst">vaibify/reproducibility/dataArchiver.py</span></a> (host-side archive orchestration)</p></li>
+</ul>
+<p>arXiv:</p>
+<ul class="simple">
+<li><p><a class="reference download internal" download="" href="_downloads/ac7047d9c0673bac931a19dd8ff7beec/arxivClient.py"><span class="xref download myst">vaibify/reproducibility/arxivClient.py</span></a> (read-only e-print mirror; verification side only)</p></li>
 </ul>
 <p>Frontend:</p>
 <ul class="simple">

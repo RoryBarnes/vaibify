@@ -78,7 +78,8 @@ LIST_AGENT_ACTIONS = [
     {"sName": "run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step in the active workflow in order. "
+     "sDescription": "Run every enabled step in the active workflow in "
+                     "order; disabled steps are skipped, not run. "
                      "Refused with sReason=remoteDataOverwrite when a "
                      "covered step would re-pull remote data over the "
                      "canonical copy — ask the researcher, then retry "
@@ -86,9 +87,9 @@ LIST_AGENT_ACTIONS = [
     {"sName": "force-run-all", "sCategory": "execution",
      "sMethod": "WS", "sPath": "forceRunAll",
      "bAgentSafe": True,
-     "sDescription": "Run every step unconditionally, ignoring cache. "
-                     "Subject to the same remote-data overwrite gate "
-                     "as run-all."},
+     "sDescription": "Run every enabled step unconditionally, ignoring "
+                     "cache; disabled steps are still skipped. Subject "
+                     "to the same remote-data overwrite gate as run-all."},
     {"sName": "run-from-step", "sCategory": "execution",
      "sMethod": "WS", "sPath": "runFrom",
      "bAgentSafe": True,
@@ -764,6 +765,7 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "PUT",
      "sPath": "/api/file/{sContainerId}/{sFilePath:path}",
      "bAgentSafe": True,
+     "saQueryFields": ["sWorkdir"],
      "sDescription": "Write text content to a file inside the container."},
     {"sName": "write-draft", "sCategory": "files",
      "sMethod": "PUT",
@@ -777,6 +779,7 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "DELETE",
      "sPath": "/api/draft/{sContainerId}/{sFilePath:path}",
      "bAgentSafe": False,
+     "saQueryFields": ["sWorkdir"],
      "sDescription": "Discard an editor draft. User-only because "
                      "drafts encode the researcher's unsaved edits."},
     {"sName": "check-files-exist", "sCategory": "files",
@@ -799,6 +802,7 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "GET",
      "sPath": "/api/pipeline/{sContainerId}/host-log-tail",
      "bAgentSafe": True,
+     "saQueryFields": ["iLines"],
      "sDescription": "Return the last N lines of ~/.vaibify/vaibify.log "
                      "filtered to this container. Args: {iLines: int, "
                      "default 200, cap 1000}. Read-only; lets an "
@@ -840,6 +844,16 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # The supervised party must never switch its own supervision on
     # or off; Supervised mode is toggled by the researcher only.
     ("POST", "/api/workflow/{sContainerId}/supervision/configure"),
+    # The capability-bootstrap exchange: mints a per-browser session
+    # credential from a launch capability the container never holds. The
+    # endpoint itself 403s the agent lane; it is control-plane, never
+    # agent-invokable.
+    ("POST", "/api/bootstrap"),
+    # The transfer-capability redemption ('vaibify open', design §6):
+    # commits a host-authorized ownership transfer from a capability
+    # minted over the peer-authenticated host control socket, which the
+    # container never holds. The endpoint itself 403s the agent lane.
+    ("POST", "/api/transfer"),
     # Control-plane endpoints used by the UI to bootstrap a session;
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),
@@ -873,6 +887,25 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("POST", "/api/sync/{sContainerId}/track"),
     # Read-side Overleaf diff preparation.
     ("POST", "/api/overleaf/{sContainerId}/diff"),
+    # Hub control plane — container lifecycle, registry/lease management,
+    # and host-side project/directory creation. An in-container agent must
+    # never operate the control plane: it cannot build, start, stop, or
+    # reconfigure containers, add or remove registry projects, claim or
+    # release the exclusivity lease, or create host directories/projects.
+    # These live on the HUB application (not the workflow viewer), so the
+    # viewer-only agent-action invariant never saw them; the hub-app
+    # invariant (testHubAppStateMutatingRoutesAreGoverned) does.
+    ("POST", "/api/containers/{sName}/build"),
+    ("POST", "/api/containers/{sName}/start"),
+    ("POST", "/api/containers/{sName}/start/cancel"),
+    ("POST", "/api/containers/{sName}/stop"),
+    ("POST", "/api/containers/{sName}/settings"),
+    ("POST", "/api/registry"),
+    ("DELETE", "/api/registry/{sName}"),
+    ("POST", "/api/registry/{sName}/claim"),
+    ("POST", "/api/registry/{sName}/release"),
+    ("POST", "/api/host-directories/create"),
+    ("POST", "/api/projects/create"),
 })
 
 

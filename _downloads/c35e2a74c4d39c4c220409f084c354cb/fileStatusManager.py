@@ -1837,11 +1837,10 @@ def flistStepRemoteFiles(dictWorkflow, iStepIndex, sService):
     return listResult
 
 
-async def _fnPushOverleafForAutoArchive(
+def _fnPushOverleafForAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, listFiles,
 ):
     """Push files to Overleaf for the auto-archive flow."""
-    import asyncio
     from . import syncDispatcher
     sProjectId = dictWorkflow.get("sOverleafProjectId", "")
     if not sProjectId or not listFiles:
@@ -1849,8 +1848,7 @@ async def _fnPushOverleafForAutoArchive(
     sTargetDirectory = dictWorkflow.get(
         "sOverleafTargetDirectory", ""
     )
-    iExit, _sOut = await asyncio.to_thread(
-        syncDispatcher.ftResultPushToOverleaf,
+    iExit, _sOut = syncDispatcher.ftResultPushToOverleaf(
         connectionDocker, sContainerId,
         listFiles, sProjectId, sTargetDirectory,
         dictWorkflow,
@@ -1863,11 +1861,10 @@ async def _fnPushOverleafForAutoArchive(
     return True
 
 
-async def _fnArchiveZenodoForAutoArchive(
+def _fnArchiveZenodoForAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, listFiles,
 ):
     """Archive files to Zenodo for the auto-archive flow."""
-    import asyncio
     from . import syncDispatcher
     if not listFiles:
         return False
@@ -1875,8 +1872,7 @@ async def _fnArchiveZenodoForAutoArchive(
     iParentDepositId = int(
         dictWorkflow.get("sZenodoDepositionId", "0") or 0
     )
-    iExit, _sOut = await asyncio.to_thread(
-        syncDispatcher.ftResultArchiveToZenodo,
+    iExit, _sOut = syncDispatcher.ftResultArchiveToZenodo(
         connectionDocker, sContainerId,
         sZenodoService, listFiles, None, iParentDepositId,
     )
@@ -1885,14 +1881,14 @@ async def _fnArchiveZenodoForAutoArchive(
     workflowManager.fnUpdateSyncStatus(
         dictWorkflow, listFiles, "Zenodo",
     )
-    await _fnPersistAutoArchiveZenodoDigests(
+    _fnPersistAutoArchiveZenodoDigests(
         connectionDocker, sContainerId, dictWorkflow,
         listFiles, sZenodoService,
     )
     return True
 
 
-async def _fnPersistAutoArchiveZenodoDigests(
+def _fnPersistAutoArchiveZenodoDigests(
     connectionDocker, sContainerId, dictWorkflow,
     listFiles, sZenodoService,
 ):
@@ -1903,10 +1899,8 @@ async def _fnPersistAutoArchiveZenodoDigests(
     rather than the digest snapshot. A missing digest stamp leaves the
     badge as drifted, which is the honest state.
     """
-    import asyncio
     try:
-        dictDigests = await asyncio.to_thread(
-            _fdictAutoArchiveZenodoDigests,
+        dictDigests = _fdictAutoArchiveZenodoDigests(
             connectionDocker, sContainerId, dictWorkflow, listFiles,
         )
         workflowManager.fnUpdateZenodoDigests(
@@ -2015,7 +2009,7 @@ def _fnDispatchEnvelopeRefreshIfPromoted(
         )
 
 
-async def _fbDispatchOverleafAutoPush(
+def _fbDispatchOverleafAutoPush(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
 ):
     """Push the step's Overleaf-tracked files; True iff anything was pushed.
@@ -2030,7 +2024,7 @@ async def _fbDispatchOverleafAutoPush(
     if not listOverleaf:
         return False
     try:
-        return await _fnPushOverleafForAutoArchive(
+        return _fnPushOverleafForAutoArchive(
             connectionDocker, sContainerId, dictWorkflow, listOverleaf,
         )
     except Exception as error:
@@ -2041,7 +2035,7 @@ async def _fbDispatchOverleafAutoPush(
         return False
 
 
-async def _fbDispatchZenodoAutoArchive(
+def _fbDispatchZenodoAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
 ):
     """Archive the step's Zenodo-tracked files; True iff anything was archived.
@@ -2054,7 +2048,7 @@ async def _fbDispatchZenodoAutoArchive(
     if not listZenodo:
         return False
     try:
-        return await _fnArchiveZenodoForAutoArchive(
+        return _fnArchiveZenodoForAutoArchive(
             connectionDocker, sContainerId, dictWorkflow, listZenodo,
         )
     except Exception as error:
@@ -2065,11 +2059,17 @@ async def _fbDispatchZenodoAutoArchive(
         return False
 
 
-async def fnMaybeAutoArchive(
+def fnMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     iAICSLevelBefore,
 ):
     """Push step's tracked files to Overleaf/Zenodo on L1 transition.
+
+    SYNCHRONOUS by carrier requirement: it reads the AICS level (a
+    general exec via ``fdictHashFiles`` once a workflow is L2) then
+    writes the L3 envelope and pushes, so an enforced-branch caller
+    must run it inside a carrier admission, and mode (b)'s worker runs
+    in a thread that cannot await.
 
     Fires only when this step's transition promoted the workflow to
     ``iAICSLevel >= 1`` (was below 1, is now at or above) AND the
@@ -2098,10 +2098,10 @@ async def fnMaybeAutoArchive(
     listSteps = dictWorkflow.get("listSteps", [])
     if iStepIndex < 0 or iStepIndex >= len(listSteps):
         return False
-    bAnyPushed = await _fbDispatchOverleafAutoPush(
+    bAnyPushed = _fbDispatchOverleafAutoPush(
         connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     )
-    bAnyPushed |= await _fbDispatchZenodoAutoArchive(
+    bAnyPushed |= _fbDispatchZenodoAutoArchive(
         connectionDocker, sContainerId, dictWorkflow, iStepIndex,
     )
     return bAnyPushed

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,7 +57,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Testing</a><ul>
@@ -311,7 +311,15 @@ workflows did both, so the whole suite ran a second time on the merge
 commit, where its answer could no longer change anything.</p>
 <p>Branch protection is what makes the pre-merge half sufficient. It is the
 reason the test workflows no longer need a <code class="docutils literal notranslate"><span class="pre">push:</span> <span class="pre">[main]</span></code> trigger, and
-it is why <code class="docutils literal notranslate"><span class="pre">main</span></code> is not left unverified by their absence.</p>
+it is why <code class="docutils literal notranslate"><span class="pre">main</span></code> is not left unverified by their absence. That claim
+holds only while the ruleset also requires branches to be <strong>up to date</strong>
+before merging (enabled 2026-07-29): without it, two individually-green
+pull requests that conflict semantically can both merge on stale checks,
+and the broken merge commit runs no CI at all — the exact safety net the
+removed <code class="docutils literal notranslate"><span class="pre">push:</span> <span class="pre">[main]</span></code> duplication used to provide.
+<code class="docutils literal notranslate"><span class="pre">tools/syncRequiredChecks.py</span> <span class="pre">--apply</span></code> re-asserts the up-to-date
+requirement on every run, so a UI change cannot silently reopen the
+window.</p>
 <p><strong>Before a merge — these decide whether a change may land:</strong></p>
 <table class="docutils align-default">
 <thead>

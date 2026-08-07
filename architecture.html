@@ -6,20 +6,20 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="External-service integrations: Overleaf, GitHub, Zenodo" href="externalServices.html" />
+    <link rel="next" title="External-service integrations: Overleaf, GitHub, Zenodo, arXiv" href="externalServices.html" />
     <link rel="prev" title="Reproducibility" href="reproducibility.html" /> 
 </head>
 
@@ -68,8 +68,12 @@
 <li class="toctree-l2"><a class="reference internal" href="#project-git-repo">Project = git repo</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#single-browser-session-per-container">Single browser session per container</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-lease-is-the-access-principal">The lease is the access principal</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-owner-of-record-map-is-the-sole-authority">The owner-of-record map is the sole authority</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-owner-of-record-map-is-the-sole-authority">The owner-of-record map is the sole authority</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#which-control-plane-routes-are-lease-enforced-and-which-are-a-deliberate-residual">Which control-plane routes are lease-enforced, and which are a deliberate residual</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#claim-arbitration">Claim arbitration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#starting-a-container-is-a-server-owned-reservation">Starting a container is a server-owned reservation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-one-live-pipeline-connection-invariant">The one-live-pipeline-connection invariant</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-shared-authorization-guard">The shared authorization guard</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#bagentsafe-is-enforced-not-advertised"><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised</a></li>
@@ -78,6 +82,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#pid-reuse-proof-staleness">PID-reuse-proof staleness</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#container-mutations-announce-themselves">Container mutations announce themselves</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#python-backend">Python backend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#application-layer">Application layer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#route-modules">Route modules</a></li>
@@ -99,11 +104,12 @@
 <li class="toctree-l3"><a class="reference internal" href="#rendering">Rendering</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#packaging-why-runtime-resources-live-inside-the-package">Packaging: why runtime resources live inside the package</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#testing">Testing</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#known-technical-debt">Known technical debt</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
@@ -446,16 +452,18 @@ circular-dependency cycles. Removing either pattern naively —
 collapsing the leaves or deleting the re-exports — breaks real
 callers. <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> encodes both
 invariants as executable rules.</p>
-<p><strong><code class="docutils literal notranslate"><span class="pre">posixpath</span></code> in <code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code>, <code class="docutils literal notranslate"><span class="pre">os.path</span></code> in <code class="docutils literal notranslate"><span class="pre">director.py</span></code>.</strong>
-These two modules contain similarly named functions and look like
-natural candidates for deduplication. They are not. <code class="docutils literal notranslate"><span class="pre">workflowManager</span></code>
-manipulates container paths, which are POSIX on every host operating
-system. <code class="docutils literal notranslate"><span class="pre">director</span></code> manipulates host paths, which use the host’s native
-separator. Unifying them would either mangle Windows host paths or
-mangle container paths on any host, and the failure would be silent
-until a cross-platform user hit it. The divergence is load-bearing;
-the <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> trap list and
-<code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> both guard it.</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">posixpath</span></code> everywhere a container path is handled.</strong>
+<code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> manipulates container paths, which are POSIX on
+every host operating system, so it uses <code class="docutils literal notranslate"><span class="pre">posixpath</span></code> rather than
+<code class="docutils literal notranslate"><span class="pre">os.path</span></code>. A host-side module handling host paths must use <code class="docutils literal notranslate"><span class="pre">os.path</span></code>,
+because those carry the host’s native separator. Unifying the two
+would either mangle Windows host paths or mangle container paths on
+any host, and the failure would be silent until a cross-platform user
+hit it. The repository formerly carried a host-side <code class="docutils literal notranslate"><span class="pre">director.py</span></code>
+whose deliberate divergence from <code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> illustrated this;
+it was withdrawn in favour of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>, which
+re-runs a project through the container and therefore reproduces the
+environment as well as the steps.</p>
 </section>
 <section id="project-git-repo">
 <h2>Project = git repo<a class="headerlink" href="#project-git-repo" title="Link to this heading"></a></h2>
@@ -566,15 +574,18 @@ container out forever.</p>
 <h3>The lease is the access principal<a class="headerlink" href="#the-lease-is-the-access-principal" title="Link to this heading"></a></h3>
 <p>The host flock excludes a <em>second process</em>, but it cannot distinguish
 two browser tabs talking to the <em>same</em> hub process — both originate
-from loopback and both carry the same shared session token. The
+from loopback, and each now carries its own per-bootstrap credential
+(the shared session token was retired in the sweep-A rewrite). The
 exclusivity principal that tells two tabs apart is the <strong>lease</strong>: a
 per-claim, server-minted <code class="docutils literal notranslate"><span class="pre">secrets.token_urlsafe(32)</span></code> value
-(<code class="docutils literal notranslate"><span class="pre">containerOwnership.fsMintLease</span></code>).</p>
+(<code class="docutils literal notranslate"><span class="pre">containerOwnership.fsMintLease</span></code>), bound to the browser session that
+claimed it.</p>
 <p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/registry/{name}/claim</span></code> mints the lease and returns it to the
 claiming tab, which stores it in its own <code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code> (per-tab, and
-surviving a reload). Every subsequent access — the connect handler,
-the pipeline WebSocket, and the terminal WebSocket — presents the lease
-as the <code class="docutils literal notranslate"><span class="pre">sLeaseId</span></code> query parameter. The shared session token and the
+surviving a reload). Every subsequent access — the connect handler and
+the pipeline WebSocket — presents the lease
+in the <code class="docutils literal notranslate"><span class="pre">X-Vaibify-Lease</span></code> header (a header, not a query parameter, so it
+cannot land in a log). The per-session credential and the
 loopback-origin check remain the <em>trust boundary</em> (CSRF / “a browser is
 talking to this hub”); the lease is the <em>exclusivity</em> layer above it
 (“which browser session”). The lease is operational exclusivity for
@@ -589,6 +600,37 @@ hard guarantee against a hostile in-page script.</p>
 (a name-keyed flock plus the process-global <code class="docutils literal notranslate"><span class="pre">setAllowedContainers</span></code>
 set). Claim, connect, and both WebSocket gates all consult this map and
 nothing else.</p>
+<section id="which-control-plane-routes-are-lease-enforced-and-which-are-a-deliberate-residual">
+<h4>Which control-plane routes are lease-enforced, and which are a deliberate residual<a class="headerlink" href="#which-control-plane-routes-are-lease-enforced-and-which-are-a-deliberate-residual" title="Link to this heading"></a></h4>
+<p>Not every state-mutating route is gated on the owning lease, and that is
+intentional. The <code class="docutils literal notranslate"><span class="pre">container-owner</span></code> HTTP routes (the <code class="docutils literal notranslate"><span class="pre">{sContainerId}</span></code>
+viewer routes) and the two routes that touch a live session’s integrity —
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/connect/{sContainerId}</span></code> and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/registry/{name}/release</span></code>
+— require the <strong>session-bound</strong> lease
+(<code class="docutils literal notranslate"><span class="pre">containerOwnership.fbBrowserSessionOwnsLease</span></code>): a second browser session
+replaying a <em>copied lease value</em> is refused, because connect would take
+over the workflow and the container’s agent session, and release would
+drop the owner record. Connect enforces this in
+<code class="docutils literal notranslate"><span class="pre">workflowRoutes._fnRequireOwningLeaseForConnect</span></code>; release enforces it in
+<code class="docutils literal notranslate"><span class="pre">containerOwnership.fnReleaseOwnership</span></code>.</p>
+<p>The name-keyed container-lifecycle routes — <code class="docutils literal notranslate"><span class="pre">start</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span></code>, <code class="docutils literal notranslate"><span class="pre">build</span></code>,
+<code class="docutils literal notranslate"><span class="pre">settings</span></code>, and the ownership-<em>establishing</em> <code class="docutils literal notranslate"><span class="pre">claim</span></code> — are classified
+<code class="docutils literal notranslate"><span class="pre">browser-hub</span></code> in <code class="docutils literal notranslate"><span class="pre">routeScope.DICT_CONTROL_PLANE_SCOPES</span></code> and are <strong>not</strong>
+lease-enforced. This is a considered residual, not an oversight. The hub
+is single-user, so the lease is live-session <em>coordination</em>, not an
+authorization boundary against a hostile peer; the container picker
+operates on these routes <em>before and across</em> claims, when no lease exists
+yet; and safe owner-gating of <code class="docutils literal notranslate"><span class="pre">stop</span></code>/<code class="docutils literal notranslate"><span class="pre">settings</span></code> depended on the
+ORPHANED_SESSION takeover lifecycle (a crashed owner’s container must stay
+stoppable). <strong>That lifecycle has since landed</strong>, and with it the
+takeover path (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code>) that makes gating safe, so <code class="docutils literal notranslate"><span class="pre">stop</span></code> and
+<code class="docutils literal notranslate"><span class="pre">settings</span></code> are now lease-enforced under the <code class="docutils literal notranslate"><span class="pre">container-lifecycle</span></code> scope:
+the lease is required when the container is owned and the operation is
+permitted when it is not, which keeps a crashed owner’s container
+stoppable without leaving it open to any tab. <code class="docutils literal notranslate"><span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">claim</span></code>
+remain <code class="docutils literal notranslate"><span class="pre">browser-hub</span></code> by decision — <code class="docutils literal notranslate"><span class="pre">build</span></code> is an image operation with
+no owner, and <code class="docutils literal notranslate"><span class="pre">claim</span></code> is what <em>establishes</em> ownership, so neither can
+require a lease it does not yet have.</p>
 <p><code class="docutils literal notranslate"><span class="pre">OwnerRecord</span></code> fields (in-process, dies with the hub process):</p>
 <table class="docutils align-default">
 <thead>
@@ -642,6 +684,7 @@ table</strong>:</p>
 see “PID-reuse-proof staleness” below;
 <code class="docutils literal notranslate"><span class="pre">testLockPayloadCarriesStartedIso</span></code> enforces it.</p>
 </section>
+</section>
 <section id="claim-arbitration">
 <h3>Claim arbitration<a class="headerlink" href="#claim-arbitration" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">containerOwnership.ftdictClaim</span></code> replaces the old short-circuit (the
@@ -661,23 +704,73 @@ running), in which case the dead owner is released and the claim is
 granted fresh. The 409 never echoes the other owner’s lease.</p></li>
 </ol>
 </section>
+<section id="starting-a-container-is-a-server-owned-reservation">
+<h3>Starting a container is a server-owned reservation<a class="headerlink" href="#starting-a-container-is-a-server-owned-reservation" title="Link to this heading"></a></h3>
+<p>Starting a container is not a request-scoped action. A pull can outlast
+any HTTP timeout, the response can be lost, the button can be clicked
+twice, and <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">run</span></code> does not name the container it is creating until
+it returns — so a start that has to be killed leaves one the hub can only
+guess at. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/containers/{sName}/start</span></code> therefore <em>reserves</em>:</p>
+<ul class="simple">
+<li><p>It arbitrates ownership through the same claim primitive a browser
+claim uses (host flock, journal quarantine, cross-hub refusal, and the
+one-container-per-session reverse index all in one place), then attaches
+a <strong><code class="docutils literal notranslate"><span class="pre">StartReservation</span></code></strong> to the owner record and answers <code class="docutils literal notranslate"><span class="pre">202</span></code> with a
+status-poll location — <strong>never a lease</strong>, because nothing is running yet
+for a lease to authorize.</p></li>
+<li><p>The reservation is an <strong>orthogonal axis</strong>, not a state: a record can be
+<code class="docutils literal notranslate"><span class="pre">ACTIVE</span></code> and starting, or <code class="docutils literal notranslate"><span class="pre">ORPHANED_SESSION</span></code> and starting. It holds only
+live execution state (stable id, the launch process handle, the journal
+record id, a heartbeat) — no session, lease, or generation copies, and
+no outcome.</p></li>
+<li><p>While it is live: a repeated start by the initiating session returns the
+same reservation (the idempotent recovery, never a second launch);
+another session is refused; <code class="docutils literal notranslate"><span class="pre">stop</span></code> and <code class="docutils literal notranslate"><span class="pre">settings</span></code> answer <code class="docutils literal notranslate"><span class="pre">409</span></code> “still
+starting”; a connect by the initiator gets a truthful pending refusal;
+and the record is never reapable, so the idle watchdog cannot free the
+flock under a running <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">create</span></code>.</p></li>
+<li><p>The Docker work is a <strong>create-then-start pair under <code class="docutils literal notranslate"><span class="pre">Popen</span></code></strong>. The
+container carries <code class="docutils literal notranslate"><span class="pre">--label</span> <span class="pre">vaibify.reservation=&lt;id&gt;</span></code> and its id is
+written to the write-ahead journal <em>before</em> it is started, so cleanup
+removes exactly that incarnation and no other. Cancelling escalates
+TERM → bounded wait → KILL and waits for the real exit; only then is the
+labelled container removed, the reservation compare-and-deleted, and the
+flock freed. If the daemon’s answer is uncertain the container is
+<strong>quarantined, never made claimable</strong> — killing the CLI does not prove
+the daemon abandoned the request.</p></li>
+<li><p>Cancellation is a <strong>distinct explicit operation</strong>. A host transfer
+<em>adopts</em> a running start (retagging it as a mode-(c) durable task) and
+never doubles as a cancel.</p></li>
+</ul>
+<p>The outcome lives in a bounded in-memory ledger that outlives the
+reservation, with <strong>two delivery paths</strong>, because success and failure
+authorize differently. <strong>SUCCEEDED</strong> is bound to the live owner record and
+hands back a <strong>freshly derived</strong> lease, so a <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code> successor can
+collect a start its predecessor requested and a revoked session cannot.
+<strong>FAILED</strong> has no owner left to authorize it — that is the case the ledger
+exists for — so it is a bounded, session-bound retrieval entitlement,
+rebound by a transfer, that yields the safe error and <strong>no container
+authority of any kind</strong>. A new start after a failure must name the
+reservation id it read, so a stale failure can never silently relaunch.</p>
+</section>
 <section id="the-one-live-pipeline-connection-invariant">
 <h3>The one-live-pipeline-connection invariant<a class="headerlink" href="#the-one-live-pipeline-connection-invariant" title="Link to this heading"></a></h3>
 <p>Two tabs of one browser cannot both own a container: only the first
 claim mints a lease and a foreign claim is refused. A <em>duplicate</em> tab
 that copied the lease out of <code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code> passes the idempotent
 claim, so exclusivity for that case is enforced at the WebSocket gate —
-but scoped to the <strong>pipeline lane</strong>. One legitimate session holds
-several sockets at once: the terminal strip opens a terminal WebSocket
-on project entry, Run Step opens the pipeline WebSocket on demand, and
-extra terminal tabs add more. Budgeting <em>all</em> sockets shipped the
-Run-Step-always-refused bug: the terminal held the single slot, every
-pipeline connection was closed 4409, and the browser reported a healthy
-server as unreachable.</p>
+but scoped to the <strong>pipeline lane</strong>. One legitimate session may hold
+several sockets at once. Budgeting <em>all</em> sockets shipped the
+Run-Step-always-refused bug: the terminal, which opened its socket on
+project entry, held the single slot, every pipeline connection was
+closed 4409, and the browser reported a healthy server as unreachable.</p>
 <p>So the budget is: at most one live <strong>pipeline</strong> WebSocket per container
-(<code class="docutils literal notranslate"><span class="pre">iLivePipelineConnectionCount</span></code>); terminal sockets are counted in
-<code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> for liveness (the reaper and the idle watchdog
-read it) but are never refused. <code class="docutils literal notranslate"><span class="pre">fnIncrementLiveConnection</span></code> /
+(<code class="docutils literal notranslate"><span class="pre">iLivePipelineConnectionCount</span></code>); sockets on any other lane are counted
+in <code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> for liveness (the reaper and the idle watchdog
+read it) but are never refused. The terminal is disabled (see “The
+interactive terminal is disabled” in <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>), so the unbudgeted
+lane has no production caller today; the budget still holds and is
+driven through the real wrapper by a test-owned socket on that lane. <code class="docutils literal notranslate"><span class="pre">fnIncrementLiveConnection</span></code> /
 <code class="docutils literal notranslate"><span class="pre">fnDecrementLiveConnection</span></code> keep both counts, and a second concurrent
 pipeline connection presenting the same lease is refused with 4409.</p>
 <p>Every deliberate refusal (4003/4401/4403/4409) is sent <strong>after</strong> the
@@ -698,8 +791,10 @@ budget) — so two runs can never race inside one container.</p>
 <h3>The shared authorization guard<a class="headerlink" href="#the-shared-authorization-guard" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">webSocketAuthorization.fbAuthorizeContainerSession</span></code> (and its
 status-code form <code class="docutils literal notranslate"><span class="pre">fiContainerSessionRejectionCode</span></code>) is the one gate,
-consumed verbatim by the pipeline WebSocket, the terminal WebSocket,
-and the connect handler. A loopback browser must clear, in order,
+consumed verbatim by the pipeline WebSocket and the connect handler.
+The terminal route consults it not at all: it is disabled and refuses
+as its first statement, precisely so an unauthenticated dial-in cannot
+reach a gate whose side effect is refreshing the owner’s liveness. A loopback browser must clear, in order,
 loopback origin (<code class="docutils literal notranslate"><span class="pre">4003</span></code> on failure), shared token (<code class="docutils literal notranslate"><span class="pre">4401</span></code>), and owning
 lease (<code class="docutils literal notranslate"><span class="pre">4403</span></code>). A non-loopback connection is never a browser; it is
 admitted only through the lease-exempt <strong>agent lane</strong>
@@ -740,8 +835,12 @@ WebSocket actions are outside it — every WS catalog entry is
 agent-safe today and <code class="docutils literal notranslate"><span class="pre">testEveryWebSocketActionIsAgentSafe</span></code> fails CI if
 a user-only one appears, but that is a tripwire, not enforcement. And
 routes that read host state need their own refusal at the handler
-(<code class="docutils literal notranslate"><span class="pre">_fnRejectAgentTokenLane</span></code>), because a host-file read is a capability
-question the catalog alone cannot express.</p>
+(<code class="docutils literal notranslate"><span class="pre">routeContext.fnRejectAgentTokenLane</span></code>), because a host read is a
+capability question the catalog alone cannot express. That includes
+routes that read no file at all: <code class="docutils literal notranslate"><span class="pre">has-credential</span></code> asks the host
+keyring whether a service token exists, which is one bit about the
+researcher’s own machine, and a GET is never state-mutating so the
+catalog gate never sees it.</p>
 </section>
 <section id="the-four-release-triggers">
 <h3>The four release triggers<a class="headerlink" href="#the-four-release-triggers" title="Link to this heading"></a></h3>
@@ -750,10 +849,13 @@ old <code class="docutils literal notranslate"><span class="pre">setAllowedConta
 the whole process life). A container is released by exactly four paths:</p>
 <ol class="arabic simple">
 <li><p><strong>Explicit release</strong> — <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/registry/{name}/release</span></code> with the
-matching lease (the dashboard’s close affordance and the <code class="docutils literal notranslate"><span class="pre">pagehide</span></code>
-<code class="docutils literal notranslate"><span class="pre">navigator.sendBeacon</span></code>, which carries only the lease as its own
-proof). <code class="docutils literal notranslate"><span class="pre">fnReleaseOwnership</span></code> verifies the lease, frees the flock,
-drops the record, and stops the keep-alive.</p></li>
+matching lease, from the dashboard’s close affordance. There is no
+unload beacon: <code class="docutils literal notranslate"><span class="pre">pagehide</span></code> fires on reload and navigation, not only
+on a real close, so treating it as release intent would drop a
+running container on a mere refresh. The handler stops polling and
+nothing else. <code class="docutils literal notranslate"><span class="pre">sessionLifecycle.ftReleaseExplicit</span></code> arbitrates —
+refusing with 409 while a run or a live agent holds the container —
+then frees the flock, drops the record, and stops the keep-alive.</p></li>
 <li><p><strong>WebSocket-disconnect grace</strong> — when the last live connection
 drops, <code class="docutils literal notranslate"><span class="pre">iLiveConnectionCount</span></code> falls to 0 and a bounded grace window
 opens. If no reconnect with the matching lease arrives, the idle
@@ -770,9 +872,11 @@ session slot.</p></li>
 <p>The reaper is <strong>never</strong> allowed to release a container whose pipeline
 is still running (<code class="docutils literal notranslate"><span class="pre">flistReapIdleOwnerships</span></code> takes a <code class="docutils literal notranslate"><span class="pre">fbPipelineRunning</span></code>
 veto), so an in-flight run is never torn down — the dashboard’s honesty
-contract. The <code class="docutils literal notranslate"><span class="pre">pagehide</span></code> beacon only <em>accelerates</em> trigger 1; it never
-fires on a hard crash and is never load-bearing for correctness, which
-rests on triggers 2–4.</p>
+contract. Correctness rests entirely on triggers 2–4: no unload signal
+is load-bearing, because none is sent. <code class="docutils literal notranslate"><span class="pre">pagehide</span></code> would in any case
+never fire on a hard crash, which is why abandonment is decided by the
+socket closing without a reconnect rather than by anything the
+departing page claims about itself.</p>
 </section>
 <section id="idle-self-shutdown">
 <h3>Idle self-shutdown<a class="headerlink" href="#idle-self-shutdown" title="Link to this heading"></a></h3>
@@ -788,8 +892,8 @@ manually or the watchdog fires.</p>
 interrupted (the dashboard’s honesty contract). The watchdog vetoes
 shutdown when <strong>any browser tab is connected</strong> – tracked by a live
 WebSocket presence counter (<code class="docutils literal notranslate"><span class="pre">fnIncrementWebSocketCount</span></code> /
-<code class="docutils literal notranslate"><span class="pre">fnDecrementWebSocketCount</span></code>) incremented right after a terminal or
-pipeline socket is accepted and decremented in a <code class="docutils literal notranslate"><span class="pre">finally</span></code> – or when
+<code class="docutils literal notranslate"><span class="pre">fnDecrementWebSocketCount</span></code>) incremented right after a pipeline socket
+is accepted and decremented in a <code class="docutils literal notranslate"><span class="pre">finally</span></code> – or when
 <strong>any owned container is busy</strong> (a pipeline is mid-run, per
 <code class="docutils literal notranslate"><span class="pre">fileStatusManager._fbPipelineIsRunning</span></code>). The set of owned containers
 is read from <code class="docutils literal notranslate"><span class="pre">dictContainerOwners.keys()</span></code>, the same owner-of-record
@@ -834,6 +938,112 @@ never reaped. No new dependency is introduced; the probe shells out to
 host-side enumerator over these same files – the analog of
 <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> / <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>.</p>
 </section>
+</section>
+<section id="container-mutations-announce-themselves">
+<h2>Container mutations announce themselves<a class="headerlink" href="#container-mutations-announce-themselves" title="Link to this heading"></a></h2>
+<p>The section above says a container is owned by one session at a time
+and that ownership can be handed over. That is only half a guarantee.
+The other half is that a hand-over must not commit while the previous
+owner’s work is still running – and until the 2026-08 migration,
+nothing enforced it.</p>
+<p>The concrete failure: “clean outputs” started a <code class="docutils literal notranslate"><span class="pre">rm</span></code> on a worker thread
+that nothing tracked, and answered immediately. A hand-over arriving a
+second later asked “is anything running in this container?”, saw an
+idle container because the delete was invisible, and committed. The new
+owner then held a container quietly deleting the previous owner’s
+files, and neither session was told. On a single desktop this is not
+two researchers fighting over a server; it is the in-container AI agent
+and the dashboard acting at once, or a researcher reclaiming a
+container after a reload.</p>
+<p><strong>The carrier is the thing that makes work visible.</strong> A route that
+mutates a container opens an admission through
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/commitCarrier.py</span></code> around each logical mutation, in one of
+three shapes:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Mode</p></th>
+<th class="head"><p>Shape</p></th>
+<th class="head"><p>Used when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>(a) synchronous</p></td>
+<td><p>linearized commit plus journal transition, inside the request</p></td>
+<td><p>one bounded write, e.g. saving <code class="docutils literal notranslate"><span class="pre">project.json</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>(b) lock-held</p></td>
+<td><p>holds the container mutation lock for the worker’s whole lifetime, and registers what it is doing</p></td>
+<td><p>work that crosses a thread boundary or runs long – a delete, a push, a test run</p></td>
+</tr>
+<tr class="row-even"><td><p>(c) durable</p></td>
+<td><p>registers the work before the response returns</p></td>
+<td><p>a background job the request does not wait for</p></td>
+</tr>
+</tbody>
+</table>
+<p>Mode (b) registers an operation kind and target, because an
+<code class="docutils literal notranslate"><span class="pre">asyncio.Lock</span></code> knows only that it is held: a refusal that can only say
+“busy” tells a researcher nothing. A run arriving while a mode-(b)
+worker holds the drain is refused at dispatch and told which operation
+holds it, rather than queued behind it – and that refusal deliberately
+does not offer the Kill button, because Kill stops a pipeline action
+and does nothing to a carrier worker.</p>
+<p><strong>A declaration authorizes nothing.</strong> <code class="docutils literal notranslate"><span class="pre">routeScope.fnDeclareCarrierMode</span></code>
+stamps intent from a closed set (<code class="docutils literal notranslate"><span class="pre">typed-read</span></code>, <code class="docutils literal notranslate"><span class="pre">mode-a-synchronous</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mode-b-lock-held</span></code>, <code class="docutils literal notranslate"><span class="pre">mode-c-durable</span></code>, <code class="docutils literal notranslate"><span class="pre">lifecycle-transaction</span></code>,
+<code class="docutils literal notranslate"><span class="pre">separate-authority</span></code>); a route may carry several, because a handler
+that writes synchronously and then starts durable work is a real shape.
+The stamp routes the request to a branch with <strong>no</strong> admission, so the
+handler must open one per mutation. Forget one and the primitive raises
+<code class="docutils literal notranslate"><span class="pre">MutationNotAdmittedError</span></code>. <strong>That refusal is the proof</strong> – a
+decorator that pre-admitted the handler would delete it, which is the
+<code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> mistake one level up.</p>
+<p>Three rules follow from what the migration found, and each exists
+because the obvious alternative was demonstrated wrong.</p>
+<p><strong>A refusal is not an I/O error.</strong> <code class="docutils literal notranslate"><span class="pre">MutationNotAdmittedError</span></code> and
+<code class="docutils literal notranslate"><span class="pre">CommitRefusedError</span></code> derive from <code class="docutils literal notranslate"><span class="pre">ControlPlaneRefusalError(Exception)</span></code>,
+not <code class="docutils literal notranslate"><span class="pre">PermissionError</span></code>. They used to subclass <code class="docutils literal notranslate"><span class="pre">PermissionError</span></code>, which
+reads well and is an <code class="docutils literal notranslate"><span class="pre">OSError</span></code> – so all 85 <code class="docutils literal notranslate"><span class="pre">except</span> <span class="pre">OSError</span></code> /
+<code class="docutils literal notranslate"><span class="pre">except</span> <span class="pre">PermissionError</span></code> clauses in the package swallowed them,
+including a dozen written to answer conservatively when a file cannot
+be read. That is how a carrier refusal came to silently DOWNGRADE a
+workflow’s reproducibility badge.</p>
+<p><strong>A carrier worker must not raise an expected refusal.</strong> A worker that
+raises poisons its journal record and quarantines the container until
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code>. An expected 4xx or 502 – a duplicate project
+name, an unreachable git remote, a bad step index – is carried back as
+a value through <code class="docutils literal notranslate"><span class="pre">routeContext.fdictCarryARefusalBackInsteadOfRaising</span></code>
+and re-raised outside, after the record settles. A genuinely
+half-finished write still poisons, correctly: nobody knows what state
+it left behind. Deciding which is which is done by reading the
+failure paths, never by inferring from the shape.</p>
+<p><strong>A typed read is exempt only inside its adapter.</strong>
+<code class="docutils literal notranslate"><span class="pre">DockerConnection._texecRunTypedRead</span></code> is the single grant point. It
+takes an operation name from a fixed table plus a path or a flat
+sequence of paths, and BUILDS the command; it never accepts one. That
+distinction is what keeps the carve-out from becoming a general bypass.</p>
+<p><strong>Scope, stated so the record is not read as more than it is.</strong> The
+migration was scoped to the routes that mutate. 83 of 130
+container-scoped routes are declared; the 46 read-only ones stay on the
+legacy ambient admission by decision (2026-08-05), so
+<code class="docutils literal notranslate"><span class="pre">SET_ROUTES_AWAITING_CARRIER_MODE</span></code> bottoms out at 46 rather than empty.
+Read-only routes cannot cause the hand-over failure; declaring them
+would have caught a <em>future</em> mistake where somebody adds a write to a
+shared helper, which is worth having and was not worth the remaining
+cost. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/zenodo/{id}/download</span></code> is the one mutating route left
+undeclared, deliberately: it calls a function that does not exist, so
+migrating it would quarantine a working container over a broken button.</p>
+<p><strong>Nothing here is verified by the ordinary route tests.</strong> 27 test files
+define a <code class="docutils literal notranslate"><span class="pre">fnWriteFile</span></code> mock and none of them consults the admission
+gate, so “forget a carrier and the primitive raises loudly” is true of
+the real <code class="docutils literal notranslate"><span class="pre">DockerConnection</span></code> and false of every route test – a migrated
+route with its carrier call deleted outright passed its whole test
+file. <code class="docutils literal notranslate"><span class="pre">tests/testCarrierMigratedRoutes.py</span></code> is the verification path: a
+double that calls the same gates, under the same primitive names, at
+the same points the real connection calls them, recording the live
+admission MODE at each. It asserts the mode, never merely that nothing
+raised, because “no exception” is equally true of a route riding the
+ambient mint.</p>
 </section>
 <section id="python-backend">
 <h2>Python backend<a class="headerlink" href="#python-backend" title="Link to this heading"></a></h2>
@@ -938,12 +1148,10 @@ via <code class="docutils literal notranslate"><span class="pre">fsReadLoaderSou
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">commandUtilities.py</span></code> — script path extraction from commands.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">dependencyScanner.py</span></code> — code dependency analysis for scripts.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">director.py</span></code> — standalone CLI runner. Has intentionally divergent
-<code class="docutils literal notranslate"><span class="pre">fbValidateWorkflow</span></code> and <code class="docutils literal notranslate"><span class="pre">fdictBuildGlobalVariables</span></code> from
-<code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> because it operates on the host filesystem. See
-the tradeoff note above and the <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> trap list.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">registryRoutes.py</span></code> — project registry API.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">terminalSession.py</span></code> — PTY bridge for terminal WebSocket.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">terminalSession.py</span></code> — PTY bridge for the terminal WebSocket. No
+production path constructs one: the terminal is disabled (see
+<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, “The interactive terminal is disabled”).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">resourceMonitor.py</span></code> — container CPU and memory stats.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">figureServer.py</span></code> — small utility; see source.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">setupServer.py</span></code> — setup wizard host-side server.</p></li>
@@ -1246,6 +1454,48 @@ toolbar verification indicator (checkmark and color shift) with the
 current project state.</p>
 </section>
 </section>
+<section id="packaging-why-runtime-resources-live-inside-the-package">
+<h2>Packaging: why runtime resources live inside the package<a class="headerlink" href="#packaging-why-runtime-resources-live-inside-the-package" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify/templates/</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/</span></code> are data trees that
+ship in the wheel. They used to sit at the repository root and be
+reached with <code class="docutils literal notranslate"><span class="pre">Path(__file__).resolve().parents[2]</span></code> — which is the
+repository root only in a checkout. From an installed wheel it is
+<code class="docutils literal notranslate"><span class="pre">site-packages</span></code>, so <strong>no wheel ever contained them</strong>: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>
+printed “No templates found” and exited 0, and the Docker-context lookup
+landed on <code class="docutils literal notranslate"><span class="pre">site-packages/docker</span></code>, the Docker SDK’s own source directory,
+which exists, so an <code class="docutils literal notranslate"><span class="pre">is_dir()</span></code> check passed.</p>
+<p>Two resources were reached from the repository root the same way and
+were therefore missing from every distribution: the curated agent docs
+staged into <code class="docutils literal notranslate"><span class="pre">/usr/share/vaibify/docs</span></code>, and the shell completions. The
+docs case was the worse one, because the bundled <code class="docutils literal notranslate"><span class="pre">vaibify-doc-map</span></code> skill
+told the in-container agent all six documents were present — so a
+wheel-built image did not merely lack docs, it <em>misdirected the agent</em>,
+and differed materially from a checkout-built image. Those docs now live
+at <code class="docutils literal notranslate"><span class="pre">vaibify/docs/</span></code> as symlinks onto the Sphinx sources, so there is one
+file to edit and both builders dereference them into real files.</p>
+<p>The build context is staged per <em>build</em>, not per project, because the
+GUI starts builds in worker threads with no serialization: two dashboard
+clicks race, and refreshing a shared directory begins with <code class="docutils literal notranslate"><span class="pre">rmtree</span></code>,
+which would delete a context out from under a running <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">build</span></code>.</p>
+<p><strong>Checking a shipped file is not the same as checking the artifact built
+from it.</strong> The release workflow once validated every distribution with
+<code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">vaibify</span></code>, which passes for a wheel containing no templates —
+exactly what every wheel contained. Its replacement,
+<code class="docutils literal notranslate"><span class="pre">tools/checkInstalledDistribution.py</span></code>, resolves every tree, runs
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>, executes the shipped example workflow to a figure, and
+<em>assembles a real build context</em> to check that no curated doc and no
+Dockerfile <code class="docutils literal notranslate"><span class="pre">COPY</span></code> source is missing. The first version of that script
+spot-checked three files, which is why it passed a distribution whose
+assembled context was missing five of six agent documents.</p>
+<p>That job is <strong>release-only</strong> by decision (2026-07-28), matching <code class="docutils literal notranslate"><span class="pre">vspace</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bigplanet</span></code> and <code class="docutils literal notranslate"><span class="pre">multi-planet</span></code>: a release runs the full support matrix, a
+manual run the corners. So a packaging regression can sit on <code class="docutils literal notranslate"><span class="pre">main</span></code> until
+the next version is cut. <code class="docutils literal notranslate"><span class="pre">upload_pypi</span></code> needs <code class="docutils literal notranslate"><span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">test</span></code>, so it is
+caught while cutting the release and nothing broken is published — but
+the diagnosis arrives during a release rather than beside the change that
+caused it. It cannot be a required status check, because it cannot report
+on a pull request and every PR would wait on it forever.</p>
+</section>
 <section id="testing">
 <h2>Testing<a class="headerlink" href="#testing" title="Link to this heading"></a></h2>
 <p>The test suite lives in <code class="docutils literal notranslate"><span class="pre">tests/</span></code>. Run all non-Docker tests with:</p>
@@ -1271,11 +1521,6 @@ system — see <a class="reference internal" href="vibeCoding.html"><span class=
 <code class="docutils literal notranslate"><span class="pre">dataLoaders.py</span></code>. This is inherent: the introspection script runs
 inside Docker containers that cannot import from the host Python
 environment. The duplication is a feature, not a bug.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">director.py</span></code> has its own <code class="docutils literal notranslate"><span class="pre">fbValidateWorkflow</span></code> and
-<code class="docutils literal notranslate"><span class="pre">fdictBuildGlobalVariables</span></code> that diverge from <code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code>.
-This is intentional: <code class="docutils literal notranslate"><span class="pre">director.py</span></code> operates on the host filesystem
-with <code class="docutils literal notranslate"><span class="pre">os.path</span></code> and <code class="docutils literal notranslate"><span class="pre">os.makedirs</span></code>, while <code class="docutils literal notranslate"><span class="pre">workflowManager</span></code> uses
-<code class="docutils literal notranslate"><span class="pre">posixpath</span></code> for container paths.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">scriptFigureViewer.js</span></code> was not part of the 2026-01 frontend
 refactor. It handles PDF rendering, dual-viewer comparison, and
 history management as a single cohesive module.</p></li>
@@ -1295,7 +1540,7 @@ contributor can recognize these as deliberate rather than accidental.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="reproducibility.html" class="btn btn-neutral float-left" title="Reproducibility" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="externalServices.html" class="btn btn-neutral float-right" title="External-service integrations: Overleaf, GitHub, Zenodo" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="externalServices.html" class="btn btn-neutral float-right" title="External-service integrations: Overleaf, GitHub, Zenodo, arXiv" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -6,21 +6,21 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vibe coding with verification &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>Vibe coding with verification &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Contributor’s Guide" href="developers.html" />
-    <link rel="prev" title="External-service integrations: Overleaf, GitHub, Zenodo" href="externalServices.html" /> 
+    <link rel="prev" title="External-service integrations: Overleaf, GitHub, Zenodo, arXiv" href="externalServices.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -57,7 +57,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Vibe coding with verification</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#motivation-why-agent-docs-drift">1. Motivation: why agent docs drift</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#deterministic-versus-stochastic-documentation">2. Deterministic versus stochastic documentation</a></li>
@@ -174,8 +174,9 @@ because</em> an agent cannot infer them from reading the code.</p>
 <ul class="simple">
 <li><p>“Container paths use <code class="docutils literal notranslate"><span class="pre">posixpath</span></code>; host paths use <code class="docutils literal notranslate"><span class="pre">os.path</span></code>.”</p></li>
 <li><p>“Never reassign <code class="docutils literal notranslate"><span class="pre">setExpandedSteps</span></code>; mutate it in place.”</p></li>
-<li><p>“<code class="docutils literal notranslate"><span class="pre">director.py</span></code> intentionally duplicates two functions from
-<code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> because it operates on host filesystem paths.”</p></li>
+<li><p>“A host-path module may duplicate two functions from
+<code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> rather than share them, because the two operate
+on different filesystems.”</p></li>
 </ul>
 <p>None of those rules are visible by reading any one file. All three
 have caused real bugs when an agent or a new developer ignored them.</p>
@@ -331,15 +332,21 @@ things that look alike, says which one does what, and gives the
 consequence of getting it wrong.</p>
 <p>Examples from vaibify:</p>
 <ul class="simple">
-<li><p>Container paths use <code class="docutils literal notranslate"><span class="pre">posixpath</span></code>; host paths use <code class="docutils literal notranslate"><span class="pre">os.path</span></code>.
-<code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> and <code class="docutils literal notranslate"><span class="pre">director.py</span></code> contain similarly named
-functions because one operates on container paths and the other
-on host paths. Using the wrong one silently produces wrong file
-paths on Windows, or on any host where the separator differs.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">director.py</span></code> looks like a CLI helper but is actually a parallel
-workflow runner with its own variable resolution. Do not unify it
-with <code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> without understanding why the two
-resolve variables differently.</p></li>
+<li><p>Container paths use <code class="docutils literal notranslate"><span class="pre">posixpath</span></code>; host paths use <code class="docutils literal notranslate"><span class="pre">os.path</span></code>. A module
+on each side will grow similarly named functions, and unifying them
+silently produces wrong file paths on Windows, or on any host where
+the separator differs. (Vaibify carried exactly this pair until the
+host-side runner was withdrawn in August 2026 — the trap outlived
+the example, which is why it is stated as a shape rather than as
+two filenames.)</p></li>
+<li><p>A test double that answers a call is not a stand-in for the thing it
+doubles. Vaibify’s Docker mocks accept a file write and store the
+bytes; the real connection also asks an admission gate whether the
+write was authorized. Twenty-seven test files defined such a mock
+and not one called the gate, so a route could lose its authorization
+entirely and its whole test file still passed. The mock looks like
+the real object at the surface the test reads and differs at the
+boundary the test exists to protect.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">_dictUiState</span></code> contains several <code class="docutils literal notranslate"><span class="pre">Set</span></code> objects. These sets are
 captured by reference in the render closure. Reassigning a set
 (<code class="docutils literal notranslate"><span class="pre">_dictUiState.setExpandedSteps</span> <span class="pre">=</span> <span class="pre">new</span> <span class="pre">Set()</span></code>) silently breaks the
@@ -377,6 +384,27 @@ stochastic prose (which can be ignored) into deterministic enforcement
 well will find that most of its Layer 1 content slowly migrates into
 Layer 2 tests, leaving behind only the rules that genuinely resist
 mechanization.</p>
+<p>One qualification, learned the hard way. Promoting a rule into a test
+converts it into enforcement <em>only if the test can observe the
+failure</em>. Vaibify built a rule that a container mutation must be
+opened through a commit carrier, and relied for proof on the
+primitive raising when a carrier was missing — a refusal that is real,
+loud, and in the right place. It was also invisible: the suite’s Docker
+doubles never consulted the gate, so deleting a route’s carrier call
+outright left its entire test file green. The rule had been promoted
+to Layer 2 in form and remained prose in effect, and it would have
+governed a hundred-and-thirty-route migration in that state.</p>
+<p>The check on this is cheap and worth making a habit: after writing a
+test for a rule, break the rule on purpose and watch that specific
+test fail. If it does not, the test’s premise is wrong, not the
+rule’s. Two further sharpenings follow from repeating this often
+enough. Assert on the <em>state</em> the rule is about, never merely that
+nothing raised — “no exception” is equally true of code that satisfies
+the rule and code the harness cannot see. And if a mutation kills two
+tests, the shape is protected by two guards and neither is proven, so
+split until each isolates one. A guard nobody has watched fail is a
+guard nobody has tested, and a green suite full of them reads exactly
+like a green suite that means something.</p>
 </section>
 <section id="tradeoffs-and-limits">
 <h2>7. Tradeoffs and limits<a class="headerlink" href="#tradeoffs-and-limits" title="Link to this heading"></a></h2>
@@ -480,7 +508,7 @@ correct. Vibe boldly. Verify everything.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="externalServices.html" class="btn btn-neutral float-left" title="External-service integrations: Overleaf, GitHub, Zenodo" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="externalServices.html" class="btn btn-neutral float-left" title="External-service integrations: Overleaf, GitHub, Zenodo, arXiv" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="developers.html" class="btn btn-neutral float-right" title="Contributor’s Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

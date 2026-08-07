@@ -18,6 +18,7 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "sync_test_cid"
@@ -140,13 +141,22 @@ def _fmockCreateDockerSync():
 
 
 def _fnConnectToContainer(clientHttp):
-    """POST to /api/connect and return the response dict."""
+    """POST to /api/connect, hold the owning lease, and return the dict.
+
+    The connect response carries the lease that binds this session to the
+    container; holding it on the client (as ``X-Vaibify-Lease``) reproduces
+    the browser's authenticated-fetch wrapper so every later container-owner
+    request authorizes.
+    """
     responseHttp = clientHttp.post(
         f"/api/connect/{S_CONTAINER_ID}",
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictResponse = responseHttp.json()
+    if dictResponse.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictResponse["sLeaseId"]
+    return dictResponse
 
 
 @pytest.fixture
@@ -161,7 +171,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
@@ -229,7 +239,7 @@ def test_overleaf_push_triggers_post_push_verify(clientHttp):
         listCallOrder.append("finalize")
 
     async def _fsFakeRefresh(
-        dictCtx, sContainerId, dictWorkflow, sService,
+        dictCtx, sContainerId, dictWorkflow, sService, requestHttp=None,
     ):
         listCallOrder.append("refresh:" + sService)
         return ""
@@ -2343,25 +2353,23 @@ def test_fdictComputePostArchiveZenodoDigests_missing_sha_yields_empty():
 # ----------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_fbRunOverleafValidation_empty_project_returns_false():
+def test_fbRunOverleafValidation_empty_project_returns_false():
     from vaibify.gui.routes.syncRoutes import (
         _fbRunOverleafValidation,
     )
     from unittest.mock import MagicMock as _MM
-    bPass, sDetail = await _fbRunOverleafValidation(
+    bPass, sDetail = _fbRunOverleafValidation(
         _MM(), _MM(), "cid", "",
     )
     assert bPass is False
     assert sDetail == ""
 
 
-@pytest.mark.asyncio
-async def test_ftRunServiceValidation_unknown_service_returns_pass():
+def test_ftRunServiceValidation_unknown_service_returns_pass():
     """Services other than zenodo/overleaf skip validation."""
     from vaibify.gui.routes.syncRoutes import _ftRunServiceValidation
     from unittest.mock import MagicMock as _MM
-    bPass, sDetail = await _ftRunServiceValidation(
+    bPass, sDetail = _ftRunServiceValidation(
         _MM(), "github", _MM(), "cid", "",
     )
     assert bPass is True
@@ -2413,8 +2421,7 @@ def test_fnCleanupOverleafHostCredential_swallows_delete_failure():
         _fnCleanupOverleafHostCredential("overleaf_token")
 
 
-@pytest.mark.asyncio
-async def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
+def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
     from vaibify.gui.routes.syncRoutes import (
         _fdictValidateStoredCredential,
     )
@@ -2427,7 +2434,7 @@ async def test_fdictValidateStoredCredential_connectivity_fail_short_circuits():
     ), patch(
         "vaibify.gui.routes.syncRoutes._ftRunServiceValidation",
     ) as mockValidate:
-        dictResult = await _fdictValidateStoredCredential(
+        dictResult = _fdictValidateStoredCredential(
             dictCtx, "cid", "zenodo", "", "sandbox",
         )
     assert dictResult["bConnected"] is False
@@ -2448,7 +2455,7 @@ def test_fnPersistZenodoService_non_zenodo_request_is_noop():
         "workflows": {},
         "save": MagicMock(),
     }
-    _fnPersistZenodoService(dictCtx, "cid", requestOther)
+    _fnPersistZenodoService(dictCtx, "cid", requestOther, MagicMock())
     dictCtx["save"].assert_not_called()
 
 

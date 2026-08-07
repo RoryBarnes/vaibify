@@ -14,13 +14,11 @@ The dashboard has a fixed layout:
 
 - **Top toolbar** — container name, active project, the three AICS
   level badges, the **?** Help button, and the Run, Sync, View, and
-  Admin menus. A pulsing **compute indicator** appears beside the
-  container name whenever the container's CPU is busy: theme-tinted
-  when a vaibify step owns the compute, amber when the compute is
-  happening outside the dashboard (an in-container agent or a
-  terminal session running simulations directly — no step blinks in
-  that case, because no step is running). The indicator hides when
-  no reading is available; it never claims the container is idle.
+  Admin menus. **View → Resource Monitor** opens a small on-demand
+  panel with live CPU and memory sparklines and the container's disk
+  usage (with a warning banner when the disk is nearly full); when a
+  reading is unavailable — Docker unreachable, container stopped —
+  the panel says so rather than showing a stale number.
 - **Left panel** — a tabbed panel. For projects with a `project.json`
   the tabs are **Main**, **AICS**, **Files**, and **Logs**; for sandbox
   and toolkit projects (no `project.json`) they are **Files**, **Repos**,
@@ -39,13 +37,29 @@ at any corner of the screen tells you where the project stands.
 
 ## Terminal
 
-Click in a terminal section to access a shell session inside the
-container. The terminal runs in your browser over WebSocket and behaves
-like a standard terminal emulator. Multiple sessions can run
-concurrently — open as many as you like.
+**The in-browser terminal is disabled.** The terminal strip explains
+this in place of a shell.
 
-If an agent CLI is enabled for the project, start it from a terminal. For
-example:
+The reason is containment. A shell can start a process that detaches
+from the process group vaibify records for it, so vaibify cannot prove
+such a process has stopped — and if it cannot prove that, then
+releasing a container, handing it to another session, or shutting the
+hub down could not honestly report the container quiet. An unprovable
+boundary is worse than a missing feature, so the feature is the one
+that goes.
+
+To reach a shell inside the container, use Docker directly:
+
+```bash
+docker exec -it <container-name> bash
+```
+
+That is outside vaibify's containment, which is exactly the point: the
+responsibility for what you start there is visibly yours, not silently
+vaibify's.
+
+If an agent CLI is enabled for the project, start it from that shell.
+For example:
 
 ```bash
 claude --dangerously-skip-permissions
@@ -71,7 +85,7 @@ see [Agent actions](#agent-actions) below.
 
 ## Viewing Window
 
-The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
+The Viewing Windows above the terminal strip display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
 
 ## Repos panel
 
@@ -84,9 +98,9 @@ dirty status, and push controls.
 
 When you first open a container, repositories already present in the
 workspace (cloned by the entrypoint from `vaibify.yml`) are tracked
-automatically. If you clone additional repositories from the terminal,
-vaibify detects them within a few seconds and prompts you to **Track**
-or **Ignore** them.
+automatically. If you clone additional repositories inside the
+container, vaibify detects them within a few seconds and prompts you to
+**Track** or **Ignore** them.
 
 **Dirty detection** reflects whether you have made source-level
 changes. Build artifacts that package managers and compilers leave
@@ -94,7 +108,7 @@ behind (Python `__pycache__/`, C `*.o`, LaTeX `*.aux`,
 `*.egg-info/`, and so on) are filtered out, so a freshly installed
 repository shows as clean unless you have edited its source files.
 
-**Push** commits and pushes whatever you have staged in the terminal —
+**Push** commits and pushes whatever you have staged in the container —
 `git add`, `git commit`, `git push` rolled into a single button. A
 secondary **Push files…** option in the gear menu opens a file picker
 for selecting specific files to commit.
@@ -220,11 +234,12 @@ tweaking a script without re-running the simulation.
 
 #### Interactive steps
 
-Mark a step as *interactive* and it runs in the terminal with X11
-display forwarding, via the **Run in Terminal** button in its expanded
-view. Useful when a step requires human judgment — eyeballing an
-intermediate result, adjusting a parameter — or when you want to hand
-control to an agent for a specific stage.
+An *interactive* step is one a human drives in a shell. Because the
+in-browser terminal is disabled (see [Terminal](#terminal)), **an
+interactive step cannot be run from the dashboard**: **Run in Terminal**
+reports the refusal instead of starting a step that could never
+finish. Make the step automated, or run its commands yourself in a
+`docker exec` shell.
 
 #### The expanded step view
 
@@ -430,17 +445,17 @@ an action exists — a button that performs it in place:
   The same dialog holds **Supervised mode** (the rung above
   Recorded; requires the record enabled and reviewed). When on,
   every repository change must attribute to a recorded action
-  channel — a pipeline dispatch, an editor save, a context write, or
-  an open terminal session — within a 60-second window; changes with
+  channel — a pipeline dispatch, an editor save, or a context write —
+  within a 60-second window; changes with
   no recorded cause become **permanent, hash-chained flags**
   (`unattributed-modification`), and a repo that changed while the
   hub was not watching flags an `unsupervised-gap` on reconnect.
   Flags render as a red chip on the AI row and are never cleared by
   the tool; editing the flag file breaks its chain loudly.
   Attribution granularity is honest but coarse: the window and the
-  channel, not the file path — and a terminal session attributes as
-  an open channel without its keystrokes being captured (content
-  capture is a planned extension, stated in the dialog).
+  channel, not the file path. Work done in a `docker exec` shell has
+  no recorded channel at all, so it flags as unattributed — which is
+  the truthful answer, not a gap to paper over.
 - **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 
@@ -568,12 +583,13 @@ The **?** button beside the project name opens the Help panel. It
 contains:
 
 - A link to the full online documentation.
-- **Using AI** — how to start the in-container coding agent
-  (Claude Code, Codex, or Gemini) and why skipping
-  per-command permission prompts is the intended, safe mode inside the
-  sandbox: the container isolates the agent from your host, every
-  edit is tracked in git and hash-pinned, and a full rebuild
-  ultimately checks the analysis — the AICS Level 3 posture.
+- **Using AI** — how to start the AI coding assistant from a
+  shell inside the container (`claude --dangerously-skip-permissions`) and
+  why skipping per-command permission prompts is the intended, safe
+  mode inside the sandbox: the container isolates the agent from
+  your host, every edit is tracked in git and hash-pinned, and a
+  full rebuild ultimately checks the analysis — the AICS Level 3
+  posture.
 - The **Legend** — the symbol key, in four divisions matching the
   dashboard's surfaces: **Steps** (run checkbox, run light, warning
   column, per-file marks), **Project** (requirement-row marks and the
@@ -761,6 +777,14 @@ image rebuild refreshes them):
 - **read-manuscript** — pull the project's own Overleaf manuscript
   (via the `pull-manuscript` action) into a git-ignored scratch copy
   and read it, rather than answering from memory.
+- **reproducible-analysis** — answer any quantitative or statistical
+  question by writing a *saved* script — never a throwaway
+  one-liner, heredoc, or REPL session — structured so it can become
+  a pipeline step and its number can be regenerated.
+- **running-steps** — run pipeline steps through `vaibify-do`, never
+  by launching a step's script directly in a shell: a direct launch
+  is invisible to the dashboard, which can only show runs it is told
+  about.
 
 Moving the ladder and step-authoring walkthroughs into on-demand
 skills also slims the always-loaded container `CLAUDE.md` from ~470 to
@@ -768,7 +792,7 @@ skills also slims the always-loaded container `CLAUDE.md` from ~470 to
 safety-critical rules (authoritative level signal, user-only
 publication, the token contract) kept inline.
 
-From inside a container terminal, you can list the available actions:
+From inside a shell in the container, you can list the available actions:
 
 ```bash
 vaibify-do --list
@@ -838,9 +862,12 @@ An abandoned session does not hold a container forever. A hub or
 viewer left with no connected tab and nothing running self-retires
 after an idle timeout (see
 [Configuration](configuration.md#vaibify_hub_idle_timeout_seconds)),
-freeing its container. Ownership is also released the moment the owning
-tab closes (a `pagehide` signal) or a brief disconnect's grace window
-expires with no reconnect — never while a pipeline is still running.
+freeing its container. Ownership is otherwise released when a brief
+disconnect's grace window expires with no reconnect — never while a
+pipeline is still running. Closing the tab does not itself release
+anything: the browser fires the same signal on a reload, so treating it
+as release intent would drop a running container every time you
+refreshed the page.
 The hub re-polls availability every few seconds, so a freed container
 un-greys on its own without a page reload. You can also list and stop
 live sessions from the host with `vaibify sessions` (see the

@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project Templates &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>Project Templates &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -55,6 +55,7 @@
 <li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Project Templates</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#sandbox">sandbox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#toolkit">toolkit</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#workflow">workflow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#creating-custom-templates">Creating Custom Templates</a></li>
 </ul>
@@ -62,7 +63,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
@@ -97,47 +98,68 @@
              
   <section id="project-templates">
 <h1>Project Templates<a class="headerlink" href="#project-templates" title="Link to this heading"></a></h1>
-<p>Vaibify ships with two project templates that provide starting
+<p>Vaibify ships with three project templates that provide starting
 configurations for common use cases. Select a template when initializing a
 new project:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span>--template<span class="w"> </span>&lt;name&gt;
 </pre></div>
 </div>
-<p>Each template creates three files in the current directory: <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>,
-<code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code>.</p>
+<p>Each template contains <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (plus any
+starter files, such as the workflow template’s step directories). <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code> copies those into the current directory, moves <code class="docutils literal notranslate"><span class="pre">project.json</span></code> into
+<code class="docutils literal notranslate"><span class="pre">.vaibify/projects/</span></code>, and then generates <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> from the built-in
+defaults — the template does not supply it.</p>
 <section id="sandbox">
 <h2>sandbox<a class="headerlink" href="#sandbox" title="Link to this heading"></a></h2>
 <p>An empty starting point for exploration, prototyping, and interactive use.
 No pipeline steps are defined — you work directly inside the container.</p>
 <p><strong>Includes:</strong></p>
 <ul class="simple">
-<li><p>Minimal <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> with default Python version and base image.</p></li>
 <li><p>Empty <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> (no repositories).</p></li>
 <li><p>Empty <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (no pipeline steps).</p></li>
 </ul>
 <p>Use this template when you want a containerized environment without a
 predefined project.</p>
 </section>
-<section id="workflow">
-<h2>workflow<a class="headerlink" href="#workflow" title="Link to this heading"></a></h2>
-<p>A starting point for reproducible data analysis pipelines. Includes an
-example step with data generation and plotting commands that you replace
-with your own.</p>
+<section id="toolkit">
+<h2>toolkit<a class="headerlink" href="#toolkit" title="Link to this heading"></a></h2>
+<p>A workspace for editing several peer code repositories side-by-side —
+the right choice when you want to hack on more than one package at once
+while iterating on a change that spans them.</p>
 <p><strong>Includes:</strong></p>
 <ul class="simple">
-<li><p>Minimal <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> with default Python version and base image.</p></li>
+<li><p>Empty <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> (add your repository URLs).</p></li>
+<li><p>Empty <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (no pipeline steps).</p></li>
+<li><p>A README explaining how repository tracking and push controls work.</p></li>
+</ul>
+<p>Toolkit containers have no workflow. Instead, the Repos panel in the
+dashboard provides per-repository git status, dirty-file listings, and
+push controls for every repository in <code class="docutils literal notranslate"><span class="pre">/workspace/</span></code>.</p>
+</section>
+<section id="workflow">
+<h2>workflow<a class="headerlink" href="#workflow" title="Link to this heading"></a></h2>
+<p>A starting point for reproducible data analysis pipelines. Includes a
+runnable two-step example — data generation feeding a plot — that you
+replace with your own steps.</p>
+<p><strong>Includes:</strong></p>
+<ul class="simple">
 <li><p>Empty <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> (add your repositories).</p></li>
-<li><p>Example <code class="docutils literal notranslate"><span class="pre">project.json</span></code> with one step (<code class="docutils literal notranslate"><span class="pre">AnalyzeData</span></code>) that runs
-<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">runAnalysis.py</span></code> and <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">makePlot.py</span></code>.</p></li>
+<li><p>Example <code class="docutils literal notranslate"><span class="pre">project.json</span></code> with two steps: <code class="docutils literal notranslate"><span class="pre">GenerateSamples</span></code>, which runs
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">generateSamples.py</span></code> to produce <code class="docutils literal notranslate"><span class="pre">samples.json</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">PlotHistogram</span></code>, which runs <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">plotHistogram.py</span></code> with the samples
+file passed via a <code class="docutils literal notranslate"><span class="pre">{step:generate-samples.samples}</span></code> token.</p></li>
+<li><p>The two step directories with the scripts those commands invoke.</p></li>
 </ul>
 <p>Use this template when your project follows a defined sequence of analysis
 steps that should be reproducible.</p>
 <p><strong>Adding LaTeX compilation:</strong> If you compile your manuscript inside the
 container rather than using an external tool like Overleaf, add a step
-to <code class="docutils literal notranslate"><span class="pre">project.json</span></code>:</p>
+to <code class="docutils literal notranslate"><span class="pre">project.json</span></code>. Note that a step’s directory basename must equal the
+slug derived from its name — <code class="docutils literal notranslate"><span class="pre">CompileManuscript</span></code> here — so the manuscript
+sources live in a directory named after the step:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;sName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CompileManuscript&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;sDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tex&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sStepId&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;compile-manuscript&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sDirectory&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CompileManuscript&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;bRunEnabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;bPlotOnly&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;saDataCommands&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
@@ -152,9 +174,12 @@ to <code class="docutils literal notranslate"><span class="pre">project.json</sp
 <h2>Creating Custom Templates<a class="headerlink" href="#creating-custom-templates" title="Link to this heading"></a></h2>
 <p>Templates are stored in the <code class="docutils literal notranslate"><span class="pre">vaibify/templates/</span></code> directory of the
 Vaibify package, so they ship inside the installed distribution.
-Each template is a subdirectory containing <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>,
-<code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code>. To create a custom template, add a
-new subdirectory with these three files and reinstall the package.</p>
+Each template is a subdirectory containing <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> and
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code>, plus any starter step directories. To create a custom
+template, add a new subdirectory with these files and reinstall the
+package. Do not place a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> in a template: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>
+always generates that file itself, so one shipped in a template would
+be overwritten.</p>
 </section>
 </section>
 

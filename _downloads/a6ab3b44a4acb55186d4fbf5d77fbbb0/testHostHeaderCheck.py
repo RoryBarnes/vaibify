@@ -67,7 +67,7 @@ def test_middleware_accepts_loopback_host_header():
     app = _fnBuildAppWithPortCheck()
     clientHttp = TestClient(app)
     responseHttp = clientHttp.get(
-        "/api/session-token",
+        "/",
         headers={"Host": "127.0.0.1:8050"},
     )
     assert responseHttp.status_code == 200
@@ -78,7 +78,7 @@ def test_middleware_rejects_evil_host_header():
     app = _fnBuildAppWithPortCheck()
     clientHttp = TestClient(app)
     responseHttp = clientHttp.get(
-        "/api/session-token",
+        "/",
         headers={"Host": "evil.com"},
     )
     assert responseHttp.status_code == 400
@@ -90,7 +90,7 @@ def test_middleware_rejects_wrong_port_host_header():
     app = _fnBuildAppWithPortCheck()
     clientHttp = TestClient(app)
     responseHttp = clientHttp.get(
-        "/api/session-token",
+        "/",
         headers={"Host": "127.0.0.1:7777"},
     )
     assert responseHttp.status_code == 400
@@ -106,5 +106,5 @@ def test_middleware_accepts_testserver_when_port_check_disabled():
             sWorkspaceRoot="/workspace",
         )
     clientHttp = TestClient(app)
-    responseHttp = clientHttp.get("/api/session-token")
+    responseHttp = clientHttp.get("/")
     assert responseHttp.status_code == 200

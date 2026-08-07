@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -57,12 +57,16 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Contributor’s Guide</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#style-guide">Style Guide</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-tests">Running Tests</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#portability-and-ci">Portability and CI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#verifying-a-change-reaches-the-screen">Verifying a change reaches the screen</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-manual-check">The manual check</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#pull-request-workflow">Pull Request Workflow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-layout">Project Layout</a></li>
 </ul>
@@ -154,6 +158,85 @@ deployed automatically on every merge to main.</p>
 reference in <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and <code class="docutils literal notranslate"><span class="pre">SKILL.md</span></code> files resolves to an existing
 file. This catches stale references after refactors rename or delete
 files.</p>
+</section>
+<section id="verifying-a-change-reaches-the-screen">
+<h2>Verifying a change reaches the screen<a class="headerlink" href="#verifying-a-change-reaches-the-screen" title="Link to this heading"></a></h2>
+<p>The Python suite does not execute the frontend at all, so a green suite
+says nothing about whether the dashboard still loads. Three lanes cover
+progressively more reality, and each proves something the others do not.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Lane</p></th>
+<th class="head"><p>What is real</p></th>
+<th class="head"><p>When</p></th>
+<th class="head"><p>What it proves</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>browser (<code class="docutils literal notranslate"><span class="pre">browser.yml</span></code>)</p></td>
+<td><p>Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake</p></td>
+<td><p>every PR</p></td>
+<td><p>JS loads and evaluates; API and refusal behaviour reach the screen honestly</p></td>
+</tr>
+<tr class="row-odd"><td><p>container acceptance (<code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code>)</p></td>
+<td><p>a real container, image keyed by build-input hash</p></td>
+<td><p>nightly / manual</p></td>
+<td><p>a real container answers the commands the browser lane’s fake models</p></td>
+</tr>
+<tr class="row-even"><td><p>fresh image (<code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code>)</p></td>
+<td><p>full build from scratch</p></td>
+<td><p>weekly / on <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/**</span></code> PRs</p></td>
+<td><p>the image still builds; the container user is unprivileged</p></td>
+</tr>
+</tbody>
+</table>
+<p>Run the browser lane locally when you want the fast signal:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[browser]&#39;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>playwright<span class="w"> </span>install<span class="w"> </span>chromium
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/browser<span class="w"> </span>-m<span class="w"> </span>browser
+</pre></div>
+</div>
+<p><strong>What the browser lane does not cover.</strong> It drives a fail-closed fake
+Docker adapter, so it says nothing about container launch, file
+ownership on write, the real transport, terminal content, figure
+rendering, or the sync panel. Those belong to the container-acceptance
+lane, which runs nightly — so drift between the fake and a real
+container is caught up to a day late. The browser lane failing blocks
+merge; the container-acceptance lane failing blocks the next release,
+not retroactively.</p>
+<section id="the-manual-check">
+<h3>The manual check<a class="headerlink" href="#the-manual-check" title="Link to this heading"></a></h3>
+<p>Still the right tool when you are working on something the lane does not
+assert — layout, wording, a specific interaction. About a minute, no
+Docker needed:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>vaibify<span class="w"> </span>--port<span class="w"> </span><span class="m">8137</span><span class="w">     </span><span class="c1"># scratch port, not your usual hub</span>
+</pre></div>
+</div>
+<p>Then at <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8137/</span></code>:</p>
+<ol class="arabic simple">
+<li><p><strong>Read the console.</strong> Zero errors is the bar. A single
+<code class="docutils literal notranslate"><span class="pre">ReferenceError</span></code> means a module failed to evaluate and every feature
+below it in load order is dead.</p></li>
+<li><p><strong>Enumerate the globals.</strong>
+<code class="docutils literal notranslate"><span class="pre">Object.keys(window).filter(k</span> <span class="pre">=&gt;</span> <span class="pre">/^Vaibify/.test(k)).length</span></code>. Then
+check any global your change touched resolves <em>as a bare identifier</em>,
+not via <code class="docutils literal notranslate"><span class="pre">window.</span></code>: modules declared with <code class="docutils literal notranslate"><span class="pre">const</span></code> create a global
+lexical binding, so <code class="docutils literal notranslate"><span class="pre">window.VaibifyApp</span></code> is <code class="docutils literal notranslate"><span class="pre">undefined</span></code> while
+<code class="docutils literal notranslate"><span class="pre">VaibifyApp</span></code> works. Probing the wrong one produces a false alarm.</p></li>
+<li><p><strong>Confirm any new cross-module call resolves</strong>, e.g.
+<code class="docutils literal notranslate"><span class="pre">typeof</span> <span class="pre">VaibifyApp.fsGetLeaseId</span></code> → <code class="docutils literal notranslate"><span class="pre">&quot;function&quot;</span></code>.</p></li>
+<li><p><strong>Look at the page.</strong> It should render, and any unavailable
+dependency (Docker down, no containers) must be reported honestly on
+screen rather than hidden.</p></li>
+</ol>
+<p>Kill the scratch hub when done.</p>
+<p><strong>Container-dependent paths need a container.</strong> Anything touching the
+lease, the WebSockets, or the file-status poll is not verified by the
+above. Start Docker, open a project, and exercise the specific path.</p>
+<p><strong>Docker-dependent tests</strong> (<code class="docutils literal notranslate"><span class="pre">tests/testContainerBuildIntegration.py</span></code>)
+are excluded from routine runs and are the only ones requiring a live
+container. They are parametrized via <code class="docutils literal notranslate"><span class="pre">VAIBIFY_INTEGRATION_CONFIG</span></code> and
+skip when it is unset.</p>
+</section>
 </section>
 <section id="pull-request-workflow">
 <h2>Pull Request Workflow<a class="headerlink" href="#pull-request-workflow" title="Link to this heading"></a></h2>

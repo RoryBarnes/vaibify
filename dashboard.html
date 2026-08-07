@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -100,7 +100,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
@@ -147,13 +147,11 @@ Overleaf, and (optionally) let an AI coding agent work alongside you.</p>
 <ul class="simple">
 <li><p><strong>Top toolbar</strong> — container name, active project, the three AICS
 level badges, the <strong>?</strong> Help button, and the Run, Sync, View, and
-Admin menus. A pulsing <strong>compute indicator</strong> appears beside the
-container name whenever the container’s CPU is busy: theme-tinted
-when a vaibify step owns the compute, amber when the compute is
-happening outside the dashboard (an in-container agent or a
-terminal session running simulations directly — no step blinks in
-that case, because no step is running). The indicator hides when
-no reading is available; it never claims the container is idle.</p></li>
+Admin menus. <strong>View → Resource Monitor</strong> opens a small on-demand
+panel with live CPU and memory sparklines and the container’s disk
+usage (with a warning banner when the disk is nearly full); when a
+reading is unavailable — Docker unreachable, container stopped —
+the panel says so rather than showing a stale number.</p></li>
 <li><p><strong>Left panel</strong> — a tabbed panel. For projects with a <code class="docutils literal notranslate"><span class="pre">project.json</span></code>
 the tabs are <strong>Main</strong>, <strong>AICS</strong>, <strong>Files</strong>, and <strong>Logs</strong>; for sandbox
 and toolkit projects (no <code class="docutils literal notranslate"><span class="pre">project.json</span></code>) they are <strong>Files</strong>, <strong>Repos</strong>,
@@ -172,12 +170,24 @@ at any corner of the screen tells you where the project stands.</p>
 </section>
 <section id="terminal">
 <h2>Terminal<a class="headerlink" href="#terminal" title="Link to this heading"></a></h2>
-<p>Click in a terminal section to access a shell session inside the
-container. The terminal runs in your browser over WebSocket and behaves
-like a standard terminal emulator. Multiple sessions can run
-concurrently — open as many as you like.</p>
-<p>If an agent CLI is enabled for the project, start it from a terminal. For
-example:</p>
+<p><strong>The in-browser terminal is disabled.</strong> The terminal strip explains
+this in place of a shell.</p>
+<p>The reason is containment. A shell can start a process that detaches
+from the process group vaibify records for it, so vaibify cannot prove
+such a process has stopped — and if it cannot prove that, then
+releasing a container, handing it to another session, or shutting the
+hub down could not honestly report the container quiet. An unprovable
+boundary is worse than a missing feature, so the feature is the one
+that goes.</p>
+<p>To reach a shell inside the container, use Docker directly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>&lt;container-name&gt;<span class="w"> </span>bash
+</pre></div>
+</div>
+<p>That is outside vaibify’s containment, which is exactly the point: the
+responsibility for what you start there is visibly yours, not silently
+vaibify’s.</p>
+<p>If an agent CLI is enabled for the project, start it from that shell.
+For example:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>claude<span class="w"> </span>--dangerously-skip-permissions
 codex
 gemini
@@ -201,7 +211,7 @@ see <a class="reference internal" href="#agent-actions">Agent actions</a> below.
 </section>
 <section id="viewing-window">
 <h2>Viewing Window<a class="headerlink" href="#viewing-window" title="Link to this heading"></a></h2>
-<p>The Viewing Windows above the terminal(s) display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.</p>
+<p>The Viewing Windows above the terminal strip display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.</p>
 </section>
 <section id="repos-panel">
 <h2>Repos panel<a class="headerlink" href="#repos-panel" title="Link to this heading"></a></h2>
@@ -213,15 +223,15 @@ It lists the git repositories inside the container with their branch,
 dirty status, and push controls.</p>
 <p>When you first open a container, repositories already present in the
 workspace (cloned by the entrypoint from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>) are tracked
-automatically. If you clone additional repositories from the terminal,
-vaibify detects them within a few seconds and prompts you to <strong>Track</strong>
-or <strong>Ignore</strong> them.</p>
+automatically. If you clone additional repositories inside the
+container, vaibify detects them within a few seconds and prompts you to
+<strong>Track</strong> or <strong>Ignore</strong> them.</p>
 <p><strong>Dirty detection</strong> reflects whether you have made source-level
 changes. Build artifacts that package managers and compilers leave
 behind (Python <code class="docutils literal notranslate"><span class="pre">__pycache__/</span></code>, C <code class="docutils literal notranslate"><span class="pre">*.o</span></code>, LaTeX <code class="docutils literal notranslate"><span class="pre">*.aux</span></code>,
 <code class="docutils literal notranslate"><span class="pre">*.egg-info/</span></code>, and so on) are filtered out, so a freshly installed
 repository shows as clean unless you have edited its source files.</p>
-<p><strong>Push</strong> commits and pushes whatever you have staged in the terminal —
+<p><strong>Push</strong> commits and pushes whatever you have staged in the container —
 <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">add</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">commit</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code> rolled into a single button. A
 secondary <strong>Push files…</strong> option in the gear menu opens a file picker
 for selecting specific files to commit.</p>
@@ -342,11 +352,12 @@ tweaking a script without re-running the simulation.</p>
 </section>
 <section id="interactive-steps">
 <h4>Interactive steps<a class="headerlink" href="#interactive-steps" title="Link to this heading"></a></h4>
-<p>Mark a step as <em>interactive</em> and it runs in the terminal with X11
-display forwarding, via the <strong>Run in Terminal</strong> button in its expanded
-view. Useful when a step requires human judgment — eyeballing an
-intermediate result, adjusting a parameter — or when you want to hand
-control to an agent for a specific stage.</p>
+<p>An <em>interactive</em> step is one a human drives in a shell. Because the
+in-browser terminal is disabled (see <a class="reference internal" href="#terminal">Terminal</a>), <strong>an
+interactive step cannot be run from the dashboard</strong>: <strong>Run in Terminal</strong>
+reports the refusal instead of starting a step that could never
+finish. Make the step automated, or run its commands yourself in a
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> shell.</p>
 </section>
 <section id="the-expanded-step-view">
 <h4>The expanded step view<a class="headerlink" href="#the-expanded-step-view" title="Link to this heading"></a></h4>
@@ -573,17 +584,17 @@ tamper-evident, not proven complete; enabling it requires
 <p>The same dialog holds <strong>Supervised mode</strong> (the rung above
 Recorded; requires the record enabled and reviewed). When on,
 every repository change must attribute to a recorded action
-channel — a pipeline dispatch, an editor save, a context write, or
-an open terminal session — within a 60-second window; changes with
+channel — a pipeline dispatch, an editor save, or a context write —
+within a 60-second window; changes with
 no recorded cause become <strong>permanent, hash-chained flags</strong>
 (<code class="docutils literal notranslate"><span class="pre">unattributed-modification</span></code>), and a repo that changed while the
 hub was not watching flags an <code class="docutils literal notranslate"><span class="pre">unsupervised-gap</span></code> on reconnect.
 Flags render as a red chip on the AI row and are never cleared by
 the tool; editing the flag file breaks its chain loudly.
 Attribution granularity is honest but coarse: the window and the
-channel, not the file path — and a terminal session attributes as
-an open channel without its keystrokes being captured (content
-capture is a planned extension, stated in the dialog).</p>
+channel, not the file path. Work done in a <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> shell has
+no recorded channel at all, so it flags as unattributed — which is
+the truthful answer, not a gap to paper over.</p>
 </li>
 <li><p><strong>Add AI declaration step</strong> if the project has none, and <strong>Verify
 Level 3 reproducibility</strong> to launch the full rebuild-and-compare.</p></li>
@@ -747,12 +758,13 @@ artifact contains and how third parties verify it without vaibify.</p>
 contains:</p>
 <ul class="simple">
 <li><p>A link to the full online documentation.</p></li>
-<li><p><strong>Using AI</strong> — how to start the in-container coding agent
-(Claude Code, Codex, or Gemini) and why skipping
-per-command permission prompts is the intended, safe mode inside the
-sandbox: the container isolates the agent from your host, every
-edit is tracked in git and hash-pinned, and a full rebuild
-ultimately checks the analysis — the AICS Level 3 posture.</p></li>
+<li><p><strong>Using AI</strong> — how to start the AI coding assistant from a
+shell inside the container (<code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--dangerously-skip-permissions</span></code>) and
+why skipping per-command permission prompts is the intended, safe
+mode inside the sandbox: the container isolates the agent from
+your host, every edit is tracked in git and hash-pinned, and a
+full rebuild ultimately checks the analysis — the AICS Level 3
+posture.</p></li>
 <li><p>The <strong>Legend</strong> — the symbol key, in four divisions matching the
 dashboard’s surfaces: <strong>Steps</strong> (run checkbox, run light, warning
 column, per-file marks), <strong>Project</strong> (requirement-row marks and the
@@ -943,13 +955,21 @@ stuck run.</p></li>
 <li><p><strong>read-manuscript</strong> — pull the project’s own Overleaf manuscript
 (via the <code class="docutils literal notranslate"><span class="pre">pull-manuscript</span></code> action) into a git-ignored scratch copy
 and read it, rather than answering from memory.</p></li>
+<li><p><strong>reproducible-analysis</strong> — answer any quantitative or statistical
+question by writing a <em>saved</em> script — never a throwaway
+one-liner, heredoc, or REPL session — structured so it can become
+a pipeline step and its number can be regenerated.</p></li>
+<li><p><strong>running-steps</strong> — run pipeline steps through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>, never
+by launching a step’s script directly in a shell: a direct launch
+is invisible to the dashboard, which can only show runs it is told
+about.</p></li>
 </ul>
 <p>Moving the ladder and step-authoring walkthroughs into on-demand
 skills also slims the always-loaded container <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> from ~470 to
 ~170 lines — a direct per-session token saving, with the
 safety-critical rules (authoritative level signal, user-only
 publication, the token contract) kept inline.</p>
-<p>From inside a container terminal, you can list the available actions:</p>
+<p>From inside a shell in the container, you can list the available actions:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify-do<span class="w"> </span>--list
 </pre></div>
 </div>
@@ -1009,9 +1029,12 @@ out of its own container.</p>
 viewer left with no connected tab and nothing running self-retires
 after an idle timeout (see
 <a class="reference internal" href="configuration.html#vaibify-hub-idle-timeout-seconds"><span class="std std-ref">Configuration</span></a>),
-freeing its container. Ownership is also released the moment the owning
-tab closes (a <code class="docutils literal notranslate"><span class="pre">pagehide</span></code> signal) or a brief disconnect’s grace window
-expires with no reconnect — never while a pipeline is still running.
+freeing its container. Ownership is otherwise released when a brief
+disconnect’s grace window expires with no reconnect — never while a
+pipeline is still running. Closing the tab does not itself release
+anything: the browser fires the same signal on a reload, so treating it
+as release intent would drop a running container every time you
+refreshed the page.
 The hub re-polls availability every few seconds, so a freed container
 un-greys on its own without a page reload. You can also list and stop
 live sessions from the host with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code> (see the

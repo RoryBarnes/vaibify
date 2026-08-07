@@ -9,11 +9,21 @@ Vaibify provides two equivalent entry points: `vaibify` and the shorthand
 | Flag                  | Description                              |
 |-----------------------|------------------------------------------|
 | `--config PATH`       | Path to `vaibify.yml` (default: `./vaibify.yml`) |
+| `--port N`            | Port for the hub server (default: 8050, auto-shifts upward if taken) |
 | `--version`           | Print the installed version and exit     |
 | `--help`              | Show the help message and exit           |
 
 When invoked with no subcommand, Vaibify starts in **hub mode** -- a
 browser-based dashboard for managing multiple projects.
+
+## Troubleshooting log
+
+Every CLI invocation attaches a rotating log at
+`~/.vaibify/vaibify.log` (10 MB per file, five backups kept). Warnings
+and errors from the hub, the pipeline runner, and the Docker layer land
+there, each tagged with the container id it concerns
+(`[cid:<container-id>]`), so when something misbehaves the log is the
+first place to look. `vaibify doctor` (below) is the other first stop.
 
 ## Project Targeting
 
@@ -50,7 +60,7 @@ vaibify init [--template NAME] [--name NAME] [--minimal] [--force]
 
 | Option           | Description                                   |
 |------------------|-----------------------------------------------|
-| `--template`     | Template name: `sandbox` or `workflow`            |
+| `--template`     | Template name: `sandbox`, `toolkit`, or `workflow` |
 | `--name`         | Project name; scaffolds without a template when given alone |
 | `--minimal`      | Smallest config that still builds: no optional features, no extra packages |
 | `--force`        | Overwrite existing configuration files         |
@@ -102,6 +112,34 @@ vaibify config import <file>                # Load config from a file
 ```
 
 ## Container Lifecycle
+
+### `vaibify doctor`
+
+Run every relevant pre-flight check and print a single status report,
+modelled after `brew doctor`. Checks cover the active Docker context,
+daemon reachability, Colima health, architecture, disk and memory
+headroom (build scope), and image presence, ports, container name, and
+bind mounts (start scope). Exits non-zero when any check fails.
+
+Doctor also runs before any project exists: with an empty registry it
+performs the environment checks (Docker context, daemon, Colima) and
+notes that the project-scoped checks will run once a project is
+configured. This is the right first command when a fresh install
+misbehaves.
+
+```bash
+vaibify doctor [--quiet] [--build] [--start] [--project/-p NAME]
+```
+
+| Option             | Description                              |
+|--------------------|------------------------------------------|
+| `--quiet`          | Suppress `ok` lines; show only warns and fails |
+| `--build`          | Run only the build-relevant subset       |
+| `--start`          | Run only the start-relevant subset       |
+| `--project`, `-p`  | Target project name (optional if only one exists) |
+
+With neither `--build` nor `--start`, both subsets run. The report ends
+with an `N ok / M warn / K fail` summary line.
 
 ### `vaibify build`
 
@@ -346,18 +384,86 @@ vaibify verify-step --step N --status STATUS [--project/-p NAME]
 | `--status STATUS`  | One of `passed`, `failed`, `untested` (required) |
 | `--project`, `-p`  | Target project name (optional if only one exists) |
 
+### `vaibify generate-standards`
+
+Refresh or generate a step's `tests/quantitative_standards.json` from
+live data files. If a curated standards file already exists, only each
+entry's value is recomputed and the schema is preserved; otherwise a
+fresh file is generated from the data files found under the step
+directory.
+
+```bash
+vaibify generate-standards --step-dir PATH [--rtol X] [--detect-stochastic]
+vaibify generate-standards --workflow JSON --step-label A09
+```
+
+| Option                | Description                              |
+|-----------------------|------------------------------------------|
+| `--step-dir PATH`     | Path to a step directory containing `tests/` and data files |
+| `--workflow JSON`     | Path to a workflow JSON (alternative to `--step-dir`) |
+| `--step-label LABEL`  | Step label like `A09` or `I01` (use with `--workflow`) |
+| `--rtol X`            | Default relative tolerance when generating a fresh standards file (default: `1e-6`) |
+| `--detect-stochastic` | Scan the step's `data*.py` scripts for unseeded RNG before generating |
+
+## Reproducibility
+
+### `vaibify reproduce`
+
+Verify a project's AICS L3 reproducibility envelope: manifest
+integrity, hash-pinned dependency install, pinned container image,
+the seven L3 artifact-coherence checks, and — with `--rerun` — a full
+re-run of the workflow with a post-run hash compare and an L3
+attestation written to `.vaibify/l3_attestation.json`.
+
+```bash
+vaibify reproduce [--repo PATH] [--rerun] [--workflow NAME] [--skip-tier N]
+```
+
+| Option             | Description                              |
+|--------------------|------------------------------------------|
+| `--repo PATH`      | Path to the project repo (default: current directory) |
+| `--rerun` / `--no-rerun` | Also re-run the workflow (tier 5), re-hash its outputs, and write an attestation (default: off) |
+| `--workflow NAME`  | Name (or container path) of the workflow to re-run; required when the container hosts more than one |
+| `--skip-tier N`    | Skip tier 1, 2, 3, or 4; may be repeated |
+
+Exit codes: `0` when every selected tier passed, `1` when any tier
+failed, `2` on a usage error (missing required file, malformed
+`environment.json`). The five tiers, the printed output, and the
+attestation files are documented in
+[Reproducibility](reproducibility.md#the-verification-ceremony-vaibify-reproduce).
+
+## Credentials
+
+### `vaibify revoke`
+
+Remove a stored credential from the local keyring and best-effort
+revoke it upstream. Supports the three services vaibify pushes to.
+Prints what was and was not revoked; exits non-zero when the local
+keyring slot could not be cleared.
+
+```bash
+vaibify revoke {github|overleaf|zenodo} [--keyring-slot SLOT] [--instance {sandbox|production}]
+```
+
+| Option                | Description                              |
+|-----------------------|------------------------------------------|
+| `SERVICE`             | One of `github`, `overleaf`, `zenodo` (required) |
+| `--keyring-slot SLOT` | GitHub only: per-repo keyring slot to clear (e.g. `github_token:owner/repo`) |
+| `--instance NAME`     | Zenodo only: target the `sandbox` (default) or `production` keyring slot |
+
 ## GUI and Pipeline
 
 ### `vaibify gui`
 
-Launch the pipeline viewer in a browser (port 8050 by default). When
-run without a project, the landing page opens and displays all
-registered containers. Use the **+** button to add an existing
-project or create a new one. See [The Dashboard](dashboard.md) for
-details.
+Launch the pipeline viewer in a browser. The port is fixed at 8050 —
+there is no `--port` flag on this subcommand (hub mode, `vaibify
+[--port N]`, is the invocation that accepts a port). When run without
+a project, the landing page opens and displays all registered
+containers. Use the **+** button to add an existing project or create
+a new one. See [The Dashboard](dashboard.md) for details.
 
 ```bash
-vaibify gui [--project/-p NAME] [--port N]
+vaibify gui [--project/-p NAME]
 ```
 
 ### Multiple sessions
@@ -464,17 +570,34 @@ browser drives, so the dashboard sees every one of them; they are not a
 second, parallel way to change a project. Start one with `vaibify` in
 another terminal.
 
-**One session per container still holds.** The CLI claims the container's
-lease for the duration of one command and releases it afterwards, so a
-container currently open in a dashboard tab answers with *"In use in
-another browser session"* rather than being taken over.
+**One session per container still holds.** The CLI claims the
+container's lease for the duration of one command and releases it
+afterwards — including when the action fails, so a failed command never
+strands the claim. A container currently open in a dashboard tab is
+therefore refused rather than taken over:
 
-**The CLI is the researcher lane.** It authenticates with the hub's
-shared session token exactly as the browser does. The `bAgentSafe` flag
-in the catalog governs what a compromised *in-container agent* may
-invoke; it does not restrict the person at their own terminal, so
-user-only actions like `clean-outputs` are available here and are marked
-in `--help`.
+```
+Error: Container 'myProject' is held by another vaibify session: In use
+in another browser session. Vaibify allows one session per container, so
+this command cannot take it from a live dashboard. Either close the
+dashboard tab holding it (or release the container from the picker) and
+run this again, or run the same action from inside the container with
+'vaibify-do', the in-container agent lane, which acts within the session
+that is already open.
+```
+
+That is the deliberate answer, not a limitation to work around: taking
+the container would mean revoking a session someone is working in.
+
+**The CLI is the researcher lane.** It authenticates exactly as the
+browser does — with a per-browser credential — obtaining it headlessly:
+it mints a one-time launch capability over the hub's host control
+socket (a `0700` Unix socket, peer-authenticated to the user who
+started the hub, unreachable from any container or remote peer) and
+redeems it at `/api/bootstrap`. The `bAgentSafe` flag in the catalog
+governs what a compromised *in-container agent* may invoke; it does not
+restrict the person at their own terminal, so user-only actions like
+`clean-outputs` are available here and are marked in `--help`.
 
 ## Publishing
 

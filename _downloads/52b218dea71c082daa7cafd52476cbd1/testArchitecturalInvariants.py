@@ -16,6 +16,7 @@ __all__ = [
     "testWorkflowManagerUsesPosixPath",
     "testDirectorUsesOsPath",
     "testNoScienceSpecificIdentifiersInSource",
+    "testNoScienceSpecificIdentifiersInShippedTemplates",
     "testScienceTermScanMatchesSeparatedSpellings",
     "testScienceTermScanKeepsItsLeadingWordBoundary",
     "testRouteModulesDoNotImportSiblings",
@@ -58,6 +59,7 @@ __all__ = [
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+PACKAGE_DIR = REPO_ROOT / "vaibify"
 GUI_DIR = REPO_ROOT / "vaibify" / "gui"
 ROUTES_DIR = GUI_DIR / "routes"
 STATIC_DIR = GUI_DIR / "static"
@@ -78,7 +80,26 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
     # in, which is the likelier route now that incidents get written up
     # where they were diagnosed.
     "xuvevolution",
+    # The maintainer's own tool names, which shipped in the toolkit
+    # template README (caught 2026-07-29). Their one deliberate home,
+    # levelGates.TUPLE_COMMON_SCIENTIFIC_BINARIES, is scoped below in
+    # SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES.
+    "vplanet",
+    "vspace",
+    "multiplanet",
 ]
+
+# (sTerm, repo-relative path) pairs the source scan tolerates. Each
+# entry scopes ONE term to ONE file with a stated reason; the scan
+# stays strict everywhere else. levelGates.py names the tool terms on
+# purpose: its command-scan heuristic recognizes common scientific
+# binaries to defend against false L3 waivers, and renaming them
+# would change behavior.
+SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES = {
+    ("vplanet", "vaibify/reproducibility/levelGates.py"),
+    ("vspace", "vaibify/reproducibility/levelGates.py"),
+    ("multiplanet", "vaibify/reproducibility/levelGates.py"),
+}
 
 # PENDING (2026-07-27): this scan covers *.py/*.html/*.js/*.css under
 # vaibify/ only. Markdown is not scanned and repo-root docs/ is
@@ -120,6 +141,11 @@ LIST_FORBIDDEN_SCIENCE_TERMS = [
 #   tests/ is an excluded directory, and the fixtures there use real
 #   object names freely (testStepSlugContract, testSyncRoutesCoverage,
 #   testLatexAnnotation and others).
+#
+# CLEARED (2026-07-29): shipped templates are now enforced by their
+# own lane, testNoScienceSpecificIdentifiersInShippedTemplates, which
+# scans every file (markdown included) under vaibify/templates/ and
+# exempts only the one shipped example workflow.
 #
 # To finish the job: add "*.md" to _TUPLE_SCIENCE_SCAN_GLOBS, extend the
 # scan root to repo-root docs/ (which will also pick up AGENTS.md), and
@@ -464,24 +490,6 @@ def testWorkflowManagerUsesPosixPath():
     )
 
 
-def testDirectorUsesOsPath():
-    """director.py uses os.path (host filesystem), not posixpath."""
-    sPath = GUI_DIR / "director.py"
-    sSource, treeAst = ftParseFile(sPath)
-    listImports = flistExtractImports(treeAst)
-    setTopNames = {sName for sName, _ in listImports}
-    bImportsPosix = any(
-        sName == "posixpath" or sName.startswith("posixpath.")
-        for sName in setTopNames
-    )
-    assert not bImportsPosix, (
-        "director.py must not import posixpath; host paths use os.path"
-    )
-    assert "os.path." in sSource, (
-        "director.py must actually reference os.path.* for host paths"
-    )
-
-
 def _fbIsRouteSiblingImport(sModulePath, sOwnStem):
     """Return True when sModulePath resolves to a vaibify.gui.routes sibling."""
     sCandidate = sModulePath
@@ -635,7 +643,8 @@ _TUPLE_SCIENCE_SCAN_GLOBS = ("*.py", "*.html", "*.js", "*.css")
 _S_TERM_SEPARATOR_PATTERN = r"[\s\-_]*"
 
 
-def _flistScanForTerm(pathRoot, sTerm):
+def _flistScanForTerm(pathRoot, sTerm, tupleGlobs=_TUPLE_SCIENCE_SCAN_GLOBS,
+                      bSkipExcludedDirectories=True):
     """Return (pathFile, iLineNo, sLine, sMatchedToken) matches for sTerm.
 
     Scans user-facing source files (Python, HTML, JS, CSS) for the
@@ -668,9 +677,9 @@ def _flistScanForTerm(pathRoot, sTerm):
         re.IGNORECASE,
     )
     listHits = []
-    for sGlob in _TUPLE_SCIENCE_SCAN_GLOBS:
+    for sGlob in tupleGlobs:
         for pathFile in pathRoot.rglob(sGlob):
-            if _fbIsExcludedScanPath(pathFile):
+            if bSkipExcludedDirectories and _fbIsExcludedScanPath(pathFile):
                 continue
             try:
                 sSource = fsReadSource(pathFile)
@@ -696,9 +705,47 @@ def testNoScienceSpecificIdentifiersInSource():
         listViolations.extend(
             (sTerm, p, iLine, sText, sToken)
             for p, iLine, sText, sToken in _flistScanForTerm(pathRoot, sTerm)
+            if (sTerm, p.relative_to(REPO_ROOT).as_posix())
+            not in SET_ALLOWED_SCIENCE_TERM_SOURCE_FILES
         )
     assert listViolations == [], (
         "Science-specific identifiers found in vaibify source:\n"
+        + "\n".join(
+            f"  [{sTerm} -> {sToken}] {p}:{iLine}: {sText}"
+            for sTerm, p, iLine, sText, sToken in listViolations
+        )
+    )
+
+
+# The ONE shipped example workflow may carry science overlap by
+# explicit ruling (2026-07-27): it is an allow-path, never a weakened
+# pattern. Every other shipped template stays strict.
+_PATH_ALLOWED_EXAMPLE_TEMPLATE = (
+    REPO_ROOT / "vaibify" / "templates" / "workflow"
+)
+
+
+def testNoScienceSpecificIdentifiersInShippedTemplates():
+    """Shipped template text carries no science or project-tool names.
+
+    The source-wide scan excludes ``/templates/`` and never globs
+    markdown, which is how the maintainer's own tool names shipped in
+    the toolkit template README. This lane scans every file of every
+    template, exempting only the one shipped example workflow.
+    """
+    pathTemplatesRoot = REPO_ROOT / "vaibify" / "templates"
+    listViolations = []
+    for sTerm in LIST_FORBIDDEN_SCIENCE_TERMS:
+        listViolations.extend(
+            (sTerm, p, iLine, sText, sToken)
+            for p, iLine, sText, sToken in _flistScanForTerm(
+                pathTemplatesRoot, sTerm, tupleGlobs=("*",),
+                bSkipExcludedDirectories=False,
+            )
+            if _PATH_ALLOWED_EXAMPLE_TEMPLATE not in p.parents
+        )
+    assert listViolations == [], (
+        "Science-specific identifiers found in shipped templates:\n"
         + "\n".join(
             f"  [{sTerm} -> {sToken}] {p}:{iLine}: {sText}"
             for sTerm, p, iLine, sText, sToken in listViolations
@@ -1383,6 +1430,100 @@ def testEveryCatalogActionHasCliCommand():
     assert listViolations == [], (
         "Catalog actions unreachable from the host CLI:\n  "
         + "\n  ".join(listViolations)
+    )
+
+
+def testGeneratedActionsSendFieldsOnTheTransportTheRouteReads():
+    """Every query parameter a catalog route declares is in saQueryFields.
+
+    A generated action used to send all its caller fields as a JSON
+    body. FastAPI reads a query parameter from the query string only, so
+    a field aimed at one arrived nowhere and the parameter silently took
+    its default: ``get-host-log-tail iLines=50`` returned 200 lines
+    while the catalog's own description advertised the argument, and
+    ``write-file ... sWorkdir=/x`` wrote relative to somewhere else.
+    Silently doing something other than what was asked is the worst
+    shape of all -- there is nothing to notice.
+
+    The route signature is the authority here, not the catalog: this
+    reads each action's endpoint and requires every parameter that is
+    neither a path placeholder nor a request/body object to be declared
+    in ``saQueryFields``. A route that grows one fails the build.
+    """
+    import inspect
+    from unittest.mock import patch
+
+    from pydantic import BaseModel
+    from fastapi.routing import APIRoute
+
+    from vaibify.gui import pipelineServer
+    from vaibify.gui.actionCatalog import LIST_AGENT_ACTIONS
+    from tests.testAgentLaneEnforcement import MockDockerConnection
+
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker", MockDockerConnection,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace", sTerminalUserArg="testuser",
+        )
+    dictRoutesByKey = {}
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            for sMethod in route.methods:
+                dictRoutesByKey[(sMethod, route.path)] = route
+
+    listUndeclared = []
+    for dictEntry in LIST_AGENT_ACTIONS:
+        if dictEntry["sMethod"] == "WS":
+            continue
+        route = dictRoutesByKey.get(
+            (dictEntry["sMethod"], dictEntry["sPath"]),
+        )
+        if route is None:
+            continue
+        setDeclared = set(dictEntry.get("saQueryFields") or ())
+        for sName, parameter in inspect.signature(
+            route.endpoint,
+        ).parameters.items():
+            if _fbParameterIsPathPlaceholder(sName, route.path):
+                continue
+            if _fbParameterIsNotAQueryField(sName, parameter, BaseModel):
+                continue
+            if sName not in setDeclared:
+                listUndeclared.append(
+                    f"{dictEntry['sName']} -> {sName}"
+                )
+    assert listUndeclared == [], (
+        f"these catalog actions send a field the route reads from the "
+        f"QUERY string as a JSON body, so it is silently ignored; "
+        f"declare each in the entry's saQueryFields: {listUndeclared}"
+    )
+
+
+def _fbParameterIsPathPlaceholder(sName, sPath):
+    """Return True when the parameter fills a path placeholder."""
+    return f"{{{sName}}}" in sPath or f"{{{sName}:" in sPath
+
+
+def _fbParameterIsNotAQueryField(sName, parameter, typeBaseModel):
+    """Return True for parameters FastAPI does not read from the query."""
+    from fastapi import Request, Response, WebSocket
+
+    annotation = parameter.annotation
+    if annotation in (Request, Response, WebSocket, dict):
+        return True
+    if sName in ("request", "response", "websocket", "background_tasks"):
+        return True
+    if isinstance(annotation, type) and issubclass(
+        annotation, typeBaseModel,
+    ):
+        return True
+    # Optional[SomeModel] and other typing constructs: a body model
+    # wrapped in Optional keeps the model in its arguments.
+    return any(
+        isinstance(objArgument, type)
+        and issubclass(objArgument, typeBaseModel)
+        for objArgument in getattr(annotation, "__args__", ())
     )
 
 
@@ -2340,6 +2481,12 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         def ftResultExecuteCommand(self, sId, sCmd):
             return (1, "")
 
+        def fbaFetchFile(self, sId, sPath, iMaxBytes=None):
+            # The pipeline-state read is a typed read, and the typed-read
+            # adapter spells "absent" as FileNotFoundError rather than a
+            # non-zero exit code.
+            raise FileNotFoundError(sPath)
+
     def _fnSave(sId, dictWf):
         return
 
@@ -2666,12 +2813,14 @@ SET_RAW_REPO_PATH_NAMES = frozenset({
     "sRepoPath",
 })
 
-# director.py is the host-side parallel runner (host paths are its
-# truth), so its raw host-path arguments into the dual-accept entry
-# points are correct as written.
-SET_REPRO_IO_EXEMPT_FILES = frozenset({
-    "director.py",
-})
+# Empty by design. It held only ``director.py``, the withdrawn
+# host-side runner, whose raw host-path arguments were correct because
+# host paths were its truth. No module under vaibify/gui/ handles host
+# paths any more, so an exemption here would be a hole rather than a
+# carve-out -- a future file reusing an exempt name would skip the scan
+# silently. Adding an entry needs the same justification the deleted
+# one had.
+SET_REPRO_IO_EXEMPT_FILES = frozenset()
 
 
 def _fsCalledFunctionName(nodeCall):
@@ -2847,6 +2996,24 @@ def _fbModuleImportsAuthorizationGuard(pathModule):
     return False
 
 
+def _fbModuleImportsOwnershipAuthority(pathModule):
+    """Return True when pathModule imports the container-ownership authority.
+
+    The connect handler is an HTTP route: its lease rides the
+    ``X-Vaibify-Lease`` header, so it consults the shared
+    ``containerOwnership`` authority (via ``routeScope`` for the header)
+    rather than the WebSocket query-param guard. Either import proves it
+    reaches for the shared authority instead of an inline membership check.
+    """
+    _, treeAst = ftParseFile(pathModule)
+    for sName, _iLine in flistExtractImports(treeAst):
+        if sName.endswith("containerOwnership") or sName.endswith(
+            "routeScope"
+        ):
+            return True
+    return False
+
+
 def testClaimRejectsForeignLease():
     """A foreign-lease claim is arbitrated to 409, never short-circuited.
 
@@ -2907,9 +3074,21 @@ def testReleaseRejectsNonOwner():
     )
     assert bMissing is False
     sSource = fsReadSource(GUI_DIR / "registryRoutes.py")
-    assert "fnReleaseOwnership" in sSource and "sLeaseId" in sSource, (
-        "the release route must verify the lease via "
-        "containerOwnership.fnReleaseOwnership"
+    # Either face of the authority satisfies this: fbReleaseExplicit
+    # answers "did it commit?", ftReleaseExplicit additionally answers
+    # "and why not" so the route can 409 a retained refusal (§10).
+    assert "ReleaseExplicit" in sSource and "sLeaseId" in sSource, (
+        "the release route must commit through the sessionLifecycle "
+        "authority (fb/ftReleaseExplicit), never an inline drop"
+    )
+    assert "fnReleaseOwnership" not in sSource, (
+        "no route may call the containerOwnership release primitives "
+        "directly; sessionLifecycle is the single transition authority"
+    )
+    sLifecycleSource = fsReadSource(GUI_DIR / "sessionLifecycle.py")
+    assert "fnReleaseOwnership" in sLifecycleSource, (
+        "sessionLifecycle.fbReleaseExplicit must delegate the lease "
+        "arbitration to containerOwnership.fnReleaseOwnership"
     )
 
 
@@ -2922,19 +3101,25 @@ def testWebSocketGatesUseSharedAuthorizationGuard():
     access-decision module may reference a process-global
     ``setAllowedContainers`` membership set.
 
-    ``workflowRoutes`` is in the list because the connect handler is the
-    third gate ``architecture.md`` names: it had no ownership check at
-    all until 2026-07-25, so a second tab could bypass the claim route's
-    409 while the documentation claimed otherwise.
+    The connect handler is the third gate ``architecture.md`` names: it
+    had no ownership check at all until 2026-07-25, so a second tab could
+    bypass the claim route's 409 while the documentation claimed otherwise.
+    Since the HTTP lease moved to the ``X-Vaibify-Lease`` header (Sweep B),
+    connect consults the ``containerOwnership`` authority rather than the
+    WebSocket query-param guard — still a shared authority, never an inline
+    membership check.
     """
-    for sFileName in (
-        "pipelineRoutes.py", "terminalRoutes.py", "workflowRoutes.py",
-    ):
+    for sFileName in ("pipelineRoutes.py", "terminalRoutes.py"):
         pathModule = ROUTES_DIR / sFileName
         assert _fbModuleImportsAuthorizationGuard(pathModule), (
             f"{sFileName} must import the shared guard from "
             f"webSocketAuthorization instead of inlining the gate"
         )
+    pathWorkflow = ROUTES_DIR / "workflowRoutes.py"
+    assert _fbModuleImportsOwnershipAuthority(pathWorkflow), (
+        "workflowRoutes must consult the shared containerOwnership "
+        "authority for the connect gate instead of inlining the check"
+    )
     listViolations = [
         pathModule.name for pathModule in _T_ACCESS_DECISION_MODULES
         if "setAllowedContainers" in fsReadSource(pathModule)
@@ -3044,18 +3229,24 @@ def testSetAllowedContainersRemoved():
 
 
 def testWebSocketRoutesResolveIdToNameBeforeGate():
-    """Both WS routes resolve the docker id to the canonical name first.
+    """The serving WS route resolves the docker id to the name first.
 
     The owner-of-record map is keyed by container NAME (the claim
     route's canonical key), but the WebSocket routes receive the docker
-    ID in their path. Each handler must call ``fsContainerNameForId``
-    before handing a name to ``fiContainerSessionRejectionCode`` and to
-    the per-container live-connection counter; otherwise the name-keyed
-    gate lookup misses and every authorized session closes 4403. This
-    pins the resolution boundary so an id-keyed regression cannot pass
-    CI silently.
+    ID in their path. A handler that serves a session must call
+    ``fsContainerNameForId`` before handing a name to
+    ``fiContainerSessionRejectionCode`` and to the per-container
+    live-connection counter; otherwise the name-keyed gate lookup misses
+    and every authorized session closes 4403. This pins the resolution
+    boundary so an id-keyed regression cannot pass CI silently.
+
+    The terminal route is deliberately absent: it serves no session at
+    all while terminals are withdrawn, and resolving the id there would
+    reintroduce the container-existence oracle the withdrawal removed.
+    :func:`testWithdrawnTerminalRouteTouchesNothing` asserts the
+    stronger property in its place.
     """
-    for sFileName in ("pipelineRoutes.py", "terminalRoutes.py"):
+    for sFileName in ("pipelineRoutes.py",):
         sSource = fsReadSource(ROUTES_DIR / sFileName)
         iResolve = sSource.find("fsContainerNameForId(")
         iGate = sSource.find("fiContainerSessionRejectionCode(")
@@ -3068,6 +3259,288 @@ def testWebSocketRoutesResolveIdToNameBeforeGate():
             f"fiContainerSessionRejectionCode so the name-keyed gate is "
             f"consulted with the resolved name, not the raw docker id"
         )
+
+
+def testPoisonIsWrittenThroughOneFunctionOnly():
+    """Nothing assigns ``OwnerRecord.poison`` outside its two authorities.
+
+    Poison and fencing are one act. A record marked poisoned while its
+    pipeline socket keeps dispatching frames refuses new mutations and
+    permits the in-flight ones, which is the opposite of fail-closed --
+    so the poison write and the connection fencing live in a single
+    function, and a second assignment anywhere would be a poison that
+    fences nothing.
+
+    ``containerOwnership.py`` is the seam: it holds the one writer
+    (``flistPoisonAndFenceConnections``) and the one clearer
+    (``fnClearPoison``). Everything else must call them.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name == "containerOwnership.py":
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        for nodeAssign in ast.walk(treeAst):
+            if not isinstance(nodeAssign, ast.Assign):
+                continue
+            for nodeTarget in nodeAssign.targets:
+                if isinstance(nodeTarget, ast.Attribute) and (
+                    nodeTarget.attr == "poison"
+                ):
+                    listViolations.append(
+                        f"{pathModule.relative_to(PACKAGE_DIR)}"
+                        f":{nodeAssign.lineno}"
+                    )
+    assert listViolations == [], (
+        f"poison must be set through "
+        f"containerOwnership.flistPoisonAndFenceConnections and cleared "
+        f"through fnClearPoison, never assigned directly. Found: "
+        f"{listViolations}"
+    )
+
+
+def testThePipelineSocketIsFencedByPoison():
+    """The pipeline lane refuses a poisoned container, at accept and per frame.
+
+    Poison denies MUTATIONS. The pipeline WebSocket is a mutation
+    channel, so it must be refused at the gate with its own code -- the
+    caller's standing is fine, the container is not -- and revalidated
+    per frame, because the socket that must stop acting is precisely the
+    one admitted before the poison landed.
+    """
+    sRouteSource = fsReadSource(ROUTES_DIR / "pipelineRoutes.py")
+    assert "fbContainerIsPoisoned(" in sRouteSource, (
+        "the pipeline WebSocket must refuse a poisoned container"
+    )
+    assert "I_REJECT_POISONED" in sRouteSource, (
+        "the poison refusal must carry its own close code, so a client "
+        "can tell it from an authorization refusal"
+    )
+    assert "iAcceptedGeneration=" in sRouteSource, (
+        "the per-frame backstop must be given the generation admitted "
+        "at accept, or a transfer cannot fence a socket mid-frame"
+    )
+    sGuardSource = fsReadSource(GUI_DIR / "webSocketAuthorization.py")
+    iPerFrame = sGuardSource.find("def ffbBuildPerFrameCredentialCheck")
+    assert "fbContainerIsPoisoned(" in sGuardSource[iPerFrame:], (
+        "the per-frame backstop must re-read the poison state, not "
+        "capture it at accept"
+    )
+
+
+def testTheHostReconciliationLaneIsNotFencedByPoison():
+    """Poison must not fence off its own cure.
+
+    ``vaibify reconcile`` reaches a live hub over the host control
+    socket, and that lane is what CLEARS a poison. A fence that covered
+    every lane would leave a poisoned container unrecoverable without
+    killing the hub, so the host control channel must carry no poison
+    refusal of its own.
+    """
+    sSource = fsReadSource(GUI_DIR / "hostControlChannel.py")
+    assert "fbContainerIsPoisoned" not in sSource, (
+        "the host reconciliation lane must not refuse on poison; it is "
+        "the lane that clears it"
+    )
+    assert "fnClearPoison(" in sSource, (
+        "the reconciliation handler must clear the poison through the "
+        "single clearer"
+    )
+
+
+# ---------------------------------------------------------------------
+# The parked interactive terminal.
+#
+# The terminal is the one lane whose containment could not be proven: a
+# descendant that calls setsid leaves the recorded process group, so
+# "the terminal stopped" was never provable and no authority-ending path
+# could honestly report the container quiet. It is withdrawn for the
+# alpha. A no-callers invariant over terminalContainment CANNOT pass --
+# the module keeps production callers for cleanup, drain, and shutdown
+# -- so the parking is expressed as four narrower controls instead.
+# ---------------------------------------------------------------------
+
+_S_TERMINAL_WS_PATH = "/ws/terminal"
+
+# Creating a terminal execution is what is parked. Draining, probing,
+# and registry construction are the cleanup half and must keep working:
+# a legacy record written before the upgrade still has to be terminated
+# and proven, or quarantined.
+_SET_TERMINAL_CREATION_SYMBOLS = frozenset({
+    "TerminalSession",
+    "TerminalExecutionRecord",
+    "fsPrepareTerminalOperation",
+    "fnPromoteTerminalOperation",
+    "fnRegisterTerminalRecord",
+    "fsMintGroupMarkerPath",
+    "fsBuildGroupReportingCommand",
+    "fiDiscoverTerminalProcessGroup",
+    "fnRecordTerminalProcessGroup",
+})
+
+# terminalSession.py holds the parked creation seam itself; the control
+# on it is that nothing in production CONSTRUCTS a TerminalSession, not
+# that the seam's body has been emptied (that is wave 7's deletion).
+_SET_TERMINAL_SEAM_MODULES = frozenset({
+    "terminalSession.py",
+    "terminalContainment.py",
+})
+
+
+def _flistCallNames(treeAst):
+    """Return every called name in a module, attribute calls included."""
+    listNames = []
+    for nodeCall in ast.walk(treeAst):
+        if not isinstance(nodeCall, ast.Call):
+            continue
+        nodeFunc = nodeCall.func
+        if isinstance(nodeFunc, ast.Name):
+            listNames.append(nodeFunc.id)
+        elif isinstance(nodeFunc, ast.Attribute):
+            listNames.append(nodeFunc.attr)
+    return listNames
+
+
+def _flistProductionPythonModules():
+    """Return every shipped Python module under the package root."""
+    return [
+        pathModule for pathModule in PACKAGE_DIR.rglob("*.py")
+        if "__pycache__" not in pathModule.parts
+    ]
+
+
+def testWithdrawnTerminalRouteTouchesNothing():
+    """The terminal route refuses first and touches no shared state.
+
+    Ordering is the whole contract. The pre-withdrawal handler resolved
+    the docker id, ran the ownership gate (which REFRESHES liveness),
+    and entered the connection counters before it could refuse anything
+    -- so an unauthenticated dial-in learned whether a named container
+    existed, and a refused one had already disturbed the owner's
+    liveness stamp. The withdrawn handler must reach none of that: the
+    close is the only statement it executes.
+    """
+    pathRoute = ROUTES_DIR / "terminalRoutes.py"
+    sSource = fsReadSource(pathRoute)
+    for sForbidden in (
+        "fsContainerNameForId",
+        "fiContainerSessionRejectionCode",
+        "fnServeUnderLiveConnectionCounters",
+        "TerminalSession",
+        "fnRunTerminalSession",
+    ):
+        assert f"{sForbidden}(" not in sSource, (
+            f"the withdrawn terminal route must not call {sForbidden}; "
+            f"the refusal is the first and only statement so it creates "
+            f"no ownership, no counters, no records, and reveals nothing "
+            f"about whether the container exists"
+        )
+    assert "I_REJECT_TERMINAL_DISABLED" in sSource, (
+        "the terminal route must close with the one fixed withdrawal "
+        "code, distinct from every authorization refusal"
+    )
+    assert "fnCloseWithCode(" in sSource, (
+        "the refusal must accept then close (fnCloseWithCode) so the "
+        "browser observes the real code instead of an opaque 1006"
+    )
+
+
+def testNoProductionPathConstructsATerminalSession():
+    """Nothing in the shipped package constructs a terminal session.
+
+    This is parking control 1. The route no longer builds one; this
+    fails the build if any production path -- a new route, a background
+    task, a convenience helper -- starts building one again while the
+    containment boundary is still unprovable.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        if "TerminalSession" in _flistCallNames(treeAst):
+            listViolations.append(str(pathModule.relative_to(PACKAGE_DIR)))
+    assert listViolations == [], (
+        f"no production path may construct a TerminalSession while the "
+        f"terminal is withdrawn; found in: {listViolations}"
+    )
+
+
+def testOnlyTheWithdrawnHandlerServesTheTerminalWebSocket():
+    """Parking control 2: exactly one handler answers ``/ws/terminal``."""
+    listServing = [
+        str(pathModule.relative_to(PACKAGE_DIR))
+        for pathModule in _flistProductionPythonModules()
+        if _S_TERMINAL_WS_PATH in fsReadSource(pathModule)
+    ]
+    assert listServing == ["gui/routes/terminalRoutes.py"], (
+        f"only the withdrawn refusal handler may answer "
+        f"{_S_TERMINAL_WS_PATH}; found in: {listServing}"
+    )
+    sSource = fsReadSource(ROUTES_DIR / "terminalRoutes.py")
+    assert sSource.count("@app.websocket(") == 1, (
+        "terminalRoutes must register exactly one WebSocket endpoint -- "
+        "the refusal -- so no second path can serve a session"
+    )
+
+
+def testNoProductionPathPreparesATerminalExecutionRecord():
+    """Parking control 3: only the parked seam names the creation calls.
+
+    A terminal execution becomes durable through
+    ``fsPrepareTerminalOperation`` -> ``fnPromoteTerminalOperation`` ->
+    ``fnRegisterTerminalRecord``. Outside the seam module (whose own
+    constructor is unreachable, per parking control 1) no shipped module
+    may name any of them, so no container can acquire a new
+    quarantine-bearing terminal record.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        setCalled = set(_flistCallNames(treeAst))
+        setOffending = setCalled & _SET_TERMINAL_CREATION_SYMBOLS
+        if setOffending:
+            listViolations.append(
+                (str(pathModule.relative_to(PACKAGE_DIR)),
+                 sorted(setOffending))
+            )
+    assert listViolations == [], (
+        f"terminal-record creation is parked; only the seam module may "
+        f"name these calls. Found: {listViolations}"
+    )
+
+
+def testRemainingContainmentCallsAreCleanupOnly():
+    """Parking control 4: every live containment caller is cleanup.
+
+    ``terminalContainment`` keeps production callers -- appFactory
+    builds the registry and drains it at shutdown, sessionLifecycle and
+    serverLifespan drain and query it on release, reap, and shutdown --
+    which is why a no-callers invariant cannot pass. What must hold is
+    narrower: none of those callers CREATES anything.
+    """
+    listViolations = []
+    for pathModule in _flistProductionPythonModules():
+        if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
+            continue
+        sSource = fsReadSource(pathModule)
+        if "terminalContainment" not in sSource:
+            continue
+        _, treeAst = ftParseFile(pathModule)
+        setOffending = (
+            set(_flistCallNames(treeAst)) & _SET_TERMINAL_CREATION_SYMBOLS
+        )
+        if setOffending:
+            listViolations.append(
+                (str(pathModule.relative_to(PACKAGE_DIR)),
+                 sorted(setOffending))
+            )
+    assert listViolations == [], (
+        f"the surviving containment callers must be cleanup and "
+        f"reconciliation only; creation calls found in: {listViolations}"
+    )
 
 
 # ---------------------------------------------------------------------
@@ -3094,7 +3567,7 @@ _REGEX_HOST_FILESYSTEM_CLAIM = re.compile(
 # confines what the agent may reach. Both consult the same lane
 # authority the middleware used rather than re-reading raw headers.
 _T_AGENT_LANE_GUARD_NAMES = (
-    "_fnRejectAgentTokenLane",
+    "fnRejectAgentTokenLane",
     "fbRequestRidesAgentLane",
 )
 
@@ -3153,7 +3626,7 @@ def testHostFilesystemRoutesRejectTheAgentLane():
     which the agent-safe read and push actions then expose.
 
     Catalog exclusion is metadata, not a gate. This invariant fails when
-    a THIRD such route appears without ``_fnRejectAgentTokenLane`` (which
+    a THIRD such route appears without ``fnRejectAgentTokenLane`` (which
     refuses the lane) or ``fbRequestRidesAgentLane`` (which confines it),
     so the promise can never again outrun its enforcement.
     """
@@ -3180,7 +3653,7 @@ def testHostFilesystemRoutesRejectTheAgentLane():
     assert listOffenders == [], (
         "A route whose documentation promises the agent cannot reach "
         "host files must enforce that promise at the route. Call "
-        "_fnRejectAgentTokenLane(requestHttp) as the handler's first "
+        "fnRejectAgentTokenLane(requestHttp) as the handler's first "
         "statement, or confine the agent with fbRequestRidesAgentLane:"
         "\n  " + "\n  ".join(listOffenders)
     )
@@ -3329,15 +3802,18 @@ def testConnectHandlerGatesOnTheOwningLease():
     )
     sGateBody = ast.unparse(nodeGate)
     iResolve = sGateBody.find("fsContainerNameForId(")
-    iLease = sGateBody.find("fbCheckLeaseOwnership(")
+    iLease = sGateBody.find("fbBrowserSessionOwnsLease(")
     assert iResolve != -1 and iLease != -1, (
         "the connect gate must resolve the docker id to the container "
-        "name and then consult webSocketAuthorization."
-        "fbCheckLeaseOwnership -- never an inlined membership check"
+        "name and then consult the session-bound "
+        "containerOwnership.fbBrowserSessionOwnsLease on the "
+        "X-Vaibify-Lease header -- never the value-only "
+        "fbSessionOwnsContainer and never an inlined membership check, so "
+        "a second browser session replaying a copied lease is refused"
     )
     assert iResolve < iLease, (
         "the connect gate must call fsContainerNameForId BEFORE "
-        "fbCheckLeaseOwnership; the owner map is name-keyed, so an "
+        "fbBrowserSessionOwnsLease; the owner map is name-keyed, so an "
         "id-keyed lookup silently misses and refuses every real session"
     )
 
@@ -3403,11 +3879,60 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 # cohesive-but-large file today. The grandfathered numbers are known
 # debt: they may go DOWN (split or trim), never up. Raising one is a
 # deliberate act that should be justified, not a reflex.
+#
+# RULING 2026-08-05, for the carrier migration only. Five route modules
+# reached their entries within a few lines of each other, and between
+# them held 32 of the 57 routes still to migrate: syncRoutes (15),
+# reproducibilityRoutes (8), gitRoutes (6), pipelineRoutes (3). Each
+# migration adds a handful of lines to a module it does not otherwise
+# change, so the ratchet had begun rising by accretion -- a few lines at
+# a time, each individually justified, which is how a size limit stops
+# meaning anything.
+#
+# The researcher's decision was to raise the affected entries ONCE,
+# deliberately, rather than split. The reasoning is the one AGENTS.md
+# already gives: these modules are cohesive, and splitting a file to
+# satisfy a NUMBER is the premature-abstraction failure the guidance
+# warns about -- the work here is many small tasks across a few
+# concepts, not a new responsibility arriving. A split may still be
+# right later; it should be triggered by a real seam, not by this.
+#
+# What this ruling does NOT license: a NEW module written over the cap,
+# a rise for any reason other than adding carrier plumbing to an
+# existing route, or letting these entries drift upward again
+# afterwards. When the migration stops, these numbers are debt like
+# every other entry here and may only fall.
+#
+# Clarified 2026-08-06, because an agent read the line above as
+# ambiguous and was right to ask. "A new module over the cap" means a
+# newly WRITTEN module, not an existing module taking its first entry
+# here. An existing module that crosses 800 for the first time while
+# gaining carrier plumbing takes an entry like any other — testRoutes.py
+# did, at 802. The agent that hit it first trimmed to exactly 800 and
+# then reverted, because reaching the number required deleting the blank
+# line after each docstring summary. That reversal was correct and is
+# the point of the whole ruling: deforming source to satisfy a count is
+# the outcome this exists to prevent, and a two-line overshoot is not
+# evidence of a god module.
 # ---------------------------------------------------------------------
 
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
+    # when the ownership IDENTITY joined it — the recorded
+    # (prior-owner, lease, generation, session) tuple an in-flight
+    # operation runs under, and the comparison that says whether the
+    # live record is still it. It is deliberately here and not in a new
+    # module: it is a statement ABOUT an OwnerRecord, read in the same
+    # breath as the record's own fields, and a separate module would
+    # invite a second, drifting notion of what "the same ownership"
+    # means — which is the bug class it exists to close.
+    # +43 (2026-08-02): the single poison-and-fence writer and the
+    # single clearer. Poison and fencing are one act, and the fence
+    # needs the lane on ConnectionRecord, so both live beside the
+    # record they act on.
+    "containerOwnership.py": 897,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -3487,7 +4012,72 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +32 (2026-07-26): _fbReconcileUserVerificationByHash, which runs
     # the pass above after the poll snapshot (the side-effect block
     # has no hashes to consult). Cohesive with the poll assembly.
-    "routes/pipelineRoutes.py": 2754,
+    # +44 (2026-07-29): host-log-tail agent-lane sanitization —
+    # _flistSanitizedIncidents and the lane branch that gives the agent
+    # an allowlisted per-container view. Cohesive with the existing
+    # host-log endpoint; no new responsibility, no seam to split.
+    # +2 (2026-07-31): the pipeline WebSocket threads the session-socket
+    # index and browser-session store into the shared serve wrapper
+    # (ORPHANED_SESSION slice 1). Two keyword arguments, no new logic.
+    # +8 (2026-08-01): the pipeline WebSocket builds the §5 per-frame
+    # credential check (ORPHANED_SESSION slice 6) and threads it into
+    # the handler. One builder call, no new logic here.
+    # +18 (2026-08-02): the pipeline WebSocket refuses a poisoned
+    # container at the gate and hands the per-frame backstop the
+    # generation admitted at accept, so a transfer fences a live socket.
+    # +58 (2026-08-04): _fnDeleteOutputsUnderTheDrain, the mode-(b)
+    # carrier call that closes the migration plan's named live exploit —
+    # the clean route's `rm` used to run on a bare asyncio.to_thread,
+    # holding no lock, so a transfer arriving mid-delete saw an idle
+    # container and committed over it. Justified rather than split: the
+    # helper is a single-call extraction from fnCleanOutputs that
+    # carries on its parent's one purpose, so splitting would create the
+    # artificial seam AGENTS.md warns against, and most of the growth is
+    # the docstring recording WHY the drain is held for the worker's
+    # life rather than the request's. NOTE FOR THE NEXT MIGRATION GROUP:
+    # this module has ten workflow saves and several more routes still
+    # awaiting a carrier, so it will keep pressing this ratchet. The
+    # next bump should be a conversation about splitting the file, not
+    # another line here.
+    # +42 (2026-08-06): the conversation happened, and the 2026-08-05
+    # ruling atop this table is its outcome — raise once for carrier
+    # plumbing, do not split to satisfy a number. This bump is
+    # acknowledge-step's mode-(b) helper, whose docstring is most of it:
+    # `_fdictGetModTimes` LOOKS like a read and WRITES a scratch path
+    # file into the container before it stats, so a route that carried
+    # only its workflow save would have been refused at the probe, and
+    # that is the trap worth recording where the next reader will meet
+    # it.
+    # +94 (2026-08-06): the Kill route's three carriers. Two of them are
+    # the sweep and the stopped-state write; the third is the one worth
+    # recording here, because the cheap migration would not have had it.
+    # Kill reads through the RECONCILING reader, so a Kill issued over a
+    # runner that already died must still persist that runner's real
+    # exit code and sFailureCauseHost — and that write needs its own
+    # carrier, injected into the reader rather than performed by the
+    # route. Dropping the reconciling reader would have been smaller and
+    # would have made the dashboard say "killed (130)" over a crash.
+    # +50 (2026-08-06): the manifest verify, the last awaiting route in
+    # this module. It reads like a read and is not one at the boundary
+    # that decides — flistVerifyManifest re-hashes every pinned file
+    # through the GENERAL exec primitive — so it needed a real mode-(b)
+    # worker rather than a typed-read declaration, and the two to_thread
+    # hops it used to make became direct calls inside that worker.
+    # **No route in this module is awaiting any longer.**
+    "routes/pipelineRoutes.py": 3070,
+    # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
+    # generate-test migration, under the 2026-08-05 ruling above — an
+    # existing route module, carrier plumbing, raised once rather than
+    # split. It is +2 over the cap and the two lines are the reason the
+    # migration is not the cheap one: a PRE-FLIGHT that rejects an
+    # out-of-range step index before any carrier opens, so a typo in
+    # the URL answers 404 instead of quarantining an untouched
+    # container, and the docstring recording WHY that is the only
+    # failure the pre-flight can take (every other one the generator
+    # raises happens at or after a write). Reaching 800 exactly was
+    # possible only by deleting the blank line after each docstring's
+    # summary, which is deforming the source to satisfy a number.
+    "routes/testRoutes.py": 802,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -3527,7 +4117,51 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # existing container had bind-mounted, leaving it unstartable;
     # reachability, not age, decides now. Cohesive with the other
     # credential-lifecycle wiring this module already registers.
-    "routes/syncRoutes.py": 2461,
+    # +11 (2026-07-29): the sweep fails closed on daemon-enumeration
+    # failure (None vs empty protected set). Same credential-sweep
+    # responsibility; no seam to split.
+    # +36 (2026-07-31): ORPHANED_SESSION slice 3b — the Overleaf push
+    # runs as a carrier mode-(b) lock-held mutation (design §8): the
+    # lane-tuple binding and the shielded-supervisor call wrap the
+    # existing blocking dispatcher. Extends the push flow this module
+    # already owns; the carrier machinery itself lives in
+    # commitCarrier.py.
+    # +4 (2026-08-05): has-credential rejects the in-container agent
+    # lane. The route reads the researcher's HOST keyring and is a GET,
+    # so the catalog's agent-lane gate never sees it. Four lines: the
+    # shared guard's import, the Request parameter, the call. NOTE this
+    # is the fourth route module to reach its cap; whether to split
+    # syncRoutes along the credential/DAG seam is the researcher's
+    # decision, not a line this bump settles.
+    # +208 (2026-08-05): carrier plumbing for five of this module's
+    # routes, under the 2026-08-05 ruling at the head of this record.
+    # Each is one ``requestHttp`` parameter, one declaration, and one
+    # under-the-drain wrapper naming why its worker carries refusals
+    # back instead of raising them; ``add-file``'s chain also gained a
+    # synchronous twin, because a mode-(b) worker runs in a thread and
+    # cannot await the three ``to_thread`` hops it used to make. The
+    # remaining ten routes in this module have NOT been migrated, so
+    # this entry will need raising again before it may start falling.
+    # +257 (2026-08-06): carrier plumbing for eight more of this
+    # module's routes — the two Overleaf mirror routes (declaration
+    # and rationale only, both act on the HOST mirror), the diff, the
+    # manuscript pull, the credential setup, and the three Zenodo
+    # routes. The bulk is not the declarations: it is the synchronous
+    # twins a mode-(b) worker needs, because that worker runs in a
+    # thread and cannot await the ``to_thread`` hops these chains used
+    # to make. Two routes remain awaiting here — the GitHub and
+    # Overleaf pushes — after which this entry may start falling.
+    # +90 (2026-08-06): the GitHub and Overleaf pushes, the last two
+    # awaiting routes in this module. The GitHub push's whole sequence
+    # — dedupe probe, token-owner binding, push, commit-state reads —
+    # collapsed into one synchronous worker under one drain, and its
+    # bookkeeping save became a mode-(a) commit; the Overleaf push's
+    # digest and provenance halves joined one drain and its save the
+    # same mode-(a) commit. The now-dead ``_fdictHandlePushExecFailure``
+    # coroutine was removed, which is why the rise is smaller than the
+    # additions. **No route in this module is awaiting any longer, so
+    # this entry may only fall from here.**
+    "routes/syncRoutes.py": 3067,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -3658,7 +4292,181 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # import), and the parsed loopback-origin predicate replacing a
     # prefix compare. All three are the module's existing
     # request-validation responsibility.
-    "pipelineServer.py": 2174,
+    # +33 (2026-07-30): the capability-bootstrap exchange endpoint
+    # (/api/bootstrap, A1) and the viewer first-connect session-binding
+    # (P0). Both extend this module's existing session-establishment
+    # responsibility; no new seam.
+    # +6 (2026-07-31): ORPHANED_SESSION slice 1 — the pipeline task's
+    # mutable iOwnerGeneration field (retagged in place, read at
+    # completion, design §2.3) and the viewer served-record's
+    # dictSessionOwner index sync. Both extend task registration and
+    # ownership recording this module already owns.
+    # +14 (2026-07-31): ORPHANED_SESSION slice 4 — the cardinality
+    # refusal on the viewer first-connect creation path (design §9): a
+    # session already holding a different container is refused before a
+    # second owner record is minted. Extends the ownership recording
+    # this module already owns.
+    # +81 (2026-07-31): ORPHANED_SESSION slice 3b — pipeline dispatch
+    # launches through carrier mode (c) (_ftLaunchDispatchTask) and the
+    # WebSocket handler binds the durable dispatch context
+    # (_fdictBuildDurableDispatchContext). Extends the dispatch/task
+    # registration this module already owns; the carrier machinery
+    # lives in commitCarrier.py.
+    # +11 (2026-07-31): ORPHANED_SESSION slice 3d — the terminal run
+    # loop's close path drains the containment record (terminate the
+    # recorded process group and prove it empty) before the socket
+    # close, per design §7: a socket closing is not a terminal dying.
+    # The machinery lives in terminalContainment.py; this is one call
+    # plus its rationale.
+    # +50 (2026-08-01): ORPHANED_SESSION slice 5 — the /api/transfer
+    # redemption endpoint beside its sibling /api/bootstrap, plus the
+    # outcome→status map. The transaction itself lives in
+    # sessionLifecycle.py; this is the HTTP skin over it, which is this
+    # module's existing session-establishment responsibility.
+    # +30 (2026-08-01): ORPHANED_SESSION slice 6 — the §5 per-frame
+    # re-auth backstop on both receive loops (pipeline and terminal):
+    # a frame in flight when its session is revoked is refused with
+    # 4401, never dispatched. The check itself is built in
+    # webSocketAuthorization; these are the two refusal sites on the
+    # loops this module already owns.
+    # +2 (2026-08-01): the session-lifecycle evaluator joins the
+    # serverLifespan re-export block (its registration and its loop),
+    # like the sweep and the idle watchdog beside it.
+    # +52 (2026-08-05): the run-dispatch gate over the carrier's
+    # live-work registry. Not a second responsibility: this module
+    # already owns two dispatch refusals for the same socket —
+    # _fbRefuseWhilePipelineTaskLive and the remote-overwrite gate —
+    # and this is the third source of the SAME refusal, emitting the
+    # same runRefused event through the same builder. It exists
+    # because the first of those sees only pipeline actions dispatched
+    # over this socket, so an HTTP route holding the container's
+    # mutation lock left a Run Step blocking on the lock instead of
+    # being refused. Splitting the three apart would put one refusal's
+    # reasons a call hop away from its siblings while they still share
+    # the event, the loop and the ordering between them.
+    "pipelineServer.py": 2489,
+    # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
+    # one normative unit — three commit modes, the shielded supervisor
+    # + registry, the out-of-band cancellation plane, the parent-gated
+    # helper spawn, and the ordered-shutdown drain. Splitting it would
+    # smear a single security boundary (who may commit a container
+    # mutation, and who releases the drain) across call hops; every
+    # piece changes for the same reason (the §8 model).
+    # +19 (2026-08-02): the lock holder registers WHAT it is doing, so
+    # a busy refusal can name the live operation. An asyncio.Lock knows
+    # only that it is held; the metadata has to live with the holder,
+    # and the holder is the supervisor this module owns.
+    # +40 (2026-08-02): the carrier refuses a coroutine worker at
+    # RUNTIME -- both the declaration and an awaitable result -- because
+    # a source-shape check caught only the spelling that had already
+    # burned us.
+    # +22 (2026-08-02): the coroutine-worker refusal moved to the public
+    # entrance as well, so a programming error cannot journal an
+    # operation and quarantine a container before being caught.
+    # +4 (2026-08-05): CommitRefusedError reparented off PermissionError
+    # onto ControlPlaneRefusalError, which is an import line and a
+    # three-line docstring pointing at the base. No responsibility
+    # moved in or out -- the module is still the §8 commit boundary --
+    # and the rationale lives once, on the base class, rather than
+    # being restated here.
+    "commitCarrier.py": 1065,
+    # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
+    # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
+    # credential, §6b), to hostControlChannel.py. The module IS the
+    # closed operation schema plus the one peer-credential portability
+    # shim that guards every operation in it; a handler homed elsewhere
+    # would be an operation the allowlist does not visibly enumerate,
+    # which is the property this protocol exists to hold.
+    # +5 (2026-08-02): the break-glass stop callback now reports whether
+    # it PROVED the container stopped or absent, so the handler's local
+    # shim documents that contract instead of forwarding blindly.
+    # +4 (2026-08-02): the force-abandon routes its poison through the
+    # single writer and schedules the connection fencing.
+    "hostControlChannel.py": 819,
+    # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
+    # state-transition authority (design §3) — claim, release,
+    # transfer, and now the slice-6 orphan transition commit in one
+    # module, each under the same canonical lock order. Splitting the
+    # transitions apart would smear the one place that may commit an
+    # ownership state change across several files; every function here
+    # changes for the same reason (the §1 state machine).
+    # +100 (2026-08-01): ORPHANED_SESSION slice 6 — the owner-aware
+    # session sweep and the evaluator pass that drives it. It belongs
+    # beside the orphan transition it commits through: the sweep's
+    # whole point is that an expired OWNING session must go through
+    # fnOrphanSession, never a bare revoke, so splitting it out would
+    # put the caller and the only correct commit path in different
+    # files. The evaluator's SCHEDULING lives in serverLifespan.
+    # +60 (2026-08-01): ORPHANED_SESSION slice 7 — the absolute cap and
+    # fdictSessionExpiryView, the backend truth the pre-expiry warning
+    # renders. The view is the read side of the very predicate beside
+    # it (the cap is the deadline it counts down to, and the socket
+    # veto it must NOT count down to); homing it anywhere else would
+    # let the countdown and the expiry drift apart.
+    # +101 (2026-08-01): ORPHANED_SESSION slice 6 — the §10 explicit
+    # release authority: the busy arbitration (live run / live guarded
+    # mutation / live agent, with force scoped to the agent alone) and
+    # the channel close that must precede freeing the flock. It is the
+    # same transition table as the rest of this module and shares its
+    # lock order, its terminal drain, and its connection-detach helper.
+    # +146 (2026-08-01): ORPHANED_SESSION slice 9 — the start axis's two
+    # ownership transitions (§10b): ftReserveContainerForStart, whose
+    # claim-plus-cardinality read-check-write must be atomic against a
+    # concurrent claim on a DIFFERENT container, and
+    # ftSettleFailedStartOwnership, which frees the flock only for a
+    # settlement proven clean. They live here for the same reason every
+    # other transition does — this is the only module that may call the
+    # ownership primitives — plus the public cardinality-lock accessor
+    # and the start-result entitlement rebinding in the transfer commit.
+    # +17 (2026-08-01): the failed-start settlement may free the flock
+    # only for a record the start CREATED. A start on a container the
+    # caller already owns reserves on the existing record, and releasing
+    # that dropped a valid owner's lease and flock when the start
+    # refused — one click on an already-running container you own. The
+    # guard belongs here, in the module that owns release, rather than
+    # in the settlement callback that answers cleanliness.
+    # +24 (2026-08-02): the failed-start release gate compares the
+    # RECORDED ownership identity against the live record instead of a
+    # Boolean, so a start cannot free ownership a transfer replaced
+    # while it ran.
+    # +22 (2026-08-02): fnScheduleConnectionFencing — closing a fenced
+    # socket is an await, and the poison commit is synchronous under the
+    # held locks, so the close is scheduled rather than awaited there.
+    # +6 (2026-08-02): the transfer docstring records that a live
+    # mode-(c) task is ADOPTED rather than refused, and why -- an
+    # external review read the old wording as a claim that transfer
+    # blocks every live mutation, which it does not and should not.
+    # +12 (2026-08-02): the transfer docstring enumerates its three
+    # cases (lock-held refuses, durable adopts, unregistered is
+    # invisible) after an earlier wording claimed the opposite of the
+    # third.
+    "sessionLifecycle.py": 1319,
+    # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
+    # startReservation.py is one lifecycle (design §10b): arbitrate the
+    # start under the flock and the cardinality lock, launch it as a
+    # mode-(c) durable task, settle it, cancel it, and deliver its
+    # outcome. The one real seam has already been taken — the bounded
+    # outcome ledger lives in startResultStore.py, which changes for
+    # its own reasons (lifetime, caps, rebinding) — and what remains is
+    # a single state machine whose steps share the reservation object
+    # and the two locks. Splitting it further would put the ordering
+    # that IS the safety argument (process confirmed exited → labelled
+    # container conclusively gone → reservation compare-and-deleted →
+    # flock freed) across several files.
+    # +9 (2026-08-01): the reservation records whether the start
+    # established the ownership it runs under, which is the fact the
+    # settlement guard above consults.
+    # +145 (2026-08-02): the start arbitration hardening — the
+    # already-running refusal that precedes the reservation, the
+    # re-inspection of the exact incarnation before SUCCEEDED may be
+    # committed, the hard ceiling, and the owner-lease recovery for a
+    # poll whose result record has expired. All four are steps of the
+    # same ordering, and that ordering IS the safety argument, so they
+    # belong beside it rather than in a module that would have to
+    # re-derive the reservation's state to act.
+    # +13 (2026-08-02): the quarantine path poisons through the single
+    # writer and fences the container's pipeline socket.
+    "startReservation.py": 972,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -3716,7 +4524,38 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # readback, and validation. This is the existing container-settings API;
     # extracting a provider abstraction for three short branches would add
     # indirection without separating a distinct responsibility.
-    "registryRoutes.py": 1158,
+    # +9 (2026-07-31): the operation-journal state joins the registry
+    # listing (design §8: QUARANTINED must never render as available)
+    # and the claim threads the Docker connection into the journal's
+    # automatic tier. Annotating listed containers with host lock and
+    # journal state is this module's existing responsibility.
+    # +7 (2026-07-31): the poison axis joins the same listing annotation
+    # (design §2.1: a force-abandoned owner surfaces as bPoisoned, the
+    # live in-process mirror of the durable quarantine record).
+    # +32 (2026-08-01): the release route answers a RETAINED refusal
+    # with 409 and its reason (design §10) instead of a 200 carrying
+    # "bReleased: false", and reads the optional bForce flag off a
+    # body the pagehide beacon may not send at all. The arbitration
+    # itself is in sessionLifecycle; this is its HTTP skin.
+    # +28 (2026-08-01): ORPHANED_SESSION slice 9 — the start route
+    # becomes the reservation's HTTP skin (202 + status location, never
+    # a lease), beside its cancel sibling and the canonical status
+    # poll. The arbitration, launch, settlement, and delivery live in
+    # startReservation.py; these three handlers resolve the browser
+    # session, load the project config, and map outcomes to codes.
+    # +3 (2026-08-02): the release force flag's docstring records that
+    # an unreadable body fails CLOSED, replacing a rationale that
+    # named a pagehide beacon the frontend deliberately never sends.
+    # 1237 -> 1281 on 2026-08-06, the last three routes of the carrier
+    # migration (stop, start/cancel, settings). Almost all of it is
+    # rationale rather than code: the stop route's entry records an
+    # AUDIT FINDING -- it holds no lock and writes no journal record,
+    # because `container-lifecycle` is authorized without being
+    # lease-enforced, so a stop must answer for a container nobody owns
+    # and cannot take a lock that needs an owner record. Trimming that
+    # to hit the number would delete the finding and leave the bare
+    # declaration reading like a guarantee.
+    "registryRoutes.py": 1288,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -3736,7 +4575,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # push-to-github description that now names it. One catalog
     # entry per researcher-invokable action is this module's whole
     # job; the growth is the job being done.
-    "actionCatalog.py": 931,
+    # +1 (2026-07-29): the run-all / force-run-all descriptions now
+    # state that disabled steps are skipped, correcting agent-facing
+    # text alongside the Run All disabled-step fix.
+    # +18 (2026-07-29): the ten hub control-plane routes added to
+    # SET_INTENTIONALLY_EXCLUDED_PATHS so the agent lane refuses the
+    # control plane. Governing every route is the catalog's whole job.
+    # +5 (2026-07-30): the /api/bootstrap auth endpoint excluded from the
+    # agent lane (A1). Same governance responsibility.
+    # +5 (2026-08-01): the /api/transfer redemption endpoint excluded
+    # from the agent lane (ORPHANED_SESSION slice 5, 'vaibify open').
+    # Same governance responsibility.
+    # +1 (2026-08-01): cancelling a start joins the container control
+    # plane the in-container agent may never operate (slice 9).
+    # +3 (2026-08-02): saQueryFields on the three actions whose routes
+    # read a parameter from the query string, so a generated command
+    # sends each field on the transport the route actually reads.
+    "actionCatalog.py": 964,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -3746,7 +4601,93 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sibling route module may not import them. Same cohesive
     # responsibility — reconciling the dashboard with origin — not a
     # second concern.
-    "routes/gitRoutes.py": 845,
+    # +199 (2026-08-05): carrier plumbing for all six mutating routes
+    # (phase 2, under the 2026-08-05 ruling above). The whole rise is
+    # the shape the carrier forces: each handler's `await
+    # asyncio.to_thread(...)` chain becomes a SYNCHRONOUS worker
+    # function -- mode (b) runs workers in a thread and a coroutine
+    # would be refused -- so every route grows a named worker plus the
+    # docstring saying which commands share its held drain and why. The
+    # module's responsibility is unchanged; only the call shape is.
+    # −7 (2026-08-05): the settle-then-raise ordering lifted into
+    # routeContext.fobjRunWorkerUnderTheDrain on its fourth caller. Both
+    # this module and repoRoutes are now fully migrated, so their
+    # entries are ratcheted back down to what they actually measure
+    # rather than left holding the migration's headroom.
+    "routes/gitRoutes.py": 1037,
+    # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
+    # two Repos-panel pushes were migrated onto carrier mode (b)
+    # (migration plan phase 2). The added lines are one worker, one
+    # carrier invocation, one shared post-push tail extracted from the
+    # two handlers that had it duplicated, and the function that names
+    # a push for the journal and the busy refusal without naming its
+    # credential. All of it is the Repos panel acting on a repository
+    # it already owns — the same cohesive responsibility, not a second
+    # concern arriving. There is no seam to split on: the push helpers
+    # thread the panel's own sidecar and remote through, and a
+    # sibling route module may not import them.
+    # −38 (2026-08-05): the lifted drain wrapper, as above.
+    "routes/repoRoutes.py": 786,
+    # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
+    # when its last three routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above). Two of the three could not stay inline:
+    # mode (b) runs its worker in a thread, so the rename cascade and
+    # the alignment batch each became a named synchronous worker where
+    # the handler used to `await asyncio.to_thread(...)`. The added
+    # lines are those two workers, the update-step worker, and the
+    # docstrings recording which failures are carried back and which
+    # poison -- a judgement read out of stepRename's source that a
+    # reader must not have to re-derive. Same cohesive responsibility:
+    # step CRUD, in the module that owns it.
+    "routes/stepRoutes.py": 808,
+    # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
+    # five remaining routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above). Three of the five are probe-then-write
+    # sequences whose probe is the GUARD -- "create the context only if
+    # it is absent", "import only if absent or bOverwrite" -- so each
+    # became a named worker holding one drain across both halves, plus
+    # the docstring recording which refusals are carried and which
+    # poison. The context write also needed its own mode-(a) commit:
+    # it writes .vaibify/AGENTS.md, not project.json, so it could not
+    # reuse fnCommitWorkflowSave's record without handing the journal
+    # probe a hash belonging to a different file. Same cohesive
+    # responsibility: the Replay axis, in the module that owns it.
+    "routes/replayRoutes.py": 962,
+    # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
+    # when its eight remaining routes were migrated (phase 2, under the
+    # 2026-08-05 ruling above and its 2026-08-06 clarification about a
+    # first entry). Three of the eight are one-line saves that gained
+    # only a requestHttp and a fnCommitWorkflowSave; the +182 is almost
+    # entirely the other four, each of which needed a SYNCHRONOUS twin
+    # because a mode-(b) worker runs in a thread and cannot await the
+    # to_thread hop these chains used to make -- and, for the envelope
+    # and the reproduce-script, a worker spanning work that used to sit
+    # on BOTH sides of that hop, because the readiness re-read and the
+    # manifest re-pin reach the container exactly as the generation
+    # does. Same cohesive responsibility throughout: the AICS Level 3
+    # readiness and attestation surface, in the module that owns it.
+    # +82 (2026-08-06): the L3 verify, this module's last awaiting
+    # route and the migration's first mode-(c) durable launch. The rise
+    # is the readiness gate and the digest snapshot joining ONE
+    # mode-(b) drain -- they must agree, or the attestation is keyed to
+    # a digest from a tree the readiness check never saw -- plus the
+    # durable launch itself, which replaces a bare asyncio.create_task
+    # that no authority outside this module could see. **No route in
+    # this module is awaiting any longer.**
+    "routes/reproducibilityRoutes.py": 1005,
+    # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
+    # carrier-mode declaration joined it (migration plan phase 1c). 130
+    # of the ~145 added lines are ONE data record,
+    # SET_ROUTES_AWAITING_CARRIER_MODE, and it is deliberately here
+    # rather than in a module of its own for two reasons. It is read by
+    # exactly one function, _fbServeOnAmbientAdmission, whose branch a
+    # reader must understand together with the record — moving it away
+    # costs the hop and buys nothing. And it is TEMPORARY by
+    # construction: R6 makes it shrink by one on every phase-2
+    # migration, and phase 4 deletes it together with the ambient
+    # branch, at which point this entry goes with it. Creating a module
+    # in order to delete it is churn, not a seam.
+    "routeScope.py": 946,
 }
 
 

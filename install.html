@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -66,7 +66,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
@@ -175,12 +175,21 @@ provide. Ask for them explicitly:</p>
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="testFormats.html"><span class="std std-doc">Supported Data Formats</span></a> for the complete list.</p>
-<p>Run the tests to verify the installation:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/
+<p>Verify the installation:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>--version
+vaibify<span class="w"> </span>doctor
 </pre></div>
 </div>
-<p>Tests marked with <code class="docutils literal notranslate"><span class="pre">docker</span></code> require a running Docker daemon:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>-m<span class="w"> </span>docker
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> runs the environment pre-flight (Docker context,
+daemon reachability, Colima health) and prints a status report; it
+works before any project exists.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">pytest</span></code> test suite is <strong>not</strong> shipped in the pip package — it
+lives in the git repository. To run it, clone the repository and
+install the development extras:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RoryBarnes/vaibify
+<span class="nb">cd</span><span class="w"> </span>vaibify
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[dev]&#39;</span>
+pytest<span class="w"> </span>tests/<span class="w">            </span><span class="c1"># add -m docker for the Docker-dependent tests</span>
 </pre></div>
 </div>
 </section>
@@ -232,8 +241,9 @@ vaibify<span class="w"> </span>--version
 <p>The Vaibify dashboard runs locally and renders in your default browser.
 Vaibify targets evergreen desktop browsers; mobile browsers are out of
 scope. Any reasonably current Firefox, Chrome, Edge, or Safari works.
-The minimum versions below are where layout primitives Vaibify relies
-on (<code class="docutils literal notranslate"><span class="pre">gap</span></code> in flexbox, <code class="docutils literal notranslate"><span class="pre">position:</span> <span class="pre">sticky</span></code>, <code class="docutils literal notranslate"><span class="pre">inset</span></code>) all became stable:</p>
+The minimum versions below are set by the bundled terminal (xterm.js,
+which uses optional chaining and <code class="docutils literal notranslate"><span class="pre">ResizeObserver</span></code>), not only by the
+layout primitives — the terminal fails to load on older engines:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Browser</p></th>
@@ -243,8 +253,8 @@ on (<code class="docutils literal notranslate"><span class="pre">gap</span></cod
 </thead>
 <tbody>
 <tr class="row-even"><td><p>Firefox</p></td>
-<td><p>66</p></td>
-<td><p>March 2019</p></td>
+<td><p>74</p></td>
+<td><p>March 2020</p></td>
 </tr>
 <tr class="row-odd"><td><p>Chrome / Edge</p></td>
 <td><p>87</p></td>
@@ -256,10 +266,12 @@ on (<code class="docutils literal notranslate"><span class="pre">gap</span></cod
 </tr>
 </tbody>
 </table>
-<p>Below these versions some panels will render with collapsed spacing or
-misaligned modals, but the underlying functionality still works. The
-dashboard does not use any feature that requires the most recent
-browser releases.</p>
+<p>Below the Firefox floor the bundled terminal does not load at all
+(xterm.js fails to parse), so the in-container agent strip is
+unavailable; other panels may also render with collapsed spacing or
+misaligned modals. CI exercises the dashboard in Chromium only, so
+Firefox and Safari are covered by these version floors rather than by
+an automated check.</p>
 </section>
 <section id="docker-on-macos">
 <h2>Docker on macOS<a class="headerlink" href="#docker-on-macos" title="Link to this heading"></a></h2>

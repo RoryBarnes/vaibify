@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev661 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.1.dev844 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=424ad455"></script>
+      <script src="_static/documentation_options.js?v=141a0fbe"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -81,7 +81,7 @@
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
 <li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
 <li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
@@ -116,8 +116,10 @@
              
   <section id="configuration-reference">
 <h1>Configuration Reference<a class="headerlink" href="#configuration-reference" title="Link to this heading"></a></h1>
-<p>Vaibify projects are configured through three files in the project
-root directory. This page documents every field and option.</p>
+<p>Vaibify projects are configured through three files: <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and
+<code class="docutils literal notranslate"><span class="pre">container.conf</span></code> in the project root directory, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> at
+<code class="docutils literal notranslate"><span class="pre">.vaibify/projects/project.json</span></code>. This page documents every field and
+option.</p>
 <section id="vaibify-yml">
 <h2>vaibify.yml<a class="headerlink" href="#vaibify-yml" title="Link to this heading"></a></h2>
 <p>The primary configuration file. All fields use camelCase keys in the YAML
@@ -168,6 +170,31 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Disable outbound network access</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pipInstallFlags</span></code></p></td>
+<td><p>string</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--prefer-binary</span></code></p></td>
+<td><p>Extra flags passed to <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> during the image build</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">neverSleep</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Keep the host awake (<code class="docutils literal notranslate"><span class="pre">caffeinate</span></code>) while the container runs; macOS only, ignored elsewhere</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dashboardPort</span></code></p></td>
+<td><p>integer</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>The project’s dashboard port. <code class="docutils literal notranslate"><span class="pre">0</span></code> means “not yet assigned”: the first launch picks a free port and writes it back here so the same port is reused on every restart. A non-zero value must be 1024–65535</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cpuLimit</span></code></p></td>
+<td><p>integer</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Cap on container CPU cores. <code class="docutils literal notranslate"><span class="pre">0</span></code> means no explicit limit (all host cores minus one); a positive value is clamped to the host’s core count</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">memoryLimitGigabytes</span></code></p></td>
+<td><p>float</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p>Container memory cap in GB. <code class="docutils literal notranslate"><span class="pre">0</span></code> means unlimited; a non-zero value must be at least <code class="docutils literal notranslate"><span class="pre">0.25</span></code></p></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -215,6 +242,14 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>A user-supplied <code class="docutils literal notranslate"><span class="pre">systemPackages</span></code> list replaces the default set — it
+does not extend it.</strong> The defaults are <code class="docutils literal notranslate"><span class="pre">gcc</span></code>, <code class="docutils literal notranslate"><span class="pre">make</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span></code>, <code class="docutils literal notranslate"><span class="pre">curl</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ca-certificates</span></code>, <code class="docutils literal notranslate"><span class="pre">gnupg</span></code>, <code class="docutils literal notranslate"><span class="pre">gosu</span></code>, and <code class="docutils literal notranslate"><span class="pre">time</span></code>. If you set
+<code class="docutils literal notranslate"><span class="pre">systemPackages</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, include any of those you still
+need alongside your additions.</p>
+</div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p><strong><code class="docutils literal notranslate"><span class="pre">condaPackages</span></code> is refused, not installed.</strong> A non-empty value fails
@@ -492,7 +527,9 @@ non-comment line has four pipe-separated fields:</p>
 </section>
 <section id="project-json">
 <h2>project.json<a class="headerlink" href="#project-json" title="Link to this heading"></a></h2>
-<p>Defines the execution pipeline. See <a class="reference internal" href="pipelines.html"><span class="std std-doc">Pipelines</span></a> for full
+<p>Defines the execution pipeline. It lives at
+<code class="docutils literal notranslate"><span class="pre">.vaibify/projects/project.json</span></code> inside the project repository — not
+at the repository root — which is where the dashboard and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code> discover it. See <a class="reference internal" href="pipelines.html"><span class="std std-doc">Pipelines</span></a> for full
 documentation.</p>
 </section>
 <section id="environment-variables">

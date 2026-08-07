@@ -66,16 +66,26 @@ pip install 'vaibify[formats]'
 
 See [Supported Data Formats](testFormats.md) for the complete list.
 
-Run the tests to verify the installation:
+Verify the installation:
 
 ```bash
-pytest tests/
+vaibify --version
+vaibify doctor
 ```
 
-Tests marked with `docker` require a running Docker daemon:
+`vaibify doctor` runs the environment pre-flight (Docker context,
+daemon reachability, Colima health) and prints a status report; it
+works before any project exists.
+
+The `pytest` test suite is **not** shipped in the pip package — it
+lives in the git repository. To run it, clone the repository and
+install the development extras:
 
 ```bash
-pytest -m docker
+git clone https://github.com/RoryBarnes/vaibify
+cd vaibify
+pip install -e '.[dev]'
+pytest tests/            # add -m docker for the Docker-dependent tests
 ```
 
 ## Shell Helpers
@@ -115,19 +125,22 @@ vaibify --version
 The Vaibify dashboard runs locally and renders in your default browser.
 Vaibify targets evergreen desktop browsers; mobile browsers are out of
 scope. Any reasonably current Firefox, Chrome, Edge, or Safari works.
-The minimum versions below are where layout primitives Vaibify relies
-on (`gap` in flexbox, `position: sticky`, `inset`) all became stable:
+The minimum versions below are set by the bundled terminal (xterm.js,
+which uses optional chaining and `ResizeObserver`), not only by the
+layout primitives — the terminal fails to load on older engines:
 
 | Browser | Minimum version | Released |
 |---|---|---|
-| Firefox | 66 | March 2019 |
+| Firefox | 74 | March 2020 |
 | Chrome / Edge | 87 | November 2020 |
 | Safari | 14.1 | April 2021 |
 
-Below these versions some panels will render with collapsed spacing or
-misaligned modals, but the underlying functionality still works. The
-dashboard does not use any feature that requires the most recent
-browser releases.
+Below the Firefox floor the bundled terminal does not load at all
+(xterm.js fails to parse), so the in-container agent strip is
+unavailable; other panels may also render with collapsed spacing or
+misaligned modals. CI exercises the dashboard in Chromium only, so
+Firefox and Safari are covered by these version floors rather than by
+an automated check.
 
 ## Docker on macOS
 
