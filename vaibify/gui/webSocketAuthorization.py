@@ -5,13 +5,18 @@ WebSocket, and the connect handler, so the access model lives in exactly
 one place instead of being duplicated across route modules.
 
 A browser connection is authorized only when all three hold: it arrives
-from a loopback ``Origin`` (the trust boundary), it carries the shared
-session token (the CSRF / trust credential), and it presents the lease
-that currently owns the container in ``dictContainerOwners`` (the
-exclusivity principal). Separately, the in-container ``vaibify-do`` agent
-is authorized by the shared token alone for a container that already has
-a live owner -- a per-container, lease-exempt machine lane that lets the
-agent act inside a session the researcher has already claimed.
+from a loopback ``Origin`` (the trust boundary), its ``sToken`` query param
+is a valid per-browser ``BrowserSessionRecord`` credential (the retired
+shared session token is never accepted), and the lease it presents is bound
+to that browser session in ``dictContainerOwners`` (the exclusivity
+principal). Validating "some valid credential" plus "some valid lease"
+independently would let a second browser session replay a copied lease, so
+the lease is checked against the credential's own session via
+:func:`containerOwnership.fbBrowserSessionOwnsLease`. Separately, the
+in-container ``vaibify-do`` agent is authorized by the container's own
+per-container agent token for a container that already has a live owner --
+a lease-exempt machine lane that lets the agent act inside a session the
+researcher has already claimed.
 
 The lease ownership is the single authority introduced by
 :mod:`vaibify.gui.containerOwnership`; this module never consults the old
@@ -20,16 +25,21 @@ process-global allow set.
 
 __all__ = [
     "fbCheckOrigin",
-    "fbCheckSharedToken",
-    "fbCheckLeaseOwnership",
+    "fsBrowserSessionIdForCredential",
+    "fbCheckBoundLeaseOwnership",
     "fbCheckAgentToken",
     "fbAuthorizeContainerSession",
     "fiContainerSessionRejectionCode",
     "fbRefuseSecondLiveConnection",
+    "ffbBuildPerFrameCredentialCheck",
     "fnCloseWithCode",
     "fnServeUnderLiveConnectionCounters",
+    "fbContainerIsPoisoned",
+    "I_REJECT_TERMINAL_DISABLED",
+    "I_REJECT_POISONED",
 ]
 
+from . import browserSession
 from . import containerOwnership
 from .pipelineServer import fbHasAgentToken, fbValidateWebSocketOrigin
 
@@ -39,6 +49,22 @@ I_REJECT_BAD_ORIGIN = 4003
 I_REJECT_BAD_TOKEN = 4401
 I_REJECT_FOREIGN_LEASE = 4403
 I_REJECT_DUPLICATE_SESSION = 4409
+
+# The interactive terminal is withdrawn for the alpha (see AGENTS.md,
+# "Withdrawn for the alpha"). The code is deliberately distinct from
+# every authorization refusal above: the socket is refused because the
+# feature is gone, not because this browser lacks standing, and a
+# client that cannot tell the two apart would advise the researcher to
+# re-claim a container that is already theirs.
+I_REJECT_TERMINAL_DISABLED = 4503
+
+# A container whose owner record is POISONED: a guarded worker was
+# force-abandoned and could not be proven dead, so every mutation
+# channel is refused until reconciliation proves it gone. Distinct from
+# every authorization code because the caller's standing is not the
+# problem -- the container is -- and the recovery is 'vaibify
+# reconcile', not a re-claim.
+I_REJECT_POISONED = 4423
 
 
 def fbCheckOrigin(connection):
@@ -51,17 +77,36 @@ def fbCheckOrigin(connection):
     return fbValidateWebSocketOrigin(connection)
 
 
-def fbCheckSharedToken(connection, sSharedToken):
-    """Return True when the connection presents the shared session token."""
-    sPresented = connection.query_params.get("sToken", "")
-    return bool(sSharedToken) and sPresented == sSharedToken
+def fsBrowserSessionIdForCredential(connection, dictBrowserSessions):
+    """Return the browser-session id for the connection's credential, or ''.
+
+    Validates the ``sToken`` query param as a per-browser credential (never
+    the retired shared token), refreshing the session's last-seen stamp, and
+    returns its session id. An unknown, empty, or expired credential yields
+    ``''``, which the gate maps to a bad-token refusal.
+    """
+    sCredential = connection.query_params.get("sToken", "")
+    if not browserSession.fbValidateCredential(
+        dictBrowserSessions, sCredential,
+    ):
+        return ""
+    return browserSession.fsSessionIdForCredential(
+        dictBrowserSessions, sCredential,
+    )
 
 
-def fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
-    """Return True when the presented lease owns the named container."""
+def fbCheckBoundLeaseOwnership(
+    connection, dictContainerOwners, sName, sBrowserSessionId,
+):
+    """Return True when the presented lease is bound to this browser session.
+
+    The lease is checked against the credential's OWN session, so a second
+    session presenting a copied lease is refused even though the lease value
+    is genuine.
+    """
     sLeaseId = connection.query_params.get("sLeaseId", "")
-    return containerOwnership.fbSessionOwnsContainer(
-        dictContainerOwners, sName, sLeaseId,
+    return containerOwnership.fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
     )
 
 
@@ -87,21 +132,27 @@ def fiContainerSessionRejectionCode(connection, dictCtx, sName):
     """Return the WebSocket close code, or ``0`` when authorized.
 
     Origin is the lane discriminator. A loopback browser must clear the
-    full browser gate (shared token then owning lease), failing closed at
-    the first unmet condition so the client can tell a bad token from a
-    foreign lease. A non-loopback connection is never a browser, so it is
-    admitted only through the lease-exempt agent lane and otherwise
-    rejected as an untrusted origin.
+    full browser gate (a valid per-browser credential, then the lease bound
+    to that credential's session), failing closed at the first unmet
+    condition so the client can tell a bad credential from a foreign lease.
+    A non-loopback connection is never a browser, so it is admitted only
+    through the lease-exempt agent lane and otherwise rejected as an
+    untrusted origin.
     """
-    sSharedToken = dictCtx.get("sSessionToken", "")
     dictContainerOwners = dictCtx.get("dictContainerOwners", {})
+    dictBrowserSessions = dictCtx.get("dictBrowserSessions", {})
     if not fbCheckOrigin(connection):
         if fbCheckAgentToken(connection, dictContainerOwners, sName):
             return I_REJECT_AUTHORIZED
         return I_REJECT_BAD_ORIGIN
-    if not fbCheckSharedToken(connection, sSharedToken):
+    sBrowserSessionId = fsBrowserSessionIdForCredential(
+        connection, dictBrowserSessions,
+    )
+    if not sBrowserSessionId:
         return I_REJECT_BAD_TOKEN
-    if not fbCheckLeaseOwnership(connection, dictContainerOwners, sName):
+    if not fbCheckBoundLeaseOwnership(
+        connection, dictContainerOwners, sName, sBrowserSessionId,
+    ):
         return I_REJECT_FOREIGN_LEASE
     return I_REJECT_AUTHORIZED
 
@@ -130,6 +181,68 @@ def fbRefuseSecondLiveConnection(dictContainerOwners, sName):
     )
 
 
+def fbContainerIsPoisoned(dictContainerOwners, sName):
+    """Return True when the named container carries a poison record.
+
+    A poisoned record means a guarded worker was force-abandoned and
+    could not be proven dead. Exclusivity is RETAINED — the record keeps
+    its flock — and every mutation is refused until reconciliation
+    proves the worker gone. The pipeline socket is a mutation channel,
+    so it is refused too; safe observability reads and the trusted host
+    reconciliation lane are not, because fencing those would fence off
+    the poison's own cure.
+    """
+    recordOwner = (dictContainerOwners or {}).get(sName)
+    return recordOwner is not None and getattr(
+        recordOwner, "poison", None,
+    ) is not None
+
+
+def ffbBuildPerFrameCredentialCheck(
+    connection, dictBrowserSessions, dictContainerOwners=None, sName="",
+    iAcceptedGeneration=None,
+):
+    """Return the per-frame re-auth backstop for an accepted WebSocket.
+
+    The active close on revocation (design §5) is authoritative; this
+    backstop covers a socket already mid-frame in the revoke window: a
+    browser socket's frames keep authorizing only while the credential
+    it connected with still names an ACTIVE browser session, so a
+    REVOKED session's in-flight frame is refused instead of dispatched.
+    Each passing check also refreshes the session's last-seen stamp —
+    frames are activity for the sliding-idle window (design §11).
+
+    ``dictContainerOwners`` extends the same backstop to the two
+    container-scoped facts that can change under a live socket: the
+    container becoming POISONED, and its owner GENERATION rotating
+    under a host transfer. Both are re-read per frame rather than
+    captured at accept, because a socket admitted before either event
+    is exactly the socket that must stop acting after it. These checks
+    apply to the AGENT lane too — the agent holds no browser session,
+    but it drives the same mutation channel, and a poisoned container
+    must refuse a machine caller just as firmly as a human one.
+    """
+    bBrowser = fbCheckOrigin(connection)
+    sCredential = connection.query_params.get("sToken", "")
+
+    def fbFrameStillAuthorized():
+        if bBrowser and not browserSession.fbValidateCredential(
+            dictBrowserSessions or {}, sCredential,
+        ):
+            return False
+        if dictContainerOwners is None:
+            return True
+        if fbContainerIsPoisoned(dictContainerOwners, sName):
+            return False
+        return iAcceptedGeneration is None or (
+            containerOwnership.fiOwnerGenerationForName(
+                dictContainerOwners, sName,
+            ) == iAcceptedGeneration
+        )
+
+    return fbFrameStillAuthorized
+
+
 async def fnCloseWithCode(connection, iCloseCode):
     """Complete the handshake, then close with the real refusal code.
 
@@ -147,6 +260,7 @@ async def fnCloseWithCode(connection, iCloseCode):
 async def fnServeUnderLiveConnectionCounters(
     connection, dictContainerOwners, sName, fnServe,
     fnIncrementGlobal, fnDecrementGlobal, bExclusivePipelineLane=False,
+    dictSessionSockets=None, dictBrowserSessions=None,
 ):
     """Serve an already-gated WebSocket under the live-connection counters.
 
@@ -159,6 +273,13 @@ async def fnServeUnderLiveConnectionCounters(
     live count. The agent lane (non-loopback origin) is exempt from the
     per-container budget so a machine action never displaces the
     researcher's single session.
+
+    Each admitted browser socket is tracked as a ``ConnectionRecord``
+    stamped with the owner generation current at accept: the decrement
+    is matched on that record, so a socket whose ``finally`` fires after
+    the generation rotated decrements nothing on the successor, and the
+    record is indexed by browser session in ``dictSessionSockets`` for
+    the active-close path a revocation needs (design §2.3).
     """
     bBrowser = fbCheckOrigin(connection)
     if bBrowser and bExclusivePipelineLane and fbRefuseSecondLiveConnection(
@@ -166,10 +287,18 @@ async def fnServeUnderLiveConnectionCounters(
     ):
         await fnCloseWithCode(connection, I_REJECT_DUPLICATE_SESSION)
         return
+    recordConnection = None
     if bBrowser:
         containerOwnership.fnIncrementLiveConnection(
             dictContainerOwners, sName,
             bPipelineLane=bExclusivePipelineLane,
+        )
+        recordConnection = _frecordBuildConnectionRecord(
+            connection, dictContainerOwners, sName,
+            bExclusivePipelineLane, dictBrowserSessions,
+        )
+        containerOwnership.fnRegisterSessionSocket(
+            dictSessionSockets, recordConnection,
         )
     fnIncrementGlobal()
     try:
@@ -177,7 +306,30 @@ async def fnServeUnderLiveConnectionCounters(
     finally:
         fnDecrementGlobal()
         if bBrowser:
-            containerOwnership.fnDecrementLiveConnection(
-                dictContainerOwners, sName,
-                bPipelineLane=bExclusivePipelineLane,
+            containerOwnership.fnDecrementLiveConnectionForRecord(
+                dictContainerOwners, sName, recordConnection,
             )
+            containerOwnership.fnDeregisterSessionSocket(
+                dictSessionSockets, recordConnection,
+            )
+
+
+def _frecordBuildConnectionRecord(
+    connection, dictContainerOwners, sName, bExclusivePipelineLane,
+    dictBrowserSessions,
+):
+    """Build the tracked record for an admitted browser WebSocket."""
+    return containerOwnership.ConnectionRecord(
+        connection=connection,
+        sBrowserSessionId=fsBrowserSessionIdForCredential(
+            connection, dictBrowserSessions or {},
+        ),
+        iOwnerGeneration=containerOwnership.fiOwnerGenerationForName(
+            dictContainerOwners, sName,
+        ),
+        sLane=(
+            containerOwnership.S_LANE_PIPELINE
+            if bExclusivePipelineLane
+            else containerOwnership.S_LANE_TERMINAL
+        ),
+    )

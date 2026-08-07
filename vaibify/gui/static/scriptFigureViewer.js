@@ -641,7 +641,7 @@ const VaibifyFigureViewer = (function () {
             return;
         }
         pdfjsLib.GlobalWorkerOptions.workerSrc =
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+            "/static/vendor/pdf.worker.min.js";
         pdfjsLib.getDocument({
             url: sUrl, isEvalSupported: false,
         }).promise.then(function (pdfDoc) {
@@ -1349,12 +1349,13 @@ const VaibifyFigureViewer = (function () {
             if (fbPathBelongsToStep(sBasename, dictStep)) {
                 if (dictStep.dictVerification) {
                     dictStep.dictVerification.sUnitTest = "untested";
-                    fetch("/api/steps/" + sContainerId + "/" + i, {
-                        method: "PUT",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({
-                            dictVerification: dictStep.dictVerification
-                        }),
+                    // Through the shared save so the write carries the
+                    // step fingerprint; the old raw fetch sent none and
+                    // ignored its result. fnSaveStepUpdate re-syncs on
+                    // failure, which reverts the optimistic mutation
+                    // above if the write did not land.
+                    VaibifyApp.fnSaveStepUpdate(i, {
+                        dictVerification: dictStep.dictVerification
                     });
                 }
                 VaibifyApp.fnRenderStepList();

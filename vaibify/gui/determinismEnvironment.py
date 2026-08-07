@@ -83,6 +83,7 @@ def _fsBuildMatplotlibSaltPrefix(iEpoch):
 
 async def _fsBuildDeterminismEnvPrefix(
     connectionDocker, sContainerId, sProjectRepoPath,
+    iSourceDateEpochOverride=0,
 ):
     """Return shell prefix that pins the run's time and figure salts.
 
@@ -90,13 +91,21 @@ async def _fsBuildDeterminismEnvPrefix(
     identical source produces byte-stable figures across reruns and
     across machines.
 
+    ``iSourceDateEpochOverride`` replaces the HEAD derivation when
+    positive. The tier 5 rerun lane passes the epoch recorded in the
+    envelope, because the commit that published the manifest moved
+    HEAD: re-deriving would salt the rerun's figures differently from
+    the pinned ones and every timestamped artefact would diverge.
+
     Returns empty string if the epoch cannot be determined; callers
     must not block step execution on the result, but they MUST record
     the skip — see :func:`_fnInjectDeterminismEnvPrefix`.
     """
-    iEpoch = await _fiQueryHeadCommitEpoch(
-        connectionDocker, sContainerId, sProjectRepoPath,
-    )
+    iEpoch = iSourceDateEpochOverride
+    if iEpoch <= 0:
+        iEpoch = await _fiQueryHeadCommitEpoch(
+            connectionDocker, sContainerId, sProjectRepoPath,
+        )
     if iEpoch <= 0:
         return ""
     return (
@@ -107,6 +116,7 @@ async def _fsBuildDeterminismEnvPrefix(
 
 async def _fnInjectDeterminismEnvPrefix(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
+    iSourceDateEpochOverride=0,
 ):
     """Compute the env prefix once and stash it in dictVariables.
 
@@ -124,6 +134,7 @@ async def _fnInjectDeterminismEnvPrefix(
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     sEnvPrefix = await _fsBuildDeterminismEnvPrefix(
         connectionDocker, sContainerId, sProjectRepoPath,
+        iSourceDateEpochOverride=iSourceDateEpochOverride,
     )
     dictVariables[S_DETERMINISM_APPLIED_KEY] = bool(sEnvPrefix)
     sWorkflowSlug = fsWorkflowSlugFromPath(

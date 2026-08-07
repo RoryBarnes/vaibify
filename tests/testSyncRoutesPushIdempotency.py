@@ -15,8 +15,23 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui import containerGit
 from vaibify.gui.routes import syncRoutes
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the push, driven here bare.
+
+    The dedupe probe and the cache lookup now run INSIDE the push's
+    mode-(b) worker, so the whole sequence needs an owner record this
+    module's bare ``FastAPI()`` has not got. What this module proves is
+    unchanged: which calls reach the inner push, and which are answered
+    from the cache. See ``tests/carrierStandDown.py`` for what the
+    stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, syncRoutes)
 
 
 _S_CONTAINER_ID = "ctr-idempotency"
@@ -98,7 +113,7 @@ def _fnPostPush(clientHttp, listFilePaths):
             ctxPatch.stop()
 
 
-def test_two_rapid_identical_pushes_run_inner_push_once():
+def test_two_rapid_identical_pushes_run_inner_push_once(fixtureCarrierStoodDown):
     """Two identical calls inside the TTL hit the cache for the second."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)
@@ -130,7 +145,7 @@ def test_two_rapid_identical_pushes_run_inner_push_once():
     assert dictResultTwo.get("bDedupedFromRecent") is True
 
 
-def test_two_rapid_pushes_return_same_payload():
+def test_two_rapid_pushes_return_same_payload(fixtureCarrierStoodDown):
     """The cached call returns the same business fields as the original."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)
@@ -152,7 +167,7 @@ def test_two_rapid_pushes_return_same_payload():
     assert dictOne["bSuccess"] == dictTwo["bSuccess"]
 
 
-def test_different_payload_bypasses_cache_and_runs_again():
+def test_different_payload_bypasses_cache_and_runs_again(fixtureCarrierStoodDown):
     """A different file list runs a fresh inner push, no dedupe."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)
@@ -177,7 +192,7 @@ def test_different_payload_bypasses_cache_and_runs_again():
     assert iCalls["i"] == 2
 
 
-def test_expired_cache_entry_runs_inner_push_again():
+def test_expired_cache_entry_runs_inner_push_again(fixtureCarrierStoodDown):
     """An expired TTL forces the push to run, not a cache hit."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)
@@ -204,7 +219,7 @@ def test_expired_cache_entry_runs_inner_push_again():
     assert iCalls["i"] == 2
 
 
-def test_failed_push_is_not_cached():
+def test_failed_push_is_not_cached(fixtureCarrierStoodDown):
     """A push that did not succeed should not pollute the dedupe cache."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)

@@ -527,6 +527,11 @@ def _fdictRerunInResolvedContainer(sProjectRepo, sWorkflowName):
 
 def _fnReportRerunExecution(dictOutcome):
     """Print whether the pipeline itself ran, before the hash verdict."""
+    if not dictOutcome.get("bRerunAttempted", True):
+        click.echo("... rerun refused before any step executed:")
+        for sReason in dictOutcome["listDivergedHashes"]:
+            click.echo(f"      {sReason}")
+        return
     if S_DIVERGENCE_PIPELINE_FAILED in dictOutcome["listDivergedHashes"]:
         click.echo("... pipeline runner exited non-zero")
         return

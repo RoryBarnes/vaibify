@@ -782,11 +782,19 @@ fnPrintSummary() {
 # fnCreateVaibifyDirectory: Create .vaibify structure in workspace
 #
 # Projects live in each repository at <repo>/.vaibify/projects/;
-# /workspace/.vaibify/ holds only container-scoped scratch (logs,
-# director.py). Remove any misplaced /workspace/.vaibify/projects/ (or
-# the legacy /workspace/.vaibify/workflows/) left at the workspace root
-# so dashboard and agent discovery both resolve to the repository
+# /workspace/.vaibify/ holds only container-scoped scratch (logs).
+# Remove any misplaced /workspace/.vaibify/projects/ (or the legacy
+# /workspace/.vaibify/workflows/) left at the workspace root so
+# dashboard and agent discovery both resolve to the repository
 # location.
+#
+# director.py was installed here and advertised to the agent as the
+# "standalone pipeline executor". It could not start -- package-relative
+# imports with no siblings staged -- so every invocation, `--help`
+# included, raised ImportError. A stale copy from an earlier image is
+# swept for the same reason the advertisement is gone: an executable
+# sitting where a document once pointed is worse than an absent one.
+# `vaibify-do` is the supported in-container path.
 # ---------------------------------------------------------------------------
 fnCreateVaibifyDirectory() {
     mkdir -p "${WORKSPACE}/.vaibify/logs"
@@ -795,10 +803,7 @@ fnCreateVaibifyDirectory() {
             rm -rf "${WORKSPACE}/.vaibify/${_sStrayDir}"
         fi
     done
-    if [ -f /usr/share/vaibify/director.py ]; then
-        cp /usr/share/vaibify/director.py "${WORKSPACE}/.vaibify/director.py"
-        chmod +x "${WORKSPACE}/.vaibify/director.py"
-    fi
+    rm -f "${WORKSPACE}/.vaibify/director.py"
 }
 
 # ---------------------------------------------------------------------------
@@ -817,7 +822,7 @@ Every step in a project JSON carries an `sLabel` field — `A09` for the 9th *au
 
 **When you name a step in any output — status reports, tables, summaries, prose, `vaibify-do` arguments — use `sLabel` verbatim.** Never substitute a 0-based or 1-based positional index like `00`, `01`, `Step09`. Read the label straight out of the JSON; do not translate.
 
-The `{StepNN.stem}` tokens you see *inside* command strings (e.g., `python plot.py {Step08.samples}`) are a separate, script-side filename-substitution syntax resolved by the director at run time. They are not how you talk about steps; they are how scripts reference each other's output files. Leave them alone unless you are editing the commands themselves.
+The `{step:<sStepId>.<stem>}` tokens you see *inside* command strings (e.g., `python plot.py {step:generate-samples.samples}`) are a separate, script-side filename-substitution syntax resolved when the step runs. They are not how you talk about steps; they are how scripts reference each other's output files. Leave them alone unless you are editing the commands themselves.
 
 ## Interacting with the vaibify dashboard
 
@@ -874,7 +879,6 @@ Both actions are read-only and agent-safe. Use them BEFORE asking the researcher
 - `/workspace/` — All repositories and working files
 - `/workspace/<RepoName>/.vaibify/projects/` — Project JSON files (each repository can have its own)
 - `/workspace/.vaibify/logs/` — Pipeline execution logs
-- `/workspace/.vaibify/director.py` — Standalone pipeline executor
 
 ## Project System
 
@@ -887,9 +891,11 @@ Each vaibified repository has a `.vaibify/projects/` directory with JSON files d
 - **Test Commands** (`saTestCommands`): Unit tests for data outputs
 - **Interactive** (`bInteractive`): Steps requiring human judgment
 
-Cross-step filename references inside command strings use `{StepNN.stem}` syntax (e.g., `{Step01.output_stem}`), where `NN` is the 1-based positional index of the step in `listSteps`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
+Cross-step filename references inside command strings use `{step:<sStepId>.<stem>}` syntax (e.g., `{step:generate-samples.samples}`), keyed on the target step's `sStepId`. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see **How to refer to steps** above).
 
-Run a project: `python /workspace/.vaibify/director.py --config <project.json>`
+The older positional form `{StepNN.stem}` still parses but is **deprecated**: `NN` is a 1-based index into `listSteps`, so it renumbers whenever a step is inserted, deleted, or reordered, and a reference that used to point at one step silently starts pointing at another. Write the symbolic form in anything new, and prefer converting a positional token when you are already editing that command.
+
+Run a step: `vaibify-do run-step A09` (see **Acting on the researcher's behalf** above). There is no in-container pipeline executor to invoke directly — running work through `vaibify-do` is what keeps the researcher's dashboard showing the truth.
 
 ## Vaibified Repository Structure
 
@@ -977,7 +983,7 @@ it permanent:
 - Before adding a package, check for version conflicts: `pip install --dry-run <package>`
 - Do not add packages that duplicate functionality already available in the container.
 - Distinguish **code dependencies** (packages — belong in requirements.txt) from **data
-  dependencies** (files from other steps — belong in `{StepNN.stem}` references).
+  dependencies** (files from other steps — belong in `{step:<sStepId>.<stem>}` references).
 
 ## Important
 
@@ -1192,24 +1198,126 @@ fnSourceBinariesInEnv() {
 }
 
 # ---------------------------------------------------------------------------
-# fnMigrateWorkspaceOwnership: One-time chown for pre-split-entrypoint volumes
-# Uses ``find -uid 0 -print -quit`` so the scan is deep (catches nested
-# residue such as ``.git/objects/3f`` left by a pre-split host-side git
-# operation, which an earlier top-level-only check missed and which
-# blocks the in-container agent from writing further objects into that
-# prefix) but still fast in the common case — find exits on the first
-# match, so a clean volume costs at most one directory walk.
+# fnListNestedWorkspaceMounts: emit every bind/other mount point nested
+# STRICTLY BELOW ${WORKSPACE}, one per line, mountinfo octal escapes
+# decoded. ${WORKSPACE} itself is a named-volume mount point, so it is a
+# proper-descendant test, never an equal one. Returns non-zero (and emits
+# nothing) if /proc/self/mountinfo cannot be read or awk cannot parse it,
+# so the caller can fail closed. Newline-separation is safe here: a
+# vaibify bind target cannot contain a newline (the host-side repository
+# validator rejects it), and non-vaibify mounts never land under
+# ${WORKSPACE}.
+# ---------------------------------------------------------------------------
+fnListNestedWorkspaceMounts() {
+    local sMountInfo="${1:-/proc/self/mountinfo}"
+    [ -r "${sMountInfo}" ] || return 1
+    awk -v ws="${WORKSPACE}" '
+        function decode(s) {
+            gsub(/\\040/, " ", s); gsub(/\\011/, "\t", s)
+            gsub(/\\012/, "\n", s); gsub(/\\134/, "\\", s)
+            return s
+        }
+        {
+            # A /proc mountinfo line is "ID PID MAJ:MIN ROOT MOUNT OPTS
+            # [optional...] - FSTYPE SOURCE SUPEROPTS": at least ten
+            # fields, an absolute mount point in $5, and a "-" separator
+            # exactly three fields from the end. A readable-but-malformed
+            # table must fail closed, not be read as "no nested mounts" —
+            # the latter would let the caller chown into an undetected
+            # bind. So flag the line and stop; results are buffered and
+            # flushed only if EVERY line parsed, so a failure emits
+            # nothing and exits non-zero, which the caller treats as
+            # fail-closed.
+            if (NF < 10 || substr($5, 1, 1) != "/" || $(NF - 3) != "-") {
+                bMalformed = 1
+                exit
+            }
+            mp = decode($5)
+            # Proper descendant: under ws on a COMPONENT boundary (ws
+            # followed by "/"), and not ws itself — so "/workspace-foo"
+            # is not treated as under "/workspace".
+            if (mp != ws && index(mp, ws "/") == 1) {
+                aMountPoints[++iCount] = mp
+            }
+        }
+        END {
+            # A readable table with zero records is itself malformed: a
+            # running process always has at least the ${WORKSPACE} mount,
+            # so an empty read means the table did not come through, not
+            # that there are no nested mounts. Fail closed rather than let
+            # the caller read it as "nothing to prune".
+            if (bMalformed || NR == 0) { exit 1 }
+            for (i = 1; i <= iCount; i++) { print aMountPoints[i] }
+        }
+    ' "${sMountInfo}"
+}
+
+# ---------------------------------------------------------------------------
+# fnMigrateWorkspaceOwnership: One-time chown for pre-split-entrypoint
+# volumes. Both the detection scan and the chown are MOUNT-AWARE: they
+# prune every bind mount nested under ${WORKSPACE} so neither descends
+# into a mounted host directory. ${WORKSPACE} is a named volume, but a
+# configured bind mount can be nested BENEATH it, and a blanket
+# ``chown -R ${WORKSPACE}`` (or a bare ``find ${WORKSPACE}``) would
+# traverse straight into that bind and rewrite ownership across the host
+# directory. The scan stays deep within the volume's OWN storage (so it
+# still catches nested residue such as ``.git/objects/3f`` a pre-split
+# host-side git operation left) while skipping the bind subtrees — which
+# also stops a root-owned file inside a skipped bind from re-triggering
+# this "one-time" migration on every start.
+#
+# Fail closed: if the mount table cannot be read or parsed we cannot tell
+# a bind from the volume's own storage, so we skip the migration rather
+# than risk a recursive chown into a mount.
 # ---------------------------------------------------------------------------
 fnMigrateWorkspaceOwnership() {
     if [ ! -d "${WORKSPACE}" ]; then
         return
     fi
-    if [ -z "$(find "${WORKSPACE}" -uid 0 -print -quit 2>/dev/null)" ]; then
+
+    local sMounts
+    if ! sMounts=$(fnListNestedWorkspaceMounts); then
+        echo "[vaib] WARNING: /proc/self/mountinfo unreadable or" \
+             "unparseable; skipping workspace-ownership migration to" \
+             "avoid a recursive chown that could touch a bind mount." >&2
         return
     fi
+
+    # Build a find prune expression for every nested mount point.
+    local -a saPruneArgs=()
+    local sMountPoint
+    while IFS= read -r sMountPoint; do
+        [ -n "${sMountPoint}" ] || continue
+        if [ "${#saPruneArgs[@]}" -gt 0 ]; then
+            saPruneArgs+=( -o )
+        fi
+        saPruneArgs+=( -path "${sMountPoint}" )
+    done <<< "${sMounts}"
+
+    # Detection: any root-owned path in the volume's OWN storage (bind
+    # subtrees pruned)? If none, there is nothing to migrate.
+    local sFound
+    if [ "${#saPruneArgs[@]}" -gt 0 ]; then
+        sFound=$(find "${WORKSPACE}" \( "${saPruneArgs[@]}" \) -prune \
+            -o -uid 0 -print -quit 2>/dev/null)
+    else
+        sFound=$(find "${WORKSPACE}" -uid 0 -print -quit 2>/dev/null)
+    fi
+    if [ -z "${sFound}" ]; then
+        return
+    fi
+
     echo "[vaib] One-time migration: adjusting workspace ownership..."
-    chown -R --no-dereference \
-        "${CONTAINER_USER}:${CONTAINER_USER}" "${WORKSPACE}"
+    if [ "${#saPruneArgs[@]}" -gt 0 ]; then
+        find "${WORKSPACE}" \( "${saPruneArgs[@]}" \) -prune -o -print0 \
+            2>/dev/null \
+            | xargs -0 --no-run-if-empty chown --no-dereference \
+                  "${CONTAINER_USER}:${CONTAINER_USER}"
+    else
+        find "${WORKSPACE}" -print0 2>/dev/null \
+            | xargs -0 --no-run-if-empty chown --no-dereference \
+                  "${CONTAINER_USER}:${CONTAINER_USER}"
+    fi
     echo "[vaib] Migration complete."
 }
 

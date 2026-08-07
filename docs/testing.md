@@ -178,7 +178,15 @@ commit, where its answer could no longer change anything.
 
 Branch protection is what makes the pre-merge half sufficient. It is the
 reason the test workflows no longer need a `push: [main]` trigger, and
-it is why `main` is not left unverified by their absence.
+it is why `main` is not left unverified by their absence. That claim
+holds only while the ruleset also requires branches to be **up to date**
+before merging (enabled 2026-07-29): without it, two individually-green
+pull requests that conflict semantically can both merge on stale checks,
+and the broken merge commit runs no CI at all — the exact safety net the
+removed `push: [main]` duplication used to provide.
+`tools/syncRequiredChecks.py --apply` re-asserts the up-to-date
+requirement on every run, so a UI change cannot silently reopen the
+window.
 
 **Before a merge — these decide whether a change may land:**
 

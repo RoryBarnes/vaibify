@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from vaibify.config import templateManager
 from vaibify.gui import mtimeCache
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.gui import testStatusManager
 from vaibify.gui.pipelineServer import (
     fbOriginIsLoopback,
@@ -191,8 +192,12 @@ def testContainerCacheRenameQuotesBothPaths():
 def _fappBareMiddlewareApplication():
     """Build a FastAPI app with the session middleware and no state."""
     from fastapi import FastAPI
+    from vaibify.gui import browserSession
     app = FastAPI()
     app.state.sSessionToken = "shared-token"
+    app.state.dictBrowserSessions = (
+        browserSession.fdictCreateBrowserSessionStore()
+    )
     app.add_middleware(pipelineServer.SessionTokenMiddleware)
 
     @app.get("/api/probe")
@@ -226,6 +231,6 @@ def testDeclaredZeroPortKeepsTheDocumentedOptOut():
     app = _fappBareMiddlewareApplication()
     app.state.iExpectedPort = 0
     client = TestClient(
-        app, headers={"X-Session-Token": "shared-token"},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
     assert client.get("/api/probe").status_code == 200

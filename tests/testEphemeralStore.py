@@ -215,3 +215,81 @@ def test_sweep_spares_a_stale_file_a_container_still_mounts(
 
     assert os.path.exists(sMounted), "a mounted secret was deleted"
     assert not os.path.exists(sOrphan), "an orphan should be swept"
+
+
+class _FailingDocker:
+    """A docker client whose container enumeration raises."""
+
+    class containers:
+        @staticmethod
+        def list(all=False):  # noqa: A002 — matches docker SDK signature
+            raise RuntimeError("daemon unreachable")
+
+
+def test_mounted_host_paths_returns_none_on_enumeration_failure():
+    """An unreachable daemon must be distinguishable from 'no mounts'.
+
+    Returning the empty set on failure is the destructive direction: the
+    caller cannot tell it apart from 'enumerated, nothing mounted' and so
+    proceeds with nothing protected. None means 'reachability unknown.'
+    """
+    from vaibify.gui.routes import syncRoutes
+    assert syncRoutes._fsetMountedHostPaths({"docker": _FailingDocker()}) is None
+
+
+def test_mounted_host_paths_returns_the_sources_on_success():
+    """A reachable daemon returns a set (empty or not), never None."""
+    from vaibify.gui.routes import syncRoutes
+
+    class _Container:
+        attrs = {"Mounts": [{"Source": "/host/secret"}]}
+
+    class _Docker:
+        class containers:
+            @staticmethod
+            def list(all=False):  # noqa: A002
+                return [_Container()]
+
+    assert syncRoutes._fsetMountedHostPaths(
+        {"docker": _Docker()}
+    ) == {"/host/secret"}
+
+
+@pytest.mark.falsification
+def test_sweep_is_forbidden_when_the_daemon_is_unreachable(
+    tmp_path, monkeypatch,
+):
+    """When mount enumeration fails, the sweep must delete nothing.
+
+    An empty protected set protects nothing, so the sweep would delete
+    every stale file -- including one a live container still mounts,
+    whose loss leaves the container permanently unstartable. An
+    enumeration failure must forbid the sweep entirely, not proceed with
+    nothing protected.
+
+    Kills: in syncRoutes.fnSweepAtStartup, neutralize the
+    ``if setMounted is None: return`` guard, so the sweep proceeds with
+    nothing protected when the daemon is unreachable.
+    """
+    from fastapi import FastAPI
+    from vaibify.gui.routes import syncRoutes
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    sRoot = fsGetEphemeralRoot()
+    os.makedirs(sRoot, exist_ok=True)
+    sStale = os.path.join(sRoot, "vc_secret_gh_token_stale.tmp")
+    with open(sStale, "w") as fileHandle:
+        fileHandle.write("token")
+    os.utime(sStale, (0, 0))  # ancient — well past the stale cutoff
+
+    app = FastAPI()
+    app.state.listLifespanStartup = []
+    syncRoutes._fnRegisterEphemeralSecretSweep(
+        app, {"docker": _FailingDocker()},
+    )
+    for fnHook in app.state.listLifespanStartup:
+        fnHook(app)
+
+    assert os.path.exists(sStale), (
+        "the sweep deleted a credential while the daemon was unreachable"
+    )

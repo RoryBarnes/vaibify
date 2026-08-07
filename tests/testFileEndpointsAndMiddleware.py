@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "file123container"
@@ -46,6 +47,7 @@ class MockDockerTransfer:
 
     def __init__(self):
         self._dictFiles = {}
+        self._setDirectories = set()
 
     def flistGetRunningContainers(self):
         return [{
@@ -83,6 +85,13 @@ class MockDockerTransfer:
         if sPath.endswith(".json"):
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         raise FileNotFoundError(f"Not found: {sPath}")
+
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        if sDirectoryPath in self._setDirectories:
+            return ["someEntry"]
+        raise FileNotFoundError(
+            f"Cannot list directory in container: {sDirectoryPath}"
+        )
 
     def fnIterStreamFile(
         self, sContainerId, sPath, iChunkSizeBytes=1048576,
@@ -126,7 +135,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
@@ -137,7 +146,10 @@ def _fnConnectToContainer(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictConnect = responseHttp.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
 # ── File upload endpoint ──────────────────────────────────────
@@ -312,8 +324,9 @@ def test_file_pull_success(clientHttp):
         "sHostDestination": "~/Downloads/data.npy",
     }
     with patch.object(
-        pipelineServer, "_fnDockerCopy",
-    ) as mockCopy:
+        pipelineServer, "_fsPullContainerFileToHost",
+        return_value=sHomeDest,
+    ) as mockPull:
         responseHttp = clientHttp.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json=dictPayload,
@@ -322,7 +335,7 @@ def test_file_pull_success(clientHttp):
     dictResult = responseHttp.json()
     assert dictResult["bSuccess"] is True
     assert dictResult["sHostPath"] == sHomeDest
-    mockCopy.assert_called_once()
+    mockPull.assert_called_once()
 
 
 def test_file_pull_path_traversal_rejected(clientHttp):
@@ -345,7 +358,7 @@ def test_file_pull_docker_copy_error(clientHttp):
         "sHostDestination": "~/Downloads/missing.npy",
     }
     with patch.object(
-        pipelineServer, "_fnDockerCopy",
+        pipelineServer, "_fsPullContainerFileToHost",
         side_effect=RuntimeError("copy failed"),
     ):
         responseHttp = clientHttp.post(
@@ -362,8 +375,9 @@ def test_file_pull_tilde_expansion(clientHttp):
         "sHostDestination": "~/Downloads/data.npy",
     }
     with patch.object(
-        pipelineServer, "_fnDockerCopy",
-    ) as mockCopy:
+        pipelineServer, "_fsPullContainerFileToHost",
+        side_effect=lambda _conn, _cid, _src, sDest: sDest,
+    ):
         responseHttp = clientHttp.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json=dictPayload,
@@ -386,48 +400,114 @@ def test_file_pull_outside_home_rejected(clientHttp):
     assert responseHttp.status_code == 403
 
 
-# ── _fnDockerCopy ─────────────────────────────────────────────
+# ── _fsPullContainerFileToHost ────────────────────────────────
+#
+# These replace the two tests of `_fnDockerCopy`, which no longer exists:
+# a route module holding a bidirectional `docker cp` holds a container
+# WRITE whatever this call site did with it (R4), so the pull goes
+# through the gateway's streaming read instead. The old tests asserted
+# the argv of a command that is gone; these assert the behaviours that
+# command HAD, which is the part a researcher can observe.
 
 
-def test_fnDockerCopy_calls_subprocess():
-    with patch("subprocess.run") as mockRun:
-        pipelineServer._fnDockerCopy(
-            "cid123", "/workspace/file.txt", "/tmp/file.txt"
-        )
-    mockRun.assert_called_once_with(
-        ["docker", "cp", "cid123:/workspace/file.txt", "/tmp/file.txt"],
-        check=True, capture_output=True,
+def test_pull_streams_the_container_file_onto_the_host(tmp_path):
+    connectionDocker = MockDockerTransfer()
+    connectionDocker._dictFiles["/workspace/data.npy"] = b"payload-bytes"
+    sDestination = str(tmp_path / "landed.npy")
+    sLanded = pipelineServer._fsPullContainerFileToHost(
+        connectionDocker, "cid123", "/workspace/data.npy", sDestination,
     )
+    assert sLanded == sDestination
+    assert open(sLanded, "rb").read() == b"payload-bytes"
 
 
-def test_fnDockerCopy_raises_on_failure():
-    import subprocess
-    with patch("subprocess.run",
-               side_effect=subprocess.CalledProcessError(1, "docker")):
-        with pytest.raises(subprocess.CalledProcessError):
-            pipelineServer._fnDockerCopy(
-                "cid123", "/workspace/x.txt", "/tmp/x.txt"
-            )
+def test_pull_into_a_directory_lands_the_basename_and_says_so(tmp_path):
+    """`docker cp` puts the source basename inside a directory dest.
+
+    The old route reported the DIRECTORY back as sHostPath, so the
+    dashboard named a path the file was not at. The replacement returns
+    where the bytes actually landed.
+    """
+    connectionDocker = MockDockerTransfer()
+    connectionDocker._dictFiles["/workspace/data.npy"] = b"payload-bytes"
+    sLanded = pipelineServer._fsPullContainerFileToHost(
+        connectionDocker, "cid123", "/workspace/data.npy", str(tmp_path),
+    )
+    assert sLanded == os.path.join(str(tmp_path), "data.npy")
+    assert open(sLanded, "rb").read() == b"payload-bytes"
+
+
+def test_pull_refuses_a_directory_source_instead_of_pulling_one_file(
+    tmp_path,
+):
+    """The failure the gateway's single-file stream would have hidden.
+
+    get_archive on a directory yields a tar whose first member is the
+    directory itself; the streaming reader skips non-file members and
+    would have written the first regular file INSIDE it, reporting
+    success for a pull that fetched something else entirely.
+    """
+    connectionDocker = MockDockerTransfer()
+    connectionDocker._setDirectories.add("/workspace/results")
+    with pytest.raises(IsADirectoryError):
+        pipelineServer._fsPullContainerFileToHost(
+            connectionDocker, "cid123", "/workspace/results",
+            str(tmp_path / "out.bin"),
+        )
+    assert not os.path.exists(str(tmp_path / "out.bin"))
+
+
+def test_pull_does_not_read_a_daemon_failure_as_a_file(tmp_path):
+    """The probe's error path answers "could not look", not "it is a file".
+
+    Only FileNotFoundError means "not a directory". Anything else is a
+    probe that did not manage to ask, and reinterpreting it would let an
+    unreachable daemon look like a successful classification.
+    """
+    connectionDocker = MockDockerTransfer()
+
+    def fnRaiseDaemonError(sContainerId, sDirectoryPath):
+        raise RuntimeError("daemon unreachable")
+
+    connectionDocker.flistDirectoryEntries = fnRaiseDaemonError
+    with pytest.raises(RuntimeError, match="daemon unreachable"):
+        pipelineServer._fsPullContainerFileToHost(
+            connectionDocker, "cid123", "/workspace/data.npy",
+            str(tmp_path / "out.bin"),
+        )
 
 
 # ── SessionTokenMiddleware query param fallback ──────────────
 
 
 def test_session_token_via_query_param_on_download(clientHttp):
-    """Query-param tokens only accepted for download and WebSocket."""
+    """Query-param credentials clear the middleware on download paths only.
+
+    The credential lane and the lease gate are distinct: the query-param
+    ``sToken`` clears ``SessionTokenMiddleware`` (no 401), but the
+    container-read lease authority then refuses the request (403) because
+    a bare navigation carries no bound-lease header. The owning session,
+    whose client presents the lease like the browser's authenticated-fetch
+    wrapper, still downloads.
+    """
     _fnConnectToContainer(clientHttp)
-    sToken = clientHttp.app.state.sSessionToken
+    sToken = fsBootstrapCredential(clientHttp.app)
     clientNoHeader = TestClient(clientHttp.app)
     responseHttp = clientNoHeader.get(
         f"/api/files/{S_CONTAINER_ID}/download/"
         f"workspace/stepA/output.dat?sToken={sToken}",
     )
-    assert responseHttp.status_code in (200, 500)
+    assert responseHttp.status_code == 403
+    responseOwner = clientHttp.get(
+        f"/api/files/{S_CONTAINER_ID}/download/"
+        "workspace/stepA/output.dat",
+    )
+    assert responseOwner.status_code in (200, 500)
 
 
 def test_session_token_query_param_rejected_non_download(clientHttp):
-    """Query-param tokens rejected on regular API endpoints."""
-    sToken = clientHttp.app.state.sSessionToken
+    """Query-param credentials rejected on regular API endpoints."""
+    sToken = fsBootstrapCredential(clientHttp.app)
     clientNoHeader = TestClient(clientHttp.app)
     responseHttp = clientNoHeader.get(
         f"/api/user?sToken={sToken}",
@@ -457,10 +537,11 @@ def test_session_token_wrong_rejected(clientHttp):
     assert responseHttp.status_code == 401
 
 
-def test_session_token_endpoint_exempt(clientHttp):
+def test_session_token_endpoint_is_retired(clientHttp):
+    """The oracle is gone: an unauthenticated caller is refused, not served."""
     clientNoAuth = TestClient(clientHttp.app)
     responseHttp = clientNoAuth.get("/api/session-token")
-    assert responseHttp.status_code == 200
+    assert responseHttp.status_code == 401
 
 
 def test_agent_per_container_token_bypasses_host_for_its_container(clientHttp):
@@ -508,12 +589,18 @@ def test_hub_wide_token_in_agent_header_no_longer_bypasses(clientHttp):
     assert clientAgent.get("/api/user").status_code in (400, 401)
 
 
-def test_session_token_endpoint_refuses_the_agent(clientHttp):
-    """The in-container agent must not be able to read the hub-wide token."""
+def test_session_token_endpoint_no_longer_leaks_a_token_to_the_agent(clientHttp):
+    """The oracle is retired: the agent cannot read a hub token from it.
+
+    The endpoint used to refuse the agent with 403; now it does not exist,
+    so the agent is refused (never served a token) rather than reading one.
+    """
     clientAgent = TestClient(
         clientHttp.app, headers={"X-Vaibify-Session": "any-agent-token"},
     )
-    assert clientAgent.get("/api/session-token").status_code == 403
+    responseHttp = clientAgent.get("/api/session-token")
+    assert responseHttp.status_code in (401, 403, 404)
+    assert "sToken" not in responseHttp.text
 
 
 def test_agent_session_header_empty_does_not_bypass(clientHttp):
@@ -555,18 +642,22 @@ def _fnConnectAndPostExistence(clientHttp, dictPayload):
 
 
 def test_files_exist_returns_dict_keyed_on_input(clientHttp):
-    """Returned dictExists must use the input strings as keys."""
+    """Returned dictExists must use the input strings as keys.
+
+    Driven through the BATCHED typed-read adapter, which replaced the
+    shell heredoc this test used to stub. The adapter answers
+    positionally -- one boolean per requested path, in order -- which is
+    why the stub returns a list rather than a set of echoed lines.
+    """
     _fnConnectToContainer(clientHttp)
     listInput = ["/workspace/stepA/output.dat", "stepA/missing.dat"]
-    fnOriginalExec = MockDockerTransfer.ftResultExecuteCommand
 
-    def _fakeExec(self, sContainerId, sCommand, sWorkdir=None):
-        if "while IFS=" in sCommand:
-            return (0, "/workspace/stepA/output.dat\n")
-        return fnOriginalExec(self, sContainerId, sCommand, sWorkdir)
+    def _flistFakeExistence(self, sContainerId, listPaths):
+        return [sPath.endswith("output.dat") for sPath in listPaths]
 
     with patch.object(
-        MockDockerTransfer, "ftResultExecuteCommand", _fakeExec,
+        MockDockerTransfer, "flistContainerPathsExist",
+        _flistFakeExistence, create=True,
     ):
         responseHttp = clientHttp.post(
             f"/api/files/{S_CONTAINER_ID}/exist",

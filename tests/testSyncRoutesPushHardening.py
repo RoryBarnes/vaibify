@@ -23,6 +23,25 @@ from fastapi.testclient import TestClient
 
 from vaibify.gui import containerGit
 from vaibify.gui.routes import syncRoutes
+from tests.carrierStandDown import fnStandCarrierDown
+from tests.sessionTokenTestHelper import fsBootstrapCredential
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the pushes, driven here bare.
+
+    Both the single-file ``add-file`` push and the bulk push now run
+    under carrier modes (a) and (b), which need an owner record this
+    module's bare ``FastAPI()`` has not got. Requested per test, never
+    autouse, so a test that deliberately builds its own client still
+    meets the real refusal. What this module proves is what the push
+    DOES -- probe outcomes, commit-hash provenance, the sync-status key
+    -- and nothing about the admission it runs under; that lives in
+    ``tests/testCarrierMigratedRoutes.py``. See
+    ``tests/carrierStandDown.py`` for what the stand-down costs.
+    """
+    fnStandCarrierDown(monkeypatch, syncRoutes)
 
 
 S_CONTAINER_ID = "cid"
@@ -95,7 +114,9 @@ def _fdictRepoStatus():
     }
 
 
-def test_push_exec_raises_but_probe_confirms_success():
+def test_push_exec_raises_but_probe_confirms_success(
+    fixtureCarrierStoodDown,
+):
     """A ReadTimeout-style exec failure with a landed push returns success."""
     dictCtx = _fdictBuildPushContext()
     with patch(
@@ -119,7 +140,9 @@ def test_push_exec_raises_but_probe_confirms_success():
     assert dictResult["dictRemoteState"]["sHeadSha"] == S_HEAD_SHA
 
 
-def test_push_exec_raises_and_probe_inconclusive_is_indeterminate():
+def test_push_exec_raises_and_probe_inconclusive_is_indeterminate(
+    fixtureCarrierStoodDown,
+):
     """An unverifiable push returns HTTP 200 indeterminate, never a 500."""
     dictCtx = _fdictBuildPushContext()
     with patch(
@@ -137,7 +160,9 @@ def test_push_exec_raises_and_probe_inconclusive_is_indeterminate():
     assert "Refresh" in dictResult["sMessage"]
 
 
-def test_push_save_raising_yields_warning_not_500(caplog):
+def test_push_save_raising_yields_warning_not_500(
+    caplog, fixtureCarrierStoodDown,
+):
     """A bookkeeping failure keeps bSuccess True and logs the traceback."""
     dictCtx = _fdictBuildPushContext()
 
@@ -164,7 +189,9 @@ def test_push_save_raising_yields_warning_not_500(caplog):
     assert "Traceback" in caplog.text
 
 
-def test_commit_hash_comes_from_rev_parse_not_output_parsing():
+def test_commit_hash_comes_from_rev_parse_not_output_parsing(
+    fixtureCarrierStoodDown,
+):
     """Stderr noise appended to push output must not become the hash."""
     dictCtx = _fdictBuildPushContext()
     sNoisyOutput = (
@@ -189,7 +216,9 @@ def test_commit_hash_comes_from_rev_parse_not_output_parsing():
     assert "->" not in dictResult["sCommitHash"]
 
 
-def test_push_stores_hash_under_repo_relative_sync_key():
+def test_push_stores_hash_under_repo_relative_sync_key(
+    fixtureCarrierStoodDown,
+):
     """Bookkeeping must land on the normalized dictSyncStatus key."""
     dictCtx = _fdictBuildPushContext()
     dictWorkflow = dictCtx["workflows"][S_CONTAINER_ID]
@@ -210,7 +239,7 @@ def test_push_stores_hash_under_repo_relative_sync_key():
     assert dictEntry["bGithub"] is True
 
 
-def test_add_file_exec_raises_and_probe_inconclusive_is_indeterminate():
+def test_add_file_exec_raises_and_probe_inconclusive_is_indeterminate(fixtureCarrierStoodDown):
     """The single-file route shares the indeterminate contract."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)
@@ -234,7 +263,7 @@ def test_add_file_exec_raises_and_probe_inconclusive_is_indeterminate():
     assert dictResult["sErrorType"] == "indeterminate"
 
 
-def test_add_file_success_includes_rev_parse_hash():
+def test_add_file_success_includes_rev_parse_hash(fixtureCarrierStoodDown):
     """The single-file route stamps the verified hash and remote state."""
     dictCtx = _fdictBuildPushContext()
     clientHttp = _fclientBuildPushClient(dictCtx)
@@ -336,7 +365,7 @@ def test_last_resort_handler_returns_sanitized_500(caplog):
 
     clientHttp = TestClient(
         app, raise_server_exceptions=False,
-        headers={"X-Session-Token": app.state.sSessionToken},
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
     with caplog.at_level(logging.ERROR, logger="vaibify"):
         responseHttp = clientHttp.get("/api/test-unhandled-boom")

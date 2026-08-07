@@ -18,9 +18,11 @@ const VaibifyApp = (function () {
         dictDashboardMode: null,
         sLeaseId: "",
         sLeaseContainerName: null,
+        bSessionExpiryWarned: false,
     };
 
     var _S_LEASE_STORAGE_KEY = "vaibifyContainerLease";
+    var _S_SESSION_CREDENTIAL_STORAGE_KEY = "vaibifySessionCredential";
 
     function _fdictDefaultWorkflowState() {
         return {
@@ -115,14 +117,133 @@ const VaibifyApp = (function () {
         bShowDagButton: false,
     };
 
-    async function fnFetchSessionToken() {
+    function _fsReadBootstrapCapabilityFromFragment() {
+        var sHash = window.location.hash || "";
+        var oMatch = sHash.match(/[#&]bootstrap=([^&]+)/);
+        return oMatch ? decodeURIComponent(oMatch[1]) : "";
+    }
+
+    function _fsReadTransferCapabilityFromFragment() {
+        var sHash = window.location.hash || "";
+        var oMatch = sHash.match(/[#&]transfer=([^&]+)/);
+        return oMatch ? decodeURIComponent(oMatch[1]) : "";
+    }
+
+    function _fnClearCapabilityFragment() {
         try {
-            var data = await VaibifyApi.fdictGet("/api/session-token");
-            _dictSessionState.sSessionToken = data.sToken || "";
-            fnInstallAuthenticatedFetch(_dictSessionState.sSessionToken);
+            window.history.replaceState(
+                null, "",
+                window.location.pathname + window.location.search,
+            );
+        } catch (e) { /* history unavailable; leave the fragment */ }
+    }
+
+    function _fsRestoreStoredCredential() {
+        try {
+            return window.sessionStorage.getItem(
+                _S_SESSION_CREDENTIAL_STORAGE_KEY) || "";
+        } catch (e) { return ""; }
+    }
+
+    function _fnStoreCredential(sCredential) {
+        try {
+            window.sessionStorage.setItem(
+                _S_SESSION_CREDENTIAL_STORAGE_KEY, sCredential);
+        } catch (e) { /* sessionStorage unavailable; memory only */ }
+    }
+
+    async function _fsExchangeBootstrapCapability(sCapability) {
+        /* Raw fetch: the authenticated wrapper is not installed yet, and
+         * /api/bootstrap is exempt from the credential requirement. */
+        try {
+            var response = await window.fetch("/api/bootstrap", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sCapability: sCapability }),
+            });
+            if (!response.ok) return "";
+            var data = await response.json();
+            return data.sCredential || "";
+        } catch (e) { return ""; }
+    }
+
+    async function _fsExchangeTransferCapability(sCapability) {
+        /* The 'vaibify open' landing: the CLI minted this capability over
+         * the host control socket, redeemed it (committing the ownership
+         * transfer), and launched this tab with it in the URL fragment.
+         * This exchange rides the server's bounded replay window, so it
+         * returns the SAME credential-and-lease tuple the commit minted.
+         * Raw fetch: /api/transfer is exempt, like /api/bootstrap. */
+        try {
+            var response = await window.fetch("/api/transfer", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sCapability: sCapability }),
+            });
+            var data = await response.json();
+            if (!response.ok || data.sOutcome !== "transferred") {
+                _fnReportTransferRefusal(data);
+                return "";
+            }
+            if (data.sContainerName && data.sLeaseId) {
+                fnRecordClaimedLease(data.sContainerName, data.sLeaseId);
+            }
+            return data.sCredential || "";
         } catch (e) {
-            _dictSessionState.sSessionToken = "";
+            _fnReportTransferRefusal(null);
+            return "";
         }
+    }
+
+    /* A refused transfer used to vanish: the exchange returned "" and
+       the tab quietly fell back to a stored credential or to none at
+       all, so the researcher who had just run 'vaibify open' saw a
+       dashboard that was simply not attached to their container and no
+       reason why. Every refusal the server sends names its own recovery
+       -- retry, re-mint, claim normally, reconcile -- and that is the
+       message to show. The generic line is used ONLY when there is no
+       server answer to show (the hub could not be reached at all), and
+       it says exactly that rather than inventing a cause. */
+    function _fnReportTransferRefusal(dictOutcome) {
+        var sMessage = (dictOutcome || {}).sMessage;
+        if (!sMessage) {
+            sMessage = "The hub could not be reached to complete the "
+                + "hand-over. Reload this page to try again, or run "
+                + "'vaibify open' once more.";
+        }
+        fnShowToast(sMessage, "error");
+    }
+
+    async function fnFetchSessionToken() {
+        /* Prefer a fresh capability from the URL fragment -- a transferred
+         * session ('vaibify open') or a launch bootstrap -- exchanged once
+         * and then cleared, then a stored per-tab credential (so a reload
+         * keeps working). With neither, the tab has no credential and is
+         * correctly denied -- the retired shared-token oracle is gone. */
+        var sCredential = "";
+        var sTransferCapability = _fsReadTransferCapabilityFromFragment();
+        if (sTransferCapability) {
+            sCredential = await _fsExchangeTransferCapability(
+                sTransferCapability);
+        }
+        var sCapability = _fsReadBootstrapCapabilityFromFragment();
+        if (!sCredential && sCapability) {
+            sCredential = await _fsExchangeBootstrapCapability(sCapability);
+        }
+        /* Clear the fragment only once an exchange has SUCCEEDED. A
+         * transient failure (offline, hub restarting) must leave the
+         * capability in the URL so a reload can re-mint -- the server
+         * honours a bounded replay window -- rather than discarding the
+         * one credential-minting token on the first hiccup. */
+        if (sCredential && (sTransferCapability || sCapability)) {
+            _fnClearCapabilityFragment();
+            _fnStoreCredential(sCredential);
+        }
+        if (!sCredential) {
+            sCredential = _fsRestoreStoredCredential();
+        }
+        _dictSessionState.sSessionToken = sCredential;
+        fnInstallAuthenticatedFetch(_dictSessionState.sSessionToken);
     }
 
     function fnInstallAuthenticatedFetch(sToken) {
@@ -130,10 +251,19 @@ const VaibifyApp = (function () {
         window.fetch = function (sUrl, dictOptions) {
             dictOptions = dictOptions || {};
             dictOptions.headers = dictOptions.headers || {};
+            /* The lease is read INSIDE the wrapper on every call: the
+               wrapper is installed before the container is claimed, so
+               capturing fsGetLeaseId() at install time would send an empty
+               lease forever. The lease travels as a header, never a query
+               param, so it never lands in an access log or browser
+               history. */
+            var sLease = fsGetLeaseId();
             if (typeof dictOptions.headers.set === "function") {
                 dictOptions.headers.set("X-Session-Token", sToken);
+                if (sLease) dictOptions.headers.set("X-Vaibify-Lease", sLease);
             } else {
                 dictOptions.headers["X-Session-Token"] = sToken;
+                if (sLease) dictOptions.headers["X-Vaibify-Lease"] = sLease;
             }
             return originalFetch.call(window, sUrl, dictOptions);
         };
@@ -256,6 +386,34 @@ const VaibifyApp = (function () {
             fnProcessFileStatusResponse);
         VaibifyPolling.fnSetWorkflowDiscoveryHandler(
             fnProcessWorkflowDiscovery);
+        VaibifyPolling.fnSetSessionLifetimeHandler(
+            _fnHandleSessionLifetime);
+    }
+
+    function _fnHandleSessionLifetime(dictLifetime) {
+        /* The server says how long this browser session has before its
+         * absolute cap; every number here comes from that payload, so
+         * the warning cannot drift from the deadline it describes.
+         * Warned once per crossing: the poll repeats every minute and
+         * a toast a minute would be noise, but if the server ever
+         * reports the session as no longer near its cap (a transfer
+         * minted a fresh one) the latch reopens for the new one. */
+        if (!dictLifetime || !dictLifetime.bSessionKnown ||
+                !dictLifetime.bExpiringSoon) {
+            _dictSessionState.bSessionExpiryWarned = false;
+            return;
+        }
+        if (_dictSessionState.bSessionExpiryWarned) return;
+        _dictSessionState.bSessionExpiryWarned = true;
+        var iMinutes = Math.max(1, Math.round(
+            dictLifetime.fSecondsUntilSessionCap / 60));
+        fnShowToast(
+            "This browser session reaches its maximum lifetime in " +
+            "about " + iMinutes + " minute" +
+            (iMinutes === 1 ? "" : "s") + ". Run 'vaibify open' to " +
+            "continue in a fresh tab — your container and any running " +
+            "step keep going.",
+            "warning");
     }
 
     /* --- Initialization --- */
@@ -265,6 +423,9 @@ const VaibifyApp = (function () {
         await fnFetchSessionToken();
         fnRegisterWebSocketHandlers();
         fnRegisterPollingHandlers();
+        /* Container-independent: a session sitting on the picker is
+         * subject to the same cap as one inside a workflow. */
+        VaibifyPolling.fnStartSessionLifetimePolling();
         fnLoadUserName();
         fnLoadTimestampSetting();
         fnShowContainerLanding();
@@ -279,6 +440,11 @@ const VaibifyApp = (function () {
         VaibifyEventBindings.fnBindResizeHandles();
         VaibifyEventBindings.fnBindGlobalSettingsToggle();
         VaibifyEventBindings.fnBindRefreshRemoteStatus();
+        /* A start outlives the request that asked for it, so a reload
+           mid-start must pick the poll back up. Deliberately NOT
+           awaited: the poll runs for as long as the start does, and
+           initialization must not wait on a container pull. */
+        VaibifyContainerManager.fnResumeInterruptedStart();
         document.addEventListener("click", function () {
             fnHideContextMenu();
         });
@@ -536,8 +702,7 @@ const VaibifyApp = (function () {
     async function fnEnterNoWorkflow(sId) {
         try {
             var dictConnect = await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sId +
-                "?sLeaseId=" + encodeURIComponent(fsGetLeaseId()));
+                "/api/connect/" + sId);
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
@@ -800,7 +965,6 @@ const VaibifyApp = (function () {
             _dictWorkflowState.abortControllerFileCheck.abort();
             _dictWorkflowState.abortControllerFileCheck = null;
         }
-        VaibifyPipelineRunner.fnCancelSentinelMonitor();
     }
 
     function fnDisconnect() {
@@ -2640,10 +2804,14 @@ const VaibifyApp = (function () {
             .addEventListener("click", fnRepaintCard);
         document.getElementById("btnDescriptionSave")
             .addEventListener("click", async function () {
+                // Success-only: commit the description to the step and
+                // repaint only if the save landed, so a failed save
+                // does not leave an un-persisted description on the card.
                 var sText = elInput.value.trim();
-                step.sDescription = sText;
-                await fnPutStepEdit(
+                var dictResult = await fnPutStepEdit(
                     iStepIndex, {sDescription: sText});
+                if (!dictResult) return;
+                step.sDescription = sText;
                 fnRepaintCard();
             });
     }
@@ -3421,10 +3589,18 @@ const VaibifyApp = (function () {
         // local optimistic edit is stale, so we re-sync from the server
         // rather than trust it. Returns the response dict on success,
         // null on any failure (the caller shows nothing extra).
-        var dictBody = Object.assign({}, dictUpdate, {
-            sBaseFingerprint:
-                _dictWorkflowState.sWorkflowFingerprint || null,
-        });
+        //
+        // A caller-supplied sBaseFingerprint WINS over the current
+        // tracked one: a long-lived form (the step-edit modal) captures
+        // the fingerprint when it opens and must submit THAT, so an
+        // out-of-band reload that advanced the tracked fingerprint
+        // cannot let the modal's stale fields pass the CAS check. The
+        // default (tracked) applies to the transient toggles that read
+        // and write in the same tick.
+        var dictBody = Object.assign(
+            {sBaseFingerprint:
+                _dictWorkflowState.sWorkflowFingerprint || null},
+            dictUpdate);
         try {
             var dictResult = await VaibifyApi.fdictPut(
                 "/api/steps/" + _dictSessionState.sContainerId + "/" + iStep,
@@ -3441,38 +3617,59 @@ const VaibifyApp = (function () {
                     + "reloaded to stay in sync so your edit didn't "
                     + "overwrite it. Re-apply it if you still want it.",
                     "warning");
-                // Reload the CURRENT workflow in place (refreshes the
-                // fingerprint baseline and re-renders the dashboard).
-                // The old path called fnConnectToContainer, which shows
-                // the workflow picker — a 409 on a routine step edit
-                // must never eject the researcher from their dashboard.
-                VaibifyWorkflowManager.fnRefreshWorkflow();
             } else {
-                fnShowToast("Save failed", "error");
+                fnShowToast(
+                    "Save failed — reloaded to match the server so the "
+                    + "dashboard doesn't show an unsaved change.",
+                    "error");
             }
+            // ANY failed save leaves the caller's optimistic local edit
+            // diverged from the server. Callers across every module
+            // mutate local state before this PUT for UI stickiness and
+            // do not roll back individually, so the single honest fix is
+            // here: re-sync the CURRENT workflow in place (refreshes the
+            // fingerprint baseline and re-renders) so the dashboard never
+            // shows an un-persisted edit as if it were saved. This is the
+            // dashboard-ground-truth contract. Reload in place, never via
+            // fnConnectToContainer, which would eject the researcher to
+            // the workflow picker on a routine failed edit.
+            VaibifyWorkflowManager.fnRefreshWorkflow();
             return null;
         }
     }
 
     async function fnSetStepBudget(iStep, fBudget) {
-        // The wall-clock budget in seconds (0 = inherit the workflow
-        // default). Mirror it into local state before the PUT so the
-        // input stays sticky across re-renders, exactly as the
-        // plot-only toggle does.
+        // Success-only: persist FIRST, mutate the workflow dict only if
+        // the save landed. Mutating before the PUT (for input
+        // stickiness) meant a failed save left the un-persisted value on
+        // screen — and if the failure was a network outage, the re-sync
+        // that would correct it also fails, so the stale value stayed
+        // forever. The native input already reflects the typed value;
+        // the workflow-dict change waits for the server.
+        var dictResult = await fnPutStepEdit(
+            iStep, {fWallClockBudgetSeconds: fBudget});
+        if (!dictResult) return;
         _dictWorkflowState.dictWorkflow.listSteps[iStep]
             .fWallClockBudgetSeconds = fBudget;
-        await fnPutStepEdit(iStep, {fWallClockBudgetSeconds: fBudget});
     }
 
     async function fnTogglePlotOnly(iStep, bPlotOnly) {
-        _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly = bPlotOnly;
-        await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
+        var dictResult = await fnPutStepEdit(iStep, {bPlotOnly: bPlotOnly});
+        if (!dictResult) {
+            fnRenderStepList();  // reset the checkbox to server truth
+            return;
+        }
+        _dictWorkflowState.dictWorkflow.listSteps[iStep].bPlotOnly =
+            bPlotOnly;
     }
 
     async function fnToggleNoInputData(iStep, bNoInputData) {
-        _dictWorkflowState.dictWorkflow.listSteps[iStep].bNoInputData =
-            bNoInputData;
-        await fnPutStepEdit(iStep, {bNoInputData: bNoInputData});
+        var dictResult = await fnPutStepEdit(
+            iStep, {bNoInputData: bNoInputData});
+        if (dictResult) {
+            _dictWorkflowState.dictWorkflow.listSteps[iStep].bNoInputData =
+                bNoInputData;
+        }
         fnRenderStepList();
     }
 
@@ -3541,12 +3738,16 @@ const VaibifyApp = (function () {
     async function fnAddDiscoveredOutput(
         iStep, sFile, sTargetArray
     ) {
+        // Success-only: build the proposed array and persist it before
+        // mutating local state, so a failed save leaves neither the
+        // added output nor the removed discovery-chip behind.
         var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
-        if (!dictStep[sTargetArray]) dictStep[sTargetArray] = [];
-        dictStep[sTargetArray].push(sFile);
+        var listProposed = (dictStep[sTargetArray] || []).concat([sFile]);
         var dictUpdate = {};
-        dictUpdate[sTargetArray] = dictStep[sTargetArray];
-        await fnSaveStepUpdate(iStep, dictUpdate);
+        dictUpdate[sTargetArray] = listProposed;
+        var dictResult = await fnSaveStepUpdate(iStep, dictUpdate);
+        if (!dictResult) return;
+        dictStep[sTargetArray] = listProposed;
         var dictDisc = _dictWorkflowState.dictDiscoveredOutputs[iStep] ||
             {listDiscovered: [], iTotalDiscovered: 0};
         var listFiltered = (dictDisc.listDiscovered || []).filter(
@@ -3563,28 +3764,39 @@ const VaibifyApp = (function () {
     var fnShowInputModal = VaibifyModals.fnShowInputModal;
 
     async function fnSaveStepUpdate(iStep, dictUpdate) {
-        await fnPutStepEdit(iStep, dictUpdate);
+        // The canonical single-step save. Funnels through fnPutStepEdit
+        // so every caller gets the compare-and-swap fingerprint and the
+        // re-sync-on-failure. Returns the response dict (null on
+        // failure) so callers can gate their own UI on the outcome.
+        return await fnPutStepEdit(iStep, dictUpdate);
     }
 
     async function fnCycleUserVerification(iStep) {
+        // Success-only: build the NEXT verification as a fresh dict,
+        // persist it, and commit to the step only if the save landed.
+        // The old code mutated the step's verification in place before
+        // the PUT, so a failed save (a network outage, where the
+        // re-sync also fails) left a "passed" badge on screen that the
+        // server never recorded — the sharpest ground-truth breach.
         var dictStep = _dictWorkflowState.dictWorkflow.listSteps[iStep];
         var dictVerify = fdictGetVerification(dictStep);
         var listStates = [
             "untested", "passed", "failed", "error"
         ];
-        var iCurrent = listStates.indexOf(
-            dictVerify.sUser || "untested"
-        );
-        var iNext = (iCurrent + 1) % listStates.length;
-        dictVerify.sUser = listStates[iNext];
-        dictVerify.sLastUserUpdate = fsFormatUtcTimestamp();
+        var iNext = (listStates.indexOf(dictVerify.sUser || "untested")
+            + 1) % listStates.length;
+        var dictNext = Object.assign({}, dictVerify);
+        dictNext.sUser = listStates[iNext];
+        dictNext.sLastUserUpdate = fsFormatUtcTimestamp();
         if (listStates[iNext] === "passed") {
-            delete dictVerify.listModifiedFiles;
-            delete dictVerify.bOutputModified;
+            delete dictNext.listModifiedFiles;
+            delete dictNext.bOutputModified;
         }
-        dictStep.dictVerification = dictVerify;
+        var dictResult = await fnPutStepEdit(
+            iStep, {dictVerification: dictNext});
+        if (!dictResult) return;
+        dictStep.dictVerification = dictNext;
         _dictWorkflowState.dictUserVerifiedAt[iStep] = Date.now();
-        await fnPutStepEdit(iStep, {dictVerification: dictVerify});
         fnRenderStepList();
         fnUpdateHighlightState();
     }
@@ -3826,6 +4038,12 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey] = [];
         }
         _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey].push(sValue);
+        // Persist BEFORE claiming success. On failure fnPutStepEdit has
+        // re-synced the workflow (dropping this optimistic push) and
+        // toasted the error; showing "Item added" too would contradict
+        // it. Record undo only for a change that actually landed.
+        var dictResult = await fnSaveStepArray(iStep, sArrayKey, true);
+        if (!dictResult) return;
         fnPushUndo({
             sAction: "add",
             iStep: iStep,
@@ -3833,7 +4051,6 @@ const VaibifyApp = (function () {
             iIdx: _dictWorkflowState.dictWorkflow.listSteps[iStep][sArrayKey].length - 1,
             sValue: sValue,
         });
-        await fnSaveStepArray(iStep, sArrayKey, true);
         fnRenderStepList();
         fnShowToast("Item added", "success");
     }
@@ -3854,11 +4071,18 @@ const VaibifyApp = (function () {
         if (dictAction.sAction === "add") {
             _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 1);
-            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
         } else if (dictAction.sAction === "delete") {
             _dictWorkflowState.dictWorkflow.listSteps[dictAction.iStep][dictAction.sArray]
                 .splice(dictAction.iIdx, 0, dictAction.sValue);
-            await fnSaveStepArray(dictAction.iStep, dictAction.sArray);
+        }
+        var dictResult = await fnSaveStepArray(
+            dictAction.iStep, dictAction.sArray);
+        if (!dictResult) {
+            // The undo did not persist; fnPutStepEdit re-synced and
+            // toasted. Put the action back so it can be retried, and do
+            // not claim "Undone".
+            _dictWorkflowState.listUndoStack.push(dictAction);
+            return;
         }
         fnRenderStepList();
         fnShowToast("Undone", "success");
@@ -3867,10 +4091,11 @@ const VaibifyApp = (function () {
     async function fnSaveStepArray(iStep, sArray, bScanDeps) {
         var dictUpdate = {};
         dictUpdate[sArray] = _dictWorkflowState.dictWorkflow.listSteps[iStep][sArray];
-        await fnPutStepEdit(iStep, dictUpdate);
-        if (sArray === "saDataCommands" && bScanDeps) {
+        var dictResult = await fnPutStepEdit(iStep, dictUpdate);
+        if (dictResult && sArray === "saDataCommands" && bScanDeps) {
             VaibifyDependencyScanner.fnScanDependencies(iStep);
         }
+        return dictResult;
     }
 
     /* --- Step Expand/Collapse --- */
@@ -4583,6 +4808,12 @@ const VaibifyApp = (function () {
         fsGetWorkflowPath: function () {
             return _dictWorkflowState.sWorkflowPath;
         },
+        fsGetWorkflowFingerprint: function () {
+            // The current tracked compare-and-swap baseline. A modal
+            // captures this at open so it can submit the exact version
+            // it was populated from, not whatever the poll advanced to.
+            return _dictWorkflowState.sWorkflowFingerprint || null;
+        },
         fiGetSelectedStepIndex: function () {
             return _dictUiState.iSelectedStepIndex;
         },
@@ -4724,27 +4955,14 @@ function fnBlockUnload(event) {
     event.returnValue = "";
 }
 
-function fnReleaseActiveContainerOnUnload() {
-    if (typeof VaibifyContainerManager === "undefined") return;
-    if (typeof VaibifyApp === "undefined") return;
-    var sName = VaibifyContainerManager.fsGetSelectedContainerName();
-    var sLeaseId = VaibifyApp.fsGetLeaseId();
-    if (!sName || !sLeaseId) return;
-    try {
-        navigator.sendBeacon(
-            "/api/registry/" + encodeURIComponent(sName) +
-            "/release?sLeaseId=" + encodeURIComponent(sLeaseId),
-        );
-    } catch (error) {
-        /* best-effort: the grace reaper frees the owner if this misses */
-    }
-}
-
 window.addEventListener("beforeunload", fnBlockUnload);
 window.addEventListener("pagehide", function (event) {
+    /* pagehide fires on reload and navigation, not only a real close, so
+     * it is NOT release intent: releasing the container here would drop a
+     * running container on a mere reload. Abandonment is decided by the
+     * WebSocket closing without a reconnect and the grace reaper freeing
+     * the owner — never by an unload beacon. Just stop polling. */
     VaibifyApp.fnStopAllHubPolling();
-    if (event.persisted) return;
-    fnReleaseActiveContainerOnUnload();
 });
 
 document.addEventListener("visibilitychange", function () {

@@ -32,6 +32,7 @@ import os
 import pytest
 
 from tests.browser.fakeDockerAdapter import (
+    S_CONTAINER_ID,
     S_CONTAINER_NAME,
     UnmodelledContainerCall,
 )
@@ -40,14 +41,16 @@ from tests.browser.fakeDockerAdapter import (
 pytestmark = pytest.mark.browser
 
 
-def _fdictSessionToken(page, serverHub):
-    """Return the token the page itself fetched, as the browser does."""
+def _fsPageCredential(page):
+    """Return the per-browser credential the page bootstrapped, from storage.
+
+    After navigating with a ``#bootstrap=`` fragment the dashboard redeems
+    its capability and stashes the credential in ``sessionStorage``; reading
+    it back is how a journey obtains the genuine credential the retired
+    ``/api/session-token`` oracle used to hand out.
+    """
     return page.evaluate(
-        """async (sBaseUrl) => {
-            const response = await fetch(sBaseUrl + '/api/session-token');
-            return await response.json();
-        }""",
-        serverHub.sBaseUrl,
+        """() => window.sessionStorage.getItem('vaibifySessionCredential')"""
     )
 
 
@@ -63,7 +66,7 @@ def testBackendRefusalIsNotRenderedAsSuccess(pageDashboard, serverHub):
     response could be mistaken for a granted action by a caller that
     only checks for a payload.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="load")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     dictResult = pageDashboard.evaluate(
         """async (sBaseUrl) => {
             const response = await fetch(
@@ -110,7 +113,7 @@ def testDashboardLoadsWithNoConsoleErrors(pageDashboard, serverHub):
         if response.status >= 500 else None
     ))
 
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
 
     assert pageDashboard.listPageErrors == [], (
         "Uncaught page errors: " + "; ".join(pageDashboard.listPageErrors)
@@ -135,7 +138,7 @@ def testFrontendGlobalsResolveAsBareIdentifiers(pageDashboard, serverHub):
     ``undefined`` for a module that is working perfectly. AGENTS.md
     records a session lost to exactly that false alarm.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     assert pageDashboard.evaluate("typeof VaibifyApp") == "object", (
         "VaibifyApp did not evaluate; the module graph is broken."
     )
@@ -159,7 +162,7 @@ def testSeededProjectReachesTheBrowser(pageDashboard, serverHub):
     middleware correctly rejects with a 401. Riding the app's wrapper
     is both the faithful path and the working one.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     dictPayload = pageDashboard.evaluate(
         """async (sBaseUrl) => {
             const response = await fetch(sBaseUrl + '/api/registry');
@@ -196,17 +199,17 @@ def testDoubledSessionTokenHeaderIsRefused(pageDashboard, serverHub):
     direction of the failure -- a doubled credential is refused, never
     accepted by prefix or by taking the first element.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    sCredential = _fsPageCredential(pageDashboard)
+    assert sCredential, "the page must have bootstrapped a credential"
     iStatus = pageDashboard.evaluate(
-        """async (sBaseUrl) => {
-            const sToken = (await (await fetch(
-                sBaseUrl + '/api/session-token')).json()).sToken;
+        """async ([sBaseUrl, sToken]) => {
             const response = await fetch(sBaseUrl + '/api/registry', {
                 headers: {'x-session-token': sToken},
             });
             return response.status;
         }""",
-        serverHub.sBaseUrl,
+        [serverHub.sBaseUrl, sCredential],
     )
     assert iStatus == 401
 
@@ -258,7 +261,7 @@ def testCreationWizardPersistsSelectedAgent(
     """
     from vaibify.config.projectConfig import fconfigLoadFromFile
 
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="networkidle")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     pageDashboard.locator("#btnAddContainer").click()
     pageDashboard.locator("#btnChoiceCreateNew").click()
     pageDashboard.locator("#btnWizardChooseDirectory").click()
@@ -329,7 +332,7 @@ def testStaleSocketCloseDoesNotOrphanTheLiveSocket(
     the ordering is deterministic rather than hoped for, but the module
     under test is the real one, evaluated by the real browser.
     """
-    pageDashboard.goto(serverHub.sBaseUrl, wait_until="load")
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     dictResult = pageDashboard.evaluate(
         """() => {
             const listCreated = [];
@@ -395,3 +398,472 @@ def testStaleSocketCloseDoesNotOrphanTheLiveSocket(
         "current view, so one container's run output can be rendered "
         "as another's"
     )
+
+
+# ---------------------------------------------------------------------
+# Journey -- the 'vaibify open' landing (#transfer= fragment)
+# ---------------------------------------------------------------------
+
+
+def testTransferFragmentAttachesTheTransferredSessionAndLease(
+    pageDashboard, serverHub,
+):
+    """A ``#transfer=`` fragment becomes a live credential AND lease.
+
+    The ``vaibify open`` landing (design paragraph 6, slice 5), front and
+    back: the page must exchange the capability at ``/api/transfer``,
+    stash the transferred credential in sessionStorage, record the
+    transferred lease for the container, clear the fragment, and load
+    with zero console errors; the backend must hold the rotated lease
+    bound to the NEW browser session at generation 2, with the old
+    session's credential revoked. The container NAME stays distinct
+    from the container ID throughout.
+    """
+    from vaibify.gui import browserSession, containerOwnership
+    from tests.browser.fakeDockerAdapter import S_CONTAINER_ID
+    stateApp = serverHub.app.state
+    sOldLaunch = browserSession.fsMintBootstrapCapability(
+        stateApp.dictBrowserSessions,
+    )
+    sOldSessionId, sOldCredential = browserSession.ftRedeemCapability(
+        stateApp.dictBrowserSessions, sOldLaunch,
+    )
+    recordOwner = containerOwnership.OwnerRecord(
+        sLeaseId=containerOwnership.fsMintLease(),
+        fileHandleLock=None,
+        sAgentToken=containerOwnership.fsMintAgentToken(),
+        sContainerId=S_CONTAINER_ID,
+        sBrowserSessionId=sOldSessionId,
+    )
+    stateApp.dictContainerOwners[S_CONTAINER_NAME] = recordOwner
+    stateApp.dictSessionOwner[sOldSessionId] = S_CONTAINER_NAME
+    sTransferCapability = browserSession.fsMintTransferCapability(
+        stateApp.dictBrowserSessions, S_CONTAINER_NAME, 1,
+    )
+    try:
+        pageDashboard.goto(
+            f"{serverHub.sBaseUrl}/#transfer={sTransferCapability}",
+            wait_until="networkidle",
+        )
+        sCredential = _fsPageCredential(pageDashboard)
+        assert sCredential, "the transfer exchange minted no credential"
+        sStoredLease = pageDashboard.evaluate(
+            """() => window.sessionStorage.getItem(
+                'vaibifyContainerLease')"""
+        )
+        dictLease = json.loads(sStoredLease or "{}")
+        assert dictLease.get("sName") == S_CONTAINER_NAME
+        assert dictLease.get("sLeaseId") == recordOwner.sLeaseId
+        assert "#transfer" not in pageDashboard.url, (
+            "the one-time capability must be cleared from the URL "
+            "after a successful exchange"
+        )
+        assert recordOwner.iOwnerGeneration == 2
+        assert recordOwner.sBrowserSessionId not in ("", sOldSessionId)
+        assert browserSession.fbValidateCredential(
+            stateApp.dictBrowserSessions, sOldCredential,
+        ) is False, "the displaced session's credential must be revoked"
+        assert browserSession.fbValidateCredential(
+            stateApp.dictBrowserSessions, sCredential,
+        ) is True
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        # serverHub is module-scoped: leave no owner record behind for
+        # the journeys that run after this one.
+        stateApp.dictContainerOwners.pop(S_CONTAINER_NAME, None)
+        stateApp.dictSessionOwner.pop(sOldSessionId, None)
+        stateApp.dictSessionOwner.pop(recordOwner.sBrowserSessionId, None)
+
+
+# ---------------------------------------------------------------------
+# Journey -- the pre-expiry warning (design paragraph 11, slice 7)
+# ---------------------------------------------------------------------
+
+
+def testSessionCapWarningComesFromTheBackendAndReachesTheScreen(
+    pageDashboard, serverHub,
+):
+    """A session near its absolute cap is warned, in backend numbers.
+
+    The dashboard cannot know when its session ends; the server does.
+    This drives the real path front to back: the page polls
+    ``/api/session/lifetime``, the server answers from the session
+    record's own creation stamp, and the researcher sees a toast
+    naming the remaining minutes. Nothing here fakes the response --
+    only the record's age is moved, exactly as a real day-long tab
+    would move it.
+
+    A fresh session must produce NO warning, so the toast cannot be a
+    banner that is always on.
+    """
+    from vaibify.gui import sessionLifecycle
+    stateApp = serverHub.app.state
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    sCredential = _fsPageCredential(pageDashboard)
+    assert sCredential, "the page must have bootstrapped a credential"
+    assert pageDashboard.locator(".toast").count() == 0, (
+        "a fresh session must not be warned about its cap"
+    )
+    recordSession = stateApp.dictBrowserSessions[
+        "dictSessionsByCredential"
+    ][sCredential]
+    fCreatedRestore = recordSession.fCreatedMonotonic
+    try:
+        # Age the record to five minutes short of the cap. The page is
+        # told nothing; it re-polls and learns it from the server.
+        recordSession.fCreatedMonotonic -= (
+            sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS - 300.0
+        )
+        pageDashboard.evaluate(
+            "() => VaibifyPolling.fnStartSessionLifetimePolling()"
+        )
+        locatorToast = pageDashboard.locator(
+            ".toast", has_text="maximum lifetime"
+        )
+        locatorToast.first.wait_for(state="visible", timeout=10000)
+        sToastText = locatorToast.first.inner_text()
+        assert "5 minutes" in sToastText, sToastText
+        assert "vaibify open" in sToastText, (
+            "the warning must name the re-attach path, not just the loss"
+        )
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        recordSession.fCreatedMonotonic = fCreatedRestore
+
+
+# ---------------------------------------------------------------------
+# Journey -- a start reports its real outcome, not its acceptance
+# ---------------------------------------------------------------------
+
+
+def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
+    pageDashboard, serverHub,
+):
+    """The page must not call a container started when it is still starting.
+
+    The start is a server-owned reservation (design §10b): the POST
+    answers 202 and the outcome — with the container's lease — arrives
+    only from the status poll. A page that toasted "Container started"
+    on the 202 would tell the researcher a container is running while
+    it is still pulling, or has already failed, which is exactly the
+    class of dashboard lie this repository forbids.
+
+    Driven front to back in a real browser against the real hub. Only
+    the Docker create-then-start pair is substituted, and it is HELD
+    OPEN on purpose so the "still starting" window is a real window:
+    while it is held the page must show progress and the reservation
+    must be live on the server; when it is released the page must show
+    success and hold the lease the server derived.
+    """
+    import threading
+
+    from vaibify.gui import startReservation
+
+    stateApp = serverHub.app.state
+    _fnWriteBrowserLaneProjectConfig(serverHub)
+    eventRelease = threading.Event()
+    fnRealExecutor = startReservation._fsExecuteReservedStart
+    fnRealRunningList = serverHub.adapterDocker.flistGetRunningContainers
+
+    def _fsHeldStart(sName, reservation, configProject):
+        eventRelease.wait(timeout=30.0)
+        return "browserLaneStartedContainerId"
+
+    # The lane's fake lists the project container as RUNNING, which is
+    # right for every other journey and is the one state a start may not
+    # begin from: a start on a running container is refused outright, so
+    # the premise has to be the honest pre-start one.
+    serverHub.adapterDocker.flistGetRunningContainers = lambda: []
+    startReservation._fsExecuteReservedStart = _fsHeldStart
+    try:
+        pageDashboard.goto(
+            serverHub.fsBootstrapUrl(), wait_until="networkidle",
+        )
+        pageDashboard.evaluate(
+            # Deliberately NOT awaited: the start is in flight for as
+            # long as the held executor says, and `evaluate` resolves a
+            # returned promise, which would block until it finished.
+            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            % S_CONTAINER_NAME
+        )
+        pageDashboard.locator(
+            ".toast", has_text="Starting container"
+        ).first.wait_for(state="visible", timeout=10000)
+        assert pageDashboard.locator(
+            ".toast", has_text="Container started"
+        ).count() == 0, (
+            "the page reported success while the start was still running"
+        )
+        recordOwner = stateApp.dictContainerOwners[S_CONTAINER_NAME]
+        assert recordOwner.reservation is not None, (
+            "the server must hold a live reservation while starting"
+        )
+        eventRelease.set()
+        pageDashboard.locator(
+            ".toast", has_text="Container started"
+        ).first.wait_for(state="visible", timeout=15000)
+        assert recordOwner.reservation is None
+        sPageLease = pageDashboard.evaluate("() => VaibifyApp.fsGetLeaseId()")
+        assert sPageLease == recordOwner.sLeaseId, (
+            "the page must hold the lease the status poll derived from "
+            "the live owner record"
+        )
+        assert pageDashboard.listPageErrors == []
+        assert pageDashboard.listConsoleErrors == []
+    finally:
+        startReservation._fsExecuteReservedStart = fnRealExecutor
+        serverHub.adapterDocker.flistGetRunningContainers = fnRealRunningList
+        eventRelease.set()
+        _fnReleaseBrowserLaneOwnership(stateApp)
+
+
+def _fnWriteBrowserLaneProjectConfig(serverHub):
+    """Write the seeded project's vaibify.yml so a start can load it."""
+    pathProject = os.path.join(serverHub.sHome, "browserLaneProject")
+    os.makedirs(pathProject, exist_ok=True)
+    with open(os.path.join(pathProject, "vaibify.yml"), "w") as fileHandle:
+        fileHandle.write(f"projectName: {S_CONTAINER_NAME}\n")
+
+
+def _fnReleaseBrowserLaneOwnership(stateApp):
+    """Drop the owner record this journey created, freeing its flock."""
+    from vaibify.gui import containerOwnership
+    recordOwner = stateApp.dictContainerOwners.get(S_CONTAINER_NAME)
+    if recordOwner is None:
+        return
+    containerOwnership.fnReleaseOwnership(
+        stateApp.dictContainerOwners, S_CONTAINER_NAME,
+        recordOwner.sLeaseId,
+        sBrowserSessionId=recordOwner.sBrowserSessionId,
+        dictSessionOwner=stateApp.dictSessionOwner,
+    )
+
+
+# ---------------------------------------------------------------------
+# Journey -- the disabled terminal is honest in the browser
+# ---------------------------------------------------------------------
+
+
+def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
+    pageDashboard, serverHub,
+):
+    """The page must not open a terminal socket, and the server refuses.
+
+    Two halves that only mean something together. The server half opens
+    a real ``/ws/terminal`` socket from the real browser and reads the
+    close code: it must be the withdrawal code, not an authorization
+    refusal, so a client can tell "this feature is gone" from "your
+    claim is bad". The frontend half asserts the page never dials the
+    lane at all -- a socket left to be refused would surface a
+    deliberate refusal as a connection failure, and the interactive-step
+    launcher would poll for a sentinel no shell will ever print.
+
+    Run in a real browser because a string search of the source cannot
+    tell whether a module still reaches for the socket at runtime.
+    """
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    sCredential = _fsPageCredential(pageDashboard)
+
+    iCloseCode = pageDashboard.evaluate(
+        """(sCredential) => new Promise((fnResolve) => {
+            const sProtocol =
+                window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(
+                sProtocol + '//' + window.location.host +
+                '/ws/terminal/any-container-id?sToken=' +
+                encodeURIComponent(sCredential) + '&sLeaseId=any-lease');
+            ws.onclose = (event) => fnResolve(event.code);
+            ws.onerror = () => fnResolve(-1);
+        })""",
+        sCredential,
+    )
+    from vaibify.gui import webSocketAuthorization
+    assert iCloseCode == webSocketAuthorization.I_REJECT_TERMINAL_DISABLED, (
+        "the server must close a terminal dial-in with the withdrawal "
+        f"code, distinct from every authorization refusal; got {iCloseCode}"
+    )
+
+    try:
+        dictFrontend = pageDashboard.evaluate(
+            """async ([sContainerId, sName]) => {
+                const listUrls = [];
+                const wsReal = window.WebSocket;
+                function WebSocketFake(sUrl) {
+                    listUrls.push(sUrl);
+                    this.readyState = 0;
+                    this.close = () => {};
+                }
+                WebSocketFake.CONNECTING = 0;
+                WebSocketFake.OPEN = 1;
+                WebSocketFake.CLOSING = 2;
+                WebSocketFake.CLOSED = 3;
+                window.WebSocket = WebSocketFake;
+                try {
+                    /* The real entry path: claim the container, then
+                     * enter it -- entering is what builds the terminal
+                     * strip (fnEnsureTab). Calling fnCreatePane alone
+                     * would find no container id, return early, and
+                     * prove nothing. */
+                    const dictClaim = await VaibifyApi.fdictPost(
+                        '/api/registry/' + encodeURIComponent(sName)
+                        + '/claim', {});
+                    VaibifyApp.fnRecordClaimedLease(
+                        sName, dictClaim.sLeaseId);
+                    await VaibifyApp.fnEnterNoWorkflow(sContainerId);
+                    VaibifyTerminal.fnCreateTab();
+                    /* Read the rendered ROWS, not the strip: xterm
+                     * injects a stylesheet into the strip, so the
+                     * strip's textContent is mostly CSS and a substring
+                     * check against it would be meaningless. */
+                    const listRows = Array.from(document.querySelectorAll(
+                        '#terminalStrip .xterm-rows'));
+                    return {
+                        listUrls: listUrls,
+                        bTabOpened: listRows.length > 0,
+                        bSendRefused:
+                            VaibifyTerminal.fbSendCommandInFreshTab(
+                                'echo hello') === false,
+                        sRowsText: listRows.map(
+                            (el) => el.textContent).join(' '),
+                    };
+                } finally {
+                    window.WebSocket = wsReal;
+                }
+            }""",
+            [S_CONTAINER_ID, S_CONTAINER_NAME],
+        )
+    finally:
+        _fnReleaseBrowserLaneOwnership(serverHub.app.state)
+
+    assert dictFrontend["bTabOpened"], (
+        "no terminal was actually opened, so the assertions below would "
+        "pass vacuously"
+    )
+    listTerminalUrls = [
+        sUrl for sUrl in dictFrontend["listUrls"] if "/ws/terminal" in sUrl
+    ]
+    assert listTerminalUrls == [], (
+        f"the frontend still dials the disabled terminal: {listTerminalUrls}"
+    )
+    assert dictFrontend["bSendRefused"], (
+        "fbSendCommandInFreshTab must report False so an interactive "
+        "step refuses instead of waiting forever for a sentinel"
+    )
+    assert "terminals are disabled" in dictFrontend["sRowsText"].lower(), (
+        "the pane must SAY why there is no shell; an empty black "
+        "rectangle is indistinguishable from a terminal that failed. "
+        f"Rendered rows were: {dictFrontend['sRowsText']!r}"
+    )
+    assert pageDashboard.listPageErrors == []
+    # Entering a container also opens the Repos panel, whose sidecar
+    # read the fail-closed fake does not model, so it answers 500. That
+    # is a declared gap in the fake, not a frontend fault, and it is
+    # named rather than tolerated silently: any console error that is
+    # NOT a failed request -- a ReferenceError, say -- still fails here.
+    listScriptErrors = [
+        sError for sError in pageDashboard.listConsoleErrors
+        if "Failed to load resource" not in sError
+    ]
+    assert listScriptErrors == [], listScriptErrors
+
+
+# ---------------------------------------------------------------------
+# Journey -- a reload mid-start must not strand the researcher
+# ---------------------------------------------------------------------
+
+
+def testReloadDuringAStartPicksTheOutcomeBackUp(
+    pageDashboard, browserChromium, serverHub,
+):
+    """A start outlives the page that asked for it, so the page resumes.
+
+    The start is a server-owned reservation: the POST only reserves it,
+    and the outcome AND the container's lease arrive from the status
+    poll. A researcher who reloads while a multi-gigabyte image pulls
+    therefore used to be stranded -- the server finished, and no page
+    was listening. The tab remembers the pending start in
+    sessionStorage, which survives a reload, and resumes the poll on
+    load.
+
+    The mechanism under test IS sessionStorage's scope, so it is driven
+    both ways: the SAME browser context reloads and must recover, and a
+    SEPARATE context is the negative control -- it must not adopt
+    another tab's start, because sessionStorage is per tab and the lease
+    is another session's.
+    """
+    import threading
+
+    from vaibify.gui import startReservation
+
+    stateApp = serverHub.app.state
+    _fnWriteBrowserLaneProjectConfig(serverHub)
+    eventRelease = threading.Event()
+    fnRealExecutor = startReservation._fsExecuteReservedStart
+    fnRealRunningList = serverHub.adapterDocker.flistGetRunningContainers
+
+    def _fsHeldStart(sName, reservation, configProject):
+        eventRelease.wait(timeout=30.0)
+        return "browserLaneStartedContainerId"
+
+    serverHub.adapterDocker.flistGetRunningContainers = lambda: []
+    startReservation._fsExecuteReservedStart = _fsHeldStart
+    pageControl = None
+    try:
+        pageDashboard.goto(
+            serverHub.fsBootstrapUrl(), wait_until="networkidle",
+        )
+        pageDashboard.evaluate(
+            "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
+            % S_CONTAINER_NAME
+        )
+        pageDashboard.locator(
+            ".toast", has_text="Starting container"
+        ).first.wait_for(state="visible", timeout=10000)
+        assert pageDashboard.evaluate(
+            "() => window.sessionStorage.getItem('vaibifyPendingStartName')"
+        ) == S_CONTAINER_NAME, (
+            "the tab did not record the start it is following, so a "
+            "reload has nothing to resume"
+        )
+
+        # The negative control, opened while the start is still in
+        # flight: a different browser context has neither the
+        # sessionStorage marker nor the owning session.
+        contextControl = browserChromium.new_context()
+        pageControl = contextControl.new_page()
+        pageControl.goto(
+            serverHub.fsBootstrapUrl(), wait_until="networkidle",
+        )
+        assert pageControl.evaluate(
+            "() => window.sessionStorage.getItem('vaibifyPendingStartName')"
+        ) is None, (
+            "a separate browser context adopted another tab's start"
+        )
+
+        pageDashboard.reload(wait_until="networkidle")
+        eventRelease.set()
+
+        pageDashboard.locator(
+            ".toast", has_text="Container started"
+        ).first.wait_for(state="visible", timeout=20000)
+        recordOwner = stateApp.dictContainerOwners[S_CONTAINER_NAME]
+        sPageLease = pageDashboard.evaluate(
+            "() => VaibifyApp.fsGetLeaseId()"
+        )
+        assert sPageLease == recordOwner.sLeaseId, (
+            "the reloaded page did not recover the lease the start "
+            "produced, so it owns a container it cannot act on"
+        )
+        assert pageDashboard.evaluate(
+            "() => window.sessionStorage.getItem('vaibifyPendingStartName')"
+        ) is None, "the resumed start was never cleared"
+        assert pageDashboard.listPageErrors == []
+    finally:
+        startReservation._fsExecuteReservedStart = fnRealExecutor
+        serverHub.adapterDocker.flistGetRunningContainers = fnRealRunningList
+        eventRelease.set()
+        if pageControl is not None:
+            pageControl.context.close()
+        _fnReleaseBrowserLaneOwnership(stateApp)

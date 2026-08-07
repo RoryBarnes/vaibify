@@ -28,13 +28,24 @@ def fconfigResolveProject(sProjectName=None):
 
     Resolution order:
     1. If sProjectName is provided, look it up in the registry
-    2. If cwd contains a vaibify.yml, use it (current behavior)
-    3. If the registry has exactly one project, use it
-    4. If the registry has multiple projects, list them and exit
-    5. If no project found anywhere, exit with helpful message
+    2. If the caller passed ``--config PATH``, use exactly that file
+    3. If cwd contains a vaibify.yml, use it (current behavior)
+    4. If the registry has exactly one project, use it
+    5. If the registry has multiple projects, list them and exit
+    6. If no project found anywhere, exit with helpful message
+
+    Step 2 is not decoration. Without it the top-level ``--config``
+    option was accepted, recorded, and then ignored by every project
+    command: ``vaibify --config /elsewhere/vaibify.yml start`` started
+    whichever project the CURRENT DIRECTORY resolved to, and the same
+    silence applied to ``stop``. Naming one container and acting on
+    another is the worst available answer -- there is nothing on screen
+    to notice -- and it is why an explicit path now outranks discovery.
     """
     if sProjectName:
         return _fconfigLoadFromRegistry(sProjectName)
+    if _sConfigOverride:
+        return _fconfigParse(fsConfigPath())
     sLocalPath = str(pathlib.Path.cwd() / _sConfigFileName)
     if pathlib.Path(sLocalPath).is_file():
         return _fconfigParse(sLocalPath)
@@ -51,6 +62,8 @@ def fsResolveProjectConfigPath(sProjectName=None):
     """
     if sProjectName:
         return _fsLookupRegistryConfigPath(sProjectName)
+    if _sConfigOverride:
+        return fsConfigPath()
     sLocalPath = str(pathlib.Path.cwd() / _sConfigFileName)
     if pathlib.Path(sLocalPath).is_file():
         return sLocalPath

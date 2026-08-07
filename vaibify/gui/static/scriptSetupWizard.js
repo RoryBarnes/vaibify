@@ -129,9 +129,6 @@ var VaibifySetup = (function () {
         document.getElementById("btnSaveConfig").addEventListener(
             "click", fnSaveConfig
         );
-        document.getElementById("btnBuildContainer").addEventListener(
-            "click", fnBuildContainer
-        );
     }
 
     /* --- Repository Management --- */
@@ -190,9 +187,6 @@ var VaibifySetup = (function () {
         fnSetInputValue("packageManager", dictConfig.sPackageManager);
         fnSetInputValue(
             "overleafProjectId", dictConfig.sOverleafProjectId
-        );
-        fnSetInputValue(
-            "zenodoDepositionId", dictConfig.sZenodoDepositionId
         );
         document.getElementById("neverSleep").checked = Boolean(
             dictConfig.bNeverSleep
@@ -298,9 +292,6 @@ var VaibifySetup = (function () {
             sOverleafProjectId: document.getElementById(
                 "overleafProjectId"
             ).value.trim(),
-            sZenodoDepositionId: document.getElementById(
-                "zenodoDepositionId"
-            ).value.trim(),
             bNeverSleep: document.getElementById(
                 "neverSleep"
             ).checked,
@@ -361,47 +352,20 @@ var VaibifySetup = (function () {
                     dictError.detail || "Save failed"
                 );
             }
-            fnShowToast("Configuration saved", "success");
+            // One save action, one next step. The wizard writes
+            // vaibify.yml; the image is built separately by the CLI.
+            // (An earlier pass left two identical "Save Configuration"
+            // buttons calling different endpoints that both wrote the
+            // same YAML — kept the primary one, removed the duplicate.)
+            fnShowToast(
+                "Configuration saved. Run 'vaibify build' to build the "
+                + "container image.",
+                "success"
+            );
         } catch (error) {
             fnShowToast(
                 "Save failed: " + error.message, "error"
             );
-        }
-    }
-
-    /* --- Build --- */
-
-    async function fnBuildContainer() {
-        if (!fbValidateForm()) return;
-
-        var dictConfig = fdictBuildConfigFromForm();
-        var elButton = document.getElementById("btnBuildContainer");
-        elButton.disabled = true;
-        elButton.textContent = "Building...";
-
-        try {
-            var response = await fetch("/api/setup/build", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dictConfig),
-            });
-            if (!response.ok) {
-                var dictError = await response.json();
-                throw new Error(
-                    dictError.detail || "Build failed"
-                );
-            }
-            var dictResult = await response.json();
-            fnShowToast(
-                dictResult.sMessage || "Build started", "success"
-            );
-        } catch (error) {
-            fnShowToast(
-                "Build failed: " + error.message, "error"
-            );
-        } finally {
-            elButton.disabled = false;
-            elButton.textContent = "Build Container";
         }
     }
 

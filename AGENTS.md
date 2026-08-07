@@ -88,7 +88,7 @@ order of strength:
    genuine fault line; split along it.
 
 What is **not** sufficient: a line count, surface similarity ("these look
-alike" — they may diverge later, like `director`/`workflowManager`),
+alike" — they may diverge later),
 speculative reuse ("might be needed someday"), or "it would be cleaner."
 When tempted to split for one of those, don't — note it as a candidate
 and wait for a real force.
@@ -134,8 +134,7 @@ exercised. Concretely:
 - After any Python change:
   `python -m pytest tests/ -q --ignore=tests/testContainerBuildIntegration.py`
 - After changes that touch structural invariants (adding a route,
-  adjusting import graphs, touching `workflowManager.py` or
-  `director.py`):
+  adjusting import graphs, or touching `workflowManager.py`):
   `python -m pytest tests/testArchitecturalInvariants.py -v`
 - After JS changes: see "Required after JS changes" below — the
   Python suite does not execute the frontend at all.
@@ -147,110 +146,47 @@ exercised. Concretely:
 
 ### Required after JS changes
 
-Type checking and string-presence contract tests do not validate UI
-correctness. Neither does the ordinary Python suite: it does not
-execute the frontend at all.
-
-**CI now does.** The browser lane (`tests/browser/`, run by
-`.github/workflows/browser.yml`) loads the real dashboard in real
-Chromium against a real uvicorn hub, and fails on any console error,
-uncaught promise rejection, or failed asset. Pushing a branch is
-therefore a genuine verification path, which it never used to be.
-
-Run it locally when you want the fast signal:
+**A green Python suite says nothing about the frontend** — it does not
+execute it at all. Five agents once changed JavaScript in one session,
+none could load a browser, and the merged branch was green with the
+frontend entirely unexecuted.
 
 ```bash
 pip install -e '.[browser]' && python -m playwright install chromium
 python -m pytest tests/browser -m browser
 ```
 
-**What the browser lane does not cover.** It drives a fail-closed fake
-Docker adapter, so it says nothing about container launch, file
-ownership on write, the real transport, terminal content, figure
-rendering, or the sync panel. Those belong to the container
-acceptance lane, which runs **nightly** — meaning drift between the
-fake and a real container is caught up to a day late. The browser lane
-failing blocks merge; the container-acceptance lane failing blocks the next release, not
-retroactively. Do not read a green browser lane as "the frontend is
-verified".
+**Do not read a green browser lane as "the frontend is verified."** It
+drives a fail-closed fake Docker adapter, so it says nothing about
+container launch, file ownership on write, the real transport, terminal
+content, figure rendering, or the sync panel. The manual walkthrough,
+the three lanes and what each proves are in
+[docs/developers.md](docs/developers.md) — "Verifying a change reaches
+the screen".
 
-The manual check below is still the right tool when you are working
-on something the lane does not assert — layout, wording, a specific
-interaction. It takes about a minute and needs no Docker:
+**If you are a delegated agent and cannot load a browser: push the
+branch and open a pull request**, then let the browser lane run it. The
+lane is `pull_request`-triggered, so a pushed branch with no PR runs
+nothing — do not read a quiet Actions tab as a pass. If you also cannot
+push, **say so explicitly and name the exact surface you did not
+verify** — "the three JS call sites in `scriptWorkflowManager.js` were
+not executed; no JS runtime and no push on this host." Silence about an
+unverified surface reads as verification. A rule nobody can follow is
+not a control, which is why this one has a fallback.
 
-```bash
-python -m vaibify --port 8137     # scratch port, not your usual hub
-```
-
-Then, in the browser at `http://127.0.0.1:8137/`:
-
-1. **Read the console.** Zero errors is the bar. A single
-   `ReferenceError` means a module failed to evaluate and every
-   feature below it in load order is dead.
-2. **Enumerate the globals.** In the console:
-   `Object.keys(window).filter(k => /^Vaibify/.test(k)).length`.
-   Then check any global your change touched resolves *as a bare
-   identifier*, not via `window.`: modules declared with `const`
-   create a global lexical binding, so `window.VaibifyApp` is
-   `undefined` while `VaibifyApp` works. Probing the wrong one
-   produces a false alarm.
-3. **Confirm any new cross-module call resolves**, e.g.
-   `typeof VaibifyApp.fsGetLeaseId` → `"function"`.
-4. **Look at the page.** It should render, and any unavailable
-   dependency (Docker down, no containers) must be reported honestly
-   on screen rather than hidden.
-
-Kill the scratch hub when done.
-
-**Container-dependent paths need a container.** Anything touching the
-lease, the WebSockets, or the file-status poll is not verified by the
-above. Start Docker, open a project, and exercise the specific path.
-
-#### If you are a delegated agent and cannot do this
-
-**Push the branch and open a pull request, then let the browser lane
-run it.** The lane is `pull_request`-triggered, so a pushed branch with
-no PR runs nothing — do not read a quiet Actions tab as a pass. That is
-now the answer, and it is why the lane exists: the old rule asked
-delegated agents to load a page they had no browser for, so five of
-them once changed JavaScript in one session, none could follow the
-rule, and the merged branch was green with the frontend entirely
-unexecuted. A rule nobody can follow is not a control.
-
-If you also cannot push, say so explicitly and name the exact surface
-you did not verify — "the three JS call sites in
-`scriptWorkflowManager.js` were not executed; no JS runtime and no
-push on this host." Silence about an unverified surface reads as
-verification.
-
-### The three execution lanes
-
-| Lane | What is real | When | What it proves |
-|---|---|---|---|
-| browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behaviour reach the screen honestly |
-| container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands The browser lane's fake models |
-| fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `vaibify/containerImage/**` PRs | the image still builds; the container user is unprivileged |
-
-Two properties hold these together and must not be weakened:
+Two properties hold the lanes together and **must not be weakened**:
 
 - **The browser lane's fake is fail-closed and declared.** Every command
   it answers is listed in `LIST_MODELLED_COMMANDS` with the container
   assertion that confirms it; anything else raises. Never give it a
   catch-all return — this suite already carries ~20 permissive Docker
-  mocks, and `testDockerConnectionLive.py` records where that habit
-  led. `tests/testBrowserLaneContract.py` enforces both halves,
-  including that each named container-acceptance assertion actually exists.
-- **No lane may skip itself green.** `VAIBIFY_REQUIRE_DOCKER_DAEMON`
-  and `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into
-  a failure in CI. The `docker info || exit 0` guard this replaced
+  mocks, and `testDockerConnectionLive.py` records where that habit led.
+  `tests/testBrowserLaneContract.py` enforces both halves.
+- **No lane may skip itself green.** `VAIBIFY_REQUIRE_DOCKER_DAEMON` and
+  `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into a
+  failure in CI. The `docker info || exit 0` guard this replaced
   reported success for having run nothing;
   `tests/testDockerLiveDaemonRequirement.py` forbids its return.
-
-- Docker-dependent tests (`tests/testContainerBuildIntegration.py`)
-  are excluded from routine runs and are the only tests that require
-  a live container. They are parametrized via the
-  `VAIBIFY_INTEGRATION_CONFIG` environment variable and skip when it
-  is unset.
 
 ## Traps
 
@@ -334,15 +270,14 @@ ugly, show it. This applies to `fileStatusManager.py`,
 `pipelineRoutes.py`, `pipelineState.py`, and every frontend render
 path.
 
-**`director.py` and `workflowManager.py` are different things.**
-`director.py` is a parallel workflow runner that operates on the host
-filesystem using `os.path`. `workflowManager.py` operates on container
-paths using `posixpath`. Similarly named functions
-(`fbValidateWorkflow`, `fdictBuildGlobalVariables`) exist in both and
-are intentionally divergent. Do not "fix" the divergence — it's
-load-bearing. They may share *pure* helpers (e.g.
-`flistValidateOutputFilePaths`) without violating this rule; the
-calling conventions remain divergent.
+**Container paths are `posixpath`, host paths are `os.path`.**
+`workflowManager.py` handles container paths, which are POSIX on every
+host operating system. Any module handling host paths must use
+`os.path`, whose separator is the host's. A helper shared between the
+two lanes must be *pure* (e.g. `flistValidateOutputFilePaths`);
+unifying the path handling itself would silently mangle one lane or
+the other, and the failure would not surface until a cross-platform
+user hit it.
 
 **Do not revert to `/workspace`-as-repo.** Every vaibify workflow
 must live inside a git repository — its "project repo" —
@@ -416,8 +351,8 @@ in-process owner-of-record map `app.state.dictContainerOwners`, keyed by
 container **name** (the host flock and the caffeinate keep-alive are both
 name-keyed, so the owner map must be too; the WebSocket routes resolve
 the Docker container id to a name before the lease lookup). Claim
-(`registryRoutes`), the connect handler, the pipeline WebSocket, and the
-terminal WebSocket must all authorize through the single shared guard
+(`registryRoutes`), the connect handler, and the pipeline WebSocket must
+all authorize through the single shared guard
 `webSocketAuthorization.fbAuthorizeContainerSession` /
 `fiContainerSessionRejectionCode` — never an inlined container-id
 membership check. Never reintroduce `setAllowedContainers` (the old
@@ -437,12 +372,15 @@ one live *pipeline* WebSocket per container is enforced by the
 per-container `iLivePipelineConnectionCount` (a duplicate tab that copied
 the lease is closed 4409 — after `accept`, via `fnCloseWithCode`, so a
 real browser sees the code instead of an unreachable-looking 1006).
-Terminal sockets are counted in `iLiveConnectionCount` for liveness but
-never budgeted: one session legitimately holds the terminal strip, extra
-terminal tabs, AND the pipeline socket at once — budgeting all sockets
-shipped the Run-Step-always-refused bug (the terminal, opened on
-workflow entry, held the only slot; every Run Step was 4409'd and
-mislabeled "cannot reach server"). Run exclusivity is additionally
+Non-pipeline sockets are counted in `iLiveConnectionCount` for liveness
+but never budgeted: one session legitimately holds several sockets at
+once — budgeting all sockets shipped the Run-Step-always-refused bug
+(the terminal, opened on workflow entry, held the only slot; every Run
+Step was 4409'd and mislabeled "cannot reach server"). The terminal is
+disabled (see "The interactive terminal is disabled" below), so the
+unbudgeted lane has no production caller; the budget is still enforced
+and is driven through the real wrapper by a test-owned socket on that
+lane. Run exclusivity is additionally
 enforced at dispatch for every lane, including the budget-exempt agent
 lane: a run arriving while another pipeline action is live in that
 container is answered with a `runRefused` event, never started
@@ -454,6 +392,202 @@ Enforced by `testClaimRejectsForeignLease`, `testReleaseRejectsNonOwner`,
 `testWebSocketGatesUseSharedAuthorizationGuard`,
 `testSetAllowedContainersRemoved`, and
 `test_terminal_plus_pipeline_ws_coexist_in_one_session`.
+
+## Container mutations go through the commit-guard carrier
+
+**Arbitrary command execution is always treated as mutating**, because
+the primitive cannot know whether the text it was handed reads a file
+or deletes a workspace. Inside an enforced lane — an HTTP request
+served by `routeScope.ContainerAwareRoute`, or a carrier-launched
+durable task — an exec or a container write without a live carrier
+admission raises `MutationNotAdmittedError`. Outside one (background
+threads, the CLI, direct library use) the gate is a no-op: that
+remainder is deliberate and named, never a silent claim of coverage.
+
+**A typed read is exempt only inside its adapter.** Reading a file
+means running a program in the container, so guarding the exec would
+refuse reads too. Exactly one private method,
+`DockerConnection._texecRunTypedRead`, grants the exemption. It takes
+an operation NAME from a fixed table, plus a path **or a flat sequence
+of paths**, and builds the command itself; it never accepts one. The
+sequence form was added on 2026-08-05 for the batched file-existence
+probe: the alternative was up to 1000 container round-trips on a
+debounced UI path. It widens what the adapter may be *given*, never
+what it may be *told to run* — `repr()` of a validated list of strings
+is as inert as `repr()` of one. An adapter that forwarded a caller's string would
+turn the read carve-out into a general bypass —
+`tests/testMutationBoundary.py` fails the build on one that does, and
+on a second grant point anywhere, pinning the name through
+`S_EXEMPTION_METHOD`.
+
+(This paragraph named `_texecRunAuditedRead` until 2026-08-04, a symbol
+that exists nowhere in the repository. The enforcement was always
+correct — the test reads the real name — but a security contract whose
+stated grant point cannot be grepped is one an agent will conclude does
+not exist, and two separate tracks reported it before it was fixed.)
+
+**`tests/mutationInventory.json` carries three records, and only one of
+them is completeness-critical.** Regenerate with `python
+tools/generateMutationInventory.py --write`; drift-check with
+`--check`.
+
+- **Acquisitions** — every import or attribute-load of a member in a
+  closed dangerous vocabulary: `subprocess.*` launchers, `os.system` /
+  `exec*` / `spawn*` / `popen`, `asyncio.create_subprocess_*`,
+  `pty.spawn`, multiprocessing and process pools, Docker client
+  constructors and low-level `APIClient` methods, direct Unix-socket
+  access, and reflection (`eval`, `exec`, `sys.modules[...]`,
+  `importlib`, `__import__`, dynamic `getattr`). **This is the
+  completeness boundary and it fails closed.** Importing `os` is not
+  acquisition; `from os import system` is — 33 GUI modules import `os`,
+  so a module-level reading would be useless.
+- **Use sites** — decoded calls and commands. **Metadata,
+  best-effort.** A launch whose argv the scan cannot read becomes a row
+  with an UNKNOWN command, never a site that disappears.
+- **Dispositions** — the reviewed judgement per module or named
+  function: forbidden, guarded, or separately authorized.
+
+Completeness rests on the ACQUISITION, not on decoding the command,
+because decoding depends on reading an expression somebody else writes.
+The withdrawn host-side director module is the demonstration: its
+`subprocess.Popen(sCommand, shell=True)` was the most permissive command
+authority under `vaibify/gui/` and produced **zero rows** under the old
+design — one blind-spot entry, nothing more.
+
+The drift check fails on an added, removed, duplicated, edited, or
+hand-altered row, on acquisition drift, and on blind-spot drift. Three
+ratchets may only fall: `I_UNCLASSIFIED_ROW_BUDGET`,
+`I_UNDISPOSED_ACQUISITION_BUDGET`, and `DICT_UNRESOLVED_BUDGET`. **The
+scanner never decides reachability** — a human judgement recorded
+against a fingerprint is honest about being a judgement, where a
+scanner's reachability verdict would pretend to be a proof. And a
+fingerprint is an identity, never a warrant: for an opaque site the
+expression is `subprocess.run(listCommand)` both before and after the
+builder filling it is swapped from git to `docker rm`, so a manual
+disposition must name the supporting symbols its review relied on.
+
+**A route declares its carrier mode, and the declaration authorizes
+NOTHING.** `routeScope.fnDeclareCarrierMode` stamps one or more of
+`typed-read`, `mode-a-synchronous`, `mode-b-lock-held`,
+`mode-c-durable`, `lifecycle-transaction`, `separate-authority` onto a
+handler. A declared route takes a branch with NO admission, so its
+handler must open one through a carrier around each logical mutation;
+forget one and the primitive raises `MutationNotAdmittedError`. **That
+refusal is the proof** — a decorator that pre-admitted the handler
+would delete it, which is the `bAgentSafe` mistake one level up.
+`testDeclaringMintsNoAdmission` drives a declared route over real HTTP
+with the owner map keyed by a name != the container id and asserts the
+real gate refuses. Why each mode exists, and what the migration found,
+is in [docs/architecture.md](docs/architecture.md) — "Container
+mutations announce themselves".
+
+**Two rules that are easy to undo by accident.** A refusal is not an
+I/O error: `MutationNotAdmittedError` and `CommitRefusedError` derive
+from `ControlPlaneRefusalError(Exception)`, never `PermissionError` —
+they used to, and every `except OSError` in the package swallowed them,
+which is how a refusal came to silently downgrade a reproducibility
+badge. And a carrier worker must not raise an expected 4xx/502: that
+poisons its journal record and quarantines the container. Carry it back
+through `routeContext.fdictCarryARefusalBackInsteadOfRaising` and
+re-raise outside, after the record settles. A genuinely half-finished
+write still poisons, correctly.
+
+**For the current coverage, run the command — do not trust a number
+written here.**
+
+```bash
+PYTHONPATH=. python tools/carrierIntentAudit.py
+```
+
+It prints every container-scoped route with its declaration, or
+`(awaiting)`. The counts used to be prose in this file and went stale
+four times in one session, because they change on every batch while the
+sentence does not. Two routes are `APIWebSocketRoute`s that
+`app.router.route_class` never governs, so the resolved population and
+the governed one differ by two; the command reports the governed one.
+The migration was scoped to mutating routes, so the awaiting list
+bottoms out at the read-only routes rather than empty.
+
+**There is no production observation point**: nothing
+under `vaibify/` records a carrier observation, so
+`tools/carrierIntentAudit.py` compares only what the suite drove, and
+an empty violation list is not compliance —
+`flistSelectDeclarationsNeverObserved` keeps that visible. An
+observation records what its entry point DECLARED, never *which* entry
+point it was, so a violation cannot be narrowed between two routes
+sharing a declaration; migrating one route at a time is what bounds the
+diagnosis. And some mutation-capable rows are **structurally**
+unattributable: a primitive bound into `asyncio.to_thread` loses its
+row, because inside the worker the frames above it are executor
+infrastructure rather than the expression the row records. Its carrier
+MODE survives, so the event is still routed correctly — the row is what
+is lost, and those must be traced by hand and will never be observed.
+Migrating a route can *recover* one, by turning the passed callable into
+a direct call the scanner can read; the current set is every
+`passed-callable` row in `tests/mutationInventory.json`. The semantic
+classification of the inventory is unfinished
+and ratcheted: the count may only go down, and it is the input to that
+migration, not a substitute for it.
+
+**A busy container refuses a hand-over at once, and names what is busy.**
+The lock HOLDER registers its operation kind and target, because an
+`asyncio.Lock` knows only that it is held. A transfer never waits for a
+drain — waiting spends the capability's window on an operation of
+unknown length — and there is no DRAINING phase: a transfer refuses over
+any terminal execution nobody has proven dead.
+
+## The interactive terminal is disabled
+
+**`/ws/terminal` refuses every caller, and no production path creates a
+terminal execution.** A shell can `setsid` out of the process group the
+containment record tracks, so "the terminal stopped" is not provable,
+and release, hand-over, and shutdown cannot honestly report a container
+quiet while a terminal has run in it. An unprovable containment
+boundary is not shipped.
+
+The refusal is the **first statement** in the handler: it accepts, then
+closes with `I_REJECT_TERMINAL_DISABLED`. That ordering is the
+contract, not a detail. Before it, the handler resolved the Docker id
+(an existence oracle open to any caller that could reach the socket),
+ran the ownership gate (which *refreshes* the owner's liveness stamp),
+and entered the connection counters — so a refused dial-in had already
+learned what existed and disturbed a session it had no standing in. The
+close code is deliberately distinct from every authorization code: a
+client that cannot tell a disabled feature from a rejected credential
+tells the researcher to re-claim a container that is already theirs.
+The frontend does not open the socket at all, because a socket left to
+be refused reports a deliberate refusal as a connection failure.
+Interactive *steps* need a shell, so they refuse honestly instead of
+polling forever for a sentinel no shell will print.
+
+Four parking controls hold it there. A no-callers invariant over
+`terminalContainment` **cannot** pass — the module keeps production
+callers for drain, reap, and shutdown — so the controls are narrower:
+nothing in `vaibify/` constructs a `TerminalSession`
+(`testNoProductionPathConstructsATerminalSession`); only the refusal
+handler answers the path
+(`testOnlyTheWithdrawnHandlerServesTheTerminalWebSocket`); only the
+parked seam names the record-creation calls
+(`testNoProductionPathPreparesATerminalExecutionRecord`); and every
+surviving containment caller is cleanup
+(`testRemainingContainmentCallsAreCleanupOnly`). The handler's own
+ordering is pinned by `testWithdrawnTerminalRouteTouchesNothing`.
+
+**Legacy records are never swept.** A terminal journal record written
+by an earlier version stays on disk and keeps its container QUARANTINED
+until the container is positively stopped or its process group proven
+empty — that is, through `vaibify reconcile`. Disabling the route
+settles nothing, because it has proven nothing
+(`tests/testWithdrawnTerminalLegacyRecords.py`). Upgrading with a live
+terminal therefore leaves that container quarantined, which is a
+migration cost to state in release notes, not a bug to code around.
+
+**Do not re-enable it behind a flag.** A runtime switch is a bypass
+path by construction, and the boundary that made the terminal unsafe
+has not moved. Re-enabling means proving containment against a `setsid`
+descendant first; `tests/testTerminalContainment.py` keeps the old
+prover as the standing demonstration of why the boundary was invalid,
+and that is the gate any future terminal work must pass.
 
 ## Cross-step references via tokens
 
@@ -633,77 +767,43 @@ without revisiting that.
 
 ## Runtime resources live inside the package
 
-`vaibify/templates/` and `vaibify/containerImage/` are data trees that
-ship in the wheel. They used to sit at the repository root and be
-reached with `Path(__file__).resolve().parents[2]`, which is the
-repository root only in a checkout — from an installed wheel it is
-`site-packages`. So no wheel ever contained them: `vaibify init`
-printed "No templates found" and exited 0, and the Docker-context
-lookup landed on `site-packages/docker`, the Docker SDK's own source
-directory, which exists, so an `is_dir()` check passed.
-
-Three rules follow.
+`vaibify/templates/` and `vaibify/containerImage/` ship in the wheel.
+They used to be reached with `parents[N]` from the repository root,
+which resolves to `site-packages` in an install — so no wheel ever
+contained them and `vaibify init` printed "No templates found" and
+exited 0. Four rules follow; the full account is in
+[docs/architecture.md](docs/architecture.md) — "Packaging: why runtime
+resources live inside the package".
 
 **Locate them only through `vaibify/resources.py`.** It is the single
 place that names the trees, and `importlib.resources` resolves them
-identically from a checkout, an editable install, and a wheel. Never
-reintroduce a `parents[N]` walk to reach package data.
+identically from a checkout, an editable install, and a wheel. **Never
+reintroduce a `parents[N]` walk to reach package data** — and after
+fixing any resolution bug, grep for every other way the codebase reaches
+outside the package, not just the spelling that bit you.
 
-**Treat them as read-only, and give every build its own copy.** A
-wheel may be installed where the user cannot write, and `site-packages`
-is shared by every project on the machine, so `vaibify build` never
-writes into the packaged tree: `commandBuild.fsStageBuildContext`
-mkdtemps a private context under `~/.vaibify/build/`, and it is
-discarded on success and kept on failure with its path printed. The
-staging directory is per *build*, not per project — the GUI starts
-builds in worker threads with no serialization, so two dashboard
-clicks race, and refreshing a shared directory begins with `rmtree`,
-which would delete a context out from under a running `docker build`.
-Note also that generated context files sat untracked *and* unignored
-in the old `docker/` directory for months, then rode a `git mv` into a
-wheel. `tests/testPackagedResources.py` fails if any of this
-regresses.
+**Treat them as read-only, and give every build its own copy.**
+`commandBuild.fsStageBuildContext` mkdtemps a private context under
+`~/.vaibify/build/`, discarded on success and kept on failure with its
+path printed. It is per *build*, not per project — two dashboard clicks
+race, and refreshing a shared directory starts with `rmtree`.
+`tests/testPackagedResources.py` fails if this regresses.
 
-**Anything the image needs must live under `vaibify/`.** Two
-resources were reached from the repository root and therefore missing
-from every distribution: the five curated agent docs staged into
-`/usr/share/vaibify/docs`, and the shell completions. The docs case
-was the worse one, because the bundled `vaibify-doc-map` skill told
-the in-container agent all six documents were present — a wheel-built
-image did not merely lack docs, it misdirected the agent, and it
-differed materially from a checkout-built image. Those five now live
-at `vaibify/docs/` as **symlinks onto the Sphinx sources**, so there
-is exactly one file to edit and both builders dereference them into
-real files in the distribution. Never replace one with a real file;
-that is the shadowing trap, and
+**Anything the image needs must live under `vaibify/`.** The curated
+agent docs at `vaibify/docs/` are **symlinks onto the Sphinx sources** —
+never replace one with a real file, which is the shadowing trap;
 `testCuratedDocsRemainSymlinksOntoTheSphinxSources` fails if you do.
-When adding a curated doc, add the symlink, extend `T_STAGED_DOCS`,
-extend the doc-map skill's table, and add the *Sphinx source* path to
-`freshImageBuild.yml`'s triggers — an edit lands on the target, never
-on the symlink blob.
+When adding one: add the symlink, extend `T_STAGED_DOCS`, extend the
+doc-map skill's table, and add the *Sphinx source* path to
+`freshImageBuild.yml`'s triggers.
 
 **Prove the distribution, not the import.** `pip-install.yml` runs
 `tools/checkInstalledDistribution.py` against an installed sdist and
-an installed wheel: it resolves every tree, runs `vaibify init`,
-executes the shipped example workflow to a figure, *assembles a real
-build context* and checks that no curated doc and no Dockerfile `COPY`
-source is missing. The release workflow previously tested a
-distribution with `import vaibify`, which is why a wheel missing every
-template shipped without comment — and the first version of this
-script spot-checked three files, which is why it passed a
-distribution whose assembled context was missing five of six agent
-documents. Checking a shipped file is not the same as checking the
-artifact built from it. The job is **release-only** by decision
-(2026-07-28), matching `vspace`, `bigplanet` and `multi-planet`: a
-release runs the full support matrix, a manual run the corners. So a
-packaging regression can sit on `main` until the next version is cut.
-`upload_pypi` needs `build` and `test`, so it is caught while cutting
-the release and nothing broken is published — but the diagnosis arrives
-during a release rather than beside the change that caused it. After
-touching `vaibify/resources.py`, the packaged trees, or the Dockerfile
-`COPY` set, run `pip-install` by hand (`workflow_dispatch`) instead of
-waiting for release day. Never make it a required status check: it
-cannot report on a pull request, so every PR would wait on it forever.
+wheel. It is **release-only**, so a packaging regression can sit on
+`main` until a version is cut — after touching `vaibify/resources.py`,
+the packaged trees, or the Dockerfile `COPY` set, run it by hand
+(`workflow_dispatch`). Never make it a required status check: it cannot
+report on a pull request, so every PR would wait on it forever.
 
 ## Known technical debt
 
@@ -712,9 +812,6 @@ without discussion:
 
 - `introspectionScript.py` duplicates format-handling logic from
   `dataLoaders.py`. Container scripts cannot import from the host.
-- `director.py` has its own `fbValidateWorkflow` and
-  `fdictBuildGlobalVariables` that diverge from `workflowManager.py`.
-  Host path vs. container path.
 - `scriptFigureViewer.js` was not part of the 2026-01 frontend
   refactor. Kept as a single cohesive module.
 - Re-export blocks exist across `pipelineRunner`, `pipelineServer`,
@@ -733,6 +830,43 @@ without discussion:
   accepting the field produced a container without the requested
   packages and said nothing. Wiring it is the honest fix; refusing is
   the honest interim.
+- **`POST /api/zenodo/{id}/download` cannot work, and its two tests
+  pass anyway.** It calls `syncDispatcher.ftResultDownloadDataset`,
+  which exists nowhere — verified at runtime, `hasattr` is `False`, so
+  every real call raises `AttributeError` and answers 500. The tests in
+  `testSyncRoutesCoverage.py` patch the name into existence with
+  `create=True`, which is why the suite has been exercising a function
+  the product does not have. It is advertised to the in-container agent
+  as `download-zenodo-dataset` with `bAgentSafe: True`, so an agent
+  asked to fetch a dataset calls it and fails. **Do not "fix" this by
+  deleting or loosening the tests** — the missing function is the
+  defect. It is also the one mutating route left undeclared by the
+  carrier migration, deliberately: inside a carrier that
+  `AttributeError` would poison the journal and quarantine a working
+  container over a broken button. Writing the function is a feature
+  decision.
+- `terminalContainment.py` and the `terminal` journal kind survive the
+  terminal being disabled, and must. They are what reconciles a record
+  written by an earlier version — release, the safe reaper and shutdown
+  all settle terminal records through
+  `fdictTerminateAndProveRecord` — and
+  `tests/testTerminalContainmentLive.py` keeps the process-group prover
+  as the standing demonstration that it cannot see a `setsid`
+  descendant. Deleting the module would delete the reason the feature
+  is off. Its in-memory registry is, in production, permanently empty:
+  only `terminalSession` registers, and nothing constructs one.
+- `commitCarrier.fdictRequestDurableTaskCancel` has no caller and
+  refuses everything. Kept deliberately: Python cannot interrupt a
+  worker in `asyncio.to_thread`, so there is no honest generic cancel,
+  and a reader who finds no function at all re-derives that from
+  scratch — or writes one. The refusal is the answer, in the place the
+  question is asked.
+- The poison axis is NOT subsumed by the journal quarantine. A
+  quarantine record survives a crash; it does not fence a socket that
+  is open right now. Poison does both — the pipeline lane is refused at
+  the gate and revalidated per frame — so the two are complementary,
+  not redundant.
+
 ## Discovery commands
 
 Rather than memorizing structural facts, run these when you need them:
@@ -831,6 +965,38 @@ correct approach.
   so two identical-order runs failing in *different* tests cannot be
   an ordering problem — that pattern means something outside pytest is
   editing the sources.
+- **A count of code facts written into this file is wrong within
+  weeks.** The carrier migration's route totals were re-typed and wrong
+  four times in a single session (14/116, 31/99, 53/77, 60/70), each
+  corrected only because somebody happened to notice; auditing for that
+  found two more already stale — a "27 test files" that was 28, and a
+  "20 unattributable rows" that migrations had reduced to 10. None was
+  wrong in substance and all were wrong in fact, which is worse, because
+  a reader who checks one and finds it false stops trusting the ones
+  they cannot check. **State the mechanism, not the tally**, and where a
+  number is genuinely wanted give the command that computes it —
+  `PYTHONPATH=. python tools/carrierIntentAudit.py` for carrier
+  coverage, `python tools/listModules.py` for structure. This is the
+  deterministic-versus-stochastic split from
+  [docs/vibeCoding.md](docs/vibeCoding.md) applied to this file: a fact
+  that changes when the code changes does not belong in prose that
+  does not.
+- The carrier migration's only proof was unobservable in the tests that
+  would have to observe it. "Forget a carrier and the primitive raises
+  loudly" is true of the real `DockerConnection` and false of nearly
+  every route test: **the route-test doubles answer a write by storing
+  bytes and never consult the admission gate at all.** (Confirm with
+  `grep -l 'def fnWriteFile' tests/test*.py | xargs grep -L
+  mutationAdmission` — at the time of writing, all but one.) A migrated
+  route with its carrier call deleted outright still passed its whole
+  route-test file. The fix
+  is `tests/testCarrierMigratedRoutes.py` — a double calling the same
+  gates, under the same primitive names, at the same points the real
+  connection calls them, recording the live admission MODE at each. Assert
+  the mode, never merely that nothing raised: "no exception" is equally
+  true of a route riding the ambient mint. Every future migration group
+  needs an entry there; one verified against the ordinary route tests is
+  not verified.
 - An external review is evidence, not a verdict. A 2026-07-26 review
   correctly identified the browser/container execution hole and the
   doc drift, and was wrong about the falsification suite being

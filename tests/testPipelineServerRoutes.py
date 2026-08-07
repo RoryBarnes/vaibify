@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "abc123container"
@@ -82,9 +83,18 @@ class MockDockerConnection:
             return (0, "")
         return (1, "")
 
-    def fbaFetchFile(self, sContainerId, sPath):
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        del iMaxBytes
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
+        if "pipeline_state" in sPath:
+            # No run has happened, so the state file is absent. The
+            # catch-all below answers any .json with the WORKFLOW, and
+            # since the pipeline-state read became a typed read that
+            # would hand the state reader a workflow document. The old
+            # ``cat ... pipeline_state`` branch above said absent; this
+            # is the same answer through the adapter that replaced it.
+            raise FileNotFoundError(f"Not found: {sPath}")
         if sPath.endswith(".json"):
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         raise FileNotFoundError(f"Not found: {sPath}")
@@ -138,15 +148,8 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
-
-
-@pytest.fixture
-def sSessionToken(clientHttp):
-    """Fetch the session token from the running app."""
-    responseHttp = clientHttp.get("/api/session-token")
-    return responseHttp.json()["sToken"]
 
 
 def _fnConnectToContainer(clientHttp):
@@ -156,10 +159,13 @@ def _fnConnectToContainer(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictConnect = responseHttp.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
-# ── Index and session token ────────────────────────────────────
+# ── Index and the retired session-token oracle ─────────────────
 
 
 def test_get_index_returns_html(clientHttp):
@@ -168,16 +174,17 @@ def test_get_index_returns_html(clientHttp):
     assert "text/html" in responseHttp.headers["content-type"]
 
 
-def test_get_session_token(clientHttp, sSessionToken):
-    assert isinstance(sSessionToken, str)
-    assert len(sSessionToken) > 10
+def test_session_token_endpoint_is_retired(clientHttp):
+    """The oracle is gone: even an authenticated client finds no route."""
+    responseHttp = clientHttp.get("/api/session-token")
+    assert responseHttp.status_code == 404
 
 
 # ── Security headers ──────────────────────────────────────────
 
 
 def test_security_headers_present(clientHttp):
-    responseHttp = clientHttp.get("/api/session-token")
+    responseHttp = clientHttp.get("/")
     assert responseHttp.headers["X-Content-Type-Options"] == "nosniff"
     assert responseHttp.headers["X-Frame-Options"] == "DENY"
 
@@ -598,24 +605,28 @@ def test_update_settings_partial(clientHttp):
 # ── Not connected errors ─────────────────────────────────────
 
 
-def test_steps_without_connect_returns_404(clientHttp):
+def test_steps_without_connect_returns_403(clientHttp):
+    """Reads of an unowned container are refused by the lease gate (403),
+    which fires before the not-connected 404 could."""
     responseHttp = clientHttp.get(
         f"/api/steps/{S_CONTAINER_ID}"
     )
-    assert responseHttp.status_code == 404
+    assert responseHttp.status_code == 403
 
 
-def test_settings_without_connect_returns_404(clientHttp):
+def test_settings_without_connect_returns_403(clientHttp):
+    """Same lease-gate refusal as steps: no owner record means 403."""
     responseHttp = clientHttp.get(
         f"/api/settings/{S_CONTAINER_ID}"
     )
-    assert responseHttp.status_code == 404
+    assert responseHttp.status_code == 403
 
 
 # ── Monitor ───────────────────────────────────────────────────
 
 
 def test_get_monitor_stats(clientHttp):
+    _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
         f"/api/monitor/{S_CONTAINER_ID}"
     )
@@ -766,6 +777,7 @@ def test_clean_outputs(clientHttp):
 
 
 def test_find_workflows(clientHttp):
+    _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
         f"/api/workflows/{S_CONTAINER_ID}"
     )
@@ -778,6 +790,7 @@ def test_find_workflows(clientHttp):
 
 
 def test_create_workflow(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "New Pipeline",
         "sFileName": "newPipeline",
@@ -794,6 +807,7 @@ def test_create_workflow(clientHttp):
 
 
 def test_create_workflow_409_on_filename_collision(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "First",
         "sFileName": "shared",
@@ -818,6 +832,7 @@ def test_create_workflow_409_on_filename_collision(clientHttp):
 
 
 def test_create_workflow_rejects_path_traversal(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "Sneaky",
         "sFileName": "../escape",
@@ -831,6 +846,7 @@ def test_create_workflow_rejects_path_traversal(clientHttp):
 
 
 def test_create_workflow_rejects_filename_with_slash(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "Slashed",
         "sFileName": "sub/dir/file",
@@ -844,6 +860,7 @@ def test_create_workflow_rejects_filename_with_slash(clientHttp):
 
 
 def test_create_workflow_rejects_leading_dot_filename(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "DotFile",
         "sFileName": ".hidden",
@@ -857,6 +874,7 @@ def test_create_workflow_rejects_leading_dot_filename(clientHttp):
 
 
 def test_create_workflow_rejects_empty_filename(clientHttp):
+    _fnConnectToContainer(clientHttp)
     dictPayload = {
         "sWorkflowName": "Empty",
         "sFileName": "   ",

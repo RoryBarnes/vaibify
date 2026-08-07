@@ -10,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes.syncRoutes import fnRegisterAll
 
 
@@ -44,7 +45,21 @@ def fixtureWorkflow(fixtureProjectRepo):
 
 
 @pytest.fixture
-def fixtureClient(fixtureWorkflow, fixtureSaveLog):
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down: this module drives a bare ``FastAPI()``.
+
+    ``arxiv/configure`` commits its ``project.json`` save through mode
+    (a) and its verify/cache-clear through mode (b), neither of which a
+    bare app can satisfy. See ``tests/carrierStandDown.py`` for what
+    this costs; the admission itself is proven in
+    ``tests/testCarrierMigratedRoutes.py``.
+    """
+    from vaibify.gui.routes import syncRoutes
+    fnStandCarrierDown(monkeypatch, syncRoutes)
+
+
+@pytest.fixture
+def fixtureClient(fixtureWorkflow, fixtureSaveLog, fixtureCarrierStoodDown):
     app = FastAPI()
     app.state.listLifespanStartup = []
     app.state.listLifespanShutdown = []

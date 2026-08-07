@@ -86,10 +86,12 @@ verification indicator. If you add a new render path, call it.
   calls. The lease — not the shared session token — is what says *which*
   browser session owns a container; a 409 from claim surfaces an "In use
   in another browser session" toast and the tile renders locked from
-  `bOwnedByOtherSession`. A `pagehide` handler `navigator.sendBeacon`s
-  the release route with the lease only; it is best-effort acceleration,
-  never load-bearing (the backend's disconnect-grace reaper is the real
-  release). The intended single fetch choke point is `VaibifyApi`; a
+  `bOwnedByOtherSession`. The `pagehide` handler deliberately sends NO
+  release: the browser fires it on reload and navigation, not only on a
+  real close, so releasing there would drop a running container every
+  time the researcher refreshed. The handler stops polling and nothing
+  else, and the backend's disconnect-grace reaper is the only release.
+  The intended single fetch choke point is `VaibifyApi`; a
   legacy `window.fetch` shim (`fnInstallAuthenticatedFetch`) still
   injects the shared token and is known debt — do not add a second
   token-injection path, and migrate callers toward `VaibifyApi`.

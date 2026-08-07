@@ -225,9 +225,9 @@ def _ffBuildFlushingCallback(
     ``stateWriter`` is the per-run ``pipelineState.StateWriter`` that
     owns persistence; producers enqueue updates rather than calling
     ``fnUpdateState`` directly so the heartbeat thread never sits
-    behind a docker exec. Legacy callers (standalone director, older
-    tests) may pass only ``lockState`` for the in-line write path; in
-    that case docker I/O still happens inline as before.
+    behind a docker exec. Legacy callers (older tests) may pass only
+    ``lockState`` for the in-line write path; in that case docker I/O
+    still happens inline as before.
     """
     async def fnLoggingWithFlush(dictEvent):
         await fnLogging(dictEvent)
@@ -274,9 +274,9 @@ def _fnUpdatePipelineState(
     With ``stateWriter`` (preferred): producer holds the writer's
     in-memory lock briefly, then a dedicated thread does the docker
     I/O — no producer ever waits on docker. With only ``lockState``
-    (legacy / standalone director): the legacy in-line write path is
-    used, where the lock guards both the memory update and the two
-    docker calls inside ``fnUpdateState``.
+    (legacy): the legacy in-line write path is used, where the lock
+    guards both the memory update and the two docker calls inside
+    ``fnUpdateState``.
     """
     if stateWriter is not None:
         _fnDispatchEventToWriter(stateWriter, dictEvent)

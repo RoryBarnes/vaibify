@@ -94,7 +94,7 @@ Three conventions matter:
 - **Use `argparse`, not raw `sys.argv` indexing.** The CLI is part of
   the project contract; argparse makes it explicit and self-documenting.
 
-The director substitutes `{Step02.posterior_samples}` at runtime with the
+Vaibify substitutes `{Step02.posterior_samples}` at runtime with the
 actual repo-relative path to the producer's output. Your script never
 needs to know where A02 lives.
 

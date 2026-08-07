@@ -1,7 +1,9 @@
 # Configuration Reference
 
-Vaibify projects are configured through three files in the project
-root directory. This page documents every field and option.
+Vaibify projects are configured through three files: `vaibify.yml` and
+`container.conf` in the project root directory, and `project.json` at
+`.vaibify/projects/project.json`. This page documents every field and
+option.
 
 ## vaibify.yml
 
@@ -19,6 +21,11 @@ file; the Python dataclass uses Hungarian notation internally.
 | `workspaceRoot`   | string  | `/workspace`      | Mount point for the workspace volume |
 | `packageManager`  | string  | `pip`             | Package manager: `pip`, `conda`, or `mamba` |
 | `networkIsolation`| boolean | `false`           | Disable outbound network access      |
+| `pipInstallFlags` | string  | `--prefer-binary` | Extra flags passed to `pip install` during the image build |
+| `neverSleep`      | boolean | `false`           | Keep the host awake (`caffeinate`) while the container runs; macOS only, ignored elsewhere |
+| `dashboardPort`   | integer | `0`               | The project's dashboard port. `0` means "not yet assigned": the first launch picks a free port and writes it back here so the same port is reused on every restart. A non-zero value must be 1024–65535 |
+| `cpuLimit`        | integer | `0`               | Cap on container CPU cores. `0` means no explicit limit (all host cores minus one); a positive value is clamped to the host's core count |
+| `memoryLimitGigabytes` | float | `0.0`         | Container memory cap in GB. `0` means unlimited; a non-zero value must be at least `0.25` |
 
 ### List Fields
 
@@ -32,6 +39,14 @@ file; the Python dataclass uses Hungarian notation internally.
 | `ports`           | dict        | Ports to expose from the container     |
 | `bindMounts`      | dict        | Host directories to mount              |
 | `secrets`         | dict        | Secret references (see Security below) |
+
+```{note}
+**A user-supplied `systemPackages` list replaces the default set — it
+does not extend it.** The defaults are `gcc`, `make`, `git`, `curl`,
+`ca-certificates`, `gnupg`, `gosu`, and `time`. If you set
+`systemPackages` in `vaibify.yml`, include any of those you still
+need alongside your additions.
+```
 
 ```{note}
 **`condaPackages` is refused, not installed.** A non-empty value fails
@@ -157,7 +172,10 @@ data-utils|git@github.com:user/data-utils.git|develop|pip_no_deps
 
 ## project.json
 
-Defines the execution pipeline. See [Pipelines](pipelines.md) for full
+Defines the execution pipeline. It lives at
+`.vaibify/projects/project.json` inside the project repository — not
+at the repository root — which is where the dashboard and `vaibify
+run` discover it. See [Pipelines](pipelines.md) for full
 documentation.
 
 ## Environment variables

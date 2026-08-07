@@ -3,6 +3,7 @@
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -355,14 +356,49 @@ def _fnAnnounceVirtiofsRetry():
     )
 
 
+_threadLocalBuildSink = threading.local()
+
+
+def fnSetThreadBuildLineSink(fnLineSink):
+    """Route this thread's docker build output lines to ``fnLineSink``.
+
+    The dashboard runs each build in its own worker thread and needs
+    the docker output the CLI already streams to stderr, so the
+    researcher can watch an hour-long build instead of a blank
+    spinner. Thread-local routing reaches the single tee point
+    (:func:`_fsStreamAndCaptureStderr`) without threading a callback
+    through every build-command signature; the CLI never sets a sink
+    and is unchanged. Each line is credential-redacted before it
+    reaches the sink. Pass ``None`` to detach — always do so in a
+    ``finally``, because worker threads are pooled and reused, and a
+    stale sink would route a later build's output into a finished
+    build's record.
+    """
+    _threadLocalBuildSink.fnLineSink = fnLineSink
+
+
+def _fnOfferLineToSink(fnLineSink, sLine):
+    """Hand one redacted line to the sink; sink failures never fail the build."""
+    try:
+        fnLineSink(fsRedactBuildOutputCredentials(sLine))
+    except Exception as error:
+        sys.stderr.write(
+            f"[vaib] build progress sink error (build continues): "
+            f"{error}\n"
+        )
+
+
 def _fsStreamAndCaptureStderr(procBuild):
     """Tee subprocess stderr to sys.stderr; return the captured tail."""
     dequeTail = deque(maxlen=_I_BUILD_STDERR_TAIL_LINES)
     if procBuild.stderr is None:
         return ""
+    fnLineSink = getattr(_threadLocalBuildSink, "fnLineSink", None)
     for sLine in procBuild.stderr:
         sys.stderr.write(sLine)
         dequeTail.append(sLine)
+        if fnLineSink is not None:
+            _fnOfferLineToSink(fnLineSink, sLine)
     return "".join(dequeTail)
 
 

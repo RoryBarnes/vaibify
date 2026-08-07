@@ -92,9 +92,27 @@ def test_jupyter_overlay_generates_per_session_token():
 
 
 def test_entrypoint_chown_does_not_follow_symlinks():
-    """Audit M5: recursive chown must not dereference symlinks."""
+    """Audit M5: the workspace chown must not dereference symlinks.
+
+    The workspace-ownership migration is now mount-aware — it chowns the
+    paths ``find`` reports (bind subtrees pruned) via ``xargs chown``
+    rather than a blanket ``chown -R`` — but the symlink-safety property
+    is unchanged: every chown carries ``--no-dereference``.
+    """
     sContent = _fsReadEntrypoint()
-    iIdx = sContent.find("chown -R")
-    assert iIdx >= 0, "expected recursive chown in entrypoint"
-    sChownLine = sContent[iIdx:iIdx + 200]
-    assert "--no-dereference" in sChownLine
+    iIdx = sContent.find("chown --no-dereference")
+    assert iIdx >= 0, (
+        "expected the workspace migration to chown with --no-dereference"
+    )
+    # No actual command may reintroduce a blanket recursive chown (which
+    # would traverse into a bind mount nested under the volume). Comments
+    # that MENTION ``chown -R`` to explain why it was removed are fine, so
+    # this checks command lines, not prose.
+    listChownRCommands = [
+        sLine for sLine in sContent.splitlines()
+        if sLine.split("#", 1)[0].strip().startswith("chown -R")
+    ]
+    assert listChownRCommands == [], (
+        "a blanket 'chown -R' would recurse into bind mounts; the "
+        f"migration prunes nested mounts instead: {listChownRCommands}"
+    )

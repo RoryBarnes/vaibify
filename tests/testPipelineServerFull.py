@@ -7,6 +7,7 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "srv123container"
@@ -92,6 +93,16 @@ class MockDockerFull:
             return (0, "")
         return (0, "")
 
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        """List a step directory the way the typed-read adapter does.
+
+        ``scan-scripts`` asks for the directory rather than sending a
+        ``find … *.py`` pipeline through the general exec primitive, so
+        the answer that used to come from the exec branch above comes
+        from here now.
+        """
+        return ["analyze.py", "plot.py"]
+
     def fbaFetchFile(self, sContainerId, sPath):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
@@ -155,7 +166,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
@@ -166,7 +177,10 @@ def _fnConnectToContainer(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictConnect = responseHttp.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
 # -----------------------------------------------------------------------

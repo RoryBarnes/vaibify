@@ -203,7 +203,16 @@ class FailClosedDockerAdapter:
             )
         return (0, "")
 
-    def ftResultExecuteCommand(self, sContainerId, sCommand):
+    def _ftAnswerModelledCommand(self, sCommand):
+        """Return ``(iExitCode, sStdout)`` for a modelled command, else raise.
+
+        The single fail-closed contract shared by BOTH exec surfaces —
+        the blocking ``ftResultExecuteCommand`` and the streamed
+        ``texecRunInContainerStreamed``. Only commands the browser lane's
+        journeys actually issue are modelled, each mirrored by a Lane 2
+        assertion; anything else raises ``UnmodelledContainerCall`` so a
+        fabricated success can never stand in for a real one on either API.
+        """
         self.listSeenCommands.append(sCommand)
         if "git rev-parse --show-toplevel" in sCommand:
             return (0, S_PROJECT_REPO + "\n")
@@ -238,6 +247,9 @@ class FailClosedDockerAdapter:
             "everything proves nothing."
         )
 
+    def ftResultExecuteCommand(self, sContainerId, sCommand):
+        return self._ftAnswerModelledCommand(sCommand)
+
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
@@ -261,5 +273,10 @@ class FailClosedDockerAdapter:
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         from types import SimpleNamespace
-        self.listSeenCommands.append(sCommand)
-        return SimpleNamespace(iExitCode=0, sStdout="ok", sStderr="")
+        # Same fail-closed contract as the blocking API: only modelled
+        # commands answer; anything else raises rather than inventing a
+        # green exit code the browser lane would read as a real success.
+        iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)
+        return SimpleNamespace(
+            iExitCode=iExitCode, sStdout=sStdout, sStderr="",
+        )

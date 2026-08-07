@@ -1,10 +1,17 @@
-# External-service integrations: Overleaf, GitHub, Zenodo
+# External-service integrations: Overleaf, GitHub, Zenodo, arXiv
 
-All three integrations are now landed (Overleaf first, then GitHub,
-then Zenodo). This document captures the patterns that survived
-three concrete implementations — the ones you can rely on when adding
-a fourth service — and the traps that only become visible after you
-have built more than one.
+Four integrations are now landed: Overleaf, GitHub, and Zenodo as
+read-write push targets, and arXiv as a **read-only** fourth service.
+arXiv has no write API for third-party tools — submission is a
+human-driven process — so
+[arxivClient.py](../vaibify/reproducibility/arxivClient.py) plugs into
+the verification side only: it exposes the same
+`fdictFetchRemoteHashes` shape as the other three remotes and hashes
+local figures against the published e-print tarball. This document
+captures the patterns that survived the three push-side
+implementations — the ones you can rely on when adding another
+service — and the traps that only become visible after you have built
+more than one.
 
 It is written to be **actionable**, not exhaustive. If a section seems
 too short, that's intentional: the full source is the source of truth.
@@ -228,9 +235,11 @@ Overleaf's "phantom push with no remote change" bug.
 
 | Service | Token stored in | Set by | Persists across container rebuild? |
 |---|---|---|---|
-| Overleaf | host OS keychain (`fnStoreSecret("overleaf_token", ...)`) | [syncRoutes.py:649](../vaibify/gui/routes/syncRoutes.py#L649) | Yes — host-side |
-| GitHub | container keyring (`fnStoreCredentialInContainer`) | [syncDispatcher.py:867](../vaibify/gui/syncDispatcher.py#L867) | Yes — via named credentials volume |
-| Zenodo | container keyring (`fnStoreCredentialInContainer`) | [syncDispatcher.py:867](../vaibify/gui/syncDispatcher.py#L867) | Yes — via named credentials volume |
+| Overleaf | host OS keychain (`fnStoreSecret("overleaf_token", ...)`) | `_fnDispatchStore` in [syncRoutes.py](../vaibify/gui/routes/syncRoutes.py) | Yes — host-side |
+| GitHub | container keyring (`fnStoreCredentialInContainer`, defined in [syncDispatcher.py](../vaibify/gui/syncDispatcher.py)) | `_fnDispatchStore` in [syncRoutes.py](../vaibify/gui/routes/syncRoutes.py) | Yes — via named credentials volume |
+| Zenodo | container keyring (`fnStoreCredentialInContainer`, per-instance slot via `fsZenodoTokenNameForInstance`) | `_fnDispatchStore` in [syncRoutes.py](../vaibify/gui/routes/syncRoutes.py) | Yes — via named credentials volume |
+
+(arXiv needs no credential: it is read-only against public e-prints.)
 
 The GUI's Restart and Rebuild actions both do `docker rm + docker
 run`, so in-container writable layers are ephemeral. Container-side
@@ -267,7 +276,11 @@ These lifted cleanly once the third service was in place:
   reimplementing the HTTP surface. One bearer-token path for both
   host and container.
 
-### Still candidates to extract (when a fourth service lands)
+### Still candidates to extract (when a fourth *push* service lands)
+
+arXiv, the fourth service overall, landed on the read-only
+verification side only, so these push-side helpers still have exactly
+three instances:
 
 - `fsRedactStderr` helper (overleafMirror / overleafSync; the
   container-shipped copy is deliberately divergent).
@@ -324,10 +337,10 @@ grew optional `sToken` / `sBaseUrl` kwargs, tqdm moved to lazy
 imports, the archive script dropped from ~90 lines of inline HTTP
 to ~55 lines of method calls.
 
-### Do NOT modularize yet (wait for four)
+### Do NOT modularize yet (wait for a fourth push service)
 
 These felt common across Overleaf and GitHub but may not transfer
-when the fourth service lands:
+when another push-side service lands:
 
 - `flistDetectCaseCollisions` — Overleaf-specific case folding;
   didn't need it for GitHub.
@@ -399,6 +412,9 @@ GitHub:
 Zenodo:
 - [vaibify/reproducibility/zenodoClient.py](../vaibify/reproducibility/zenodoClient.py) (host module AND container CLI — shipped in)
 - [vaibify/reproducibility/dataArchiver.py](../vaibify/reproducibility/dataArchiver.py) (host-side archive orchestration)
+
+arXiv:
+- [vaibify/reproducibility/arxivClient.py](../vaibify/reproducibility/arxivClient.py) (read-only e-print mirror; verification side only)
 
 Frontend:
 - [vaibify/gui/static/scriptSyncManager.js](../vaibify/gui/static/scriptSyncManager.js)

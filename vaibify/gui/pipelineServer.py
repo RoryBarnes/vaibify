@@ -71,8 +71,10 @@ __all__ = [
 
 from . import actionCatalog
 from . import agentSessionBridge
+from . import browserSession
 from . import conftestManager
 from . import containerOwnership
+from . import sessionLifecycle
 from . import workflowManager
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
 from .figureServer import fsMimeTypeForFile
@@ -85,7 +87,6 @@ from .pipelineRunner import (
 )
 from .pipelineUtils import fsShellQuote
 from .resourceMonitor import fdictGetContainerStats
-from .terminalSession import TerminalSession
 
 
 STATIC_DIRECTORY = os.path.join(os.path.dirname(__file__), "static")
@@ -774,7 +775,8 @@ def fdictInteractiveContextForContainer(sContainerId):
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
-    dictPipelineTasks=None,
+    dictPipelineTasks=None, dictDurableContext=None,
+    fbFrameCredentialStillActive=None,
 ):
     """Receive and dispatch pipeline WebSocket messages.
 
@@ -801,7 +803,17 @@ async def fnPipelineMessageLoop(
 
     try:
         while True:
-            dictRequest = json.loads(await websocket.receive_text())
+            sFrameText = await websocket.receive_text()
+            # Per-frame re-auth backstop (design §5, slice 6): a frame
+            # already in flight when its session was revoked must be
+            # refused, not dispatched — the active close is the
+            # authority, this is the backstop behind it.
+            if fbFrameCredentialStillActive is not None and (
+                not fbFrameCredentialStillActive()
+            ):
+                await websocket.close(code=4401)
+                return
+            dictRequest = json.loads(sFrameText)
             sAction = dictRequest.get("sAction", "")
             if sAction in ("interactiveResume", "interactiveSkip"):
                 _fnHandleInteractiveResponse(
@@ -821,6 +833,16 @@ async def fnPipelineMessageLoop(
                     _fdictBusyRefusalEvent(sAction, dictRequest),
                 )
                 continue
+            sBusyWork = _fsDescribeBlockingMutationWork(
+                dictDurableContext,
+            )
+            if sBusyWork:
+                await fnCallback(
+                    _fdictBusyRefusalEvent(
+                        sAction, dictRequest, sBusyWork,
+                    ),
+                )
+                continue
             dictOverwriteRefusal = await _fdictRemoteOverwriteRefusal(
                 sAction, dictRequest, connectionDocker,
                 sContainerId, dictWorkflow,
@@ -828,20 +850,67 @@ async def fnPipelineMessageLoop(
             if dictOverwriteRefusal is not None:
                 await fnCallback(dictOverwriteRefusal)
                 continue
-            taskPipeline = asyncio.create_task(
-                _fnSafeDispatch(
-                    sAction, dictRequest, connectionDocker,
-                    sContainerId, dictWorkflow,
-                    dictWorkflowPathCache, sWorkflowDirectory,
-                    fnCallback, dictInteractive,
+            def fnStartDispatchTask(
+                sActionBound=sAction, dictRequestBound=dictRequest,
+            ):
+                return asyncio.create_task(
+                    _fnSafeDispatch(
+                        sActionBound, dictRequestBound, connectionDocker,
+                        sContainerId, dictWorkflow,
+                        dictWorkflowPathCache, sWorkflowDirectory,
+                        fnCallback, dictInteractive,
+                    )
                 )
+
+            taskPipeline, iOwnerGeneration = await _ftLaunchDispatchTask(
+                dictDurableContext, sContainerId, fnStartDispatchTask,
             )
+            if taskPipeline is None:
+                await fnCallback(
+                    _fdictBusyRefusalEvent(sAction, dictRequest),
+                )
+                continue
             if dictPipelineTasks is not None:
                 _fnRegisterPipelineTask(
                     dictPipelineTasks, sContainerId, taskPipeline,
+                    iOwnerGeneration=iOwnerGeneration,
                 )
     finally:
         _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
+
+
+async def _ftLaunchDispatchTask(
+    dictDurableContext, sContainerId, fnStartDispatchTask,
+):
+    """Launch a dispatch as a mode-(c) durable task when wired.
+
+    With a durable context (the production WebSocket path) the task is
+    registered through the commit-guard carrier: it inherits the
+    durable admission, its container-side execs are journaled through
+    the create -> journal -> start split, and a concurrent durable
+    launch or stale lane tuple is refused as ``(None, 1)`` — the
+    caller answers with the honest busy/refusal event. Without a
+    durable context (direct library and test callers) the task runs
+    exactly as before.
+    """
+    if dictDurableContext is None:
+        return (fnStartDispatchTask(), 1)
+    from . import commitCarrier
+    try:
+        dictLaunch = await commitCarrier.fdictLaunchDurableTask(
+            dictDurableContext["appState"], dictDurableContext["sName"],
+            sContainerId, dictDurableContext["dictLaneTuple"],
+            fnStartDispatchTask,
+        )
+    except commitCarrier.CommitRefusedError as error:
+        logger.warning(
+            "Durable dispatch refused for container %s: %s",
+            sContainerId, error,
+        )
+        return (None, 1)
+    if not dictLaunch["bLaunched"]:
+        return (None, 1)
+    return (dictLaunch["taskAsync"], dictLaunch["iOwnerGeneration"])
 
 
 def _fnRecordDispatchAttribution(
@@ -924,6 +993,35 @@ def _fbRefuseWhilePipelineTaskLive(dictPipelineTasks, sContainerId):
         return False
     taskLive = dictPipelineTasks.get(sContainerId)
     return taskLive is not None and not taskLive.done()
+
+
+def _fsDescribeBlockingMutationWork(dictDurableContext):
+    """Return what holds this container's mutation lock, or ``""``.
+
+    The blind spot beside :func:`_fbRefuseWhilePipelineTaskLive`, which
+    consults ``dictPipelineTasks`` and so sees only pipeline actions
+    dispatched over THIS WebSocket. An HTTP route holding the drain —
+    a test run, a plot conversion, a clean — is invisible to it, so a
+    Run Step arriving mid-test-suite was not refused: it reached
+    ``fdictLaunchDurableTask``, blocked on the mutation lock for as
+    long as that work took, and the researcher saw an unexplained wait
+    with no way to tell a slow container from a wedged one. Refusing at
+    once and naming the holder is the rule transfers already follow;
+    nothing here waits, and reading the registry cannot itself block.
+
+    Empty without a durable context (the direct-library and test path):
+    there is no app state to consult, and manufacturing a refusal would
+    refuse callers that never contended for a lock. Note the direction
+    that matters — mode-(a) commits (draft, file, settings and workflow
+    saves) register NO supervisor and take NO lock, so they never
+    appear here and must never block a run.
+    """
+    if dictDurableContext is None:
+        return ""
+    from . import commitCarrier
+    return commitCarrier.fsDescribeLiveMutationWork(
+        dictDurableContext["appState"], dictDurableContext["sName"],
+    )
 
 
 _SET_REMOTE_GATED_ACTIONS = frozenset({
@@ -1095,18 +1193,31 @@ def _fdictRemoteOverwriteEvent(
     }
 
 
-def _fdictBusyRefusalEvent(sAction, dictRequest):
-    """Return the honest refusal event for a run-while-running attempt.
+def _fdictBusyRefusalEvent(sAction, dictRequest, sBusyDescription=""):
+    """Return the honest refusal event for a run-while-busy attempt.
 
     Carries the refused step indices so the browser can reset only the
     lights it optimistically set to "queued", leaving the in-flight
     run's statuses untouched.
+
+    ``sBusyDescription`` NAMES what holds the container when the
+    blocker is a carrier worker rather than a pipeline action: an
+    ``asyncio.Lock`` knows only that it is held, and "busy" cannot tell
+    a researcher whether to wait two seconds or abandon the attempt.
+    The REMEDY differs with the blocker, so it is not shared text — the
+    Kill button stops a pipeline action and does nothing to a carrier
+    worker, and a refusal that misdescribes its own remedy sends the
+    researcher to a control that cannot help.
     """
     return {
         "sType": "runRefused",
         "sAction": sAction,
         "listStepIndices": dictRequest.get("listStepIndices", []),
         "sMessage": (
+            f"Refused '{sAction}': {sBusyDescription} is still running "
+            "in this container and holds it until it finishes. Retry "
+            "when it does."
+            if sBusyDescription else
             f"Refused '{sAction}': a pipeline action is already "
             "running in this container. Wait for it to finish, or "
             "stop it with the Kill button, then retry."
@@ -1114,7 +1225,9 @@ def _fdictBusyRefusalEvent(sAction, dictRequest):
     }
 
 
-def _fnRegisterPipelineTask(dictPipelineTasks, sContainerId, taskPipeline):
+def _fnRegisterPipelineTask(
+    dictPipelineTasks, sContainerId, taskPipeline, iOwnerGeneration=1,
+):
     """Store a pipeline task and arrange for self-eviction on completion.
 
     Without the done-callback, completed-normally tasks linger in
@@ -1123,10 +1236,23 @@ def _fnRegisterPipelineTask(dictPipelineTasks, sContainerId, taskPipeline):
     after the task finishes (success, failure, or cancellation) and
     drops the entry only if it still points at this task, so a brand-new
     run for the same container is never accidentally evicted.
+
+    Task ownership is a MUTABLE ``iOwnerGeneration`` field on the task
+    record itself, retagged in place by a host transfer (design §2.3) —
+    never a parallel ``{id: generation}`` map, which turns ambiguous when
+    an old completion callback fires after a transfer. The done-callback
+    therefore reads the record's generation at completion time, not a
+    snapshot captured at registration.
     """
+    taskPipeline.iOwnerGeneration = iOwnerGeneration
     dictPipelineTasks[sContainerId] = taskPipeline
 
     def fnEvictOnDone(taskCompleted):
+        logger.debug(
+            "Pipeline task for %s finished under owner generation %s",
+            sContainerId,
+            getattr(taskCompleted, "iOwnerGeneration", 0),
+        )
         if dictPipelineTasks.get(sContainerId) is taskCompleted:
             dictPipelineTasks.pop(sContainerId, None)
     taskPipeline.add_done_callback(fnEvictOnDone)
@@ -1211,11 +1337,23 @@ async def fnTerminalReadLoop(session, websocket, dictInteractive=None):
             fnSignalTerminalAbnormalExit(dictInteractive)
 
 
-async def fnTerminalInputLoop(session, websocket):
-    """Receive WebSocket messages and route to terminal session."""
+async def fnTerminalInputLoop(
+    session, websocket, fbFrameCredentialStillActive=None,
+):
+    """Receive WebSocket messages and route to terminal session.
+
+    Applies the same per-frame re-auth backstop as the pipeline loop:
+    keystrokes from a REVOKED browser session are refused, never
+    forwarded into the container.
+    """
     while True:
         message = await websocket.receive()
         if message.get("type") == "websocket.disconnect":
+            break
+        if fbFrameCredentialStillActive is not None and (
+            not fbFrameCredentialStillActive()
+        ):
+            await websocket.close(code=4401)
             break
         if "bytes" in message:
             session.fnSendInput(message["bytes"])
@@ -1255,6 +1393,7 @@ async def fnRejectNotConnected(websocket):
 
 async def fnRunTerminalSession(
     session, websocket, dictTerminalSessions, dictInteractive=None,
+    fbFrameCredentialStillActive=None,
 ):
     """Manage terminal session lifecycle after successful start.
 
@@ -1262,7 +1401,15 @@ async def fnRunTerminalSession(
     provided, ``fnTerminalReadLoop`` posts a ``complete:130`` sentinel
     on abnormal exit so a runner paused at ``interactiveComplete`` does
     not deadlock when the terminal-WS dies (audit HIGH #9).
+
+    The close path drains the session's containment record BEFORE the
+    socket close (design §7: a socket closing is not a terminal dying):
+    input is fenced, the recorded process group is terminated and
+    PROVEN empty in a worker thread — or the record retains-and-
+    quarantines — and only then are the exit keystrokes and socket
+    close of ``fnClose`` a mere courtesy instead of the only teardown.
     """
+    from . import terminalContainment
     sSessionId = session.sSessionId
     dictTerminalSessions[sSessionId] = session
     await websocket.send_json(
@@ -1272,12 +1419,18 @@ async def fnRunTerminalSession(
         fnTerminalReadLoop(session, websocket, dictInteractive)
     )
     try:
-        await fnTerminalInputLoop(session, websocket)
+        await fnTerminalInputLoop(
+            session, websocket,
+            fbFrameCredentialStillActive=fbFrameCredentialStillActive,
+        )
     except WebSocketDisconnect:
         pass
     finally:
-        session.fnClose()
         taskReader.cancel()
+        await asyncio.to_thread(
+            terminalContainment.fnDrainSessionRecord, session,
+        )
+        session.fnClose()
         dictTerminalSessions.pop(sSessionId, None)
 
 
@@ -1285,7 +1438,9 @@ async def fnRunTerminalSession(
 # Pipeline WebSocket handler
 # ---------------------------------------------------------------
 
-async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
+async def fnHandlePipelineWs(
+    websocket, dictCtx, sContainerId, fbFrameCredentialStillActive=None,
+):
     """Accept and run the pipeline WebSocket session."""
     await websocket.accept()
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
@@ -1298,9 +1453,44 @@ async def fnHandlePipelineWs(websocket, dictCtx, sContainerId):
             websocket, dictCtx["docker"], sContainerId,
             dictWorkflow, dictCtx["paths"], sDir,
             dictPipelineTasks=dictCtx["pipelineTasks"],
+            dictDurableContext=_fdictBuildDurableDispatchContext(
+                websocket, dictCtx, sContainerId,
+            ),
+            fbFrameCredentialStillActive=fbFrameCredentialStillActive,
         )
     except WebSocketDisconnect:
         pass
+
+
+def _fdictBuildDurableDispatchContext(websocket, dictCtx, sContainerId):
+    """Bind the socket's owner name and lane tuple for mode-(c) launches.
+
+    Returns ``None`` when the socket cannot be bound to an owned
+    container (a viewer serving an unclaimed container, or a test
+    harness with no owner map) — dispatch then runs on the legacy
+    unregistered path rather than refusing work the ownership model
+    does not yet cover.
+    """
+    appState = getattr(getattr(websocket, "app", None), "state", None)
+    if appState is None:
+        return None
+    dictContainerOwners = dictCtx.get("dictContainerOwners", {}) or {}
+    for sName, recordOwner in dictContainerOwners.items():
+        if recordOwner.sContainerId == sContainerId or sName == sContainerId:
+            break
+    else:
+        return None
+    from . import commitCarrier
+    dictLaneTuple = commitCarrier.fdictBuildLaneTupleFromWebSocket(
+        appState, sName, websocket,
+    )
+    if dictLaneTuple is None:
+        return None
+    return {
+        "appState": appState,
+        "sName": sName,
+        "dictLaneTuple": dictLaneTuple,
+    }
 
 
 # ---------------------------------------------------------------
@@ -1320,7 +1510,7 @@ def _fsResolveContainerUser(dictCtx, sContainerId):
     return "researcher"
 
 
-def _fnAuthorizeContainer(dictCtx, sContainerId):
+def _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId=""):
     """Cache the container's user and register the viewer's served record.
 
     Hub authorization is decided by the lease recorded at claim time, so
@@ -1329,24 +1519,38 @@ def _fnAuthorizeContainer(dictCtx, sContainerId):
     holds exactly one container for its process lifetime and has no claim
     route, so its served container is recorded in ``dictContainerOwners``
     here purely to keep the idle busy-veto honest about a mid-run viewer.
+    The browser session id is threaded through so the viewer's
+    first-connect ownership is bound to the connecting session.
     """
-    _fnRegisterViewerServedContainer(dictCtx, sContainerId)
+    _fnRegisterViewerServedContainer(
+        dictCtx, sContainerId, sBrowserSessionId,
+    )
     dictCtx["containerUsers"][sContainerId] = (
         _fsResolveContainerUser(dictCtx, sContainerId)
     )
     _fnPushAgentSession(dictCtx, sContainerId)
 
 
-def _fnRegisterViewerServedContainer(dictCtx, sContainerId):
-    """Record a viewer's served container, keyed by its canonical name.
+def _fnRegisterViewerServedContainer(
+    dictCtx, sContainerId, sBrowserSessionId="",
+):
+    """Establish a viewer's ownership of its served container (first-come).
 
-    The viewer has no claim route, so it mints its own lease here and
-    must key the record by the SAME canonical name the gate, reaper, and
-    keep-alive teardown use (per the owner-map key decision) -- keying by
-    the raw docker id would make every gate lookup miss and would stop
-    keep-alive by the wrong key on teardown. The minted lease is stashed
-    on ``dictCtx['sViewerLease']`` so the connect response can hand it to
-    the viewer's browser, which then presents it on its WebSockets.
+    The viewer has no claim route, so first connect *establishes*
+    ownership: it mints its own lease here and keys the record by the
+    SAME canonical name the gate, reaper, and keep-alive teardown use
+    (per the owner-map key decision) -- keying by the raw docker id would
+    make every gate lookup miss and would stop keep-alive by the wrong
+    key on teardown. The record is bound to the connecting browser
+    session (``sBrowserSessionId``) so a later connect can be arbitrated:
+    the same session (or an unbound, transitional owner) reclaims the
+    same lease idempotently, while a DIFFERENT non-empty session is
+    refused 409 -- a viewer serves one local researcher, first-come-wins.
+    Transitionally (shared-token era) no credential resolves, so
+    ``sBrowserSessionId`` is '' and the record is left unbound, preserving
+    the current viewer flow. The minted lease is stashed on
+    ``dictCtx['sViewerLease']`` so the connect response can hand it to the
+    viewer's browser, which then presents it on its WebSockets.
     """
     if dictCtx.get("bIsHub"):
         return
@@ -1354,16 +1558,51 @@ def _fnRegisterViewerServedContainer(dictCtx, sContainerId):
     if dictContainerOwners is None:
         return
     sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
-    if sName in dictContainerOwners:
-        dictCtx["sViewerLease"] = dictContainerOwners[sName].sLeaseId
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is not None:
+        _fnAuthorizeExistingViewerOwner(recordOwner, sBrowserSessionId)
+        dictCtx["sViewerLease"] = recordOwner.sLeaseId
         return
+    # Cardinality on the creation path (design §9): a session that
+    # already holds a different container is refused before a second
+    # record is minted. This read runs synchronously on the event loop
+    # (no await between check and write), so it cannot interleave with
+    # the lock-guarded claim path's read-check-write.
+    sHeldElsewhereName = containerOwnership.fsConflictingHeldContainer(
+        dictCtx.get("dictSessionOwner"), sBrowserSessionId, sName,
+    )
+    if sHeldElsewhereName:
+        raise HTTPException(
+            409,
+            "This browser session already holds container "
+            f"'{sHeldElsewhereName}'; release it before connecting another",
+        )
     sLeaseId = containerOwnership.fsMintLease()
     dictContainerOwners[sName] = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
         sAgentToken=containerOwnership.fsMintAgentToken(),
         sContainerId=sContainerId,
+        sBrowserSessionId=sBrowserSessionId,
     )
+    dictSessionOwner = dictCtx.get("dictSessionOwner")
+    if dictSessionOwner is not None and sBrowserSessionId:
+        dictSessionOwner[sBrowserSessionId] = sName
     dictCtx["sViewerLease"] = sLeaseId
+
+
+def _fnAuthorizeExistingViewerOwner(recordOwner, sBrowserSessionId):
+    """Refuse a viewer re-connect from a session that is not the owner.
+
+    An unbound owner (transitional, shared-token era) admits any
+    re-connect; a bound owner admits only its own session. A different
+    non-empty session is a second researcher racing the viewer and is
+    refused, mirroring the hub claim's copied-lease arbitration.
+    """
+    if recordOwner.sBrowserSessionId == "":
+        return
+    if recordOwner.sBrowserSessionId == sBrowserSessionId:
+        return
+    raise HTTPException(409, "In use in another browser session")
 
 
 def _fsAgentTokenForContainerId(dictCtx, sContainerId):
@@ -1393,9 +1632,9 @@ def _fnPushAgentSession(dictCtx, sContainerId):
         )
 
 
-def _fdictConnectNoWorkflow(dictCtx, sContainerId):
+def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
     """Return response for no-workflow mode."""
-    _fnAuthorizeContainer(dictCtx, sContainerId)
+    _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId)
     return {
         "sContainerId": sContainerId,
         "sWorkflowPath": None,
@@ -1509,17 +1748,21 @@ def _fnCheckSupervisedIntervalAtConnect(
         )
 
 
-async def fdictHandleConnect(dictCtx, sContainerId, sWorkflowPath):
+async def fdictHandleConnect(
+    dictCtx, sContainerId, sWorkflowPath, sBrowserSessionId="",
+):
     """Load workflow, cache it, return connection response."""
     if sWorkflowPath is None:
-        return _fdictConnectNoWorkflow(dictCtx, sContainerId)
+        return _fdictConnectNoWorkflow(
+            dictCtx, sContainerId, sBrowserSessionId,
+        )
     sWorkflowPath = _fsValidateConnectWorkflowPath(sWorkflowPath)
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
         dictCtx["workflows"][sContainerId] = dictWorkflow
-        _fnAuthorizeContainer(dictCtx, sContainerId)
+        _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId)
         sResolved = fsResolveWorkflowPath(
             dictCtx["docker"], sContainerId, sWorkflowPath
         )
@@ -1750,6 +1993,22 @@ def fsComputeStaticCacheVersion():
     return str(iMaxMtime)
 
 
+# HTTP status per transfer outcome (design §6.1): the redemption
+# endpoint reports the transaction's verdict honestly — 200 only for a
+# committed (or replayed) transfer, 404 for a record reaped between
+# mint and redeem ("claim normally"), 410 for a capability that must be
+# minted afresh, and 409 for busy-retry, the stale-generation ABA
+# refusal, and every retained refusal.
+_DICT_TRANSFER_OUTCOME_STATUS = {
+    sessionLifecycle.S_TRANSFER_TRANSFERRED: 200,
+    sessionLifecycle.S_TRANSFER_BUSY_RETRY: 409,
+    sessionLifecycle.S_TRANSFER_STALE_GENERATION: 409,
+    sessionLifecycle.S_TRANSFER_REFUSED: 409,
+    sessionLifecycle.S_TRANSFER_UNOWNED: 404,
+    sessionLifecycle.S_TRANSFER_EXPIRED: 410,
+}
+
+
 def _fnRegisterStaticFiles(app, dictCtx):
     """Register index page, token endpoint, and static file mount."""
 
@@ -1766,17 +2025,70 @@ def _fnRegisterStaticFiles(app, dictCtx):
             headers={"Cache-Control": "no-cache, no-store"},
         )
 
-    @app.get("/api/session-token")
-    async def fnGetSessionToken(request: Request):
+    @app.post("/api/bootstrap")
+    async def fnBootstrapSession(request: Request):
+        """Exchange a launch capability for a per-browser credential.
+
+        The capability is carried in the browser's URL fragment and
+        posted here once; the container never holds it, so the agent lane
+        is refused outright. Redemption is bounded-replay: a retried
+        exchange within the capability's TTL returns the same credential.
+        """
         if request.headers.get(
             actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
         ):
             raise HTTPException(
                 status_code=403,
-                detail="The in-container agent must not read the hub "
-                "session token.",
+                detail="The in-container agent must not bootstrap a "
+                "browser session.",
             )
-        return {"sToken": dictCtx["sSessionToken"]}
+        try:
+            dictBody = await request.json()
+        except Exception:  # noqa: BLE001 — malformed body is just invalid
+            dictBody = {}
+        sCapability = (dictBody or {}).get("sCapability", "")
+        sSessionId, sCredential = browserSession.ftRedeemCapability(
+            dictCtx["dictBrowserSessions"], sCapability,
+        )
+        if not sCredential:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired bootstrap capability.",
+            )
+        return {"sSessionId": sSessionId, "sCredential": sCredential}
+
+    @app.post("/api/transfer")
+    async def fnRedeemTransferCapability(request: Request):
+        """Redeem a host-minted transfer capability (design §6, slice 5).
+
+        The commit half of ``vaibify open``: the capability was minted
+        over the peer-authenticated host control socket and redeeming
+        it commits ``sessionLifecycle.ftTransferOwnership``. Bounded
+        replay is deliberate — the CLI redeems first so the outcome
+        lands in the terminal, and the launched browser replays the
+        same capability from its URL fragment for the same tuple.
+        """
+        from fastapi.responses import JSONResponse
+        if request.headers.get(
+            actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="The in-container agent must not redeem a "
+                "transfer capability.",
+            )
+        try:
+            dictBody = await request.json()
+        except Exception:  # noqa: BLE001 — malformed body is just invalid
+            dictBody = {}
+        sCapability = (dictBody or {}).get("sCapability", "")
+        sOutcome, dictPayload = await sessionLifecycle.ftTransferOwnership(
+            request.app.state, sCapability,
+        )
+        return JSONResponse(
+            status_code=_DICT_TRANSFER_OUTCOME_STATUS.get(sOutcome, 409),
+            content=dict(dictPayload, sOutcome=sOutcome),
+        )
 
     if os.path.isdir(STATIC_DIRECTORY):
         app.mount(
@@ -1892,7 +2204,8 @@ _DICT_ROUTE_RE_EXPORTS = {
     # figureRoutes
     "_flistBuildFigureCheckPaths": "routes.figureRoutes",
     # fileRoutes
-    "_fnDockerCopy": "routes.fileRoutes",
+    "_fnRefuseDirectorySource": "routes.fileRoutes",
+    "_fsPullContainerFileToHost": "routes.fileRoutes",
     "_fnValidateHostDestination": "routes.fileRoutes",
     # workflowRoutes
     "_fnRejectDuplicateWorkflowName": "routes.workflowRoutes",
@@ -2157,7 +2470,9 @@ from .serverLifespan import (  # noqa: E402,F401
     _fnRegisterDefaultThreadPoolExecutor,
     _fnRegisterIdleShutdownWatchdog,
     _fnRegisterPeriodicContainerSweep,
+    _fnRegisterSessionLifecycleEvaluator,
     _fnRunOneContainerSweep,
+    _fnSessionLifecycleEvaluatorLoop,
     _fnRunShutdownHookSafely,
     _fnRunStartupHookSafely,
     fnDecrementWebSocketCount,

@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes.syncRoutes import (
     _fnRegisterRemoteVerify,
     _fnRegisterRemoteVerifyStatus,
@@ -63,7 +64,20 @@ def fixtureProjectRepo(tmp_path):
 
 
 @pytest.fixture
-def fixtureCtxAndApp(fixtureProjectRepo):
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down: this module drives a bare ``FastAPI()``.
+
+    The verify route rewrites ``syncStatus.json`` inside the project
+    repo through carrier mode (b), which a bare app cannot satisfy.
+    See ``tests/carrierStandDown.py`` for what this costs; the
+    admission is proven in ``tests/testCarrierMigratedRoutes.py``.
+    """
+    from vaibify.gui.routes import syncRoutes
+    fnStandCarrierDown(monkeypatch, syncRoutes)
+
+
+@pytest.fixture
+def fixtureCtxAndApp(fixtureProjectRepo, fixtureCarrierStoodDown):
     """Build a minimal FastAPI app with verify + status routes."""
     app = FastAPI()
     dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)

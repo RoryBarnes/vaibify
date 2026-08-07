@@ -217,6 +217,58 @@ var VaibifyPolling = (function () {
         }
     }
 
+    /* --- Session-lifetime poller (pre-expiry warning) ---
+       The browser session has a server-side absolute cap. How long is
+       left is BACKEND truth, read from the session record on every
+       tick: a countdown the page kept for itself would drift, would
+       keep counting after a hub restart replaced the session, and
+       could not see a cap tuned by the environment -- three ways to
+       show a deadline that is not the real one. One minute is a fine
+       cadence for a warning measured in tens of minutes, and this
+       poller is deliberately container-independent so a session on
+       the picker is warned too. */
+
+    var _iSessionLifetimePollTimer = null;
+    var _bSessionLifetimeInFlight = false;
+    var _fnOnSessionLifetime = null;
+    var _I_SESSION_LIFETIME_INTERVAL_MS = 60000;
+
+    function fnSetSessionLifetimeHandler(fnHandler) {
+        _fnOnSessionLifetime = fnHandler;
+    }
+
+    function fnStartSessionLifetimePolling() {
+        fnStopSessionLifetimePolling();
+        _fnPollSessionLifetime();
+        _iSessionLifetimePollTimer = setInterval(
+            _fnPollSessionLifetime, _I_SESSION_LIFETIME_INTERVAL_MS);
+    }
+
+    function fnStopSessionLifetimePolling() {
+        if (_iSessionLifetimePollTimer) {
+            clearInterval(_iSessionLifetimePollTimer);
+            _iSessionLifetimePollTimer = null;
+        }
+    }
+
+    async function _fnPollSessionLifetime() {
+        if (_bSessionLifetimeInFlight || !_fnOnSessionLifetime) return;
+        _bSessionLifetimeInFlight = true;
+        try {
+            try {
+                var dictLifetime = await VaibifyApi.fdictGet(
+                    "/api/session/lifetime"
+                );
+                _fnReportPollSuccess("session-lifetime");
+                _fnOnSessionLifetime(dictLifetime);
+            } catch (error) {
+                _fnReportPollFailure("session-lifetime", error);
+            }
+        } finally {
+            _bSessionLifetimeInFlight = false;
+        }
+    }
+
     /* --- Prompt Record capture poller (Replay axis) ---
        Dedicated 30 s poller so transcript capture never taxes the
        hot file-status path. It fires only while the app's predicate
@@ -402,6 +454,9 @@ var VaibifyPolling = (function () {
         fnSetWorkflowDiscoveryHandler: fnSetWorkflowDiscoveryHandler,
         fnStartDiscoveryPolling: fnStartDiscoveryPolling,
         fnStopDiscoveryPolling: fnStopDiscoveryPolling,
+        fnSetSessionLifetimeHandler: fnSetSessionLifetimeHandler,
+        fnStartSessionLifetimePolling: fnStartSessionLifetimePolling,
+        fnStopSessionLifetimePolling: fnStopSessionLifetimePolling,
         fnSetPromptRecordPredicate: fnSetPromptRecordPredicate,
         fnStartPromptRecordPolling: fnStartPromptRecordPolling,
         fnStopPromptRecordPolling: fnStopPromptRecordPolling,

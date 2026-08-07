@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "dep-scan-container"
@@ -137,7 +138,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
@@ -148,7 +149,10 @@ def _fnConnectToContainer(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictConnect = responseHttp.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
 # ── Endpoint tests ─────────────────────────────────────────────
@@ -223,8 +227,12 @@ def test_scan_dependencies_non_python_command(clientHttp):
 
 
 def test_scan_dependencies_requires_connection(clientHttp):
+    # No connect, so no owning lease exists for this container. The
+    # container-owner gate refuses the unowned container (403) before the
+    # handler's own not-connected check (404) is ever reached; either is a
+    # refusal of an unconnected container, which is what this pins.
     responseHttp = clientHttp.post(
         f"/api/steps/{S_CONTAINER_ID}/1/scan-dependencies",
         json={"saDataCommands": ["python test.py"]},
     )
-    assert responseHttp.status_code == 404
+    assert responseHttp.status_code in (403, 404)

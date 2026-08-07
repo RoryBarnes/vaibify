@@ -40,12 +40,42 @@ SET_GENERIC_FILENAME_EXAMPLES = {
 }
 
 
+# Nested checkouts are not repository content. `.git` was always
+# excluded; agent worktrees under `.claude/worktrees/` must be too, and
+# not merely to quieten the report. They are a false NEGATIVE source:
+# `fbBareFilenameResolves` searches the whole tree, so a reference to a
+# file deleted on this branch still resolves against a worktree that
+# predates the deletion, and the check passes while CI -- which has no
+# worktrees -- fails. Discovered when withdrawing the host-side
+# director module left two live worktrees holding the old docs.
+#
+# The parts are matched RELATIVE to the repository root, never against
+# the absolute path. The first version of this exclusion matched
+# absolute parts, so running inside a worktree -- where the root itself
+# lives under `worktrees/` -- excluded EVERY file, found zero documents
+# and exited 0. A scan that reports clean because it looked at nothing
+# is the failure this whole tool exists to prevent, which is why
+# `fnCheckAgentDocs` now refuses an empty document set outright.
+SET_EXCLUDED_TREE_PARTS = (".git", "worktrees")
+
+
+def fbPathIsInsideExcludedTree(pathCandidate):
+    """Return True when a path lies inside .git or an agent worktree."""
+    try:
+        pathRelative = pathCandidate.resolve().relative_to(REPO_ROOT.resolve())
+    except ValueError:
+        return True
+    return any(
+        sPart in SET_EXCLUDED_TREE_PARTS for sPart in pathRelative.parts
+    )
+
+
 def flistFindAgentsFiles(pathRoot):
     """Return every AGENTS.md and SKILL.md under the repo."""
     listResults = sorted(pathRoot.rglob("AGENTS.md"))
     if SKILL_ROOT.exists():
         listResults.extend(sorted(SKILL_ROOT.rglob("SKILL.md")))
-    return [p for p in listResults if ".git" not in p.parts]
+    return [p for p in listResults if not fbPathIsInsideExcludedTree(p)]
 
 
 def flistExtractPaths(sContent):
@@ -81,7 +111,7 @@ def fbBareFilenameResolves(pathDoc, sFilename):
     if (REPO_ROOT / sFilename).exists():
         return True
     for pathMatch in REPO_ROOT.rglob(sFilename):
-        if ".git" in pathMatch.parts:
+        if fbPathIsInsideExcludedTree(pathMatch):
             continue
         return True
     return False
@@ -115,6 +145,18 @@ def fnReportAndExit(listFailures):
 def fnMain():
     """Entry point invoked by CI."""
     listDocs = flistFindAgentsFiles(REPO_ROOT)
+    if not listDocs:
+        # Zero documents is never a pass. This repository always
+        # carries a root AGENTS.md, so an empty set means the discovery
+        # broke -- a bad exclusion, a wrong root -- and reporting
+        # success for having examined nothing is exactly the class of
+        # failure this tool checks for in the docs it reads.
+        print(
+            "Found no AGENTS.md or SKILL.md to check under "
+            f"{REPO_ROOT}. Discovery is broken; this is a failure, not "
+            "a clean run."
+        )
+        return 1
     listFailures = []
     for pathDoc in listDocs:
         for sRef in flistBrokenReferences(pathDoc):

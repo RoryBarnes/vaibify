@@ -17,7 +17,22 @@ var VaibifyLegendPanel = (function () {
     var _S_PANEL_ID = "aicsLegendPanel";
     var _S_BUTTON_ID = "aicsLegendButton";
     var _S_DOCUMENTATION_URL = "https://RoryBarnes.github.io/vaibify";
-    var _S_AGENT_START_COMMAND = "claude --dangerously-skip-permissions";
+    // A container hosts whichever agents its build features enabled;
+    // each command carries that agent's own skip-permissions flag.
+    var _LIST_AGENT_START_COMMANDS = [
+        {
+            sAgentName: "Claude Code",
+            sCommand: "claude --dangerously-skip-permissions",
+        },
+        {
+            sAgentName: "Codex",
+            sCommand: "codex --dangerously-bypass-approvals-and-sandbox",
+        },
+        {
+            sAgentName: "Gemini",
+            sCommand: "gemini --yolo",
+        },
+    ];
     var _bOpen = false;
     var _bOutsideClickBound = false;
 
@@ -300,15 +315,15 @@ var VaibifyLegendPanel = (function () {
     function _fsRenderUsingAiSection() {
         return '<details class="aics-help-details">' +
             '<summary>Using AI</summary>' +
-            '<p>To start the AI coding assistant, open a terminal ' +
-            'in the container and run:</p>' +
-            '<code class="aics-help-command">' +
-            fnEscapeHtml(_S_AGENT_START_COMMAND) + '</code>' +
-            '<p>Remember to include the ' +
-            '<code>--dangerously-skip-permissions</code> option ' +
-            'so the assistant works without stopping to ask ' +
-            'permission for every command.</p>' +
-            '<p>The option’s name sounds alarming, but inside ' +
+            '<p>A container can host Claude Code, Codex, or Gemini, ' +
+            'depending on the features it was built with. To start ' +
+            'an assistant, open a terminal in the container and ' +
+            'run its command:</p>' +
+            _fsRenderAgentStartCommands() +
+            '<p>Each command includes that agent&rsquo;s ' +
+            'skip-permissions option so the assistant works without ' +
+            'stopping to ask permission for every command.</p>' +
+            '<p>The options’ names sound alarming, but inside ' +
             'a vaibify container it is the intended mode. The ' +
             'container is an isolated sandbox: the assistant runs ' +
             'as an unprivileged user with no sudo, and it can only ' +
@@ -325,6 +340,18 @@ var VaibifyLegendPanel = (function () {
             'tests. Per-command permission prompts add friction ' +
             'without adding safety in this environment.</p>' +
             '</details>';
+    }
+
+    function _fsRenderAgentStartCommands() {
+        var sHtml = "";
+        for (var i = 0; i < _LIST_AGENT_START_COMMANDS.length; i++) {
+            var dictAgent = _LIST_AGENT_START_COMMANDS[i];
+            sHtml += '<p><strong>' +
+                fnEscapeHtml(dictAgent.sAgentName) + '</strong></p>' +
+                '<code class="aics-help-command">' +
+                fnEscapeHtml(dictAgent.sCommand) + '</code>';
+        }
+        return sHtml;
     }
 
     function _fsRenderStepsDivision() {

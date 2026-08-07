@@ -1295,7 +1295,7 @@ def _fnPostHeartbeat(
 
 async def _ftPrepareLogAndVariables(
     connectionDocker, sContainerId, dictWorkflow, sWorkdir,
-    fnStatusCallback,
+    fnStatusCallback, iSourceDateEpochOverride=0,
 ):
     """Set up log path, logging callback, variables, and clear output flags."""
     from .pipelineLogger import fnPruneOldLogs
@@ -1311,6 +1311,7 @@ async def _ftPrepareLogAndVariables(
     dictVariables = _fdictBuildVariables(dictWorkflow, sWorkdir)
     await _fnInjectDeterminismEnvPrefix(
         connectionDocker, sContainerId, dictWorkflow, dictVariables,
+        iSourceDateEpochOverride=iSourceDateEpochOverride,
     )
     await _fnAnnounceDegradedDeterminism(fnLogging, dictVariables)
     fnClearOutputModifiedFlags(dictWorkflow)
@@ -1321,13 +1322,14 @@ async def _fiRunWithLogging(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback, sAction, iStartStep=1,
     sWorkflowPath="", dictInteractive=None, sRunMode="full",
-    setRunStepIndices=None,
+    setRunStepIndices=None, iSourceDateEpochOverride=0,
 ):
     """Run steps with logging wrapper, writing log file on completion."""
     sLogPath, listLogLines, fnLogging, dictVariables = (
         await _ftPrepareLogAndVariables(
             connectionDocker, sContainerId, dictWorkflow,
             sWorkdir, fnStatusCallback,
+            iSourceDateEpochOverride=iSourceDateEpochOverride,
         )
     )
     listPreflightErrors = await _flistPreflightValidate(
@@ -1370,9 +1372,15 @@ async def _fiRunWithLogging(
 async def fnRunAllSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
-    bForceRun=False, dictInteractive=None,
+    bForceRun=False, dictInteractive=None, iSourceDateEpochOverride=0,
 ):
-    """Run all enabled steps with logging."""
+    """Run all enabled steps with logging.
+
+    ``iSourceDateEpochOverride`` pins ``SOURCE_DATE_EPOCH`` and the
+    figure salt to a recorded value instead of the HEAD derivation;
+    only the tier 5 rerun lane passes it — see
+    :func:`~vaibify.gui.determinismEnvironment._fsBuildDeterminismEnvPrefix`.
+    """
     if bForceRun:
         for dictStep in dictWorkflow.get("listSteps", []):
             dictStep["dictRunStats"] = {}
@@ -1382,6 +1390,7 @@ async def fnRunAllSteps(
         "forceRunAll" if bForceRun else "runAll",
         sWorkflowPath=sWorkflowPath,
         dictInteractive=dictInteractive,
+        iSourceDateEpochOverride=iSourceDateEpochOverride,
     )
 
 

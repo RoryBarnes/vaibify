@@ -193,6 +193,8 @@ var VaibifyContainerManager = (function () {
             '<div class="container-tile-menu" style="display:none;">' +
             '<div class="container-menu-item" data-action="start">' +
             "Start</div>" +
+            '<div class="container-menu-item" data-action="cancel-start">' +
+            "Cancel Start</div>" +
             '<div class="container-menu-item" data-action="stop">' +
             "Stop</div>" +
             '<div class="container-menu-item" data-action="restart">' +
@@ -331,11 +333,12 @@ var VaibifyContainerManager = (function () {
     }
 
     async function _fbClaimContainer(sName) {
-        var sLeaseId = VaibifyApp.fsGetLeaseForContainer(sName);
+        /* Any re-claim lease rides the X-Vaibify-Lease header the
+           authenticated-fetch wrapper attaches, never a query param. */
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
-                "/claim?sLeaseId=" + encodeURIComponent(sLeaseId), {});
+                "/claim", {});
             VaibifyApp.fnRecordClaimedLease(sName, dictResult.sLeaseId);
             return true;
         } catch (error) {
@@ -356,19 +359,50 @@ var VaibifyContainerManager = (function () {
 
     async function fnReleaseClaim(sName) {
         if (!sName) return;
-        var sLeaseId = VaibifyApp.fsGetLeaseForContainer(sName);
+        /* The owning lease rides the X-Vaibify-Lease header the
+           authenticated-fetch wrapper attaches, never a query param. */
         try {
             await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
-                "/release?sLeaseId=" + encodeURIComponent(sLeaseId), {});
+                "/release", {});
         } catch (error) {
-            /* release is best-effort; the grace reaper will clean up */
+            /* A 409 is a RETAINED refusal: the container is still
+               ours (a run is live, or an agent is working in it), so
+               dropping the lease here would leave this tab unable to
+               act on a container it still owns, and the picker would
+               render it as somebody else's. Say so and keep the
+               lease. Any other failure stays best-effort -- the grace
+               reaper cleans up. */
+            var iStatus = (error && error.iStatus) || 0;
+            if (iStatus === 409) {
+                VaibifyApp.fnShowToast(
+                    (error.dictDetail && error.dictDetail.sMessage) ||
+                    error.message, "warning");
+                return;
+            }
+            /* An AMBIGUOUS failure -- no status at all (timeout,
+               dropped connection) or a server error -- does not say
+               whether the release committed. Forgetting the lease on
+               a maybe stranded this tab exactly as a 409 would: it
+               could no longer act on a container it may still own.
+               Only a CONFIRMED outcome may drop the lease, so keep it
+               and let the grace reaper be the backstop. A definite
+               4xx below means the lease is already worthless. */
+            if (!iStatus || iStatus >= 500) {
+                VaibifyApp.fnShowToast(
+                    "Could not confirm the release of '" + sName +
+                    "'. Keeping this session's claim -- retry, or let " +
+                    "it time out.", "warning");
+                return;
+            }
         }
         VaibifyApp.fnForgetLease();
     }
 
     async function fnHandleContainerAction(sName, sAction) {
         if (sAction === "start") await fnStartContainer(sName);
+        else if (sAction === "cancel-start")
+            await fnCancelStartContainer(sName);
         else if (sAction === "stop") await fnStopContainer(sName);
         else if (sAction === "restart") await fnRestartContainer(sName);
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
@@ -496,9 +530,56 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    var _iBuildProgressTimer = null;
+
+    function _fnRenderBuildProgress(dictProgress) {
+        var elTail = document.getElementById("buildProgressTail");
+        if (!elTail) return;
+        var saLines = dictProgress.saTailLines || [];
+        if (!saLines.length) return;
+        elTail.style.display = "block";
+        elTail.textContent = saLines.join("\n");
+        elTail.scrollTop = elTail.scrollHeight;
+    }
+
+    function _fnStartBuildProgressPoll(sName) {
+        _fnStopBuildProgressPoll();
+        _iBuildProgressTimer = setInterval(async function () {
+            try {
+                _fnRenderBuildProgress(await _fdictFetchBuildProgress(
+                    sName));
+            } catch (error) {
+                // A transient poll failure must not disturb the build;
+                // the blocking POST owns success/failure reporting.
+            }
+        }, 1500);
+    }
+
+    function _fnStopBuildProgressPoll() {
+        if (_iBuildProgressTimer !== null) {
+            clearInterval(_iBuildProgressTimer);
+            _iBuildProgressTimer = null;
+        }
+    }
+
+    function _fdictFetchBuildProgress(sName) {
+        return VaibifyApi.fdictGet(
+            "/api/containers/" + encodeURIComponent(sName)
+            + "/build/progress");
+    }
+
+    function _fnResetBuildProgressTail() {
+        var elTail = document.getElementById("buildProgressTail");
+        if (!elTail) return;
+        elTail.textContent = "";
+        elTail.style.display = "none";
+    }
+
     async function fnBuildContainer(sName, bNoCache) {
         var elOverlay = document.getElementById("modalBuildProgress");
+        _fnResetBuildProgressTail();
         elOverlay.style.display = "flex";
+        _fnStartBuildProgressPoll(sName);
         try {
             var sUrl = "/api/containers/" +
                 encodeURIComponent(sName) + "/build";
@@ -507,11 +588,50 @@ var VaibifyContainerManager = (function () {
             VaibifyApp.fnShowToast("Build complete", "success");
             await fnStartContainer(sName);
         } catch (error) {
-            _fnReportBuildFailure(error);
+            if (error.iStatus === 409) {
+                await _fnWatchRunningBuild(sName);
+            } else {
+                _fnReportBuildFailure(error);
+            }
         } finally {
+            _fnStopBuildProgressPoll();
             elOverlay.style.display = "none";
             fnLoadContainers();
         }
+    }
+
+    async function _fnWatchRunningBuild(sName) {
+        // The 409 means a build for this project is already running —
+        // typically started by a tab that has since closed. The docker
+        // build outlives the request that started it, so watch that
+        // build to completion instead of reporting a failure.
+        VaibifyApp.fnShowToast(
+            "A build for this project is already running; " +
+            "attaching to its progress.", "info");
+        var dictProgress;
+        while (true) {
+            try {
+                dictProgress = await _fdictFetchBuildProgress(sName);
+            } catch (error) {
+                VaibifyApp.fnShowToast(
+                    "Lost contact with the running build; refresh " +
+                    "to check its status.", "error");
+                return;
+            }
+            _fnRenderBuildProgress(dictProgress);
+            if (!dictProgress.bLive) break;
+            await new Promise(function (fnResolve) {
+                setTimeout(fnResolve, 1500);
+            });
+        }
+        if (dictProgress.sOutcome === "succeeded") {
+            VaibifyApp.fnShowToast("Build complete", "success");
+            await fnStartContainer(sName);
+            return;
+        }
+        VaibifyApp.fnShowToast(
+            "The running build failed; see the hub log for the " +
+            "full output.", "error");
     }
 
     function _fnReportBuildFailure(error) {
@@ -550,14 +670,164 @@ var VaibifyContainerManager = (function () {
         elDot.className = "status-dot status-pending";
     }
 
-    async function fnStartContainer(sName) {
+    /* Reservation ids of failed starts this tab has already SHOWN the
+       researcher, keyed by container name. Naming one is how the next
+       start says "I read that failure and mean to try again" -- the
+       server refuses a start that would silently relaunch after an
+       unacknowledged failure (design 10b). */
+    var _dictAcknowledgedStartFailure = {};
+
+    var _I_START_POLL_INTERVAL_MILLISECONDS = 1000;
+    var _I_START_POLL_LIMIT = 900;
+
+    /* The name of a start this tab is following, remembered across a
+       reload. A start outlives the request that asked for it, so a
+       researcher who reloads mid-start used to be stranded: the server
+       was still pulling, the outcome and the lease were waiting on the
+       poll, and nothing in the reloaded page was polling. sessionStorage
+       is per-tab and survives a reload, which is exactly the scope of
+       "this tab is following that start". */
+    var S_PENDING_START_KEY = "vaibifyPendingStartName";
+
+    function _fnRememberPendingStart(sName) {
+        try {
+            window.sessionStorage.setItem(S_PENDING_START_KEY, sName);
+        } catch (error) {
+            /* A tab with storage disabled simply loses reload recovery;
+               it must not lose the ability to start a container. */
+        }
+    }
+
+    function _fnForgetPendingStart() {
+        try {
+            window.sessionStorage.removeItem(S_PENDING_START_KEY);
+        } catch (error) {
+            /* See above. */
+        }
+    }
+
+    async function fnResumeInterruptedStart() {
+        var sName = null;
+        try {
+            sName = window.sessionStorage.getItem(S_PENDING_START_KEY);
+        } catch (error) {
+            return;
+        }
+        if (!sName) return;
         fnSetTilePending(sName);
         try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/containers/" + encodeURIComponent(sName)
-                + "/start"
+            await _fnFollowStartToItsOutcome(sName, {});
+        } catch (error) {
+            _fnForgetPendingStart();
+        }
+    }
+
+    async function fnStartContainer(sName) {
+        fnSetTilePending(sName);
+        _fnRememberPendingStart(sName);
+        try {
+            var dictStart = await VaibifyApi.fdictPost(
+                _fsContainerUrl(sName, "/start"),
+                _fdictStartBody(sName)
             );
+            await _fnFollowStartToItsOutcome(sName, dictStart);
+        } catch (error) {
+            _fnForgetPendingStart();
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+        } finally {
+            fnLoadContainers();
+        }
+    }
+
+    function _fsContainerUrl(sName, sSuffix) {
+        return "/api/containers/" + encodeURIComponent(sName) + sSuffix;
+    }
+
+    function _fdictStartBody(sName) {
+        var sAcknowledged = _dictAcknowledgedStartFailure[sName];
+        delete _dictAcknowledgedStartFailure[sName];
+        return sAcknowledged
+            ? {sAcknowledgeReservationId: sAcknowledged} : {};
+    }
+
+    /* The start is a server-owned reservation: the POST only reserves
+       it, so the outcome -- and the container's lease -- arrive from
+       the status poll. Reporting "started" on the 202 would tell the
+       researcher a container is running when it may still be pulling,
+       or may have already failed. */
+    async function _fnFollowStartToItsOutcome(sName, dictStart) {
+        VaibifyApp.fnShowToast("Starting container...", "info");
+        var iAttempt = 0;
+        while (iAttempt < _I_START_POLL_LIMIT) {
+            var dictStatus = await VaibifyApi.fdictGet(
+                _fsContainerUrl(sName, "/start-status")
+            );
+            if (dictStatus.sState !== "PENDING") {
+                _fnReportStartOutcome(sName, dictStatus);
+                return;
+            }
+            _fnWarnOnStalledStart(sName, dictStatus, iAttempt);
+            await _fnSleepMilliseconds(_I_START_POLL_INTERVAL_MILLISECONDS);
+            iAttempt += 1;
+        }
+        VaibifyApp.fnShowToast(
+            "Container '" + sName + "' is still starting. Its status "
+            + "stays available; use Cancel Start if it is stuck.",
+            "warning");
+    }
+
+    function _fnReportStartOutcome(sName, dictStatus) {
+        _fnForgetPendingStart();
+        if (dictStatus.sState === "SUCCEEDED") {
+            if (dictStatus.sLeaseId) {
+                VaibifyApp.fnRecordClaimedLease(sName, dictStatus.sLeaseId);
+            }
             VaibifyApp.fnShowToast("Container started", "success");
+            return;
+        }
+        /* OWNED is not an outcome: it means no start result is on
+           record and this session still owns the container, which is
+           what a reload after a long start now recovers. It carries the
+           live lease, so the tab can act again; claiming it "started"
+           would invent a start that did not happen in this window. */
+        if (dictStatus.sState === "OWNED") {
+            if (dictStatus.sLeaseId) {
+                VaibifyApp.fnRecordClaimedLease(sName, dictStatus.sLeaseId);
+            }
+            VaibifyApp.fnShowToast(
+                "Container '" + sName + "' is running and still yours.",
+                "success");
+            return;
+        }
+        _dictAcknowledgedStartFailure[sName] = dictStatus.sReservationId;
+        VaibifyApp.fnShowToast(
+            VaibifyUtilities.fsSanitizeErrorForUser(
+                "Start failed: " + (dictStatus.sError || "unknown error")
+            ),
+            "error");
+    }
+
+    function _fnWarnOnStalledStart(sName, dictStatus, iAttempt) {
+        if (!dictStatus.bHeartbeatStale || iAttempt % 30 !== 0) return;
+        VaibifyApp.fnShowToast(
+            "Container '" + sName + "' has made no start progress for a "
+            + "while. Use Cancel Start to stop it.", "warning");
+    }
+
+    function _fnSleepMilliseconds(iMilliseconds) {
+        return new Promise(function (fnResolve) {
+            setTimeout(fnResolve, iMilliseconds);
+        });
+    }
+
+    async function fnCancelStartContainer(sName) {
+        try {
+            var dictCancel = await VaibifyApi.fdictPostRaw(
+                _fsContainerUrl(sName, "/start/cancel")
+            );
+            _fnReportCancelOutcome(sName, dictCancel);
         } catch (error) {
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
@@ -565,6 +835,25 @@ var VaibifyContainerManager = (function () {
         } finally {
             fnLoadContainers();
         }
+    }
+
+    function _fnReportCancelOutcome(sName, dictCancel) {
+        if (dictCancel.sReservationId) {
+            _dictAcknowledgedStartFailure[sName] = dictCancel.sReservationId;
+        }
+        if (dictCancel.bQuarantined) {
+            VaibifyApp.fnShowToast(
+                "The start was stopped, but the container could not be "
+                + "proven clean, so it is quarantined. Run 'vaibify "
+                + "reconcile " + sName + "' before starting it again.",
+                "warning");
+            return;
+        }
+        VaibifyApp.fnShowToast(
+            dictCancel.bCancelled
+                ? "Start cancelled"
+                : (dictCancel.sMessage || "Start is still terminating"),
+            dictCancel.bCancelled ? "success" : "warning");
     }
 
     async function fnStopContainer(sName) {
@@ -700,8 +989,10 @@ var VaibifyContainerManager = (function () {
     }
 
     function _fsRegistryUrl() {
-        var sLeaseId = VaibifyApp.fsGetLeaseId();
-        return "/api/registry?sLeaseId=" + encodeURIComponent(sLeaseId);
+        /* The caller's lease rides the X-Vaibify-Lease header the
+           authenticated-fetch wrapper attaches; the registry endpoint reads
+           it only to grey tiles another session holds. */
+        return "/api/registry";
     }
 
     async function _fsResolveContainerId(sName) {
@@ -1029,5 +1320,8 @@ var VaibifyContainerManager = (function () {
         fsGetSelectedContainerId: fsGetSelectedContainerId,
         fsGetSelectedContainerName: fsGetSelectedContainerName,
         fnReleaseClaim: fnReleaseClaim,
+        fnStartContainer: fnStartContainer,
+        fnCancelStartContainer: fnCancelStartContainer,
+        fnResumeInterruptedStart: fnResumeInterruptedStart,
     };
 })();

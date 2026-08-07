@@ -17,8 +17,12 @@ on their own schedule (audit finding F-R-01).
 """
 
 import base64
+import json
+import shlex
 import warnings
 from dataclasses import dataclass
+
+from vaibify.config import mutationAdmission
 
 
 _CACHED_CONTAINER_USER = {}
@@ -208,8 +212,9 @@ def _fmoduleGetDocker():
         return docker
     except ImportError:
         raise ImportError(
-            "docker package required for GUI features. "
-            "Install with: pip install vaibify[docker]"
+            "The docker Python package is missing. It installs with "
+            "vaibify itself, so this vaibify installation is broken. "
+            "Repair it with: pip install --force-reinstall vaibify"
         )
 
 
@@ -230,6 +235,133 @@ def _fnEnsureDockerHost():
             os.environ["DOCKER_HOST"] = sHost
     except Exception:
         pass
+
+
+# The complete set of programs the audited-read exemption will run,
+# as FIXED module source text. The only thing substituted into one is a
+# path, embedded through ``repr`` as a Python literal; the assembled
+# program is then quoted whole as a single shell argument. An adapter
+# chooses a NAME from this table and supplies a path -- it cannot
+# supply a command, so it cannot supply a bad one.
+_S_TYPED_READ_PATH_SLOT = "<<PATH>>"
+S_TYPED_READ_FILE_BASE64 = "readFileBase64"
+S_TYPED_READ_DIRECTORY = "listDirectory"
+S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
+S_TYPED_READ_FILE_EXISTS = "fileExists"
+S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
+S_TYPED_READ_PATHS_EXIST = "pathsExist"
+
+_DICT_TYPED_READ_PROGRAMS = {
+    S_TYPED_READ_FILE_BASE64: (
+        "import base64,sys; "
+        "sys.stdout.buffer.write(base64.b64encode(open("
+        + _S_TYPED_READ_PATH_SLOT + ",'rb').read()))"
+    ),
+    S_TYPED_READ_DIRECTORY: (
+        "import os,sys; "
+        "sys.stdout.write(chr(10).join(sorted(os.listdir("
+        + _S_TYPED_READ_PATH_SLOT + "))))"
+    ),
+    # The three figures `df` reports, computed the way `df` computes
+    # them. Free is f_bavail -- the space available to an unprivileged
+    # user -- because that is what df's Available column has always
+    # meant, and the dashboard's low-disk warning is calibrated to it.
+    S_TYPED_READ_FILESYSTEM_USAGE: (
+        "import json,os,sys; "
+        "st=os.statvfs(" + _S_TYPED_READ_PATH_SLOT + "); "
+        "sys.stdout.write(json.dumps({"
+        "'iTotalBytes': st.f_blocks*st.f_frsize, "
+        "'iUsedBytes': (st.f_blocks-st.f_bfree)*st.f_frsize, "
+        "'iFreeBytes': st.f_bavail*st.f_frsize}))"
+    ),
+    # Existence probes, replacing `test -f` / `test -d` assembled by a
+    # repo-files adapter and run through the general exec primitive.
+    # They are reads by any reading, but the primitive cannot know that
+    # from command text, so under an enforced lane every one of them was
+    # refused -- and a level gate that catches OSError turned the
+    # refusal into "not verified", quietly downgrading a workflow's
+    # reproducibility level. `os.path.isfile`/`isdir` follow symlinks
+    # exactly as `test -f`/`test -d` do, so the answer is unchanged.
+    # The result travels as stdout rather than an exit code because a
+    # non-zero exit is how this layer spells "the read itself failed",
+    # and "the file is absent" must not be the same answer.
+    S_TYPED_READ_FILE_EXISTS: (
+        "import os,sys; "
+        "sys.stdout.write('1' if os.path.isfile("
+        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+    ),
+    S_TYPED_READ_DIRECTORY_EXISTS: (
+        "import os,sys; "
+        "sys.stdout.write('1' if os.path.isdir("
+        + _S_TYPED_READ_PATH_SLOT + ") else '0')"
+    ),
+    # The BATCHED existence probe. It is a separate program rather than
+    # a loop over the single-path one because the dashboard's file
+    # panel probes up to a thousand paths on a debounced keystroke, and
+    # a thousand container round-trips is not a UI. `os.path.exists`
+    # matches `test -e` -- file OR directory, following symlinks --
+    # which is what the route it replaces asked.
+    #
+    # What that route did before is the reason this exists. It built a
+    # shell heredoc with every path interpolated raw between
+    # `<<'__VAIBIFY_EOF__'` and its terminator, so a path that
+    # contained that terminator on a line of its own ended the heredoc
+    # and the remainder of the path became shell. Here the paths are a
+    # Python list literal inside a program that is quoted whole as one
+    # argument: there is no layer left for a path to escape into.
+    S_TYPED_READ_PATHS_EXIST: (
+        "import json,os,sys; "
+        "sys.stdout.write(json.dumps("
+        "[os.path.exists(s) for s in "
+        + _S_TYPED_READ_PATH_SLOT + "]))"
+    ),
+}
+
+
+def _fsTypedReadPathLiteral(objPaths):
+    """Return the Python literal a typed-read program embeds for its paths.
+
+    One path string, or a list/tuple of path strings for a batched
+    operation. **Anything else raises**, and the type check is the
+    load-bearing part rather than defensive tidiness: the value is
+    embedded in the program through ``repr``, and ``repr`` of an
+    arbitrary object is whatever that object's class chooses to print.
+    Only ``str`` has a ``repr`` that is a quoted string literal and
+    nothing else, so only ``str`` may reach the slot.
+
+    This is strictly tighter than the single-path form it generalizes,
+    which called ``repr`` on whatever it was handed.
+    """
+    if isinstance(objPaths, str):
+        return repr(objPaths)
+    if isinstance(objPaths, (list, tuple)) and all(
+        isinstance(sPath, str) for sPath in objPaths
+    ):
+        return repr(list(objPaths))
+    raise TypeError(
+        "A typed read takes a path string or a flat sequence of path "
+        f"strings; it was given {type(objPaths).__name__}. Only str has "
+        "a repr that is a string literal, so nothing else may be "
+        "embedded in the program."
+    )
+
+
+def _fbInterpretPathProbe(resultExec, sPath):
+    """Return the yes/no answer a declared path probe printed.
+
+    Shared by the two existence adapters, and deliberately takes the
+    RESULT rather than the operation name: threading the name through a
+    helper would make the call to the exemption pass a variable, and
+    ``testEveryTypedReadNamesADeclaredOperation`` fails on that -- a
+    computed name would put the choice of program back in a caller's
+    hands, which is the property that makes the exemption enumerable.
+    """
+    if resultExec.iExitCode != 0:
+        raise OSError(
+            f"Cannot probe path in container: {sPath} "
+            f"({resultExec.sStderr.strip()})"
+        )
+    return resultExec.sStdout.strip() == "1"
 
 
 class DockerConnection:
@@ -317,6 +449,9 @@ class DockerConnection:
             appropriate UI surface (e.g. show stdout as command
             output, surface stderr as a distinct error region).
         """
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "texecRunInContainerStreamed",
+        )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveContainerUser(container)
@@ -371,18 +506,34 @@ class DockerConnection:
         on process exit. Returns an :class:`ExecResult` with the same
         contract as :meth:`texecRunInContainerStreamed` so callers can
         keep their post-exec bookkeeping unchanged.
+
+        This is the durable-task exec primitive the carrier guards
+        (design §8): in an enforced lane it refuses to launch without a
+        carrier-minted mode-(c) durable-task guard, and under such a
+        guard the launch is the two-phase create -> journal -> start
+        split — the real exec id is journaled BEFORE ``exec_start``, so
+        a crash between the two leaves an identified, probeable record,
+        never a writer nobody can name (the hazard ``exec_run`` hides).
         """
+        mutationAdmission.fnAssertDurableExecAdmitted(
+            sContainerId, "texecRunInContainerStreamedWithChunks",
+        )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveContainerUser(container)
         dictKwargs = self._fdictBuildExecCreateKwargs(
             sCommand, sWorkdir, sUser,
         )
+        dictExecHandle = mutationAdmission.fdictBeginJournaledExec(
+            sContainerId,
+        )
         sExecId = self._clientDocker.api.exec_create(
             container.id, **dictKwargs,
         )["Id"]
+        mutationAdmission.fnPromoteJournaledExec(dictExecHandle, sExecId)
         sStdout, sStderr = self._ftStreamExecLines(sExecId, fnEmitChunk)
         dictInspect = self._clientDocker.api.exec_inspect(sExecId)
+        mutationAdmission.fnSettleJournaledExec(dictExecHandle)
         return ExecResult(
             iExitCode=int(dictInspect.get("ExitCode") or 0),
             sStdout=sStdout, sStderr=sStderr,
@@ -490,6 +641,54 @@ class DockerConnection:
         sOutput = resultExec.sStdout + resultExec.sStderr
         return (resultExec.iExitCode, sOutput)
 
+    def _texecRunTypedRead(self, sContainerId, sOperation, objPaths):
+        """Run one NAMED read operation against a path or paths, as a read.
+
+        The single place the audited-read exemption is granted, and it
+        does not accept a command. It accepts the NAME of an operation
+        from :data:`_DICT_TYPED_READ_PROGRAMS` and a path — or, for a
+        batched operation, a flat sequence of paths — and builds the
+        command itself from fixed module source text with the value
+        embedded as a Python literal.
+
+        Widening the third parameter to a COLLECTION changes nothing
+        about that property, because the parameter never carried a
+        command and still cannot: what varies is the literal in the
+        slot, never the program around it, and
+        :func:`_fsTypedReadPathLiteral` admits only strings into the
+        literal. A batched program exists because the alternative was
+        looping this method once per path, which on the file panel's
+        debounced probe is up to a thousand container round-trips.
+
+        The earlier shape took adapter-built command TEXT, guarded by a
+        source check that no caller-derived value reached it. That check
+        was defeated by two levels of assignment -- and would have been
+        defeated by the next spelling nobody thought of, because it was
+        enumerating bad shapes rather than permitting a good one. An
+        exemption that cannot carry a command cannot carry a bad one:
+        the only thing an adapter chooses is which of a fixed set of
+        programs to run, and an unknown name raises rather than
+        executing anything.
+        """
+        sTemplate = _DICT_TYPED_READ_PROGRAMS.get(sOperation)
+        if sTemplate is None:
+            raise ValueError(
+                f"{sOperation!r} is not a declared typed-read "
+                f"operation; the audited-read exemption runs only "
+                f"{sorted(_DICT_TYPED_READ_PROGRAMS)}"
+            )
+        sCommand = "python3 -c " + shlex.quote(
+            sTemplate.replace(
+                _S_TYPED_READ_PATH_SLOT,
+                _fsTypedReadPathLiteral(objPaths),
+            ),
+        )
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            return self.texecRunInContainerStreamed(sContainerId, sCommand)
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+
     def fbaFetchFile(
         self, sContainerId, sFilePath, iMaxBytes=I_MAX_FETCH_FILE_BYTES,
     ):
@@ -505,16 +704,13 @@ class DockerConnection:
         payload exceeds it, ``ValueError`` is raised so callers cannot
         accidentally pull a multi-GB output file into RAM via the small
         path.
+
+        The command is not built here: this names a declared read
+        operation and :meth:`_texecRunTypedRead` builds it, so a path
+        cannot become program or shell syntax.
         """
-        sSafePath = repr(sFilePath)
-        sCommand = (
-            "python3 -c \"import base64,sys; "
-            "sys.stdout.buffer.write("
-            "base64.b64encode(open("
-            + sSafePath + ",'rb').read()))\""
-        )
-        resultExec = self.texecRunInContainerStreamed(
-            sContainerId, sCommand,
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath,
         )
         if resultExec.iExitCode != 0:
             raise FileNotFoundError(
@@ -528,6 +724,136 @@ class DockerConnection:
                 f"{sFilePath}; use fnIterStreamFile for large files"
             )
         return baContent
+
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        """Return the names directly inside a container directory.
+
+        An AUDITED ADAPTER, in the sense the mutation boundary means it:
+        the caller supplies a PATH and never a command, and this method
+        supplies only the NAME of a declared read operation. The program
+        is fixed source text in :data:`_DICT_TYPED_READ_PROGRAMS`, and
+        :meth:`_texecRunTypedRead` does the substitution and the
+        quoting -- so an adapter cannot pass a command even by mistake.
+
+        Callers used to assemble ``f"ls -1 {sPath}"`` themselves and
+        hand it to a shell, which made a directory listing an arbitrary
+        command execution triggered by a path argument -- and broke on
+        any path containing a space.
+
+        A missing or unreadable directory raises ``FileNotFoundError``;
+        an empty directory returns an empty list, which is a different
+        answer and must stay one.
+        """
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_DIRECTORY, sDirectoryPath,
+        )
+        if resultExec.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot list directory in container: {sDirectoryPath}"
+            )
+        return [
+            sEntry for sEntry in resultExec.sStdout.split("\n") if sEntry
+        ]
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        """Return True iff the container path is an existing file.
+
+        An AUDITED ADAPTER on the same terms as the other three: the
+        caller supplies a PATH, this method supplies only the NAME of a
+        declared read operation, and the program is fixed source text.
+
+        It replaced ``"test -f " + fsShellQuotePosix(sPath)`` assembled
+        by ``ContainerRepoFiles`` and run through the general exec
+        primitive. That made an existence check indistinguishable from
+        an arbitrary command, so under an enforced lane it was refused
+        -- and its caller, a level gate catching ``OSError``, read the
+        refusal as "unverified" and downgraded the workflow's badge.
+
+        A failed READ raises ``OSError``; an ABSENT path returns False.
+        Collapsing the two would put the old bug back one layer down.
+        """
+        return _fbInterpretPathProbe(
+            self._texecRunTypedRead(
+                sContainerId, S_TYPED_READ_FILE_EXISTS, sPath,
+            ),
+            sPath,
+        )
+
+    def fbContainerPathIsDirectory(self, sContainerId, sPath):
+        """Return True iff the container path is an existing directory.
+
+        The ``test -d`` half of :meth:`fbContainerPathIsFile`; see there
+        for why these are typed reads rather than execs.
+        """
+        return _fbInterpretPathProbe(
+            self._texecRunTypedRead(
+                sContainerId, S_TYPED_READ_DIRECTORY_EXISTS, sPath,
+            ),
+            sPath,
+        )
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        """Return one exists/absent answer per path, in the order given.
+
+        The BATCHED sibling of the two probes above, and the reason the
+        exemption takes a collection at all: the file panel probes up to
+        a thousand paths on one debounced keystroke, and looping a
+        single-path adapter would be a thousand container round-trips.
+        The caller still supplies only PATHS, and this method still
+        supplies only the NAME of a declared read operation.
+
+        It replaced a shell heredoc that interpolated every path raw,
+        which meant a path containing the heredoc's own terminator on a
+        line of its own ended the heredoc and turned the rest into
+        shell.
+
+        A failed READ raises ``OSError``; absent paths come back False.
+        An answer count that does not match the request is also an
+        ``OSError`` -- a short list would otherwise silently realign
+        every answer after the gap onto the wrong path.
+        """
+        if not listPaths:
+            return []
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_PATHS_EXIST, list(listPaths),
+        )
+        if resultExec.iExitCode != 0:
+            raise OSError(
+                "Cannot probe paths in container "
+                f"({resultExec.sStderr.strip()})"
+            )
+        listAnswers = json.loads(resultExec.sStdout.strip() or "[]")
+        if len(listAnswers) != len(listPaths):
+            raise OSError(
+                f"The batched existence probe answered {len(listAnswers)} "
+                f"of {len(listPaths)} paths; refusing to realign the "
+                "answers onto the wrong paths."
+            )
+        return [bool(bExists) for bExists in listAnswers]
+
+    def fdictReadFilesystemUsage(self, sContainerId, sPath):
+        """Return total/used/free bytes for the filesystem holding a path.
+
+        An AUDITED ADAPTER, on the same terms as the other two: the
+        caller supplies a PATH and this method supplies only the NAME of
+        a declared read operation, so a path cannot become program or
+        shell syntax.
+
+        This replaced ``docker exec -u <user> <id> df -PB1 /`` assembled
+        in a GUI module. That was a container EXEC outside every guarded
+        primitive, and a disk reading is the least of what an exec can
+        do -- which is precisely why the boundary treats arbitrary
+        command execution as mutating and why a read has to be typed
+        rather than trusted.
+        """
+        resultExec = self._texecRunTypedRead(
+            sContainerId, S_TYPED_READ_FILESYSTEM_USAGE, sPath,
+        )
+        if resultExec.iExitCode != 0:
+            raise FileNotFoundError(
+                f"Cannot stat filesystem in container: {sPath}"
+            )
+        return json.loads(resultExec.sStdout.strip())
 
     def fnIterStreamFile(
         self, sContainerId, sFilePath, iChunkSizeBytes=1048576,
@@ -585,7 +911,16 @@ class DockerConnection:
         requested permissions and ownership atomically — there is no
         post-write ``chmod`` window during which a secret-bearing
         file is world-readable (audit finding M1).
+
+        This is the workspace-file-write funnel the commit-guard
+        carrier guards (design §8): in an enforced lane (an HTTP
+        request or a carrier-launched durable task) the write refuses
+        to proceed without a live, still-current carrier admission for
+        this container — before any byte reaches the daemon.
         """
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteFileViaTar",
+        )
         import posixpath
         import time
 
@@ -637,19 +972,23 @@ class DockerConnection:
         return infoTar
 
     def fsExecCreate(
-        self, sContainerId, sCommand="/bin/bash", sUser=None
+        self, sContainerId, sCommand="/bin/bash", sUser=None,
+        listCommand=None,
     ):
         """Create an interactive exec instance, return exec id.
 
         Defaults to the unprivileged container user when ``sUser`` is
         omitted so terminal sessions opened from the dashboard do not
-        land as root.
+        land as root. ``listCommand`` bypasses docker-py's shlex split
+        of a string command for callers that need an exact argv (the
+        terminal containment wrapper's ``/bin/sh -c`` script would be
+        destroyed by tokenization).
         """
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveContainerUser(container)
         dictKwargs = {
-            "cmd": sCommand,
+            "cmd": listCommand if listCommand is not None else sCommand,
             "tty": True,
             "stdin": True,
             "stdout": True,
@@ -672,6 +1011,167 @@ class DockerConnection:
         self._clientDocker.api.exec_resize(
             sExecId, height=iRows, width=iColumns
         )
+
+    def fdictInspectExec(self, sExecId):
+        """Return the daemon's inspect payload for an exec instance.
+
+        The probe half of the operation journal's exec and terminal
+        verifiers (design §8): ``Running`` distinguishes a live exec
+        from a settled one. Named to match the duck-typed contract the
+        journal's probe catalog checks with ``hasattr``.
+        """
+        return self._clientDocker.api.exec_inspect(sExecId)
+
+    def ftupleRunRootShellProbe(self, sContainerId, sScript):
+        """Run a ``/bin/sh`` script as root; return (iExitCode, sOutput).
+
+        The containment-probe primitive (design v13 §6.1): group
+        discovery, group signalling, and group-emptiness proof all run
+        through it. It deliberately uses ``/bin/sh`` — not the bash the
+        ordinary exec paths assume — so the probes work in minimal
+        images, and root so they can signal the unprivileged terminal
+        user's processes. Probes are part of the authority machinery,
+        not route-reachable mutations, so they carry no journal record.
+        """
+        container = self.fcontainerGetById(sContainerId)
+        iExitCode, baOutput = container.exec_run(
+            ["/bin/sh", "-c", sScript], user="root", demux=False,
+        )
+        sOutput = (baOutput or b"").decode("utf-8", errors="replace")
+        return (-1 if iExitCode is None else int(iExitCode), sOutput)
+
+    def fdictProbeProcessGroupMembers(self, sContainerId, iProcessGroup):
+        """Count in-container processes in a session/process group.
+
+        Walks ``/proc/*/stat`` inside the container and counts every
+        process whose process group OR session equals
+        ``iProcessGroup`` (a terminal shell's job control moves
+        children to new groups within the same session, so matching
+        the group alone would miss exactly the detached descendants
+        this probe exists to find). Returns ``bConclusive`` False when
+        the probe could not run; a definitively absent or stopped
+        container is conclusive with zero members, since no process
+        survives its container.
+        """
+        sScript = _fsBuildProcessGroupScript(iProcessGroup, ":")
+        try:
+            iExitCode, sOutput = self.ftupleRunRootShellProbe(
+                sContainerId, sScript,
+            )
+        except Exception as error:
+            if fbErrorMeansContainerGone(error):
+                return {
+                    "bConclusive": True, "iMemberCount": 0,
+                    "sDetail": f"container is gone or stopped: {error}",
+                }
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": f"process-group probe failed: {error}",
+            }
+        iMemberCount = _fiParseMemberCount(sOutput)
+        if iExitCode != 0 or iMemberCount < 0:
+            return {
+                "bConclusive": False, "iMemberCount": -1,
+                "sDetail": (
+                    "process-group probe gave no parseable count "
+                    f"(exit {iExitCode}): {sOutput[:200]!r}"
+                ),
+            }
+        return {
+            "bConclusive": True, "iMemberCount": iMemberCount,
+            "sDetail": f"{iMemberCount} live member(s)",
+        }
+
+    def fnSignalProcessGroupMembers(
+        self, sContainerId, iProcessGroup, sSignalName,
+    ):
+        """Signal every in-container process of a session/process group.
+
+        ``sSignalName`` is allowlisted to TERM and KILL. A container
+        that is already gone or stopped needs no signal and is treated
+        as a quiet success; any other probe failure is also quiet —
+        the terminate-and-prove caller decides on the PROOF, never on
+        the signal delivery.
+        """
+        if sSignalName not in ("TERM", "KILL"):
+            raise ValueError(
+                f"Unsupported process-group signal {sSignalName!r}; "
+                "only TERM and KILL are allowlisted"
+            )
+        sScript = _fsBuildProcessGroupScript(
+            iProcessGroup, f'kill -{sSignalName} "$iMemberPid" 2>/dev/null',
+        )
+        try:
+            self.ftupleRunRootShellProbe(sContainerId, sScript)
+        except Exception:
+            pass
+
+
+# POSIX-sh walk of /proc/*/stat matching a target session/process
+# group. The comm field can contain spaces and parentheses, so the
+# fields after it are recovered by stripping through the LAST ')'
+# (``${sStatContent##*) }``); positional field 3 is then pgrp and 4 is
+# session. The probe excludes its own shell by pid, and IGROUPTARGET
+# is substituted only after integer validation, so no caller-supplied
+# text can reach the script.
+_S_PROCESS_GROUP_SCRIPT_TEMPLATE = """iCount=0
+for sStatPath in /proc/[0-9]*/stat; do
+  sStatContent=$(cat "$sStatPath" 2>/dev/null) || continue
+  sStatTail="${sStatContent##*) }"
+  set -- $sStatTail
+  [ "$3" = "IGROUPTARGET" ] || [ "$4" = "IGROUPTARGET" ] || continue
+  iMemberPid="${sStatPath#/proc/}"
+  iMemberPid="${iMemberPid%/stat}"
+  [ "$iMemberPid" = "$$" ] && continue
+  iCount=$((iCount+1))
+  PERMEMBERACTION
+done
+printf 'iMembers=%s\\n' "$iCount"
+"""
+
+
+def _fsBuildProcessGroupScript(iProcessGroup, sPerMemberAction):
+    """Return the /proc-walk script for one validated group id."""
+    if not isinstance(iProcessGroup, int) or isinstance(
+        iProcessGroup, bool,
+    ) or iProcessGroup <= 0:
+        raise ValueError(
+            f"A process group id must be a positive integer, got "
+            f"{iProcessGroup!r}"
+        )
+    return _S_PROCESS_GROUP_SCRIPT_TEMPLATE.replace(
+        "IGROUPTARGET", str(iProcessGroup),
+    ).replace("PERMEMBERACTION", sPerMemberAction)
+
+
+def _fiParseMemberCount(sOutput):
+    """Return the iMembers count from probe output, or -1 unparseable."""
+    for sLine in sOutput.splitlines():
+        sLine = sLine.strip()
+        if sLine.startswith("iMembers="):
+            try:
+                return int(sLine[len("iMembers="):])
+            except ValueError:
+                return -1
+    return -1
+
+
+def fbErrorMeansContainerGone(error):
+    """Return True when an exec error proves the container has no processes.
+
+    A 404 (no such container) or a 409 "is not running" both mean no
+    process can remain inside it — the container-stop fallback the
+    design names (v13 §6.1) observed working. Anything else proves
+    nothing.
+    """
+    iStatusCode = getattr(error, "status_code", None)
+    if iStatusCode is None:
+        iStatusCode = getattr(
+            getattr(error, "response", None), "status_code", None,
+        )
+    if iStatusCode == 404:
+        return True
+    return iStatusCode == 409 and "not running" in str(error).lower()
 
 
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):

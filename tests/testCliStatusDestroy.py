@@ -154,7 +154,8 @@ def test_status_no_docker(mockAvail):
     runner = CliRunner()
     result = runner.invoke(status, [])
     assert result.exit_code != 0
-    assert "Docker" in result.output
+    assert "docker Python package is missing" in result.output
+    assert "pip install --force-reinstall vaibify" in result.output
 
 
 @patch("vaibify.cli.commandStatus.fnShowContainerStatus")
@@ -301,3 +302,98 @@ def test_destroy_also_image(
     assert result.exit_code == 0
     mockRemoveVol.assert_called_once()
     mockRemoveImg.assert_called_once()
+
+
+# --- AICS level section (fdictBuildLevelSection / _fnEmitAicsSection) ---
+
+def _fconfig(sName="proj"):
+    return SimpleNamespace(sProjectName=sName)
+
+
+def test_level_section_unavailable_when_no_project():
+    """A LookupError from the loader becomes an honest unavailable dict."""
+    from vaibify.cli import commandStatus
+    with patch(
+        "vaibify.cli.commandStatus.fconnectionRequireDocker"
+        if hasattr(commandStatus, "fconnectionRequireDocker")
+        else "vaibify.cli.commandUtilsDocker.fconnectionRequireDocker",
+        return_value=MagicMock(),
+    ), patch(
+        "vaibify.cli.levelReport.ftLoadContainerLevelInputs",
+        side_effect=LookupError("No vaibify project found"),
+    ):
+        dictSection = commandStatus.fdictBuildLevelSection(_fconfig())
+    assert dictSection["bAvailable"] is False
+    assert "No vaibify project" in dictSection["sReason"]
+
+
+def test_level_section_reports_read_failure_reason():
+    from vaibify.cli import commandStatus
+    with patch(
+        "vaibify.cli.commandUtilsDocker.fconnectionRequireDocker",
+        return_value=MagicMock(),
+    ), patch(
+        "vaibify.cli.levelReport.ftLoadContainerLevelInputs",
+        side_effect=RuntimeError("exec boom"),
+    ):
+        dictSection = commandStatus.fdictBuildLevelSection(_fconfig())
+    assert dictSection["bAvailable"] is False
+    assert "could not read the container" in dictSection["sReason"]
+
+
+def test_level_section_available_marks_the_report():
+    from vaibify.cli import commandStatus
+    with patch(
+        "vaibify.cli.commandUtilsDocker.fconnectionRequireDocker",
+        return_value=MagicMock(),
+    ), patch(
+        "vaibify.cli.levelReport.ftLoadContainerLevelInputs",
+        return_value=({"listSteps": []}, MagicMock()),
+    ), patch(
+        "vaibify.cli.levelReport.fdictBuildLevelReport",
+        return_value={"iAICSLevel": 1, "sAICSLevelName": "x"},
+    ):
+        dictSection = commandStatus.fdictBuildLevelSection(_fconfig())
+    assert dictSection["bAvailable"] is True
+    assert dictSection["iAICSLevel"] == 1
+
+
+def test_status_aics_flag_emits_level_or_reason(capsys):
+    from vaibify.cli import commandStatus
+    with patch("vaibify.cli.commandStatus.fbDockerAvailable",
+               return_value=True), \
+         patch("vaibify.cli.commandStatus.fdockerBuildClientOrNone",
+               return_value=None), \
+         patch("vaibify.cli.commandStatus.fconfigResolveProject",
+               return_value=_fconfig()), \
+         patch("vaibify.cli.commandStatus.fnShowDaemonStatus"), \
+         patch("vaibify.cli.commandStatus.fnShowDockerContext"), \
+         patch("vaibify.cli.commandStatus.fnShowImageStatus"), \
+         patch("vaibify.cli.commandStatus.fnShowVolumeStatus"), \
+         patch("vaibify.cli.commandStatus.fnShowContainerStatus"), \
+         patch("vaibify.cli.commandStatus.fdictBuildLevelSection",
+               return_value={"bAvailable": False,
+                             "sReason": "no project"}):
+        result = CliRunner().invoke(status, ["--aics"])
+    assert result.exit_code == 0, result.output
+    assert "AICS level: unavailable (no project)" in result.output
+
+
+def test_status_json_flag_emits_one_object():
+    import json as jsonlib
+    from vaibify.cli import commandStatus
+    with patch("vaibify.cli.commandStatus.fbDockerAvailable",
+               return_value=True), \
+         patch("vaibify.cli.commandStatus.fdockerBuildClientOrNone",
+               return_value=None), \
+         patch("vaibify.cli.commandStatus.fconfigResolveProject",
+               return_value=_fconfig()), \
+         patch("vaibify.cli.commandStatus.fdictBuildEnvironmentStatus",
+               return_value={"sProjectName": "proj"}), \
+         patch("vaibify.cli.commandStatus.fdictBuildLevelSection",
+               return_value={"bAvailable": True, "iAICSLevel": 2}):
+        result = CliRunner().invoke(status, ["--json"])
+    assert result.exit_code == 0, result.output
+    dictOut = jsonlib.loads(result.output)
+    assert dictOut["dictEnvironment"]["sProjectName"] == "proj"
+    assert dictOut["dictAics"]["iAICSLevel"] == 2

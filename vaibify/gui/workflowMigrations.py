@@ -13,9 +13,8 @@ migration functions that previously ran unconditionally on every
 load. Adding a new migration is two steps: write the migrator and
 append it to ``T_MIGRATORS``, bump ``I_CURRENT_WORKFLOW_VERSION``.
 
-This module imports only from ``pathContract`` (also a leaf), so
-workflowManager and director can both depend on it without forming a
-cycle.
+This module imports only from ``pathContract`` (also a leaf), so any
+loader can depend on it without forming a cycle.
 """
 
 import contextlib
@@ -78,6 +77,20 @@ def fnApplyMigrations(dictWorkflow, sProjectRepoPath=""):
     is missing.
     """
     iVersion = fiGetSchemaVersion(dictWorkflow)
+    if iVersion > I_CURRENT_WORKFLOW_VERSION:
+        # A project.json written by a NEWER vaibify. No forward migrator
+        # exists, so the loop below would run nothing — but the old code
+        # then stamped the version DOWN to the current, and on the next
+        # save persisted the lower number with every field this build does
+        # not understand silently dropped. Fail closed: refuse the
+        # unknown-future document rather than quietly downgrade it.
+        raise ValueError(
+            f"Workflow schema version {iVersion} is newer than this build "
+            f"understands (current {I_CURRENT_WORKFLOW_VERSION}). It was "
+            "written by a newer vaibify; upgrade vaibify to open it. "
+            "Refusing to downgrade it, which would drop fields this build "
+            "does not recognize."
+        )
     for iFromVersion, fnMigrator in T_MIGRATORS:
         if iVersion <= iFromVersion:
             fnMigrator(dictWorkflow, sProjectRepoPath)

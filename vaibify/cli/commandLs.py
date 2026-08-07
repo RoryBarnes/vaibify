@@ -20,16 +20,6 @@ def _fsNormalizePath(sPath):
     return sPath
 
 
-def _flistParseDirectoryListing(sOutput):
-    """Parse ls output into a list of filename strings."""
-    listFiles = []
-    for sLine in sOutput.splitlines():
-        sStripped = sLine.strip()
-        if sStripped:
-            listFiles.append(sStripped)
-    return listFiles
-
-
 @click.command("ls")
 @click.option(
     "--project", "-p", "sProjectName", default=None,
@@ -46,14 +36,19 @@ def ls(sProjectName, bJson, path):
     connectionDocker = fconnectionRequireDocker()
     sContainerName = fsRequireRunningContainer(configProject)
     sNormalized = _fsNormalizePath(path)
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerName, f"ls -1 {sNormalized}"
-    )
-    if iExitCode != 0:
-        click.echo(f"Error: {sOutput.strip()}")
+    # A TYPED read through an audited adapter, not a shell command. The
+    # old form interpolated the caller's path into `ls -1 {path}` and
+    # handed it to `/bin/bash -c`, so a listing was an arbitrary command
+    # execution triggered by a path argument -- and any path with a
+    # space in it failed.
+    try:
+        listFiles = connectionDocker.flistDirectoryEntries(
+            sContainerName, sNormalized,
+        )
+    except FileNotFoundError:
+        click.echo(f"Error: cannot list {sNormalized} in the container")
         sys.exit(2)
     if fbShouldOutputJson(bJson):
-        listFiles = _flistParseDirectoryListing(sOutput)
         fnPrintJson({"sPath": sNormalized, "listFiles": listFiles})
     else:
-        click.echo(sOutput.rstrip())
+        click.echo("\n".join(listFiles))

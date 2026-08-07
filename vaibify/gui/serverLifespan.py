@@ -87,6 +87,26 @@ def fnRegisterLifespanTask(app, fnStart, fnStop):
     app.state.listLifespanShutdown.append(fnStop)
 
 
+async def fnCancelBackgroundTask(app, sTaskAttributeName):
+    """Cancel a registered background loop and await its clean exit.
+
+    Every background loop here stores its task on ``app.state`` under
+    its own attribute name and stops the same way at shutdown; this is
+    that one way. A task that already finished is left alone, and both
+    ``CancelledError`` and any exception the loop was carrying are
+    swallowed so one loop's failure cannot abort the remaining
+    shutdown hooks.
+    """
+    taskBackground = getattr(app.state, sTaskAttributeName, None)
+    if taskBackground is None or taskBackground.done():
+        return
+    taskBackground.cancel()
+    try:
+        await taskBackground
+    except (asyncio.CancelledError, Exception):
+        pass
+
+
 # Interval between periodic container-cache sweeps. The eviction work
 # itself is cheap (one Docker list + a handful of dict pops); the cap
 # determines worst-case latency between a container disappearing and
@@ -118,14 +138,7 @@ def _fnRegisterPeriodicContainerSweep(app, dictCtx, fInterval=None):
         app.state.taskContainerSweep = taskSweep
 
     async def fnStopSweepTask(app):
-        taskSweep = getattr(app.state, "taskContainerSweep", None)
-        if taskSweep is None or taskSweep.done():
-            return
-        taskSweep.cancel()
-        try:
-            await taskSweep
-        except (asyncio.CancelledError, Exception):
-            pass
+        await fnCancelBackgroundTask(app, "taskContainerSweep")
 
     fnRegisterLifespanTask(app, fnStartSweepTask, fnStopSweepTask)
 
@@ -371,15 +384,101 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
 
     Only hubs enable this (``bReapOwnerships``); the single-container
     viewer's served record carries no host flock and dies with the
-    process, so it is never force-released here.
+    process, so it is never force-released here. A container with a
+    live commit-guard supervisor or durable task is likewise vetoed
+    (design §8, case 32): the supervisor is the single releasing
+    party, so the reaper may never free a record whose guarded worker
+    can still commit.
+
+    Terminal executions gate reaping the same way (design §7, case
+    44): a reap-eligible owner's live terminal records are first
+    terminated-and-proven (or retained-and-quarantined) — a terminal
+    exec that outlived its socket is not a dead terminal — and any
+    record still live afterwards vetoes the reap outright.
+
+    An ORPHANED_SESSION record is additionally vetoed while ANY of its
+    journaled operation records is unsettled (design §7): the drain
+    above may settle its terminals within this same pass, but a record
+    it quarantined — or any other unsettled operation — retains the
+    orphaned ownership until ``vaibify reconcile`` proves it, so the
+    flock is never freed over work whose fate is unproven.
     """
     if not getattr(app.state, "bReapOwnerships", False):
         return
+    from . import commitCarrier
+    from . import terminalContainment
     dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
+
+    def fbGuardedWorkLive(sName):
+        return (
+            commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
+            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+        )
+
+    _fnDrainTerminalsOfReapableOwners(
+        app, dictContainerOwners, fbGuardedWorkLive,
+    )
     containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
-        lambda sName: _fbOwnedNamePipelineRunning(app, dictCtx, sName),
+        lambda sName: (
+            fbGuardedWorkLive(sName)
+            or terminalContainment.fbContainerHasLiveTerminalRecords(
+                app.state, sName,
+            )
+            or _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName)
+        ),
+        dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )
+
+
+def _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName):
+    """Veto an ORPHANED record's reap while its journal is unsettled.
+
+    Design §7: ORPHANED→RELEASED requires EVERY journaled operation
+    record settled, and a journal that cannot be read as valid counts
+    as unsettled (fail closed). ACTIVE records keep today's idle-grace
+    reap: their in-process work is already vetoed through the live
+    supervisor, durable-task, and terminal checks, and the write-ahead
+    journal still blocks the NEXT claim at flock acquisition.
+    """
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is None or recordOwner.sState != (
+        containerOwnership.S_OWNER_STATE_ORPHANED_SESSION
+    ):
+        return False
+    from vaibify.config import operationJournal
+    dictOutcomeRead = operationJournal.fdictReadJournalOutcome(sName)
+    if dictOutcomeRead["sReadState"] not in ("absent", "valid"):
+        return True
+    return bool(dictOutcomeRead["dictOperations"])
+
+
+def _fnDrainTerminalsOfReapableOwners(
+    app, dictContainerOwners, fbGuardedWorkLive,
+):
+    """Terminate-and-prove the terminals of every reap-eligible owner.
+
+    Runs only for records the reaper would otherwise release (idle
+    past grace, no guarded work), so a live session's open terminal is
+    never touched. After the drain each of those records is settled or
+    quarantined; anything still live vetoes the reap in the caller.
+    """
+    from . import terminalContainment
+    for sName in list(dictContainerOwners.keys()):
+        recordOwner = dictContainerOwners.get(sName)
+        if recordOwner is None:
+            continue
+        if not terminalContainment.fbContainerHasLiveTerminalRecords(
+            app.state, sName,
+        ):
+            continue
+        if not containerOwnership.fbOwnerIsReapable(recordOwner):
+            continue
+        if fbGuardedWorkLive(sName):
+            continue
+        terminalContainment.fdictDrainTerminalRecordsForContainer(
+            app.state, sName,
+        )
 
 
 async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
@@ -431,13 +530,71 @@ def _fnRegisterIdleShutdownWatchdog(app, dictCtx, fInterval=None):
         )
 
     async def fnStopWatchdog(app):
-        taskWatchdog = getattr(app.state, "taskIdleWatchdog", None)
-        if taskWatchdog is None or taskWatchdog.done():
-            return
-        taskWatchdog.cancel()
-        try:
-            await taskWatchdog
-        except (asyncio.CancelledError, Exception):
-            pass
+        await fnCancelBackgroundTask(app, "taskIdleWatchdog")
 
     fnRegisterLifespanTask(app, fnStartWatchdog, fnStopWatchdog)
+
+
+async def _fnSessionLifecycleEvaluatorLoop(app, fInterval):
+    """Run the session-lifecycle evaluator forever on its own cadence.
+
+    Exits cleanly on ``CancelledError`` (lifespan shutdown). Any other
+    exception is logged and the loop continues: one failed pass must
+    never leave the hub with no orphan trigger and no session expiry
+    for the rest of the process lifetime.
+    """
+    from . import sessionLifecycle
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            await sessionLifecycle.fnEvaluateSessionLifecycle(app.state)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning(
+                "Session-lifecycle evaluator iteration failed",
+                exc_info=True,
+            )
+
+
+def _fnRegisterSessionLifecycleEvaluator(app, fInterval=None):
+    """Install the session-lifecycle evaluator on the lifespan.
+
+    A SEPARATE loop from the 60 s idle watchdog, on the design §11
+    cadence (``F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS``, ~5 s), because
+    the watchdog's period is coarser than the reconnect window it would
+    be policing: a 15 s window evaluated once a minute behaves as a
+    60 s window.
+
+    Worst-case detection latency: a condition that becomes true one
+    instant after a tick starts is committed on the NEXT tick, so the
+    lag between a condition holding and its commit is at most one
+    cadence plus one pass's duration. End to end that makes the worst
+    case ``F_RECONNECT_WINDOW_SECONDS`` + ~5 s from the last socket
+    close to the orphan commit, and ``F_SLIDING_IDLE_SECONDS`` + ~5 s
+    from the last request to a session's expiry.
+
+    The task is cancelled by the lifespan's shutdown hooks like the
+    sweep and the watchdog. It is registered here, alongside them and
+    before the thread-pool executor, so the design §8 ordered shutdown
+    — close admissions, drain the guarded workers, stop keep-alive,
+    release the flocks — is untouched; a pass that lands during that
+    sequence can only orphan (which retains the flock and the work) or
+    revoke a credential, never release a record.
+    """
+    from . import sessionLifecycle
+    fIntervalEffective = (
+        fInterval if fInterval is not None
+        else sessionLifecycle.F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS
+    )
+
+    async def fnStartEvaluator(app):
+        app.state.taskSessionLifecycleEvaluator = asyncio.create_task(
+            _fnSessionLifecycleEvaluatorLoop(app, fIntervalEffective),
+            name="vaibify-session-lifecycle",
+        )
+
+    async def fnStopEvaluator(app):
+        await fnCancelBackgroundTask(app, "taskSessionLifecycleEvaluator")
+
+    fnRegisterLifespanTask(app, fnStartEvaluator, fnStopEvaluator)

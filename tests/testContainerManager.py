@@ -481,3 +481,89 @@ def test_flistBuildRunArgs_runs_entrypoint_as_root(mockX11):
     assert "--user" in saArgs
     iFlag = saArgs.index("--user")
     assert saArgs[iFlag + 1] == "0"
+
+
+# ---------------------------------------------------------------------
+# Proving a stop, versus merely attempting one.
+#
+# The break-glass deletes a quarantine marker on the strength of this
+# answer, so "the daemon did not reply" must never be reported as "no
+# such container". fdictGetContainerStatus deliberately conflates the
+# two into bExists=False, which is fine for a display surface and
+# unsafe here; fdictProbeContainerPresence keeps them apart.
+# ---------------------------------------------------------------------
+
+def test_probe_reports_a_present_container():
+    from vaibify.docker.containerManager import fdictProbeContainerPresence
+    with patch(
+        "vaibify.docker.containerManager._ftRunProbeCommand",
+        return_value=(True, "abc123\n"),
+    ):
+        assert fdictProbeContainerPresence("someProject") == {
+            "bAnswered": True, "bPresent": True,
+        }
+
+
+def test_probe_distinguishes_absence_from_an_unanswered_daemon():
+    from vaibify.docker.containerManager import fdictProbeContainerPresence
+    with patch(
+        "vaibify.docker.containerManager._ftRunProbeCommand",
+        return_value=(True, "\n"),
+    ):
+        dictAbsent = fdictProbeContainerPresence("someProject")
+    with patch(
+        "vaibify.docker.containerManager._ftRunProbeCommand",
+        return_value=(False, ""),
+    ):
+        dictUnanswered = fdictProbeContainerPresence("someProject")
+    assert dictAbsent == {"bAnswered": True, "bPresent": False}
+    assert dictUnanswered == {"bAnswered": False, "bPresent": False}
+    assert dictAbsent != dictUnanswered, (
+        "an unreachable daemon must not be reported as an absent "
+        "container; a break-glass clears a quarantine on this answer"
+    )
+
+
+def test_a_successful_stop_is_proven_settled():
+    from vaibify.docker.containerManager import fbStopContainerProvenSettled
+    with patch(
+        "vaibify.docker.containerManager.fnStopContainer",
+    ) as mockStop:
+        assert fbStopContainerProvenSettled("someProject") is True
+    mockStop.assert_called_once_with("someProject")
+
+
+def test_a_failed_stop_on_an_absent_container_is_proven_settled():
+    from vaibify.docker.containerManager import fbStopContainerProvenSettled
+    with patch(
+        "vaibify.docker.containerManager.fnStopContainer",
+        side_effect=RuntimeError("No such container"),
+    ), patch(
+        "vaibify.docker.containerManager._ftRunProbeCommand",
+        return_value=(True, "\n"),
+    ):
+        assert fbStopContainerProvenSettled("someProject") is True
+
+
+def test_a_failed_stop_with_an_unanswered_probe_is_not_settled():
+    from vaibify.docker.containerManager import fbStopContainerProvenSettled
+    with patch(
+        "vaibify.docker.containerManager.fnStopContainer",
+        side_effect=RuntimeError("Cannot connect to the Docker daemon"),
+    ), patch(
+        "vaibify.docker.containerManager._ftRunProbeCommand",
+        return_value=(False, ""),
+    ):
+        assert fbStopContainerProvenSettled("someProject") is False
+
+
+def test_a_failed_stop_on_a_container_that_still_exists_is_not_settled():
+    from vaibify.docker.containerManager import fbStopContainerProvenSettled
+    with patch(
+        "vaibify.docker.containerManager.fnStopContainer",
+        side_effect=RuntimeError("permission denied"),
+    ), patch(
+        "vaibify.docker.containerManager._ftRunProbeCommand",
+        return_value=(True, "abc123\n"),
+    ):
+        assert fbStopContainerProvenSettled("someProject") is False

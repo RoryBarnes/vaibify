@@ -17,7 +17,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from vaibify.reproducibility.repoFiles import (
+    ffilesEnsureRepoFiles,
+    fsRepoRootOf,
+)
 
 
 __all__ = [
@@ -29,6 +33,8 @@ __all__ = [
     "fdictCaptureSingleBinary",
     "fdictCaptureSystemTools",
     "fdictReadEnvironmentJson",
+    "fiCaptureSourceDateEpoch",
+    "fiRecordedSourceDateEpoch",
     "fnWriteEnvironmentJson",
 ]
 
@@ -281,6 +287,47 @@ def _fsFirstLine(sText):
 # ------------------------------------------------------------------
 
 
+def fiCaptureSourceDateEpoch(filesRepo):
+    """Return the repo HEAD commit epoch at capture time, or 0.
+
+    This is the value the pipeline exported as ``SOURCE_DATE_EPOCH``
+    and as matplotlib's ``svg.hashsalt`` when it produced the pinned
+    artefacts (assuming the usual flow of run, then capture, then
+    commit — nothing moves HEAD in between). It must be *recorded*
+    here rather than re-derived at reproduction time, because the
+    commit that publishes the manifest moves HEAD: an epoch derived
+    from HEAD on the reproducing side is guaranteed to differ from
+    the one that salted the pinned figures, so every timestamped
+    artefact would diverge on exactly the workflows the envelope
+    exists to certify.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    iCode, sOutput, _sError = filesRepo.ftRunCommand(
+        [
+            "git", "-C", fsRepoRootOf(filesRepo),
+            "log", "-1", "--format=%ct", "HEAD",
+        ],
+        5.0,
+    )
+    if iCode != 0:
+        return 0
+    try:
+        return int(sOutput.strip())
+    except ValueError:
+        return 0
+
+
+def fiRecordedSourceDateEpoch(filesRepo):
+    """Return the epoch recorded in environment.json, or 0 when absent."""
+    dictPayload = fdictReadEnvironmentJson(filesRepo)
+    if not dictPayload:
+        return 0
+    iEpoch = dictPayload.get("iSourceDateEpoch")
+    if isinstance(iEpoch, bool) or not isinstance(iEpoch, int):
+        return 0
+    return max(iEpoch, 0)
+
+
 def fdictCaptureSystemTools(filesRepo=None):
     """Capture versions of system tools that affect reproducibility.
 
@@ -425,7 +472,8 @@ def fdictReadEnvironmentJson(filesRepo):
         return None
     try:
         dictPayload = json.loads(filesRepo.fsReadText(sRelPath))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return None
     if not isinstance(dictPayload, dict):
         return None

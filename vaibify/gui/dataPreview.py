@@ -6,6 +6,8 @@ __all__ = [
 
 import posixpath
 
+from .pipelineUtils import fsShellQuote
+
 
 def fsPreviewDataFile(
     connectionDocker, sContainerId, sFilePath, sDirectory,
@@ -28,17 +30,24 @@ def _fsResolvePath(sFilePath, sDirectory):
 
 
 def _fsPreviewNpy(connectionDocker, sContainerId, sAbsPath):
-    """Preview a .npy file with shape, dtype, and summary statistics."""
-    sCommand = (
-        "python3 -c \""
+    """Preview a .npy file with shape, dtype, and summary statistics.
+
+    The path is a Python literal via ``repr`` (correct for the Python
+    layer) inside a program that is then shell-quoted as a single
+    ``-c`` argument (correct for the bash layer). Embedding ``repr``
+    output straight into a double-quoted ``bash -c`` string — as this
+    once did — leaves ``$(...)`` and unbalanced quotes live, so a
+    crafted output filename executes on preview.
+    """
+    sProgram = (
         "import numpy as np; "
         "d=np.load(" + repr(sAbsPath) + ",allow_pickle=False); "
         "print(f'shape={d.shape} dtype={d.dtype}'); "
         "f=d.flatten(); "
         "print(f'first={f[0]!r} last={f[-1]!r}'); "
         "print(f'min={f.min()!r} max={f.max()!r} mean={f.mean()!r}')"
-        "\""
     )
+    sCommand = "python3 -c " + fsShellQuote(sProgram)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
@@ -46,9 +55,12 @@ def _fsPreviewNpy(connectionDocker, sContainerId, sAbsPath):
 
 
 def _fsPreviewHdf5(connectionDocker, sContainerId, sAbsPath):
-    """Preview an HDF5 file's datasets with shape and summary stats."""
-    sCommand = (
-        "python3 -c \""
+    """Preview an HDF5 file's datasets with shape and summary stats.
+
+    Same two-layer quoting as :func:`_fsPreviewNpy`: ``repr`` for the
+    Python literal, ``fsShellQuote`` for the whole ``-c`` argument.
+    """
+    sProgram = (
         "import h5py, numpy as np; "
         "f=h5py.File(" + repr(sAbsPath) + ",'r'); "
         "items=[]; "
@@ -58,8 +70,9 @@ def _fsPreviewHdf5(connectionDocker, sContainerId, sAbsPath):
         "first={np.array(f[n]).flatten()[0]!r} "
         "last={np.array(f[n]).flatten()[-1]!r}') "
         "for n in items[:10]]; "
-        "f.close()\""
+        "f.close()"
     )
+    sCommand = "python3 -c " + fsShellQuote(sProgram)
     iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand
     )
@@ -68,7 +81,6 @@ def _fsPreviewHdf5(connectionDocker, sContainerId, sAbsPath):
 
 def _fsPreviewText(connectionDocker, sContainerId, sAbsPath):
     """Preview first and last lines of a text file."""
-    from .pipelineRunner import fsShellQuote
     sQuoted = fsShellQuote(sAbsPath)
     sCommand = (
         f"head -10 {sQuoted} 2>/dev/null;"

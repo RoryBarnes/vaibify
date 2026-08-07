@@ -6,18 +6,14 @@ import subprocess
 import pytest
 from unittest.mock import MagicMock, patch
 
+from vaibify.gui.buildRoutes import _fnExecuteBuild
 from vaibify.gui.registryRoutes import (
     _fbDockerContainerExists,
     _fdictRequireProject,
-    _fnDockerStopCommand,
-    _fnExecuteBuild,
     _fnExecuteStop,
     _fnRegisterNewProject,
     _fnRejectDuplicateProjectName,
-    _fnRemoveContainer,
     _fnUpdateYamlBoolField,
-    _fsExecuteStart,
-    _fsStartOrCreate,
 )
 
 from vaibify.config import registryManager
@@ -63,104 +59,12 @@ class TestExecuteBuild:
             )
 
 
-# ---------------------------------------------------------------
-# _fsExecuteStart (lines 173-186)
-# ---------------------------------------------------------------
-
-class TestExecuteStart:
-    def test_starts_container_and_returns_id(self):
-        dictProject = {
-            "sConfigPath": "/fake/vaibify.yml",
-            "sContainerName": "my-proj",
-        }
-        mockConfig = MagicMock()
-        mockConfig.bNeverSleep = False
-        with patch(
-            "vaibify.cli.configLoader.fconfigLoadFromPath",
-            return_value=mockConfig,
-        ), patch(
-            "vaibify.cli.configLoader.fsDockerDir",
-            return_value="/docker/dir",
-        ), patch(
-            "vaibify.gui.registryRoutes._fsStartOrCreate",
-            return_value="abc123",
-        ):
-            sResult = _fsExecuteStart(dictProject)
-            assert sResult == "abc123"
-
-    def test_starts_keep_alive_when_never_sleep(self):
-        dictProject = {
-            "sConfigPath": "/fake/vaibify.yml",
-            "sContainerName": "my-proj",
-        }
-        mockConfig = MagicMock()
-        mockConfig.bNeverSleep = True
-        with patch(
-            "vaibify.cli.configLoader.fconfigLoadFromPath",
-            return_value=mockConfig,
-        ), patch(
-            "vaibify.cli.configLoader.fsDockerDir",
-            return_value="/docker/dir",
-        ), patch(
-            "vaibify.gui.registryRoutes._fsStartOrCreate",
-            return_value="abc123",
-        ), patch(
-            "vaibify.config.keepAliveManager.fnStartKeepAlive",
-        ) as mockKeepAlive:
-            _fsExecuteStart(dictProject)
-            mockKeepAlive.assert_called_once_with("my-proj")
-
-
-# ---------------------------------------------------------------
-# _fsStartOrCreate (lines 191-203)
-# ---------------------------------------------------------------
-
-class TestStartOrCreate:
-    def test_raises_if_already_running(self):
-        with patch(
-            "vaibify.docker.containerManager.fdictGetContainerStatus",
-            return_value={"bRunning": True, "bExists": True},
-        ):
-            with pytest.raises(RuntimeError, match="already running"):
-                _fsStartOrCreate(MagicMock(), "proj", "/docker")
-
-    def test_removes_existing_and_creates_fresh(self):
-        with patch(
-            "vaibify.docker.containerManager.fdictGetContainerStatus",
-            return_value={"bRunning": False, "bExists": True},
-        ), patch(
-            "vaibify.gui.registryRoutes._fnRemoveContainer",
-        ) as mockRemove, patch(
-            "vaibify.docker.containerManager.fsStartContainerDetached",
-            return_value="new123",
-        ):
-            sResult = _fsStartOrCreate(MagicMock(), "proj", "/docker")
-            assert sResult == "new123"
-            mockRemove.assert_called_once_with("proj")
-
-    def test_creates_fresh_when_not_exists(self):
-        with patch(
-            "vaibify.docker.containerManager.fdictGetContainerStatus",
-            return_value={"bRunning": False, "bExists": False},
-        ), patch(
-            "vaibify.docker.containerManager.fsStartContainerDetached",
-            return_value="fresh123",
-        ):
-            sResult = _fsStartOrCreate(MagicMock(), "proj", "/docker")
-            assert sResult == "fresh123"
-
-
-# ---------------------------------------------------------------
-# _fnRemoveContainer
-# ---------------------------------------------------------------
-
-class TestRemoveContainer:
-    def test_calls_docker_rm(self):
-        with patch("subprocess.run") as mockRun:
-            _fnRemoveContainer("my-container")
-            mockRun.assert_called_once()
-            listArgs = mockRun.call_args[0][0]
-            assert listArgs == ["docker", "rm", "my-container"]
+# The start path moved to vaibify/gui/startReservation.py with slice 9
+# (design §10b): the GUI start is now a server-owned reservation whose
+# create-then-start pair, keep-alive, already-running refusal, and
+# stopped-incarnation removal are covered by
+# tests/testStartReservation.py. _fsExecuteStart, _fsStartOrCreate, and
+# _fnRemoveContainer no longer exist to be covered here.
 
 
 # ---------------------------------------------------------------
@@ -183,7 +87,7 @@ class TestExecuteStop:
             "vaibify.docker.containerManager.fdictGetContainerStatus",
             return_value={"bExists": True, "bRunning": True},
         ), patch(
-            "vaibify.gui.registryRoutes._fnDockerStopCommand",
+            "vaibify.docker.containerManager.fnStopContainer",
         ) as mockStop, patch(
             "vaibify.docker.containerManager.fnRemoveStopped",
         ), patch(
@@ -197,7 +101,7 @@ class TestExecuteStop:
             "vaibify.docker.containerManager.fdictGetContainerStatus",
             return_value={"bExists": True, "bRunning": False},
         ), patch(
-            "vaibify.gui.registryRoutes._fnDockerStopCommand",
+            "vaibify.docker.containerManager.fnStopContainer",
         ) as mockStop, patch(
             "vaibify.docker.containerManager.fnRemoveStopped",
         ) as mockRemove, patch(
@@ -207,25 +111,20 @@ class TestExecuteStop:
             mockStop.assert_not_called()
             mockRemove.assert_called_once()
 
+    def test_the_route_no_longer_assembles_its_own_docker_stop(self):
+        """The removal is not merely a refactor; it is the R4 rule.
 
-# ---------------------------------------------------------------
-# _fnDockerStopCommand (lines 277-283)
-# ---------------------------------------------------------------
-
-class TestDockerStopCommand:
-    def test_success(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 0
-        with patch("subprocess.run", return_value=mockResult):
-            _fnDockerStopCommand("proj")
-
-    def test_raises_on_failure(self):
-        mockResult = MagicMock()
-        mockResult.returncode = 1
-        mockResult.stderr = "cannot stop\n"
-        with patch("subprocess.run", return_value=mockResult):
-            with pytest.raises(RuntimeError, match="docker stop failed"):
-                _fnDockerStopCommand("proj")
+        A route module holding `subprocess.run(["docker", "stop", ...])`
+        is a container mutation outside every guarded primitive, and the
+        copy this replaced was byte-identical to the gateway's own first
+        half. Asserted on the source so that reintroducing it fails here
+        as well as in testCapabilityAuthorities.
+        """
+        import inspect
+        from vaibify.gui import registryRoutes
+        sSource = inspect.getsource(registryRoutes._fnExecuteStop)
+        assert "subprocess" not in sSource
+        assert "containerManager.fnStopContainer(" in sSource
 
 
 # ---------------------------------------------------------------

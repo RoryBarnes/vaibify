@@ -13,11 +13,13 @@ exercised, not assumed.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from vaibify.gui import browserSession
 from vaibify.gui import containerOwnership
+from vaibify.gui import webSocketAuthorization
 from vaibify.gui.routes.pipelineRoutes import _fnRegisterPipelineWs
 from vaibify.gui.routes.terminalRoutes import _fnRegisterTerminalWs
 
@@ -27,6 +29,25 @@ S_PROJECT_NAME = "MyProject"
 S_TOKEN = "shared-trust-token"
 S_LEASE = "owning-lease-xyz"
 S_AGENT_TOKEN = "per-container-agent-token"
+S_CREDENTIAL = "browser-credential-xyz"
+S_SESSION_ID = "browser-session-1"
+
+
+def _fdictBrowserSessions():
+    """Return a browser-session store holding one redeemed credential.
+
+    Seeded directly (not via the capability exchange) so ``S_CREDENTIAL``
+    resolves to ``S_SESSION_ID`` deterministically -- the credential the
+    owner record below is bound to and that the WS URLs present.
+    """
+    dictStore = browserSession.fdictCreateBrowserSessionStore()
+    dictStore["dictSessionsByCredential"][S_CREDENTIAL] = (
+        browserSession.BrowserSessionRecord(
+            sSessionId=S_SESSION_ID, sCredential=S_CREDENTIAL,
+            fCreatedMonotonic=0.0, fLastSeenMonotonic=0.0,
+        )
+    )
+    return dictStore
 
 
 class _FakeDocker:
@@ -47,14 +68,20 @@ def _fdictBuildContext(dictContainerOwners):
         "docker": _FakeDocker(S_CONTAINER_ID, S_PROJECT_NAME),
         "sSessionToken": S_TOKEN,
         "dictContainerOwners": dictContainerOwners,
+        "dictBrowserSessions": _fdictBrowserSessions(),
     }
 
 
 def _fdictOwnersByName(sLeaseId=S_LEASE, iLiveCount=0, iLivePipelineCount=0):
-    """Return an owner map keyed by NAME (the claim route's canonical key)."""
+    """Return an owner map keyed by NAME (the claim route's canonical key).
+
+    The record is bound to ``S_SESSION_ID`` so the browser-lane gate's
+    bound-lease check ties the lease to the credential the WS presents.
+    """
     recordOwner = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
         sAgentToken=S_AGENT_TOKEN, sContainerId=S_CONTAINER_ID,
+        sBrowserSessionId=S_SESSION_ID,
     )
     recordOwner.iLiveConnectionCount = iLiveCount
     recordOwner.iLivePipelineConnectionCount = iLivePipelineCount
@@ -68,7 +95,7 @@ def _fclientWithPipelineWs(dictCtx):
     return TestClient(app)
 
 
-def _sPipelineUrl(sLeaseId=S_LEASE, sToken=S_TOKEN):
+def _sPipelineUrl(sLeaseId=S_LEASE, sToken=S_CREDENTIAL):
     """Build a /ws/pipeline URL addressed by the docker ID, not the name."""
     return (
         f"/ws/pipeline/{S_CONTAINER_ID}"
@@ -92,7 +119,7 @@ def test_owner_pipeline_ws_accepted_when_name_differs_from_id():
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     listCountDuring = []
 
-    async def _fnFakeServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeServe(websocket, dictCtxArg, sContainerId, **dictUnused):
         await websocket.accept()
         listCountDuring.append(
             dictCtx["dictContainerOwners"][S_PROJECT_NAME]
@@ -141,7 +168,7 @@ def test_absent_lease_pipeline_ws_closes_4403_with_real_guard():
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     client = _fclientWithPipelineWs(dictCtx)
     with client.websocket_connect(
-        f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_TOKEN}",
+        f"/ws/pipeline/{S_CONTAINER_ID}?sToken={S_CREDENTIAL}",
         headers=_DICT_LOOPBACK_ORIGIN,
     ) as websocketClient:
         with pytest.raises(WebSocketDisconnect) as excInfo:
@@ -160,20 +187,12 @@ def test_absent_lease_pipeline_ws_closes_4403_with_real_guard():
 # browser blamed the network.
 
 
-def _sTerminalUrl(sLeaseId=S_LEASE, sToken=S_TOKEN):
+def _sTerminalUrl(sLeaseId=S_LEASE, sToken=S_CREDENTIAL):
     """Build a /ws/terminal URL addressed by the docker ID, not the name."""
     return (
         f"/ws/terminal/{S_CONTAINER_ID}"
         f"?sToken={sToken}&sLeaseId={sLeaseId}"
     )
-
-
-async def _fnFakeBlockingTerminalSession(websocket, dictCtx, sContainerId):
-    """Stand-in terminal session that stays live until the client leaves."""
-    try:
-        await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
 
 
 def _fclientWithBothWsRoutes(dictCtx):
@@ -186,16 +205,49 @@ def _fclientWithBothWsRoutes(dictCtx):
     return TestClient(app)
 
 
+def _fnRegisterUnbudgetedLaneWs(app, dictCtx):
+    """Register a test-owned socket on the UNBUDGETED (non-pipeline) lane.
+
+    The interactive terminal is withdrawn for the alpha, so the
+    production route that used to hold an unbudgeted socket now refuses
+    every connection. The budget it exercised is still a live property
+    of ``fnServeUnderLiveConnectionCounters`` -- and the lane returns
+    when the containment boundary can be proven -- so the test drives
+    the real production wrapper over a real WebSocket with the lane flag
+    the terminal used, instead of asserting nothing until then.
+    """
+    @app.websocket("/ws/unbudgeted/{sContainerId}")
+    async def fnUnbudgetedWs(websocket: WebSocket, sContainerId: str):
+        async def fnServe():
+            await websocket.accept()
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                pass
+
+        # The lane flag is DELIBERATELY left at its default: unbudgeted
+        # is what the default must mean, and flipping it to True would
+        # budget every non-pipeline socket -- the Run-Step-always-refused
+        # regression. Passing it explicitly here would hide that mutant.
+        await webSocketAuthorization.fnServeUnderLiveConnectionCounters(
+            websocket, dictCtx["dictContainerOwners"], S_PROJECT_NAME,
+            fnServe, lambda: None, lambda: None,
+            dictBrowserSessions=dictCtx["dictBrowserSessions"],
+        )
+
+
 @pytest.mark.falsification
 def test_terminal_plus_pipeline_ws_coexist_in_one_session():
-    """One session's terminal AND pipeline sockets are both served, live
-    at the same time, on the same lease.
+    """An unbudgeted socket AND the pipeline socket coexist on one lease.
 
-    This is the Run Step path as the GUI actually drives it: the
-    terminal WS connects on workflow entry and is STILL OPEN when the
-    pipeline WS arrives. Both must serve concurrently; refusing the
+    This is the Run Step path as the GUI drove it before the terminal
+    was withdrawn: a socket on the unbudgeted lane is STILL OPEN when
+    the pipeline WS arrives. Both must serve concurrently; refusing the
     second socket silently killed every Run Step while the server was
-    healthy.
+    healthy. The first socket now comes from a test-owned route on that
+    lane rather than the withdrawn terminal route -- the budget under
+    test lives in ``fnServeUnderLiveConnectionCounters``, which is
+    production code either way.
 
     Kills: reverting fbRefuseSecondLiveConnection to the all-sockets
     budget (iLivePipelineConnectionCount -> iLiveConnectionCount), the
@@ -204,7 +256,12 @@ def test_terminal_plus_pipeline_ws_coexist_in_one_session():
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
     listCountsAtPipelineServe = []
 
-    async def _fnFakePipelineServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakePipelineServe(
+        websocket,
+        dictCtxArg,
+        sContainerId,
+        **dictUnused,
+    ):
         await websocket.accept()
         recordOwner = dictCtx["dictContainerOwners"][S_PROJECT_NAME]
         listCountsAtPipelineServe.append((
@@ -212,23 +269,25 @@ def test_terminal_plus_pipeline_ws_coexist_in_one_session():
             recordOwner.iLivePipelineConnectionCount,
         ))
 
+    app = FastAPI()
+    _fnRegisterPipelineWs(app, dictCtx)
+    _fnRegisterUnbudgetedLaneWs(app, dictCtx)
     with patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnFakeBlockingTerminalSession,
-    ), patch(
         "vaibify.gui.routes.pipelineRoutes.fnHandlePipelineWs",
         _fnFakePipelineServe,
     ):
-        client = _fclientWithBothWsRoutes(dictCtx)
+        client = TestClient(app)
         with client.websocket_connect(
-            _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+            f"/ws/unbudgeted/{S_CONTAINER_ID}"
+            f"?sToken={S_CREDENTIAL}&sLeaseId={S_LEASE}",
+            headers=_DICT_LOOPBACK_ORIGIN,
         ):
             with client.websocket_connect(
                 _sPipelineUrl(), headers=_DICT_LOOPBACK_ORIGIN,
             ):
                 pass
     assert listCountsAtPipelineServe == [(2, 1)], (
-        "with the terminal socket still live, the same session's "
+        "with the unbudgeted socket still live, the same session's "
         "pipeline socket must be SERVED (2 live connections total, "
         "1 on the pipeline lane), never refused 4409"
     )
@@ -248,7 +307,12 @@ def test_second_pipeline_ws_refused_4409_while_first_is_live():
     """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
 
-    async def _fnFakeBlockingPipelineServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeBlockingPipelineServe(
+        websocket,
+        dictCtxArg,
+        sContainerId,
+        **dictUnused,
+    ):
         await websocket.accept()
         try:
             await websocket.receive_text()
@@ -271,71 +335,92 @@ def test_second_pipeline_ws_refused_4409_while_first_is_live():
             assert excInfo.value.code == 4409
 
 
-def test_second_terminal_ws_served_alongside_live_connections():
-    """A second terminal tab is a feature of one session, never a 4409.
+def test_second_unbudgeted_ws_served_alongside_live_connections():
+    """A second socket on the unbudgeted lane is served, never a 4409.
 
-    Seeds a live pipeline socket AND a live terminal socket on the
-    owner, then connects another terminal: multi-tab terminals must be
-    served — the old all-sockets budget refused them as duplicates.
+    Seeds a live pipeline socket AND a live unbudgeted socket on the
+    owner, then connects another: the old all-sockets budget refused
+    these as duplicates, which is what made the terminal starve Run
+    Step.
     """
     dictCtx = _fdictBuildContext(
         _fdictOwnersByName(iLiveCount=2, iLivePipelineCount=1),
     )
-    listCountsDuringServe = []
-
-    async def _fnFakeCountingTerminalSession(websocket, dictCtxArg, sId):
-        listCountsDuringServe.append(
-            dictCtx["dictContainerOwners"][S_PROJECT_NAME]
-            .iLiveConnectionCount,
-        )
-
-    with patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnFakeCountingTerminalSession,
+    app = FastAPI()
+    _fnRegisterUnbudgetedLaneWs(app, dictCtx)
+    client = TestClient(app)
+    with client.websocket_connect(
+        f"/ws/unbudgeted/{S_CONTAINER_ID}"
+        f"?sToken={S_CREDENTIAL}&sLeaseId={S_LEASE}",
+        headers=_DICT_LOOPBACK_ORIGIN,
     ):
-        client = _fclientWithBothWsRoutes(dictCtx)
-        with client.websocket_connect(
-            _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
-        ):
-            pass
-    assert listCountsDuringServe == [3], (
-        "an extra terminal tab must be served and counted for liveness"
-    )
-
-
-# -- terminal route accepts the owner addressed by docker id -------------
-
-
-def test_owner_terminal_ws_accepted_when_name_differs_from_id():
-    """The terminal route resolves id->name and accepts the owner."""
-    dictCtx = _fdictBuildContext(_fdictOwnersByName())
-    dictCtx["containerUsers"] = {}
-    dictCtx["terminals"] = {}
-    listCountDuring = []
-
-    async def _fnFakeStartAndRun(websocket, dictCtxArg, sContainerId):
-        listCountDuring.append(
+        assert (
             dictCtx["dictContainerOwners"][S_PROJECT_NAME]
-            .iLiveConnectionCount
-        )
+            .iLiveConnectionCount == 3
+        ), "an extra unbudgeted socket must be served and counted"
 
+
+# -- the terminal route is withdrawn for every caller --------------------
+
+
+def test_owner_terminal_ws_is_refused_with_the_withdrawal_code():
+    """Even the rightful owner is refused, and told WHY.
+
+    The withdrawal is not an authorization outcome. A container's own
+    owner, presenting a valid credential and its own lease, must still
+    be closed with :data:`I_REJECT_TERMINAL_DISABLED` -- not 4403 --
+    because a client that cannot tell the two apart would advise the
+    researcher to re-claim a container that is already theirs. The
+    ownership record must be untouched by the attempt: no live count,
+    no session socket, no liveness refresh.
+    """
+    dictCtx = _fdictBuildContext(_fdictOwnersByName())
     app = FastAPI()
     _fnRegisterTerminalWs(app, dictCtx)
-    with patch(
-        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
-        _fnFakeStartAndRun,
+    client = TestClient(app)
+    with client.websocket_connect(
+        _sTerminalUrl(), headers=_DICT_LOOPBACK_ORIGIN,
+    ) as websocketClient:
+        with pytest.raises(WebSocketDisconnect) as excInfo:
+            websocketClient.receive_text()
+    assert excInfo.value.code == (
+        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
+    )
+    recordOwner = dictCtx["dictContainerOwners"][S_PROJECT_NAME]
+    assert recordOwner.iLiveConnectionCount == 0
+    assert recordOwner.iLivePipelineConnectionCount == 0
+
+
+def test_terminal_ws_refusal_reveals_nothing_about_the_container():
+    """An unknown container is refused identically to a real one.
+
+    The pre-withdrawal handler resolved the docker id through the
+    daemon BEFORE any gate, so any caller that could reach the socket
+    could ask whether a named container existed. The withdrawn handler
+    must answer a fabricated id, a bad origin, and a garbage credential
+    with the same code and the same silence.
+    """
+    dictCtx = _fdictBuildContext(_fdictOwnersByName())
+    app = FastAPI()
+    _fnRegisterTerminalWs(app, dictCtx)
+    client = TestClient(app)
+    listCodes = []
+    for sUrl, dictHeaders in (
+        (f"/ws/terminal/no-such-container-id?sToken={S_CREDENTIAL}"
+         f"&sLeaseId={S_LEASE}", _DICT_LOOPBACK_ORIGIN),
+        (_sTerminalUrl(sToken="garbage-credential"), _DICT_LOOPBACK_ORIGIN),
+        (_sTerminalUrl(), {"origin": "http://evil.example"}),
     ):
-        client = TestClient(app)
         with client.websocket_connect(
-            f"/ws/terminal/{S_CONTAINER_ID}"
-            f"?sToken={S_TOKEN}&sLeaseId={S_LEASE}",
-            headers=_DICT_LOOPBACK_ORIGIN,
-        ):
-            pass
-    assert listCountDuring == [1]
-    assert (
-        dictCtx["dictContainerOwners"][S_PROJECT_NAME].iLiveConnectionCount
-        == 0
+            sUrl, headers=dictHeaders,
+        ) as websocketClient:
+            with pytest.raises(WebSocketDisconnect) as excInfo:
+                websocketClient.receive_text()
+        listCodes.append(excInfo.value.code)
+    iWithdrawn = webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
+    assert listCodes == [iWithdrawn, iWithdrawn, iWithdrawn], (
+        "the withdrawn terminal route must answer every caller with the "
+        "same code, so it is not an existence oracle for containers"
     )
 
 
@@ -353,7 +438,7 @@ def test_agent_lane_authorized_by_container_id_against_name_record():
     """
     dictCtx = _fdictBuildContext(_fdictOwnersByName())
 
-    async def _fnFakeServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeServe(websocket, dictCtxArg, sContainerId, **dictUnused):
         await websocket.accept()
 
     with patch(
@@ -383,11 +468,14 @@ def test_guard_reachable_only_after_id_to_name_resolution():
     class _Conn:
         def __init__(self):
             self.headers = {"origin": "http://localhost"}
-            self.query_params = {"sToken": S_TOKEN, "sLeaseId": S_LEASE}
+            self.query_params = {
+                "sToken": S_CREDENTIAL, "sLeaseId": S_LEASE,
+            }
 
     dictCtx = {
         "sSessionToken": S_TOKEN,
         "dictContainerOwners": _fdictOwnersByName(),
+        "dictBrowserSessions": _fdictBrowserSessions(),
     }
     assert webSocketAuthorization.fiContainerSessionRejectionCode(
         _Conn(), dictCtx, S_PROJECT_NAME,
@@ -423,6 +511,88 @@ def test_viewer_registration_keys_by_name_and_surfaces_lease():
     assert sLease == dictContainerOwners[S_PROJECT_NAME].sLeaseId
 
 
+def _fdictViewerContext(dictContainerOwners):
+    """A minimal viewer route context for the first-connect binding."""
+    return {
+        "bIsHub": False,
+        "docker": _FakeDocker(S_CONTAINER_ID, S_PROJECT_NAME),
+        "dictContainerOwners": dictContainerOwners,
+    }
+
+
+def test_viewer_first_connect_binds_the_browser_session():
+    """First connect mints a lease bound to the connecting session."""
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    recordOwner = dictContainerOwners[S_PROJECT_NAME]
+    assert recordOwner.sBrowserSessionId == "session-A"
+    assert dictCtx["sViewerLease"] == recordOwner.sLeaseId
+
+
+def test_viewer_same_session_retry_is_idempotent():
+    """A re-connect by the owning session reclaims the same lease."""
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    sLeaseFirst = dictCtx["sViewerLease"]
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    assert dictCtx["sViewerLease"] == sLeaseFirst
+    assert dictContainerOwners[S_PROJECT_NAME].sLeaseId == sLeaseFirst
+
+
+def test_viewer_different_session_is_refused_409():
+    """A second researcher's session cannot take the bound viewer."""
+    from fastapi import HTTPException
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-A",
+    )
+    sLeaseA = dictContainerOwners[S_PROJECT_NAME].sLeaseId
+    with pytest.raises(HTTPException) as excInfo:
+        pipelineServer._fnRegisterViewerServedContainer(
+            dictCtx, S_CONTAINER_ID, "session-B",
+        )
+    assert excInfo.value.status_code == 409
+    # The owning session's lease is untouched by the refused reconnect.
+    assert dictContainerOwners[S_PROJECT_NAME].sLeaseId == sLeaseA
+    assert dictContainerOwners[S_PROJECT_NAME].sBrowserSessionId == "session-A"
+
+
+def test_viewer_unbound_owner_admits_transitional_reconnect():
+    """A shared-token (unbound) owner still admits any later connect."""
+    from vaibify.gui import pipelineServer
+
+    dictContainerOwners = {}
+    dictCtx = _fdictViewerContext(dictContainerOwners)
+    # First connect with no credential leaves the owner unbound ('').
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "",
+    )
+    recordOwner = dictContainerOwners[S_PROJECT_NAME]
+    assert recordOwner.sBrowserSessionId == ""
+    sLeaseFirst = recordOwner.sLeaseId
+    # A later connect (credential or not) reclaims idempotently.
+    pipelineServer._fnRegisterViewerServedContainer(
+        dictCtx, S_CONTAINER_ID, "session-later",
+    )
+    assert dictCtx["sViewerLease"] == sLeaseFirst
+    assert dictContainerOwners[S_PROJECT_NAME].sLeaseId == sLeaseFirst
+
+
 def test_viewer_minted_lease_authorizes_pipeline_ws():
     """A viewer WS presenting the surfaced lease is ACCEPTED end-to-end."""
     from vaibify.gui import pipelineServer
@@ -433,7 +603,7 @@ def test_viewer_minted_lease_authorizes_pipeline_ws():
     pipelineServer._fnRegisterViewerServedContainer(dictCtx, S_CONTAINER_ID)
     sLease = dictCtx["sViewerLease"]
 
-    async def _fnFakeServe(websocket, dictCtxArg, sContainerId):
+    async def _fnFakeServe(websocket, dictCtxArg, sContainerId, **dictUnused):
         await websocket.accept()
 
     with patch(

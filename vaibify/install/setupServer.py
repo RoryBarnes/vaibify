@@ -42,7 +42,6 @@ class WizardConfigRequest(BaseModel):
     listPipPackages: List[str] = []
     listAptPackages: List[str] = []
     sOverleafProjectId: str = ""
-    sZenodoDepositionId: str = ""
     bNeverSleep: bool = False
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True

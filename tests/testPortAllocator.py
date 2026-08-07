@@ -477,3 +477,75 @@ def test_fiResolveHubPort_first_run_announces_on_stderr(capsys):
     sErr = capsys.readouterr().err
     assert "Assigned hub port" in sErr
     assert "persisted" in sErr
+
+
+# --- _fsBuildHolderDetail message branches ---
+
+def test_holder_detail_names_project_and_pid():
+    from vaibify.cli.portAllocator import _fsBuildHolderDetail
+    sMsg = _fsBuildHolderDetail(8050, {"iPid": 999, "sProjectName": "demo"})
+    assert "demo" in sMsg and "999" in sMsg and "8050" in sMsg
+
+
+def test_holder_detail_pid_only():
+    from vaibify.cli.portAllocator import _fsBuildHolderDetail
+    sMsg = _fsBuildHolderDetail(8050, {"iPid": 999})
+    assert "999" in sMsg and "another process" in sMsg
+
+
+def test_holder_detail_unknown_holder():
+    from vaibify.cli.portAllocator import _fsBuildHolderDetail
+    sMsg = _fsBuildHolderDetail(8050, {})
+    assert "in use by another process" in sMsg
+
+
+# --- thin registry-reader wrappers: success and swallowed-error paths ---
+
+def test_read_container_lock_holder_returns_dict():
+    from vaibify.cli import portAllocator
+    with patch("vaibify.config.containerLock.fdictReadLockHolder",
+               return_value={"iPid": 7}):
+        assert portAllocator._fdictReadContainerLockHolder("p") == {"iPid": 7}
+
+
+def test_read_container_lock_holder_swallows_errors():
+    from vaibify.cli import portAllocator
+    with patch("vaibify.config.containerLock.fdictReadLockHolder",
+               side_effect=RuntimeError("boom")):
+        assert portAllocator._fdictReadContainerLockHolder("p") == {}
+
+
+def test_explicit_hub_port_wins_unconditionally():
+    from vaibify.cli import portAllocator
+    assert portAllocator.fiResolveHubPort(8137) == 8137
+
+
+def test_read_persisted_hub_port_returns_value():
+    from vaibify.cli import portAllocator
+    with patch("vaibify.config.hubPortRegistry.fiReadPersistedHubPort",
+               return_value=8137):
+        assert portAllocator._fiReadPersistedHubPort() == 8137
+
+
+def test_read_persisted_hub_port_swallows_errors():
+    from vaibify.cli import portAllocator
+    with patch("vaibify.config.hubPortRegistry.fiReadPersistedHubPort",
+               side_effect=OSError("nope")):
+        assert portAllocator._fiReadPersistedHubPort() == 0
+
+
+def test_persist_hub_port_swallows_errors():
+    from vaibify.cli import portAllocator
+    with patch("vaibify.config.hubPortRegistry.fnPersistHubPort",
+               side_effect=OSError("readonly")):
+        portAllocator._fnPersistHubPortSafely(8050)  # must not raise
+
+
+def test_read_hub_slot_returns_dict_and_swallows_errors():
+    from vaibify.cli import portAllocator
+    with patch("vaibify.config.sessionRegistry.fdictReadHubSlotByPort",
+               return_value={"sRole": "hub"}):
+        assert portAllocator._fdictReadHubSlot(8050) == {"sRole": "hub"}
+    with patch("vaibify.config.sessionRegistry.fdictReadHubSlotByPort",
+               side_effect=RuntimeError("x")):
+        assert portAllocator._fdictReadHubSlot(8050) == {}

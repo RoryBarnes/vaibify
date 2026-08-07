@@ -12,7 +12,12 @@ implementing every HTTP path. That deployment has two consequences:
 1. Top-level imports must stay container-safe. ``keyring`` is always
    present; ``requests`` is present when a workflow uses this
    archive path; ``tqdm`` is optional and is therefore imported
-   lazily inside ``_fnStreamUpload``.
+   lazily inside ``_fnStreamUpload``. A vaibify-package import at top
+   level breaks this rule outright, and one did: the redaction helpers
+   arrived later as ``from vaibify.reproducibility.credentialRedactor
+   import ...``, which raises ImportError at ``/usr/share/vaibify``
+   where no vaibify package exists. It is now a flat fallback, and
+   ``credentialRedactor`` is staged beside this file.
 2. The ``secretManager`` fallback for token acquisition only runs
    when ``sToken`` is ``None``. Container callers always pass the
    token explicitly (they read it from the container's keyring
@@ -25,10 +30,16 @@ from pathlib import Path
 
 import requests
 
-from vaibify.reproducibility.credentialRedactor import (
-    fsRedactCredentials,
-    fsRedactUrlCredentials,
-)
+try:
+    from vaibify.reproducibility.credentialRedactor import (
+        fsRedactCredentials,
+        fsRedactUrlCredentials,
+    )
+except ImportError:  # staged flat at /usr/share/vaibify, no package
+    from credentialRedactor import (
+        fsRedactCredentials,
+        fsRedactUrlCredentials,
+    )
 
 
 class ZenodoError(Exception):

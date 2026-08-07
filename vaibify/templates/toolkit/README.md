@@ -2,9 +2,9 @@
 
 A toolkit container is a workspace for editing several peer code
 repositories side-by-side. It is the right choice when you want to
-hack on more than one package at once, for example editing
-`vplanet`, `vspace`, and `multiplanet` in tandem while you iterate
-on a change that spans them.
+hack on more than one package at once, for example editing a
+simulation code, its parameter-sweep generator, and its batch
+runner in tandem while you iterate on a change that spans them.
 
 Toolkit containers have no workflow. Instead, the Repos panel in
 the GUI provides per-repository git status, dirty-file listings,

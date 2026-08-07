@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests import testCoverageBoost as _module
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def clientEtag():
             sTerminalUserArg="testuser",
         )
     yield TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
@@ -40,6 +41,11 @@ def _fnConnectAndPollOnce(clientEtag):
         params={"sWorkflowPath": _module.S_WORKFLOW_PATH},
     )
     assert responseConnect.status_code == 200
+    # Container reads are lease-enforced; carry the owning lease like the
+    # browser's authenticated-fetch wrapper does.
+    clientEtag.headers["X-Vaibify-Lease"] = (
+        responseConnect.json()["sLeaseId"]
+    )
     responseHttp = clientEtag.get(
         f"/api/pipeline/{_module.S_CONTAINER_ID}/file-status"
     )

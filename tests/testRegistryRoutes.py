@@ -9,6 +9,20 @@ from vaibify.config import registryManager
 
 
 @pytest.fixture(autouse=True)
+def fixtureIsolateContainerLocks(tmp_path, monkeypatch):
+    """Keep the start path's host flock inside tmp_path.
+
+    The start route acquires the container flock (design §10b), so
+    without this a test run would write into — and could contend with —
+    the researcher's real ~/.vaibify/locks.
+    """
+    from vaibify.config import containerLock
+    monkeypatch.setattr(
+        containerLock, "_S_LOCK_DIRECTORY", str(tmp_path / "locks"),
+    )
+
+
+@pytest.fixture(autouse=True)
 def fixtureIsolateRegistry(tmp_path, monkeypatch):
     """Redirect registry to a temp directory for every test."""
     sRegistryDir = str(tmp_path / ".vaibify")
@@ -50,6 +64,21 @@ def fixtureClient(fixtureApp):
     """Create a test client for the hub app."""
     from starlette.testclient import TestClient
     return TestClient(fixtureApp)
+
+
+@pytest.fixture
+def fixtureLiveClient(fixtureApp):
+    """A context-managed client whose event loop OUTLIVES each request.
+
+    ``TestClient`` used outside a ``with`` block spins a fresh event loop
+    per request, so a background task started by one request is dropped
+    before the next. The start reservation launches a durable task, so
+    every test that watches one settle needs the long-lived loop a real
+    uvicorn hub always has.
+    """
+    from starlette.testclient import TestClient
+    with TestClient(fixtureApp) as clientLive:
+        yield clientLive
 
 
 # --- GET /api/registry ---
@@ -377,8 +406,8 @@ def testBuildContainerSuccess(fixtureClient, tmp_path, monkeypatch):
         json={"sDirectory": sProjectDir},
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject, bNoCache=False: None,
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
+        lambda dictProject, bNoCache=False, dictProgress=None: None,
     )
     response = fixtureClient.post(
         "/api/containers/build-proj/build",
@@ -395,8 +424,8 @@ def testBuildContainerFailure(fixtureClient, tmp_path, monkeypatch):
         json={"sDirectory": sProjectDir},
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject, bNoCache=False: (_ for _ in ()).throw(
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
+        lambda dictProject, bNoCache=False, dictProgress=None: (_ for _ in ()).throw(
             RuntimeError("build error")
         ),
     )
@@ -419,7 +448,7 @@ def testBuildFailureSurfacesStderrTail(
         json={"sDirectory": sProjectDir},
     )
 
-    def _fnRaiseWithTail(dictProject, bNoCache=False):
+    def _fnRaiseWithTail(dictProject, bNoCache=False, dictProgress=None):
         errorBuild = RuntimeError("Docker command failed (exit 1)")
         errorBuild.sStderrTail = (
             "E: You don't have enough free space in "
@@ -428,7 +457,7 @@ def testBuildFailureSurfacesStderrTail(
         raise errorBuild
 
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
         _fnRaiseWithTail,
     )
     response = fixtureClient.post(
@@ -453,8 +482,8 @@ def testBuildFailureWithoutTailStillStructured(
         json={"sDirectory": sProjectDir},
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
-        lambda dictProject, bNoCache=False: (_ for _ in ()).throw(
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
+        lambda dictProject, bNoCache=False, dictProgress=None: (_ for _ in ()).throw(
             RuntimeError("config not found")
         ),
     )
@@ -483,11 +512,11 @@ def testBuildRunsOffEventLoopThread(
     )
     listExecutorThreads = []
 
-    def _fnRecordThread(dictProject, bNoCache=False):
+    def _fnRecordThread(dictProject, bNoCache=False, dictProgress=None):
         listExecutorThreads.append(threading.get_ident())
 
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fnExecuteBuild",
+        "vaibify.gui.buildRoutes._fnExecuteBuild",
         _fnRecordThread,
     )
     response = fixtureClient.post(
@@ -503,30 +532,65 @@ def testBuildRunsOffEventLoopThread(
 
 
 def testStartRunsOffEventLoopThread(
-    fixtureClient, tmp_path, monkeypatch,
+    fixtureLiveClient, fixtureApp, tmp_path, monkeypatch,
 ):
-    """Same async-safety guarantee for the start endpoint."""
+    """The reservation's Docker work runs off the event loop thread.
+
+    The start is now a server-owned reservation (design §10b): the route
+    answers 202 immediately and the create-then-start pair runs as a
+    durable task on a worker thread, so a hung pull can never block the
+    hub's loop.
+    """
     import threading
-    sProjectDir = _fnWriteMinimalConfig(tmp_path, "thread-start")
-    fixtureClient.post(
-        "/api/registry",
-        json={"sDirectory": sProjectDir},
-    )
+    _fnRegisterProject(fixtureLiveClient, tmp_path, "thread-start")
     listExecutorThreads = []
 
-    def _fnRecordThread(dictProject):
+    def _fnRecordThread(sName, reservation, configProject):
         listExecutorThreads.append(threading.get_ident())
         return "abc123"
 
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fsExecuteStart",
+        "vaibify.gui.startReservation._fsExecuteReservedStart",
         _fnRecordThread,
     )
-    response = fixtureClient.post(
+    response = fixtureLiveClient.post(
         "/api/containers/thread-start/start",
     )
-    assert response.status_code == 200
+    assert response.status_code == 202, response.text
+    _fnAwaitStartSettled(
+        fixtureLiveClient, fixtureApp, response.json()["sReservationId"],
+    )
     assert listExecutorThreads[0] != threading.get_ident()
+
+
+def _fnRegisterProject(fixtureLiveClient, tmp_path, sProjectName):
+    """Register a minimal project and return its directory."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, sProjectName)
+    fixtureLiveClient.post("/api/registry", json={"sDirectory": sProjectDir})
+    return sProjectDir
+
+
+def _frecordAwaitStartSettled(
+    fixtureLiveClient, fixtureApp, sReservationId, iAttempts=200,
+):
+    """Wait for the durable start task to publish its outcome.
+
+    Each iteration issues a cheap request, because ``TestClient`` only
+    turns the event loop while one is in flight — under uvicorn the
+    durable task advances on its own, and a real dashboard polls the
+    start-status endpoint exactly like this.
+    """
+    for _ in range(iAttempts):
+        recordResult = fixtureApp.state.dictStartResults.get(sReservationId)
+        if recordResult is not None and recordResult.sState != "PENDING":
+            return recordResult
+        fixtureLiveClient.get("/api/registry")
+    raise AssertionError("the start never settled its result record")
+
+
+def _fnAwaitStartSettled(fixtureLiveClient, fixtureApp, sReservationId):
+    """Wait for settlement, discarding the record."""
+    _frecordAwaitStartSettled(fixtureLiveClient, fixtureApp, sReservationId)
 
 
 def testStopRunsOffEventLoopThread(
@@ -555,41 +619,72 @@ def testStopRunsOffEventLoopThread(
     assert listExecutorThreads[0] != threading.get_ident()
 
 
-def testStartContainerSuccess(fixtureClient, tmp_path, monkeypatch):
-    """Lines 135-143: successful start returns container ID."""
-    sProjectDir = _fnWriteMinimalConfig(tmp_path, "start-proj")
-    fixtureClient.post(
-        "/api/registry",
-        json={"sDirectory": sProjectDir},
-    )
+def testStartContainerSuccess(
+    fixtureLiveClient, fixtureApp, tmp_path, monkeypatch,
+):
+    """A started container settles SUCCEEDED and keeps its ownership.
+
+    The 202 carries the reservation id and the status-poll location and
+    NEVER a lease: nothing is running yet for a lease to authorize.
+    """
+    _fnRegisterProject(fixtureLiveClient, tmp_path, "start-proj")
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fsExecuteStart",
-        lambda dictProject: "abc123",
+        "vaibify.gui.startReservation._fsExecuteReservedStart",
+        lambda sName, reservation, configProject: "abc123",
     )
-    response = fixtureClient.post(
-        "/api/containers/start-proj/start",
+    response = fixtureLiveClient.post("/api/containers/start-proj/start")
+    assert response.status_code == 202, response.text
+    dictBody = response.json()
+    assert dictBody["sStatusPath"] == (
+        "/api/containers/start-proj/start-status"
     )
-    assert response.status_code == 200
-    assert response.json()["sContainerId"] == "abc123"
+    assert "sLeaseId" not in dictBody
+    recordResult = _frecordAwaitStartSettled(
+        fixtureLiveClient, fixtureApp, dictBody["sReservationId"],
+    )
+    assert recordResult.sState == "SUCCEEDED"
+    recordOwner = fixtureApp.state.dictContainerOwners["start-proj"]
+    assert recordOwner.reservation is None, (
+        "a settled start must clear its reservation"
+    )
+    assert recordOwner.sContainerId == "abc123"
 
 
-def testStartContainerFailure(fixtureClient, tmp_path, monkeypatch):
-    """Lines 137-139: start failure returns 500."""
-    sProjectDir = _fnWriteMinimalConfig(tmp_path, "fail-start")
-    fixtureClient.post(
-        "/api/registry",
-        json={"sDirectory": sProjectDir},
+def testStartContainerFailureReleasesOwnership(
+    fixtureLiveClient, fixtureApp, tmp_path, monkeypatch,
+):
+    """A failed start publishes FAILED and frees the container again.
+
+    The failure reaches the researcher through the result record, not
+    through the POST: by the time it is known the request is long gone,
+    which is exactly why the record outlives the reservation.
+    """
+    _fnRegisterProject(fixtureLiveClient, tmp_path, "fail-start")
+
+    def _fnRaise(sName, reservation, configProject):
+        raise RuntimeError("start error")
+
+    monkeypatch.setattr(
+        "vaibify.gui.startReservation._fsExecuteReservedStart", _fnRaise,
     )
     monkeypatch.setattr(
-        "vaibify.gui.registryRoutes._fsExecuteStart",
-        lambda dictProject: (_ for _ in ()).throw(
-            RuntimeError("start error")
-        ),
+        "vaibify.docker.containerManager.fdictSettleReservationContainers",
+        lambda sReservationId, bLaunchWasKilled: {
+            "bConclusive": True, "listRemovedContainerIds": [],
+            "sDetail": "nothing was created",
+        },
     )
-    response = fixtureClient.post(
-        "/api/containers/fail-start/start",
+    response = fixtureLiveClient.post("/api/containers/fail-start/start")
+    assert response.status_code == 202, response.text
+    recordResult = _frecordAwaitStartSettled(
+        fixtureLiveClient, fixtureApp, response.json()["sReservationId"],
     )
-    assert response.status_code == 500
+    assert recordResult.sState == "FAILED"
+    assert "start error" in recordResult.sSafeError
+    assert recordResult.bQuarantined is False
+    assert "fail-start" not in fixtureApp.state.dictContainerOwners, (
+        "a conclusively-clean failed start must free the container"
+    )
 
 
 def testStopContainerSuccess(fixtureClient, tmp_path, monkeypatch):

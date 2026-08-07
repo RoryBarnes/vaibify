@@ -160,7 +160,8 @@ def testClaimIsIdempotentWhenSameLeaseRepresented(
         "/api/registry/demo/claim",
     ).json()["sLeaseId"]
     response = fixtureClient.post(
-        "/api/registry/demo/claim", params={"sLeaseId": sLeaseId},
+        "/api/registry/demo/claim",
+        headers={"X-Vaibify-Lease": sLeaseId},
     )
     assert response.status_code == 200
     assert response.json()["sLeaseId"] == sLeaseId
@@ -183,7 +184,8 @@ def testReleaseFreesTheLock(fixtureClient, fixtureHubApp):
         "/api/registry/demo/claim",
     ).json()["sLeaseId"]
     response = fixtureClient.post(
-        "/api/registry/demo/release", params={"sLeaseId": sLeaseId},
+        "/api/registry/demo/release",
+        headers={"X-Vaibify-Lease": sLeaseId},
     )
     assert response.status_code == 200
     assert response.json() == {"sName": "demo", "bReleased": True}
@@ -194,7 +196,8 @@ def testReleaseRejectsNonOwnerLease(fixtureClient, fixtureHubApp):
     """A release with the wrong lease leaves ownership intact (no leak free)."""
     fixtureClient.post("/api/registry/demo/claim")
     response = fixtureClient.post(
-        "/api/registry/demo/release", params={"sLeaseId": "not-the-owner"},
+        "/api/registry/demo/release",
+        headers={"X-Vaibify-Lease": "not-the-owner"},
     )
     assert response.status_code == 200
     assert response.json()["bReleased"] is False
@@ -212,7 +215,8 @@ def testClaimAfterReleaseSucceeds(fixtureClient):
         "/api/registry/demo/claim",
     ).json()["sLeaseId"]
     fixtureClient.post(
-        "/api/registry/demo/release", params={"sLeaseId": sLeaseId},
+        "/api/registry/demo/release",
+        headers={"X-Vaibify-Lease": sLeaseId},
     )
     response = fixtureClient.post("/api/registry/demo/claim")
     assert response.status_code == 200

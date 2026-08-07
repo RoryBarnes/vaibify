@@ -30,6 +30,7 @@ T_PRE_MERGE_WORKFLOWS = (
     "tests-macos.yml",
     "browser.yml",
     "falsification.yml",
+    "security.yml",
     "agentDocsPathCheck.yml",
 )
 
@@ -149,11 +150,15 @@ def testReadmeDoesNotUseGitHubStatusBadgesForMergeGates(sWorkflow):
 def testEveryWorkflowIsClassifiedOrDeliberatelyScheduled():
     """No workflow may quietly sit outside the split.
 
-    A new workflow added with both triggers is exactly the regression
-    these tests exist to prevent, and it would go unnoticed if the
-    lists above were the only thing checked. Anything not classified
-    must be schedule- or dispatch-driven (the container lanes and the
-    mutation gate), never event-driven on main.
+    Anything not classified must be schedule- or dispatch-driven (the
+    container lanes and the mutation gate), never event-driven on main.
+    An earlier version flagged only workflows carrying *both* triggers,
+    which let an unclassified lane with a lone ``push: [main]`` or a
+    lone ``pull_request`` sail through — the exact regression the test
+    claims to prevent. One exception is deliberate: a *path-filtered*
+    ``pull_request`` trigger (``freshImageBuild.yml``) is a conditional
+    lane that runs only when its named files change; an unfiltered one
+    is an unregistered merge gate whose result nothing requires.
     """
     setClassified = (
         set(T_PRE_MERGE_WORKFLOWS)
@@ -167,11 +172,20 @@ def testEveryWorkflowIsClassifiedOrDeliberatelyScheduled():
     listOffenders = []
     for sWorkflow in listUnclassified:
         dictOn = _fdictTriggers(sWorkflow)
-        if "pull_request" in dictOn and _fbPushesToMain(dictOn):
-            listOffenders.append(sWorkflow)
+        if _fbPushesToMain(dictOn):
+            listOffenders.append(f"{sWorkflow} (push to main)")
+            continue
+        dictPullRequest = dictOn.get("pull_request")
+        bPathFiltered = (
+            isinstance(dictPullRequest, dict)
+            and bool(dictPullRequest.get("paths"))
+        )
+        if "pull_request" in dictOn and not bPathFiltered:
+            listOffenders.append(f"{sWorkflow} (unfiltered pull_request)")
     assert listOffenders == [], (
-        f"these workflows run both before and after a merge and belong "
-        f"in one of the two lists above: {listOffenders}"
+        f"these workflows are event-driven but sit outside the "
+        f"pre/post-merge split; classify them in the lists above or "
+        f"make them schedule/dispatch-driven: {listOffenders}"
     )
 
 
@@ -189,6 +203,7 @@ T_PUBLISHED_BADGES = (
     "statusTestsMacos.json",
     "statusFalsification.json",
     "statusBrowser.json",
+    "statusSecurity.json",
     "statusAgentDocs.json",
 )
 

@@ -17,10 +17,16 @@ catalog's vocabulary identical to the in-container ``vaibify-do`` CLI's
 without overwriting a single existing command.
 
 The lane is the RESEARCHER lane throughout (see
-:mod:`vaibify.cli.hubSession`): the shared session token plus the
-per-claim lease, never the per-container agent token. ``bAgentSafe``
-constrains a compromised in-container agent, not the researcher at their
-own terminal, so user-only actions are generated here like any other.
+:mod:`vaibify.cli.hubSession`): a per-browser credential, bootstrapped
+headlessly over the hub's host control socket, plus the per-claim lease,
+never the per-container agent token. ``bAgentSafe`` constrains a
+compromised in-container agent, not the researcher at their own
+terminal, so user-only actions are generated here like any other.
+
+One session per container is enforced against this lane like any other,
+so a container a dashboard tab already holds answers the claim with 409
+and the command stops with that refusal explained — it never transfers
+or revokes the dashboard's session to get in.
 """
 
 import json
@@ -188,6 +194,42 @@ def fsBuildRequestPath(dictEntry, dictSession, dictPathValues):
     return sPath
 
 
+def ftSplitQueryFromBodyFields(dictEntry, dictFields):
+    """Split caller fields by the transport the ROUTE actually reads.
+
+    Every generated action used to send its fields as a JSON body, but
+    some routes declare their parameters as QUERY parameters -- and
+    FastAPI reads those from the query string only. A field sent in the
+    body of such a route is silently ignored and the parameter takes its
+    default, so ``get-host-log-tail iLines=50`` returned 200 lines and
+    ``write-file ... sWorkdir=/x`` wrote somewhere else entirely. The
+    catalog names those fields in ``saQueryFields``, and
+    ``testGeneratedActionsSendFieldsOnTheTransportTheRouteReads``
+    fails the build if a route grows one that the catalog does not.
+    """
+    setQueryFields = set(dictEntry.get("saQueryFields") or ())
+    dictQuery = {
+        sKey: objValue for sKey, objValue in dictFields.items()
+        if sKey in setQueryFields
+    }
+    dictBody = {
+        sKey: objValue for sKey, objValue in dictFields.items()
+        if sKey not in setQueryFields
+    }
+    return dictQuery, dictBody
+
+
+def fsAppendQueryString(sPath, dictQuery):
+    """Return the path with the caller's query fields appended."""
+    if not dictQuery:
+        return sPath
+    from urllib.parse import urlencode
+    sSeparator = "&" if "?" in sPath else "?"
+    return sPath + sSeparator + urlencode(
+        {sKey: str(objValue) for sKey, objValue in dictQuery.items()},
+    )
+
+
 def fdictResolvePathValues(dictSession, listPlaceholders, dictParams):
     """Return the path values, translating a step label to its index."""
     dictPathValues = {}
@@ -270,13 +312,21 @@ def _fnPrintDryRun(dictEntry, dictSession, dictParams):
             sPlaceholder: dictParams[_fsParameterName(sPlaceholder)]
             for sPlaceholder in flistArgumentPlaceholders(dictEntry)
         }
+        dictQuery, dictBody = ftSplitQueryFromBodyFields(
+            dictEntry, dictFields,
+        )
+        # The dry run shows the SPLIT, not the raw fields: its whole job
+        # is to let a caller see the call that will be made, and a field
+        # the route reads from the query string is a different call from
+        # the same field in the body.
         dictTarget = {
             "sTransport": "HTTP",
             "sMethod": dictEntry["sMethod"],
-            "sUrl": dictSession["sBaseUrl"] + fsBuildRequestPath(
-                dictEntry, dictSession, dictPathValues,
+            "sUrl": dictSession["sBaseUrl"] + fsAppendQueryString(
+                fsBuildRequestPath(dictEntry, dictSession, dictPathValues),
+                dictQuery,
             ),
-            "dictFields": dictFields,
+            "dictFields": dictBody,
         }
     click.echo(json.dumps(dictTarget, indent=2, sort_keys=True))
 
@@ -303,10 +353,14 @@ def _fiDispatchAction(dictEntry, dictSession, dictParams):
     dictPathValues = fdictResolvePathValues(
         dictSession, flistArgumentPlaceholders(dictEntry), dictParams,
     )
+    dictQuery, dictBody = ftSplitQueryFromBodyFields(dictEntry, dictFields)
     return hubSession.fiSendHttpAction(
         dictSession, dictEntry["sMethod"],
-        fsBuildRequestPath(dictEntry, dictSession, dictPathValues),
-        dictFields, dictParams["bJson"], fTimeoutSeconds,
+        fsAppendQueryString(
+            fsBuildRequestPath(dictEntry, dictSession, dictPathValues),
+            dictQuery,
+        ),
+        dictBody, dictParams["bJson"], fTimeoutSeconds,
     )
 
 

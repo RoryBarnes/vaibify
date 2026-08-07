@@ -24,15 +24,13 @@ policy.
 import datetime
 import fcntl
 import os
-import re
 
-from vaibify.config import pidFileRegistry
+from vaibify.config import operationJournal, pidFileRegistry
 from vaibify.config.processLiveness import fbIsProcessAliveSince, fbIsUsablePid
 
 
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
 _S_LOCK_SUFFIX = ".lock"
-_RE_VALID_PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _I_MAX_ACQUIRE_ATTEMPTS = 3
 
 
@@ -50,19 +48,57 @@ class ContainerLockedError(RuntimeError):
         super().__init__(sMessage)
 
 
+class ContainerQuarantinedError(ContainerLockedError):
+    """Raised when the operation journal quarantines a container.
+
+    Subclasses :class:`ContainerLockedError` so every existing refusal
+    path fails closed on a quarantine, while carrying the journal's
+    reason instead of a holder PID (there is no live holder — the
+    hazard is a PAST operation that cannot be proven settled).
+    """
+
+    def __init__(self, sProjectName, sReason):
+        self.sProjectName = sProjectName
+        self.iHolderPid = 0
+        self.iHolderPort = 0
+        self.sReason = sReason
+        RuntimeError.__init__(
+            self,
+            f"Container '{sProjectName}' is quarantined: {sReason}. A "
+            "journaled operation from a previous session could not be "
+            "proven settled; reconciliation is required before this "
+            "container can be claimed.",
+        )
+
+
+class ContainerBusyOperationError(ContainerLockedError):
+    """Raised when a journaled operation's holder is still alive.
+
+    The flock was free (its hub died), but a recorded worker — a helper
+    process or a Docker exec — is provably still running, so the
+    container is in use, not quarantined.
+    """
+
+    def __init__(self, sProjectName, listBusyOperationIds):
+        self.sProjectName = sProjectName
+        self.iHolderPid = 0
+        self.iHolderPort = 0
+        self.listBusyOperationIds = list(listBusyOperationIds)
+        RuntimeError.__init__(
+            self,
+            f"Container '{sProjectName}' still has "
+            f"{len(self.listBusyOperationIds)} journaled operation(s) "
+            "running; it is in use until they finish.",
+        )
+
+
 class InvalidProjectNameError(ValueError):
     """Raised when a project name fails validation for lock operations."""
 
 
 def fbIsValidProjectName(sProjectName):
     """Return True if the name is safe to use in the lock file path."""
-    if not isinstance(sProjectName, str):
-        return False
-    if sProjectName in ("", ".", ".."):
-        return False
-    if _RE_VALID_PROJECT_NAME.match(sProjectName) is None:
-        return False
-    return True
+    return pidFileRegistry.fbIsSafeRegistryName(sProjectName)
 
 
 def _fnValidateProjectName(sProjectName):
@@ -99,15 +135,81 @@ def _ffileOpenLockFileNoFollow(sPath):
     return pidFileRegistry.ffileOpenNoFollow(sPath)
 
 
-def fnAcquireContainerLock(sProjectName, iPort):
+def fnAcquireContainerLock(sProjectName, iPort, connectionDocker=None):
     """Acquire an exclusive lock on the container and return the fd.
 
     Raises ``InvalidProjectNameError`` if ``sProjectName`` is unsafe,
     or ``ContainerLockedError`` if a live process holds the lock. A
     claim whose recorded holder PID no longer exists is reaped and
-    taken over silently. The returned file handle must be kept open
-    for the duration of the claim; passing it to
-    ``fnReleaseContainerLock`` releases it.
+    taken over silently — UNLESS the container's operation journal is
+    unsettled: the journal is examined while the fresh flock is held
+    (atomically with it), and a quarantined container is refused with
+    ``ContainerQuarantinedError`` despite the freed flock, overriding
+    the silent dead-PID reap. A journaled operation whose holder is
+    provably alive refuses with ``ContainerBusyOperationError``.
+    ``connectionDocker``, when available, lets the journal's automatic
+    tier verify Docker-side operations instead of failing closed.
+
+    The returned file handle must be kept open for the duration of the
+    claim; passing it to ``fnReleaseContainerLock`` releases it.
+    """
+    _fnValidateProjectName(sProjectName)
+    _fnEnsureLockDirectory()
+    sPath = fsLockPathFor(sProjectName)
+    for _ in range(_I_MAX_ACQUIRE_ATTEMPTS):
+        fileHandle = _ffileTryAcquireFlock(sPath, sProjectName, iPort)
+        if fileHandle is not None:
+            return _ffileRefuseUnsettledJournal(
+                fileHandle, sProjectName, connectionDocker,
+            )
+    raise ContainerLockedError(sProjectName, 0, 0)
+
+
+def _ffileRefuseUnsettledJournal(fileHandle, sProjectName, connectionDocker):
+    """Refuse a freshly-flocked container whose journal is not settled.
+
+    Runs while the flock is held, so it can never race a normal
+    completion clearing its own record. On refusal the flock is
+    released before raising, leaving the container for reconciliation.
+    """
+    try:
+        dictResolution = operationJournal.fdictResolveContainerJournal(
+            sProjectName, connectionDocker,
+        )
+    except Exception:
+        fnReleaseContainerLock(fileHandle)
+        raise
+    if dictResolution["sResolution"] == operationJournal.S_RESOLUTION_QUARANTINED:
+        fnReleaseContainerLock(fileHandle)
+        raise ContainerQuarantinedError(
+            sProjectName, dictResolution["sQuarantineReason"],
+        )
+    if dictResolution["sResolution"] == operationJournal.S_RESOLUTION_BUSY:
+        fnReleaseContainerLock(fileHandle)
+        raise ContainerBusyOperationError(
+            sProjectName, dictResolution["listBusyOperationIds"],
+        )
+    return fileHandle
+
+
+def ffileAcquireReconciliationLock(sProjectName, iPort):
+    """Acquire the exclusive reconciliation lock and return the handle.
+
+    The reconciliation lock IS the same cross-process arbitration
+    primitive the claim path uses — this container's flock — taken in
+    the same stated order: both paths acquire the flock FIRST, then act
+    on the journal (a claim examines it and refuses an unsettled set; a
+    reconciliation proves the set settled and clears the marker LAST,
+    before releasing). Serializing on one flock is what makes
+    reconcile-versus-claim atomic (design §8, case 35): while a
+    reconciliation holds it, a concurrent claim is refused as locked;
+    while a live hub holds it, this acquisition raises
+    ``ContainerLockedError`` and the caller must route the
+    reconciliation to that hub over its host control socket instead.
+
+    Unlike :func:`fnAcquireContainerLock`, the journal gate is NOT
+    applied — refusing a quarantined container here would make every
+    quarantine permanently unclearable.
     """
     _fnValidateProjectName(sProjectName)
     _fnEnsureLockDirectory()
@@ -183,17 +285,70 @@ def _fbHandleMatchesPath(fileHandle, sPath):
     )
 
 
-def fnReapStaleContainerLocks():
+def fnReapStaleContainerLocks(connectionDocker=None):
     """Remove lock files whose recorded holder process has exited.
 
     Called at hub startup and on every container-list refresh so a
     claim orphaned by a killed vaibify server (its flock leaked into
     a surviving file descriptor) never blocks a fresh session. Live
     claims are never touched.
+
+    Also runs the operation journal's automatic probe tier over every
+    journaled container. Reaping frees only the FLOCK of a dead
+    holder; a journal record that cannot be proven settled keeps the
+    container quarantined regardless, because acquisition consults the
+    journal itself. This pass exists so provably-dead, provably-settled
+    leftovers are cleared (with a logged note) on the same cadence the
+    lock reaper already runs: startup and each container-list refresh.
     """
     pidFileRegistry.fnReapStaleFilesIn(
         _S_LOCK_DIRECTORY, _fbLockFileIsStale, _S_LOCK_SUFFIX,
     )
+    _fnAutoProbeJournaledContainers(connectionDocker)
+
+
+def _fnAutoProbeJournaledContainers(connectionDocker):
+    """Run the journal's automatic resolution for every journaled name."""
+    for sProjectName in operationJournal.flistJournaledContainerNames():
+        if not fbIsValidProjectName(sProjectName):
+            continue
+        _fnAutoProbeOneJournaledContainer(sProjectName, connectionDocker)
+
+
+def _fnAutoProbeOneJournaledContainer(sProjectName, connectionDocker):
+    """Resolve one container's journal, under its flock when one exists.
+
+    A held flock means a live vaibify process owns the container and
+    manages its own journal, so the probe skips it; a free flock is
+    taken for the duration of the resolution so the probe can never
+    race an acquisition examining the same records. When no lock file
+    exists at all there is no holder to race beyond the atomicity the
+    journal's own writes provide, so the resolution runs directly
+    rather than creating a lock file as a side effect.
+    """
+    sPath = fsLockPathFor(sProjectName)
+    if not os.path.exists(sPath):
+        operationJournal.fdictResolveContainerJournal(
+            sProjectName, connectionDocker,
+        )
+        return
+    try:
+        fileHandle = _ffileOpenLockFileNoFollow(sPath)
+    except OSError:
+        return
+    try:
+        try:
+            fcntl.flock(fileHandle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        try:
+            operationJournal.fdictResolveContainerJournal(
+                sProjectName, connectionDocker,
+            )
+        finally:
+            fcntl.flock(fileHandle, fcntl.LOCK_UN)
+    finally:
+        fileHandle.close()
 
 
 def _fbLockFileIsStale(sPath):

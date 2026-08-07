@@ -18,6 +18,7 @@ import pytest
 
 from vaibify.gui import hostIncidents
 from vaibify.gui.routes import pipelineRoutes
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 # -----------------------------------------------------------------------
@@ -93,10 +94,17 @@ def test_flistTailLogLinesForContainer_caps_to_iLines(tmp_path):
 
 @pytest.fixture
 def clientHttp():
-    """A TestClient sharing the existing server-routes fixture pattern."""
+    """A connected TestClient sharing the server-routes fixture pattern.
+
+    Container reads are lease-enforced, so the client connects up front
+    and carries the owning lease exactly as the browser's
+    authenticated-fetch wrapper does.
+    """
     from fastapi.testclient import TestClient
     from vaibify.gui import pipelineServer
-    from tests.testPipelineServerRoutes import _fmockCreateDocker
+    from tests.testPipelineServerRoutes import (
+        _fmockCreateDocker, _fnConnectToContainer,
+    )
     with patch.object(
         pipelineServer, "_fconnectionCreateDocker", _fmockCreateDocker,
     ):
@@ -104,9 +112,11 @@ def clientHttp():
             sWorkspaceRoot="/workspace",
             sTerminalUserArg="testuser",
         )
-    return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+    clientConnected = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
+    _fnConnectToContainer(clientConnected)
+    return clientConnected
 
 
 @pytest.fixture(autouse=True)

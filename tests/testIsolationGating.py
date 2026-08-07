@@ -19,6 +19,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "isolation_test_cid"
@@ -140,6 +141,9 @@ def _fnConnectToContainer(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
+    dictConnect = responseHttp.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
 
 
 @pytest.fixture
@@ -154,7 +158,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 

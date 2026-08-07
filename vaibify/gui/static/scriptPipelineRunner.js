@@ -6,7 +6,6 @@ var VaibifyPipelineRunner = (function () {
     var fbStepIsInteractive = VaibifyUtilities.fbStepIsInteractive;
 
     var iPreviousOutputCount = 0;
-    var _iActiveSentinelMonitor = null;
     var _sStreamingViewer = null;
     var dictAcknowledgedAt = {};
     var MAX_PIPELINE_OUTPUT_LINES = 1000;
@@ -286,8 +285,27 @@ var VaibifyPipelineRunner = (function () {
         var sFullCommand = _fsBuildInteractiveCommand(
             sDirectory, listCommands, sSentinel
         );
-        VaibifyTerminal.fnSendCommandInFreshTab(sFullCommand);
-        _fnMonitorTerminalForSentinel(sSentinel);
+        if (!VaibifyTerminal.fbSendCommandInFreshTab(sFullCommand)) {
+            _fnRefuseInteractiveWithoutTerminal();
+            return;
+        }
+    }
+
+    /* An interactive step is defined as one a human drives in a shell,
+       so with terminals disabled there is nowhere to run it. Both
+       launch paths say so; the runner-driven one additionally
+       reports the step FAILED rather than leaving the runner polling for
+       a sentinel no shell will ever print — a silent hang would leave
+       the step showing "running" forever, which is precisely the kind of
+       dashboard lie the container state must never tell. */
+    var S_INTERACTIVE_NEEDS_TERMINAL =
+        "Interactive steps need a terminal, and terminals are disabled. "
+        + "Make the step automated, or run its commands in a shell you "
+        + "open yourself with docker exec.";
+
+    function _fnRefuseInteractiveWithoutTerminal() {
+        VaibifyApp.fnShowToast(S_INTERACTIVE_NEEDS_TERMINAL, "error");
+        _fnSendInteractiveComplete(1);
     }
 
     function _fsBuildInteractiveCommand(
@@ -315,54 +333,6 @@ var VaibifyPipelineRunner = (function () {
         return "xxxx-xxxx".replace(/x/g, function () {
             return Math.floor(Math.random() * 16).toString(16);
         });
-    }
-
-    function _fnMonitorTerminalForSentinel(sSentinel) {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-        }
-        var I_MAX_SENTINEL_CHECKS = 86400;
-        var iCheckCount = 0;
-        _iActiveSentinelMonitor = setInterval(function () {
-            iCheckCount++;
-            if (iCheckCount >= I_MAX_SENTINEL_CHECKS) {
-                clearInterval(_iActiveSentinelMonitor);
-                _iActiveSentinelMonitor = null;
-                VaibifyApp.fnShowToast(
-                    "Interactive step timed out after 24 hours",
-                    "error");
-                _fnSendInteractiveComplete(1);
-                return;
-            }
-            var sText = _fsReadAllTerminalText();
-            var oPattern = new RegExp(
-                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
-            );
-            var oMatch = sText.match(oPattern);
-            if (!oMatch) return;
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-            var iExitCode = parseInt(oMatch[1], 10);
-            _fnSendInteractiveComplete(iExitCode);
-        }, 1000);
-    }
-
-    function _fsReadAllTerminalText() {
-        var sText = "";
-        var listPanes = document.querySelectorAll(
-            ".terminal-pane-container .xterm"
-        );
-        listPanes.forEach(function (elTerminal) {
-            try {
-                var elRows = elTerminal.querySelectorAll(
-                    ".xterm-rows > div"
-                );
-                elRows.forEach(function (el) {
-                    sText += el.textContent + "\n";
-                });
-            } catch (e) { /* skip unreadable pane */ }
-        });
-        return sText;
     }
 
     function _fnSendInteractiveComplete(iExitCode) {
@@ -696,10 +666,10 @@ var VaibifyPipelineRunner = (function () {
         var sFullCmd = _fsBuildInteractiveCommand(
             sDir, listCmds, sSentinel
         );
-        VaibifyTerminal.fnSendCommandInFreshTab(sFullCmd);
-        _fnMonitorStepCompletion(sSentinel, iIndex);
-        var elStrip = document.getElementById("terminalStrip");
-        if (elStrip) elStrip.scrollIntoView({ behavior: "smooth" });
+        if (!VaibifyTerminal.fbSendCommandInFreshTab(sFullCmd)) {
+            VaibifyApp.fnShowToast(S_INTERACTIVE_NEEDS_TERMINAL, "error");
+            return;
+        }
     }
 
     function _fnDispatchSingleStep(iIndex, sRunMode) {
@@ -762,24 +732,6 @@ var VaibifyPipelineRunner = (function () {
                 VaibifyUtilities.fsResolveTemplate(sCmd, dictVars));
         });
         return listCmds;
-    }
-
-    function _fnMonitorStepCompletion(sSentinel, iStepIndex) {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-        }
-        _iActiveSentinelMonitor = setInterval(function () {
-            var sText = _fsReadAllTerminalText();
-            var oPattern = new RegExp(
-                sSentinel.replace(/[-]/g, "\\-") + "=(\\d+)"
-            );
-            var oMatch = sText.match(oPattern);
-            if (!oMatch) return;
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-            var iExitCode = parseInt(oMatch[1], 10);
-            fnHandleStandaloneStepComplete(iStepIndex, iExitCode);
-        }, 1000);
     }
 
     function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
@@ -895,26 +847,26 @@ var VaibifyPipelineRunner = (function () {
         }
         sMessage += sSleepWarn;
         VaibifyApp.fnShowConfirmModal(
-            "Run All", sMessage, async function () {
-                var dictWorkflow = VaibifyApp.fdictGetWorkflow();
-                var listEnablePromises = [];
-                dictWorkflow.listSteps.forEach(
-                    function (step, iIndex) {
-                        if (step.bRunEnabled === false) {
-                            listEnablePromises.push(
-                                VaibifyApp.fnToggleStepEnabled(
-                                    iIndex, true)
-                            );
-                        }
-                        VaibifyApp.fnSetStepStatus(
-                            iIndex, "queued");
-                    });
-                if (listEnablePromises.length > 0) {
-                    await Promise.all(listEnablePromises);
-                }
+            "Run All", sMessage, function () {
+                // Queue only the steps that will actually run. The
+                // backend honors bRunEnabled and skips disabled steps,
+                // so the frontend must NOT re-enable them: doing so
+                // contradicts the "enabled steps" prompt, persists a
+                // bRunEnabled flip to project.json, and silently clears
+                // the Tier 5 reproduce refusal that names disabled steps.
+                _fnQueueEnabledSteps();
                 VaibifyApp.fnRenderStepList();
                 fnSendPipelineAction({ sAction: "runAll" });
             });
+    }
+
+    function _fnQueueEnabledSteps() {
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
+        dictWorkflow.listSteps.forEach(function (step, iIndex) {
+            if (step.bRunEnabled !== false) {
+                VaibifyApp.fnSetStepStatus(iIndex, "queued");
+            }
+        });
     }
 
     async function fnForceRunAll() {
@@ -991,19 +943,10 @@ var VaibifyPipelineRunner = (function () {
                 "error");
             return;
         }
-        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
-        var listEnablePromises = [];
-        dictWorkflow.listSteps.forEach(function (step, iIndex) {
-            if (step.bRunEnabled === false) {
-                listEnablePromises.push(
-                    VaibifyApp.fnToggleStepEnabled(iIndex, true)
-                );
-            }
-            VaibifyApp.fnSetStepStatus(iIndex, "queued");
-        });
-        if (listEnablePromises.length > 0) {
-            await Promise.all(listEnablePromises);
-        }
+        // Same rule as Run All: queue only enabled steps and never
+        // re-enable a disabled one. The backend skips disabled steps
+        // for forceRunAll too.
+        _fnQueueEnabledSteps();
         VaibifyApp.fnClearFileExistenceCache();
         VaibifyApp.fnRenderStepList();
         fnSendPipelineAction({ sAction: "forceRunAll" });
@@ -1111,17 +1054,6 @@ var VaibifyPipelineRunner = (function () {
         iPreviousOutputCount = 0;
         dictAcknowledgedAt = {};
         _sStreamingViewer = null;
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-        }
-    }
-
-    function fnCancelSentinelMonitor() {
-        if (_iActiveSentinelMonitor) {
-            clearInterval(_iActiveSentinelMonitor);
-            _iActiveSentinelMonitor = null;
-        }
     }
 
     function fiGetAcknowledgedAt(iStep) {
@@ -1165,7 +1097,6 @@ var VaibifyPipelineRunner = (function () {
         fnVerifyDependencies: fnVerifyDependencies,
         fnDisplayLogInViewer: fnDisplayLogInViewer,
         fnResetState: fnResetState,
-        fnCancelSentinelMonitor: fnCancelSentinelMonitor,
         fiGetAcknowledgedAt: fiGetAcknowledgedAt,
     };
 })();

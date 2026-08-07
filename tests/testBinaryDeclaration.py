@@ -14,6 +14,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.gui.routes import reproducibilityRoutes
 from vaibify.gui.routes.reproducibilityRoutes import fnRegisterAll
 from vaibify.reproducibility.environmentSnapshot import (
     fbBinaryCaptured,
@@ -34,6 +36,19 @@ def _fdictBuildWorkflow(sProjectRepo):
         "bNoStandaloneBinaries": False,
         "listDeclaredBinaries": [],
     }
+
+
+@pytest.fixture
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the carrier down for the routes this module drives bare.
+
+    The declare and capture routes now bind their work to the
+    container's owner record, which this module's bare ``FastAPI()``
+    has not got. Requested only by the tests that reach a carrier, so
+    the ones asserting a 400 still prove the route refuses BEFORE it
+    gets there. See ``tests/carrierStandDown.py`` for the cost.
+    """
+    fnStandCarrierDown(monkeypatch, reproducibilityRoutes)
 
 
 @pytest.fixture
@@ -118,7 +133,9 @@ def test_declare_entry_missing_fields_rejected(fixtureClient):
     assert response.status_code == 400
 
 
-def test_declare_waiver_accepted(fixtureClient, fixtureWorkflow):
+def test_declare_waiver_accepted(
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
+):
     response = fixtureClient.post(
         f"/api/workflow/{S_CONTAINER_ID}/binaries/declare",
         json={
@@ -131,7 +148,9 @@ def test_declare_waiver_accepted(fixtureClient, fixtureWorkflow):
     assert fixtureWorkflow["listDeclaredBinaries"] == []
 
 
-def test_declare_declaration_accepted(fixtureClient, fixtureWorkflow):
+def test_declare_declaration_accepted(
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
+):
     listEntries = [
         {"sBinaryPath": "/usr/local/bin/vplanet",
          "sPurpose": "fwd model",
@@ -264,7 +283,7 @@ def test_fbWorkflowDeclaresBinaries_rejects_malformed_entries():
 
 
 def test_capture_endpoint_persists_to_environment_json(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     """The capture endpoint writes the binary to environment.json."""
     sBin = _fsResolveRealBinary()

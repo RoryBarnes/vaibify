@@ -14,6 +14,16 @@ from typing import List
 from ..actionCatalog import fnAgentAction
 from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    fsHashContainerFileOrEmpty,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_SEPARATE_AUTHORITY,
+    S_CARRIER_TYPED_READ,
+    fnDeclareCarrierMode,
+)
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     FileUploadRequest,
@@ -52,13 +62,60 @@ def _fnValidateHostDestination(sResolvedPath):
             403, "Destination outside home directory")
 
 
-def _fnDockerCopy(sContainerId, sContainerPath, sHostDest):
-    """Run docker cp to copy from container to host."""
-    import subprocess
-    sSource = f"{sContainerId}:{sContainerPath}"
-    subprocess.run(
-        ["docker", "cp", sSource, sHostDest],
-        check=True, capture_output=True,
+def _fsPullContainerFileToHost(
+    connectionDocker, sContainerId, sContainerPath, sHostDestination,
+):
+    """Stream one container file onto the host; return where it landed.
+
+    This replaces a ``docker cp`` the route module assembled itself.
+    ``docker cp`` is bidirectional as a primitive -- the argv decides
+    which way the bytes travel -- so a route holding it holds a container
+    WRITE, whatever this particular call site happened to do with it. The
+    gateway's streaming read cannot travel the other way.
+
+    Two behaviours of ``docker cp`` are reproduced deliberately rather
+    than dropped. A destination that is an existing DIRECTORY receives
+    the source's basename, and the path returned is where the file
+    actually landed rather than what the caller asked for -- the old
+    route reported the directory. A DIRECTORY source is REFUSED, because
+    the gateway's single-file stream would otherwise skip the directory
+    entry, pull the first regular file inside it, and report success.
+    """
+    _fnRefuseDirectorySource(
+        connectionDocker, sContainerId, sContainerPath,
+    )
+    sTargetPath = sHostDestination
+    if os.path.isdir(sTargetPath):
+        sTargetPath = os.path.join(
+            sTargetPath, posixpath.basename(sContainerPath),
+        )
+    with open(sTargetPath, "wb") as fileTarget:
+        for baChunk in connectionDocker.fnIterStreamFile(
+            sContainerId, sContainerPath,
+        ):
+            fileTarget.write(baChunk)
+    return sTargetPath
+
+
+def _fnRefuseDirectorySource(
+    connectionDocker, sContainerId, sContainerPath,
+):
+    """Raise when the pull source names a directory rather than a file.
+
+    Only ``FileNotFoundError`` is read as "not a directory", which is
+    what the typed-read adapter raises for a path that is not one. Any
+    other failure -- an unreachable daemon, a stopped container -- is
+    left to propagate, because reinterpreting it as "this is a file"
+    would answer a question the probe did not manage to ask.
+    """
+    try:
+        connectionDocker.flistDirectoryEntries(
+            sContainerId, sContainerPath,
+        )
+    except FileNotFoundError:
+        return
+    raise IsADirectoryError(
+        f"{sContainerPath} is a directory; a pull names one file"
     )
 
 
@@ -82,29 +139,42 @@ def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
 def _fdictTestExistenceBatch(
     connectionDocker, sContainerId, listAbsPaths,
 ):
-    """Run a single shell loop to test each path; return ``{path: bool}``."""
+    """Probe every path in one typed read; return ``{path: bool}``.
+
+    This was a shell heredoc with the paths interpolated raw between
+    ``<<'__VAIBIFY_EOF__'`` and its terminator, which had two problems
+    the typed read removes together. A path containing that terminator
+    on a line of its own ended the heredoc and made the remainder shell.
+    And the whole thing went through the general exec primitive, which
+    the mutation gate treats as mutating -- because a primitive handed
+    command text cannot know what the text does -- so on the enforced
+    branch a file-existence probe would have been refused outright.
+
+    It also lost duplicate and blank paths: the answer was set
+    membership over the ECHOED lines, so a path that echoed nothing
+    distinguishable read as absent. The typed read answers positionally,
+    one boolean per requested path.
+    """
     if not listAbsPaths:
         return {}
-    sJoined = "\n".join(listAbsPaths)
-    sScript = (
-        "while IFS= read -r p; do "
-        "if [ -e \"$p\" ]; then echo \"$p\"; fi; "
-        "done <<'__VAIBIFY_EOF__'\n" + sJoined + "\n__VAIBIFY_EOF__"
+    listExists = connectionDocker.flistContainerPathsExist(
+        sContainerId, listAbsPaths,
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sScript,
-    )
-    setExisting = set(
-        sLine for sLine in sOutput.splitlines() if sLine
-    )
-    return {sPath: (sPath in setExisting) for sPath in listAbsPaths}
+    return dict(zip(listAbsPaths, listExists))
 
 
 def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/exist for batched existence checks."""
 
+    # typed-read: after the heredoc was replaced by the batched
+    # existence probe, the only container work this route does is that
+    # one declared read operation, built by its adapter from the paths
+    # it was given. It reaches no mutation-capable primitive, so it
+    # needs no carrier -- and unlike a `separate-authority` route it
+    # writes nothing anywhere, which is what `typed-read` claims.
     @fnAgentAction("check-files-exist")
     @app.post("/api/files/{sContainerId}/exist")
+    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fnCheckFilesExist(
         sContainerId: str, request: FileExistenceRequest,
     ):
@@ -162,10 +232,11 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("upload-file")
     @app.post("/api/files/{sContainerId}/upload")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnUploadFile(
         sContainerId: str, request: FileUploadRequest,
+        requestHttp: Request,
     ):
-        import asyncio
         dictCtx["require"]()
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
             dictCtx, sContainerId)
@@ -175,16 +246,68 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         sNormalized = fnValidatePathWithinRoot(
             sDestPath, sProjectRepoPath)
         fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
+        # Decoded on the request coroutine, before the carrier, so a
+        # malformed body is a 400 rather than a worker failure that
+        # poisons a journal record and quarantines the container.
         try:
             baContent = base64.b64decode(request.sContentBase64)
-            await asyncio.to_thread(
-                dictCtx["docker"].fnWriteFile,
-                sContainerId, sNormalized, baContent,
-            )
         except Exception as error:
             raise HTTPException(
-                status_code=500, detail=str(error))
+                400,
+                "sContentBase64 is not valid base64: "
+                f"{_fsSanitizeServerError(str(error))}",
+            )
+        _fnCommitUploadedFile(
+            dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+        )
         return {"bSuccess": True, "sPath": sNormalized}
+
+
+def _fnCommitUploadedFile(
+    dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+):
+    """Commit an uploaded file through carrier mode (a) (design §8).
+
+    Deliberately NOT folded into :func:`_fnCommitFileWrite`, which the
+    editor save uses. The two write the same journal record but differ
+    in what else they do: the editor save appends a Supervised-mode
+    attribution event and this one does not, and giving the shared
+    helper a channel parameter would either start recording an
+    attribution event the upload path never recorded (a behaviour
+    change smuggled into a migration) or add a flag whose only job is
+    to say which caller it is. Two call sites is not the rule of three.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The file upload",
+    )
+    sPriorSha256 = fsHashContainerFileOrEmpty(
+        dictCtx, sContainerId, sNormalized,
+    )
+
+    def fnWriteTheUpload():
+        try:
+            dictCtx["docker"].fnWriteFile(
+                sContainerId, sNormalized, baContent,
+            )
+        except PermissionError:
+            # A carrier refusal is the migration's only proof that a
+            # mutation was carried; flattening it into a generic 500
+            # would hide exactly what this boundary exists to surface.
+            raise
+        except Exception as error:
+            raise HTTPException(500, str(error))
+
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sNormalized,
+        fnWriteTheUpload,
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
+            "sPriorSha256": sPriorSha256,
+        },
+    )
 
 
 def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
@@ -302,7 +425,19 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/pull."""
 
     @fnAgentAction("pull-file")
+    # separate-authority, not typed-read. Nothing this route does to
+    # the CONTAINER is a mutation -- the stream is a read and the
+    # directory probe is a typed read -- so `typed-read` would be
+    # literally true of it and would still be the wrong record, because
+    # any reader would take it to mean the route writes nothing. It
+    # writes to the researcher's own machine. What governs it is
+    # therefore not the commit carrier but the host-side authorities:
+    # ``fnValidatePathWithinRoot`` on the container side,
+    # ``_fnValidateHostDestination`` on the host side, and for the agent
+    # lane the narrower export root ``_fnValidateAgentPullDestination``
+    # enforces. Ruling 2026-08-05.
     @app.post("/api/files/{sContainerId}/pull")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnPullFile(
         requestHttp: Request,
         sContainerId: str, request: FilePullRequest,
@@ -317,15 +452,15 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         if fbRequestRidesAgentLane(requestHttp):
             _fnValidateAgentPullDestination(sHostDest, sContainerId)
         try:
-            await asyncio.to_thread(
-                _pipelineServer._fnDockerCopy,
-                sContainerId,
+            sLandedPath = await asyncio.to_thread(
+                _pipelineServer._fsPullContainerFileToHost,
+                dictCtx["docker"], sContainerId,
                 request.sContainerPath, sHostDest,
             )
         except Exception as error:
             raise HTTPException(
                 status_code=500, detail=str(error))
-        return {"bSuccess": True, "sHostPath": sHostDest}
+        return {"bSuccess": True, "sHostPath": sLandedPath}
 
 
 def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
@@ -401,9 +536,11 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
 
     @fnAgentAction("write-file")
     @app.put("/api/file/{sContainerId}/{sFilePath:path}")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
     async def fnWriteFile(
         sContainerId: str, sFilePath: str,
-        request: FileWriteRequest, sWorkdir: str = "",
+        request: FileWriteRequest, requestHttp: Request,
+        sWorkdir: str = "",
     ):
         dictCtx["require"]()
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
@@ -417,24 +554,67 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         _fnRaiseConflictIfBaseHashMismatch(
             dictCtx, sContainerId, sNormalized, request.sBaseHash,
         )
-        baContent = request.sContent.encode("utf-8")
+        _fnCommitFileWrite(
+            dictCtx, sContainerId, sNormalized,
+            request.sContent.encode("utf-8"), requestHttp,
+        )
+        return {"bSuccess": True, "sPath": sNormalized}
+
+
+def _fnCommitFileWrite(
+    dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+):
+    """Commit the editor's file save through carrier mode (a) (design §8).
+
+    The Supervised-mode attribution append runs INSIDE the same effect
+    because it is itself a container write: outside the carrier's
+    admission the boundary refuses it, and the recorder swallows its
+    own failures by contract, so supervision would go quietly blind
+    rather than loudly wrong. The journal record's postcondition names
+    the saved file; the audit append rides along best-effort exactly as
+    it does today.
+    """
+    from .. import commitCarrier
+    from ..routeContext import fnRecordAttributionEvent
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The file save",
+    )
+    sPriorSha256 = fsHashContainerFileOrEmpty(
+        dictCtx, sContainerId, sNormalized,
+    )
+
+    def fnWriteTheFile():
         try:
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sNormalized, baContent
             )
+        except PermissionError:
+            # A carrier refusal is the migration's only proof that a
+            # mutation was carried; flattening it into a generic 500
+            # would hide exactly what this boundary exists to surface.
+            raise
         except Exception as error:
             raise HTTPException(
                 500,
                 f"Write failed: "
                 f"{_fsSanitizeServerError(str(error))}",
             )
-        from ..routeContext import fnRecordAttributionEvent
         fnRecordAttributionEvent(
             dictCtx, sContainerId,
             dictCtx["workflows"].get(sContainerId) or {},
             "write-file", sNormalized,
         )
-        return {"bSuccess": True, "sPath": sNormalized}
+
+    commitCarrier.fdictCommitSynchronousMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "file-write", sNormalized,
+        fnWriteTheFile,
+        {
+            "sDockerContainerId": sContainerId,
+            "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
+            "sPriorSha256": sPriorSha256,
+        },
+    )
 
 
 def fnRegisterAll(app, dictCtx, sWorkspaceRoot):

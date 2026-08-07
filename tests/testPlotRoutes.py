@@ -105,13 +105,29 @@ def _fdictMakeContext(ftResult=(0, "")):
     return {"docker": mockDocker}
 
 
+def _fdictMakeContextWithProbe(dictExistsByPath):
+    """Build a dictCtx whose existence probe answers per PATH.
+
+    Keyed by path rather than by call order because that is the
+    property the typed reads have and the batched command did not: the
+    old parser matched stdout lines to plots positionally, so a
+    reordered or short answer silently attributed one plot's result to
+    another. A double keyed by call order would have reproduced that
+    hazard instead of testing it away.
+    """
+    dictCtx = _fdictMakeContext()
+    dictCtx["docker"].fbContainerPathIsFile = MagicMock(
+        side_effect=lambda _sCid, sPath: dictExistsByPath[sPath],
+    )
+    return dictCtx
+
+
 class TestFlistConvertToStandards:
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
     @patch("vaibify.gui.routes.plotRoutes._fsBuildConvertCommand",
            side_effect=lambda sR, sO, sB: f"convert {sB}")
     @patch("vaibify.gui.routes.plotRoutes._flistVerifyConverted",
-           new_callable=AsyncMock,
            return_value=["plot1_standard.png"])
     def test_converts_all_plots(
         self, mockVerify, mockBuild, mockStdPath,
@@ -119,9 +135,8 @@ class TestFlistConvertToStandards:
         dictCtx = _fdictMakeContext()
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
-        listResult = _fnRunAsync(
-            _flistConvertToStandards(
-                dictCtx, "ctr1", listPlots, ""))
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "")
         assert listResult == ["plot1_standard.png"]
         dictCtx["docker"].ftResultExecuteCommand.assert_called_once()
         sCommand = (dictCtx["docker"]
@@ -134,7 +149,6 @@ class TestFlistConvertToStandards:
     @patch("vaibify.gui.routes.plotRoutes._fsBuildConvertCommand",
            side_effect=lambda sR, sO, sB: f"convert {sB}")
     @patch("vaibify.gui.routes.plotRoutes._flistVerifyConverted",
-           new_callable=AsyncMock,
            return_value=["plot2_standard.png"])
     def test_filters_to_target(
         self, mockVerify, mockBuild, mockStdPath,
@@ -142,9 +156,8 @@ class TestFlistConvertToStandards:
         dictCtx = _fdictMakeContext()
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
-        listResult = _fnRunAsync(
-            _flistConvertToStandards(
-                dictCtx, "ctr1", listPlots, "plot2.pdf"))
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "plot2.pdf")
         sCommand = (dictCtx["docker"]
                      .ftResultExecuteCommand.call_args[0][1])
         assert "convert plot1.pdf" not in sCommand
@@ -153,9 +166,8 @@ class TestFlistConvertToStandards:
     def test_returns_empty_when_no_commands(self):
         dictCtx = _fdictMakeContext()
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
-        listResult = _fnRunAsync(
-            _flistConvertToStandards(
-                dictCtx, "ctr1", listPlots, "nonexistent.pdf"))
+        listResult = _flistConvertToStandards(
+            dictCtx, "ctr1", listPlots, "nonexistent.pdf")
         assert listResult == []
 
 
@@ -164,20 +176,16 @@ class TestFlistVerifyConverted:
         dictCtx = _fdictMakeContext(ftResult=(0, ""))
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
         listConverted = ["plot1_standard.png"]
-        listResult = _fnRunAsync(
-            _flistVerifyConverted(
-                dictCtx, "ctr1", listPlots,
-                listConverted, ""))
+        listResult = _flistVerifyConverted(
+            dictCtx, "ctr1", listPlots, listConverted, "")
         assert listResult == ["plot1_standard.png"]
 
     def test_excludes_missing_files(self):
         dictCtx = _fdictMakeContext(ftResult=(1, ""))
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
         listConverted = ["plot1_standard.png"]
-        listResult = _fnRunAsync(
-            _flistVerifyConverted(
-                dictCtx, "ctr1", listPlots,
-                listConverted, ""))
+        listResult = _flistVerifyConverted(
+            dictCtx, "ctr1", listPlots, listConverted, "")
         assert listResult == []
 
     def test_filters_by_target(self):
@@ -186,10 +194,8 @@ class TestFlistVerifyConverted:
                       ("/out/plot2.pdf", "plot2.pdf")]
         listConverted = ["plot1_standard.png",
                           "plot2_standard.png"]
-        listResult = _fnRunAsync(
-            _flistVerifyConverted(
-                dictCtx, "ctr1", listPlots,
-                listConverted, "plot2.pdf"))
+        listResult = _flistVerifyConverted(
+            dictCtx, "ctr1", listPlots, listConverted, "plot2.pdf")
         assert listResult == ["plot2_standard.png"]
 
 
@@ -203,7 +209,10 @@ class TestFdictCheckStandardsExist:
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
     def test_detects_existing_standards(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=(0, "Y\nY\n"))
+        dictCtx = _fdictMakeContextWithProbe({
+            "/out/plot1_standard.png": True,
+            "/out/plot2_standard.png": True,
+        })
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
         dictResult = _fnRunAsync(
@@ -215,7 +224,10 @@ class TestFdictCheckStandardsExist:
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
     def test_detects_missing_standards(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=(0, "Y\nN\n"))
+        dictCtx = _fdictMakeContextWithProbe({
+            "/out/plot1_standard.png": True,
+            "/out/plot2_standard.png": False,
+        })
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
         dictResult = _fnRunAsync(
@@ -226,25 +238,48 @@ class TestFdictCheckStandardsExist:
 
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
-    def test_handles_short_output(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=(0, "Y\n"))
+    def test_answers_per_plot_not_by_output_position(self, _mock):
+        """Each plot gets its OWN answer, keyed by its own path.
+
+        Replaces two tests that fed the batched command a short or
+        empty stdout and asserted the parser degraded to False. There
+        is no shared stdout to truncate now -- each plot is a separate
+        typed read -- so the property worth asserting is that the
+        answers cannot slide across plots, which is exactly what the
+        positional line-index parsing could do.
+        """
+        dictCtx = _fdictMakeContextWithProbe({
+            "/out/plot1_standard.png": False,
+            "/out/plot2_standard.png": True,
+        })
         listPlots = [("/out/plot1.pdf", "plot1.pdf"),
                       ("/out/plot2.pdf", "plot2.pdf")]
         dictResult = _fnRunAsync(
             _fdictCheckStandardsExist(
                 dictCtx, "ctr1", listPlots))
-        assert dictResult["plot1.pdf"] is True
-        assert dictResult["plot2.pdf"] is False
+        assert dictResult["plot1.pdf"] is False
+        assert dictResult["plot2.pdf"] is True
 
     @patch("vaibify.gui.routes.plotRoutes._fsPlotStandardPath",
            side_effect=lambda sBase: f"{sBase}_standard.png")
-    def test_handles_empty_result(self, _mock):
-        dictCtx = _fdictMakeContext(ftResult=None)
+    def test_a_failed_probe_propagates_rather_than_reading_as_absent(
+        self, _mock,
+    ):
+        """"vaibify could not look" must not be shown as "not there".
+
+        The batched command answered N for every plot when the exec
+        itself failed, so an unreachable container told the researcher
+        their standards were missing. The typed read raises instead.
+        """
+        dictCtx = _fdictMakeContext()
+        dictCtx["docker"].fbContainerPathIsFile.side_effect = OSError(
+            "cannot probe path in container",
+        )
         listPlots = [("/out/plot1.pdf", "plot1.pdf")]
-        dictResult = _fnRunAsync(
-            _fdictCheckStandardsExist(
-                dictCtx, "ctr1", listPlots))
-        assert dictResult["plot1.pdf"] is False
+        with pytest.raises(OSError):
+            _fnRunAsync(
+                _fdictCheckStandardsExist(
+                    dictCtx, "ctr1", listPlots))
 
 
 # ── Route handler tests ──────────────────────────────────────────
@@ -253,12 +288,14 @@ class TestFdictCheckStandardsExist:
 class TestRouteStandardizePlots:
     @patch("vaibify.gui.routes.plotRoutes._flistResolvePlotPaths",
            return_value=[("/out/fig.pdf", "fig.pdf")])
-    @patch("vaibify.gui.routes.plotRoutes._flistConvertToStandards",
+    @patch("vaibify.gui.routes.plotRoutes."
+           "_flistConvertPlotsUnderTheDrain",
            new_callable=AsyncMock,
            return_value=["fig_standard.png"])
+    @patch("vaibify.gui.routes.plotRoutes.fnCommitWorkflowSave")
     @patch("vaibify.gui.routes.plotRoutes.fdictRequireWorkflow")
     def test_standardize_success(
-        self, mockRequire, mockConvert, mockResolve,
+        self, mockRequire, mockSave, mockConvert, mockResolve,
     ):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
@@ -288,7 +325,10 @@ class TestRouteStandardizePlots:
         assert dictData["listStandardizedBasenames"] == [
             "fig.pdf"]
         assert "sTimestamp" in dictData
-        dictCtx["save"].assert_called_once()
+        # The save goes through the mode-(a) carrier now, not straight
+        # to dictCtx["save"]; what this asserts is unchanged -- the
+        # route records the standardization exactly once.
+        mockSave.assert_called_once()
 
     @patch("vaibify.gui.routes.plotRoutes._flistResolvePlotPaths",
            return_value=[])
@@ -319,7 +359,8 @@ class TestRouteStandardizePlots:
 
     @patch("vaibify.gui.routes.plotRoutes._flistResolvePlotPaths",
            return_value=[("/out/fig.pdf", "fig.pdf")])
-    @patch("vaibify.gui.routes.plotRoutes._flistConvertToStandards",
+    @patch("vaibify.gui.routes.plotRoutes."
+           "_flistConvertPlotsUnderTheDrain",
            new_callable=AsyncMock, return_value=[])
     @patch("vaibify.gui.routes.plotRoutes.fdictRequireWorkflow")
     def test_standardize_conversion_failure_raises_500(

@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from vaibify.gui import actionCatalog
 from vaibify.gui import containerOwnership
 from vaibify.gui import pipelineServer
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 S_CONTAINER_ID = "abc123container"
@@ -115,7 +116,7 @@ def clientBrowser(appViewer):
     """A client authenticated as the researcher's browser."""
     return TestClient(
         appViewer,
-        headers={"X-Session-Token": appViewer.state.sSessionToken},
+        headers={"X-Session-Token": fsBootstrapCredential(appViewer)},
     )
 
 
@@ -341,13 +342,33 @@ def testCatalogAdmitsARouteWhoseAliasIsAgentSafe():
 
 
 def _fresponseConnect(client, sLeaseId=None):
-    """POST /api/connect, optionally presenting a lease."""
-    dictParams = {"sWorkflowPath": S_WORKFLOW_PATH}
+    """POST /api/connect, optionally presenting a lease in the header.
+
+    The HTTP lease transport is the ``X-Vaibify-Lease`` header (never a
+    query param), so a presented lease rides there.
+    """
+    dictHeaders = {}
     if sLeaseId is not None:
-        dictParams["sLeaseId"] = sLeaseId
+        dictHeaders["X-Vaibify-Lease"] = sLeaseId
     return client.post(
-        f"/api/connect/{S_CONTAINER_ID}", params=dictParams,
+        f"/api/connect/{S_CONTAINER_ID}",
+        params={"sWorkflowPath": S_WORKFLOW_PATH},
+        headers=dictHeaders,
     )
+
+
+def _fnConnectAsOwner(client):
+    """Connect, then hold the returned owning lease on the client.
+
+    Mirrors the browser: the connect response carries the lease, which the
+    authenticated-fetch wrapper then attaches as ``X-Vaibify-Lease`` on
+    every later container-owner request. Stamping it onto the client's
+    default headers reproduces that so a post-connect mutation authorizes.
+    """
+    responseConnect = _fresponseConnect(client)
+    assert responseConnect.status_code == 200, responseConnect.text
+    client.headers["X-Vaibify-Lease"] = responseConnect.json()["sLeaseId"]
+    return responseConnect
 
 
 @pytest.mark.falsification
@@ -408,7 +429,7 @@ def testAgentPullMustLandInTheExportDirectory(
 ):
     """An agent-lane pull may not write arbitrary host paths.
 
-    ``docker cp`` runs on the HOST and the agent authors the bytes, so
+    The pull writes on the HOST and the agent authors the bytes, so
     an unrestricted destination is agent-authored content landing in a
     shell profile or an authorized-keys file -- host code execution out
     of the sandbox.
@@ -417,7 +438,9 @@ def testAgentPullMustLandInTheExportDirectory(
     `if fbRequestRidesAgentLane(requestHttp):` neutralized to
     `if False:`.
     """
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseEscape = clientAgent.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -438,7 +461,9 @@ def testAgentPullIntoTheExportDirectoryIsAllowed(
         sHomeDirectory, ".vaibify", "exports",
         S_CONTAINER_ID, "result.csv",
     )
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseHttp = clientAgent.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -453,7 +478,10 @@ def testBrowserPullIsNotConfinedToTheExportDirectory(
     clientBrowser, sHomeDirectory,
 ):
     """The researcher's own pull keeps its full home-directory range."""
-    with patch.object(pipelineServer, "_fnDockerCopy"):
+    _fnConnectAsOwner(clientBrowser)
+    with patch.object(
+        pipelineServer, "_fsPullContainerFileToHost",
+    ):
         responseHttp = clientBrowser.post(
             f"/api/files/{S_CONTAINER_ID}/pull",
             json={
@@ -486,10 +514,14 @@ def testSaveAndRunTestRefusesDenylistedPaths(clientBrowser):
     contract the AICS truth system rests on. The generic write route has
     carried both guards for months; this one had neither.
 
+    The owning lease is held so the 403 comes from the path denylist, not
+    the container-owner gate — otherwise the mutation this test kills would
+    survive behind an authorization refusal.
+
     Kills: testRoutes._fsResolveTestFilePath: the denylist call
     `fnRejectWriteDenylistedPath(sNormalized, sRoot)` replaced by `pass`.
     """
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     for sFilePath in (
         ".git/hooks/pre-commit",
         ".vaibify/environment.json",
@@ -500,7 +532,7 @@ def testSaveAndRunTestRefusesDenylistedPaths(clientBrowser):
 
 def testSaveAndRunTestRefusesPathsOutsideTheRepo(clientBrowser):
     """A traversing test path is refused rather than written."""
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     responseHttp = _fresponseSaveAndRunTest(
         clientBrowser, "../../etc/cron.d/payload")
     assert responseHttp.status_code == 403
@@ -508,7 +540,7 @@ def testSaveAndRunTestRefusesPathsOutsideTheRepo(clientBrowser):
 
 def testSaveAndRunTestStillWritesALegitimatePath(clientBrowser):
     """The ordinary case keeps working after the guards were added."""
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     responseHttp = _fresponseSaveAndRunTest(
         clientBrowser, "stepA/tests/test_quantitative.py")
     assert responseHttp.status_code == 200
@@ -525,13 +557,167 @@ def testFigureProbeValidatesTheWorkdirFallback(clientBrowser):
     omission turned ``test -f`` into an existence oracle over arbitrary
     container paths.
 
+    The owning lease is held so the 403 comes from the path guard, not
+    the container-owner gate. It did not used to be: this test called
+    ``_fresponseConnect``, which connects without holding the lease, so
+    EVERY container-scoped request answered 403 "You do not hold this
+    container's lease" and the assertion passed no matter what the path
+    logic did. Deleting the fallback validation outright left it green,
+    and so did deleting the handler's primary validation -- the test
+    measured the authorization gate and reported it as a path guard.
+    The sibling denylist test three functions above already carried this
+    lesson in its own docstring; it was not applied here.
+
     Kills: figureRoutes._flistBuildFigureCheckPaths: the fallback
     validation `fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))`
     replaced by the bare `sFallback)`.
     """
-    _fresponseConnect(clientBrowser)
+    _fnConnectAsOwner(clientBrowser)
     responseHttp = clientBrowser.head(
         f"/api/figure/{S_CONTAINER_ID}/shadow",
         params={"sWorkdir": "/etc"},
     )
     assert responseHttp.status_code == 403
+
+
+# ── F8: the host-log-tail endpoint is sanitized on the agent lane ──
+
+
+@pytest.mark.falsification
+def test_host_log_tail_agent_lane_is_sanitized(clientAgent, tmp_path):
+    """The agent lane never receives the raw host log or free-text
+    incident detail — only an allowlisted per-container view.
+
+    The raw log spans every project and carries host paths; the raw
+    incidents carry a free-text message and an exception repr, either of
+    which may hold a secret, a host path, or ANOTHER container's id. This
+    plants all three and asserts none reaches the agent.
+
+    Kills: in pipelineRoutes.fnGetHostLogTail, neutralize the
+    ``if serverMiddleware.fbRequestRidesAgentLane(request):`` branch so
+    the agent lane falls through to the raw-log response.
+    """
+    from vaibify.gui import hostIncidents
+    from vaibify.gui.routes import pipelineRoutes
+
+    hostIncidents.fnResetHostIncidents()
+    sLog = tmp_path / "vaibify.log"
+    sLog.write_text(
+        "2026-06-16 INFO vaibify: token=SECRET_abc for "
+        + S_CONTAINER_ID + "\n",
+        encoding="utf-8",
+    )
+    hostIncidents.fnRecordHostIncident(
+        S_CONTAINER_ID,
+        {
+            "sIso": "2026-06-16T01:00:00+00:00",
+            "sLevel": "ERROR",
+            "sLogger": "vaibify",
+            "sMessage": "leaking SECRET_abc via /home/researcher/.vaibify",
+            "sExceptionRepr": "RuntimeError('other-container-xyz died')",
+        },
+    )
+    try:
+        with patch.object(
+            pipelineRoutes, "_fsResolveHostLogPath", return_value=str(sLog),
+        ):
+            responseHttp = clientAgent.get(
+                "/api/pipeline/" + S_CONTAINER_ID + "/host-log-tail",
+            )
+        assert responseHttp.status_code == 200
+        dictBody = responseHttp.json()
+        sPayload = json.dumps(dictBody)
+        assert dictBody.get("bSanitized") is True
+        assert "sLogPath" not in dictBody
+        assert "listLines" not in dictBody
+        assert "SECRET_abc" not in sPayload
+        assert "other-container-xyz" not in sPayload
+        assert "/home/researcher" not in sPayload
+        for dictIncident in dictBody["listIncidents"]:
+            assert "sMessage" not in dictIncident
+            assert "sExceptionRepr" not in dictIncident
+            assert dictIncident["sLevel"] == "ERROR"
+            assert dictIncident["sContainerId"] == S_CONTAINER_ID
+    finally:
+        hostIncidents.fnResetHostIncidents()
+
+
+def test_host_log_tail_browser_lane_keeps_raw_view(clientBrowser, tmp_path):
+    """The researcher's own browser still sees the raw log and full
+    incidents — the sanitization is scoped to the agent lane only."""
+    from vaibify.gui import hostIncidents
+    from vaibify.gui.routes import pipelineRoutes
+
+    hostIncidents.fnResetHostIncidents()
+    _fnConnectAsOwner(clientBrowser)
+    sLog = tmp_path / "vaibify.log"
+    sLog.write_text(
+        "2026-06-16 INFO vaibify: " + S_CONTAINER_ID + " hello\n",
+        encoding="utf-8",
+    )
+    try:
+        with patch.object(
+            pipelineRoutes, "_fsResolveHostLogPath", return_value=str(sLog),
+        ):
+            responseHttp = clientBrowser.get(
+                "/api/pipeline/" + S_CONTAINER_ID + "/host-log-tail",
+            )
+        assert responseHttp.status_code == 200
+        dictBody = responseHttp.json()
+        assert "sLogPath" in dictBody
+        assert "listLines" in dictBody
+        assert len(dictBody["listLines"]) == 1
+    finally:
+        hostIncidents.fnResetHostIncidents()
+
+
+# ── has-credential answers about the HOST keyring ────────────────
+
+
+def _fresponseHasCredential(client):
+    """GET the has-credential probe with the host keyring reporting True.
+
+    The patch target is the authority the route consults, so a 200
+    carries the real answer rather than a fixture default. Patching it
+    to ``True`` is what makes a leak visible: an unguarded agent lane
+    would learn that the researcher stores an Overleaf token.
+    """
+    with patch(
+        "vaibify.config.secretManager.fbSecretExists", return_value=True,
+    ):
+        return client.get(
+            f"/api/sync/{S_CONTAINER_ID}/has-credential/overleaf",
+        )
+
+
+@pytest.mark.falsification
+def test_has_credential_refuses_the_agent_lane(clientAgent):
+    """The agent must not learn whether the host keyring holds a token.
+
+    The route reads the RESEARCHER'S machine and ignores the container
+    id in its own path, so no agent token can authorize it -- yet it is
+    a GET, which the catalog's agent-lane gate never sees, and it
+    carried no guard of its own. The agent lane is authorized for this
+    container here (``clientAgent`` writes the owner record), so a 403
+    can only come from the handler's own refusal.
+
+    Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call from
+    ``fnHasCredential`` in ``syncRoutes.py`` -- the request then answers
+    200 with ``bHasCredential`` true, which is the leak.
+    """
+    responseHttp = _fresponseHasCredential(clientAgent)
+    assert responseHttp.status_code == 403
+    assert "bHasCredential" not in responseHttp.text
+
+
+def test_has_credential_still_answers_the_browser_lane(clientBrowser):
+    """The researcher's own browser still gets the answer it needs.
+
+    The sync panel reads this probe to decide whether to prompt for a
+    token, so a guard that refused both lanes would be a regression,
+    not a fix.
+    """
+    _fnConnectAsOwner(clientBrowser)
+    responseHttp = _fresponseHasCredential(clientBrowser)
+    assert responseHttp.status_code == 200
+    assert responseHttp.json() == {"bHasCredential": True}

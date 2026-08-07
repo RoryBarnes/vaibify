@@ -65,7 +65,45 @@ def fixtureSaves():
 
 
 @pytest.fixture
-def fixtureClient(fixtureWorkflow, fixtureSaves):
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the commit-guard carrier down for this module's bare app.
+
+    ``ai-declaration/add-step`` now commits its ``project.json`` save
+    through carrier mode (a), which binds the request to its
+    container's owner record and journals against the hub's
+    application state. A bare ``FastAPI()`` has neither, so the lane
+    tuple resolves to a stand-in and the carrier runs its effect
+    directly -- which keeps ``dictCtx["save"]`` reachable, so
+    ``fixtureSaves`` still records what the route persisted.
+
+    These tests therefore prove what the route DOES and nothing about
+    the admission it runs under; that is asserted in
+    ``tests/testCarrierMigratedRoutes.py`` against a double calling the
+    real gates.
+    """
+    from vaibify.gui import commitCarrier, routeContext
+
+    monkeypatch.setattr(
+        routeContext, "fdictRequireLaneTupleForCommit",
+        lambda requestHttp, sContainerId, sOperationName: {
+            "sContainerName": "fake-container",
+        },
+    )
+
+    def _fdictCommitWithoutTheJournal(
+        appState, sName, sContainerId, dictLaneTuple, sOperationKind,
+        sTarget, fnEffect, dictHolderIdentity,
+    ):
+        return {"bCommitted": True, "result": fnEffect()}
+
+    monkeypatch.setattr(
+        commitCarrier, "fdictCommitSynchronousMutation",
+        _fdictCommitWithoutTheJournal,
+    )
+
+
+@pytest.fixture
+def fixtureClient(fixtureWorkflow, fixtureSaves, fixtureCarrierStoodDown):
     """Build a TestClient with both route modules registered."""
     app = FastAPI()
     dictCtx = {

@@ -26,12 +26,23 @@ import logging
 import posixpath
 import time
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
+from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fdictRequireWorkflow
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
+    ffilesForWorkflow,
+    fobjRunWorkerUnderTheDrain,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_MODE_C_DURABLE,
+    fnDeclareCarrierMode,
+)
 from ...reproducibility.falsificationAttestation import (
     S_SESSION_SUMMARY_SCRIPT,
     S_STATUS_ATTAINED,
@@ -123,7 +134,12 @@ def _fnRegisterRun(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"
     )
-    async def fnRunFalsification(sContainerId: str, iStepIndex: int):
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_C_DURABLE,
+    )
+    async def fnRunFalsification(
+        sContainerId: str, iStepIndex: int, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -132,22 +148,67 @@ def _fnRegisterRun(app, dictCtx):
         _fsRequireProjectRepo(dictWorkflow)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         _fnRefuseIfRunInFlight(sContainerId, iStepIndex)
-        dictApplicability = await asyncio.to_thread(
-            fdictClassifyFalsificationApplicability,
-            dictStep, filesRepo,
+        tPreflight = await _ftClassifyAndProbeCosmicRay(
+            dictCtx, sContainerId, dictStep, filesRepo, requestHttp,
         )
-        if not dictApplicability["bApplicable"]:
-            raise HTTPException(
-                409, "Falsification check is not applicable: "
-                + dictApplicability["sReason"],
-            )
-        sCosmicRayVersion = await asyncio.to_thread(
-            _fsRequireCosmicRay, dictCtx["docker"], sContainerId,
+        return await _fdictLaunchFalsificationDurably(
+            dictCtx, sContainerId, iStepIndex, dictWorkflow, dictStep,
+            tPreflight[0], filesRepo, tPreflight[1], requestHttp,
         )
-        return _fdictKickOffFalsification(
-            dictCtx, sContainerId, iStepIndex, dictWorkflow,
-            dictStep, dictApplicability, filesRepo, sCosmicRayVersion,
+
+
+async def _ftClassifyAndProbeCosmicRay(
+    dictCtx, sContainerId, dictStep, filesRepo, requestHttp,
+):
+    """Classify applicability and read cosmic-ray's version, under one drain.
+
+    Both reach the container and both are gates: the classification
+    hashes the step's sources through the general exec primitive, and
+    the version probe runs ``cosmic-ray --version``. They share ONE
+    mode-(b) drain because together they are the single question "may
+    this run start", and answering half of it against a container that
+    changed hands in between would let a run start against a tree its
+    applicability was never judged on.
+
+    Both refusals are 409s decided with the container untouched -- the
+    step has no quantitative tests, or the image lacks cosmic-ray -- so
+    they travel back as values. Returns ``(dictApplicability,
+    sCosmicRayVersion)``.
+    """
+    def ftClassifyThenProbe(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _ftRequireApplicableAndInstalled(
+                dictCtx, sContainerId, dictStep, filesRepo,
+            ),
         )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, ftClassifyThenProbe, "falsification-preflight",
+        requestHttp,
+    )
+
+
+def _ftRequireApplicableAndInstalled(
+    dictCtx, sContainerId, dictStep, filesRepo,
+):
+    """Return ``(dictApplicability, sVersion)`` or raise the 409 that applies.
+
+    Synchronous because a mode-(b) worker runs in a thread and cannot
+    await the two ``to_thread`` hops this pre-flight used to make.
+    """
+    dictApplicability = fdictClassifyFalsificationApplicability(
+        dictStep, filesRepo,
+    )
+    if not dictApplicability["bApplicable"]:
+        raise HTTPException(
+            409, "Falsification check is not applicable: "
+            + dictApplicability["sReason"],
+        )
+    return (
+        dictApplicability,
+        _fsRequireCosmicRay(dictCtx["docker"], sContainerId),
+    )
 
 
 def _fnRefuseIfRunInFlight(sContainerId, iStepIndex):
@@ -174,22 +235,57 @@ def _fsRequireCosmicRay(connectionDocker, sContainerId):
     return resultExec.sStdout.strip()
 
 
-def _fdictKickOffFalsification(
-    dictCtx, sContainerId, iStepIndex, dictWorkflow,
-    dictStep, dictApplicability, filesRepo, sCosmicRayVersion,
+async def _fdictLaunchFalsificationDurably(
+    dictCtx, sContainerId, iStepIndex, dictWorkflow, dictStep,
+    dictApplicability, filesRepo, sCosmicRayVersion, requestHttp,
 ):
-    """Schedule the mutation worker and return the accepted handle."""
+    """Launch the mutation run as REGISTERED durable work (mode c).
+
+    Mode (c) rather than (b) because the response returns while the
+    work continues: cosmic-ray rewrites the step's sources in place,
+    re-runs the step and its quantitative tests once per mutant, and
+    can run for many minutes. Registering it under the briefly-held
+    mutation lock is what makes it VISIBLE -- before this the task
+    lived only in a module-global dict no other authority read, so an
+    ownership hand-over, the shutdown drain and the idle watchdog all
+    saw an idle container while its sources were being mutated.
+
+    The carrier refuses a second durable launch per CONTAINER, which is
+    stricter than the per-step check above it. That is a real
+    behavioural narrowing and the right one: cosmic-ray mutates files
+    in the project repo in place, so two runs on different steps of the
+    same repository would corrupt each other's sources. The per-step
+    check stays because it names the specific run; this one is the
+    authority.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The falsification run",
+    )
     dictStatus = {
         "sPhase": "starting",
         "fStartedAtMonotonic": time.monotonic(),
     }
-    taskWorker = asyncio.create_task(_fnRunFalsificationWorker(
-        dictCtx, sContainerId, iStepIndex, dictWorkflow,
-        dictStep, dictApplicability, filesRepo, sCosmicRayVersion,
-    ))
-    _fnRegisterFalsificationTask(
-        (sContainerId, iStepIndex), taskWorker, dictStatus,
+
+    def ftaskStartFalsification():
+        taskWorker = asyncio.create_task(_fnRunFalsificationWorker(
+            dictCtx, sContainerId, iStepIndex, dictWorkflow,
+            dictStep, dictApplicability, filesRepo, sCosmicRayVersion,
+        ))
+        _fnRegisterFalsificationTask(
+            (sContainerId, iStepIndex), taskWorker, dictStatus,
+        )
+        return taskWorker
+
+    dictLaunched = await commitCarrier.fdictLaunchDurableTask(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, ftaskStartFalsification,
     )
+    if not dictLaunched["bLaunched"]:
+        raise HTTPException(
+            409,
+            "This container is busy: " + dictLaunched["sReason"] + ".",
+        )
     return {"bAccepted": True, "sPhase": "starting"}
 
 
@@ -233,6 +329,13 @@ async def _fnRunFalsificationWorker(
             dictApplicability, filesRepo, sCosmicRayVersion,
         )
     except Exception as exc:  # noqa: BLE001 — surface as error record
+        # A carrier REFUSAL is the exception to that exception. It
+        # means the durable admission was not opened, and writing it
+        # here would persist a programming error as a digest-keyed
+        # falsification record — a measured kill-rate the dashboard
+        # renders beside real ones. A stuck phase is recoverable; a
+        # fabricated attestation on disk is not.
+        fnReRaiseControlPlaneRefusal(exc)
         logger.exception("Falsification run crashed: %s", exc)
         dictRecord = fdictBuildFalsificationRecord(
             S_STATUS_ERROR, "", dictApplicability["sClassification"],

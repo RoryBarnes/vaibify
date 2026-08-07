@@ -29,7 +29,51 @@ def _fdictClosedWeightsBody(**dictOverrides):
 
 
 @pytest.fixture
-def fixtureHarness():
+def fixtureCarrierStoodDown(monkeypatch):
+    """Stand the commit-guard carrier down for this module's bare app.
+
+    Six of these routes now commit their ``project.json`` save through
+    carrier mode (a), which binds the request to its container's owner
+    record and writes a journal record against the hub's application
+    state. A bare ``FastAPI()`` has neither, so the lane tuple resolves
+    to a fixed stand-in and the carrier runs its effect directly.
+
+    What that costs is stated plainly, because an unexplained
+    permissive mock is how this suite acquired about twenty of them.
+    These tests prove what the routes DO -- what lands in
+    ``dictAiProvenance``, what the response says, which bodies are
+    refused -- and NOTHING about the admission the save runs under; a
+    route whose carrier call was deleted outright would pass every one
+    of them. That guarantee is asserted in
+    ``tests/testCarrierMigratedRoutes.py``, against a double that calls
+    the real gates.
+
+    Requested BY the harness rather than autouse, so a test that builds
+    its own client still meets the real refusal.
+    """
+    from vaibify.gui import commitCarrier, routeContext
+
+    monkeypatch.setattr(
+        routeContext, "fdictRequireLaneTupleForCommit",
+        lambda requestHttp, sContainerId, sOperationName: {
+            "sContainerName": "fake-container",
+        },
+    )
+
+    def _fdictCommitWithoutTheJournal(
+        appState, sName, sContainerId, dictLaneTuple, sOperationKind,
+        sTarget, fnEffect, dictHolderIdentity,
+    ):
+        return {"bCommitted": True, "result": fnEffect()}
+
+    monkeypatch.setattr(
+        commitCarrier, "fdictCommitSynchronousMutation",
+        _fdictCommitWithoutTheJournal,
+    )
+
+
+@pytest.fixture
+def fixtureHarness(fixtureCarrierStoodDown):
     """Return ``(clientTest, dictWorkflow, dictSaved)`` for the routes."""
     app = FastAPI()
     dictWorkflow = {"listSteps": []}
@@ -492,7 +536,7 @@ def test_hash_route_rejects_agent_token_lane(
 ):
     """The agent lane must never reach the host-file hash oracle.
 
-    Kills: Remove the ``_fnRejectAgentTokenLane(requestHttp)`` call
+    Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call
     from ``fnHashPersonalLayerFile`` in ``replayRoutes.py`` — the
     request carrying the in-container agent header would then be
     served, handing a compromised agent a hash oracle over host
@@ -567,7 +611,7 @@ def test_context_import_rejects_agent_token_lane(
     publishes. Catalog exclusion is metadata, not a gate, so the route
     itself must fail the agent lane closed.
 
-    Kills: Remove the ``_fnRejectAgentTokenLane(requestHttp)`` call
+    Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call
     from ``fnImportProjectContext`` in ``replayRoutes.py``.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -637,3 +681,88 @@ def test_prompt_record_disables_when_supervision_is_off(fixtureHarness):
     )
     assert dictResponse.status_code == 200
     assert dictResponse.json()["dictPromptRecord"]["bEnabled"] is False
+
+
+# --- prompt-record configure (workflow-dict + patchable sanitizer) ---
+
+def test_prompt_record_configure_enables_with_sanitizer(fixtureHarness):
+    from unittest.mock import patch
+    clientTest, _dictWorkflow, dictSaved = fixtureHarness
+    with patch("vaibify.gui.transcriptSanitizer.fbSanitizerAvailable",
+               return_value=True):
+        response = clientTest.post(
+            "/api/workflow/" + S_CONTAINER_ID + "/prompt-record/configure",
+            json={"bEnabled": True})
+    assert response.status_code == 200
+    dictRecord = response.json()["dictPromptRecord"]
+    assert dictRecord["bEnabled"] is True
+    assert dictRecord["sEnabledAtUtc"]
+    assert S_CONTAINER_ID in dictSaved
+
+
+def test_prompt_record_enable_without_sanitizer_is_409(fixtureHarness):
+    from unittest.mock import patch
+    clientTest = fixtureHarness[0]
+    with patch("vaibify.gui.transcriptSanitizer.fbSanitizerAvailable",
+               return_value=False):
+        response = clientTest.post(
+            "/api/workflow/" + S_CONTAINER_ID + "/prompt-record/configure",
+            json={"bEnabled": True})
+    assert response.status_code == 409
+
+
+def test_prompt_record_configure_can_disable(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/prompt-record/configure",
+        json={"bEnabled": False})
+    assert response.status_code == 200
+    assert response.json()["dictPromptRecord"]["bEnabled"] is False
+
+
+# --- supervision configure (requires enabled+reviewed prompt record) ---
+
+def test_supervision_enable_without_prereqs_is_409(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/supervision/configure",
+        json={"bEnabled": True})
+    assert response.status_code == 409
+
+
+def test_supervision_enable_with_prereqs_succeeds(fixtureHarness):
+    clientTest, dictWorkflow, _dictSaved = fixtureHarness
+    dictWorkflow["dictAiProvenance"] = {"dictPromptRecord": {
+        "bEnabled": True, "bFirstCaptureReviewed": True,
+    }}
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/supervision/configure",
+        json={"bEnabled": True})
+    assert response.status_code == 200, response.text
+    assert response.json()["dictSupervision"]["bEnabled"] is True
+
+
+# --- declare personal layer ---
+
+def test_declare_personal_layer_accepts_a_valid_status(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/personal-layer/declare",
+        json={"sStatus": "declared-private"})
+    assert response.status_code == 200, response.text
+
+
+def test_declare_personal_layer_rejects_a_bad_status(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/personal-layer/declare",
+        json={"sStatus": "bogus"})
+    assert response.status_code == 400
+
+
+def test_hash_commitment_only_with_declared_private(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    response = clientTest.post(
+        "/api/workflow/" + S_CONTAINER_ID + "/personal-layer/declare",
+        json={"sStatus": "none", "dictHashCommitment": {"x": "y"}})
+    assert response.status_code == 400

@@ -1,4 +1,4 @@
-"""Container CPU, memory, and disk statistics via subprocess.
+"""Container CPU, memory, and disk statistics.
 
 The functions here surface live container vitals to the GUI. The
 return shape is a structured dict so the frontend can distinguish
@@ -6,27 +6,46 @@ return shape is a structured dict so the frontend can distinguish
 "container is idle at 0% CPU". A degraded reading carries
 ``bAvailable=False`` plus an ``sReason`` so the dashboard can render
 an informative state instead of misleading zeros.
+
+The two halves reach the daemon differently, and the difference is the
+point. CPU and memory come from ``docker stats``, which asks the DAEMON
+about a container and never enters it. Disk used to come from ``docker
+exec ... df``, which enters it -- an arbitrary command execution as far
+as the boundary can tell -- and now goes through the gateway's typed
+read instead.
 """
 
 __all__ = [
     "fdictGetContainerStats",
 ]
 
+import concurrent.futures
 import json
 import subprocess
 
 
 _F_DISK_WARNING_FRACTION = 0.10
+_F_DISK_QUERY_TIMEOUT_SECONDS = 10.0
+_S_CONTAINER_ROOT_PATH = "/"
 _S_REASON_DAEMON = "daemon-unreachable"
 _S_REASON_TIMEOUT = "timeout"
 _S_REASON_NOT_RUNNING = "container-not-running"
 _S_REASON_PARSE = "parse-error"
 
 
-def fdictGetContainerStats(sContainerId):
-    """Return CPU, memory, and disk stats for a running container."""
+def fdictGetContainerStats(connectionDocker, sContainerId):
+    """Return CPU, memory, and disk stats for a running container.
+
+    ``connectionDocker`` is REQUIRED rather than optional. A default of
+    ``None`` with a subprocess fallback would be a silent path back to
+    the raw ``docker exec`` this replaced, and the one thing an
+    always-available fallback guarantees is that nobody notices when the
+    guarded path stops being taken.
+    """
     dictStats = _fdictRunStatsCollection(sContainerId)
-    dictStats["dictDisk"] = _fdictGetDiskStats(sContainerId)
+    dictStats["dictDisk"] = _fdictGetDiskStats(
+        connectionDocker, sContainerId,
+    )
     dictStats["bDiskWarning"] = _fbIsDiskWarning(dictStats["dictDisk"])
     return dictStats
 
@@ -127,60 +146,96 @@ def _fdictUnavailableStats(sReason):
     }
 
 
-def _fdictGetDiskStats(sContainerId):
-    """Return disk-usage stats for the container's root filesystem."""
-    tDiskResult = _ftRunContainerDiskQuery(sContainerId)
-    bSuccess, sReason, sRawOutput = tDiskResult
+def _fdictGetDiskStats(connectionDocker, sContainerId):
+    """Return disk-usage stats for the container's root filesystem.
+
+    This used to run ``docker exec -u <user> <id> df -PB1 /`` from a GUI
+    module -- a container exec assembled outside every guarded primitive,
+    which the boundary must treat as mutating because the primitive
+    cannot know that this particular argv only reads. It is now a TYPED
+    READ: the adapter is handed a path and picks a declared operation,
+    and the program is fixed source text in the gateway.
+
+    The degraded-state vocabulary is unchanged, because it is what the
+    dashboard renders instead of misleading zeros. What changed is where
+    each reason comes from: a gone container is now recognised by the
+    daemon's own 404/409 rather than by matching English in stderr.
+    """
+    tUsage = _ftReadFilesystemUsage(connectionDocker, sContainerId)
+    bSuccess, sReason, tCounts = tUsage
     if not bSuccess:
         return _fdictUnavailableDiskStats(sReason)
-    return _fdictParseDfOutput(sRawOutput)
+    return _fdictBuildDiskPayload(*tCounts)
 
 
-def _ftRunContainerDiskQuery(sContainerId):
-    """Run df inside the container and return (bSuccess, sReason, sStdout).
+def _ftReadUsageCounts(connectionDocker, sContainerId):
+    """Return ``(total, used, free)`` bytes for the container rootfs.
 
-    The ``-u`` flag pins exec to the unprivileged install user from the
-    project registry rather than inheriting the container's runtime
-    user, which is root because vaibify launches with ``--user 0`` so
-    the entrypoint's root phase can chown the workspace. ``df -PB1 /``
-    reads the same rootfs regardless of user; the explicit ``-u``
-    keeps this call consistent with every other dispatch.
+    The field extraction lives HERE, inside what the deadline wraps,
+    rather than at the caller. A reading missing a field would otherwise
+    raise past the classification and reach the dashboard as a traceback
+    instead of the parse-error the degraded vocabulary exists to carry.
     """
-    from vaibify.config.registryManager import fsGetContainerUser
-    sUser = fsGetContainerUser(sContainerId)
-    listCommand = [
-        "docker", "exec", "-u", sUser, sContainerId,
-        "df", "-PB1", "/",
-    ]
+    dictUsage = connectionDocker.fdictReadFilesystemUsage(
+        sContainerId, _S_CONTAINER_ROOT_PATH,
+    )
+    return (
+        dictUsage["iTotalBytes"],
+        dictUsage["iUsedBytes"],
+        dictUsage["iFreeBytes"],
+    )
+
+
+def _ftReadFilesystemUsage(connectionDocker, sContainerId):
+    """Read the rootfs usage under a deadline; classify any failure.
+
+    The deadline is preserved deliberately. The raw call it replaced
+    carried ``timeout=10``; the gateway's client timeout is ten MINUTES,
+    so dropping the bound would let one wedged container hold the
+    dashboard's monitor request for that long and report nothing at all
+    in the meantime.
+
+    What the bound does and does not do, because a timeout that is
+    described loosely is worse than none: it bounds how long the CALLER
+    waits. The exec continues inside the container, exactly as the
+    orphaned ``docker exec`` did when its subprocess timeout fired. The
+    executor is shut down with ``wait=False`` for that reason -- the
+    ``with`` form re-joins the worker on exit, which makes the timeout
+    report a stall while still blocking for its full duration.
+    """
+    executorPool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
-        resultProcess = subprocess.run(
-            listCommand,
-            capture_output=True, text=True, timeout=10,
+        future = executorPool.submit(
+            _ftReadUsageCounts, connectionDocker, sContainerId,
         )
-    except FileNotFoundError:
-        return (False, _S_REASON_DAEMON, "")
-    except subprocess.TimeoutExpired:
-        return (False, _S_REASON_TIMEOUT, "")
-    if resultProcess.returncode != 0:
-        return (False, _fsClassifyDockerError(resultProcess.stderr), "")
-    return (True, "", resultProcess.stdout)
+        try:
+            return (True, "", future.result(
+                timeout=_F_DISK_QUERY_TIMEOUT_SECONDS,
+            ))
+        except concurrent.futures.TimeoutError:
+            return (False, _S_REASON_TIMEOUT, None)
+        except Exception as error:
+            return (False, _fsClassifyReadFailure(error), None)
+    finally:
+        executorPool.shutdown(wait=False)
 
 
-def _fdictParseDfOutput(sRawOutput):
-    """Parse a `df -PB1 /` table into total/used/free byte counts."""
-    listLines = [s for s in sRawOutput.splitlines() if s.strip()]
-    if len(listLines) < 2:
-        return _fdictUnavailableDiskStats(_S_REASON_PARSE)
-    listFields = listLines[-1].split()
-    if len(listFields) < 4:
-        return _fdictUnavailableDiskStats(_S_REASON_PARSE)
-    try:
-        iTotalBytes = int(listFields[1])
-        iUsedBytes = int(listFields[2])
-        iFreeBytes = int(listFields[3])
-    except ValueError:
-        return _fdictUnavailableDiskStats(_S_REASON_PARSE)
-    return _fdictBuildDiskPayload(iTotalBytes, iUsedBytes, iFreeBytes)
+def _fsClassifyReadFailure(error):
+    """Map a typed-read failure onto the dashboard's degraded reasons.
+
+    ``fbErrorMeansContainerGone`` is the gateway's own predicate rather
+    than a second copy: a 404, or a 409 saying the container is not
+    running, is what "not running" means to the daemon. Everything else
+    is the daemon-unreachable catch-all the string-matching version also
+    fell back to, so an unrecognised failure keeps reporting a degraded
+    state rather than a plausible-looking zero.
+    """
+    from vaibify.docker.dockerConnection import fbErrorMeansContainerGone
+    if isinstance(error, (json.JSONDecodeError, TypeError, KeyError)):
+        return _S_REASON_PARSE
+    if fbErrorMeansContainerGone(error):
+        return _S_REASON_NOT_RUNNING
+    return _S_REASON_DAEMON
 
 
 def _fdictBuildDiskPayload(iTotalBytes, iUsedBytes, iFreeBytes):

@@ -383,6 +383,47 @@ def test_release_stops_keep_alive(tmp_lock_dir, monkeypatch):
 
 
 @pytest.mark.falsification
+def test_copied_lease_from_foreign_session_is_refused_without_refresh(
+    tmp_lock_dir,
+):
+    """Session B replaying session A's copied lease is refused, clock intact.
+
+    The idempotent same-lease reclaim must check the browser session, not
+    the lease alone. Session A claims and binds; session B then presents
+    A's (copied) lease. Because B's session does not match the bound
+    owner, the reclaim must fall through to the 409 refusal and must NOT
+    refresh A's ``fLastSeenMonotonic`` — otherwise B could both "claim"
+    A's container and revive A's grace clock.
+
+    Kills: ftdictClaim same-lease reclaim guard drops the session check
+    'and (recordOwner.sBrowserSessionId == "" or recordOwner
+    .sBrowserSessionId == sBrowserSessionId)', reverting to a lease-only
+    reclaim that grants + refreshes for any matching lease.
+    """
+    dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
+    _iStatus, dictFirst = containerOwnership.ftdictClaim(
+        dictContainerOwners, "demo", "", 8050,
+        sBrowserSessionId="session-A",
+    )
+    sLeaseA = dictFirst["sLeaseId"]
+    try:
+        recordOwner = dictContainerOwners["demo"]
+        # A live connection keeps the owner non-reapable so the reclaim
+        # reaches the session arbitration rather than a grace take-over.
+        containerOwnership.fnIncrementLiveConnection(dictContainerOwners, "demo")
+        recordOwner.fLastSeenMonotonic = 123.0
+        iStatus, dictBody = containerOwnership.ftdictClaim(
+            dictContainerOwners, "demo", sLeaseA, 8050,
+            sBrowserSessionId="session-B",
+        )
+        assert iStatus == 409
+        assert dictBody["bClaimed"] is False
+        assert dictContainerOwners["demo"].fLastSeenMonotonic == 123.0
+    finally:
+        _ftReleaseAll(dictContainerOwners)
+
+
+@pytest.mark.falsification
 def test_fbOwnerIsReapable_is_true_at_exact_grace_boundary(monkeypatch):
     """At elapsed == grace the record is reapable (>= boundary).
 

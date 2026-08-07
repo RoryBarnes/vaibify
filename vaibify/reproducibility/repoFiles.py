@@ -117,8 +117,7 @@ class HostRepoFiles:
 
     A thin wrapper over the pathlib/os/fcntl idioms the reproducibility
     modules used before the adapter seam existed, so host-side callers
-    (the reproduce CLI, director, unit tests) keep bit-identical
-    semantics.
+    (the reproduce CLI, unit tests) keep bit-identical semantics.
     """
 
     def __init__(self, sRootPath):
@@ -490,9 +489,16 @@ class ContainerRepoFiles:
     """Repo-file adapter that routes every operation through docker exec.
 
     ``connectionDocker`` is duck-typed: it must provide
-    ``texecRunInContainerStreamed``, ``fbaFetchFile``, and
-    ``fnWriteFile`` (the ``DockerConnection`` contract). All repo
-    paths are container-side POSIX paths rooted at ``sRootPath``.
+    ``texecRunInContainerStreamed``, ``fbaFetchFile``, ``fnWriteFile``,
+    ``fbContainerPathIsFile`` and ``fbContainerPathIsDirectory`` (the
+    ``DockerConnection`` contract). All repo paths are container-side
+    POSIX paths rooted at ``sRootPath``.
+
+    The last two are typed reads and must answer a BOOLEAN. A double
+    that leaves them as a bare ``MagicMock`` answers truthy for every
+    path, which is the opposite of what the old ``test -f`` returned
+    against the same double, and the gates above will then try to parse
+    files that do not exist.
     """
 
     def __init__(self, connectionDocker, sContainerId, sRootPath):
@@ -516,22 +522,33 @@ class ContainerRepoFiles:
         return (resultExec.iExitCode, resultExec.sStdout)
 
     def fbIsFile(self, sRelPath):
-        """Return True iff the repo-relative path is a container file."""
+        """Return True iff the repo-relative path is a container file.
+
+        A TYPED READ, not an exec. It used to assemble ``test -f
+        <quoted path>`` and run it through the general exec primitive,
+        which the mutation gate must treat as mutating because command
+        text cannot be told apart from a delete -- so under an enforced
+        lane every existence check was refused, and the level gates
+        above, catching ``OSError``, reported the workflow as
+        unverified instead of raising.
+        """
         if not self.sRootPath:
             return False
-        iExitCode, _s = self._ftExec(
-            "test -f " + fsShellQuotePosix(self._fsAbsolute(sRelPath)),
+        return self.connectionDocker.fbContainerPathIsFile(
+            self.sContainerId, self._fsAbsolute(sRelPath),
         )
-        return iExitCode == 0
 
     def fbIsDir(self, sRelPath):
-        """Return True iff the repo-relative path is a container directory."""
+        """Return True iff the repo-relative path is a container directory.
+
+        The ``test -d`` half of :meth:`fbIsFile`, and a typed read for
+        the same reason.
+        """
         if not self.sRootPath:
             return False
-        iExitCode, _s = self._ftExec(
-            "test -d " + fsShellQuotePosix(self._fsAbsolute(sRelPath)),
+        return self.connectionDocker.fbContainerPathIsDirectory(
+            self.sContainerId, self._fsAbsolute(sRelPath),
         )
-        return iExitCode == 0
 
     def fsReadText(self, sRelPath):
         """Return the container file's text; raises FileNotFoundError."""

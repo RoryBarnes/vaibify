@@ -1,23 +1,35 @@
 """Researcher-lane client for a live vaibify hub.
 
-The host CLI acts as the RESEARCHER, exactly as the browser does. It
-authenticates with the hub's shared session token in the
-``X-Session-Token`` header — fetched from the loopback
-``/api/session-token`` endpoint — and it holds the per-claim lease that
-the one-session-per-container model makes the exclusivity principal. It
-never presents the per-container agent token and never rides the agent
-lane, so ``bAgentSafe`` (which governs what a compromised in-container
-agent may do) places no restriction on it.
+The host CLI acts as the RESEARCHER, exactly as the browser does, and
+authenticates the same way the browser does — through the capability
+bootstrap, headlessly (design §6b, slice 8):
+
+1. mint an ORDINARY launch capability over the hub's peer-authenticated
+   host control socket (``mint-bootstrap``), which no container and no
+   remote peer can reach, so possession proves a human at this host;
+2. redeem it once at ``/api/bootstrap`` for a per-browser credential,
+   presented thereafter in the ``X-Session-Token`` header;
+3. claim the container for a LEASE, exactly as a browser tab does —
+   never a transfer, so a dashboard owner is never displaced;
+4. attach BOTH the credential and the lease to every owner-scoped
+   request (:func:`ftSendSessionRequest`, the single place that does
+   it, so no call site can forget again);
+5. release the lease when the command finishes, on every path.
+
+It never presents the per-container agent token and never rides the
+agent lane, so ``bAgentSafe`` (which governs what a compromised
+in-container agent may do) places no restriction on it.
 
 The pipeline WebSocket discriminates lanes by ``Origin``: a loopback
-origin plus the shared token plus the owning lease is the browser gate;
-a non-loopback origin can only be the in-container agent. The CLI is a
+origin plus the credential plus the owning lease is the browser gate; a
+non-loopback origin can only be the in-container agent. The CLI is a
 loopback client acting for the researcher, so it presents all three and
 never takes the agent's lease-exempt path.
 
 Exclusivity is honest in both directions: a container already claimed by
-an open dashboard tab answers this client's claim with 409, and this
-client releases its lease when the command finishes.
+an open dashboard tab answers this client's claim with 409 — one session
+per container, and the way through is the in-container agent lane, not a
+takeover — and this client releases its lease when the command finishes.
 """
 
 import json
@@ -26,6 +38,11 @@ import click
 
 
 S_BROWSER_TOKEN_HEADER = "X-Session-Token"
+S_LEASE_HEADER = "X-Vaibify-Lease"
+# Where a launch capability becomes a per-browser credential. The same
+# endpoint the dashboard posts its URL-fragment capability to; this
+# client's capability arrives over the host control socket instead.
+S_BOOTSTRAP_ENDPOINT = "/api/bootstrap"
 F_DEFAULT_TIMEOUT_SECONDS = 300.0
 F_BOOTSTRAP_TIMEOUT_SECONDS = 30.0
 _T_TERMINAL_EVENT_TYPES = (
@@ -52,15 +69,17 @@ def flistFindLiveHubSessions():
     ]
 
 
-def fsResolveHubBaseUrl(iPort=None):
-    """Return the loopback base URL of the hub to drive.
+def fiResolveHubPort(iPort=None):
+    """Return the port of the hub to drive.
 
     An explicit port wins. Otherwise the single live hub is used; zero
     or several are an error rather than a guess, because picking the
-    wrong hub would drive the wrong researcher's session.
+    wrong hub would drive the wrong researcher's session. The port —
+    not the URL — is the primitive, because the host control socket is
+    keyed by hub port exactly as the session-registry slot is.
     """
     if iPort:
-        return "http://127.0.0.1:%d" % int(iPort)
+        return int(iPort)
     listSessions = flistFindLiveHubSessions()
     if not listSessions:
         raise HubSessionError(
@@ -75,7 +94,12 @@ def fsResolveHubBaseUrl(iPort=None):
             "Several vaibify hubs are live (ports %s); "
             "choose one with --port." % sPorts
         )
-    return "http://127.0.0.1:%d" % int(listSessions[0]["iPort"])
+    return int(listSessions[0]["iPort"])
+
+
+def fsResolveHubBaseUrl(iPort=None):
+    """Return the loopback base URL of the hub to drive."""
+    return "http://127.0.0.1:%d" % fiResolveHubPort(iPort)
 
 
 def _fobjParseResponseBody(response):
@@ -87,23 +111,29 @@ def _fobjParseResponseBody(response):
 
 
 def ftSendHttpRequest(
-    sBaseUrl, sSessionToken, sMethod, sPath, dictFields=None,
+    sBaseUrl, sCredential, sMethod, sPath, dictFields=None,
     fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
+    sLeaseId="",
 ):
     """Return ``(iStatusCode, objBody)`` for one researcher-lane call.
 
-    The session token is set in exactly one place. A caller that merges
-    it in twice sends ``"<token>, <token>"``, which is not the hub's
-    token and is correctly refused 401. GET fields ride the query string
-    because a GET body is non-portable and FastAPI binds primitives from
-    the query.
+    The credential is set in exactly one place. A caller that merges it
+    in twice sends ``"<credential>, <credential>"``, which is not a
+    credential the hub knows and is correctly refused 401. GET fields
+    ride the query string because a GET body is non-portable and
+    FastAPI binds primitives from the query.
     ``dictQuery`` is for the control-plane routes that declare their
-    parameters as query values on a POST — claim, release, connect.
+    parameters as query values on a POST — connect's ``sWorkflowPath``.
+    ``sLeaseId``, when set, rides the ``X-Vaibify-Lease`` header (never a
+    query param, which would leak into logs): claim's re-claim lease,
+    release's owning lease, connect's owning lease.
     """
     import requests
     dictHeaders = (
-        {S_BROWSER_TOKEN_HEADER: sSessionToken} if sSessionToken else {}
+        {S_BROWSER_TOKEN_HEADER: sCredential} if sCredential else {}
     )
+    if sLeaseId:
+        dictHeaders[S_LEASE_HEADER] = sLeaseId
     dictKeywords = {}
     if dictQuery:
         dictKeywords["params"] = dict(dictQuery)
@@ -139,28 +169,88 @@ def _fobjRequireOkResponse(tResponse, sWhat):
     )
 
 
-def fsFetchSessionToken(sBaseUrl):
-    """Return the hub's shared session token from the loopback endpoint."""
+def ftSendSessionRequest(
+    dictSession, sMethod, sPath, dictFields=None,
+    fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
+):
+    """Send one OWNER-SCOPED request: the credential AND the lease, always.
+
+    Every container-scoped route — every mutation, and every read
+    carrying a ``{sContainerId}`` segment — is authorized by the strong
+    predicate: a live browser credential PLUS the lease bound to that
+    session. Sending only the credential is a 403 that reads like a
+    server fault, which is precisely how this lane shipped broken, so
+    the attachment lives here rather than at each call site.
+    """
+    return ftSendHttpRequest(
+        dictSession["sBaseUrl"], dictSession["sCredential"], sMethod,
+        sPath, dictFields, fTimeoutSeconds, dictQuery=dictQuery,
+        sLeaseId=dictSession["sLeaseId"],
+    )
+
+
+def fsRequestBootstrapCapability(iHubPort):
+    """Return a launch capability minted over the hub's control socket.
+
+    Host-lane only: the socket lives in a ``0700`` directory, is
+    peer-authenticated to the hub's own uid, and is unreachable from
+    any container, so a capability handed back here proves nothing more
+    than that this process runs as the researcher who started the hub.
+    """
+    from vaibify.gui.hostControlChannel import (
+        HostControlError,
+        S_SOCKET_OPERATION_MINT_BOOTSTRAP,
+        fdictSendHostControlRequest,
+    )
+    try:
+        dictMinted = fdictSendHostControlRequest(
+            iHubPort, {"sOperation": S_SOCKET_OPERATION_MINT_BOOTSTRAP},
+            F_BOOTSTRAP_TIMEOUT_SECONDS,
+        )
+    except HostControlError as error:
+        raise HubSessionError(
+            "Could not reach the host control socket of the vaibify hub "
+            "on port %d: %s" % (iHubPort, error)
+        )
+    if not dictMinted.get("bAccepted") or not dictMinted.get("bMinted"):
+        raise HubSessionError(
+            "The hub refused to mint a host-lane credential: %s"
+            % dictMinted.get("sError", "no reason given")
+        )
+    return dictMinted["sBootstrapCapability"]
+
+
+def fsRedeemHostLaneCredential(iHubPort, sBaseUrl):
+    """Mint a capability over the socket and redeem it for a credential.
+
+    The headless equivalent of the browser's launch: the capability
+    never touches a file, a log, or a query string — it travels over
+    the Unix socket and then in the JSON body of one POST — and the
+    credential it returns is an ordinary per-browser session, holding
+    no container until this client claims one.
+    """
+    sCapability = fsRequestBootstrapCapability(iHubPort)
     objBody = _fobjRequireOkResponse(
         ftSendHttpRequest(
-            sBaseUrl, "", "GET", "/api/session-token", None,
-            F_BOOTSTRAP_TIMEOUT_SECONDS,
+            sBaseUrl, "", "POST", S_BOOTSTRAP_ENDPOINT,
+            {"sCapability": sCapability}, F_BOOTSTRAP_TIMEOUT_SECONDS,
         ),
-        "Session-token fetch",
+        "Browser-credential bootstrap",
     )
-    sToken = (objBody or {}).get("sToken", "")
-    if not sToken:
+    sCredential = (objBody or {}).get("sCredential", "")
+    if not sCredential:
         raise HubSessionError(
-            "Hub at %s returned no session token." % sBaseUrl
+            "Hub at %s redeemed the launch capability but returned no "
+            "credential." % sBaseUrl
         )
-    return sToken
+    return sCredential
 
 
-def fsResolveContainerId(sBaseUrl, sSessionToken, sContainerName):
+def fsResolveContainerId(sBaseUrl, sCredential, sContainerName):
     """Return the running Docker id the hub knows for a container name."""
     objBody = _fobjRequireOkResponse(
         ftSendHttpRequest(
-            sBaseUrl, sSessionToken, "GET", "/api/registry", None,
+            sBaseUrl, sCredential, "GET", "/api/registry", None,
             F_BOOTSTRAP_TIMEOUT_SECONDS,
         ),
         "Container listing",
@@ -181,21 +271,25 @@ def fsResolveContainerId(sBaseUrl, sSessionToken, sContainerName):
     )
 
 
-def fsClaimContainer(sBaseUrl, sSessionToken, sContainerName):
+def fsClaimContainer(sBaseUrl, sCredential, sContainerName):
     """Claim the container and return the lease the hub minted.
 
-    A foreign claim is refused by the hub with 409; that refusal is
-    surfaced verbatim, because a dashboard tab holding the container is
-    a fact the researcher needs to see rather than a condition to work
-    around.
+    A container someone else holds is refused by the hub with 409, and
+    that refusal is surfaced with the way out rather than worked
+    around: this client claims like any browser and must never transfer
+    or revoke a dashboard owner to authenticate itself.
     """
+    iStatusCode, objBody = ftSendHttpRequest(
+        sBaseUrl, sCredential, "POST",
+        "/api/registry/%s/claim" % sContainerName, None,
+        F_BOOTSTRAP_TIMEOUT_SECONDS,
+    )
+    if iStatusCode == 409:
+        raise HubSessionError(
+            fsExplainClaimConflict(sContainerName, objBody),
+        )
     objBody = _fobjRequireOkResponse(
-        ftSendHttpRequest(
-            sBaseUrl, sSessionToken, "POST",
-            "/api/registry/%s/claim" % sContainerName, None,
-            F_BOOTSTRAP_TIMEOUT_SECONDS,
-        ),
-        "Container claim",
+        (iStatusCode, objBody), "Container claim",
     )
     sLeaseId = (objBody or {}).get("sLeaseId", "")
     if not sLeaseId:
@@ -203,6 +297,47 @@ def fsClaimContainer(sBaseUrl, sSessionToken, sContainerName):
             "Claim of '%s' returned no lease." % sContainerName
         )
     return sLeaseId
+
+
+# The way through when a dashboard holds the container. One browser
+# session per container is the model (design §9), so the CLI cannot
+# simply take it — but the in-container agent lane exists precisely to
+# act INSIDE a live dashboard session, which is why it is named here
+# rather than leaving the researcher with a bare 409.
+S_AGENT_LANE_POINTER = (
+    "Vaibify allows one session per container, so this command cannot "
+    "take it from a live dashboard. Either close the dashboard tab "
+    "holding it (or release the container from the picker) and run "
+    "this again, or run the same action from inside the container "
+    "with 'vaibify-do', the in-container agent lane, which acts within "
+    "the session that is already open."
+)
+
+
+def fsExplainClaimConflict(sContainerName, objDetail):
+    """Return the message for a 409 claim, with the way out named.
+
+    The hub's own reason is always surfaced first — it is the honest
+    fact. The agent-lane pointer is appended only for the in-use
+    family of refusals: a poisoned record names ``vaibify reconcile``
+    as its recovery and a cardinality refusal names the container this
+    session already holds, and for those the agent lane is not the
+    answer.
+    """
+    objBody = objDetail.get("detail", objDetail) if isinstance(
+        objDetail, dict,
+    ) else objDetail
+    dictBody = objBody if isinstance(objBody, dict) else {}
+    sReason = dictBody.get("sMessage") or (
+        objBody if isinstance(objBody, str) else "it is in use"
+    )
+    sExplanation = (
+        "Container '%s' is held by another vaibify session: %s."
+        % (sContainerName, sReason)
+    )
+    if dictBody.get("bPoisoned") or dictBody.get("sHeldContainerName"):
+        return sExplanation
+    return "%s %s" % (sExplanation, S_AGENT_LANE_POINTER)
 
 
 def fnReleaseContainer(dictSession):
@@ -218,11 +353,11 @@ def fnReleaseContainer(dictSession):
         return
     try:
         iStatusCode, objBody = ftSendHttpRequest(
-            dictSession["sBaseUrl"], dictSession["sSessionToken"],
+            dictSession["sBaseUrl"], dictSession["sCredential"],
             "POST",
             "/api/registry/%s/release" % dictSession["sContainerName"],
             None, F_BOOTSTRAP_TIMEOUT_SECONDS,
-            dictQuery={"sLeaseId": dictSession["sLeaseId"]},
+            sLeaseId=dictSession["sLeaseId"],
         )
     except HubSessionError as error:
         click.echo("Warning: lease release failed: %s" % error, err=True)
@@ -236,16 +371,19 @@ def fnReleaseContainer(dictSession):
         )
 
 
-def fsSelectWorkflowPath(
-    sBaseUrl, sSessionToken, sContainerId, sWorkflowPath=None,
-):
-    """Return the project.json path to connect, discovering it if unset."""
+def fsSelectWorkflowPath(dictSession, sWorkflowPath=None):
+    """Return the project.json path to connect, discovering it if unset.
+
+    The discovery read is container-scoped, so it rides the owner-scoped
+    sender: without the lease the hub answers 403 and the researcher
+    would be told there is no project when there is.
+    """
     if sWorkflowPath:
         return sWorkflowPath
     objBody = _fobjRequireOkResponse(
-        ftSendHttpRequest(
-            sBaseUrl, sSessionToken, "GET",
-            "/api/workflows/%s" % sContainerId, None,
+        ftSendSessionRequest(
+            dictSession, "GET",
+            "/api/workflows/%s" % dictSession["sContainerId"], None,
             F_BOOTSTRAP_TIMEOUT_SECONDS,
         ),
         "Project discovery",
@@ -259,19 +397,13 @@ def fsSelectWorkflowPath(
 
 def fnConnectWorkflow(dictSession, sWorkflowPath):
     """Load the container's project into the hub's workflow cache."""
-    sPath = fsSelectWorkflowPath(
-        dictSession["sBaseUrl"], dictSession["sSessionToken"],
-        dictSession["sContainerId"], sWorkflowPath,
-    )
+    sPath = fsSelectWorkflowPath(dictSession, sWorkflowPath)
     _fobjRequireOkResponse(
-        ftSendHttpRequest(
-            dictSession["sBaseUrl"], dictSession["sSessionToken"],
-            "POST", "/api/connect/%s" % dictSession["sContainerId"],
+        ftSendSessionRequest(
+            dictSession, "POST",
+            "/api/connect/%s" % dictSession["sContainerId"],
             None, F_DEFAULT_TIMEOUT_SECONDS,
-            dictQuery={
-                "sWorkflowPath": sPath,
-                "sLeaseId": dictSession["sLeaseId"],
-            },
+            dictQuery={"sWorkflowPath": sPath},
         ),
         "Project connect",
     )
@@ -279,20 +411,22 @@ def fnConnectWorkflow(dictSession, sWorkflowPath):
 
 
 def fdictInspectHubSession(sContainerName, iPort=None):
-    """Return a read-only session: hub, token, container id, no lease.
+    """Return a read-only session: hub, credential, container id, no lease.
 
     Nothing here takes the container away from a dashboard tab, which is
     what ``--dry-run`` needs: enough to name the exact call, none of the
     exclusivity that making it would require.
     """
-    sBaseUrl = fsResolveHubBaseUrl(iPort)
-    sSessionToken = fsFetchSessionToken(sBaseUrl)
+    iHubPort = fiResolveHubPort(iPort)
+    sBaseUrl = "http://127.0.0.1:%d" % iHubPort
+    sCredential = fsRedeemHostLaneCredential(iHubPort, sBaseUrl)
     return {
         "sBaseUrl": sBaseUrl,
-        "sSessionToken": sSessionToken,
+        "iHubPort": iHubPort,
+        "sCredential": sCredential,
         "sContainerName": sContainerName,
         "sContainerId": fsResolveContainerId(
-            sBaseUrl, sSessionToken, sContainerName,
+            sBaseUrl, sCredential, sContainerName,
         ),
         "sLeaseId": "",
         "sWorkflowPath": "",
@@ -305,7 +439,7 @@ def fdictOpenResearcherSession(
     """Discover a hub, authenticate, claim the container, and connect."""
     dictSession = fdictInspectHubSession(sContainerName, iPort)
     dictSession["sLeaseId"] = fsClaimContainer(
-        dictSession["sBaseUrl"], dictSession["sSessionToken"],
+        dictSession["sBaseUrl"], dictSession["sCredential"],
         sContainerName,
     )
     try:
@@ -319,9 +453,8 @@ def fdictOpenResearcherSession(
 def fiResolveStepLabel(dictSession, sLabel):
     """Return the 0-based step index the hub assigns to a step label."""
     objBody = _fobjRequireOkResponse(
-        ftSendHttpRequest(
-            dictSession["sBaseUrl"], dictSession["sSessionToken"],
-            "GET",
+        ftSendSessionRequest(
+            dictSession, "GET",
             "/api/steps/%s/by-label/%s" % (
                 dictSession["sContainerId"], sLabel,
             ),
@@ -346,10 +479,13 @@ def _fnPrintPayload(objBody, bJson):
 def fiSendHttpAction(
     dictSession, sMethod, sPath, dictFields, bJson, fTimeoutSeconds,
 ):
-    """Perform one HTTP action, print the body, return the exit code."""
-    iStatusCode, objBody = ftSendHttpRequest(
-        dictSession["sBaseUrl"], dictSession["sSessionToken"],
-        sMethod, sPath, dictFields, fTimeoutSeconds,
+    """Perform one HTTP action, print the body, return the exit code.
+
+    Owner-scoped by construction: every generated action addresses a
+    container, so the lease rides along with the credential.
+    """
+    iStatusCode, objBody = ftSendSessionRequest(
+        dictSession, sMethod, sPath, dictFields, fTimeoutSeconds,
     )
     _fnPrintPayload(objBody, bJson)
     if 200 <= iStatusCode < 300:
@@ -360,13 +496,13 @@ def fiSendHttpAction(
 
 
 def _fsBuildPipelineSocketUrl(dictSession):
-    """Return the pipeline WebSocket URL carrying the token and lease."""
+    """Return the pipeline WebSocket URL carrying the credential and lease."""
     from urllib.parse import quote
     sWebSocketBase = dictSession["sBaseUrl"].replace("http://", "ws://", 1)
     return "%s/ws/pipeline/%s?sToken=%s&sLeaseId=%s" % (
         sWebSocketBase,
         quote(dictSession["sContainerId"], safe=""),
-        quote(dictSession["sSessionToken"], safe=""),
+        quote(dictSession["sCredential"], safe=""),
         quote(dictSession["sLeaseId"], safe=""),
     )
 
@@ -388,7 +524,7 @@ def fiStreamPipelineAction(
 ):
     """Send one action on the pipeline socket and stream its events.
 
-    Presents the loopback origin, the shared session token, and the
+    Presents the loopback origin, the browser credential, and the
     owning lease — the browser gate, all three. Returns the process exit
     code: the run's own exit code on completion, 1 on refusal or error.
     """

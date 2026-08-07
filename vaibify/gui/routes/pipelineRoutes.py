@@ -12,6 +12,7 @@ import re
 from docker.errors import APIError, NotFound
 from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
+from .. import containerOwnership
 from ..actionCatalog import fnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
@@ -28,6 +29,9 @@ from ..serverLifespan import (
     fnIncrementWebSocketCount,
 )
 from ..webSocketAuthorization import (
+    I_REJECT_POISONED,
+    fbContainerIsPoisoned,
+    ffbBuildPerFrameCredentialCheck,
     fiContainerSessionRejectionCode,
     fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
@@ -59,7 +63,18 @@ from ..fileStatusManager import (
 )
 from ..fileIntegrity import flistExtractAllScriptPaths
 from ..testStatusManager import fbRefreshAggregateTestStates
-from ..routeContext import ffilesForWorkflow
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
+    ffilesForWorkflow,
+    fnCommitWorkflowSave,
+    fobjRunWorkerUnderTheDrain,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_MODE_B_LOCK_HELD,
+    fnDeclareCarrierMode,
+)
 from ..pathContract import fdictAbsKeysToRepoRelative
 from ..randomnessLint import fnApplyRandomnessLintToWorkflow
 from ..llmInvoker import fsReadFileFromContainer
@@ -102,23 +117,71 @@ def _fbCancelPipelineTask(dictPipelineTasks, sContainerId):
     return True
 
 
-async def _fnMarkPipelineStopped(dictCtx, sContainerId):
+def _ffnBuildCarriedStatePersister(dictCtx, sContainerId, requestHttp):
+    """Return a persister that carries the reconcile write on this request.
+
+    The reconciling reader is kept — not traded for a plain read — so a
+    Kill issued against a container whose runner already died still
+    records the runner's real exit code and ``sFailureCauseHost``
+    instead of overwriting them with a flat "killed (130)". The read is
+    a typed read and needs no admission; its WRITE does, so it gets its
+    own mode-(b) invocation here rather than sharing the kill's, which
+    has already released the drain by then.
+    """
+    from .. import pipelineState
+
+    async def fnPersistReconciledUnderTheDrain(dictReconciled):
+        def fnWriteTheReconciledState(supervisor=None):
+            del supervisor
+            # No 4xx is reachable inside this worker — the write raises
+            # docker errors, never an HTTPException — so the carry-back
+            # is a pass-through here and a docker failure mid-write
+            # propagates, which is exactly the unknown state the
+            # quarantine exists for. The call stays because the shape
+            # is the drain helper's contract, and because the judgement
+            # about which statuses are decided belongs at a call site.
+            return fdictCarryARefusalBackInsteadOfRaising(
+                lambda: pipelineState.fnWriteState(
+                    dictCtx["docker"], sContainerId, dictReconciled,
+                ),
+            )
+        await fobjRunWorkerUnderTheDrain(
+            sContainerId, fnWriteTheReconciledState,
+            "pipeline-state-reconcile", requestHttp,
+        )
+    return fnPersistReconciledUnderTheDrain
+
+
+async def _fnMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
     """Write a stopped state file so the UI shows not running.
 
     Reads through the reconciling reader so a kill issued against a
     container whose runner already vanished does not double-write —
     the watchdog will have already flipped ``bRunning`` to False.
+    At most one of the two writes can happen per call: a reconcile
+    returns ``bRunning: False``, and this returns without the second.
     """
     from .. import pipelineState
     dictState = await pipelineState.fdictReadReconciledState(
         dictCtx, sContainerId,
+        fnPersistReconciled=_ffnBuildCarriedStatePersister(
+            dictCtx, sContainerId, requestHttp,
+        ),
     )
     if dictState is None or not dictState.get("bRunning"):
         return
-    await asyncio.to_thread(
-        pipelineState.fnUpdateState,
-        dictCtx["docker"], sContainerId, dictState,
-        pipelineState.fdictBuildCompletedState(130),
+
+    def fnWriteTheStoppedState(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: pipelineState.fnUpdateState(
+                dictCtx["docker"], sContainerId, dictState,
+                pipelineState.fdictBuildCompletedState(130),
+            ),
+        )
+    await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnWriteTheStoppedState,
+        "pipeline-state-kill", requestHttp,
     )
 
 
@@ -158,7 +221,7 @@ def _flistBuildCleanCommands(dictWorkflow):
     return listCleanCommands
 
 
-async def _fiCountMatchingProcesses(
+def _fiCountMatchingProcesses(
     connectionDocker, sContainerId, sGrepPattern,
 ):
     """Count processes matching the grep pattern in the container."""
@@ -166,8 +229,7 @@ async def _fiCountMatchingProcesses(
         f"ps aux | grep -E '{sGrepPattern}' "
         f"| grep -v grep | wc -l"
     )
-    _, sCountOutput = await asyncio.to_thread(
-        connectionDocker.ftResultExecuteCommand,
+    _, sCountOutput = connectionDocker.ftResultExecuteCommand(
         sContainerId, sCountCommand,
     )
     try:
@@ -176,7 +238,7 @@ async def _fiCountMatchingProcesses(
         return 0
 
 
-async def _fnKillMatchingProcesses(
+def _fnKillMatchingProcesses(
     connectionDocker, sContainerId, listPatterns,
 ):
     """Kill all processes matching the given patterns."""
@@ -187,10 +249,55 @@ async def _fnKillMatchingProcesses(
             f"| awk '{{print $2}}' "
             f"| xargs kill -9 2>/dev/null"
         )
-        await asyncio.to_thread(
-            connectionDocker.ftResultExecuteCommand,
-            sContainerId, sKill,
+        connectionDocker.ftResultExecuteCommand(sContainerId, sKill)
+
+
+async def _fiCountThenKillUnderTheDrain(
+    dictCtx, sContainerId, listPatterns, sGrepPattern, requestHttp,
+):
+    """Count the workflow's processes and kill them holding one drain.
+
+    Mode (b), and the count and the kill share ONE held drain because
+    the count IS the guard: the kill runs only when the count is
+    non-zero, and the number the response reports is the number that
+    was killed. With the drain dropped between them, an ownership
+    hand-over could commit against a container this request was still
+    about to send ``kill -9`` into.
+
+    The worker is synchronous because the carrier runs workers in a
+    thread and refuses an ``async def`` outright; the two helpers it
+    calls therefore lost their own ``asyncio.to_thread`` wrappers
+    rather than gaining a second thread hop inside one.
+    """
+    def fnCountThenKill(supervisor=None):
+        del supervisor
+        # Nothing in here raises an HTTPException, so the carry-back is
+        # a pass-through; a docker failure part-way through a kill
+        # sweep is genuinely unknown state and must poison rather than
+        # be carried back as an ordinary refusal.
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fiCountAndKillMatchingProcesses(
+                dictCtx["docker"], sContainerId, listPatterns,
+                sGrepPattern,
+            ),
         )
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fnCountThenKill, "kill-pipeline", requestHttp,
+    )
+
+
+def _fiCountAndKillMatchingProcesses(
+    connectionDocker, sContainerId, listPatterns, sGrepPattern,
+):
+    """Return how many matching processes there were, having killed them."""
+    iCountBefore = _fiCountMatchingProcesses(
+        connectionDocker, sContainerId, sGrepPattern,
+    )
+    if iCountBefore > 0:
+        _fnKillMatchingProcesses(
+            connectionDocker, sContainerId, listPatterns,
+        )
+    return iCountBefore
 
 
 def _fnRegisterPipelineState(app, dictCtx):
@@ -260,25 +367,69 @@ def _flistTailLogLinesForContainer(sLogPath, sContainerId, iLines):
     return list(dequeMatches)
 
 
+# Levels a sanitized incident may carry. Any other value is reported as
+# "UNKNOWN" rather than passed through, so the agent-lane payload has a
+# closed, enumerable shape.
+_SET_SAFE_INCIDENT_LEVELS = frozenset(
+    {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+)
+
+
+def _flistSanitizedIncidents(sContainerId, listIncidents):
+    """Return incidents reduced to an allowlisted, non-free-text shape.
+
+    A raw incident carries ``sMessage`` (``record.getMessage()``) and
+    ``sExceptionRepr``, either of which may contain host paths, tokens,
+    command text, or ANOTHER container's identifiers. The agent lane must
+    never receive those, so it gets a stable, enumerable shape instead: a
+    timestamp, a bounded level, and its own container id — an allowlist of
+    safe fields, not a scrub of arbitrary strings (which is a blocklist
+    and leaks).
+    """
+    listSafe = []
+    for dictIncident in listIncidents:
+        sLevel = dictIncident.get("sLevel", "")
+        listSafe.append({
+            "sIso": dictIncident.get("sIso", ""),
+            "sLevel": (
+                sLevel if sLevel in _SET_SAFE_INCIDENT_LEVELS else "UNKNOWN"
+            ),
+            "sContainerId": sContainerId,
+        })
+    return listSafe
+
+
 def _fnRegisterHostLogTail(app, dictCtx):
     """Register GET /api/pipeline/{id}/host-log-tail endpoint."""
 
     @fnAgentAction("get-host-log-tail")
     @app.get("/api/pipeline/{sContainerId}/host-log-tail")
     async def fnGetHostLogTail(
+        request: Request,
         sContainerId: str,
         iLines: int = I_HOST_LOG_TAIL_DEFAULT_LINES,
     ):
-        from vaibify.gui.hostIncidents import (
-            flistIncidentsForContainer,
-        )
+        from vaibify.gui.hostIncidents import flistIncidentsForContainer
+        from vaibify.gui import serverMiddleware
         iEffectiveLines = _fiClampLineCount(iLines)
+        listIncidents = flistIncidentsForContainer(sContainerId)
+        if serverMiddleware.fbRequestRidesAgentLane(request):
+            # The raw host log spans every project/container and carries
+            # host paths; the raw incidents carry free-text message and
+            # exception repr. The agent lane receives NEITHER — only an
+            # allowlisted per-container incident view. This is the
+            # host-lane rejection the catalog cannot express on its own.
+            return {
+                "bSanitized": True,
+                "listIncidents": _flistSanitizedIncidents(
+                    sContainerId, listIncidents,
+                )[-iEffectiveLines:],
+            }
         sLogPath = _fsResolveHostLogPath()
         listLines = await asyncio.to_thread(
             _flistTailLogLinesForContainer,
             sLogPath, sContainerId, iEffectiveLines,
         )
-        listIncidents = flistIncidentsForContainer(sContainerId)
         return {
             "sLogPath": sLogPath,
             "iRequestedLines": iLines,
@@ -293,7 +444,8 @@ def _fnRegisterPipelineKill(app, dictCtx):
 
     @fnAgentAction("kill-pipeline")
     @app.post("/api/pipeline/{sContainerId}/kill")
-    async def fnKillRunningTasks(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fnKillRunningTasks(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -305,14 +457,13 @@ def _fnRegisterPipelineKill(app, dictCtx):
             "|".join(listSafe) if listSafe else "")
         iCountBefore = 0
         if sGrepPattern:
-            iCountBefore = await _fiCountMatchingProcesses(
-                dictCtx["docker"], sContainerId, sGrepPattern)
-            if iCountBefore > 0:
-                await _fnKillMatchingProcesses(
-                    dictCtx["docker"], sContainerId,
-                    listPatterns,
-                )
-        await _fnMarkPipelineStopped(dictCtx, sContainerId)
+            iCountBefore = await _fiCountThenKillUnderTheDrain(
+                dictCtx, sContainerId, listPatterns, sGrepPattern,
+                requestHttp,
+            )
+        await _fnMarkPipelineStopped(
+            dictCtx, sContainerId, requestHttp,
+        )
         return {
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,
@@ -325,19 +476,68 @@ def _fnRegisterPipelineClean(app, dictCtx):
 
     @fnAgentAction("clean-outputs")
     @app.post("/api/pipeline/{sContainerId}/clean")
-    async def fnCleanOutputs(sContainerId: str):
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
+    async def fnCleanOutputs(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listCleanCommands = _flistBuildCleanCommands(
             dictWorkflow)
         if listCleanCommands:
-            sCommand = " ; ".join(listCleanCommands)
-            await asyncio.to_thread(
-                dictCtx["docker"].ftResultExecuteCommand,
-                sContainerId, sCommand)
-        dictCtx["save"](sContainerId, dictWorkflow)
+            await _fnDeleteOutputsUnderTheDrain(
+                dictCtx, sContainerId, listCleanCommands, requestHttp,
+            )
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Recording the cleaned outputs",
+        )
         return {"bSuccess": True}
+
+
+async def _fnDeleteOutputsUnderTheDrain(
+    dictCtx, sContainerId, listCleanCommands, requestHttp,
+):
+    """Delete the workflow's outputs holding the container's drain.
+
+    THE NAMED LIVE EXPLOIT this migration exists to close. The delete
+    used to run on a bare ``asyncio.to_thread``: it held no mutation
+    lock and registered no durable work, so an ownership transfer
+    arriving mid-delete saw an unlocked, idle-looking container,
+    committed the hand-over, and the FORMER owner's ``rm`` carried on
+    running — against a workspace that now belonged to somebody else.
+
+    Mode (b) rather than mode (a) because the effect crosses a
+    worker-thread ``await``: a shielded supervisor holds the drain for
+    the WORKER's whole life, not the requesting coroutine's, so
+    cancelling the request cannot release the lock out from under a
+    thread that is still deleting. The supervisor also registers the
+    operation kind and target, which is what lets the refusal say
+    "clean-outputs is running" instead of "busy" — an ``asyncio.Lock``
+    knows only that it is held.
+
+    The worker is synchronous because the carrier runs workers in a
+    thread; it refuses an ``async def`` outright, for the reasons
+    ``commitCarrier._fnCallWorkerSynchronously`` records.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Cleaning the workflow's outputs",
+    )
+    sCommand = " ; ".join(listCleanCommands)
+
+    def fnDeleteTheOutputs(supervisor=None):
+        del supervisor
+        return dictCtx["docker"].ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+
+    return await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "clean-outputs",
+        fnDeleteTheOutputs,
+    )
 
 
 def _fnRegisterPipelineWs(app, dictCtx):
@@ -356,17 +556,78 @@ def _fnRegisterPipelineWs(app, dictCtx):
         if iRejectCode:
             await fnCloseWithCode(websocket, iRejectCode)
             return
+        dictContainerOwners = dictCtx.get("dictContainerOwners", {})
+        # The pipeline socket is a mutation channel, so a poisoned
+        # container refuses it -- the caller's standing is fine, the
+        # container is not, and the recovery is 'vaibify reconcile'.
+        # Safe reads and the host reconciliation lane are deliberately
+        # NOT fenced: fencing those would fence off the poison's cure.
+        if fbContainerIsPoisoned(dictContainerOwners, sName):
+            await fnCloseWithCode(websocket, I_REJECT_POISONED)
+            return
         dictCtx["require"]()
+        iAcceptedGeneration = containerOwnership.fiOwnerGenerationForName(
+            dictContainerOwners, sName,
+        )
 
         async def fnServe():
-            await fnHandlePipelineWs(websocket, dictCtx, sContainerId)
+            await fnHandlePipelineWs(
+                websocket, dictCtx, sContainerId,
+                fbFrameCredentialStillActive=(
+                    ffbBuildPerFrameCredentialCheck(
+                        websocket, dictCtx.get("dictBrowserSessions"),
+                        dictContainerOwners=dictContainerOwners,
+                        sName=sName,
+                        iAcceptedGeneration=iAcceptedGeneration,
+                    )
+                ),
+            )
 
         await fnServeUnderLiveConnectionCounters(
             websocket, dictCtx.get("dictContainerOwners", {}), sName,
             fnServe, lambda: fnIncrementWebSocketCount(app),
             lambda: fnDecrementWebSocketCount(app),
             bExclusivePipelineLane=True,
+            dictSessionSockets=dictCtx.get("dictSessionSockets"),
+            dictBrowserSessions=dictCtx.get("dictBrowserSessions"),
         )
+
+
+async def _fdictRebaselineModTimesUnderTheDrain(
+    dictCtx, sContainerId, listPaths, requestHttp,
+):
+    """Stat the step's outputs under the drain; return their mtimes.
+
+    This LOOKS like a read and is not. ``_fdictGetModTimes`` batches its
+    stat by WRITING the path list into the container as a scratch file
+    (``fnWriteFileViaTar``) and then running ``xargs … stat`` through the
+    general exec primitive, so acknowledging a step reaches both
+    mutation-capable primitives. A carrier around only the workflow save
+    would leave the probe refused, which is the shape that makes a
+    "read-only-looking" route the easiest one to migrate wrongly.
+
+    Mode (b) rather than (a): the probe already ran in a worker thread,
+    and the write-then-exec pair must not be split by an ownership
+    hand-over — a successor that landed between them would find the
+    former owner's path file and answer the stat from it.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Re-baselining the step's outputs",
+    )
+
+    def fnStatTheOutputs(supervisor=None):
+        del supervisor
+        return _fdictGetModTimes(
+            dictCtx["docker"], sContainerId, listPaths,
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "acknowledge-step",
+        fnStatTheOutputs,
+    )
+    return dictOutcome["result"]
 
 
 def _fnRegisterAcknowledgeStep(app, dictCtx):
@@ -377,10 +638,13 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         "/api/pipeline/{sContainerId}"
         "/acknowledge-step/{iStepIndex}"
     )
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
+    )
     async def fnAcknowledgeStep(
-        sContainerId: str, iStepIndex: int,
+        sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
-        from .. import syncDispatcher as _syncDispatcher
+        from .. import syncDispatcher as _syncDispatcher  # noqa: F401
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -390,13 +654,15 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         dictVars = dictCtx["variables"](sContainerId)
         listPaths = _flistCollectOutputPaths(
             dictWorkflow, dictVars)
-        dictModTimes = await asyncio.to_thread(
-            _fdictGetModTimes,
-            dictCtx["docker"], sContainerId, listPaths,
+        dictModTimes = await _fdictRebaselineModTimesUnderTheDrain(
+            dictCtx, sContainerId, listPaths, requestHttp,
         )
         _fnUpdateModTimeBaseline(
             dictCtx, sContainerId, dictModTimes)
-        dictCtx["save"](sContainerId, dictWorkflow)
+        fnCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Recording the acknowledged step",
+        )
         return {"bSuccess": True}
 
 
@@ -2587,35 +2853,85 @@ def _fnRegisterManifestVerify(app, dictCtx):
 
     @fnAgentAction("verify-manifest")
     @app.post("/api/workflow/{sContainerId}/manifest/verify")
-    async def fdictVerifyManifest(sContainerId: str):
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictVerifyManifest(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
-        filesRepo = ffilesForWorkflow(
-            dictCtx, sContainerId, dictWorkflow,
-        )
-        listMismatches, listIncomplete = await _ftRunManifestVerify(
-            manifestWriter, dictWorkflow, filesRepo,
-        )
-        return _fdictBuildManifestVerifyResult(
-            filesRepo, listMismatches, listIncomplete,
+        return await _fdictVerifyManifestUnderTheDrain(
+            manifestWriter, dictWorkflow,
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            sContainerId, requestHttp,
         )
 
 
-async def _ftRunManifestVerify(manifestWriter, dictWorkflow, filesRepo):
-    """Run the verify+gap queries off the loop and translate failures.
+async def _fdictVerifyManifestUnderTheDrain(
+    manifestWriter, dictWorkflow, filesRepo, sContainerId, requestHttp,
+):
+    """Verify the manifest and count its entries under one drain.
+
+    This route reads like a read and is not one at the boundary that
+    decides: ``flistVerifyManifest`` re-hashes every pinned file by
+    running a script through the GENERAL exec primitive, which the gate
+    must treat as mutating because command text cannot be told apart
+    from a delete. So ``typed-read`` would be false here even though
+    nothing is written -- the same judgement the Overleaf diff already
+    records.
+
+    One carrier across the verify, the gap query and the entry count,
+    because they are three readings of ONE manifest and a report that
+    mixed two versions of it would be worse than a slower one: the
+    dashboard shows ``iMatching = iTotal - len(listMismatches)``, an
+    arithmetic that is only meaningful when both come from the same
+    file.
+
+    Every refusal here is decided before anything is written -- a
+    missing manifest (409), a malformed one (422) -- so all are carried
+    back rather than raised into a quarantine.
+    """
+    def fdictVerifyTheManifest(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fdictVerifyManifestBlocking(
+                manifestWriter, dictWorkflow, filesRepo,
+            ),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fdictVerifyTheManifest, "manifest-verify",
+        requestHttp,
+    )
+
+
+def _fdictVerifyManifestBlocking(manifestWriter, dictWorkflow, filesRepo):
+    """Run the verify and compose its result on one thread.
+
+    Synchronous because a mode-(b) worker runs in a thread and cannot
+    await the two ``to_thread`` hops this chain used to make.
+    """
+    listMismatches, listIncomplete = _ftRunManifestVerify(
+        manifestWriter, dictWorkflow, filesRepo,
+    )
+    return _fdictBuildManifestVerifyResult(
+        filesRepo, listMismatches, listIncomplete,
+    )
+
+
+def _ftRunManifestVerify(manifestWriter, dictWorkflow, filesRepo):
+    """Run the verify+gap queries and translate failures.
 
     Raises ``HTTPException`` 409 on missing manifest, 422 on a
     malformed manifest. Returns ``(listMismatches, listIncomplete)``
     on success.
     """
     try:
-        listMismatches = await asyncio.to_thread(
-            manifestWriter.flistVerifyManifest, filesRepo,
-        )
-        listIncomplete = await asyncio.to_thread(
-            manifestWriter.flistDeclaredButMissingFromManifest,
-            filesRepo, dictWorkflow,
+        listMismatches = manifestWriter.flistVerifyManifest(filesRepo)
+        listIncomplete = (
+            manifestWriter.flistDeclaredButMissingFromManifest(
+                filesRepo, dictWorkflow,
+            )
         )
     except FileNotFoundError as errorMissing:
         raise HTTPException(

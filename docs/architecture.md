@@ -341,16 +341,18 @@ collapsing the leaves or deleting the re-exports — breaks real
 callers. `tests/testArchitecturalInvariants.py` encodes both
 invariants as executable rules.
 
-**`posixpath` in `workflowManager.py`, `os.path` in `director.py`.**
-These two modules contain similarly named functions and look like
-natural candidates for deduplication. They are not. `workflowManager`
-manipulates container paths, which are POSIX on every host operating
-system. `director` manipulates host paths, which use the host's native
-separator. Unifying them would either mangle Windows host paths or
-mangle container paths on any host, and the failure would be silent
-until a cross-platform user hit it. The divergence is load-bearing;
-the [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) trap list and
-`tests/testArchitecturalInvariants.py` both guard it.
+**`posixpath` everywhere a container path is handled.**
+`workflowManager` manipulates container paths, which are POSIX on
+every host operating system, so it uses `posixpath` rather than
+`os.path`. A host-side module handling host paths must use `os.path`,
+because those carry the host's native separator. Unifying the two
+would either mangle Windows host paths or mangle container paths on
+any host, and the failure would be silent until a cross-platform user
+hit it. The repository formerly carried a host-side `director.py`
+whose deliberate divergence from `workflowManager` illustrated this;
+it was withdrawn in favour of `vaibify reproduce --rerun`, which
+re-runs a project through the container and therefore reproduces the
+environment as well as the steps.
 
 ## Project = git repo
 
@@ -468,16 +470,19 @@ container out forever.
 
 The host flock excludes a *second process*, but it cannot distinguish
 two browser tabs talking to the *same* hub process — both originate
-from loopback and both carry the same shared session token. The
+from loopback, and each now carries its own per-bootstrap credential
+(the shared session token was retired in the sweep-A rewrite). The
 exclusivity principal that tells two tabs apart is the **lease**: a
 per-claim, server-minted `secrets.token_urlsafe(32)` value
-(`containerOwnership.fsMintLease`).
+(`containerOwnership.fsMintLease`), bound to the browser session that
+claimed it.
 
 `POST /api/registry/{name}/claim` mints the lease and returns it to the
 claiming tab, which stores it in its own `sessionStorage` (per-tab, and
-surviving a reload). Every subsequent access — the connect handler,
-the pipeline WebSocket, and the terminal WebSocket — presents the lease
-as the `sLeaseId` query parameter. The shared session token and the
+surviving a reload). Every subsequent access — the connect handler and
+the pipeline WebSocket — presents the lease
+in the `X-Vaibify-Lease` header (a header, not a query parameter, so it
+cannot land in a log). The per-session credential and the
 loopback-origin check remain the *trust boundary* (CSRF / "a browser is
 talking to this hub"); the lease is the *exclusivity* layer above it
 ("which browser session"). The lease is operational exclusivity for
@@ -492,6 +497,39 @@ A running hub keeps exactly one in-process authority,
 (a name-keyed flock plus the process-global `setAllowedContainers`
 set). Claim, connect, and both WebSocket gates all consult this map and
 nothing else.
+
+#### Which control-plane routes are lease-enforced, and which are a deliberate residual
+
+Not every state-mutating route is gated on the owning lease, and that is
+intentional. The `container-owner` HTTP routes (the `{sContainerId}`
+viewer routes) and the two routes that touch a live session's integrity —
+`POST /api/connect/{sContainerId}` and `POST /api/registry/{name}/release`
+— require the **session-bound** lease
+(`containerOwnership.fbBrowserSessionOwnsLease`): a second browser session
+replaying a *copied lease value* is refused, because connect would take
+over the workflow and the container's agent session, and release would
+drop the owner record. Connect enforces this in
+`workflowRoutes._fnRequireOwningLeaseForConnect`; release enforces it in
+`containerOwnership.fnReleaseOwnership`.
+
+The name-keyed container-lifecycle routes — `start`, `stop`, `build`,
+`settings`, and the ownership-*establishing* `claim` — are classified
+`browser-hub` in `routeScope.DICT_CONTROL_PLANE_SCOPES` and are **not**
+lease-enforced. This is a considered residual, not an oversight. The hub
+is single-user, so the lease is live-session *coordination*, not an
+authorization boundary against a hostile peer; the container picker
+operates on these routes *before and across* claims, when no lease exists
+yet; and safe owner-gating of `stop`/`settings` depended on the
+ORPHANED_SESSION takeover lifecycle (a crashed owner's container must stay
+stoppable). **That lifecycle has since landed**, and with it the
+takeover path (`vaibify open`) that makes gating safe, so `stop` and
+`settings` are now lease-enforced under the `container-lifecycle` scope:
+the lease is required when the container is owned and the operation is
+permitted when it is not, which keeps a crashed owner's container
+stoppable without leaving it open to any tab. `build` and `claim`
+remain `browser-hub` by decision — `build` is an image operation with
+no owner, and `claim` is what *establishes* ownership, so neither can
+require a lease it does not yet have.
 
 `OwnerRecord` fields (in-process, dies with the hub process):
 
@@ -538,24 +576,74 @@ now has three outcomes:
    running), in which case the dead owner is released and the claim is
    granted fresh. The 409 never echoes the other owner's lease.
 
+### Starting a container is a server-owned reservation
+
+Starting a container is not a request-scoped action. A pull can outlast
+any HTTP timeout, the response can be lost, the button can be clicked
+twice, and `docker run` does not name the container it is creating until
+it returns — so a start that has to be killed leaves one the hub can only
+guess at. `POST /api/containers/{sName}/start` therefore *reserves*:
+
+- It arbitrates ownership through the same claim primitive a browser
+  claim uses (host flock, journal quarantine, cross-hub refusal, and the
+  one-container-per-session reverse index all in one place), then attaches
+  a **`StartReservation`** to the owner record and answers `202` with a
+  status-poll location — **never a lease**, because nothing is running yet
+  for a lease to authorize.
+- The reservation is an **orthogonal axis**, not a state: a record can be
+  `ACTIVE` and starting, or `ORPHANED_SESSION` and starting. It holds only
+  live execution state (stable id, the launch process handle, the journal
+  record id, a heartbeat) — no session, lease, or generation copies, and
+  no outcome.
+- While it is live: a repeated start by the initiating session returns the
+  same reservation (the idempotent recovery, never a second launch);
+  another session is refused; `stop` and `settings` answer `409` "still
+  starting"; a connect by the initiator gets a truthful pending refusal;
+  and the record is never reapable, so the idle watchdog cannot free the
+  flock under a running `docker create`.
+- The Docker work is a **create-then-start pair under `Popen`**. The
+  container carries `--label vaibify.reservation=<id>` and its id is
+  written to the write-ahead journal *before* it is started, so cleanup
+  removes exactly that incarnation and no other. Cancelling escalates
+  TERM → bounded wait → KILL and waits for the real exit; only then is the
+  labelled container removed, the reservation compare-and-deleted, and the
+  flock freed. If the daemon's answer is uncertain the container is
+  **quarantined, never made claimable** — killing the CLI does not prove
+  the daemon abandoned the request.
+- Cancellation is a **distinct explicit operation**. A host transfer
+  *adopts* a running start (retagging it as a mode-(c) durable task) and
+  never doubles as a cancel.
+
+The outcome lives in a bounded in-memory ledger that outlives the
+reservation, with **two delivery paths**, because success and failure
+authorize differently. **SUCCEEDED** is bound to the live owner record and
+hands back a **freshly derived** lease, so a `vaibify open` successor can
+collect a start its predecessor requested and a revoked session cannot.
+**FAILED** has no owner left to authorize it — that is the case the ledger
+exists for — so it is a bounded, session-bound retrieval entitlement,
+rebound by a transfer, that yields the safe error and **no container
+authority of any kind**. A new start after a failure must name the
+reservation id it read, so a stale failure can never silently relaunch.
+
 ### The one-live-pipeline-connection invariant
 
 Two tabs of one browser cannot both own a container: only the first
 claim mints a lease and a foreign claim is refused. A *duplicate* tab
 that copied the lease out of `sessionStorage` passes the idempotent
 claim, so exclusivity for that case is enforced at the WebSocket gate —
-but scoped to the **pipeline lane**. One legitimate session holds
-several sockets at once: the terminal strip opens a terminal WebSocket
-on project entry, Run Step opens the pipeline WebSocket on demand, and
-extra terminal tabs add more. Budgeting *all* sockets shipped the
-Run-Step-always-refused bug: the terminal held the single slot, every
-pipeline connection was closed 4409, and the browser reported a healthy
-server as unreachable.
+but scoped to the **pipeline lane**. One legitimate session may hold
+several sockets at once. Budgeting *all* sockets shipped the
+Run-Step-always-refused bug: the terminal, which opened its socket on
+project entry, held the single slot, every pipeline connection was
+closed 4409, and the browser reported a healthy server as unreachable.
 
 So the budget is: at most one live **pipeline** WebSocket per container
-(`iLivePipelineConnectionCount`); terminal sockets are counted in
-`iLiveConnectionCount` for liveness (the reaper and the idle watchdog
-read it) but are never refused. `fnIncrementLiveConnection` /
+(`iLivePipelineConnectionCount`); sockets on any other lane are counted
+in `iLiveConnectionCount` for liveness (the reaper and the idle watchdog
+read it) but are never refused. The terminal is disabled (see "The
+interactive terminal is disabled" in `AGENTS.md`), so the unbudgeted
+lane has no production caller today; the budget still holds and is
+driven through the real wrapper by a test-owned socket on that lane. `fnIncrementLiveConnection` /
 `fnDecrementLiveConnection` keep both counts, and a second concurrent
 pipeline connection presenting the same lease is refused with 4409.
 
@@ -578,8 +666,10 @@ budget) — so two runs can never race inside one container.
 
 `webSocketAuthorization.fbAuthorizeContainerSession` (and its
 status-code form `fiContainerSessionRejectionCode`) is the one gate,
-consumed verbatim by the pipeline WebSocket, the terminal WebSocket,
-and the connect handler. A loopback browser must clear, in order,
+consumed verbatim by the pipeline WebSocket and the connect handler.
+The terminal route consults it not at all: it is disabled and refuses
+as its first statement, precisely so an unauthenticated dial-in cannot
+reach a gate whose side effect is refreshing the owner's liveness. A loopback browser must clear, in order,
 loopback origin (`4003` on failure), shared token (`4401`), and owning
 lease (`4403`). A non-loopback connection is never a browser; it is
 admitted only through the lease-exempt **agent lane**
@@ -622,8 +712,12 @@ WebSocket actions are outside it — every WS catalog entry is
 agent-safe today and `testEveryWebSocketActionIsAgentSafe` fails CI if
 a user-only one appears, but that is a tripwire, not enforcement. And
 routes that read host state need their own refusal at the handler
-(`_fnRejectAgentTokenLane`), because a host-file read is a capability
-question the catalog alone cannot express.
+(`routeContext.fnRejectAgentTokenLane`), because a host read is a
+capability question the catalog alone cannot express. That includes
+routes that read no file at all: `has-credential` asks the host
+keyring whether a service token exists, which is one bit about the
+researcher's own machine, and a GET is never state-mutating so the
+catalog gate never sees it.
 
 ### The four release triggers
 
@@ -632,10 +726,13 @@ old `setAllowedContainers` was append-only and leaked authorization for
 the whole process life). A container is released by exactly four paths:
 
 1. **Explicit release** — `POST /api/registry/{name}/release` with the
-   matching lease (the dashboard's close affordance and the `pagehide`
-   `navigator.sendBeacon`, which carries only the lease as its own
-   proof). `fnReleaseOwnership` verifies the lease, frees the flock,
-   drops the record, and stops the keep-alive.
+   matching lease, from the dashboard's close affordance. There is no
+   unload beacon: `pagehide` fires on reload and navigation, not only
+   on a real close, so treating it as release intent would drop a
+   running container on a mere refresh. The handler stops polling and
+   nothing else. `sessionLifecycle.ftReleaseExplicit` arbitrates —
+   refusing with 409 while a run or a live agent holds the container —
+   then frees the flock, drops the record, and stops the keep-alive.
 2. **WebSocket-disconnect grace** — when the last live connection
    drops, `iLiveConnectionCount` falls to 0 and a bounded grace window
    opens. If no reconnect with the matching lease arrives, the idle
@@ -652,9 +749,11 @@ the whole process life). A container is released by exactly four paths:
 The reaper is **never** allowed to release a container whose pipeline
 is still running (`flistReapIdleOwnerships` takes a `fbPipelineRunning`
 veto), so an in-flight run is never torn down — the dashboard's honesty
-contract. The `pagehide` beacon only *accelerates* trigger 1; it never
-fires on a hard crash and is never load-bearing for correctness, which
-rests on triggers 2–4.
+contract. Correctness rests entirely on triggers 2–4: no unload signal
+is load-bearing, because none is sent. `pagehide` would in any case
+never fire on a hard crash, which is why abandonment is decided by the
+socket closing without a reconnect rather than by anything the
+departing page claims about itself.
 
 ### Idle self-shutdown
 
@@ -671,8 +770,8 @@ manually or the watchdog fires.
 interrupted (the dashboard's honesty contract). The watchdog vetoes
 shutdown when **any browser tab is connected** -- tracked by a live
 WebSocket presence counter (`fnIncrementWebSocketCount` /
-`fnDecrementWebSocketCount`) incremented right after a terminal or
-pipeline socket is accepted and decremented in a `finally` -- or when
+`fnDecrementWebSocketCount`) incremented right after a pipeline socket
+is accepted and decremented in a `finally` -- or when
 **any owned container is busy** (a pipeline is mid-run, per
 `fileStatusManager._fbPipelineIsRunning`). The set of owned containers
 is read from `dictContainerOwners.keys()`, the same owner-of-record
@@ -718,6 +817,106 @@ never reaped. No new dependency is introduced; the probe shells out to
 The `vaibify sessions` CLI (see [CLI Reference](cli.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
+
+## Container mutations announce themselves
+
+The section above says a container is owned by one session at a time
+and that ownership can be handed over. That is only half a guarantee.
+The other half is that a hand-over must not commit while the previous
+owner's work is still running -- and until the 2026-08 migration,
+nothing enforced it.
+
+The concrete failure: "clean outputs" started a `rm` on a worker thread
+that nothing tracked, and answered immediately. A hand-over arriving a
+second later asked "is anything running in this container?", saw an
+idle container because the delete was invisible, and committed. The new
+owner then held a container quietly deleting the previous owner's
+files, and neither session was told. On a single desktop this is not
+two researchers fighting over a server; it is the in-container AI agent
+and the dashboard acting at once, or a researcher reclaiming a
+container after a reload.
+
+**The carrier is the thing that makes work visible.** A route that
+mutates a container opens an admission through
+`vaibify/gui/commitCarrier.py` around each logical mutation, in one of
+three shapes:
+
+| Mode | Shape | Used when |
+|---|---|---|
+| (a) synchronous | linearized commit plus journal transition, inside the request | one bounded write, e.g. saving `project.json` |
+| (b) lock-held | holds the container mutation lock for the worker's whole lifetime, and registers what it is doing | work that crosses a thread boundary or runs long -- a delete, a push, a test run |
+| (c) durable | registers the work before the response returns | a background job the request does not wait for |
+
+Mode (b) registers an operation kind and target, because an
+`asyncio.Lock` knows only that it is held: a refusal that can only say
+"busy" tells a researcher nothing. A run arriving while a mode-(b)
+worker holds the drain is refused at dispatch and told which operation
+holds it, rather than queued behind it -- and that refusal deliberately
+does not offer the Kill button, because Kill stops a pipeline action
+and does nothing to a carrier worker.
+
+**A declaration authorizes nothing.** `routeScope.fnDeclareCarrierMode`
+stamps intent from a closed set (`typed-read`, `mode-a-synchronous`,
+`mode-b-lock-held`, `mode-c-durable`, `lifecycle-transaction`,
+`separate-authority`); a route may carry several, because a handler
+that writes synchronously and then starts durable work is a real shape.
+The stamp routes the request to a branch with **no** admission, so the
+handler must open one per mutation. Forget one and the primitive raises
+`MutationNotAdmittedError`. **That refusal is the proof** -- a
+decorator that pre-admitted the handler would delete it, which is the
+`bAgentSafe` mistake one level up.
+
+Three rules follow from what the migration found, and each exists
+because the obvious alternative was demonstrated wrong.
+
+**A refusal is not an I/O error.** `MutationNotAdmittedError` and
+`CommitRefusedError` derive from `ControlPlaneRefusalError(Exception)`,
+not `PermissionError`. They used to subclass `PermissionError`, which
+reads well and is an `OSError` -- so all 85 `except OSError` /
+`except PermissionError` clauses in the package swallowed them,
+including a dozen written to answer conservatively when a file cannot
+be read. That is how a carrier refusal came to silently DOWNGRADE a
+workflow's reproducibility badge.
+
+**A carrier worker must not raise an expected refusal.** A worker that
+raises poisons its journal record and quarantines the container until
+`vaibify reconcile`. An expected 4xx or 502 -- a duplicate project
+name, an unreachable git remote, a bad step index -- is carried back as
+a value through `routeContext.fdictCarryARefusalBackInsteadOfRaising`
+and re-raised outside, after the record settles. A genuinely
+half-finished write still poisons, correctly: nobody knows what state
+it left behind. Deciding which is which is done by reading the
+failure paths, never by inferring from the shape.
+
+**A typed read is exempt only inside its adapter.**
+`DockerConnection._texecRunTypedRead` is the single grant point. It
+takes an operation name from a fixed table plus a path or a flat
+sequence of paths, and BUILDS the command; it never accepts one. That
+distinction is what keeps the carve-out from becoming a general bypass.
+
+**Scope, stated so the record is not read as more than it is.** The
+migration was scoped to the routes that mutate. 83 of 130
+container-scoped routes are declared; the 46 read-only ones stay on the
+legacy ambient admission by decision (2026-08-05), so
+`SET_ROUTES_AWAITING_CARRIER_MODE` bottoms out at 46 rather than empty.
+Read-only routes cannot cause the hand-over failure; declaring them
+would have caught a *future* mistake where somebody adds a write to a
+shared helper, which is worth having and was not worth the remaining
+cost. `POST /api/zenodo/{id}/download` is the one mutating route left
+undeclared, deliberately: it calls a function that does not exist, so
+migrating it would quarantine a working container over a broken button.
+
+**Nothing here is verified by the ordinary route tests.** 27 test files
+define a `fnWriteFile` mock and none of them consults the admission
+gate, so "forget a carrier and the primitive raises loudly" is true of
+the real `DockerConnection` and false of every route test -- a migrated
+route with its carrier call deleted outright passed its whole test
+file. `tests/testCarrierMigratedRoutes.py` is the verification path: a
+double that calls the same gates, under the same primitive names, at
+the same points the real connection calls them, recording the live
+admission MODE at each. It asserts the mode, never merely that nothing
+raised, because "no exception" is equally true of a route riding the
+ambient mint.
 
 ## Python backend
 
@@ -819,12 +1018,10 @@ following files control test generation:
 
 - `commandUtilities.py` — script path extraction from commands.
 - `dependencyScanner.py` — code dependency analysis for scripts.
-- `director.py` — standalone CLI runner. Has intentionally divergent
-  `fbValidateWorkflow` and `fdictBuildGlobalVariables` from
-  `workflowManager` because it operates on the host filesystem. See
-  the tradeoff note above and the `AGENTS.md` trap list.
 - `registryRoutes.py` — project registry API.
-- `terminalSession.py` — PTY bridge for terminal WebSocket.
+- `terminalSession.py` — PTY bridge for the terminal WebSocket. No
+  production path constructs one: the terminal is disabled (see
+  `AGENTS.md`, "The interactive terminal is disabled").
 - `resourceMonitor.py` — container CPU and memory stats.
 - `figureServer.py` — small utility; see source.
 - `setupServer.py` — setup wizard host-side server.
@@ -1133,6 +1330,53 @@ Every render calls `fnUpdateHighlightState()` to synchronize the
 toolbar verification indicator (checkmark and color shift) with the
 current project state.
 
+## Packaging: why runtime resources live inside the package
+
+`vaibify/templates/` and `vaibify/containerImage/` are data trees that
+ship in the wheel. They used to sit at the repository root and be
+reached with `Path(__file__).resolve().parents[2]` — which is the
+repository root only in a checkout. From an installed wheel it is
+`site-packages`, so **no wheel ever contained them**: `vaibify init`
+printed "No templates found" and exited 0, and the Docker-context lookup
+landed on `site-packages/docker`, the Docker SDK's own source directory,
+which exists, so an `is_dir()` check passed.
+
+Two resources were reached from the repository root the same way and
+were therefore missing from every distribution: the curated agent docs
+staged into `/usr/share/vaibify/docs`, and the shell completions. The
+docs case was the worse one, because the bundled `vaibify-doc-map` skill
+told the in-container agent all six documents were present — so a
+wheel-built image did not merely lack docs, it *misdirected the agent*,
+and differed materially from a checkout-built image. Those docs now live
+at `vaibify/docs/` as symlinks onto the Sphinx sources, so there is one
+file to edit and both builders dereference them into real files.
+
+The build context is staged per *build*, not per project, because the
+GUI starts builds in worker threads with no serialization: two dashboard
+clicks race, and refreshing a shared directory begins with `rmtree`,
+which would delete a context out from under a running `docker build`.
+
+**Checking a shipped file is not the same as checking the artifact built
+from it.** The release workflow once validated every distribution with
+`import vaibify`, which passes for a wheel containing no templates —
+exactly what every wheel contained. Its replacement,
+`tools/checkInstalledDistribution.py`, resolves every tree, runs
+`vaibify init`, executes the shipped example workflow to a figure, and
+*assembles a real build context* to check that no curated doc and no
+Dockerfile `COPY` source is missing. The first version of that script
+spot-checked three files, which is why it passed a distribution whose
+assembled context was missing five of six agent documents.
+
+That job is **release-only** by decision (2026-07-28), matching `vspace`,
+`bigplanet` and `multi-planet`: a release runs the full support matrix, a
+manual run the corners. So a packaging regression can sit on `main` until
+the next version is cut. `upload_pypi` needs `build` and `test`, so it is
+caught while cutting the release and nothing broken is published — but
+the diagnosis arrives during a release rather than beside the change that
+caused it. It cannot be a required status check, because it cannot report
+on a pull request and every PR would wait on it forever.
+
+
 ## Testing
 
 The test suite lives in `tests/`. Run all non-Docker tests with:
@@ -1160,15 +1404,10 @@ system — see [vibeCoding.md](vibeCoding.md) for the broader methodology.
    `dataLoaders.py`. This is inherent: the introspection script runs
    inside Docker containers that cannot import from the host Python
    environment. The duplication is a feature, not a bug.
-2. `director.py` has its own `fbValidateWorkflow` and
-   `fdictBuildGlobalVariables` that diverge from `workflowManager.py`.
-   This is intentional: `director.py` operates on the host filesystem
-   with `os.path` and `os.makedirs`, while `workflowManager` uses
-   `posixpath` for container paths.
-3. `scriptFigureViewer.js` was not part of the 2026-01 frontend
+2. `scriptFigureViewer.js` was not part of the 2026-01 frontend
    refactor. It handles PDF rendering, dual-viewer comparison, and
    history management as a single cohesive module.
-4. Re-export blocks across four orchestrator modules
+3. Re-export blocks across four orchestrator modules
    (`pipelineRunner`, `pipelineServer`, `testGenerator`,
    `syncDispatcher`) exist for backward compatibility. Callers should
    eventually migrate to importing from canonical modules directly.

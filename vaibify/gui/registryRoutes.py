@@ -16,9 +16,17 @@ import math
 import os
 import re
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
+
+from vaibify.gui import buildRoutes
+from vaibify.gui.routeScope import (
+    S_CARRIER_LIFECYCLE_TRANSACTION,
+    S_CARRIER_SEPARATE_AUTHORITY,
+    fnDeclareCarrierMode,
+    fsLeaseFromRequest,
+)
 
 logger = logging.getLogger("vaibify")
 
@@ -95,7 +103,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterGetRegistry(app, dictCtx)
     _fnRegisterAddProject(app, dictCtx)
     _fnRegisterRemoveProject(app, dictCtx)
-    _fnRegisterBuildContainer(app, dictCtx)
+    buildRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStartContainer(app, dictCtx)
     _fnRegisterStopContainer(app, dictCtx)
     _fnRegisterContainerSettings(app, dictCtx)
@@ -116,11 +124,15 @@ def _fnRegisterGetRegistry(app, dictCtx):
     """
 
     @app.get("/api/registry")
-    async def fnGetRegistry(sLeaseId: str = ""):
+    async def fnGetRegistry(request: Request):
         from vaibify.config.registryManager import (
             flistGetAllProjectsWithStatus,
         )
-        _fnReapStaleContainerClaims()
+        # The caller's lease rides the X-Vaibify-Lease header (never a query
+        # param, which would leak into logs); it is used only to grey tiles
+        # another session holds, never as authorization.
+        sLeaseId = fsLeaseFromRequest(request)
+        _fnReapStaleContainerClaims(dictCtx)
         listRegistered = flistGetAllProjectsWithStatus()
         listVaibify, listUnrecognized = (
             _ftupleDiscoverAllContainers(dictCtx)
@@ -128,7 +140,7 @@ def _fnRegisterGetRegistry(app, dictCtx):
         listContainers = _flistMergeProjectsAndContainers(
             listRegistered, listVaibify,
         )
-        _fnAnnotateLockState(listContainers)
+        _fnAnnotateLockState(listContainers, dictCtx)
         _fnAnnotateOwnershipState(
             listContainers, app.state.dictContainerOwners, sLeaseId,
         )
@@ -138,19 +150,21 @@ def _fnRegisterGetRegistry(app, dictCtx):
         }
 
 
-def _fnReapStaleContainerClaims():
+def _fnReapStaleContainerClaims(dictCtx):
     """Reap claims whose holder PID is dead before listing containers.
 
     Runs on every GET /api/registry (the container-picker refresh
     path) so a claim orphaned by a killed vaibify server is released
-    without restarting the hub.
+    without restarting the hub. Also runs the operation journal's
+    automatic probe tier (with the live Docker connection, so exec and
+    start records can be verified rather than failing closed).
     """
     from vaibify.config.containerLock import fnReapStaleContainerLocks
-    fnReapStaleContainerLocks()
+    fnReapStaleContainerLocks(connectionDocker=dictCtx.get("docker"))
 
 
-def _fnAnnotateLockState(listContainers):
-    """Populate bLocked / iLockedBy* fields on each container dict."""
+def _fnAnnotateLockState(listContainers, dictCtx):
+    """Populate bLocked / iLockedBy* / journal fields on each container."""
     from vaibify.config.containerLock import fdictReadLockHolder
     for dictContainer in listContainers:
         sName = dictContainer.get("sName")
@@ -164,6 +178,32 @@ def _fnAnnotateLockState(listContainers):
             dictContainer["iLockedByPort"] = dictHolder.get("iPort")
         else:
             dictContainer["bLocked"] = False
+        _fnAnnotateJournalState(dictContainer, sName, dictCtx)
+
+
+def _fnAnnotateJournalState(dictContainer, sName, dictCtx):
+    """Surface an unsettled operation journal on the registry listing.
+
+    A quarantined container must never render as available: the tile
+    is marked ``bQuarantined`` with ``sJournalState`` QUARANTINED, and
+    ``bLocked`` is forced True so every existing consumer of the
+    listing also refuses it. The resolution here is read-only — the
+    probe-and-persist pass already ran in the reaper on this request.
+    """
+    from vaibify.config import operationJournal
+    from vaibify.config.containerLock import fbIsValidProjectName
+    if not fbIsValidProjectName(sName):
+        return
+    dictResolution = operationJournal.fdictResolveContainerJournal(
+        sName, dictCtx.get("docker"), bPersistResolution=False,
+    )
+    sResolution = dictResolution["sResolution"]
+    dictContainer["sJournalState"] = sResolution
+    dictContainer["bQuarantined"] = (
+        sResolution == operationJournal.S_RESOLUTION_QUARANTINED
+    )
+    if sResolution != operationJournal.S_RESOLUTION_SETTLED:
+        dictContainer["bLocked"] = True
 
 
 def _fnAnnotateOwnershipState(
@@ -182,6 +222,13 @@ def _fnAnnotateOwnershipState(
             recordOwner is not None
             and recordOwner.sLeaseId != sCallerLease
         )
+        # Honest surfacing of a force-abandoned (poisoned) owner: the
+        # journal annotation already renders the durable quarantine
+        # mirror; this adds the live in-process axis (design §2.1).
+        dictContainer["bPoisoned"] = bool(
+            recordOwner is not None
+            and getattr(recordOwner, "poison", None) is not None
+        )
 
 
 def _fnRejectInvalidProjectName(sName):
@@ -198,17 +245,35 @@ def _fnRegisterClaimContainer(app, dictCtx):
     """Register POST /api/registry/{sName}/claim."""
 
     @app.post("/api/registry/{sName}/claim")
-    async def fdictClaimContainer(sName: str, sLeaseId: str = ""):
-        from vaibify.gui import containerOwnership
+    async def fdictClaimContainer(request: Request, sName: str):
+        from vaibify.gui import browserSession, sessionLifecycle
         _fnRejectInvalidProjectName(sName)
+        # The re-claim lease rides the X-Vaibify-Lease header so a reloaded
+        # tab re-asserting its sessionStorage lease is idempotent without the
+        # lease ever appearing in a query string.
+        sLeaseId = fsLeaseFromRequest(request)
         iPort = getattr(app.state, "iHubPort", 0)
         sContainerId = _fsResolveContainerId(dictCtx, sName)
-        iStatusCode, dictPayload = containerOwnership.ftdictClaim(
-            app.state.dictContainerOwners, sName, sLeaseId, iPort,
-            sContainerId=sContainerId,
-            fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
-                dictCtx, sOwned,
-            ),
+        # Bind the lease to the claiming browser session. A shared-token
+        # (transitional) request resolves to '' and records no binding.
+        sBrowserSessionId = browserSession.fsSessionIdForCredential(
+            getattr(app.state, "dictBrowserSessions", {}),
+            request.headers.get("x-session-token", ""),
+        )
+        # The commit goes through the sessionLifecycle authority (never
+        # containerOwnership.ftdictClaim directly), whose canonical lock
+        # order makes the one-container-per-session read-check-write
+        # atomic across concurrent claims on different containers.
+        iStatusCode, dictPayload = (
+            await sessionLifecycle.ftdictClaimWithCardinality(
+                app.state, sName, sLeaseId, iPort,
+                sContainerId=sContainerId,
+                fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
+                    dictCtx, sOwned,
+                ),
+                sBrowserSessionId=sBrowserSessionId,
+                connectionDocker=dictCtx.get("docker"),
+            )
         )
         if iStatusCode != 200:
             raise HTTPException(status_code=iStatusCode, detail=dictPayload)
@@ -257,17 +322,63 @@ def _fbNameHasRunningPipeline(dictCtx, sName):
 
 
 def _fnRegisterReleaseContainer(app, dictCtx):
-    """Register POST /api/registry/{sName}/release."""
+    """Register POST /api/registry/{sName}/release.
+
+    A BUSY refusal answers 409 with the record retained (design §10),
+    not a 200 carrying ``bReleased: false``: the tab must keep its
+    lease, because it still owns the container. The optional
+    ``bForce`` body field overrides the agent-liveness refusal only —
+    the lifecycle authority refuses a live run either way.
+    """
     del dictCtx
 
     @app.post("/api/registry/{sName}/release")
-    async def fdictReleaseContainer(sName: str, sLeaseId: str = ""):
-        from vaibify.gui import containerOwnership
+    async def fdictReleaseContainer(request: Request, sName: str):
+        from fastapi.responses import JSONResponse
+        from vaibify.gui import browserSession, sessionLifecycle
         _fnRejectInvalidProjectName(sName)
-        bReleased = containerOwnership.fnReleaseOwnership(
-            app.state.dictContainerOwners, sName, sLeaseId,
+        # The owning lease rides the X-Vaibify-Lease header; release only
+        # succeeds when the presenting browser session is the one bound to
+        # that lease, so a second tab that copied the lease value cannot
+        # drop the true owner's record. The commit goes through the
+        # sessionLifecycle authority, never the ownership primitive.
+        sLeaseId = fsLeaseFromRequest(request)
+        sBrowserSessionId = browserSession.fsSessionIdForCredential(
+            getattr(app.state, "dictBrowserSessions", {}),
+            request.headers.get("x-session-token", ""),
         )
-        return {"sName": sName, "bReleased": bReleased}
+        sOutcome, dictPayload = await sessionLifecycle.ftReleaseExplicit(
+            app.state, sName, sLeaseId,
+            sBrowserSessionId=sBrowserSessionId,
+            bForce=await _fbReadForceFlag(request),
+        )
+        dictBody = dict(dictPayload, sName=sName, bReleased=(
+            sOutcome == sessionLifecycle.S_RELEASE_RELEASED
+        ))
+        if sOutcome == sessionLifecycle.S_RELEASE_BUSY:
+            # The refusal reason rides `detail`, the shape the client's
+            # error extractor reads — the same one the claim 409 uses.
+            return JSONResponse(status_code=409, content=dict(
+                dictBody, detail={"sMessage": dictPayload["sMessage"]},
+            ))
+        return dictBody
+
+
+async def _fbReadForceFlag(request):
+    """Return the request's ``bForce`` flag, tolerating no body at all.
+
+    A release may legitimately arrive with no body at all, so a missing
+    or malformed one must read as "not forced" rather than fail the
+    release. Failing CLOSED is the point: an unreadable body can never
+    become a force, and force overrides ONLY the agent-liveness refusal
+    -- a live run, a live guarded mutation, and a poisoned record all
+    still refuse.
+    """
+    try:
+        dictBody = await request.json()
+    except Exception:  # noqa: BLE001 — an absent body is simply not forced
+        return False
+    return bool((dictBody or {}).get("bForce"))
 
 
 def _fnRegisterAddProject(app, dictCtx):
@@ -314,131 +425,146 @@ def _fnRegisterRemoveProject(app, dictCtx):
         return {"bSuccess": True}
 
 
-def _fnRegisterBuildContainer(app, dictCtx):
-    """Register POST /api/containers/{sName}/build."""
+class StartContainerRequest(BaseModel):
+    """The optional body of a start request.
 
-    @app.post("/api/containers/{sName}/build")
-    async def fnBuildContainer(
-        sName: str, bNoCache: bool = False,
-    ):
-        dictCtx["require"]()
-        dictProject = _fdictRequireProject(sName)
-        try:
-            await asyncio.to_thread(
-                _fnExecuteBuild, dictProject, bNoCache,
-            )
-        except Exception as error:
-            sTail = getattr(error, "sStderrTail", "") or ""
-            logger.error(
-                "Build failed for %s: %s%s",
-                sName, error,
-                "\nstderr tail:\n" + sTail if sTail else "",
-            )
-            raise HTTPException(
-                500, detail=_fdictBuildFailureDetail(error, sTail),
-            )
-        return {"bSuccess": True, "sMessage": "Build complete"}
-
-
-def _fnExecuteBuild(dictProject, bNoCache=False):
-    """Load config and run the Docker image build."""
-    from vaibify.cli.configLoader import (
-        fconfigLoadFromPath, fsDockerDir,
-    )
-    from vaibify.cli.commandBuild import fnBuildFromConfig
-    configProject = fconfigLoadFromPath(
-        dictProject["sConfigPath"],
-    )
-    sDockerDir = fsDockerDir()
-    fnBuildFromConfig(configProject, sDockerDir, bNoCache=bNoCache)
-
-
-def _fdictBuildFailureDetail(error, sStderrTail):
-    """Format the FastAPI detail payload for a build failure.
-
-    The tail has already been credential-redacted by imageBuilder's
-    ``fsRedactBuildOutputCredentials`` before it lands on the
-    exception, so it is safe to surface to the GUI.
+    ``sAcknowledgeReservationId`` names the FAILED start whose outcome
+    the client has actually read. It is the explicit new-attempt action
+    of design §10b: a client that never polled cannot name it, so a
+    silent automatic retry cannot clear a failure the researcher never
+    saw.
     """
-    return {
-        "sMessage": "Build failed",
-        "sError": str(error),
-        "sStderrTail": sStderrTail,
-    }
+
+    sAcknowledgeReservationId: str = ""
 
 
 def _fnRegisterStartContainer(app, dictCtx):
-    """Register POST /api/containers/{sName}/start."""
+    """Register POST /api/containers/{sName}/start and its status poll.
+
+    Start is no longer request-scoped (design §10b). It arbitrates
+    ownership, mints a server-owned reservation under the host flock and
+    the cardinality lock, and answers ``202`` with a status-poll
+    location — never a lease, because nothing is running yet to
+    authorize. The outcome is delivered ONLY by the poll.
+    """
 
     @app.post("/api/containers/{sName}/start")
-    async def fnStartContainer(sName: str):
+    async def fnStartContainer(
+        request: Request, sName: str,
+        requestStart: Optional[StartContainerRequest] = None,
+    ):
+        from fastapi.responses import JSONResponse
+        from vaibify.gui import startReservation
         dictCtx["require"]()
+        _fnRejectInvalidProjectName(sName)
         dictProject = _fdictRequireProject(sName)
-        try:
-            sContainerId = await asyncio.to_thread(
-                _fsExecuteStart, dictProject,
-            )
-        except Exception as error:
-            logger.error("Start failed for %s: %s", sName, error)
-            raise HTTPException(500, f"Start failed: {error}")
-        return {
-            "bSuccess": True,
-            "sContainerId": sContainerId,
-        }
-
-
-def _fsExecuteStart(dictProject):
-    """Load config and start the container in detached mode."""
-    from vaibify.cli.configLoader import (
-        fconfigLoadFromPath, fsDockerDir,
-    )
-    from vaibify.config.keepAliveManager import fnStartKeepAlive
-    configProject = fconfigLoadFromPath(
-        dictProject["sConfigPath"],
-    )
-    sContainerName = dictProject["sContainerName"]
-    sContainerId = _fsStartOrCreate(
-        configProject, sContainerName, fsDockerDir(),
-    )
-    if configProject.bNeverSleep:
-        fnStartKeepAlive(sContainerName)
-    return sContainerId
-
-
-def _fsStartOrCreate(configProject, sContainerName, sDockerDir):
-    """Remove any stopped container and create a fresh one.
-
-    Always creates a new container so that secrets are mounted
-    via volume args at creation time.  Restarting an existing
-    container with ``docker start`` skips secret mounts and
-    leaves ``/run/secrets/`` empty.
-    """
-    from vaibify.docker.containerManager import (
-        fdictGetContainerStatus, fsStartContainerDetached,
-    )
-    dictStatus = fdictGetContainerStatus(sContainerName)
-    if dictStatus["bRunning"]:
-        raise RuntimeError(
-            f"Container '{sContainerName}' is already running"
+        iStatusCode, dictBody = await startReservation.ftBeginStart(
+            app.state, sName, _fsBrowserSessionFor(app, request),
+            _fconfigLoadForProject(dictProject),
+            getattr(app.state, "iHubPort", 0),
+            connectionDocker=dictCtx.get("docker"),
+            sAcknowledgeReservationId=(
+                requestStart.sAcknowledgeReservationId
+                if requestStart else ""
+            ),
         )
-    if dictStatus["bExists"]:
-        _fnRemoveContainer(sContainerName)
-    return fsStartContainerDetached(configProject, sDockerDir)
+        if iStatusCode == 409:
+            return JSONResponse(status_code=409, content=dict(
+                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+            ))
+        return JSONResponse(status_code=iStatusCode, content=dictBody)
+
+    # lifecycle-transaction: unlike the stop below, this one HAS the
+    # authority the declaration names, and it is not this handler's.
+    # `startReservation.ftCancelStart` holds the reservation lock across
+    # the authorize-and-flag step, marks the START record
+    # CANCEL_REQUESTED rather than writing a record of its own, and a
+    # transfer arriving mid-cancel ADOPTS the reservation. The handler
+    # is a pass-through to that transaction and must not open a second
+    # one: minting a container admission here would mean two authorities
+    # over one cancel, which is worse than none.
+    @app.post("/api/containers/{sName}/start/cancel")
+    @fnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
+    async def fnCancelStartContainer(
+        request: Request, sName: str, sReservationId: str = "",
+    ):
+        from fastapi.responses import JSONResponse
+        from vaibify.gui import startReservation
+        _fnRejectInvalidProjectName(sName)
+        iStatusCode, dictBody = await startReservation.ftCancelStart(
+            app.state, sName, _fsBrowserSessionFor(app, request),
+            sReservationId=sReservationId,
+        )
+        if iStatusCode != 200:
+            return JSONResponse(status_code=iStatusCode, content=dict(
+                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+            ))
+        return dictBody
+
+    @app.get("/api/containers/{sName}/start-status")
+    async def fnGetStartStatus(request: Request, sName: str):
+        from fastapi.responses import JSONResponse
+        from vaibify.gui import startReservation
+        _fnRejectInvalidProjectName(sName)
+        iStatusCode, dictBody = startReservation.ftPollStartStatus(
+            app.state, sName, _fsBrowserSessionFor(app, request),
+        )
+        if iStatusCode != 200:
+            return JSONResponse(status_code=iStatusCode, content=dict(
+                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+            ))
+        return dictBody
 
 
-def _fnRemoveContainer(sContainerName):
-    """Remove a stopped container so a fresh one can be created."""
-    import subprocess
-    subprocess.run(
-        ["docker", "rm", sContainerName],
-        capture_output=True, text=True,
+def _fsBrowserSessionFor(app, request):
+    """Resolve the requesting browser session id, or '' when unknown."""
+    from vaibify.gui import browserSession
+    return browserSession.fsSessionIdForCredential(
+        getattr(app.state, "dictBrowserSessions", {}),
+        request.headers.get("x-session-token", ""),
     )
+
+
+def _fconfigLoadForProject(dictProject):
+    """Load the validated project config the start will launch from."""
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    return fconfigLoadFromPath(dictProject["sConfigPath"])
 
 
 def _fnRegisterStopContainer(app, dictCtx):
     """Register POST /api/containers/{sName}/stop."""
 
+    # lifecycle-transaction, and the audit behind it is a FINDING rather
+    # than a label. As measured: this route holds NO container mutation
+    # lock, writes NO journal record of its own, and a hand-over
+    # arriving mid-stop does not see it.
+    #
+    # The authority is real but it is not the carrier's. The stop runs
+    # through `containerManager`, the lifecycle gateway, which contains
+    # no `mutationAdmission` call anywhere -- so there is no gated
+    # primitive on this path for a carrier to admit, and adding one
+    # would declare an authority that never engages. That is what
+    # `lifecycle-transaction` means here: the gateway is answerable for
+    # the container's existence, and the commit carrier is answerable
+    # for writes INTO a container that exists.
+    #
+    # Two consequences, stated rather than hidden. `container-lifecycle`
+    # is unioned into `_SET_AUTHORIZED_CONTAINER_SCOPES` WITHOUT joining
+    # `_SET_LEASE_ENFORCED_SCOPES`, so a stop stays answerable for a
+    # container nobody owns -- which is the recovery path for a stuck
+    # container and must not be traded away for a bookkeeping entry. And
+    # a stop CAN still interleave with an in-flight guarded write; the
+    # write's supervisor will find the container gone. Closing that
+    # needs a force-stop path for the unowned case, which is a product
+    # decision, not a migration one.
+    #
+    # An earlier version of this comment claimed a carrier here would
+    # refuse the unowned stop. That was wrong -- it named the lease as
+    # the obstacle when the real answer is that nothing on this path is
+    # gated at all. The test written to prove it passed trivially and
+    # was removed rather than kept.
     @app.post("/api/containers/{sName}/stop")
+    @fnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
     async def fnStopContainer(sName: str):
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
@@ -454,33 +580,29 @@ def _fnRegisterStopContainer(app, dictCtx):
 
 
 def _fnExecuteStop(sContainerName):
-    """Stop and remove a running container (idempotent)."""
-    from vaibify.docker.containerManager import (
-        fdictGetContainerStatus, fnRemoveStopped,
-    )
+    """Stop and remove a running container (idempotent).
+
+    The stop goes through ``containerManager``, the lifecycle gateway,
+    rather than through a ``docker stop`` this module assembles itself.
+    The local copy this replaced was a verbatim duplicate of the gateway
+    primitive's first half, so a route module held a raw container
+    mutation for no reason but that nobody had reconciled the two --
+    which is the shape R4 exists to forbid.
+
+    ``fnStopContainer`` stops AND removes, so the removal is called here
+    only on the branch that does not stop.
+    """
+    from vaibify.docker import containerManager
     from vaibify.config.keepAliveManager import fnStopKeepAlive
-    dictStatus = fdictGetContainerStatus(sContainerName)
+    dictStatus = containerManager.fdictGetContainerStatus(sContainerName)
     if not dictStatus["bExists"]:
         fnStopKeepAlive(sContainerName)
         return
     if dictStatus["bRunning"]:
-        _fnDockerStopCommand(sContainerName)
-    fnRemoveStopped(sContainerName)
+        containerManager.fnStopContainer(sContainerName)
+    else:
+        containerManager.fnRemoveStopped(sContainerName)
     fnStopKeepAlive(sContainerName)
-
-
-def _fnDockerStopCommand(sContainerName):
-    """Run 'docker stop' and raise with the real stderr on failure."""
-    import subprocess
-    resultProcess = subprocess.run(
-        ["docker", "stop", sContainerName],
-        capture_output=True, text=True,
-    )
-    if resultProcess.returncode != 0:
-        raise RuntimeError(
-            f"docker stop failed: "
-            f"{resultProcess.stderr.strip()}"
-        )
 
 
 def _fnRegisterContainerSettings(app, dictCtx):
@@ -508,7 +630,17 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 )
         return dictResult
 
+    # separate-authority, not typed-read. Every write here lands in the
+    # project's own `vaibify.yml` on the researcher's machine through
+    # `_fnUpdateYamlBoolField` / `_fnUpdateYamlNumberField`; the route
+    # opens no container connection at all. `typed-read` would be
+    # literally true of its container reach and would still be the wrong
+    # record, because a reader takes it to mean the route writes
+    # nothing. What governs it is `_fdictRequireProject`, which binds
+    # the name to a registered project and its config path, and
+    # `_fnRequireValidResourceLimits`. Ruling 2026-08-05.
     @app.post("/api/containers/{sName}/settings")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnSetContainerSettings(
         sName: str, request: ContainerSettingsRequest
     ):

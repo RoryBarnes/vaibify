@@ -41,6 +41,7 @@ import posixpath
 import random
 from datetime import datetime, timezone
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from vaibify.reproducibility import (
     arxivClient,
     githubMirror,
@@ -504,7 +505,8 @@ def _fdictReadAllStatuses(filesRepo):
         return {}
     try:
         dictAll = json.loads(filesRepo.fsReadText(sRelPath))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
         return {}
     return dictAll if isinstance(dictAll, dict) else {}
 

@@ -238,28 +238,3 @@ def test_flistFilterFigureFiles_filters():
     assert "data.npy" not in listFigures
 
 
-# ── director.py: print summary ───────────────────────────────────────
-
-
-def test_fnPrintSummary_outputs_results(capsys):
-    from vaibify.gui.director import fnPrintSummary
-    listResults = [
-        ("Step01", "Test Step", True, ""),
-        ("Step02", "Fail Step", False, "exit code 1"),
-    ]
-    fnPrintSummary(listResults)
-    sCaptured = capsys.readouterr().out
-    assert "PASS" in sCaptured
-    assert "FAIL" in sCaptured
-    assert "1 passed" in sCaptured
-
-
-@patch("os.path.isdir", side_effect=lambda p: True)
-@patch("vaibify.gui.director._fnCreateDirectorySilently")
-def test_fnConfigureEnvironment_adds_path(mockCreate, mockIsDir):
-    from vaibify.gui.director import fnConfigureEnvironment
-    dictWorkflow = {}
-    sOrigPath = os.environ.get("PATH", "")
-    fnConfigureEnvironment(dictWorkflow, "/tmp")
-    assert "/workspace/bin" in os.environ.get("PATH", "")
-    os.environ["PATH"] = sOrigPath

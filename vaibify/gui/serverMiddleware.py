@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
 
 from . import actionCatalog
+from . import browserSession
 from . import containerOwnership
 
 __all__ = [
@@ -28,6 +29,16 @@ __all__ = [
 
 
 _SET_LOCAL_HOST_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
+
+# The two capability-exchange endpoints, exempt from the per-browser
+# credential requirement because on each the posted one-time capability
+# IS the credential being exchanged (launch bootstrap and the
+# host-authorized transfer of design §6). Everything else under /api/
+# requires a live browser credential.
+_SET_CAPABILITY_EXCHANGE_PATHS = frozenset({
+    "/api/bootstrap",
+    "/api/transfer",
+})
 
 
 def fbIsAllowedHostHeader(sHostHeader, iExpectedPort):
@@ -94,12 +105,51 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
                     "User-only action: ask the researcher to run it "
                     "from the dashboard",
                 )
-            return await call_next(request)
+            return await _fresponseServeAdmittedAgentRequest(
+                request, dictContainerOwners, call_next,
+            )
         if not _fbRequestHasAllowedHost(request):
             return _fresponseJsonError(400, "Invalid Host header")
         if _fbBrowserTokenRejected(request):
             return _fresponseJsonError(401, "Unauthorized")
         return await call_next(request)
+
+
+async def _fresponseServeAdmittedAgentRequest(
+    request, dictContainerOwners, call_next,
+):
+    """Serve an ADMITTED agent-lane request, stamping agent liveness.
+
+    The safe reaper's agent-liveness inputs (design §7): every admitted
+    agent-lane call refreshes ``fLastAgentActivityMonotonic`` and holds
+    ``iInFlightAgentRequests`` above zero for its FULL duration, so a
+    long-running agent request pins its owner record however long it
+    runs (case 20). Only admitted requests reach here — an invalid,
+    cross-container, or catalog-refused call never pins the record.
+
+    Accepted trade-off, recorded per design §7: a compromised agent
+    can hold its own container's record alive indefinitely by polling.
+    That is within the powers the agent already has, and the host-stop
+    path is the backstop; the alternative — reaping under a live agent
+    — would hand the container to a second owner while the first is
+    still acting in it.
+    """
+    recordOwner = containerOwnership.frecordOwnerAuthorizedByAgentToken(
+        dictContainerOwners,
+        _fsAgentPresentedToken(request),
+        _fsContainerIdFromPath(request.url.path),
+    )
+    if recordOwner is None:
+        return await call_next(request)
+    recordOwner.fLastAgentActivityMonotonic = time.monotonic()
+    recordOwner.iInFlightAgentRequests += 1
+    try:
+        return await call_next(request)
+    finally:
+        recordOwner.iInFlightAgentRequests = max(
+            0, recordOwner.iInFlightAgentRequests - 1,
+        )
+        recordOwner.fLastAgentActivityMonotonic = time.monotonic()
 
 
 def fbRequestRidesAgentLane(request):
@@ -181,15 +231,32 @@ def _fsContainerIdFromPath(sPath):
 
 
 def _fbBrowserTokenRejected(request):
-    """Return True when a browser request to a guarded path lacks the token."""
+    """Return True when a browser request to a guarded path lacks a credential.
+
+    Accepts only a per-browser credential minted via the capability
+    bootstrap (``/api/bootstrap``); the retired shared hub session token is
+    no longer honored, closing the oracle a container-side actor on loopback
+    could once read. The capability-exchange endpoints — ``/api/bootstrap``
+    and ``/api/transfer`` — are the only unauthenticated entry points: on
+    each, the presented capability IS the credential being exchanged.
+    """
     sPath = request.url.path
     bNeedsToken = (
-        sPath.startswith("/api/") and sPath != "/api/session-token"
+        sPath.startswith("/api/")
+        and sPath not in _SET_CAPABILITY_EXCHANGE_PATHS
     )
     if not bNeedsToken:
         return False
-    sExpected = request.app.state.sSessionToken
-    return _fsBrowserPresentedToken(request, sPath) != sExpected
+    sPresented = _fsBrowserPresentedToken(request, sPath)
+    dictBrowserSessions = getattr(
+        request.app.state, "dictBrowserSessions", None,
+    )
+    return not (
+        dictBrowserSessions is not None
+        and browserSession.fbValidateCredential(
+            dictBrowserSessions, sPresented,
+        )
+    )
 
 
 def _fsBrowserPresentedToken(request, sPath):
@@ -248,18 +315,26 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://cdnjs.cloudflare.com "
-            "https://cdn.jsdelivr.net; "
-            "worker-src 'self' blob: "
-            "https://cdnjs.cloudflare.com; "
+            "script-src 'self'; "
+            "worker-src 'self' blob:; "
             "style-src 'self' 'unsafe-inline' "
-            "https://cdn.jsdelivr.net "
             "https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: blob:; "
             "connect-src 'self' "
             "ws://127.0.0.1:* wss://127.0.0.1:* "
             "ws://localhost:* wss://localhost:*; "
+            # base-uri 'none' stops an injected <base> tag from
+            # re-homing the dashboard's root-relative API calls to an
+            # attacker origin (there is no fallback to default-src for
+            # base-uri or form-action). form-action 'self' likewise
+            # confines any injected form. Both close the escalation a
+            # hostile filename in the file browser could otherwise reach
+            # even under the script-src restriction. No CDN origin is
+            # granted script execution: pdf.js and xterm are vendored
+            # locally, so script-src and worker-src are 'self' only.
+            "base-uri 'none'; "
+            "form-action 'self'; "
             "frame-ancestors 'none'"
         )
         return response

@@ -64,17 +64,13 @@ var VaibifyWorkflowManager = (function () {
 
     /* The connect handler is gated on the owner-of-record lease, the
      * same principal the WebSockets present, so a second browser tab
-     * cannot bypass the claim route's 409 and take the workflow. */
-    function _fsLeaseQuery() {
-        return "&sLeaseId=" +
-            encodeURIComponent(VaibifyApp.fsGetLeaseId());
-    }
-
+     * cannot bypass the claim route's 409 and take the workflow. The
+     * lease rides the X-Vaibify-Lease header the authenticated-fetch
+     * wrapper attaches, never a query param. */
     function _fdictFetchWorkflow(sId, sPath) {
         return VaibifyApi.fdictPostRaw(
             "/api/connect/" + sId +
-            "?sWorkflowPath=" + encodeURIComponent(sPath) +
-            _fsLeaseQuery()
+            "?sWorkflowPath=" + encodeURIComponent(sPath)
         );
     }
 
@@ -102,6 +98,15 @@ var VaibifyWorkflowManager = (function () {
         if (elBanner) elBanner.hidden = true;
     }
 
+    /* Incremented on every workflow selection. A load or refresh that
+     * started before the current generation is stale: the user switched
+     * workflows while it was in flight, so applying its result would
+     * overwrite the workflow they actually switched to (the double-click
+     * / switch-during-load race). The server-side workflow-identity check
+     * that rejects a stale WRITE lands with the A1 enforcement layer; this
+     * is the rendering-side guard that keeps a stale READ off the screen. */
+    var _iWorkflowGeneration = 0;
+
     async function fnSelectWorkflow(
         sId, sWorkflowPathArg, sWorkflowName, iSizeBytes
     ) {
@@ -110,18 +115,24 @@ var VaibifyWorkflowManager = (function () {
         if (bShowBanner) {
             _fnShowLargeWorkflowLoadingBanner(sWorkflowName, iSize);
         }
+        _iWorkflowGeneration += 1;
+        var iThisGeneration = _iWorkflowGeneration;
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sWorkflowPathArg);
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnActivateWorkflow(
                 sId, dictResult, sWorkflowName);
             fnCheckOriginDrift(sId, false);
         } catch (error) {
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         } finally {
-            _fnHideLargeWorkflowLoadingBanner();
+            if (iThisGeneration === _iWorkflowGeneration) {
+                _fnHideLargeWorkflowLoadingBanner();
+            }
         }
     }
 
@@ -133,14 +144,20 @@ var VaibifyWorkflowManager = (function () {
         var sPath = VaibifyApp.fsGetWorkflowPath();
         if (!sId || !sPath) return;
         _bRefreshing = true;
+        var iThisGeneration = _iWorkflowGeneration;
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sPath);
+            /* A workflow switch during the refresh supersedes it; applying
+             * this refresh would write the old workflow's data onto the
+             * newly selected one. */
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnRefreshWorkflowData(dictResult);
             await fnCheckOriginDrift(sId, false);
             VaibifyApp.fnShowToast(
                 "Project refreshed", "info");
         } catch (error) {
+            if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -415,8 +432,7 @@ var VaibifyWorkflowManager = (function () {
             await VaibifyApi.fdictPostRaw(
                 "/api/connect/" + sContainerId +
                 "?sWorkflowPath=" +
-                encodeURIComponent(sWorkflowPath) +
-                _fsLeaseQuery()
+                encodeURIComponent(sWorkflowPath)
             );
         } catch (error) {
             VaibifyApp.fnShowToast(
@@ -449,7 +465,7 @@ var VaibifyWorkflowManager = (function () {
         'is <code>~/src/</code>.</p>',
 
         '<p>A starter set of files that determines the initial shape ' +
-        'of your project. Two templates ship with vaibify:</p>' +
+        'of your project. Three templates ship with vaibify:</p>' +
         '<p><strong>sandbox</strong> &mdash; a blank workspace for ' +
         'ad-hoc exploration. Use this when you have one project ' +
         'repository or just want a clean environment to work in.</p>' +
@@ -458,6 +474,13 @@ var VaibifyWorkflowManager = (function () {
         'you are actively editing multiple libraries that depend on ' +
         'each other and want each one to appear in the Repos panel ' +
         'with its own git status and push controls.</p>' +
+        '<p><strong>workflow</strong> &mdash; vaibify&rsquo;s flagship ' +
+        'reproducibility template: a runnable two-step example ' +
+        'pipeline (generate samples, then plot a histogram of them) ' +
+        'wired with cross-step tokens. Use this when you want the ' +
+        'full pipeline machinery &mdash; steps, dependency tracking, ' +
+        'and per-step verification &mdash; and replace the example ' +
+        'steps with your own.</p>' +
         '<p>Pick <strong>sandbox</strong> if you are not sure. You can ' +
         'restructure later by editing <code>vaibify.yml</code>.</p>',
 

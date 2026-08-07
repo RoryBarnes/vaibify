@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from vaibify.docker.dockerConnection import DockerConnection
 from vaibify.reproducibility.repoFiles import (
     ContainerRepoFiles,
     HostRepoFiles,
@@ -55,6 +56,18 @@ class FakeExecDockerConnection:
     def fbaFetchFile(self, sContainerId, sPath):
         with open(sPath, "rb") as fileHandle:
             return fileHandle.read()
+
+    # The existence probes are TYPED READS, and these are the REAL
+    # implementations borrowed off DockerConnection rather than
+    # re-modelled here. They need nothing but
+    # ``texecRunInContainerStreamed``, which this fake provides, so the
+    # adapter's own program text from _DICT_TYPED_READ_PROGRAMS runs in
+    # the host shell against the tmp tree -- the same standard the rest
+    # of this fake holds itself to. A stub returning os.path.isfile
+    # would pass while the shipped program was broken.
+    _texecRunTypedRead = DockerConnection._texecRunTypedRead
+    fbContainerPathIsFile = DockerConnection.fbContainerPathIsFile
+    fbContainerPathIsDirectory = DockerConnection.fbContainerPathIsDirectory
 
     def fnWriteFile(self, sContainerId, sPath, baContent):
         self.listWrites.append((sContainerId, sPath))

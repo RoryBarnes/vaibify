@@ -9,8 +9,22 @@ import re
 from fastapi import HTTPException, Request
 from typing import Optional
 
+from .. import browserSession
+from .. import containerOwnership
 from .. import workflowManager
 from ..actionCatalog import fnAgentAction
+from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
+)
+from ..routeScope import (
+    S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_SEPARATE_AUTHORITY,
+    S_SCOPE_OWNER_ESTABLISHING,
+    fnDeclareCarrierMode,
+    fnRouteScope,
+    fsLeaseFromRequest,
+)
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     CreateWorkflowRequest,
@@ -19,7 +33,6 @@ from ..pipelineServer import (
     fsContainerNameForId,
     _fsSanitizeServerError,
 )
-from ..webSocketAuthorization import fbCheckLeaseOwnership
 
 
 _PATTERN_WORKFLOW_FILENAME = re.compile(
@@ -192,31 +205,92 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
     """Register POST /api/workflows/{id}/create route."""
 
     @app.post("/api/workflows/{sContainerId}/create")
+    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fnCreateWorkflow(
-        sContainerId: str, request: CreateWorkflowRequest
+        sContainerId: str, request: CreateWorkflowRequest,
+        requestHttp: Request,
     ):
         dictCtx["require"]()
-        _fnRejectDuplicateWorkflowName(
-            dictCtx["docker"], sContainerId, request.sWorkflowName,
-        )
-        sRepoDirectory = _fsValidateRepoDirectory(
-            dictCtx["docker"], sContainerId, request.sRepoDirectory,
-        )
+        # Validated out here because it reaches no container at all: a
+        # bad filename is a 400 without a journal record ever existing.
         sFileName = _fsValidateAndNormalizeFileName(request.sFileName)
-        sWorkflowDir = _fsEnsureWorkflowDir(
-            dictCtx["docker"], sContainerId, sRepoDirectory,
+        dictOutcome = await _fdictCreateWorkflowUnderTheDrain(
+            dictCtx, sContainerId, request, sFileName, requestHttp,
         )
-        sFullPath = posixpath.join(sWorkflowDir, sFileName)
-        _fnAssertWorkflowAbsent(dictCtx["docker"], sContainerId, sFullPath)
-        sContent = json.dumps(
-            _fdictBlankWorkflowContent(request), indent=2,
-        ) + "\n"
-        dictCtx["docker"].fnWriteFile(
-            sContainerId, sFullPath, sContent.encode("utf-8"),
-        )
+        if dictOutcome["errorRefused"] is not None:
+            raise dictOutcome["errorRefused"]
         return _fdictCreateWorkflowResponse(
-            sFullPath, request.sWorkflowName,
+            dictOutcome["objResult"], request.sWorkflowName,
         )
+
+
+async def _fdictCreateWorkflowUnderTheDrain(
+    dictCtx, sContainerId, request, sFileName, requestHttp,
+):
+    """Probe, make the directory, and write project.json under one drain.
+
+    Every probe in the sequence reaches the general exec primitive -- a
+    duplicate-name search, a directory test, a ``git rev-parse``, an
+    existence test -- which the gate treats as mutating because a
+    primitive handed command text cannot know what the text does. A
+    probe left outside the carrier would be refused on the enforced
+    branch. The two that GUARD the write belong inside the SAME held
+    drain as the write in any case: with the lock dropped between the
+    "this name is free" check and the write, a second session creates
+    the same project in the gap and one of the two silently wins.
+
+    Refusals are RETURNED, never raised out of the worker. An expected
+    4xx raised from a carrier worker poisons its journal record and
+    quarantines the container, so a researcher who picked a name that
+    was already taken would be told to run ``vaibify reconcile``. A 5xx
+    is re-raised and does poison, which is correct: nobody knows then
+    whether the file landed. That split is the shared carry-back's
+    default, so this passes no extra statuses: every 5xx reachable here
+    is a write that failed partway.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Creating the project",
+    )
+
+    def fnProbeThenCreate(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fsProbeThenWriteNewWorkflow(
+                dictCtx["docker"], sContainerId, request, sFileName,
+            ),
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", "create-project",
+        fnProbeThenCreate,
+    )
+    return dictOutcome["result"]
+
+
+def _fsProbeThenWriteNewWorkflow(
+    connectionDocker, sContainerId, request, sFileName,
+):
+    """Return the container path of the project.json this writes."""
+    _fnRejectDuplicateWorkflowName(
+        connectionDocker, sContainerId, request.sWorkflowName,
+    )
+    sRepoDirectory = _fsValidateRepoDirectory(
+        connectionDocker, sContainerId, request.sRepoDirectory,
+    )
+    sWorkflowDir = _fsEnsureWorkflowDir(
+        connectionDocker, sContainerId, sRepoDirectory,
+    )
+    sFullPath = posixpath.join(sWorkflowDir, sFileName)
+    _fnAssertWorkflowAbsent(connectionDocker, sContainerId, sFullPath)
+    sContent = json.dumps(
+        _fdictBlankWorkflowContent(request), indent=2,
+    ) + "\n"
+    connectionDocker.fnWriteFile(
+        sContainerId, sFullPath, sContent.encode("utf-8"),
+    )
+    return sFullPath
 
 
 def _fnRegisterWorkflowCreationRequest(app, dictCtx):
@@ -229,8 +303,20 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
     suggested name, for the researcher to review and confirm.
     """
 
+    # separate-authority, not typed-read. This route reaches no
+    # container primitive at all, so `typed-read` would pass its own
+    # rule -- and would be read by the next person as "this only looks",
+    # which is false: it WRITES, into
+    # ``app.state``-adjacent hub state that the browser's discovery poll
+    # then acts on. What governs it is not the commit carrier but the
+    # hub's own in-process request map plus the researcher confirmation
+    # the wizard requires before anything is created; the agent cannot
+    # complete the action, only ask for it. Declaring the literally-true
+    # thing here would have made the record misleading (ruling
+    # 2026-08-05).
     @fnAgentAction("create-project")
     @app.post("/api/workflows/{sContainerId}/request-creation")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
     ):
@@ -260,26 +346,81 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
     connect had no gate at all: a second browser tab could skip the
     claim route's 409 and take the workflow, the project-repo path, and
     the container's agent session out from under the owning session.
-    The lease check here is the shared guard's own
-    ``fbCheckLeaseOwnership``, so the two lanes can never drift apart.
+    The check here reads the ``X-Vaibify-Lease`` header (the HTTP lease
+    transport), resolves the caller's browser session, and consults the
+    session-bound owner predicate
+    (:func:`containerOwnership.fbBrowserSessionOwnsLease`) — the same
+    strong principal the WebSocket gates and the container-owner HTTP
+    boundary use, so the lanes can never drift apart. A copied lease
+    VALUE presented by a second browser session is therefore refused, not
+    merely a forged one. A pre-binding owner record (a transitional claim
+    that recorded no session) carries ``sBrowserSessionId == ""``; there
+    the matching lease value alone admits, the same allowance the
+    claim-reclaim branch makes.
 
-    An unowned container is left open because that is the viewer's
-    bootstrap: the viewer has no claim route and mints its lease inside
-    the connect handler, handing it back on the response.
+    An unowned container is left open ONLY in the single-container
+    viewer, whose bootstrap that is: the viewer has no claim route and
+    mints its lease inside the connect handler, handing it back on the
+    response. The hub must NOT extend that exception. In the hub an
+    empty owner record does not mean "free to take" — it can mean
+    another hub process holds the host flock — and connect runs a write
+    path (it caches the workflow and pushes an agent session, which with
+    no local owner record writes an empty agent token that clobbers the
+    real owner's in-container credential). So a hub client must claim
+    first; the claim route is what mints the owner record this gate then
+    checks. Restricting the ownerless exception to the viewer is the fix
+    for that cross-hub exclusivity hole.
     """
     dictContainerOwners = dictCtx.get("dictContainerOwners") or {}
     sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
     if dictContainerOwners.get(sName) is None:
+        if dictCtx.get("bIsHub"):
+            raise HTTPException(
+                409,
+                "Claim this container before connecting to it.",
+            )
         return
-    if fbCheckLeaseOwnership(requestHttp, dictContainerOwners, sName):
+    sLeaseId = fsLeaseFromRequest(requestHttp)
+    sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)
+    _fnRefuseConnectWhileStarting(
+        dictContainerOwners[sName], sName, sBrowserSessionId,
+    )
+    if containerOwnership.fbBrowserSessionOwnsLease(
+        dictContainerOwners, sName, sBrowserSessionId, sLeaseId,
+    ):
+        return
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner.sBrowserSessionId == "" and bool(sLeaseId) and (
+        recordOwner.sLeaseId == sLeaseId
+    ):
         return
     raise HTTPException(409, "In use in another browser session")
+
+
+def _fnRefuseConnectWhileStarting(recordOwner, sName, sBrowserSessionId):
+    """Tell the initiating session the truth: the start is still running.
+
+    Design §10b: a connect by the session that requested the start, while
+    the container is not yet running, must get a truthful pending refusal
+    — never a lease, because a workflow cannot be loaded from a container
+    that does not exist yet. Another session's connect falls through to
+    the ordinary in-use refusal, which says nothing it should not.
+    """
+    if getattr(recordOwner, "reservation", None) is None:
+        return
+    if recordOwner.sBrowserSessionId not in ("", sBrowserSessionId):
+        return
+    raise HTTPException(409, (
+        f"Container '{sName}' is still starting. Poll its start status; "
+        "connect once it reports the container running."
+    ))
 
 
 def _fnRegisterConnect(app, dictCtx):
     """Register POST /api/connect route."""
 
     @app.post("/api/connect/{sContainerId}")
+    @fnRouteScope(S_SCOPE_OWNER_ESTABLISHING, "sContainerId", "id")
     async def fnConnect(
         requestHttp: Request,
         sContainerId: str,
@@ -288,8 +429,49 @@ def _fnRegisterConnect(app, dictCtx):
         dictCtx["require"]()
         _fnRequireOwningLeaseForConnect(
             dictCtx, sContainerId, requestHttp)
-        return await fdictHandleConnect(
-            dictCtx, sContainerId, sWorkflowPath)
+        sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)
+        # Connect writes into the container (the per-container agent
+        # session file) after arbitrating ownership itself, so it holds
+        # the carrier's owner-establishing admission for the handler's
+        # duration (design §8) — the one lane where the owner record
+        # may be created DURING the handler (viewer first connect).
+        from .. import commitCarrier
+        tAdmissionTokens = commitCarrier.ftupleOpenEstablishingAdmission(
+            _fsResolveOwnedNameForContainerId(dictCtx, sContainerId),
+            sContainerId,
+        )
+        try:
+            return await fdictHandleConnect(
+                dictCtx, sContainerId, sWorkflowPath, sBrowserSessionId)
+        finally:
+            commitCarrier.fnCloseRequestAdmission(tAdmissionTokens)
+
+
+def _fsResolveOwnedNameForContainerId(dictCtx, sContainerId):
+    """Return the owner-map key serving a Docker id, or the id itself.
+
+    The hub keys its owner map by project name and records the Docker
+    id at claim time; the viewer keys it by the container id directly
+    (and may not have recorded it yet on first connect).
+    """
+    dictContainerOwners = dictCtx.get("dictContainerOwners", {}) or {}
+    for sName, recordOwner in dictContainerOwners.items():
+        if recordOwner.sContainerId == sContainerId or sName == sContainerId:
+            return sName
+    return sContainerId
+
+
+def _fsResolveBrowserSessionId(dictCtx, requestHttp):
+    """Resolve the connecting browser session id, or '' when none.
+
+    The viewer's first connect binds ownership to this session; a
+    transitional shared-token request carries no credential and resolves
+    to '', leaving the viewer's owner record unbound.
+    """
+    return browserSession.fsSessionIdForCredential(
+        dictCtx.get("dictBrowserSessions") or {},
+        requestHttp.headers.get("x-session-token", ""),
+    )
 
 
 def fnRegisterAll(app, dictCtx):

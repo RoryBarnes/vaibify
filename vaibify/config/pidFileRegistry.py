@@ -17,6 +17,7 @@ staleness, it only enumerates, opens, reads, writes, and unlinks.
 """
 
 __all__ = [
+    "fbIsSafeRegistryName",
     "fnEnsureDirectory",
     "ffileOpenNoFollow",
     "fnWritePayload",
@@ -29,6 +30,24 @@ __all__ = [
 
 import json
 import os
+import re
+
+
+_RE_SAFE_REGISTRY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def fbIsSafeRegistryName(sName):
+    """Return True when a name is safe to embed in a registry file path.
+
+    Shared by ``containerLock`` and ``operationJournal`` so both derive
+    per-container file paths from exactly one character policy: no path
+    separators, no leading dot, bounded length.
+    """
+    if not isinstance(sName, str):
+        return False
+    if sName in ("", ".", ".."):
+        return False
+    return _RE_SAFE_REGISTRY_NAME.match(sName) is not None
 
 
 def fnEnsureDirectory(sDirectory):

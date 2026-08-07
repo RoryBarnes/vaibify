@@ -47,6 +47,7 @@ untracked non-ignored files into the worktree first.
 import argparse
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -63,12 +64,24 @@ PATH_TREE = REPO
 
 from tests.falsificationRegistry import LIST_FALSIFICATIONS  # noqa: E402
 
+# The env var the Docker-live suites read to turn their convenience
+# skip into a failure. Named once here, matching the CI workflows.
+S_REQUIRE_DAEMON_ENV = "VAIBIFY_REQUIRE_DOCKER_DAEMON"
+
+# A private exit code for "the test never ran". pytest has none: a
+# skipped test exits 0, which is indistinguishable from a passing one
+# and reads, in this harness, as a mutant that survived.
+I_EXIT_SKIPPED = 90
+
 
 def _fiRunTest(sNodeId):
     """Return the pytest exit code for running just this test node.
 
     Exit 0 = passed; 1 = a test failed (assertion); any other nonzero is a
     collection/internal error and must NOT be credited as a kill.
+
+    A SKIPPED test also exits 0, which is why the runners below refuse
+    to read a skip as a pass -- see :func:`_fiRunTests`.
 
     Each invocation gets a FRESH bytecode cache (PYTHONPYCACHEPREFIX):
     Python validates cached .pyc files by source mtime in integer
@@ -95,15 +108,30 @@ def _fiRunTests(listNodeIds):
     # without this the worktree's tests would import the very sources
     # the isolation exists to leave alone.
     dictEnvironment["PYTHONPATH"] = str(PATH_TREE)
+    # A Docker-live falsification test skips when no daemon answers, and
+    # a skip exits 0 -- which this harness would read as "the mutant
+    # survived". Requiring the daemon turns that skip into a failure, so
+    # a machine with no Docker reports an ERROR it can act on instead of
+    # five phantom survivors.
+    dictEnvironment[S_REQUIRE_DAEMON_ENV] = "1"
     with tempfile.TemporaryDirectory() as sPycachePrefix:
         dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
         result = subprocess.run(
             [sys.executable, "-m", "pytest", *listNodeIds, "-q",
-             "-p", "no:cacheprovider"],
+             "-p", "no:cacheprovider", "-rs"],
             cwd=PATH_TREE, capture_output=True, text=True,
             env=dictEnvironment,
         )
+    if result.returncode == 0 and _fbOutputReportsASkip(result.stdout):
+        # Belt and braces for every OTHER reason a test can skip: an
+        # unevaluated mutation must never be reported as a survivor.
+        return I_EXIT_SKIPPED
     return result.returncode
+
+
+def _fbOutputReportsASkip(sOutput):
+    """Return True when pytest's summary line counts a skip."""
+    return bool(re.search(r"\b\d+ skipped\b", sOutput or ""))
 
 
 def _fbMutationCompiles(sMutated, pathSource):
@@ -163,6 +191,11 @@ def _fsReconfirmOne(entry, sOriginal, bPreconditionKnownGood=False):
         iCode = _fiRunTest(entry.nodeid)
     finally:
         pathSource.write_text(sOriginal, encoding="utf-8")
+    if iCode == I_EXIT_SKIPPED:
+        return (
+            "ERROR: the test SKIPPED, so the mutation was never "
+            "evaluated (a skip is not a surviving mutant)"
+        )
     if iCode == 0:
         return "SURVIVED: test did NOT catch the mutation"
     if iCode == 1:

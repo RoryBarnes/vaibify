@@ -30,6 +30,8 @@ import pytest
 __all__ = [
     "testEverySkillHasValidFrontmatter",
     "testSkillPathReferencesResolve",
+    "testThePathCheckerRefusesToPassOnAnEmptyScan",
+    "testTheTreeExclusionIsRelativeToTheRepositoryRoot",
     "testSkillSymbolReferencesResolve",
     "testSkillTestNameReferencesResolve",
 ]
@@ -155,6 +157,72 @@ def testSkillPathReferencesResolve():
         for sReference in modulePathChecker.flistBrokenReferences(pathSkill):
             listBroken.append(f"{pathSkill.relative_to(REPO_ROOT)}: {sReference}")
     assert not listBroken, "Broken path references in skills:\n" + "\n".join(listBroken)
+
+
+def testThePathCheckerRefusesToPassOnAnEmptyScan():
+    """Discovery finding nothing is a failure, never a clean run.
+
+    The tree exclusion that keeps agent worktrees out of the scan was
+    first written against ABSOLUTE path parts. Run from inside a
+    worktree -- where the repository root itself lives under
+    ``worktrees/`` -- it excluded every file, so the checker examined
+    zero documents and exited 0. A check that reports clean when it
+    means "could not look" is the failure mode the checker exists to
+    catch in the documents it reads, so it must not commit it itself.
+
+    Kills: in tools/checkAgentDocsPaths.py, delete the ``if not
+    listDocs`` guard in fnMain, so an empty document set falls through
+    to fnReportAndExit and reports success.
+    """
+    modulePathChecker = fmoduleLoadPathChecker()
+    listReal = modulePathChecker.flistFindAgentsFiles(
+        modulePathChecker.REPO_ROOT,
+    )
+    assert listReal, (
+        "the checker found no agent documents in a repository that "
+        "always carries a root AGENTS.md, so discovery itself is broken"
+    )
+    fnFindOriginal = modulePathChecker.flistFindAgentsFiles
+    modulePathChecker.flistFindAgentsFiles = lambda _pathRoot: []
+    try:
+        iStatus = modulePathChecker.fnMain()
+    finally:
+        modulePathChecker.flistFindAgentsFiles = fnFindOriginal
+    assert iStatus == 1, (
+        "the checker examined zero documents and reported success; an "
+        "empty scan must fail loudly rather than read as coverage"
+    )
+
+
+def testTheTreeExclusionIsRelativeToTheRepositoryRoot():
+    """A root nested under an excluded name must not exclude everything.
+
+    The root must be MOVED under an excluded name for this to assert
+    anything. A first version checked the real repository root, which
+    contains no excluded component, so it passed under both the
+    relative and the absolute spelling and killed no mutant at all --
+    a test whose premise was wrong, not a guard.
+
+    Kills: in tools/checkAgentDocsPaths.py, change
+    fbPathIsInsideExcludedTree to test ``pathCandidate.parts`` instead
+    of the parts relative to REPO_ROOT.
+    """
+    modulePathChecker = fmoduleLoadPathChecker()
+    pathNestedRoot = Path("/tmp/probe/.claude/worktrees/agent-probe")
+    modulePathChecker.REPO_ROOT = pathNestedRoot
+    assert not modulePathChecker.fbPathIsInsideExcludedTree(
+        pathNestedRoot / "AGENTS.md"
+    ), (
+        "a checkout whose own path contains an excluded component "
+        "excluded its own documents, so the scan examines nothing and "
+        "reports clean"
+    )
+    assert not modulePathChecker.fbPathIsInsideExcludedTree(
+        pathNestedRoot / "vaibify" / "gui" / "AGENTS.md"
+    ), "a nested document under a worktree-hosted root was excluded"
+    assert modulePathChecker.fbPathIsInsideExcludedTree(
+        pathNestedRoot / ".claude" / "worktrees" / "inner" / "AGENTS.md"
+    ), "a document inside a nested agent worktree was not excluded"
 
 
 def testSkillSymbolReferencesResolve():

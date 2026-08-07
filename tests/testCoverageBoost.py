@@ -19,6 +19,7 @@ from vaibify.gui.syncDispatcher import (
     flistExtractAllScriptPaths,
 )
 from vaibify.gui.pipelineRunner import fnClearOutputModifiedFlags
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 
 # -----------------------------------------------------------------------
@@ -212,7 +213,7 @@ def clientHttp():
             sTerminalUserArg="testuser",
         )
     return TestClient(
-        app, headers={"X-Session-Token": app.state.sSessionToken},
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
     )
 
 
@@ -223,7 +224,10 @@ def _fnConnectToContainer(clientHttp):
         params={"sWorkflowPath": S_WORKFLOW_PATH},
     )
     assert responseHttp.status_code == 200
-    return responseHttp.json()
+    dictConnect = responseHttp.json()
+    if dictConnect.get("sLeaseId"):
+        clientHttp.headers["X-Vaibify-Lease"] = dictConnect["sLeaseId"]
+    return dictConnect
 
 
 # =======================================================================
