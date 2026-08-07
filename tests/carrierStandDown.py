@@ -27,7 +27,7 @@ real gates and records the live admission MODE.
 WHY IT IS SHARED
 ----------------
 
-Seven test modules had grown a private copy of these same three patches
+Seven test modules had grown a private copy of these same patches
 before this file existed, and the copies had already begun to diverge —
 one patched the name on ``routeContext``, another the copy the route
 module imported, and a module whose routes used both shapes failed in a
@@ -80,8 +80,33 @@ async def _fdictRunWorkerWithoutTheDrain(
     return {"bCommitted": True, "result": fnWorker(None)}
 
 
+async def _fdictLaunchWithoutTheLock(
+    appState, sName, sContainerId, dictLaneTuple, fnStartTask,
+):
+    """Start a mode-(c) durable task with no lock and no registration.
+
+    The task is still STARTED, because a module standing the carrier
+    down is testing what the route does and the route's whole answer is
+    "accepted, here is your handle" -- a stand-down that returned a
+    handle to nothing would make every such test assert a lie.
+
+    What is dropped is the exclusivity: the real launch refuses a
+    second durable task per container, and a stood-down one does not.
+    A module that wants to prove that refusal must drive the real
+    carrier.
+    """
+    del appState, sName, sContainerId, dictLaneTuple
+    taskAsync = fnStartTask()
+    return {
+        "bLaunched": True,
+        "sTaskId": "stand-in-durable-task",
+        "iOwnerGeneration": 0,
+        "taskAsync": taskAsync,
+    }
+
+
 def fnStandCarrierDown(monkeypatch, *listRouteModules):
-    """Patch out the three carrier entry points for one test module.
+    """Patch out the four carrier entry points for one test module.
 
     Both bindings of the lane-tuple resolver are patched: the definition
     on ``routeContext`` (which ``fnCommitWorkflowSave`` calls through its
@@ -110,4 +135,8 @@ def fnStandCarrierDown(monkeypatch, *listRouteModules):
     monkeypatch.setattr(
         commitCarrier, "fdictRunLockHeldMutation",
         _fdictRunWorkerWithoutTheDrain,
+    )
+    monkeypatch.setattr(
+        commitCarrier, "fdictLaunchDurableTask",
+        _fdictLaunchWithoutTheLock,
     )

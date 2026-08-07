@@ -7183,4 +7183,90 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
     ),
+
+    # -------------- phase 2 group 3: the two durable launches --------
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheFalsificationPreflightRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, ftClassifyThenProbe, '
+            '"falsification-preflight",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _ftRequireApplicableAndInstalled(\n'
+            '        dictCtx, sContainerId, dictStep, filesRepo,\n'
+            '    )\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheLaunchedFalsificationRunIsVisibleAsLiveWork'
+        ),
+        # The bare launch this replaced: a create_task recorded only in
+        # a module-global dict, invisible to every authority that asks
+        # whether the container is busy.
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old=(
+            '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, ftaskStartFalsification,\n'
+            '    )\n'
+            '    if not dictLaunched["bLaunched"]:\n'
+            '        raise HTTPException(\n'
+            '            409,\n'
+            '            "This container is busy: " '
+            '+ dictLaunched["sReason"] + ".",\n'
+            '        )\n'
+        ),
+        new='    ftaskStartFalsification()\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheVerifyReadinessGateRunsUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fsGateThenSnapshot, '
+            '"level3-verify-readiness",\n'
+            '        requestHttp,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fsRequireReadinessThenDigest('
+            'dictWorkflow, filesRepo)\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheLaunchedVerificationIsVisibleAsLiveWork'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    dictLaunched = await commitCarrier.fdictLaunchDurableTask(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, ftaskStartVerification,\n'
+            '    )\n'
+            '    if not dictLaunched["bLaunched"]:\n'
+            '        raise HTTPException(\n'
+            '            409,\n'
+            '            "This container is busy: " '
+            '+ dictLaunched["sReason"] + ".",\n'
+            '        )\n'
+        ),
+        new='    ftaskStartVerification()\n',
+    ),
 ]

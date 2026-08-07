@@ -66,7 +66,7 @@ from tests.testDraftRoutes import (
 )
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.config import mutationAdmission
-from vaibify.gui.routes import reproducibilityRoutes
+from vaibify.gui.routes import falsificationRoutes, reproducibilityRoutes
 from vaibify.gui import (
     browserSession,
     draftManager,
@@ -6450,3 +6450,297 @@ def testAMissingManifestIsRefusedWithoutQuarantining(tclientLevelThree):
         f"{dictResolution}. A workflow that has not run yet has no "
         "manifest, so this would quarantine on the ordinary path."
     )
+
+
+@contextlib.contextmanager
+def _fnFalsificationApplicable():
+    """Report the step as falsifiable, leaving the version probe real.
+
+    The applicability classification is a judgement over the step's
+    declared quantitative tests and its source tree, which the
+    in-memory double cannot realistically satisfy; stubbing it is what
+    lets the route reach the container call this file is about. The
+    ``cosmic-ray --version`` probe is deliberately NOT stubbed -- it is
+    the exec whose admission the pre-flight test asserts.
+    """
+    from vaibify.gui.routes import falsificationRoutes as moduleFals
+    with patch.object(
+        moduleFals, "fdictClassifyFalsificationApplicability",
+        lambda dictStep, filesRepo: {
+            "bApplicable": True, "sReason": "",
+            "sClassification": "quantitative",
+        },
+    ):
+        yield
+
+
+
+# ---------------------------------------------------------------------
+# The two durable launches (phase 2, group 3).
+#
+# Both return their response while the work continues, and both used to
+# start it with a bare ``asyncio.create_task`` recorded in a
+# module-global dict no other authority read. So an ownership
+# hand-over, the shutdown drain and the idle watchdog all saw an IDLE
+# container while a full workflow rerun -- or cosmic-ray rewriting the
+# project's sources in place -- was writing to it.
+#
+# Mode (c) is what closes that. These tests therefore assert two
+# different things per route: that the pre-flight probes ran under the
+# drain, and that the launched work is VISIBLE to the authorities that
+# ask whether the container is busy. The second is the point; a test
+# that only checked the response's "bAccepted" would pass for the bare
+# create_task this replaced.
+# ---------------------------------------------------------------------
+
+S_COSMIC_RAY_PROBE_MARKER = "cosmic-ray --version"
+
+
+@contextlib.contextmanager
+def _teventHoldTheDurableWorkerOpen(moduleRoute, sWorkerName):
+    """Replace a durable worker with one that waits, and hand back the gate.
+
+    The real workers run cosmic-ray or a whole workflow rerun; neither
+    can be driven to completion here, and neither needs to be. What the
+    mode-(c) claim is about is the WINDOW between launching the work and
+    its finishing -- exactly the window in which a hand-over used to see
+    an idle container -- so the substitute holds that window open until
+    the test closes it.
+
+    The substitute is a coroutine function, which is what the real
+    workers are: passing a synchronous one would make the launch's
+    ``fnStartTask`` fail rather than the assertion speak.
+
+    The gate is a ``threading.Event``, polled, rather than an
+    ``asyncio.Event``, so this helper is usable from either driver
+    without binding to a loop it was not created on.
+    """
+    eventMayFinish = threading.Event()
+
+    async def fnWaitThenReturn(*aArgs, **dictKwargs):
+        while not eventMayFinish.is_set():
+            await asyncio.sleep(0.005)
+
+    with patch.object(moduleRoute, sWorkerName, fnWaitThenReturn):
+        try:
+            yield eventMayFinish
+        finally:
+            eventMayFinish.set()
+
+
+def _tBuildAsgiHubOverALevelThreeWorkflow():
+    """Return ``(app, connectionDocker)`` bound to a repo-holding workflow.
+
+    In-loop ASGI rather than ``TestClient`` for the durable-visibility
+    tests below, and NOT as a stylistic preference. ``TestClient``
+    enters a fresh blocking portal PER REQUEST and tears it down when
+    the response is returned, which cancels every task the request
+    started -- so a durable launch is always dead by the time the test
+    body looks, and "the container reads idle" is indistinguishable
+    from the defect these tests exist to catch. Measured: the registry
+    was empty immediately after a 200 whose task was demonstrably
+    still supposed to be running.
+    """
+    connectionDocker = DockerDoubleServingALevelThreeWorkflow()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        lambda: connectionDocker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace",
+            sTerminalUserArg="testuser",
+        )
+    return (app, connectionDocker)
+
+
+@contextlib.contextmanager
+def _tclientAsgiOverALevelThreeWorkflow():
+    """Yield ``(app, clientAsync)``; caller must connect and set the lease."""
+    app, _connectionDocker = _tBuildAsgiHubOverALevelThreeWorkflow()
+    yield app, httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
+
+
+@pytest.mark.falsification
+def testTheFalsificationPreflightRunsUnderTheDrain(tclientLevelThree):
+    """POST .../run-falsification probes cosmic-ray under mode (b).
+
+    The pre-flight asks one question -- "may this run start" -- in two
+    container calls: the applicability classification hashes the step's
+    sources, and the version probe runs ``cosmic-ray --version``. They
+    share one drain because answering half of it against a container
+    that changed hands in between would let a run start against a tree
+    its applicability was never judged on.
+
+    NOTE, because it is the reason this test exists at all: before this
+    migration NO test drove this route. ``testFalsificationAttestation``
+    asserts only that the path is REGISTERED. So the pre-flight had
+    never been executed by the suite, and a carrier added to it would
+    have been reached by nothing.
+
+    The isolation is ONE-DIRECTIONAL: this carrier runs first, so an
+    unadmitted exec 500s the handler before the launch is reached and
+    the visibility test fails too. The reverse does not hold. Verified.
+
+    Kills: reverting ``_ftClassifyAndProbeCosmicRay`` to the two
+    ``await asyncio.to_thread(...)`` hops it replaced, which reach the
+    exec primitive with no admission and record ``''``.
+    """
+    client, connectionDocker = tclientLevelThree
+    with _fnFalsificationApplicable(), _teventHoldTheDurableWorkerOpen(
+        falsificationRoutes, "_fnRunFalsificationWorker",
+    ):
+        client.post(
+            f"/api/steps/{S_CONTAINER_ID}/0/run-falsification",
+        )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_COSMIC_RAY_PROBE_MARKER,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testTheLaunchedFalsificationRunIsVisibleAsLiveWork():
+    """A live falsification run makes its container read BUSY.
+
+    This is what mode (c) buys and the whole reason the route was
+    migrated. cosmic-ray rewrites the step's sources IN PLACE, so a
+    hand-over, a shutdown drain or the idle watchdog acting on that
+    container mid-run would act on a repository being actively
+    rewritten. Registering the task under the briefly-held mutation
+    lock is what lets ``fsetNamesWithLiveMutationWork`` see it.
+
+    Asserted through the authority's own reader rather than by
+    inspecting the registry, because the reader is what every caller
+    uses and a test against the dict would pass for a registry nobody
+    consults.
+
+    Kills: reverting ``_fdictLaunchFalsificationDurably`` to
+    ``asyncio.create_task`` + ``_fnRegisterFalsificationTask``, i.e. the
+    bare launch it replaced, which leaves the container reading idle.
+    """
+    with _tclientAsgiOverALevelThreeWorkflow() as (app, clientAsync):
+        async with clientAsync:
+            sLease = await _tConnectOverAsgi(clientAsync)
+            clientAsync.headers["X-Vaibify-Lease"] = sLease
+            sName = _fsContainerNameFor(app)
+            with _fnFalsificationApplicable(), (
+                _teventHoldTheDurableWorkerOpen(
+                    falsificationRoutes, "_fnRunFalsificationWorker",
+                )
+            ):
+                response = await clientAsync.post(
+                    f"/api/steps/{S_CONTAINER_ID}/0/run-falsification",
+                )
+                assert response.status_code == 200, (
+                    "the run was refused before it could be launched, "
+                    f"so this asserts nothing: {response.text}"
+                )
+                assert commitCarrier.fbContainerHasLiveMutationWork(
+                    app.state, sName,
+                ), (
+                    "a live falsification run left its container "
+                    "reading idle; a hand-over or the idle watchdog "
+                    "would act on a repository whose sources cosmic-ray "
+                    "is rewriting in place"
+                )
+            await asyncio.sleep(0.05)
+
+
+@pytest.mark.falsification
+def testTheVerifyReadinessGateRunsUnderTheDrain(tclientLevelThree):
+    """POST .../level3/verify gates readiness under mode (b).
+
+    The readiness gate and the manifest-digest snapshot both hash the
+    repository through the general exec primitive, and they share one
+    drain because they must agree: the attestation is keyed to the
+    digest snapshotted here, so a digest taken from a tree that changed
+    after the readiness check passed would attest a state nobody
+    verified.
+
+    Instrumented at ``fbL3ReadinessOK`` rather than by matching command
+    text, because the hash travels base64-encoded inside a ``python3
+    -c "import base64; exec(...)"`` shell.
+
+    The isolation is ONE-DIRECTIONAL, in the same direction and for
+    the same reason as the falsification pre-flight's. Verified.
+
+    Kills: reverting ``_fsGateReadinessAndSnapshotDigest`` to calling
+    ``fbL3ReadinessOK`` and ``fsCurrentManifestDigest`` directly on the
+    event loop.
+    """
+    client, _connectionDocker = tclientLevelThree
+    listCalls = []
+    fnReal = reproducibilityRoutes.fbL3ReadinessOK
+
+    def fbRecordThenGate(dictWorkflow, filesRepo):
+        admission = mutationAdmission.fadmissionActiveForContainerId(
+            S_CONTAINER_ID,
+        )
+        listCalls.append("" if admission is None else admission.sMode)
+        fnReal(dictWorkflow, filesRepo)
+        return True
+
+    with patch.object(
+        reproducibilityRoutes, "fbL3ReadinessOK", fbRecordThenGate,
+    ), _teventHoldTheDurableWorkerOpen(
+        reproducibilityRoutes, "_fnRunVerificationWorker",
+    ):
+        client.post(f"/api/workflow/{S_CONTAINER_ID}/level3/verify")
+    assert listCalls, (
+        "the route never reached the readiness gate, so this asserts "
+        "nothing about the admission it runs under"
+    )
+    assert listCalls == [
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+    ] * len(listCalls), (
+        f"the L3 readiness gate ran outside the drain: {listCalls}"
+    )
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testTheLaunchedVerificationIsVisibleAsLiveWork():
+    """A live L3 verification makes its container read BUSY.
+
+    The rebuild re-executes the WHOLE workflow inside the container and
+    can run for minutes. Before mode (c) the task lived only in
+    ``_DICT_VERIFY_TASKS``, which no authority outside its own module
+    reads, so a transfer arriving mid-rerun committed and the old
+    owner's rerun kept writing.
+
+    Kills: reverting ``_fdictLaunchVerificationDurably`` to
+    ``asyncio.create_task`` + ``_fnRegisterVerifyTask``.
+    """
+    with _tclientAsgiOverALevelThreeWorkflow() as (app, clientAsync):
+        async with clientAsync:
+            sLease = await _tConnectOverAsgi(clientAsync)
+            clientAsync.headers["X-Vaibify-Lease"] = sLease
+            sName = _fsContainerNameFor(app)
+            with patch.object(
+                reproducibilityRoutes, "fbL3ReadinessOK",
+                lambda dictWorkflow, filesRepo: True,
+            ), _teventHoldTheDurableWorkerOpen(
+                reproducibilityRoutes, "_fnRunVerificationWorker",
+            ):
+                response = await clientAsync.post(
+                    f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
+                )
+                assert response.status_code == 200, (
+                    "the verification was refused before it could be "
+                    f"launched, so this asserts nothing: {response.text}"
+                )
+                assert commitCarrier.fbContainerHasLiveMutationWork(
+                    app.state, sName,
+                ), (
+                    "a live L3 verification left its container reading "
+                    "idle; a transfer would commit while the old "
+                    "owner's rerun kept writing to the repository"
+                )
+            await asyncio.sleep(0.05)

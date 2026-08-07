@@ -35,6 +35,7 @@ from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
+    fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
     fnCommitWorkflowSave,
     fobjRunWorkerUnderTheDrain,
@@ -42,6 +43,7 @@ from ..routeContext import (
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_MODE_C_DURABLE,
     S_CARRIER_TYPED_READ,
     fnDeclareCarrierMode,
 )
@@ -167,7 +169,10 @@ def _fnRegisterVerify(app, dictCtx):
 
     @fnAgentAction("verify-l3-reproducibility")
     @app.post("/api/workflow/{sContainerId}/level3/verify")
-    async def fnL3Verify(sContainerId: str):
+    @fnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_C_DURABLE,
+    )
+    async def fnL3Verify(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -176,16 +181,109 @@ def _fnRegisterVerify(app, dictCtx):
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         sWorkflowPath = _fsRequireWorkflowPath(dictCtx, sContainerId)
         _fnRefuseIfTaskInFlight(sContainerId)
-        if not fbL3ReadinessOK(dictWorkflow, filesRepo):
-            raise HTTPException(
-                409,
-                "L3 readiness checks must all pass before triggering "
-                "verification; open the AICS tab to see gaps.",
-            )
-        return _fdictKickOffVerification(
-            sContainerId, filesRepo, dictWorkflow, dictCtx["docker"],
-            sWorkflowPath,
+        sManifestDigest = await _fsGateReadinessAndSnapshotDigest(
+            sContainerId, dictWorkflow, filesRepo, requestHttp,
         )
+        return await _fdictLaunchVerificationDurably(
+            sContainerId, filesRepo, sManifestDigest, dictWorkflow,
+            dictCtx["docker"], sWorkflowPath, requestHttp,
+        )
+
+
+async def _fsGateReadinessAndSnapshotDigest(
+    sContainerId, dictWorkflow, filesRepo, requestHttp,
+):
+    """Check L3 readiness and snapshot the manifest digest under one drain.
+
+    Both reach the container and both look like reads: the readiness
+    gate and the digest snapshot each hash the repository through the
+    GENERAL exec primitive, which the gate must treat as mutating. They
+    share ONE mode-(b) drain because they must agree -- the attestation
+    is keyed to the digest snapshotted here, and a digest taken from a
+    tree that changed after the readiness check passed would attest a
+    state nobody verified.
+
+    The 409 is carried back rather than raised: readiness failing is a
+    decision made with the container untouched, and quarantining it
+    would take the container out of service for a workflow that simply
+    is not ready yet -- the ordinary state before the envelope exists.
+    """
+    def fsGateThenSnapshot(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: _fsRequireReadinessThenDigest(dictWorkflow, filesRepo),
+        )
+
+    return await fobjRunWorkerUnderTheDrain(
+        sContainerId, fsGateThenSnapshot, "level3-verify-readiness",
+        requestHttp,
+    )
+
+
+def _fsRequireReadinessThenDigest(dictWorkflow, filesRepo):
+    """Return the manifest digest, or raise 409 when L3 is not ready."""
+    if not fbL3ReadinessOK(dictWorkflow, filesRepo):
+        raise HTTPException(
+            409,
+            "L3 readiness checks must all pass before triggering "
+            "verification; open the AICS tab to see gaps.",
+        )
+    return fsCurrentManifestDigest(filesRepo)
+
+
+async def _fdictLaunchVerificationDurably(
+    sContainerId, filesRepo, sManifestDigest, dictWorkflow,
+    connectionDocker, sWorkflowPath, requestHttp,
+):
+    """Launch the rebuild as REGISTERED durable work (design §8, mode c).
+
+    Mode (c) rather than (b) because the response returns while the
+    work continues: the rebuild re-executes the whole workflow inside
+    the container and can run for minutes. Registering it under the
+    briefly-held mutation lock is what makes it VISIBLE -- before this,
+    the task lived only in a module-global dict no other authority
+    read, so an ownership hand-over, the shutdown drain and the idle
+    watchdog all saw an idle container while a full workflow rerun was
+    writing to it.
+
+    The carrier refuses a second durable launch per CONTAINER, which is
+    stricter than the per-container check above it and deliberately so:
+    two reruns of the same repository would overwrite each other's
+    outputs. The in-flight check stays because it names the specific
+    thing running; this one is the authority.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The L3 verification",
+    )
+    dictStatus = {
+        "sPhase": "starting",
+        "fStartedAtMonotonic": time.monotonic(),
+        "sManifestDigestAtAttestation": sManifestDigest,
+    }
+
+    def ftaskStartVerification():
+        taskWorker = asyncio.create_task(_fnRunVerificationWorker(
+            sContainerId, filesRepo, sManifestDigest, dictWorkflow,
+            connectionDocker, sWorkflowPath,
+        ))
+        _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus)
+        return taskWorker
+
+    dictLaunched = await commitCarrier.fdictLaunchDurableTask(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, ftaskStartVerification,
+    )
+    if not dictLaunched["bLaunched"]:
+        raise HTTPException(
+            409,
+            "This container is busy: " + dictLaunched["sReason"] + ".",
+        )
+    return {
+        "bAccepted": True,
+        "sPhase": "starting",
+        "sManifestDigestAtAttestation": sManifestDigest,
+    }
 
 
 def _fsRequireWorkflowPath(dictCtx, sContainerId):
@@ -217,30 +315,6 @@ def _fnRefuseIfTaskInFlight(sContainerId):
             409,
             "L3 verification already running for this container.",
         )
-
-
-def _fdictKickOffVerification(
-    sContainerId, filesRepo, dictWorkflow, connectionDocker,
-    sWorkflowPath,
-):
-    """Snapshot manifest, schedule the worker, and return the handle."""
-    sManifestDigest = fsCurrentManifestDigest(filesRepo)
-    dictStatus = {
-        "sPhase": "starting",
-        "fStartedAtMonotonic": time.monotonic(),
-        "sManifestDigestAtAttestation": sManifestDigest,
-    }
-    coroutineWorker = _fnRunVerificationWorker(
-        sContainerId, filesRepo, sManifestDigest, dictWorkflow,
-        connectionDocker, sWorkflowPath,
-    )
-    taskWorker = asyncio.create_task(coroutineWorker)
-    _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus)
-    return {
-        "bAccepted": True,
-        "sPhase": "starting",
-        "sManifestDigestAtAttestation": sManifestDigest,
-    }
 
 
 def _fnRegisterVerifyTask(sContainerId, taskWorker, dictStatus):
@@ -291,6 +365,14 @@ async def _fnRunVerificationWorker(
         # done-with-exception, the phase stuck on "running", and no
         # attestation written — a silent hang, which is the one
         # outcome this worker must never produce.
+        #
+        # A carrier REFUSAL is the exception to that exception. It
+        # means the durable admission was not opened, and writing it
+        # here would record a programming error as a FAILED L3
+        # ATTESTATION — a scientific claim, keyed to a manifest digest,
+        # saying this workflow does not reproduce. A stuck phase is
+        # recoverable; a false attestation on disk is not.
+        fnReRaiseControlPlaneRefusal(exc)
         logger.exception("L3 verification crashed: %s", exc)
         dictResult = {
             "bPassed": False,

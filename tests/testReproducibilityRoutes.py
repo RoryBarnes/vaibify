@@ -286,7 +286,9 @@ def test_l3_verify_without_project_repo_returns_409(
     assert "no project repo" in response.text.lower()
 
 
-def test_l3_verify_without_readiness_returns_409(fixtureClient):
+def test_l3_verify_without_readiness_returns_409(
+    fixtureClient, fixtureCarrierStoodDown,
+):
     """Failing readiness checks block verify with 409."""
     response = fixtureClient.post(
         f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
@@ -296,7 +298,7 @@ def test_l3_verify_without_readiness_returns_409(fixtureClient):
 
 
 def test_l3_verify_returns_202_with_handle_when_ready(
-    fixtureClient, fixtureWorkflow,
+    fixtureClient, fixtureWorkflow, fixtureCarrierStoodDown,
 ):
     """An L3-ready workflow accepts the verify request and returns a handle."""
     _fnSeedReadyL3Repo(fixtureWorkflow["sProjectRepoPath"])

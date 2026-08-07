@@ -4657,7 +4657,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # manifest re-pin reach the container exactly as the generation
     # does. Same cohesive responsibility throughout: the AICS Level 3
     # readiness and attestation surface, in the module that owns it.
-    "routes/reproducibilityRoutes.py": 923,
+    # +82 (2026-08-06): the L3 verify, this module's last awaiting
+    # route and the migration's first mode-(c) durable launch. The rise
+    # is the readiness gate and the digest snapshot joining ONE
+    # mode-(b) drain -- they must agree, or the attestation is keyed to
+    # a digest from a tree the readiness check never saw -- plus the
+    # durable launch itself, which replaces a bare asyncio.create_task
+    # that no authority outside this module could see. **No route in
+    # this module is awaiting any longer.**
+    "routes/reproducibilityRoutes.py": 1005,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
