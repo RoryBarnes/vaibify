@@ -41,6 +41,7 @@ __all__ = [
     "testPrefixedNamesAgreeWithAnnotations",
     "testPrefixVocabularyIsClosed",
     "testCurrentInventoryIsWithinTheFrozenSeed",
+    "testInterfaceExemptionsNameForeignProtocols",
     "testDebtCountsEqualTheRecordedBudgets",
     "testInventoryFileMatchesRegeneration",
     "testReviewTrackedMisnamingsStillExist",
@@ -743,6 +744,48 @@ def testPrefixVocabularyIsClosed():
     assert tool.DICT_TIER_TWO_REGISTRY == DICT_TIER_TWO_REGISTRY_COPY, (
         "Tier-2 registry drifted between the tool and this copy; "
         "growing a tier requires editing both plus a ruling.")
+
+
+# The ONLY names allowed to escape the naming contract are names a
+# FOREIGN contract owns: the caller looks up the literal string, so
+# conforming is impossible in principle (like renaming a FITS keyword).
+# This closed table is the whitelist's own whitelist -- an
+# interface-method exemption whose method name is not here fails, so a
+# lazy future entry cannot hide behind the category.
+DICT_FOREIGN_PROTOCOL_NAMES = {
+    "dispatch": "starlette BaseHTTPMiddleware override",
+    "read": "file-like protocol consumed by tarfile",
+    "emit": "logging.Handler override",
+    "filter": "logging.Filter override",
+    "redirect_request": "urllib HTTPRedirectHandler override",
+    "get_route_handler": "fastapi APIRoute override",
+    "get": "dict protocol (RouteContext mapping compatibility)",
+    "setdefault": "dict protocol (RouteContext mapping compatibility)",
+    "pop": "dict protocol (RouteContext mapping compatibility)",
+}
+
+
+def testInterfaceExemptionsNameForeignProtocols():
+    dictInventory = json.loads(PATH_INVENTORY.read_text())
+    listUnknown = []
+    setUsedNames = set()
+    for dictRow in dictInventory["listRows"]:
+        if dictRow["sDebtClass"] != "interface-method":
+            continue
+        sMethodName = dictRow["sIdentity"].split("::")[1].split(".")[-1]
+        setUsedNames.add(sMethodName)
+        if sMethodName not in DICT_FOREIGN_PROTOCOL_NAMES:
+            listUnknown.append(dictRow["sIdentity"])
+    assert not listUnknown, (
+        "interface-method exemptions whose names no known foreign "
+        "protocol owns -- a lazy exemption cannot hide behind the "
+        "category:\n  " + "\n  ".join(listUnknown)
+    )
+    setStale = set(DICT_FOREIGN_PROTOCOL_NAMES) - setUsedNames
+    assert not setStale, (
+        f"protocol table entries no exemption uses (prune them): "
+        f"{sorted(setStale)}"
+    )
 
 
 def testCurrentInventoryIsWithinTheFrozenSeed():
