@@ -223,3 +223,28 @@ def flistSelectDeclarationsNeverObserved(
             ),
         })
     return listNeverObserved
+
+
+def fnReportDeclarationCoverage():
+    """Print which container-scoped routes declare a carrier mode.
+
+    The counts used to live in AGENTS.md and went stale four times in a
+    single migration session, because they change on every batch while
+    the prose does not. A number that must be re-typed to stay true is a
+    deterministic fact in a semantic document; it belongs in a command.
+    """
+    from vaibify.gui import appFactory, routeScope
+    dictDeclared = fdictBuildRouteDeclarationIndex(
+        appFactory.fappCreateHubApplication(),
+    )
+    setAwaiting = set(routeScope.SET_ROUTES_AWAITING_CARRIER_MODE)
+    print(f"declared {len(dictDeclared)}  awaiting {len(setAwaiting)}  "
+          f"total {len(dictDeclared) + len(setAwaiting)}")
+    for tRoute, tModes in sorted(dictDeclared.items()):
+        print(f"  {'+'.join(tModes):40}  {tRoute[0]:7} {tRoute[1]}")
+    for tRoute in sorted(setAwaiting):
+        print(f"  {'(awaiting)':40}  {tRoute[0]:7} {tRoute[1]}")
+
+
+if __name__ == "__main__":
+    fnReportDeclarationCoverage()

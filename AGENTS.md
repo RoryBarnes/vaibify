@@ -533,66 +533,43 @@ disposition must name the supporting symbols its review relied on.
 NOTHING.** `routeScope.fnDeclareCarrierMode` stamps one or more of
 `typed-read`, `mode-a-synchronous`, `mode-b-lock-held`,
 `mode-c-durable`, `lifecycle-transaction`, `separate-authority` onto a
-handler. Several are allowed, because a handler that writes
-synchronously and then starts durable work is a real shape;
-`typed-read` may not be combined with anything, or the carrier-mode
-rule would absorb every typed-read violation.
+handler. A declared route takes a branch with NO admission, so its
+handler must open one through a carrier around each logical mutation;
+forget one and the primitive raises `MutationNotAdmittedError`. **That
+refusal is the proof** — a decorator that pre-admitted the handler
+would delete it, which is the `bAgentSafe` mistake one level up.
+`testDeclaringMintsNoAdmission` drives a declared route over real HTTP
+with the owner map keyed by a name != the container id and asserts the
+real gate refuses. Why each mode exists, and what the migration found,
+is in [docs/architecture.md](docs/architecture.md) — "Container
+mutations announce themselves".
 
-The modes are behavioural protocols, not labels. **No decorator mints
-an admission.** A declared route takes the enforced branch, which has
-NO admission, so its handler must open one through a carrier around
-each logical mutation; forget one and the primitive raises
-`MutationNotAdmittedError` in CI. **That refusal is the proof**, and a
-decorator that pre-admitted the handler would delete it — the
-`bAgentSafe` mistake one level up. `testDeclaringMintsNoAdmission`
-drives a declared route over real HTTP with the owner map keyed by a
-name ≠ the container id and asserts the real gate refuses.
+**Two rules that are easy to undo by accident.** A refusal is not an
+I/O error: `MutationNotAdmittedError` and `CommitRefusedError` derive
+from `ControlPlaneRefusalError(Exception)`, never `PermissionError` —
+they used to, and every `except OSError` in the package swallowed them,
+which is how a refusal came to silently downgrade a reproducibility
+badge. And a carrier worker must not raise an expected 4xx/502: that
+poisons its journal record and quarantines the container. Carry it back
+through `routeContext.fdictCarryARefusalBackInsteadOfRaising` and
+re-raise outside, after the record settles. A genuinely half-finished
+write still poisons, correctly.
 
-`_fbServeOnAmbientAdmission` grants the legacy mint on **membership of
-`SET_ROUTES_AWAITING_CARRIER_MODE`, not on the absence of a
-declaration**: declared → enforced, awaiting → ambient, neither →
-enforced, failing closed. The list may only shrink (R6), is seeded with
-all **130** governed routes, and is held against an independently
-edited copy in `tests/testCarrierModeDeclaration.py` so shrinking takes
-one edit and growing takes two.
+**For the current coverage, run the command — do not trust a number
+written here.**
 
-**130, not 132.** `fdictResolveRouteScope` classifies 132 authorized
-container-scoped routes, but `/ws/pipeline/{sContainerId}` and
-`/ws/terminal/{sContainerId}` are `APIWebSocketRoute`s and
-`app.router.route_class` governs `APIRoute` only, so
-`ContainerAwareRoute` never serves them — they are gated by
-`webSocketAuthorization`. Seeding them would record an HTTP admission
-they never receive, and nothing could ever migrate them out of it.
+```bash
+PYTHONPATH=. python tools/carrierIntentAudit.py
+```
 
-**What the boundary still does NOT do, stated so nobody reads the above
-as more than it is.** **83 of 130 routes are migrated; 47 still
-await** and take the ambient branch, where the gate catches DIRECT
-primitive reach, not undeclared intent. **46 of those 47 are
-`container-read` and will stay there by decision (2026-08-05)** — the
-migration was scoped to the mutating routes, so this list bottoms out
-at 46 rather than empty, and phase 4 does not happen. For the rest, a
-mutation the
-route starts with `asyncio.to_thread` holds no mutation lock and
-registers no durable work, so a transfer arriving mid-flight sees an
-unlocked container and commits — and the old owner's command keeps
-running. Nine background-task launches register neither lock-held nor
-durable work.
-
-The migrated set is real rather than nominal, and worth knowing when
-reasoning about which paths are already enforced: the four synchronous
-single-writes (draft PUT/DELETE, file PUT, settings PUT), the four
-tracked-repo mutations (init, track, ignore, untrack), the two
-repository pushes, the plot standardization and `plot-standards` read,
-the four probe-plus-run routes (clean, run-tests, run-test-category,
-save-and-run-test), the seven AI-declaration saves, the six step-CRUD
-saves, the file upload, and project creation — whose duplicate-name
-probe, path validation, absence assertion and write now share ONE held
-lock, closing a check-then-write race two sessions could both pass.
-A run arriving while any of those holds the drain
-is now refused at dispatch and told which operation holds it, rather
-than queued — `_fsDescribeBlockingMutationWork` in `pipelineServer.py`,
-which does NOT offer the Kill button, because Kill stops a pipeline
-action and does nothing to a carrier worker.
+It prints every container-scoped route with its declaration, or
+`(awaiting)`. The counts used to be prose in this file and went stale
+four times in one session, because they change on every batch while the
+sentence does not. Two routes are `APIWebSocketRoute`s that
+`app.router.route_class` never governs, so the resolved population and
+the governed one differ by two; the command reports the governed one.
+The migration was scoped to mutating routes, so the awaiting list
+bottoms out at the read-only routes rather than empty.
 
 **There is no production observation point**: nothing
 under `vaibify/` records a carrier observation, so
