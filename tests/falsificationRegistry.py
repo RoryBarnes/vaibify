@@ -304,11 +304,14 @@ LIST_FALSIFICATIONS = [
             'testABlindSpotDispositionDiesWithItsCommandBuilder'
         ),
         source='tools/generateMutationInventory.py',
-        old="""            "sScopeFingerprint": (
-                _fsFingerprintNode(nodeScope) if nodeScope is not None
-                else _fsFingerprintNode(nodeCall)
+        old="""            "sScopeFingerprint": _fsFingerprintNode(
+                nodeScope if nodeScope is not None else nodeCall,
+                self.sModuleSource,
             ),""",
-        new="""            "sScopeFingerprint": _fsFingerprintNode(nodeCall),""",
+        new="""            "sScopeFingerprint": _fsFingerprintNode(
+                nodeCall,
+                self.sModuleSource,
+            ),""",
     ),
 
     # --- The capability record (plan rule R3) -------------------------

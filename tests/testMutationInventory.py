@@ -164,15 +164,17 @@ def moduleGenerator():
 
 def _flistScanSource(moduleGenerator, sSource, sPath="synthetic.py"):
     """Run the scanner over a synthetic module and return its rows."""
-    visitor = moduleGenerator._VisitorCallSites(sPath)
-    visitor.fnCollect(ast.parse(textwrap.dedent(sSource)))
+    sDedented = textwrap.dedent(sSource)
+    visitor = moduleGenerator._VisitorCallSites(sPath, sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     return visitor.listRows
 
 
 def _flistScanAcquisitions(moduleGenerator, sSource, sPath="synthetic.py"):
     """Run the scanner over a synthetic module and return its acquisitions."""
-    visitor = moduleGenerator._VisitorCallSites(sPath)
-    visitor.fnCollect(ast.parse(textwrap.dedent(sSource)))
+    sDedented = textwrap.dedent(sSource)
+    visitor = moduleGenerator._VisitorCallSites(sPath, sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     return visitor.listAcquisitions
 
 
@@ -785,12 +787,13 @@ def testAnUnrelatedRunMethodIsNotAProcessLaunch(moduleGenerator):
     Kills: matching a launcher by its method name without checking that
     the chain is rooted in the subprocess module.
     """
-    visitor = moduleGenerator._VisitorCallSites("probe.py")
-    visitor.fnCollect(ast.parse(textwrap.dedent("""
+    sDedented = textwrap.dedent("""
         def fnGo(runner, coroutine, saCommand):
             runner.run(saCommand)
             asyncio.run(coroutine)
-    """)))
+    """)
+    visitor = moduleGenerator._VisitorCallSites("probe.py", sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     assert visitor.listRows == [], (
         f"an unrelated run() was recorded as a process launch: "
         f"{[dictRow['sPrimitive'] for dictRow in visitor.listRows]}"
@@ -877,8 +880,9 @@ def testANestedFunctionsLocalCannotAnswerForItsParent(moduleGenerator):
             subprocess.run(listCommand)
         """
     )
-    visitor = moduleGenerator._VisitorCallSites("probe.py")
-    visitor.fnCollect(ast.parse(sSource))
+    sDedented = sSource
+    visitor = moduleGenerator._VisitorCallSites("probe.py", sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     assert [
         dictSite["sFunction"]
         for dictSite in visitor.listUnresolvedSubprocessSites
@@ -890,8 +894,9 @@ def testANestedFunctionsLocalCannotAnswerForItsParent(moduleGenerator):
 
 def _fnAssertUntraceableRatherThanClient(moduleGenerator, sSource):
     """Assert a source emits no row and one declared SDK blind spot."""
-    visitor = moduleGenerator._VisitorCallSites("probe.py")
-    visitor.fnCollect(ast.parse(textwrap.dedent(sSource)))
+    sDedented = textwrap.dedent(sSource)
+    visitor = moduleGenerator._VisitorCallSites("probe.py", sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     assert visitor.listRows == [], (
         f"a name that is not a Docker client was recorded as one: "
         f"{[row['sPrimitive'] for row in visitor.listRows]}"
@@ -989,8 +994,9 @@ def testTheScopeModelStillResolvesWhatItShould(moduleGenerator):
         ),
     }
     for sShape, sSource in dictExpected.items():
-        visitor = moduleGenerator._VisitorCallSites("probe.py")
-        visitor.fnCollect(ast.parse(sSource))
+        sDedented = sSource
+        visitor = moduleGenerator._VisitorCallSites("probe.py", sDedented)
+        visitor.fnCollect(ast.parse(sDedented))
         assert [row["sPrimitive"] for row in visitor.listRows] == [
             "docker rm"
         ], f"{sShape} no longer resolves"
@@ -1052,8 +1058,9 @@ def testABlindSpotDispositionDiesWithItsCommandBuilder(moduleGenerator):
     sAfter = sBefore.replace("fbuildGitCommand", "fbuildDockerDeleteCommand")
 
     def ftFingerprintOnly(sSource):
-        visitor = moduleGenerator._VisitorCallSites("probe.py")
-        visitor.fnCollect(ast.parse(sSource))
+        sDedented = sSource
+        visitor = moduleGenerator._VisitorCallSites("probe.py", sDedented)
+        visitor.fnCollect(ast.parse(sDedented))
         dictSite = visitor.listUnresolvedSubprocessSites[0]
         return (dictSite["sFingerprint"], dictSite["sScopeFingerprint"])
 
@@ -1226,13 +1233,14 @@ def testAnUnreadableCommandIsARowAndNotOnlyABlindSpot(moduleGenerator):
     Kills: recording an opaque launch as a blind spot without also
     emitting a row.
     """
-    visitor = moduleGenerator._VisitorCallSites("synthetic.py")
-    visitor.fnCollect(ast.parse(textwrap.dedent("""
+    sDedented = textwrap.dedent("""
         def fnExecuteCommand(sCommand, sWorkingDirectory):
             return subprocess.Popen(
                 sCommand, shell=True, cwd=sWorkingDirectory,
             )
-    """)))
+    """)
+    visitor = moduleGenerator._VisitorCallSites("synthetic.py", sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     assert [dictRow["sPrimitive"] for dictRow in visitor.listRows] == [
         moduleGenerator.S_PRIMITIVE_UNKNOWN_COMMAND
     ], (
@@ -1258,14 +1266,15 @@ def testANameAssignedTwiceIsNotGuessedAt(moduleGenerator):
     left to the blind-spot count alone, so declining to decode no longer
     removes a capability use from the record.
     """
-    visitor = moduleGenerator._VisitorCallSites("synthetic.py")
-    visitor.fnCollect(ast.parse(textwrap.dedent("""
+    sDedented = textwrap.dedent("""
         def fnAmbiguous(bFlag):
             saCommand = ["docker", "rm", "a"]
             if bFlag:
                 saCommand = ["git", "status"]
             subprocess.run(saCommand)
-    """)))
+    """)
+    visitor = moduleGenerator._VisitorCallSites("synthetic.py", sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     assert [dictRow["sPrimitive"] for dictRow in visitor.listRows] == [
         moduleGenerator.S_PRIMITIVE_UNKNOWN_COMMAND
     ], "the scan guessed which of two assignments was live"
@@ -1401,11 +1410,12 @@ def testAnUntraceableClientIsDeclaredRatherThanDropped(moduleGenerator):
     replaced; saying nothing would lose coverage to a precision fix. So
     the site joins the declared blind spot and its ratchet.
     """
-    visitor = moduleGenerator._VisitorCallSites("synthetic.py")
-    visitor.fnCollect(ast.parse(textwrap.dedent("""
+    sDedented = textwrap.dedent("""
         def fsDescribeImage(dockerClient, config):
             return dockerClient.images.get(config.sImageName)
-    """)))
+    """)
+    visitor = moduleGenerator._VisitorCallSites("synthetic.py", sDedented)
+    visitor.fnCollect(ast.parse(sDedented))
     assert visitor.listRows == []
     assert len(visitor.listUnresolvedSdkSites) == 1, (
         "an untraceable docker-py chain was silently dropped"

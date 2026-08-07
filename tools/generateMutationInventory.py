@@ -418,8 +418,11 @@ class _VisitorCallSites(ast.NodeVisitor):
       primitive at all.
     """
 
-    def __init__(self, sRelativePath):
+    def __init__(self, sRelativePath, sModuleSource=""):
         self.sRelativePath = sRelativePath
+        # The fingerprints are sliced from this, never regenerated
+        # from the tree -- see _fsFingerprintNode.
+        self.sModuleSource = sModuleSource
         self.listRows = []
         self.listAcquisitions = []
         self.listUnresolvedSubprocessSites = []
@@ -610,10 +613,12 @@ class _VisitorCallSites(ast.NodeVisitor):
             "sAcquisitionKind": sAcquisitionKind,
             "iOrdinal": 0,
             "iLine": nodeAcquisition.lineno,
-            "sFingerprint": _fsFingerprintNode(nodeAcquisition),
-            "sScopeFingerprint": (
-                _fsFingerprintNode(nodeScope) if nodeScope is not None
-                else _fsFingerprintNode(nodeAcquisition)
+            "sFingerprint": _fsFingerprintNode(
+                nodeAcquisition, self.sModuleSource,
+            ),
+            "sScopeFingerprint": _fsFingerprintNode(
+                nodeScope if nodeScope is not None else nodeAcquisition,
+                self.sModuleSource,
             ),
         }
         for sField in TUPLE_ACQUISITION_REVIEWER_FIELDS:
@@ -739,10 +744,12 @@ class _VisitorCallSites(ast.NodeVisitor):
             ),
             "iLine": nodeCall.lineno,
             "iOrdinal": 0,
-            "sFingerprint": _fsFingerprintNode(nodeCall),
-            "sScopeFingerprint": (
-                _fsFingerprintNode(nodeScope) if nodeScope is not None
-                else _fsFingerprintNode(nodeCall)
+            "sFingerprint": _fsFingerprintNode(
+                nodeCall, self.sModuleSource,
+            ),
+            "sScopeFingerprint": _fsFingerprintNode(
+                nodeScope if nodeScope is not None else nodeCall,
+                self.sModuleSource,
             ),
         }
 
@@ -760,7 +767,9 @@ class _VisitorCallSites(ast.NodeVisitor):
             "sPrimitive": sPrimitive,
             "sReferenceKind": sReferenceKind,
             "iOrdinal": 0,
-            "sFingerprint": _fsFingerprintNode(nodeReference),
+            "sFingerprint": _fsFingerprintNode(
+                nodeReference, self.sModuleSource,
+            ),
             "sAccess": sAccess,
             "bMutationCapable": (
                 sAccess in SET_MUTATION_CAPABLE_ACCESS
@@ -1378,20 +1387,51 @@ def _fsCalledName(nodeCall):
     return ""
 
 
-def _fsFingerprintNode(nodeReference):
-    """Return a stable digest of a reference's own source expression.
+def _fsFingerprintNode(nodeReference, sModuleSource):
+    """Return a digest of a reference's own source, sliced from the file.
 
-    Unparsed from the AST rather than sliced out of the file, so
-    reformatting and comment changes do not move it while a change to
-    the reference ITSELF -- a new argument, a different target -- does.
-    A row whose fingerprint moved has to be re-read; that is what the
-    fingerprint is for.
+    **The digest must depend on the researcher's code and on nothing
+    else.** This used to hash ``ast.unparse(node)``, which reads well --
+    it made the fingerprint immune to reformatting and comment edits --
+    and was wrong in a way only a version matrix could show.
+    ``ast.unparse`` REGENERATES source from the parse tree, and CPython
+    changes its formatting between releases: on Python 3.14 the same
+    unchanged functions unparsed differently, and 46 fingerprints moved
+    at once. A marker meant to answer "has the code this review depended
+    on been edited?" was also answering "are you on a different Python?",
+    which makes every manual disposition read as expired on one leg of
+    the matrix and teaches a reader to ignore it.
+
+    Slicing the file is the only construction whose stability does not
+    rest on CPython internals. The alternatives were considered and are
+    worse for this job:
+
+    * normalising the AST before hashing keeps format-independence, but
+      node FIELDS change between releases too (3.12 added
+      ``type_params``), so the projection needs updating every release
+      and fails silently -- drop a field and it stops noticing a real
+      change;
+    * tokenising and discarding comments looks version-stable and is
+      not: 3.12 rewrote f-string tokenisation (PEP 701), so any function
+      containing an f-string would differ across the supported range.
+
+    The cost is real and is the safe direction: reformatting a function
+    or editing a comment inside it now moves its scope fingerprint and
+    expires the disposition bound to it. That costs a re-read of code
+    somebody already reviewed. The failure it replaces cost the check
+    its meaning on an entire Python version.
     """
-    try:
-        sSource = ast.unparse(nodeReference)
-    except AttributeError:  # pragma: no cover - Python < 3.9
-        sSource = ast.dump(nodeReference)
-    return hashlib.sha256(sSource.encode("utf-8")).hexdigest()[:16]
+    sSegment = ast.get_source_segment(sModuleSource, nodeReference,
+                                      padded=True)
+    if sSegment is None:  # pragma: no cover - node without position info
+        # Never silently fall back to unparse: that would reintroduce
+        # the version dependence for exactly the nodes nobody notices.
+        raise RuntimeError(
+            "Cannot fingerprint a node with no source position; the "
+            "inventory's identity must come from the file, not from a "
+            "regenerated approximation."
+        )
+    return hashlib.sha256(sSegment.encode("utf-8")).hexdigest()[:16]
 
 
 def flistScanPackage():
@@ -1528,8 +1568,9 @@ def _tScanPackage():
         if "__pycache__" in pathModule.parts:
             continue
         sRelativePath = str(pathModule.relative_to(PATH_PACKAGE))
-        visitor = _VisitorCallSites(sRelativePath)
-        visitor.fnCollect(ast.parse(pathModule.read_text(encoding="utf-8")))
+        sModuleSource = pathModule.read_text(encoding="utf-8")
+        visitor = _VisitorCallSites(sRelativePath, sModuleSource)
+        visitor.fnCollect(ast.parse(sModuleSource))
         listRows.extend(visitor.listRows)
         listUnresolved.extend(visitor.listUnresolvedSubprocessSites)
         listUnresolved.extend(visitor.listUnresolvedSdkSites)
