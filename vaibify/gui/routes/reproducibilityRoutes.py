@@ -273,18 +273,18 @@ async def _fnRunVerificationWorker(
             _fdictRunReproductionSync, connectionDocker, sContainerId,
             dictWorkflow, sWorkflowPath, filesRepo,
         )
-    except (Exception, SystemExit) as exc:  # noqa: BLE001
+    except (Exception, SystemExit) as errorCaught:  # noqa: BLE001
         # SystemExit is caught too: it is not an Exception, so an
         # sys.exit() anywhere beneath the rerun would leave the task
         # done-with-exception, the phase stuck on "running", and no
         # attestation written — a silent hang, which is the one
         # outcome this worker must never produce.
-        logger.exception("L3 verification crashed: %s", exc)
+        logger.exception("L3 verification crashed: %s", errorCaught)
         dictResult = {
             "bPassed": False,
             "iOutputHashesMatched": 0,
             "iOutputHashesTotal": 0,
-            "listDivergedHashes": [f"verification crashed: {exc}"],
+            "listDivergedHashes": [f"verification crashed: {errorCaught}"],
             "sImageDigest": "",
             "sRunLogPath": "",
         }
@@ -315,8 +315,8 @@ async def _fdictCaptureProvenanceOrNone(
             fdictCaptureAiProvenanceStamp,
             dictWorkflow, filesRepo, sContainerId, connectionDocker,
         )
-    except Exception as exc:  # noqa: BLE001 — recorded as None, not raised
-        logger.error("AI-provenance capture failed: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — recorded as None, not raised
+        logger.error("AI-provenance capture failed: %s", errorCaught)
         return None
 
 
@@ -385,8 +385,8 @@ def _fnPersistAttestation(
     )
     try:
         fnWriteAttestation(filesRepo, dictAttestation)
-    except OSError as exc:
-        logger.error("Could not persist L3 attestation: %s", exc)
+    except OSError as errorCaught:
+        logger.error("Could not persist L3 attestation: %s", errorCaught)
 
 
 def _fnRegisterGenerateScript(app, dictCtx):
@@ -408,10 +408,10 @@ def _fnRegisterGenerateScript(app, dictCtx):
                 connectionDocker=dictCtx["docker"],
                 sContainerId=sContainerId,
             )
-        except OSError as exc:
+        except OSError as errorCaught:
             raise HTTPException(
-                500, f"Could not write reproduce.sh: {exc}",
-            ) from exc
+                500, f"Could not write reproduce.sh: {errorCaught}",
+            ) from errorCaught
         # The Level 3 check requires the script's hash IN the
         # manifest, so re-pin immediately — without this the check
         # stayed red after every generation until the next envelope
@@ -425,10 +425,10 @@ def _fnRegisterGenerateScript(app, dictCtx):
             await asyncio.to_thread(
                 manifestWriter.fnWriteManifest, filesRepo, dictWorkflow,
             )
-        except Exception as exc:
+        except Exception as errorCaught:
             logging.getLogger("vaibify").warning(
                 "reproduce.sh written but manifest re-pin failed: %s",
-                exc,
+                errorCaught,
             )
             bManifestRefreshed = False
         return {

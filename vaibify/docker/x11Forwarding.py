@@ -110,7 +110,7 @@ def _fbBundleFoundByMdfind(sBundleId):
     """Return True if mdfind locates a bundle with the given identifier."""
     sQuery = f"kMDItemCFBundleIdentifier == '{sBundleId}'"
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["mdfind", sQuery],
             capture_output=True,
             text=True,
@@ -118,8 +118,8 @@ def _fbBundleFoundByMdfind(sBundleId):
     except FileNotFoundError:
         return False
     return (
-        resultProcess.returncode == 0
-        and bool(resultProcess.stdout.strip())
+        processResult.returncode == 0
+        and bool(processResult.stdout.strip())
     )
 
 
@@ -231,13 +231,13 @@ def fnStartXquartz():
 def _fbProcessIsRunning(sProcessName):
     """Check whether a process with the given name is running."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["pgrep", "-x", sProcessName],
             capture_output=True,
         )
     except FileNotFoundError:
         return False
-    return resultProcess.returncode == 0
+    return processResult.returncode == 0
 
 
 def fnDisableX11Auth():

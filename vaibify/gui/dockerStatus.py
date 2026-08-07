@@ -27,11 +27,11 @@ def _fbCaffeinateRunning():
     """Return True if a caffeinate process is active for this user."""
     import subprocess
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["pgrep", "-u", str(os.getuid()), "-x", "caffeinate"],
             capture_output=True, timeout=2,
         )
-        return resultProcess.returncode == 0
+        return processResult.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 

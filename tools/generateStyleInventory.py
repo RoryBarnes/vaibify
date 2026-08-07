@@ -129,6 +129,11 @@ DICT_TIER_TWO_REGISTRY = {
     "error": {"Exception", "RuntimeError", "ValueError", "OSError"},
     "websocket": {"WebSocket"},
     "logger": {"Logger"},
+    "listdict": {"list", "List"},
+    "match": {"Match"},
+    "reservation": {"StartReservation"},
+    "supervisor": {"MutationSupervisor"},
+    "session": {"TerminalSession"},
     "app": {"FastAPI"},
     "datetime": {"datetime"},
     "file": {"IO", "TextIO", "BinaryIO", "TextIOWrapper"},
@@ -183,6 +188,7 @@ S_CLASS_YIELD = "legacy-yield"
 S_CLASS_LITERAL_RETURN = "legacy-literal-return"
 S_CLASS_RETURN_ANNOTATION = "legacy-return-annotation"
 S_CLASS_ANNOTATION_MISMATCH = "legacy-annotation-mismatch"
+S_CLASS_VARIABLE = "legacy-variable"
 LIST_DEBT_CLASSES = [
     S_CLASS_NAME,
     S_CLASS_FN_RETURN,
@@ -190,7 +196,13 @@ LIST_DEBT_CLASSES = [
     S_CLASS_LITERAL_RETURN,
     S_CLASS_RETURN_ANNOTATION,
     S_CLASS_ANNOTATION_MISMATCH,
+    S_CLASS_VARIABLE,
 ]
+
+# Binding names outside the naming contract by convention, not drift:
+# throwaways, the receiver pair, and the *args/**kwargs idiom Python
+# itself established.
+SET_VARIABLE_NAME_EXEMPTIONS = {"_", "__", "self", "cls", "args", "kwargs"}
 
 # Standing categories: rows with a stated reason, not debt. Only one
 # survives the strict doctrine (2026-08-06): a name a FOREIGN contract
@@ -287,13 +299,21 @@ def fsParseFunctionPrefix(sName):
 
 
 def fsParseVariablePrefix(sName):
-    """Return the vocabulary prefix a variable name claims, else None."""
+    """Return the vocabulary prefix a variable name claims, else None.
+
+    Composition rule (2026-08-06): a variable holding a function
+    carries "f" + the held function's own type run, so fbIsIdle holds
+    a bool-returning callable and fnStatusCallback a procedure.
+    """
     match = RX_VARIABLE_SHAPE.match(sName)
     if match is None:
         return None
     sPrefix = match.group(2)
     if sPrefix in SET_VARIABLE_PREFIXES:
         return sPrefix
+    if (sPrefix.startswith("f")
+            and sPrefix[1:] in DICT_ALL_AGREEMENT):
+        return "fn"
     return None
 
 
@@ -597,12 +617,37 @@ class StyleViolationScanner(ast.NodeVisitor):
         listArguments = (node.args.posonlyargs + node.args.args
                          + node.args.kwonlyargs)
         for nodeArgument in listArguments:
-            if nodeArgument.annotation is None:
-                continue
             sIdentity = (self.fsIdentity(node.name)
                          + f"::{nodeArgument.arg}")
+            self._fnCheckBindingName(sIdentity, nodeArgument.arg)
+            if nodeArgument.annotation is None:
+                continue
             self._fnCheckVariableAnnotation(
                 sIdentity, nodeArgument.arg, nodeArgument.annotation)
+
+    def _fnCheckBindingName(self, sIdentity, sName):
+        """Every binding carries a variable cast prefix (doctrine
+        2026-08-06); conventional exemptions and ALL_CAPS constants
+        aside, a name outside the vocabulary is drift."""
+        if sName in SET_VARIABLE_NAME_EXEMPTIONS:
+            return
+        if sName.isupper() or sName.lstrip("_").isupper():
+            return
+        if RX_DUNDER.match(sName):
+            return
+        if fsParseVariablePrefix(sName) is None:
+            self.fnRecord(sIdentity, S_CLASS_VARIABLE,
+                          "binding name carries no variable cast prefix")
+
+    def visit_Name(self, node):
+        if isinstance(node.ctx, ast.Store):
+            self._fnCheckBindingName(self.fsIdentity(node.id), node.id)
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node):
+        if node.name:
+            self._fnCheckBindingName(self.fsIdentity(node.name), node.name)
+        self.generic_visit(node)
 
     def visit_AnnAssign(self, node):
         if isinstance(node.target, ast.Name):

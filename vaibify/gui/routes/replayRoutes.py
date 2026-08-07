@@ -311,13 +311,13 @@ def _fnReplaceRootWithSymlink(dictCtx, sContainerId, dictWorkflow, dictBody):
         + fsShellQuote(S_PROJECT_CONTEXT_RELATIVE_PATH)
         + " " + fsShellQuote(sBasename)
     )
-    resultExec = dictCtx["docker"].ftRunInContainerStreamed(
+    tExecResult = dictCtx["docker"].ftRunInContainerStreamed(
         sContainerId, sCommand,
     )
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         raise HTTPException(
             500, "Adopted the content, but replacing the root file "
-            "with a symlink failed: " + resultExec.sStderr,
+            "with a symlink failed: " + tExecResult.sStderr,
         )
 
 

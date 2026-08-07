@@ -1118,14 +1118,14 @@ def _ftRunHostLsRemote(sProjectId, sAskpass):
     dictEnv = os.environ.copy()
     dictEnv["GIT_ASKPASS"] = sAskpass
     dictEnv["GIT_TERMINAL_PROMPT"] = "0"
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["git"]
         + list(LIST_GIT_CREDENTIAL_ISOLATION_CONFIG)
         + ["ls-remote", sUrl, "HEAD"],
         capture_output=True, text=True, env=dictEnv,
     )
-    sDetail = fsRedactStderr((resultProcess.stderr or "").strip())
-    return (resultProcess.returncode == 0, sDetail)
+    sDetail = fsRedactStderr((processResult.stderr or "").strip())
+    return (processResult.returncode == 0, sDetail)
 
 
 def _fnRemovePath(sPath):
@@ -1383,8 +1383,8 @@ def _fsBuildTestMarkerScript(
         "import re\n"
         "def _fsExtractHash(sPath):\n"
         "    try:\n"
-        "        with open(sPath) as fh:\n"
-        "            for sLine in fh:\n"
+        "        with open(sPath) as fileHandle:\n"
+        "            for sLine in fileHandle:\n"
         '                m = re.match(r"^# vaibify-template-hash:'
         ' ([0-9a-f]+)", sLine)\n'
         "                if m: return m.group(1)\n"
@@ -1412,8 +1412,8 @@ def _fsBuildTestMarkerScript(
         '        R["missingConftest"].append(d)\n'
         "    else:\n"
         "        try:\n"
-        "            with open(sConftestPath) as fh:\n"
-        "                sConftestSource = fh.read()\n"
+        "            with open(sConftestPath) as fileHandle:\n"
+        "                sConftestSource = fileHandle.read()\n"
         "        except Exception:\n"
         "            sConftestSource = \"\"\n"
         '        if "_PROJECT_REPO" not in sConftestSource:\n'

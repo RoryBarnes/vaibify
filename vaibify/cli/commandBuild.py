@@ -220,16 +220,16 @@ def _fsResolveBaseImageDigest(config):
     if not sBaseImage:
         return ""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "image", "inspect",
              "--format", "{{.RepoDigests}}", sBaseImage],
             capture_output=True, text=True, timeout=30,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return ""
-    return _fsFirstRepoDigest(resultProcess.stdout)
+    return _fsFirstRepoDigest(processResult.stdout)
 
 
 def _fsFirstRepoDigest(sRawOutput):
@@ -503,13 +503,13 @@ def _fsGitRemoteUrl(sDirectory):
     """Return the git remote origin URL, or empty string."""
     import subprocess
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["git", "-C", sDirectory, "remote",
              "get-url", "origin"],
             capture_output=True, text=True, timeout=5,
         )
-        if resultProcess.returncode == 0:
-            return resultProcess.stdout.strip()
+        if processResult.returncode == 0:
+            return processResult.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     return ""
@@ -519,13 +519,13 @@ def _fsGitBranch(sDirectory):
     """Return the current git branch, defaulting to main."""
     import subprocess
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["git", "-C", sDirectory, "rev-parse",
              "--abbrev-ref", "HEAD"],
             capture_output=True, text=True, timeout=5,
         )
-        if resultProcess.returncode == 0:
-            return resultProcess.stdout.strip()
+        if processResult.returncode == 0:
+            return processResult.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     return "main"
@@ -680,7 +680,7 @@ def fsHostArch():
 def fsDockerVmArch():
     """Return the canonical Docker VM architecture, '' on any error."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "info", "--format", "{{.Architecture}}"],
             capture_output=True,
             text=True,
@@ -688,9 +688,9 @@ def fsDockerVmArch():
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return ""
-    return _fsNormalizeArch(resultProcess.stdout)
+    return _fsNormalizeArch(processResult.stdout)
 
 
 def _fsArchRemediation():
@@ -754,7 +754,7 @@ _I_DOCKER_DISK_WARN_BYTES = 50 * (2 ** 30)
 def _fiDockerDfBytes():
     """Return total bytes used reported by `docker system df`, or -1."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "system", "df", "--format", "{{json .}}"],
             capture_output=True,
             text=True,
@@ -762,9 +762,9 @@ def _fiDockerDfBytes():
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return -1
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return -1
-    return _fiSumDfSizeBytes(resultProcess.stdout)
+    return _fiSumDfSizeBytes(processResult.stdout)
 
 
 def _fiParseDfRowBytes(sLine):
@@ -868,7 +868,7 @@ _I_DOCKER_MEMORY_MIN_BYTES = 4 * (2 ** 30)
 def _fiDockerVmMemoryBytes():
     """Return Docker VM total memory in bytes, or -1 on any error."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "info", "--format", "{{.MemTotal}}"],
             capture_output=True,
             text=True,
@@ -876,9 +876,9 @@ def _fiDockerVmMemoryBytes():
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return -1
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return -1
-    sValue = (resultProcess.stdout or "").strip()
+    sValue = (processResult.stdout or "").strip()
     try:
         return int(sValue)
     except ValueError:

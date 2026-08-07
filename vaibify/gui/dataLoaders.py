@@ -216,10 +216,10 @@ def _ffExtractDataframeValue(dfData, dictAccess, sFullPath=""):
         listIndices = dictAccess.get("listIndices", [-1])
         iRow = listIndices[0] if listIndices else -1
         return float(dfData[sColumn].iloc[iRow])
-    except (KeyError, IndexError, ValueError, TypeError) as exc:
+    except (KeyError, IndexError, ValueError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access dataframe column in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access dataframe column in {sFullPath}: {errorCaught}",
+        ) from errorCaught
 
 
 def _ffNavigateJsonValue(dictData, dictAccess):
@@ -277,8 +277,8 @@ def _ffLoadTabularWithComments(
     """Load a value from a tab-delimited file with comment/header lines."""
     listHeaders = []
     listRows = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             if sLine.startswith(sCommentPrefix):
                 continue
             if sLine.startswith(sHeaderPrefix) and not listHeaders:
@@ -294,10 +294,10 @@ def _ffLoadNumpyValue(sFullPath, dictAccess):
     """Load a value from a numpy file."""
     try:
         daData = np.load(sFullPath, allow_pickle=False)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as npy: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as npy: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daData, dictAccess)
 
 
@@ -305,10 +305,10 @@ def _ffLoadNpzValue(sFullPath, dictAccess):
     """Load a value from a numpy .npz archive."""
     try:
         archiveNpz = np.load(sFullPath, allow_pickle=False)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as npz: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as npz: {errorCaught}",
+        ) from errorCaught
     sKey = dictAccess.get("key", list(archiveNpz.files)[0])
     daData = archiveNpz[sKey]
     return _ffExtractArrayValue(daData, dictAccess)
@@ -317,8 +317,8 @@ def _ffLoadNpzValue(sFullPath, dictAccess):
 def _ffLoadKeyvalueValue(sFullPath, dictAccess):
     """Load a value from a key = value text file."""
     sTargetKey = dictAccess.get("key", "")
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             sStripped = sLine.strip()
             if not sStripped or sStripped.startswith("#"):
                 continue
@@ -338,26 +338,26 @@ def _ffLoadJsonValue(sFullPath, dictAccess):
     convention), it is parsed a second time before navigation.
     """
     try:
-        with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-            dictData = json.load(fh)
-    except json.JSONDecodeError as exc:
+        with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+            dictData = json.load(fileHandle)
+    except json.JSONDecodeError as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as json: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as json: {errorCaught}",
+        ) from errorCaught
     if isinstance(dictData, str):
         try:
             dictData = json.loads(dictData)
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError as errorCaught:
             raise ValueError(
                 f"Failed to re-parse doubly-serialised json in "
-                f"{sFullPath}: {exc}",
-            ) from exc
+                f"{sFullPath}: {errorCaught}",
+            ) from errorCaught
     try:
         return _ffNavigateJsonValue(dictData, dictAccess)
-    except (KeyError, IndexError, TypeError) as exc:
+    except (KeyError, IndexError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access json path in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access json path in {sFullPath}: {errorCaught}",
+        ) from errorCaught
 
 
 def _ffLoadCsvValue(sFullPath, dictAccess):
@@ -379,14 +379,14 @@ def _ffLoadCsvValue(sFullPath, dictAccess):
         if sAggregate and sColumn:
             return _ffLoadCsvAggregate(sFullPath, sColumn, sAggregate)
         return _ffLoadCsvByRowIndex(sFullPath, sColumn, iIndex)
-    except (KeyError, IndexError, ValueError) as exc:
+    except (KeyError, IndexError, ValueError) as errorCaught:
         raise ValueError(
-            f"Failed to access csv column in {sFullPath}: {exc}",
-        ) from exc
-    except csv.Error as exc:
+            f"Failed to access csv column in {sFullPath}: {errorCaught}",
+        ) from errorCaught
+    except csv.Error as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as csv: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as csv: {errorCaught}",
+        ) from errorCaught
 
 
 def _ftOpenCsvReader(sFullPath):
@@ -481,10 +481,10 @@ def _ffLoadHdf5Value(sFullPath, dictAccess):
         with h5py.File(sFullPath, "r") as fileHdf5:
             datasetHdf5 = fileHdf5[sDataset]
             return _ffExtractHdf5Value(datasetHdf5, dictAccess)
-    except (OSError, KeyError) as exc:
+    except (OSError, KeyError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as hdf5: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as hdf5: {errorCaught}",
+        ) from errorCaught
 
 
 def _ffExtractHdf5Value(datasetHdf5, dictAccess):
@@ -511,12 +511,12 @@ def _ffLoadWhitespaceValue(sFullPath, dictAccess):
     listIndices = dictAccess.get("listIndices", [-1])
     iIndex = listIndices[0] if listIndices else -1
     try:
-        with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-            listRawLines = fh.readlines()
-    except OSError as exc:
+        with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+            listRawLines = fileHandle.readlines()
+    except OSError as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as whitespace: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as whitespace: {errorCaught}",
+        ) from errorCaught
     listDataLines = _flistFilterDataLines(listRawLines)
     sHeader, listDataRows = _ftSplitHeaderAndData(listDataLines)
     listColumns = sHeader.split() if sHeader else []
@@ -526,10 +526,10 @@ def _ffLoadWhitespaceValue(sFullPath, dictAccess):
             iColumn = listColumns.index(sColumn)
         else:
             iColumn = listIndices[1] if len(listIndices) > 1 else 0
-    except ValueError as exc:
+    except ValueError as errorCaught:
         raise ValueError(
             f"Column {sColumn!r} not found in {sFullPath}",
-        ) from exc
+        ) from errorCaught
     sAggregate = dictAccess.get("sAggregate")
     if sAggregate:
         daValues = np.array([float(r[iColumn]) for r in listRows])
@@ -540,14 +540,14 @@ def _ffLoadWhitespaceValue(sFullPath, dictAccess):
 def _ffLoadJsonlValue(sFullPath, dictAccess):
     """Load a value from a JSON Lines file."""
     try:
-        with open(sFullPath, encoding="utf-8", errors="replace") as fh:
+        with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
             listRecords = [
-                json.loads(sLine) for sLine in fh if sLine.strip()
+                json.loads(sLine) for sLine in fileHandle if sLine.strip()
             ]
-    except json.JSONDecodeError as exc:
+    except json.JSONDecodeError as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as jsonl: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as jsonl: {errorCaught}",
+        ) from errorCaught
     sKey = dictAccess.get("key", "")
     sAggregate = dictAccess.get("sAggregate")
     try:
@@ -559,10 +559,10 @@ def _ffLoadJsonlValue(sFullPath, dictAccess):
         if sKey:
             return float(listRecords[iRow][sKey])
         return float(listRecords[iRow])
-    except (KeyError, IndexError, TypeError) as exc:
+    except (KeyError, IndexError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access jsonl data in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access jsonl data in {sFullPath}: {errorCaught}",
+        ) from errorCaught
 
 
 def _ffLoadExcelValue(sFullPath, dictAccess):
@@ -576,10 +576,10 @@ def _ffLoadExcelValue(sFullPath, dictAccess):
         sheet = workbook.active
         listRows = list(sheet.iter_rows(values_only=True))
         workbook.close()
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as excel: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as excel: {errorCaught}",
+        ) from errorCaught
     try:
         listHeaders = [
             str(c) if c else f"col{i}"
@@ -594,10 +594,10 @@ def _ffLoadExcelValue(sFullPath, dictAccess):
         listIndices = dictAccess.get("listIndices", [-1])
         iRow = listIndices[0] if listIndices else -1
         return float(listRows[1:][iRow][iCol])
-    except (KeyError, IndexError, ValueError, TypeError) as exc:
+    except (KeyError, IndexError, ValueError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access excel data in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access excel data in {sFullPath}: {errorCaught}",
+        ) from errorCaught
 
 
 def _ffLoadFitsValue(sFullPath, dictAccess):
@@ -619,10 +619,10 @@ def _ffLoadFitsValue(sFullPath, dictAccess):
                 daData = np.array(hdu.data[sColumn], dtype=float)
             else:
                 daData = np.array(hdu.data, dtype=float).flatten()
-    except (OSError, KeyError, TypeError, IndexError) as exc:
+    except (OSError, KeyError, TypeError, IndexError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as fits: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as fits: {errorCaught}",
+        ) from errorCaught
     if sAggregate:
         return _ffApplyAggregate(daData, sAggregate)
     iDataIdx = listIndices[1] if len(listIndices) > 1 else 0
@@ -637,20 +637,20 @@ def _ffLoadMatlabValue(sFullPath, dictAccess):
         raise ImportError("scipy is required to load MATLAB files")
     try:
         dictMat = loadmat(sFullPath)
-    except (NotImplementedError, OSError) as exc:
+    except (NotImplementedError, OSError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as matlab: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as matlab: {errorCaught}",
+        ) from errorCaught
     sKey = dictAccess.get("key", "")
     if not sKey:
         listKeys = [k for k in dictMat if not k.startswith("__")]
         sKey = listKeys[0]
     try:
         daData = np.array(dictMat[sKey], dtype=float).flatten()
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access matlab variable in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access matlab variable in {sFullPath}: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daData, dictAccess)
 
 
@@ -662,17 +662,17 @@ def _ffLoadParquetValue(sFullPath, dictAccess):
         raise ImportError("pyarrow is required to load Parquet files")
     try:
         table = pq.read_table(sFullPath)
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as parquet: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as parquet: {errorCaught}",
+        ) from errorCaught
     try:
         sColumn = dictAccess.get("column", table.column_names[0])
         daValues = table.column(sColumn).to_numpy().astype(float)
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access parquet column in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access parquet column in {sFullPath}: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daValues, dictAccess)
 
 
@@ -684,19 +684,19 @@ def _ffLoadImageValue(sFullPath, dictAccess):
         raise ImportError("Pillow is required to load image files")
     try:
         daPixels = np.array(Image.open(sFullPath), dtype=float)
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as image: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as image: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daPixels.flatten(), dictAccess)
 
 
 def _ffLoadFastaValue(sFullPath, dictAccess):
     """Load a value from a FASTA file (sequence length)."""
     listLengths = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
         iCurrentLength = 0
-        for sLine in fh:
+        for sLine in fileHandle:
             if sLine.startswith(">"):
                 if iCurrentLength > 0:
                     listLengths.append(iCurrentLength)
@@ -717,8 +717,8 @@ def _ffLoadFastqValue(sFullPath, dictAccess):
     """Load a value from a FASTQ file (sequence length or quality)."""
     listLengths = []
     listQualities = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listLines = fh.readlines()
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listLines = fileHandle.readlines()
     for i in range(0, len(listLines) - 3, 4):
         sSeq = listLines[i + 1].strip()
         sQual = listLines[i + 3].strip()
@@ -748,8 +748,8 @@ def _ffLoadBedValue(sFullPath, dictAccess):
         "chrom", "chromStart", "chromEnd", "name", "score", "strand",
     ]
     listRows = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             if sLine.strip() and not sLine.startswith("#"):
                 listRows.append(sLine.strip().split("\t"))
     return _ffExtractTabularValue(listHeaders, listRows, dictAccess)
@@ -762,8 +762,8 @@ def _ffLoadGffValue(sFullPath, dictAccess):
         "score", "strand", "phase", "attributes",
     ]
     listRows = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             if sLine.strip() and not sLine.startswith("#"):
                 listRows.append(sLine.strip().split("\t"))
     return _ffExtractTabularValue(listHeaders, listRows, dictAccess)
@@ -776,8 +776,8 @@ def _ffLoadSamValue(sFullPath, dictAccess):
         "RNEXT", "PNEXT", "TLEN", "SEQ", "QUAL",
     ]
     listRows = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             if not sLine.startswith("@") and sLine.strip():
                 listRows.append(sLine.strip().split("\t"))
     return _ffExtractTabularValue(listHeaders, listRows, dictAccess)
@@ -785,8 +785,8 @@ def _ffLoadSamValue(sFullPath, dictAccess):
 
 def _ffLoadSyslogValue(sFullPath, dictAccess):
     """Load a value from a syslog file (line count)."""
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listLines = [s for s in fh if s.strip()]
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listLines = [s for s in fileHandle if s.strip()]
     listIndices = dictAccess.get("listIndices", [0])
     return float(
         len(listLines) if listIndices == [0] else listIndices[0],
@@ -795,8 +795,8 @@ def _ffLoadSyslogValue(sFullPath, dictAccess):
 
 def _ffLoadCefValue(sFullPath, dictAccess):
     """Load a value from a CEF file (record count)."""
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listRecords = [s for s in fh if s.strip().startswith("CEF:")]
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listRecords = [s for s in fileHandle if s.strip().startswith("CEF:")]
     listIndices = dictAccess.get("listIndices", [0])
     return float(
         len(listRecords) if listIndices == [0] else listIndices[0],
@@ -805,8 +805,8 @@ def _ffLoadCefValue(sFullPath, dictAccess):
 
 def _ffLoadFixedwidthValue(sFullPath, dictAccess):
     """Load a value from a fixed-width text file."""
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listRawLines = fh.readlines()
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listRawLines = fileHandle.readlines()
     listDataLines = [s for s in listRawLines if s.strip()]
     if not listDataLines:
         raise ValueError("Empty fixed-width file")
@@ -820,8 +820,8 @@ def _ffLoadFixedwidthValue(sFullPath, dictAccess):
 
 def _ffLoadMultitableValue(sFullPath, dictAccess):
     """Load a value from a multi-table text file."""
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        sContent = fh.read()
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        sContent = fileHandle.read()
     listSections = re.split(r"\n\s*\n|\n[=\-]{3,}\n", sContent)
     listSections = [s.strip() for s in listSections if s.strip()]
     iSection = dictAccess.get("iSection", 0)
@@ -852,10 +852,10 @@ def _ffLoadBamValue(sFullPath, dictAccess):
         raise ImportError("pysam is required to load BAM files")
     try:
         samfile = pysam.AlignmentFile(sFullPath, "rb")
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as bam: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as bam: {errorCaught}",
+        ) from errorCaught
     listValues = []
     sKey = dictAccess.get("key", "mapq")
     for read in samfile.fetch(until_eof=True):
@@ -878,10 +878,10 @@ def _ffLoadFortranValue(sFullPath, dictAccess):
         )
     try:
         fortranFile = FortranFile(sFullPath, "r")
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as fortran: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as fortran: {errorCaught}",
+        ) from errorCaught
     listRecords = []
     try:
         while True:
@@ -905,10 +905,10 @@ def _ffLoadSpssValue(sFullPath, dictAccess):
         raise ImportError("pyreadstat is required to load SPSS files")
     try:
         dfData, _ = pyreadstat.read_sav(sFullPath)
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as spss: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as spss: {errorCaught}",
+        ) from errorCaught
     return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
@@ -920,10 +920,10 @@ def _ffLoadStataValue(sFullPath, dictAccess):
         raise ImportError("pyreadstat is required to load Stata files")
     try:
         dfData, _ = pyreadstat.read_dta(sFullPath)
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as stata: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as stata: {errorCaught}",
+        ) from errorCaught
     return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
@@ -935,10 +935,10 @@ def _ffLoadSasValue(sFullPath, dictAccess):
         raise ImportError("pyreadstat is required to load SAS files")
     try:
         dfData, _ = pyreadstat.read_sas7bdat(sFullPath)
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as sas: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as sas: {errorCaught}",
+        ) from errorCaught
     return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
 
 
@@ -950,10 +950,10 @@ def _ffLoadRdataValue(sFullPath, dictAccess):
         raise ImportError("pyreadr is required to load R data files")
     try:
         dictFrames = pyreadr.read_r(sFullPath)
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as rdata: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as rdata: {errorCaught}",
+        ) from errorCaught
     sKey = dictAccess.get("key", list(dictFrames.keys())[0])
     dfData = dictFrames[sKey]
     return _ffExtractDataframeValue(dfData, dictAccess, sFullPath)
@@ -968,17 +968,17 @@ def _ffLoadVotableValue(sFullPath, dictAccess):
     try:
         votable = votableParse(sFullPath)
         table = votable.get_first_table().to_table()
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as votable: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as votable: {errorCaught}",
+        ) from errorCaught
     try:
         sColumn = dictAccess.get("column", table.colnames[0])
         daValues = np.array(table[sColumn], dtype=float)
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access votable column in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access votable column in {sFullPath}: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daValues, dictAccess)
 
 
@@ -992,17 +992,17 @@ def _ffLoadIpacValue(sFullPath, dictAccess):
         )
     try:
         table = astropyAscii.read(sFullPath, format="ipac")
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as ipac: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as ipac: {errorCaught}",
+        ) from errorCaught
     try:
         sColumn = dictAccess.get("column", table.colnames[0])
         daValues = np.array(table[sColumn], dtype=float)
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access ipac column in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access ipac column in {sFullPath}: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daValues, dictAccess)
 
 
@@ -1014,10 +1014,10 @@ def _ffLoadPcapValue(sFullPath, dictAccess):
         raise ImportError("scapy is required to load PCAP files")
     try:
         listPackets = rdpcap(sFullPath)
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as pcap: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as pcap: {errorCaught}",
+        ) from errorCaught
     listLengths = [float(len(p)) for p in listPackets]
     daValues = np.array(listLengths, dtype=float)
     return _ffExtractArrayValue(daValues, dictAccess)
@@ -1031,19 +1031,19 @@ def _ffLoadVtkValue(sFullPath, dictAccess):
         raise ImportError("pyvista is required to load VTK files")
     try:
         mesh = pyvista.read(sFullPath)
-    except (FileNotFoundError, Exception) as exc:
+    except (FileNotFoundError, Exception) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as vtk: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as vtk: {errorCaught}",
+        ) from errorCaught
     sKey = dictAccess.get("key", "")
     if not sKey and mesh.array_names:
         sKey = mesh.array_names[0]
     try:
         daData = np.array(mesh[sKey], dtype=float).flatten()
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access vtk array in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access vtk array in {sFullPath}: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daData, dictAccess)
 
 
@@ -1054,10 +1054,10 @@ def _ffLoadCgnsValue(sFullPath, dictAccess):
     try:
         with h5py.File(sFullPath, "r") as fileHdf5:
             daData = np.array(fileHdf5[sDataset])
-    except (OSError, KeyError) as exc:
+    except (OSError, KeyError) as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as cgns: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as cgns: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daData.flatten(), dictAccess)
 
 
@@ -1071,14 +1071,14 @@ def _ffLoadSafetensorsValue(sFullPath, dictAccess):
         )
     sKey = dictAccess.get("key", "")
     try:
-        with safe_open(sFullPath, framework="numpy") as fh:
+        with safe_open(sFullPath, framework="numpy") as fileHandle:
             if not sKey:
-                sKey = list(fh.keys())[0]
-            daData = fh.get_tensor(sKey).astype(float).flatten()
-    except Exception as exc:
+                sKey = list(fileHandle.keys())[0]
+            daData = fileHandle.get_tensor(sKey).astype(float).flatten()
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as safetensors: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as safetensors: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daData, dictAccess)
 
 
@@ -1092,10 +1092,10 @@ def _ffLoadTfrecordValue(sFullPath, dictAccess):
         )
     try:
         listRecords = list(tfrecord_iterator(sFullPath))
-    except Exception as exc:
+    except Exception as errorCaught:
         raise ValueError(
-            f"Failed to load {sFullPath} as tfrecord: {exc}",
-        ) from exc
+            f"Failed to load {sFullPath} as tfrecord: {errorCaught}",
+        ) from errorCaught
     sKey = dictAccess.get("key", "")
     try:
         if sKey and listRecords:
@@ -1104,10 +1104,10 @@ def _ffLoadTfrecordValue(sFullPath, dictAccess):
             )
         else:
             daValues = np.array([float(len(r)) for r in listRecords])
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError) as errorCaught:
         raise ValueError(
-            f"Failed to access tfrecord key in {sFullPath}: {exc}",
-        ) from exc
+            f"Failed to access tfrecord key in {sFullPath}: {errorCaught}",
+        ) from errorCaught
     return _ffExtractArrayValue(daValues, dictAccess)
 
 
@@ -1212,8 +1212,8 @@ def fsReadLoaderSource():
     test template without duplicating the loader code.
     """
     sSourcePath = str(pathlib.Path(__file__))
-    with open(sSourcePath, encoding="utf-8") as fh:
-        sFullSource = fh.read()
+    with open(sSourcePath, encoding="utf-8") as fileHandle:
+        sFullSource = fileHandle.read()
     sBeginMarker = "# -- begin loader source"
     sEndMarker = "# -- end loader source"
     iStart = sFullSource.index(sBeginMarker)

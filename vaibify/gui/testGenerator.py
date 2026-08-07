@@ -276,10 +276,10 @@ def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
         connectionDocker.fnWriteFile(
             sContainerId, sFilePath, sCode.encode("utf-8"),
         )
-    except Exception as exc:
+    except Exception as errorCaught:
         raise RuntimeError(
-            f"Failed to write test file {sFilePath}: {exc}"
-        ) from exc
+            f"Failed to write test file {sFilePath}: {errorCaught}"
+        ) from errorCaught
     sFilename = posixpath.basename(sFilePath)
     return {
         "sFilePath": sFilePath,

@@ -99,9 +99,9 @@ _DICT_KNOWN_ERROR_PATTERNS = {
 }
 
 
-def fsSanitizeExceptionForClient(exc):
+def fsSanitizeExceptionForClient(errorCaught):
     """Return a user-safe error message without leaking internal paths."""
-    sRaw = str(exc)
+    sRaw = str(errorCaught)
     for sPattern, sMessage in _DICT_KNOWN_ERROR_PATTERNS.items():
         if sPattern.lower() in sRaw.lower():
             return sMessage
@@ -691,8 +691,8 @@ async def _fnDispatchSelected(
     )
 
 
-def _fbExceptionIsWsClosed(exc):
-    """Return True iff ``exc`` signals the WebSocket has already closed.
+def _fbExceptionIsWsClosed(errorCaught):
+    """Return True iff ``errorCaught`` signals the WebSocket has already closed.
 
     A closed browser tab, overnight network blip, or background-tab
     throttle used to crash long-running pipelines through the streaming
@@ -701,11 +701,11 @@ def _fbExceptionIsWsClosed(exc):
     callback boundary. Callers drop the chunk and continue the run;
     reconnecting clients catch up via ``pipelineState`` polls.
     """
-    if isinstance(exc, WebSocketDisconnect):
+    if isinstance(errorCaught, WebSocketDisconnect):
         return True
-    if not isinstance(exc, RuntimeError):
+    if not isinstance(errorCaught, RuntimeError):
         return False
-    sMessage = str(exc).lower()
+    sMessage = str(errorCaught).lower()
     return (
         "websocket.send" in sMessage
         or "websocket.close" in sMessage
@@ -728,15 +728,15 @@ def ffBuildResilientWsCallback(websocket):
             return
         try:
             await websocket.send_json(dictEvent)
-        except Exception as exc:
-            if not _fbExceptionIsWsClosed(exc):
+        except Exception as errorCaught:
+            if not _fbExceptionIsWsClosed(errorCaught):
                 raise
             dictState["bWsClosed"] = True
             logger.warning(
                 "WebSocket closed mid-run; runner continues. "
                 "Reconnecting clients reconcile via pipelineState. "
                 "Trigger: %s",
-                exc,
+                errorCaught,
             )
     return fnCallback
 
@@ -923,8 +923,8 @@ def _fnRecordDispatchAttribution(
             ),
             dictWorkflow, "pipeline", "hub", sAction,
         )
-    except Exception as exc:  # noqa: BLE001 — never block a run
-        logger.warning("Dispatch attribution failed: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — never block a run
+        logger.warning("Dispatch attribution failed: %s", errorCaught)
 
 
 async def _fnSafeDispatch(
@@ -953,9 +953,9 @@ async def _fnSafeDispatch(
             dictWorkflowPathCache, sWorkflowDirectory,
             fnCallback, dictInteractive=dictInteractive,
         )
-    except Exception as exc:
+    except Exception as errorCaught:
         logger.error(
-            "Pipeline action '%s' failed: %s", sAction, exc,
+            "Pipeline action '%s' failed: %s", sAction, errorCaught,
             exc_info=True,
             extra={"sContainerId": sContainerId},
         )
@@ -963,7 +963,7 @@ async def _fnSafeDispatch(
             await fnCallback({
                 "sType": "failed",
                 "iExitCode": 1,
-                "sMessage": fsSanitizeExceptionForClient(exc),
+                "sMessage": fsSanitizeExceptionForClient(errorCaught),
             })
         except Exception:
             pass
@@ -1689,10 +1689,10 @@ def _fnCheckSupervisedIntervalAtConnect(
         dictSupervision["sLastManifestDigest"] = sLiveDigest
         dictProvenance["dictSupervision"] = dictSupervision
         dictCtx["save"](sContainerId, dictWorkflow)
-    except Exception as exc:  # noqa: BLE001 — connect must survive
+    except Exception as errorCaught:  # noqa: BLE001 — connect must survive
         logger.warning(
             "Supervised interval check failed for %s: %s",
-            sContainerId, exc,
+            sContainerId, errorCaught,
         )
 
 
@@ -2353,14 +2353,14 @@ def _fnRegisterLastResortExceptionHandler(app):
     from fastapi.responses import JSONResponse
 
     @app.exception_handler(Exception)
-    async def fresponseHandleUnexpectedRouteException(request, exc):
+    async def fresponseHandleUnexpectedRouteException(request, errorCaught):
         logger.error(
             "Unhandled exception on %s %s",
-            request.method, request.url.path, exc_info=exc,
+            request.method, request.url.path, exc_info=errorCaught,
         )
         return JSONResponse(
             status_code=500,
-            content={"detail": fsSanitizeExceptionForClient(exc)},
+            content={"detail": fsSanitizeExceptionForClient(errorCaught)},
         )
 
 

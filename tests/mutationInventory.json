@@ -27,7 +27,7 @@
       "sFile": "cli/commandBuild.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fsGitBranch",
-      "sScopeFingerprint": "3ef68c38098f8fbf"
+      "sScopeFingerprint": "bc46ebcaf627b059"
     },
     {
       "iLine": 504,
@@ -40,7 +40,7 @@
       "sFile": "cli/commandBuild.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fsGitRemoteUrl",
-      "sScopeFingerprint": "538029816b3cafef"
+      "sScopeFingerprint": "b5a3e9e3a4227cd1"
     },
     {
       "iLine": 27,
@@ -196,7 +196,7 @@
       "sFile": "containerImage/vaibifyDo.py",
       "sFingerprint": "b2e7229682200a98",
       "sScope": "fnEnableTcpKeepalive",
-      "sScopeFingerprint": "db66685eb3e87d0a"
+      "sScopeFingerprint": "65756b3303a3c12e"
     },
     {
       "iLine": 4,
@@ -287,7 +287,7 @@
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fnEnsureDockerHost",
-      "sScopeFingerprint": "3a5b326cc5cba4b7"
+      "sScopeFingerprint": "0e9c81cb8cf655ef"
     },
     {
       "iLine": 117,
@@ -404,7 +404,7 @@
       "sFile": "gui/dockerStatus.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fbCaffeinateRunning",
-      "sScopeFingerprint": "19097fe1a0e03ff7"
+      "sScopeFingerprint": "e553be4e11c6121f"
     },
     {
       "iLine": 66,
@@ -547,7 +547,7 @@
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fbDockerContainerExists",
-      "sScopeFingerprint": "080bd17dd03730e2"
+      "sScopeFingerprint": "a36726718caa463e"
     },
     {
       "iLine": 1146,
@@ -573,7 +573,7 @@
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fnDockerStopCommand",
-      "sScopeFingerprint": "fecdb8fa2e60623f"
+      "sScopeFingerprint": "db34d4c4029e394e"
     },
     {
       "iLine": 587,
@@ -690,7 +690,7 @@
       "sFile": "gui/routes/syncRoutes.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fsReadHostGitUserName",
-      "sScopeFingerprint": "4e8882fa91a0493f"
+      "sScopeFingerprint": "e568c9a9363edd3a"
     },
     {
       "iLine": 100,
@@ -8854,7 +8854,7 @@
       "sFile": "cli/commandReproduce.py",
       "sFingerprint": "6a5d45b326a64bda",
       "sFunction": "_ftRunPipInstall",
-      "sScopeFingerprint": "ed88caa4f3a0f77f"
+      "sScopeFingerprint": "4c400f40c87b73b5"
     },
     {
       "iLine": 98,
@@ -8890,7 +8890,7 @@
       "sFile": "docker/__init__.py",
       "sFingerprint": "dde2639bddac8ec7",
       "sFunction": "fnRunDockerCommand",
-      "sScopeFingerprint": "8070d737be64d783"
+      "sScopeFingerprint": "6b783507c7149680"
     },
     {
       "iLine": 302,
@@ -8899,7 +8899,7 @@
       "sFile": "docker/containerManager.py",
       "sFingerprint": "6a5d45b326a64bda",
       "sFunction": "_fsRunDetachedCommand",
-      "sScopeFingerprint": "2fa8a4d5f82d746d"
+      "sScopeFingerprint": "2c08994cf29cc800"
     },
     {
       "iLine": 148,
@@ -8917,7 +8917,7 @@
       "sFile": "docker/containerManager.py",
       "sFingerprint": "d3fd7136b57fd93b",
       "sFunction": "_ftRunProbeCommand",
-      "sScopeFingerprint": "877030e7968f6632"
+      "sScopeFingerprint": "2f69c48af34013b2"
     },
     {
       "iLine": 463,
@@ -9052,7 +9052,7 @@
       "sFile": "gui/setupServer.py",
       "sFingerprint": "cf687253883dc0d5",
       "sFunction": "ftResultRunBuild",
-      "sScopeFingerprint": "559022b10efc78c1"
+      "sScopeFingerprint": "b02deae1e2ab5e1f"
     },
     {
       "iLine": 1121,
@@ -9061,7 +9061,7 @@
       "sFile": "gui/syncDispatcher.py",
       "sFingerprint": "83fd16cc4d1a4594",
       "sFunction": "_ftRunHostLsRemote",
-      "sScopeFingerprint": "d28420a39737fd61"
+      "sScopeFingerprint": "76dfa72d9039892d"
     },
     {
       "iLine": 192,
@@ -9070,7 +9070,7 @@
       "sFile": "reproducibility/dependencyPinning.py",
       "sFingerprint": "1ac76c020ddcc959",
       "sFunction": "_fnRunLockCompile",
-      "sScopeFingerprint": "7b73ea65a9451384"
+      "sScopeFingerprint": "5107123b85c457d5"
     },
     {
       "iLine": 127,
@@ -9079,7 +9079,7 @@
       "sFile": "reproducibility/environmentSnapshot.py",
       "sFingerprint": "be318a5f8eec9638",
       "sFunction": "_fsRunCheckedCommand",
-      "sScopeFingerprint": "9cdd08c3f9f31d5a"
+      "sScopeFingerprint": "3cf09b7e3ee25903"
     },
     {
       "iLine": 182,
@@ -9097,7 +9097,7 @@
       "sFile": "reproducibility/overleafSync.py",
       "sFingerprint": "7327dd4175eab897",
       "sFunction": "_fnRunLsRemote",
-      "sScopeFingerprint": "bc3693f384db9bea"
+      "sScopeFingerprint": "e0b064a52615794b"
     },
     {
       "iLine": 664,
@@ -9106,7 +9106,7 @@
       "sFile": "reproducibility/overleafSync.py",
       "sFingerprint": "d92b3a65191b5bcd",
       "sFunction": "_fprocessRunSubprocess",
-      "sScopeFingerprint": "af79a67154418a48"
+      "sScopeFingerprint": "7220773ca99f2aa0"
     },
     {
       "iLine": 300,
@@ -9115,7 +9115,7 @@
       "sFile": "reproducibility/repoFiles.py",
       "sFingerprint": "5579aa69d53a2bc9",
       "sFunction": "ftRunCommand",
-      "sScopeFingerprint": "728e0c7c05a764eb"
+      "sScopeFingerprint": "75357494a1942fdb"
     }
   ],
   "sPurpose": "Every acquisition of a declared capability in vaibify/, and every container-mutation call site, one entry each. Machine-derived identity; reviewer-classified meaning. See tools/generateMutationInventory.py."

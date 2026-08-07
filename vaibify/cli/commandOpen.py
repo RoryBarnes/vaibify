@@ -106,18 +106,18 @@ def _fsMintTransferCapability(iHubPort, sContainerName):
 def _ftRedeemTransferCapability(iHubPort, sCapability):
     """POST the capability to ``/api/transfer``; return (sOutcome, dict)."""
     from .hubSession import ftSendHttpRequest
-    iStatusCode, objBody = ftSendHttpRequest(
+    iStatusCode, jsonBody = ftSendHttpRequest(
         f"http://127.0.0.1:{iHubPort}", "", "POST", "/api/transfer",
         dictFields={"sCapability": sCapability},
         fTimeoutSeconds=F_TRANSFER_REDEEM_TIMEOUT_SECONDS,
     )
-    if not isinstance(objBody, dict) or "sOutcome" not in objBody:
+    if not isinstance(jsonBody, dict) or "sOutcome" not in jsonBody:
         click.echo(
             f"Error: the hub answered the transfer redemption with "
             f"status {iStatusCode} and an unreadable body.", err=True,
         )
         return ("", {})
-    return (objBody["sOutcome"], objBody)
+    return (jsonBody["sOutcome"], jsonBody)
 
 
 def _fnLaunchDashboardWithCapability(iHubPort, sCapability):

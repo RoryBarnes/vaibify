@@ -360,15 +360,15 @@ def _flistColimaDefaultSharedRoots():
 def _flistParseColimaSharedRoots():
     """Try to parse ``colima list --json`` for the active VM's mounts."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["colima", "list", "--json"],
             capture_output=True, text=True, timeout=5,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return []
-    return _flistParseColimaJsonMounts(resultProcess.stdout)
+    return _flistParseColimaJsonMounts(processResult.stdout)
 
 
 def _flistParseColimaJsonMounts(sStdout):

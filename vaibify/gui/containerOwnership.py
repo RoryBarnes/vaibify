@@ -257,7 +257,7 @@ class OwnerRecord:
     # compound state could express neither. The reservation holds only
     # live execution state; the outcome lives in the bounded
     # ``dictStartResults``, which is its sole delivery authority.
-    reservation: object = None
+    reservation: Optional["StartReservation"] = None
 
 
 @dataclass(eq=False)

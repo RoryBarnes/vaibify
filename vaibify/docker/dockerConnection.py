@@ -224,12 +224,12 @@ def _fnEnsureDockerHost():
     if os.environ.get("DOCKER_HOST"):
         return
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "context", "inspect", "--format",
              "{{.Endpoints.docker.Host}}"],
             capture_output=True, text=True,
         )
-        sHost = resultProcess.stdout.strip()
+        sHost = processResult.stdout.strip()
         if sHost:
             os.environ["DOCKER_HOST"] = sHost
     except Exception:
@@ -531,11 +531,11 @@ class DockerConnection:
             DeprecationWarning,
             stacklevel=2,
         )
-        resultExec = self.ftRunInContainerStreamed(
+        tExecResult = self.ftRunInContainerStreamed(
             sContainerId, sCommand, sWorkdir=sWorkdir, sUser=sUser,
         )
-        sOutput = resultExec.sStdout + resultExec.sStderr
-        return (resultExec.iExitCode, sOutput)
+        sOutput = tExecResult.sStdout + tExecResult.sStderr
+        return (tExecResult.iExitCode, sOutput)
 
     def _ftRunTypedRead(self, sContainerId, sOperation, sPath):
         """Run one NAMED read operation against a path, as a read.
@@ -592,14 +592,14 @@ class DockerConnection:
         operation and :meth:`_ftRunTypedRead` builds it, so a path
         cannot become program or shell syntax.
         """
-        resultExec = self._ftRunTypedRead(
+        tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath,
         )
-        if resultExec.iExitCode != 0:
+        if tExecResult.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot read file from container: {sFilePath}"
             )
-        baContent = base64.b64decode(resultExec.sStdout.strip())
+        baContent = base64.b64decode(tExecResult.sStdout.strip())
         if iMaxBytes is not None and len(baContent) > iMaxBytes:
             raise ValueError(
                 f"File exceeds fbaFetchFile cap "
@@ -627,15 +627,15 @@ class DockerConnection:
         an empty directory returns an empty list, which is a different
         answer and must stay one.
         """
-        resultExec = self._ftRunTypedRead(
+        tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_DIRECTORY, sDirectoryPath,
         )
-        if resultExec.iExitCode != 0:
+        if tExecResult.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot list directory in container: {sDirectoryPath}"
             )
         return [
-            sEntry for sEntry in resultExec.sStdout.split("\n") if sEntry
+            sEntry for sEntry in tExecResult.sStdout.split("\n") if sEntry
         ]
 
     def fiterStreamFile(

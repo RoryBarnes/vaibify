@@ -1739,11 +1739,11 @@ def _fsReadHostGitUserName():
     """
     import subprocess
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["git", "config", "--global", "user.name"],
             capture_output=True, text=True, timeout=5,
         )
-        sName = (resultProcess.stdout or "").strip()
+        sName = (processResult.stdout or "").strip()
     except (subprocess.SubprocessError, OSError):
         sName = ""
     if not sName:

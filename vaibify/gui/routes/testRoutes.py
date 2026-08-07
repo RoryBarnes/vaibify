@@ -179,16 +179,16 @@ async def _fdictRunOneTestCategory(
     sCatCmd = " && ".join(
         [f"cd {fsShellQuote(sDirectory)}"] + list(listCommands))
     sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
-    resultExec = await asyncio.to_thread(
+    tExecResult = await asyncio.to_thread(
         dictCtx["docker"].ftRunInContainerStreamed,
         sContainerId, sCatCmd,
     )
     return {
-        "bPassed": resultExec.iExitCode == 0,
-        "sOutput": resultExec.sStdout + resultExec.sStderr,
-        "sStdout": resultExec.sStdout,
-        "sStderr": resultExec.sStderr,
-        "iExitCode": resultExec.iExitCode,
+        "bPassed": tExecResult.iExitCode == 0,
+        "sOutput": tExecResult.sStdout + tExecResult.sStderr,
+        "sStdout": tExecResult.sStdout,
+        "sStderr": tExecResult.sStderr,
+        "iExitCode": tExecResult.iExitCode,
     }
 
 
@@ -324,14 +324,14 @@ async def _ftRunSaveAndRunTest(
     )
 
 
-def _fdictBuildSaveRunResponse(bPassed, resultExec):
+def _fdictBuildSaveRunResponse(bPassed, tExecResult):
     """Return the JSON response body for save-and-run-test."""
     return {
         "bPassed": bPassed,
-        "sOutput": resultExec.sStdout + resultExec.sStderr,
-        "sStdout": resultExec.sStdout,
-        "sStderr": resultExec.sStderr,
-        "iExitCode": resultExec.iExitCode,
+        "sOutput": tExecResult.sStdout + tExecResult.sStderr,
+        "sStdout": tExecResult.sStdout,
+        "sStderr": tExecResult.sStderr,
+        "iExitCode": tExecResult.iExitCode,
     }
 
 
@@ -401,15 +401,15 @@ def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds):
 async def _ftRunCategoryCommands(
     connectionDocker, sContainerId, dictStep, dictWorkflow, listCmds,
 ):
-    """Run the category commands; return (resultExec, bPassed, sOutput)."""
+    """Run the category commands; return (tExecResult, bPassed, sOutput)."""
     sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds)
-    resultExec = await asyncio.to_thread(
+    tExecResult = await asyncio.to_thread(
         connectionDocker.ftRunInContainerStreamed,
         sContainerId, sFullCmd,
     )
-    bPassed = resultExec.iExitCode == 0
-    sOutput = resultExec.sStdout + resultExec.sStderr
-    return resultExec, bPassed, sOutput
+    bPassed = tExecResult.iExitCode == 0
+    sOutput = tExecResult.sStdout + tExecResult.sStderr
+    return tExecResult, bPassed, sOutput
 
 
 def _fnRecordCategoryOutcome(
@@ -428,14 +428,14 @@ def _fnRecordCategoryOutcome(
     _fnUpdateAggregateTestState(dictStep)
 
 
-def _fdictBuildRunCategoryResponse(bPassed, resultExec):
+def _fdictBuildRunCategoryResponse(bPassed, tExecResult):
     """Return the JSON response body for run-test-category."""
     return {
         "bPassed": bPassed,
-        "sOutput": resultExec.sStdout + resultExec.sStderr,
-        "sStdout": resultExec.sStdout,
-        "sStderr": resultExec.sStderr,
-        "iExitCode": resultExec.iExitCode,
+        "sOutput": tExecResult.sStdout + tExecResult.sStderr,
+        "sStdout": tExecResult.sStdout,
+        "sStderr": tExecResult.sStderr,
+        "iExitCode": tExecResult.iExitCode,
     }
 
 
@@ -467,11 +467,11 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             dictCtx["docker"], sContainerId,
             sFilePath, request.sContent,
         )
-        resultExec = await _ftRunSaveAndRunTest(
+        tExecResult = await _ftRunSaveAndRunTest(
             dictCtx["docker"], sContainerId, dictStep,
             dictWorkflow, sFilePath,
         )
-        bPassed = resultExec.iExitCode == 0
+        bPassed = tExecResult.iExitCode == 0
         _fnRecordTestResult(dictStep, bPassed, dictWorkflow, iStepIndex)
         _fnRegisterTestCommand(dictStep, bPassed, sFilePath)
         dictCtx["save"](sContainerId, dictWorkflow)
@@ -479,7 +479,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
-        return _fdictBuildSaveRunResponse(bPassed, resultExec)
+        return _fdictBuildSaveRunResponse(bPassed, tExecResult)
 
 
 def _fnRegisterTestRun(app, dictCtx):
@@ -546,7 +546,7 @@ def _fnRegisterTestRun(app, dictCtx):
          iLevelBefore) = _ftResolveCategoryContext(
             dictCtx, sContainerId, iStepIndex, sCategory,
         )
-        resultExec, bPassed, sOutput = await _ftRunCategoryCommands(
+        tExecResult, bPassed, sOutput = await _ftRunCategoryCommands(
             dictCtx["docker"], sContainerId, dictStep,
             dictWorkflow, listCmds,
         )
@@ -558,7 +558,7 @@ def _fnRegisterTestRun(app, dictCtx):
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
-        return _fdictBuildRunCategoryResponse(bPassed, resultExec)
+        return _fdictBuildRunCategoryResponse(bPassed, tExecResult)
 
 
 def fnRegisterAll(app, dictCtx):

@@ -63,14 +63,14 @@ _S_LIST_SCRIPT = (
 
 def fdictListContainerTranscripts(connectionDocker, sContainerId):
     """Return ``{sContainerPath: iSizeBytes}`` for agent transcripts."""
-    resultExec = connectionDocker.ftRunInContainerStreamed(
+    tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, _S_LIST_SCRIPT,
     )
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         raise RuntimeError(
-            "Transcript listing failed: " + resultExec.sStderr,
+            "Transcript listing failed: " + tExecResult.sStderr,
         )
-    dictSizes = json.loads(resultExec.sStdout or "{}")
+    dictSizes = json.loads(tExecResult.sStdout or "{}")
     return {
         sPath: int(iSize) for sPath, iSize in dictSizes.items()
     }

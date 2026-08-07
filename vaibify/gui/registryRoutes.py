@@ -553,14 +553,14 @@ def _fnExecuteStop(sContainerName):
 def _fnDockerStopCommand(sContainerName):
     """Run 'docker stop' and raise with the real stderr on failure."""
     import subprocess
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["docker", "stop", sContainerName],
         capture_output=True, text=True,
     )
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         raise RuntimeError(
             f"docker stop failed: "
-            f"{resultProcess.stderr.strip()}"
+            f"{processResult.stderr.strip()}"
         )
 
 
@@ -1108,12 +1108,12 @@ def _fbDockerContainerExists(sContainerName):
     """Return True if a Docker container with this name exists."""
     import subprocess
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "ps", "-a", "--format", "{{.Names}}",
              "--filter", f"name=^{sContainerName}$"],
             capture_output=True, text=True, timeout=5,
         )
-        return sContainerName in resultProcess.stdout.split()
+        return sContainerName in processResult.stdout.split()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 

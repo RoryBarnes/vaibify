@@ -115,7 +115,7 @@ def ftSendHttpRequest(
     fTimeoutSeconds=F_DEFAULT_TIMEOUT_SECONDS, dictQuery=None,
     sLeaseId="",
 ):
-    """Return ``(iStatusCode, objBody)`` for one researcher-lane call.
+    """Return ``(iStatusCode, jsonBody)`` for one researcher-lane call.
 
     The credential is set in exactly one place. A caller that merges it
     in twice sends ``"<credential>, <credential>"``, which is not a
@@ -158,12 +158,12 @@ def ftSendHttpRequest(
 
 def _fjsonRequireOkResponse(tResponse, sWhat):
     """Return the body of a 2xx response, or raise with the hub's detail."""
-    iStatusCode, objBody = tResponse
+    iStatusCode, jsonBody = tResponse
     if 200 <= iStatusCode < 300:
-        return objBody
-    sDetail = objBody
-    if isinstance(objBody, dict):
-        sDetail = objBody.get("detail", objBody)
+        return jsonBody
+    sDetail = jsonBody
+    if isinstance(jsonBody, dict):
+        sDetail = jsonBody.get("detail", jsonBody)
     raise HubSessionError(
         "%s failed (HTTP %d): %s" % (sWhat, iStatusCode, sDetail)
     )
@@ -230,14 +230,14 @@ def fsRedeemHostLaneCredential(iHubPort, sBaseUrl):
     no container until this client claims one.
     """
     sCapability = fsRequestBootstrapCapability(iHubPort)
-    objBody = _fjsonRequireOkResponse(
+    jsonBody = _fjsonRequireOkResponse(
         ftSendHttpRequest(
             sBaseUrl, "", "POST", S_BOOTSTRAP_ENDPOINT,
             {"sCapability": sCapability}, F_BOOTSTRAP_TIMEOUT_SECONDS,
         ),
         "Browser-credential bootstrap",
     )
-    sCredential = (objBody or {}).get("sCredential", "")
+    sCredential = (jsonBody or {}).get("sCredential", "")
     if not sCredential:
         raise HubSessionError(
             "Hub at %s redeemed the launch capability but returned no "
@@ -248,14 +248,14 @@ def fsRedeemHostLaneCredential(iHubPort, sBaseUrl):
 
 def fsResolveContainerId(sBaseUrl, sCredential, sContainerName):
     """Return the running Docker id the hub knows for a container name."""
-    objBody = _fjsonRequireOkResponse(
+    jsonBody = _fjsonRequireOkResponse(
         ftSendHttpRequest(
             sBaseUrl, sCredential, "GET", "/api/registry", None,
             F_BOOTSTRAP_TIMEOUT_SECONDS,
         ),
         "Container listing",
     )
-    for dictContainer in (objBody or {}).get("listContainers", []):
+    for dictContainer in (jsonBody or {}).get("listContainers", []):
         if dictContainer.get("sName") != sContainerName:
             continue
         sContainerId = dictContainer.get("sContainerId") or ""
@@ -279,19 +279,19 @@ def fsClaimContainer(sBaseUrl, sCredential, sContainerName):
     around: this client claims like any browser and must never transfer
     or revoke a dashboard owner to authenticate itself.
     """
-    iStatusCode, objBody = ftSendHttpRequest(
+    iStatusCode, jsonBody = ftSendHttpRequest(
         sBaseUrl, sCredential, "POST",
         "/api/registry/%s/claim" % sContainerName, None,
         F_BOOTSTRAP_TIMEOUT_SECONDS,
     )
     if iStatusCode == 409:
         raise HubSessionError(
-            fsExplainClaimConflict(sContainerName, objBody),
+            fsExplainClaimConflict(sContainerName, jsonBody),
         )
-    objBody = _fjsonRequireOkResponse(
-        (iStatusCode, objBody), "Container claim",
+    jsonBody = _fjsonRequireOkResponse(
+        (iStatusCode, jsonBody), "Container claim",
     )
-    sLeaseId = (objBody or {}).get("sLeaseId", "")
+    sLeaseId = (jsonBody or {}).get("sLeaseId", "")
     if not sLeaseId:
         raise HubSessionError(
             "Claim of '%s' returned no lease." % sContainerName
@@ -324,12 +324,12 @@ def fsExplainClaimConflict(sContainerName, objDetail):
     session already holds, and for those the agent lane is not the
     answer.
     """
-    objBody = objDetail.get("detail", objDetail) if isinstance(
+    jsonBody = objDetail.get("detail", objDetail) if isinstance(
         objDetail, dict,
     ) else objDetail
-    dictBody = objBody if isinstance(objBody, dict) else {}
+    dictBody = jsonBody if isinstance(jsonBody, dict) else {}
     sReason = dictBody.get("sMessage") or (
-        objBody if isinstance(objBody, str) else "it is in use"
+        jsonBody if isinstance(jsonBody, str) else "it is in use"
     )
     sExplanation = (
         "Container '%s' is held by another vaibify session: %s."
@@ -352,7 +352,7 @@ def fnReleaseContainer(dictSession):
     if not dictSession.get("sLeaseId"):
         return
     try:
-        iStatusCode, objBody = ftSendHttpRequest(
+        iStatusCode, jsonBody = ftSendHttpRequest(
             dictSession["sBaseUrl"], dictSession["sCredential"],
             "POST",
             "/api/registry/%s/release" % dictSession["sContainerName"],
@@ -362,7 +362,7 @@ def fnReleaseContainer(dictSession):
     except HubSessionError as error:
         click.echo("Warning: lease release failed: %s" % error, err=True)
         return
-    if iStatusCode != 200 or not (objBody or {}).get("bReleased"):
+    if iStatusCode != 200 or not (jsonBody or {}).get("bReleased"):
         click.echo(
             "Warning: the hub still holds '%s'; the next command may "
             "be refused as in use."
@@ -380,7 +380,7 @@ def fsSelectWorkflowPath(dictSession, sWorkflowPath=None):
     """
     if sWorkflowPath:
         return sWorkflowPath
-    objBody = _fjsonRequireOkResponse(
+    jsonBody = _fjsonRequireOkResponse(
         ftSendSessionRequest(
             dictSession, "GET",
             "/api/workflows/%s" % dictSession["sContainerId"], None,
@@ -388,11 +388,11 @@ def fsSelectWorkflowPath(dictSession, sWorkflowPath=None):
         ),
         "Project discovery",
     )
-    if not objBody:
+    if not jsonBody:
         raise HubSessionError(
             "No vaibify project found in the container."
         )
-    return objBody[0]["sPath"]
+    return jsonBody[0]["sPath"]
 
 
 def fnConnectWorkflow(dictSession, sWorkflowPath):
@@ -452,7 +452,7 @@ def fdictOpenResearcherSession(
 
 def fiResolveStepLabel(dictSession, sLabel):
     """Return the 0-based step index the hub assigns to a step label."""
-    objBody = _fjsonRequireOkResponse(
+    jsonBody = _fjsonRequireOkResponse(
         ftSendSessionRequest(
             dictSession, "GET",
             "/api/steps/%s/by-label/%s" % (
@@ -462,18 +462,18 @@ def fiResolveStepLabel(dictSession, sLabel):
         ),
         "Step-label lookup for '%s'" % sLabel,
     )
-    return int(objBody["iStepIndex"])
+    return int(jsonBody["iStepIndex"])
 
 
-def _fnPrintPayload(objBody, bJson):
+def _fnPrintPayload(jsonBody, bJson):
     """Print a response body as one JSON line or an indented block."""
-    if not isinstance(objBody, (dict, list)):
-        click.echo(str(objBody))
+    if not isinstance(jsonBody, (dict, list)):
+        click.echo(str(jsonBody))
         return
     if bJson:
-        click.echo(json.dumps(objBody))
+        click.echo(json.dumps(jsonBody))
     else:
-        click.echo(json.dumps(objBody, indent=2, sort_keys=True))
+        click.echo(json.dumps(jsonBody, indent=2, sort_keys=True))
 
 
 def fiSendHttpAction(
@@ -484,10 +484,10 @@ def fiSendHttpAction(
     Owner-scoped by construction: every generated action addresses a
     container, so the lease rides along with the credential.
     """
-    iStatusCode, objBody = ftSendSessionRequest(
+    iStatusCode, jsonBody = ftSendSessionRequest(
         dictSession, sMethod, sPath, dictFields, fTimeoutSeconds,
     )
-    _fnPrintPayload(objBody, bJson)
+    _fnPrintPayload(jsonBody, bJson)
     if 200 <= iStatusCode < 300:
         return 0
     if 400 <= iStatusCode < 500:

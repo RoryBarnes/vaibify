@@ -54,7 +54,15 @@ closed registry of domain prefixes (e.g. `set`, `path`, `config`,
 `connection`) maps each to its concrete type family; it lives in two
 independently edited copies in `tools/generateStyleInventory.py` and
 `tests/testStyleInvariants.py`, and growing either tier takes both
-edits plus my approval.
+edits plus my approval. This rule governs EVERY binding site —
+assignments, parameters, loop and `with` targets, `except ... as`
+names — not only annotated ones: a binding whose name parses to no
+vocabulary prefix fails `testVariableBindingsCarryCastPrefixes`
+(legacy bindings are seeded; the budget only falls). A variable
+holding a function composes: it carries "f" plus the held function's
+own run (`fnStatusCallback` holds a procedure, `fbIsIdle` a
+bool-returner). Conventional exemptions: `_`, `self`/`cls`,
+`*args`/`**kwargs`, and ALL_CAPS constants.
 
 3. Function names should begin with an "f" and should be followed by additional lowercase letter(s) that describe the return type, e.g. "fb" for a function that returns a Boolean, or "flist" for a function that returns a list. If a function does not return anything, use "fn" as the prefix. Two special runs: "ffn" returns a *function* (decorators, callback factories; the inner return type is deliberately undeclared — decorators cannot know it), and "fgeneric" returns the *caller-determined* type (parametric executors; the future mypy lane pins it with TypeVar annotations). A `@property` is a computed variable and carries a VARIABLE cast prefix, not a function prefix. Every name conforms unless a FOREIGN contract owns it (dunders, framework overrides like `dispatch`/`emit`/`read` — the closed interface-method list in the style inventory); Click command functions conform too, with the user-facing verb pinned by an explicit `@click.command("verb")` string.
 

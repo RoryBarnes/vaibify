@@ -161,17 +161,17 @@ def _fnRefuseIfRunInFlight(sContainerId, iStepIndex):
 
 def _fsRequireCosmicRay(connectionDocker, sContainerId):
     """Return the container's cosmic-ray version or raise HTTP 409."""
-    resultExec = connectionDocker.ftRunInContainerStreamed(
+    tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, "cosmic-ray --version",
     )
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         raise HTTPException(
             409,
             "cosmic-ray is not installed in this container image; "
             "rebuild the image (vaib build) to enable falsification "
             "checks.",
         )
-    return resultExec.sStdout.strip()
+    return tExecResult.sStdout.strip()
 
 
 def _fdictKickOffFalsification(
@@ -232,21 +232,21 @@ async def _fnRunFalsificationWorker(
             dictCtx, sContainerId, dictWorkflow, dictStep,
             dictApplicability, filesRepo, sCosmicRayVersion,
         )
-    except Exception as exc:  # noqa: BLE001 — surface as error record
-        logger.exception("Falsification run crashed: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — surface as error record
+        logger.exception("Falsification run crashed: %s", errorCaught)
         dictRecord = fdictBuildFalsificationRecord(
             S_STATUS_ERROR, "", dictApplicability["sClassification"],
             0, 0, 0, sCosmicRayVersion=sCosmicRayVersion,
             fDurationSeconds=time.monotonic() - fStarted,
-            sReason=f"falsification run crashed: {exc}",
+            sReason=f"falsification run crashed: {errorCaught}",
         )
     try:
         await asyncio.to_thread(
             fnWriteFalsificationRecord,
             filesRepo, dictStep.get("sDirectory", ""), dictRecord,
         )
-    except OSError as exc:
-        logger.error("Could not persist falsification record: %s", exc)
+    except OSError as errorCaught:
+        logger.error("Could not persist falsification record: %s", errorCaught)
     dictStatus["sPhase"] = dictRecord.get("sStatus", S_STATUS_ERROR)
 
 
@@ -273,21 +273,21 @@ def _fdictRunMutationSync(
     )
     sWorkDirectory = posixpath.dirname(sSessionPath)
     sConfigPath = posixpath.join(sWorkDirectory, "cosmic-ray.toml")
-    resultExec = connectionDocker.ftRunInContainerStreamed(
+    tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId,
         f"cosmic-ray init {fsShellQuote(sConfigPath)} "
         f"{fsShellQuote(sSessionPath)} && "
         f"cosmic-ray exec {fsShellQuote(sConfigPath)} "
         f"{fsShellQuote(sSessionPath)}",
     )
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         return fdictBuildFalsificationRecord(
             S_STATUS_ERROR, sDigest, sClassification, 0, 0, 0,
             sCosmicRayVersion=sCosmicRayVersion,
             fDurationSeconds=time.monotonic() - fStarted,
             sReason="cosmic-ray exited "
-            f"{resultExec.iExitCode}: "
-            + _fsTailOfOutput(resultExec),
+            f"{tExecResult.iExitCode}: "
+            + _fsTailOfOutput(tExecResult),
         )
     return _fdictSummarizeMutationSession(
         connectionDocker, sContainerId, sSessionPath,
@@ -421,9 +421,9 @@ def _fdictParseSummaryOutput(resultSummary):
     return None
 
 
-def _fsTailOfOutput(resultExec, iMaxCharacters=600):
+def _fsTailOfOutput(tExecResult, iMaxCharacters=600):
     """Return the tail of an exec result's combined output for a reason."""
-    sCombined = (resultExec.sStdout + resultExec.sStderr).strip()
+    sCombined = (tExecResult.sStdout + tExecResult.sStderr).strip()
     return sCombined[-iMaxCharacters:]
 
 

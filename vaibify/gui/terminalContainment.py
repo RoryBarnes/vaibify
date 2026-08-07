@@ -128,7 +128,7 @@ class TerminalExecutionRecord:
     iOwnerGeneration: int
     connectionDocker: "DockerConnection"
     dictRegistry: Optional[dict]
-    session: object = None
+    session: Optional["TerminalSession"] = None
     iProcessGroup: int = 0
     sState: str = S_RECORD_STATE_LIVE
 

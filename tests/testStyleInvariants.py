@@ -39,6 +39,7 @@ __all__ = [
     "testLiteralReturnsMatchThePrefix",
     "testReturnAnnotationsMatchThePrefix",
     "testPrefixedNamesAgreeWithAnnotations",
+    "testVariableBindingsCarryCastPrefixes",
     "testPrefixVocabularyIsClosed",
     "testCurrentInventoryIsWithinTheFrozenSeed",
     "testInterfaceExemptionsNameForeignProtocols",
@@ -50,6 +51,7 @@ __all__ = [
     "testScannerCatchesLiteralReturnMismatch",
     "testScannerCatchesReturnAnnotationMismatch",
     "testScannerCatchesVariableAnnotationMismatch",
+    "testScannerCatchesUnprefixedBinding",
     "testScannerCatchesBarePrefixlessFunction",
     "testScannerCatchesUnregisteredPrefix",
     "testScannerCatchesMisprefixedContextManager",
@@ -138,6 +140,11 @@ DICT_TIER_TWO_REGISTRY_COPY = {
     "error": {"Exception", "RuntimeError", "ValueError", "OSError"},
     "websocket": {"WebSocket"},
     "logger": {"Logger"},
+    "listdict": {"list", "List"},
+    "match": {"Match"},
+    "reservation": {"StartReservation"},
+    "supervisor": {"MutationSupervisor"},
+    "session": {"TerminalSession"},
     "app": {"FastAPI"},
     "datetime": {"datetime"},
     "file": {"IO", "TextIO", "BinaryIO", "TextIOWrapper"},
@@ -170,6 +177,7 @@ I_LEGACY_YIELD_BUDGET = 0
 I_LEGACY_LITERAL_RETURN_BUDGET = 0
 I_LEGACY_RETURN_ANNOTATION_BUDGET = 0
 I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
+I_LEGACY_VARIABLE_BUDGET = 380
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,
@@ -178,6 +186,7 @@ DICT_BUDGETS = {
     "legacy-literal-return": I_LEGACY_LITERAL_RETURN_BUDGET,
     "legacy-return-annotation": I_LEGACY_RETURN_ANNOTATION_BUDGET,
     "legacy-annotation-mismatch": I_LEGACY_ANNOTATION_MISMATCH_BUDGET,
+    "legacy-variable": I_LEGACY_VARIABLE_BUDGET,
 }
 
 
@@ -672,6 +681,408 @@ def _fsetParseFrozenSeed():
 SET_FROZEN_SEED_PAIRS = _fsetParseFrozenSeed()
 
 
+# The variable-binding invariant's FOUNDING census (2026-08-06): the
+# doctrine extended to every binding site, and these are the bindings
+# that predate it. Same rules as the function seed: never edited except
+# by explicit reviewed decision; burn-down lowers the budget and
+# regenerates the inventory but leaves this text alone.
+S_FROZEN_VARIABLE_SEED_TEXT = """\
+legacy-variable	vaibify/cli/actionCommands.py::fnDoCommand::ctx
+legacy-variable	vaibify/cli/actionCommands.py::fnRegisterGeneratedActions::groupParent
+legacy-variable	vaibify/cli/actionCommands.py::fsAppendQueryString.objValue
+legacy-variable	vaibify/cli/actionCommands.py::ftSplitQueryFromBodyFields.objValue
+legacy-variable	vaibify/cli/commandBuild.py::_fnEnforceBuildPreflight.r
+legacy-variable	vaibify/cli/commandBuild.py::_fnPrintWarningsIfAny.r
+legacy-variable	vaibify/cli/commandBuild.py::flistRunBuildPreflight.r
+legacy-variable	vaibify/cli/commandBuild.py::flistRunBuildPreflight.resultColimaVersion
+legacy-variable	vaibify/cli/commandBuild.py::fnPruneDanglingImages.resultPrune
+legacy-variable	vaibify/cli/commandConfig.py::fnConfigExportCommand::sfilepath
+legacy-variable	vaibify/cli/commandConfig.py::fnConfigImportCommand::sfilepath
+legacy-variable	vaibify/cli/commandDestroy.py::fnRemoveVolume.volume
+legacy-variable	vaibify/cli/commandDoctor.py::_flistFilterQuiet.r
+legacy-variable	vaibify/cli/commandDoctor.py::_flistOptionalSharedChecks.r
+legacy-variable	vaibify/cli/commandDoctor.py::_ftCountLevels.r
+legacy-variable	vaibify/cli/commandDoctor.py::flistRunDoctorChecks.r
+legacy-variable	vaibify/cli/commandDoctor.py::fnDoctorCommand.r
+legacy-variable	vaibify/cli/commandRegister.py::fnRegisterCommand::sdirectory
+legacy-variable	vaibify/cli/commandRevoke.py::_fdictRevokeForService::sservice
+legacy-variable	vaibify/cli/commandRevoke.py::fnPrintRevocationReport::sservice
+legacy-variable	vaibify/cli/commandRevoke.py::fnRevokeCommand::sservice
+legacy-variable	vaibify/cli/commandSessions.py::fnListSessionsCommand::ctx
+legacy-variable	vaibify/cli/commandSessions.py::fnStopSessionCommand::ipid
+legacy-variable	vaibify/cli/commandStart.py::_flistPreflightBindMountFormats.resultPath
+legacy-variable	vaibify/cli/commandStart.py::_fnEnforcePreflightOrExit.r
+legacy-variable	vaibify/cli/commandStart.py::_fnPrintWarningsIfAny.r
+legacy-variable	vaibify/cli/commandStart.py::flistRunStartPreflight.resultColimaVersion
+legacy-variable	vaibify/cli/commandStatus.py::flistDescribeContainers.dcContainer
+legacy-variable	vaibify/cli/commandStatus.py::fsDescribeImage.image
+legacy-variable	vaibify/cli/hubSession.py::fsExplainClaimConflict::objDetail
+legacy-variable	vaibify/cli/main.py::_fbHasFileHandlerAttached.handlerExisting
+legacy-variable	vaibify/cli/main.py::_fbHasIncidentHandlerAttached.handlerExisting
+legacy-variable	vaibify/cli/main.py::_fnAttachHostIncidentHandler.handlerIncident
+legacy-variable	vaibify/cli/main.py::_fnConfigureErrorLogging.rotatingHandler
+legacy-variable	vaibify/cli/main.py::fnConnectCommand::project
+legacy-variable	vaibify/cli/main.py::fnPullCommand::destination
+legacy-variable	vaibify/cli/main.py::fnPullCommand::project
+legacy-variable	vaibify/cli/main.py::fnPullCommand::source
+legacy-variable	vaibify/cli/main.py::fnPushCommand::destination
+legacy-variable	vaibify/cli/main.py::fnPushCommand::project
+legacy-variable	vaibify/cli/main.py::fnPushCommand::source
+legacy-variable	vaibify/cli/main.py::main::ctx
+legacy-variable	vaibify/cli/portAllocator.py::fbIsPortFree.sock
+legacy-variable	vaibify/cli/preflightResult.py::_fnPrintDetailBlock::resultPreflight
+legacy-variable	vaibify/cli/preflightResult.py::fnPrintPreflightReport.resultPreflight
+legacy-variable	vaibify/config/bindMountValidator.py::_fbEntryIsDirectory::entryChild
+legacy-variable	vaibify/config/bindMountValidator.py::_fbEntryIsSymlink::entryChild
+legacy-variable	vaibify/config/bindMountValidator.py::_fnAssertChildIsNotSocket::entryChild
+legacy-variable	vaibify/config/bindMountValidator.py::_fnRejectContainedSocket.entryChild
+legacy-variable	vaibify/config/containerLock.py::_fbHandleMatchesPath.statHandle
+legacy-variable	vaibify/config/containerLock.py::_fbHandleMatchesPath.statPath
+legacy-variable	vaibify/config/keepAliveManager.py::_fdictParsePidContent.objParsed
+legacy-variable	vaibify/config/mutationAdmission.py::MutationAdmission.__init__::objectMintKey
+legacy-variable	vaibify/config/mutationAdmission.py::_contextActiveAdmissions
+legacy-variable	vaibify/config/mutationAdmission.py::_contextAuditedRead
+legacy-variable	vaibify/config/mutationAdmission.py::_contextEnforcedLane
+legacy-variable	vaibify/config/mutationAdmission.py::fnAssertOperationAdmittedByIdentity.valueExpected
+legacy-variable	vaibify/config/operationJournal.py::_fdictValidateJournalBytes::byteContent
+legacy-variable	vaibify/config/operationJournal.py::_fnWriteJournalBytesAtomically::byteContent
+legacy-variable	vaibify/config/operationJournal.py::_fsComputeHostFileSha256.byteChunk
+legacy-variable	vaibify/config/operationJournal.py::_fsComputeHostFileSha256.hashDigest
+legacy-variable	vaibify/config/operationJournal.py::_fsValidateRecordFieldTypes.valueField
+legacy-variable	vaibify/config/operationJournal.py::fdictReadJournalOutcome.byteContent
+legacy-variable	vaibify/config/operationJournal.py::fnAmendInFlightHolderIdentity.valueIdentity
+legacy-variable	vaibify/config/processLiveness.py::_fdatetimeNormalizeToNaiveLocal::dtValue
+legacy-variable	vaibify/config/processLiveness.py::fbIsProcessAliveSince.dtClaim
+legacy-variable	vaibify/config/processLiveness.py::fbIsProcessAliveSince.dtStart
+legacy-variable	vaibify/config/processLiveness.py::fbIsProcessAliveSince.dtTolerance
+legacy-variable	vaibify/config/processLiveness.py::fdatetimeParseClaimIso.dtClaim
+legacy-variable	vaibify/config/projectConfig.py::ProjectConfig.reproducibility
+legacy-variable	vaibify/config/projectConfig.py::_fbValidateFeatures.value
+legacy-variable	vaibify/config/projectConfig.py::_fbValidateListFields.value
+legacy-variable	vaibify/config/projectConfig.py::_fdictMergeWithDefaults.value
+legacy-variable	vaibify/config/projectConfig.py::_fnMergeReproducibility.value
+legacy-variable	vaibify/config/projectConfig.py::k
+legacy-variable	vaibify/config/projectConfig.py::v
+legacy-variable	vaibify/config/reconciliation.py::_fdictRecordForProbe.valueField
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fbaRecvExact.dataBuffer
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fbaRecvExact.dataChunk
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fiHandleHttpError.dataBody
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fiHandleHttpError::errHttp
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fiStreamWsEvents.dataFrame
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fnPrintHttpBody.objParsed
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fnPrintHttpBody::dataBody
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fnSendWsFrame.dataHeader
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fnSendWsFrame.dataMask
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fnSendWsFrame.dataMasked
+legacy-variable	vaibify/containerImage/vaibifyDo.py::_fnSendWsFrame::dataPayload
+legacy-variable	vaibify/containerImage/vaibifyDo.py::fiResolveLabelToIndex.resp
+legacy-variable	vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.dataBody
+legacy-variable	vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.errHttp
+legacy-variable	vaibify/containerImage/vaibifyDo.py::fiSendHttpRequest.resp
+legacy-variable	vaibify/containerImage/vaibifyDo.py::fnSendWsPong::dataPayload
+legacy-variable	vaibify/containerImage/vaibifyDo.py::fnWebsocketHandshake.dataChunk
+legacy-variable	vaibify/containerImage/vaibifyDo.py::fnWebsocketHandshake.dataResponse
+legacy-variable	vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataHeader
+legacy-variable	vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataPayload
+legacy-variable	vaibify/docker/dockerConnection.py::DockerConnection._fbufferBuildTar.tar
+legacy-variable	vaibify/docker/dockerConnection.py::DockerConnection._ftStreamExecLines.generator
+legacy-variable	vaibify/docker/dockerConnection.py::_fiterChunksFromTarStream.tar
+legacy-variable	vaibify/docker/dockerConnection.py::_fnMountTcpAdapter::classAdapter
+legacy-variable	vaibify/docker/dockerConnection.py::_fnMountUnixAdapter.adapterExisting
+legacy-variable	vaibify/docker/dockerConnection.py::_fnTuneDockerSessionPool::clientDocker
+legacy-variable	vaibify/docker/imageBuilder.py::_fnRunDockerBuildCapturing.procBuild
+legacy-variable	vaibify/docker/imageBuilder.py::_fsStreamAndCaptureStderr::procBuild
+legacy-variable	vaibify/gui/attributionLog.py::_flistTimestampedEvents.dtEvent
+legacy-variable	vaibify/gui/attributionLog.py::fdatetimeParseTimestampAsUtc.dtParsed
+legacy-variable	vaibify/gui/commitCarrier.py::MutationSupervisor.eventCancelRequested
+legacy-variable	vaibify/gui/commitCarrier.py::_fdictRunAndSettleWorker.resultWorker
+legacy-variable	vaibify/gui/commitCarrier.py::_fgenericCallWorkerSynchronously.resultWorker
+legacy-variable	vaibify/gui/commitCarrier.py::fdictCommitSynchronousMutation.resultEffect
+legacy-variable	vaibify/gui/conftestManager.py::_fnRememberRefreshKey::orderedCache
+legacy-variable	vaibify/gui/containerOwnership.py::OwnerRecord.poison
+legacy-variable	vaibify/gui/dataLoaders.py::_ffExtractDataframeValue::dfData
+legacy-variable	vaibify/gui/dataLoaders.py::_ffExtractHdf5Value::datasetHdf5
+legacy-variable	vaibify/gui/dataLoaders.py::_ffExtractTabularValue.r
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadBamValue.read
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadBamValue.samfile
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadCsvAggregate.reader
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadCsvByRowIndex.reader
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadCsvNegativeRow.reader
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadExcelValue.c
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadExcelValue.r
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadExcelValue.sheet
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadExcelValue.workbook
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadFastqValue.c
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadFitsValue.hdu
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadFitsValue.hduList
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadFortranValue.fortranFile
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadHdf5Value.datasetHdf5
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadIpacValue.table
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadJsonlValue.r
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadMatlabValue.k
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadMultitableValue.r
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadNpzValue.archiveNpz
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadParquetValue.table
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadPcapValue.p
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadRdataValue.dfData
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadSasValue.dfData
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadSpssValue.dfData
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadStataValue.dfData
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadTfrecordValue.r
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadVotableValue.table
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadVotableValue.votable
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadVtkValue.mesh
+legacy-variable	vaibify/gui/dataLoaders.py::_ffLoadWhitespaceValue.r
+legacy-variable	vaibify/gui/dataLoaders.py::_ffNavigateJsonValue.value
+legacy-variable	vaibify/gui/dataLoaders.py::_fnParseAccessIndexField.x
+legacy-variable	vaibify/gui/dataLoaders.py::_ftOpenCsvReader.reader
+legacy-variable	vaibify/gui/dependencyScanner.py::_flistMatchPatterns.resultMatch
+legacy-variable	vaibify/gui/dockerStatus.py::fdictDetectDockerRuntime.resultContext
+legacy-variable	vaibify/gui/fileStatusManager.py::_fiParseUtcTimestamp.dtParsed
+legacy-variable	vaibify/gui/fileStatusManager.py::_fiParseUtcTimestamp.dtUtc
+legacy-variable	vaibify/gui/gitStatus.py::_fbIsGitRepo.result
+legacy-variable	vaibify/gui/gitStatus.py::_fsHeadSha.result
+legacy-variable	vaibify/gui/gitStatus.py::fdictGitStatusForWorkspace.result
+legacy-variable	vaibify/gui/hashStaleness.py::_fiCoerceMtime::mtimeValue
+legacy-variable	vaibify/gui/hostControlChannel.py::_fbPeerIsThisUser::writer
+legacy-variable	vaibify/gui/hostControlChannel.py::_fbaReadResponseLine.byteChunk
+legacy-variable	vaibify/gui/hostControlChannel.py::_fdictAnswerOneRequest.byteRequest
+legacy-variable	vaibify/gui/hostControlChannel.py::_fdictAnswerOneRequest::reader
+legacy-variable	vaibify/gui/hostControlChannel.py::_fdictHandleMintTransfer.valueExpectedGeneration
+legacy-variable	vaibify/gui/hostControlChannel.py::_fnAssertBindTargetSafe.statResult
+legacy-variable	vaibify/gui/hostControlChannel.py::_fnServeHostControlConnection::reader
+legacy-variable	vaibify/gui/hostControlChannel.py::_fnServeHostControlConnection::writer
+legacy-variable	vaibify/gui/hostControlChannel.py::_ftParseDarwinPeerCredentials::byteCredentials
+legacy-variable	vaibify/gui/hostControlChannel.py::_ftParseLinuxPeerCredentials::byteCredentials
+legacy-variable	vaibify/gui/hostControlChannel.py::fdictSendHostControlRequest.byteResponse
+legacy-variable	vaibify/gui/hostControlChannel.py::fnRegisterHostControlChannel.fnStartHostControlServer.serverControl
+legacy-variable	vaibify/gui/hostControlChannel.py::fnRegisterHostControlChannel.fnStopHostControlServer.serverControl
+legacy-variable	vaibify/gui/llmInvoker.py::fsGenerateViaApi.client
+legacy-variable	vaibify/gui/llmInvoker.py::fsGenerateViaApi.message
+legacy-variable	vaibify/gui/mtimeCache.py::fdictLoadCache.handle
+legacy-variable	vaibify/gui/mtimeCache.py::fnSaveCache.handle
+legacy-variable	vaibify/gui/pathContract.py::fdictAbsKeysToRepoRelative.value
+legacy-variable	vaibify/gui/personalLayerManager.py::fdictComputeHashCommitment.hasher
+legacy-variable	vaibify/gui/pipelineLogger.py::_ffBuildFlushingCallback::stateWriter
+legacy-variable	vaibify/gui/pipelineLogger.py::_fnDispatchEventToWriter::stateWriter
+legacy-variable	vaibify/gui/pipelineLogger.py::_fnFinalizeRun::stateWriter
+legacy-variable	vaibify/gui/pipelineLogger.py::_fnUpdatePipelineState::stateWriter
+legacy-variable	vaibify/gui/pipelineRunner.py::_ffBuildStreamingChunkEmitter::loopMain
+legacy-variable	vaibify/gui/pipelineRunner.py::_fiRunStepsAndLog.eventStopHeartbeat
+legacy-variable	vaibify/gui/pipelineRunner.py::_fiRunStepsAndLog.stateWriter
+legacy-variable	vaibify/gui/pipelineRunner.py::_fnCancelTimerFlush.handleTimer
+legacy-variable	vaibify/gui/pipelineRunner.py::_fnFlushBatchFromWorker.future
+legacy-variable	vaibify/gui/pipelineRunner.py::_fnFlushBatchFromWorker::loopMain
+legacy-variable	vaibify/gui/pipelineRunner.py::_fnRunHeartbeatLoop::eventStop
+legacy-variable	vaibify/gui/pipelineRunner.py::_fnScheduleTimerFlush::loopMain
+legacy-variable	vaibify/gui/pipelineRunner.py::_ftBuildBatchingEmitter::loopMain
+legacy-variable	vaibify/gui/pipelineRunner.py::_ftInitializeRunState.stateWriter
+legacy-variable	vaibify/gui/pipelineRunner.py::_ftRunSingleCommand.loopMain
+legacy-variable	vaibify/gui/pipelineRunner.py::_fthreadStartHeartbeat::eventStop
+legacy-variable	vaibify/gui/pipelineServer.py::__getattr__.value
+legacy-variable	vaibify/gui/pipelineServer.py::_fnLaunchDependencyScan.loop
+legacy-variable	vaibify/gui/pipelineServer.py::fdictFilterNonNone.k
+legacy-variable	vaibify/gui/pipelineServer.py::fdictFilterNonNone.v
+legacy-variable	vaibify/gui/pipelineServer.py::fnTerminalInputLoop.message
+legacy-variable	vaibify/gui/pipelineState.py::StateWriter._fnArmStepResultDebounce.timerNew
+legacy-variable	vaibify/gui/pipelineState.py::StateWriter._fnDrainCoalesced.item
+legacy-variable	vaibify/gui/pipelineState.py::StateWriter._fnRunWriter.item
+legacy-variable	vaibify/gui/pipelineState.py::_ffCoerceStateBudget::value
+legacy-variable	vaibify/gui/pipelineState.py::fbHeartbeatIsStale.dtBeat
+legacy-variable	vaibify/gui/pipelineState.py::fdictActiveStepBudgetStatus.dtStarted
+legacy-variable	vaibify/gui/pipelineState.py::fsBuildHeartbeatStaleReason.dtBeat
+legacy-variable	vaibify/gui/pipelineUtils.py::fbStepIsInteractive.valueFlag
+legacy-variable	vaibify/gui/randomnessLint.py::_fbFileContainsRegex.regex
+legacy-variable	vaibify/gui/registryRoutes.py::_fdictBuildHostEntry::entry
+legacy-variable	vaibify/gui/registryRoutes.py::_fdictBuildHostFileEntry::entry
+legacy-variable	vaibify/gui/registryRoutes.py::_flistSortDirectoryEntries.e
+legacy-variable	vaibify/gui/registryRoutes.py::_fnRequireLimitWithinRange::numberMaximum
+legacy-variable	vaibify/gui/registryRoutes.py::_fnRequireLimitWithinRange::numberMinimum
+legacy-variable	vaibify/gui/registryRoutes.py::_fnRequireLimitWithinRange::numberValue
+legacy-variable	vaibify/gui/registryRoutes.py::_fnUpdateYamlNumberField::numberValue
+legacy-variable	vaibify/gui/registryRoutes.py::flistQueryHostDirectory.entry
+legacy-variable	vaibify/gui/routeContext.py::RouteContext.__setitem__::value
+legacy-variable	vaibify/gui/routeContext.py::RouteContext.get::default
+legacy-variable	vaibify/gui/routeContext.py::RouteContext.setdefault::default
+legacy-variable	vaibify/gui/routeScope.py::_fbIsApplicableMutatingRoute::route
+legacy-variable	vaibify/gui/routeScope.py::fnValidateRouteScopesOrRaise.route
+legacy-variable	vaibify/gui/routes/falsificationRoutes.py::_fdictParseSummaryOutput::resultSummary
+legacy-variable	vaibify/gui/routes/falsificationRoutes.py::_fdictSummarizeMutationSession.resultSummary
+legacy-variable	vaibify/gui/routes/figureRoutes.py::_fnRegisterFigure.fresponseCheckFigure.p
+legacy-variable	vaibify/gui/routes/pipelineRoutes.py::_fiCoercePollMtime::mtimeValue
+legacy-variable	vaibify/gui/routes/pipelineRoutes.py::_ftRunManifestVerify::manifestWriter
+legacy-variable	vaibify/gui/routes/reproducibilityRoutes.py::_fdictKickOffVerification.coroutineWorker
+legacy-variable	vaibify/gui/routes/reproducibilityRoutes.py::_fnRequireScalarType.typeOption
+legacy-variable	vaibify/gui/routes/sessionRoutes.py::_fbIsPortAcceptingConnections.sock
+legacy-variable	vaibify/gui/routes/sessionRoutes.py::_fnPruneDeadChildren.child
+legacy-variable	vaibify/gui/routes/sessionRoutes.py::_fnRegisterSpawn.fdictSpawnSession.child
+legacy-variable	vaibify/gui/routes/sessionRoutes.py::_fnRegisterSpawnedChildShutdown.fnTerminateSpawnedChildren.child
+legacy-variable	vaibify/gui/routes/settingsRoutes.py::_fnCommitSettingsUpdate.value
+legacy-variable	vaibify/gui/routes/settingsRoutes.py::_fnRegisterLogRoutes.flistLogs.e
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fbRestoreContainerSnapshot::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fdictHandleOverleafPushRequest::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fdictHandlePullManuscript::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fdictResolveZenodoMetadataForArchive.c
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fdictRunOverleafPushFlow::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fdictStoreCredentialSafely::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_flistManuscriptMirrorPaths._resultDetail
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_flistManuscriptMirrorPaths::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnCleanupCredential::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnDispatchStore::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnDropContainerSnapshot::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnEvictExpiredPushResults._result
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnRegisterDag.fresponseGetDag.result
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnRegisterDagExport.fresponseExportDag.result
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnRegisterOverleafMirrorRefresh.fdictRefreshMirror.result
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_fnRollBackFailedCredential::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_ftPerformZenodoArchive::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_ftRunOverleafPushCall::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_ftRunOverleafValidation::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_ftRunServiceValidation::syncDispatcher
+legacy-variable	vaibify/gui/routes/syncRoutes.py::_ftSnapshotContainerCredential::syncDispatcher
+legacy-variable	vaibify/gui/routes/systemRoutes.py::_fdictProbeContainerReadiness.exception
+legacy-variable	vaibify/gui/routes/systemRoutes.py::_fdictProbeWithTimeout.executorPool
+legacy-variable	vaibify/gui/routes/systemRoutes.py::_fdictProbeWithTimeout.future
+legacy-variable	vaibify/gui/serverLifespan.py::_fnInvokeMaybeAsync.objectResult
+legacy-variable	vaibify/gui/serverLifespan.py::_fnRegisterDefaultThreadPoolExecutor.fnInstallExecutor.executorIo
+legacy-variable	vaibify/gui/serverLifespan.py::_fnRegisterDefaultThreadPoolExecutor.fnShutdownExecutor.executorIo
+legacy-variable	vaibify/gui/serverMiddleware.py::ActivityTrackingMiddleware.dispatch::call_next
+legacy-variable	vaibify/gui/serverMiddleware.py::SecurityHeadersMiddleware.dispatch::call_next
+legacy-variable	vaibify/gui/serverMiddleware.py::SessionTokenMiddleware.dispatch::call_next
+legacy-variable	vaibify/gui/serverMiddleware.py::_fresponseServeAdmittedAgentRequest::call_next
+legacy-variable	vaibify/gui/serverMiddleware.py::_fsRouteTemplateForRequest.route
+legacy-variable	vaibify/gui/sessionLifecycle.py::fnScheduleConnectionFencing.loopRunning
+legacy-variable	vaibify/gui/staleOutputDetector.py::_ffParseMtime::value
+legacy-variable	vaibify/gui/stateContract.py::_flistExcludedPathsFromWorkflow.p
+legacy-variable	vaibify/gui/syncDispatcher.py::_fdictBuildApiMetadata.k
+legacy-variable	vaibify/gui/syncDispatcher.py::_flistFilterByExtension::frozensetExtensions
+legacy-variable	vaibify/gui/syncDispatcher.py::fdictComputeContainerDigests.p
+legacy-variable	vaibify/gui/testGenerator.py::_fdictBuildIntegrityStandards.r
+legacy-variable	vaibify/gui/testGenerator.py::_fdictBuildQualitativeStandards.r
+legacy-variable	vaibify/gui/testGenerator.py::_fnWarnIfAllUnloadable.r
+legacy-variable	vaibify/gui/testGenerator.py::_fsClassifyStochasticity.r
+legacy-variable	vaibify/gui/transcriptSanitizer.py::_fsRedactLinePatterns.secretFound
+legacy-variable	vaibify/gui/workflowManager.py::_ffCoerceWallClockBudget::value
+legacy-variable	vaibify/gui/workflowManager.py::_fnDepCacheSet::value
+legacy-variable	vaibify/gui/workflowManager.py::_fnValidateZenodoMetadata.c
+legacy-variable	vaibify/gui/workflowManager.py::fnUpdateStep.value
+legacy-variable	vaibify/gui/workflowManager.py::fsRemapStepReferences.fsReplaceMatch::resultMatch
+legacy-variable	vaibify/gui/workflowManager.py::fsResolveVariables.fsReplaceMatch::resultMatch
+legacy-variable	vaibify/gui/workflowMigrations.py::fnRewritePositionalToSymbolic.fsReplaceMatch::resultMatch
+legacy-variable	vaibify/reproducibility/_hashing.py::_fnFeedHasher::hasher
+legacy-variable	vaibify/reproducibility/_hashing.py::fsHashChunkIteratorSha256.hasher
+legacy-variable	vaibify/reproducibility/_hashing.py::fsHashFileObjectSha256.hasher
+legacy-variable	vaibify/reproducibility/_hashing.py::fsHashFileSha256.hasher
+legacy-variable	vaibify/reproducibility/aiProvenanceStamp.py::_fbCapturedAtPlausible.dtCaptured
+legacy-variable	vaibify/reproducibility/arxivClient.py::_fnExtractTarballSafely.memberTar
+legacy-variable	vaibify/reproducibility/arxivClient.py::_fnExtractTarballSafely.tarballHandle
+legacy-variable	vaibify/reproducibility/arxivClient.py::_fnRejectUnsafeTarMemberKinds::memberTar
+legacy-variable	vaibify/reproducibility/arxivClient.py::_fnValidateTarMember::memberTar
+legacy-variable	vaibify/reproducibility/arxivClient.py::_fsParseLatestVersion.elementEntry
+legacy-variable	vaibify/reproducibility/arxivClient.py::_fsParseLatestVersion.elementId
+legacy-variable	vaibify/reproducibility/arxivClient.py::_fsParseLatestVersion.elementRoot
+legacy-variable	vaibify/reproducibility/credentialRedactor.py::_fsScrubUrlQueryParts.result
+legacy-variable	vaibify/reproducibility/dataArchiver.py::_fnCleanupFailedDraft::clientZenodo
+legacy-variable	vaibify/reproducibility/dataArchiver.py::_fnUploadAllFiles::clientZenodo
+legacy-variable	vaibify/reproducibility/dataArchiver.py::fnUploadToZenodo.clientZenodo
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbAttributeIsClock.nodeValue
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbAttributeIsClock::nodeAttr
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbCallIsOsUrandom.nodeFn
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbCallIsOsUrandom.nodeValue
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbCallIsOsUrandom::nodeCall
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbCallIsSeedFunction.nodeFn
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbCallIsSeedFunction::nodeCall
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbExprUsesClock.nodeChild
+legacy-variable	vaibify/reproducibility/determinismGate.py::_fbExprUsesClock::nodeExpr
+legacy-variable	vaibify/reproducibility/determinismGate.py::_flistFindClockSeeds.node
+legacy-variable	vaibify/reproducibility/determinismGate.py::_flistFindClockSeeds.nodeArg
+legacy-variable	vaibify/reproducibility/determinismGate.py::_flistFindClockSeeds.treeAst
+legacy-variable	vaibify/reproducibility/githubAuth.py::_ftFetchLoginFresh.resp
+legacy-variable	vaibify/reproducibility/githubAuth.py::ftParseOwnerRepoFromRemoteUrl.pattern
+legacy-variable	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request.objectNew
+legacy-variable	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request::code
+legacy-variable	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request::fp
+legacy-variable	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request::headers
+legacy-variable	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request::msg
+legacy-variable	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request::newurl
+legacy-variable	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request::req
+legacy-variable	vaibify/reproducibility/githubMirror.py::_fhttpresponseOpenRequest::objectRequest
+legacy-variable	vaibify/reproducibility/githubMirror.py::_frequestBuildGithub.objectRequest
+legacy-variable	vaibify/reproducibility/githubMirror.py::_fsHashOneRemote.objectRequest
+legacy-variable	vaibify/reproducibility/githubMirror.py::_fsHashOneRemote.objectResponse
+legacy-variable	vaibify/reproducibility/githubMirror.py::_fsHashResponseStream::objectResponse
+legacy-variable	vaibify/reproducibility/githubWorkflow.py::_fsRenderTemplate.environment
+legacy-variable	vaibify/reproducibility/githubWorkflow.py::_fsRenderTemplate.templateObject
+legacy-variable	vaibify/reproducibility/levelGates.py::_fbCachedSyncStatusFresh.dtVerified
+legacy-variable	vaibify/reproducibility/levelGates.py::_fbCommandsInvokeBinary.regexBinary
+legacy-variable	vaibify/reproducibility/levelGates.py::_fsModTimesFingerprint.value
+legacy-variable	vaibify/reproducibility/levelGates.py::fbWorkflowDeclaresBinaries.e
+legacy-variable	vaibify/reproducibility/overleafMirror.py::_fnClonePartial.result
+legacy-variable	vaibify/reproducibility/overleafMirror.py::_fnFetchOrigin.result
+legacy-variable	vaibify/reproducibility/overleafMirror.py::_fnFullClone.result
+legacy-variable	vaibify/reproducibility/overleafMirror.py::_fnResetToOriginHead.result
+legacy-variable	vaibify/reproducibility/overleafMirror.py::_fsStrippedStderr::result
+legacy-variable	vaibify/reproducibility/overleafMirror.py::flistListMirrorTree.result
+legacy-variable	vaibify/reproducibility/overleafMirror.py::fsComputeBlobSha.handleFile
+legacy-variable	vaibify/reproducibility/overleafMirror.py::fsComputeBlobSha.hasher
+legacy-variable	vaibify/reproducibility/overleafMirror.py::fsReadMirrorHeadSha.result
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddLsRemoteParser.sub
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddLsRemoteParser::subparsers
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddPullParser.sub
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddPullParser::subparsers
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddPushAnnotatedParser.sub
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddPushAnnotatedParser::subparsers
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddPushParser.sub
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fnAddPushParser::subparsers
+legacy-variable	vaibify/reproducibility/overleafSync.py::_fparserBuildCommandLine.subparsers
+legacy-variable	vaibify/reproducibility/overleafSync.py::fdictOverleafRemotePathsAt.entryRecorded
+legacy-variable	vaibify/reproducibility/provenanceTracker.py::_fsHashFileContents.hasher
+legacy-variable	vaibify/reproducibility/repoFiles.py::_RepoLockHolder.__exit__::classExc
+legacy-variable	vaibify/reproducibility/repoFiles.py::_RepoLockHolder.__exit__::traceback
+legacy-variable	vaibify/reproducibility/repoFiles.py::_RepoLockHolder.__exit__::valueExc
+legacy-variable	vaibify/reproducibility/repoFiles.py::_fsHashHostFileOrNone.hasher
+legacy-variable	vaibify/reproducibility/scheduledReverify.py::_ffMeasureSecondsSinceIso.dtStamp
+legacy-variable	vaibify/reproducibility/scheduledReverify.py::_fnBumpSyncEpochForVerifiedContainers.entryWorkflow
+legacy-variable	vaibify/reproducibility/scheduledReverify.py::_ftResolveWorkflowEntry::entryWorkflow
+legacy-variable	vaibify/reproducibility/scheduledReverify.py::fdictRunReverifyOnce.entryWorkflow
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fdictBuildUploadHeaders::clientZenodo
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fdictGetRecordSafely::clientZenodo
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fdictHashSelectedFiles::clientZenodo
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fiterReadChunks::barProgress
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fnReraiseRecordError.clsError
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fnReraiseRecordError::excOriginal
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fnStreamDownload::clientZenodo
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fnStreamUpload.barProgress
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fnStreamUpload::clientZenodo
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fnWriteStreamToFile.barProgress
+legacy-variable	vaibify/reproducibility/zenodoClient.py::_fsHashRemoteFile::clientZenodo
+legacy-variable	vaibify/reproducibility/zenodoClient.py::fdictFetchRemoteHashes.clientResolved
+legacy-variable	vaibify/reproducibility/zenodoClient.py::fdictFetchRemoteHashes::clientZenodo
+legacy-variable	vaibify/templates/workflow/GenerateSamples/generateSamples.py::fdaDrawSamples.generatorRandom
+legacy-variable	vaibify/templates/workflow/GenerateSamples/generateSamples.py::fnParseArgumentsAndRun.arguments
+legacy-variable	vaibify/templates/workflow/PlotHistogram/plotHistogram.py::fnParseArgumentsAndRun.arguments
+legacy-variable	vaibify/testing/standards.py::_fdictLoadNpz.archiveNpz
+legacy-variable	vaibify/testing/standards.py::_flistStandardsFromJson.value
+legacy-variable	vaibify/testing/standards.py::_flistStandardsFromJsonList.v
+legacy-variable	vaibify/testing/standards.py::_flistStandardsFromScalarJson::value
+legacy-variable	vaibify/testing/stochasticDetector.py::ftDetectStochastic.reConsumption
+legacy-variable	vaibify/testing/stochasticDetector.py::ftDetectStochastic.reSeed
+"""
+
+
+def _fsetParseVariableSeed():
+    setPairs = set()
+    for sLine in S_FROZEN_VARIABLE_SEED_TEXT.splitlines():
+        if not sLine.strip():
+            continue
+        sDebtClass, sIdentity = sLine.split("\t", 1)
+        setPairs.add((sIdentity, sDebtClass))
+    return frozenset(setPairs)
+
+
+SET_FROZEN_SEED_PAIRS = SET_FROZEN_SEED_PAIRS | _fsetParseVariableSeed()
+
+
 @pytest.fixture(scope="module")
 def listScannedRows():
     listRows, _ = tool.flistScanPackage()
@@ -734,6 +1145,18 @@ def testPrefixedNamesAgreeWithAnnotations(listScannedRows):
         listScannedRows, "legacy-annotation-mismatch",
         "An annotated variable whose name claims a cast must be "
         "annotated with that cast; object and Any never agree.")
+
+
+def testVariableBindingsCarryCastPrefixes(listScannedRows):
+    _fnAssertNoNewDebt(
+        listScannedRows, "legacy-variable",
+        "Every binding name carries a variable cast prefix (doctrine "
+        "2026-08-06); a name outside the vocabulary spells nothing.")
+
+
+def testScannerCatchesUnprefixedBinding():
+    assert _fbSyntheticCaught(
+        "def fnWork():\n    banana = 1\n", "legacy-variable", "banana")
 
 
 def testPrefixVocabularyIsClosed():

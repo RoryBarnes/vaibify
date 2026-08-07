@@ -1912,9 +1912,9 @@ async def _fnPersistAutoArchiveZenodoDigests(
         workflowManager.fnUpdateZenodoDigests(
             dictWorkflow, dictDigests, sZenodoService=sZenodoService,
         )
-    except Exception as exc:
+    except Exception as errorCaught:
         logging.getLogger("vaibify").warning(
-            "Auto Archive: Zenodo digest stamp failed: %s", exc,
+            "Auto Archive: Zenodo digest stamp failed: %s", errorCaught,
         )
 
 

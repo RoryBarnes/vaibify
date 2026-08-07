@@ -62,8 +62,8 @@ def fnRecordAttributionEvent(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             dictWorkflow, sChannel, "hub", sDetail,
         )
-    except Exception as exc:  # noqa: BLE001 — never break the route
-        logger.warning("Attribution event append failed: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — never break the route
+        logger.warning("Attribution event append failed: %s", errorCaught)
 
 
 def fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo):

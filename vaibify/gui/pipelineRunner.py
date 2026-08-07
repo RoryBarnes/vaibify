@@ -241,21 +241,21 @@ async def _ftRunSingleCommand(
     )
     async with _fcontextWebSocketHeartbeat(fnStatusCallback):
         try:
-            resultExec = await asyncio.to_thread(
+            tExecResult = await asyncio.to_thread(
                 connectionDocker.ftRunInContainerStreamedWithChunks,
                 sContainerId, sTimedCmd, fnEmitChunk,
                 sWorkdir=sWorkdir,
             )
         finally:
             await fnDrainPending()
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         await fnStatusCallback({
             "sType": "commandFailed",
             "sCommand": sResolved,
             "sDirectory": sWorkdir,
-            "iExitCode": resultExec.iExitCode,
+            "iExitCode": tExecResult.iExitCode,
         })
-    return (resultExec.iExitCode, dictAccum["fCpu"])
+    return (tExecResult.iExitCode, dictAccum["fCpu"])
 
 
 # Coalescing thresholds for the streaming chunk emitter. A subprocess

@@ -969,10 +969,10 @@ def _fbReconcileUserVerificationByHash(
         return fbReconcileUserVerificationByContentHash(
             dictWorkflow, ffilesEnsureRepoFiles(filesPoll), sRepoRoot,
         )
-    except (OSError, ValueError) as exc:  # noqa: BLE001 — poll survives
+    except (OSError, ValueError) as errorCaught:  # noqa: BLE001 — poll survives
         logger.warning(
             "User-verification hash pass failed for %s: %s",
-            sContainerId, exc,
+            sContainerId, errorCaught,
         )
         return False
 
@@ -1006,10 +1006,10 @@ async def _fnMaintainAiProvenanceStamp(
             _fnRewriteAiProvenanceStamp, dictCtx, sContainerId,
             dictWorkflow,
         )
-    except Exception as exc:  # noqa: BLE001 — poll must survive
+    except Exception as errorCaught:  # noqa: BLE001 — poll must survive
         logger.warning(
             "AI-provenance stamp rewrite failed for %s: %s",
-            sContainerId, exc,
+            sContainerId, errorCaught,
         )
 
 
@@ -1071,10 +1071,10 @@ async def _fnRunSupervisionWatchdog(
             dictWorkflow, listUnattributed, bChainBroken,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
-    except Exception as exc:  # noqa: BLE001 — poll must survive
+    except Exception as errorCaught:  # noqa: BLE001 — poll must survive
         logger.warning(
             "Supervision watchdog failed for %s: %s",
-            sContainerId, exc,
+            sContainerId, errorCaught,
         )
 
 

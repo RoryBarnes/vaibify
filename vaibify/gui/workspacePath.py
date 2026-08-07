@@ -35,15 +35,15 @@ def fnClearCache():
 def _fsRunDockerInspect(sContainerId):
     """Return raw stdout from ``docker inspect`` for one container."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "inspect", sContainerId],
             capture_output=True, text=True, timeout=10,
         )
     except (subprocess.TimeoutExpired, OSError):
         return ""
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return ""
-    return resultProcess.stdout or ""
+    return processResult.stdout or ""
 
 
 def _fsExtractHostPath(sInspectOutput, sDestination):

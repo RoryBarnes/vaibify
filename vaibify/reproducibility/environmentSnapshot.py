@@ -124,17 +124,17 @@ def _fsRunCheckedCommand(saCommand):
     ultimately the user) sees a clear actionable error rather than a
     silent hang.
     """
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         saCommand, capture_output=True, text=True, timeout=30.0,
     )
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         raise subprocess.CalledProcessError(
-            resultProcess.returncode,
+            processResult.returncode,
             saCommand,
-            output=resultProcess.stdout,
-            stderr=resultProcess.stderr,
+            output=processResult.stdout,
+            stderr=processResult.stderr,
         )
-    return resultProcess.stdout.strip()
+    return processResult.stdout.strip()
 
 
 def _fsParseRepoDigests(sRawOutput):
@@ -381,15 +381,15 @@ def _fsCaptureGccVersion():
     if shutil.which("gcc") is None:
         return None
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["gcc", "--version"], capture_output=True, text=True,
             timeout=5.0,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return None
-    return _fsFirstLine(resultProcess.stdout)
+    return _fsFirstLine(processResult.stdout)
 
 
 def _fsCaptureLibcVersion():

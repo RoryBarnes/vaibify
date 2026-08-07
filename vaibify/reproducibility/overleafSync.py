@@ -483,26 +483,26 @@ def _fnCommitAndPush(sRepoDir, sMirrorSha="", listCredArgs=None):
 def _fnEmitHeadSha(sRepoDir):
     """Print a ``HEAD_SHA=<sha>`` line for the repo's current HEAD."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=sRepoDir, capture_output=True, text=True,
         )
     except FileNotFoundError:
         return
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return
-    sHead = (resultProcess.stdout or "").strip()
+    sHead = (processResult.stdout or "").strip()
     if sHead:
         sys.stdout.write(f"HEAD_SHA={sHead}\n")
 
 
 def _fbHasUncommittedChanges(sRepoDir):
     """Return True if the repo has staged or unstaged changes."""
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=sRepoDir, capture_output=True, text=True,
     )
-    return len(resultProcess.stdout.strip()) > 0
+    return len(processResult.stdout.strip()) > 0
 
 
 def _fnGitAdd(sRepoDir):
@@ -661,7 +661,7 @@ def _fnRemoveTokenFile(sPath):
 def _fprocessRunSubprocess(listCommand, sErrorMessage, sCwd=None):
     """Run a subprocess and raise OverleafError on failure."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             listCommand, cwd=sCwd,
             capture_output=True, text=True, check=True,
         )
@@ -675,7 +675,7 @@ def _fprocessRunSubprocess(listCommand, sErrorMessage, sCwd=None):
         _fnDetectAuthFailure(sOutput)
         _fnDetectRateLimit(sOutput)
         raise OverleafError(f"{sErrorMessage}: {sOutput}")
-    return resultProcess
+    return processResult
 
 
 def _fsCombineErrorOutput(error):
@@ -748,14 +748,14 @@ def _fnRunLsRemote(args):
         sUrl = f"https://{_OVERLEAF_GIT_HOST}/{args.project}"
         listCommand = ["git"] + listCredArgs + _LIST_GIT_HARDENING_CONFIG
         listCommand.extend(["ls-remote", sUrl, "HEAD"])
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             listCommand, capture_output=True, text=True,
         )
     finally:
         _fnRemoveTokenFile(sTokenPath)
-    if resultProcess.returncode != 0:
-        sys.stderr.write(_fsRedactStderr(resultProcess.stderr or ""))
-        sys.exit(resultProcess.returncode or _EXIT_ERROR)
+    if processResult.returncode != 0:
+        sys.stderr.write(_fsRedactStderr(processResult.stderr or ""))
+        sys.exit(processResult.returncode or _EXIT_ERROR)
     sys.exit(_EXIT_OK)
 
 

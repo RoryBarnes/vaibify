@@ -85,9 +85,9 @@ def _fbIsDividerLine(sLine):
 
 def _fbLooksLikeKeyvalue(sFullPath):
     try:
-        with open(sFullPath, encoding="utf-8", errors="replace") as fh:
+        with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
             listLines = [
-                s.strip() for s in fh.readlines()
+                s.strip() for s in fileHandle.readlines()
                 if s.strip() and not s.strip().startswith("#")
                 and not _fbIsDividerLine(s)
             ]
@@ -105,8 +105,8 @@ def _fsDetectFormat(sFullPath):
         return "keyvalue"
     if sFormat is None:
         try:
-            with open(sFullPath, "rb") as fh:
-                baHead = fh.read(4)
+            with open(sFullPath, "rb") as fileHandle:
+                baHead = fileHandle.read(4)
             if baHead and any(b > 127 for b in baHead):
                 return None
         except Exception:
@@ -379,8 +379,8 @@ def _fnAddStatsBenchmarks(
         )
 
 def _fnBenchmarkJson(sFullPath, sFileName, dictReport):
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        dictData = json.load(fh)
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        dictData = json.load(fileHandle)
     if isinstance(dictData, dict):
         dictReport["listJsonTopKeys"] = list(dictData.keys())
         _fnWalkJsonValues(
@@ -432,8 +432,8 @@ def _fnAddJsonArrayBenchmarks(
 
 def _fnBenchmarkCsv(sFullPath, sFileName, dictReport):
     import csv
-    with open(sFullPath, newline="", encoding="utf-8", errors="replace") as fh:
-        reader = csv.DictReader(fh)
+    with open(sFullPath, newline="", encoding="utf-8", errors="replace") as fileHandle:
+        reader = csv.DictReader(fileHandle)
         listColumns = reader.fieldnames or []
         listRows = list(reader)
     dictReport["listColumnNames"] = list(listColumns)
@@ -459,14 +459,14 @@ def _fnAddColumnBenchmarks(listRows, sCol, sFileName, dictReport):
 
 def _fnBenchmarkHdf5(sFullPath, sFileName, dictReport):
     import h5py
-    with h5py.File(sFullPath, "r") as fh:
+    with h5py.File(sFullPath, "r") as fileHandle:
         listDatasets = []
-        fh.visititems(
+        fileHandle.visititems(
             lambda n, o: listDatasets.append(n)
             if isinstance(o, h5py.Dataset) else None
         )
         for sDataset in listDatasets[:50]:
-            datasetHdf5 = fh[sDataset]
+            datasetHdf5 = fileHandle[sDataset]
             dictReport["tShape"] = list(datasetHdf5.shape)
             dictReport["sDtype"] = str(datasetHdf5.dtype)
             if not np.issubdtype(datasetHdf5.dtype, np.number):
@@ -480,8 +480,8 @@ def _fnBenchmarkHdf5(sFullPath, sFileName, dictReport):
 
 def _fnBenchmarkKeyvalue(sFullPath, sFileName, dictReport):
     dictReport["sFormat"] = "keyvalue"
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             sStripped = sLine.strip()
             if not sStripped or sStripped.startswith("#"):
                 continue
@@ -509,8 +509,8 @@ def _fbIsNumericToken(sToken):
         return False
 
 def _fnBenchmarkWhitespace(sFullPath, sFileName, dictReport):
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listRawLines = fh.readlines()
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listRawLines = fileHandle.readlines()
     listFiltered = [
         s.strip() for s in listRawLines
         if s.strip() and not s.strip().startswith("#")
@@ -561,8 +561,8 @@ def _fnAddWhitespaceColBenchmarks(
     )
 
 def _fnBenchmarkJsonl(sFullPath, sFileName, dictReport):
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listRecords = [json.loads(sLine) for sLine in fh if sLine.strip()]
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listRecords = [json.loads(sLine) for sLine in fileHandle if sLine.strip()]
     if not listRecords:
         return
     if isinstance(listRecords[0], dict):
@@ -696,9 +696,9 @@ def _fnBenchmarkImage(sFullPath, sFileName, dictReport):
 def _fnBenchmarkFasta(sFullPath, sFileName, dictReport):
     listIds = []
     listLengths = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
         iCurrentLength = 0
-        for sLine in fh:
+        for sLine in fileHandle:
             if sLine.startswith(">"):
                 if iCurrentLength > 0:
                     listLengths.append(iCurrentLength)
@@ -717,8 +717,8 @@ def _fnBenchmarkFasta(sFullPath, sFileName, dictReport):
 def _fnBenchmarkFastq(sFullPath, sFileName, dictReport):
     listLengths = []
     listQualities = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listLines = fh.readlines()
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listLines = fileHandle.readlines()
     for i in range(0, len(listLines) - 3, 4):
         sSeq = listLines[i + 1].strip()
         sQual = listLines[i + 3].strip()
@@ -741,8 +741,8 @@ def _fnBenchmarkTabularWithComments(
 ):
     listHeaders = listDefaultHeaders
     listRows = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             if sLine.startswith(sCommentPrefix):
                 continue
             if sLine.startswith(sHeaderPrefix) and not listRows:
@@ -773,8 +773,8 @@ def _fnBenchmarkBed(sFullPath, sFileName, dictReport):
         "chrom", "chromStart", "chromEnd", "name", "score", "strand",
     ]
     listRows = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             if sLine.strip() and not sLine.startswith("#"):
                 listRows.append(sLine.strip().split("\\t"))
     if listRows:
@@ -810,8 +810,8 @@ def _fnBenchmarkSam(sFullPath, sFileName, dictReport):
         "RNEXT", "PNEXT", "TLEN", "SEQ", "QUAL",
     ]
     listRows = []
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        for sLine in fh:
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        for sLine in fileHandle:
             if not sLine.startswith("@") and sLine.strip():
                 listRows.append(sLine.strip().split("\\t"))
     dictReport["listColumnNames"] = listHeaders
@@ -828,18 +828,18 @@ def _fnBenchmarkSam(sFullPath, sFileName, dictReport):
         )
 
 def _fnBenchmarkSyslog(sFullPath, sFileName, dictReport):
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listLines = [s for s in fh if s.strip()]
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listLines = [s for s in fileHandle if s.strip()]
     dictReport["tShape"] = [len(listLines)]
 
 def _fnBenchmarkCef(sFullPath, sFileName, dictReport):
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listRecords = [s for s in fh if s.strip().startswith("CEF:")]
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listRecords = [s for s in fileHandle if s.strip().startswith("CEF:")]
     dictReport["tShape"] = [len(listRecords)]
 
 def _fnBenchmarkFixedwidth(sFullPath, sFileName, dictReport):
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        listLines = [s for s in fh.readlines() if s.strip()]
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        listLines = [s for s in fileHandle.readlines() if s.strip()]
     if not listLines:
         return
     listTokens = listLines[0].split()
@@ -860,8 +860,8 @@ def _fnBenchmarkFixedwidth(sFullPath, sFileName, dictReport):
 
 def _fnBenchmarkMultitable(sFullPath, sFileName, dictReport):
     import re as reModule
-    with open(sFullPath, encoding="utf-8", errors="replace") as fh:
-        sContent = fh.read()
+    with open(sFullPath, encoding="utf-8", errors="replace") as fileHandle:
+        sContent = fileHandle.read()
     listSections = reModule.split(r"\\n\\s*\\n|\\n[=\\-]{{3,}}\\n", sContent)
     listSections = [s.strip() for s in listSections if s.strip()]
     dictReport["tShape"] = [len(listSections)]
@@ -1070,16 +1070,16 @@ def _fnBenchmarkVtk(sFullPath, sFileName, dictReport):
 
 def _fnBenchmarkCgns(sFullPath, sFileName, dictReport):
     import h5py
-    with h5py.File(sFullPath, "r") as fh:
+    with h5py.File(sFullPath, "r") as fileHandle:
         listDatasets = []
-        fh.visititems(
+        fileHandle.visititems(
             lambda n, o: listDatasets.append(n)
             if isinstance(o, h5py.Dataset) else None
         )
         for sDataset in listDatasets[:50]:
             if len(dictReport["listBenchmarks"]) >= _I_MAX_BENCHMARKS_PER_FILE:
                 break
-            datasetHdf5 = fh[sDataset]
+            datasetHdf5 = fileHandle[sDataset]
             dictReport["tShape"] = list(datasetHdf5.shape)
             dictReport["sDtype"] = str(datasetHdf5.dtype)
             if not np.issubdtype(datasetHdf5.dtype, np.number):
@@ -1097,14 +1097,14 @@ def _fnBenchmarkSafetensors(sFullPath, sFileName, dictReport):
     except ImportError:
         dictReport["sError"] = "safetensors not installed"
         return
-    with safe_open(sFullPath, framework="numpy") as fh:
-        listTensorNames = list(fh.keys())
+    with safe_open(sFullPath, framework="numpy") as fileHandle:
+        listTensorNames = list(fileHandle.keys())
         dictReport["listColumnNames"] = listTensorNames
         for sTensorName in listTensorNames:
             if len(dictReport["listBenchmarks"]) >= _I_MAX_BENCHMARKS_PER_FILE:
                 break
-            daData = fh.get_tensor(sTensorName).astype(float).flatten()
-            dictReport["tShape"] = list(fh.get_tensor(sTensorName).shape)
+            daData = fileHandle.get_tensor(sTensorName).astype(float).flatten()
+            dictReport["tShape"] = list(fileHandle.get_tensor(sTensorName).shape)
             _fnAddArrayBenchmarks(
                 daData, sFileName, sTensorName, dictReport,
                 sKeyPrefix=f"key:{{sTensorName}},",

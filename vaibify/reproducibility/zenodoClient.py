@@ -477,8 +477,8 @@ def _fdictGetRecordSafely(clientZenodo, sRecordId):
     sUrl = f"{clientZenodo._sBaseUrl}/records/{sRecordId}"
     try:
         return clientZenodo._fdictRequest("GET", sUrl)
-    except ZenodoError as exc:
-        _fnReraiseRecordError(exc, sRecordId)
+    except ZenodoError as errorCaught:
+        _fnReraiseRecordError(errorCaught, sRecordId)
 
 
 def _fnReraiseRecordError(excOriginal, sRecordId):
@@ -522,10 +522,10 @@ def _fsHashRemoteFile(clientZenodo, dictFile):
             sFileUrl, headers=dictHeaders, stream=True,
             timeout=(10, 60),
         )
-    except requests.RequestException as exc:
+    except requests.RequestException as errorCaught:
         raise ZenodoError(
             f"Network error fetching Zenodo file: "
-            f"{_fsRedactToken(str(exc))}"
+            f"{_fsRedactToken(str(errorCaught))}"
         ) from None
     _fnCheckResponse(responseHttp)
     return _fsHashStreamingResponse(responseHttp)

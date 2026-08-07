@@ -184,7 +184,7 @@ def fnWriteConfigToDirectory(sProjectDirectory, dictConfig):
 def ftResultRunBuild(sProjectDirectory):
     """Run vaibify build as a subprocess."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             [sys.executable, "-m", "vaibify", "build"],
             cwd=sProjectDirectory,
             capture_output=True, text=True, timeout=600,
@@ -193,5 +193,5 @@ def ftResultRunBuild(sProjectDirectory):
         return (1, "Build timed out after 600 seconds")
     except FileNotFoundError:
         return (1, "Python interpreter not found")
-    sOutput = resultProcess.stdout + resultProcess.stderr
-    return (resultProcess.returncode, sOutput)
+    sOutput = processResult.stdout + processResult.stderr
+    return (processResult.returncode, sOutput)

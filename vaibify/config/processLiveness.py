@@ -112,7 +112,7 @@ def fdatetimeReadProcessStartClock(iPid):
 def _fsReadStartTimeFromProcessStatus(iPid):
     """Return ``ps -o lstart=`` output for a PID, or '' on any failure."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["ps", "-o", "lstart=", "-p", str(iPid)],
             env={**os.environ, "LC_ALL": "C"},
             capture_output=True,
@@ -121,7 +121,7 @@ def _fsReadStartTimeFromProcessStatus(iPid):
         )
     except (OSError, subprocess.SubprocessError):
         return ""
-    return resultProcess.stdout.strip()
+    return processResult.stdout.strip()
 
 
 def fdatetimeParseClaimIso(sClaimIso):

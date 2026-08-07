@@ -290,9 +290,9 @@ def _ftRunPipInstall(pathLock):
         sys.executable, "-m", "pip", "install",
         "--require-hashes", "-r", str(pathLock),
     ]
-    completed = subprocess.run(saCommand, capture_output=True, text=True)
-    sys.stdout.write(completed.stdout)
-    return completed.returncode, completed.stderr
+    processCompleted = subprocess.run(saCommand, capture_output=True, text=True)
+    sys.stdout.write(processCompleted.stdout)
+    return processCompleted.returncode, processCompleted.stderr
 
 
 def _fbShouldFallbackToUv(sStderr):
@@ -309,13 +309,13 @@ def _fbRunUvFallback(pathLock):
         "uv", "pip", "install",
         "--require-hashes", "-r", str(pathLock),
     ]
-    completed = subprocess.run(saCommand, capture_output=True, text=True)
-    sys.stdout.write(completed.stdout)
-    if completed.returncode == 0:
+    processCompleted = subprocess.run(saCommand, capture_output=True, text=True)
+    sys.stdout.write(processCompleted.stdout)
+    if processCompleted.returncode == 0:
         _fnPrintPass("hashes verified (uv)")
         return True
     _fnPrintFail("uv install failed")
-    click.echo(completed.stderr.rstrip())
+    click.echo(processCompleted.stderr.rstrip())
     return False
 
 
@@ -339,16 +339,16 @@ def fbVerifyTier3(sProjectRepo):
         "Pulling pinned container image",
     )
     sImageDigest = _fsLoadImageDigest(pathEnvironment, sProjectRepo)
-    completed = subprocess.run(
+    processCompleted = subprocess.run(
         ["docker", "pull", sImageDigest],
         capture_output=True, text=True,
     )
-    sys.stdout.write(completed.stdout)
-    if completed.returncode == 0:
+    sys.stdout.write(processCompleted.stdout)
+    if processCompleted.returncode == 0:
         _fnPrintPass(sImageDigest)
         return True
     _fnPrintFail("docker pull failed")
-    click.echo(completed.stderr.rstrip())
+    click.echo(processCompleted.stderr.rstrip())
     return False
 
 
