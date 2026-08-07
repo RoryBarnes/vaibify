@@ -68,6 +68,19 @@ jobs:
           python -m pytest -m falsification -v
 
       - name: Re-confirm falsification kills
-        timeout-minutes: 25
+        # 25 -> 60 on 2026-08-07. The step timed out rather than finding
+        # a surviving mutant: the registry grew 412 -> 559 entries during
+        # the carrier migration, and every entry applies a mutation and
+        # runs a pytest node. Measured locally at ~1.9s per entry, so
+        # ~18 minutes here and roughly double that on a hosted runner.
+        #
+        # This is a capacity limit that will be reached again -- it
+        # scales with the registry, which only grows. When it next
+        # trips, RAISE it again or shard the registry across matrix
+        # legs. Do NOT reach for `-n auto`: this harness mutates source
+        # in place, and AGENTS.md records what happened when a
+        # source-mutating tool shared a working tree -- failures in
+        # tests nobody had touched, twice misdiagnosed as flakiness.
+        timeout-minutes: 60
         run: |
           python tools/reconfirmFalsification.py
