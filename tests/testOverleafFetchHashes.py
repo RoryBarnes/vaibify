@@ -367,7 +367,7 @@ def test_fdictFetchRemoteHashes_path_traversal_relpath_yields_none(tmp_path):
 def test_fdictFetchRemoteHashes_timeout_raises_runtime(tmp_path):
     """A git ``TimeoutExpired`` is mapped to a redacted ``RuntimeError``.
 
-    Regression test for the Wave-4 hardening: ``_fnRunGit`` now
+    Regression test for the Wave-4 hardening: ``_fprocessRunGit`` now
     requests ``timeout=...`` so a network-stalled mirror cannot hang
     the verification worker.
     """
@@ -408,7 +408,7 @@ def test_run_git_passes_timeout_kwarg(tmp_path, monkeypatch):
         "vaibify.reproducibility.overleafMirror.subprocess.run",
         side_effect=fnFakeRun,
     ):
-        overleafMirror._fnRunGit(["status"], sCwd=str(tmp_path))
+        overleafMirror._fprocessRunGit(["status"], sCwd=str(tmp_path))
     assert listCalls, "subprocess.run was not invoked"
     assert "timeout" in listCalls[0]
     assert listCalls[0]["timeout"] > 0

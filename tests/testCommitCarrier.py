@@ -999,7 +999,7 @@ def testACoroutineWorkerIsRefusedAtRuntime():
         return "never runs"
 
     with pytest.raises(TypeError, match="coroutine function"):
-        commitCarrier._fnCallWorkerSynchronously(
+        commitCarrier._fgenericCallWorkerSynchronously(
             _fnAsyncWorker, object(),
         )
 
@@ -1025,7 +1025,7 @@ def testAWorkerReturningAnAwaitableIsRefusedAtRuntime():
         _CallableWithAsyncCall(),
     ):
         with pytest.raises(TypeError, match="awaitable|coroutine"):
-            commitCarrier._fnCallWorkerSynchronously(fnWorker, object())
+            commitCarrier._fgenericCallWorkerSynchronously(fnWorker, object())
 
 
 def testASynchronousWorkerStillRuns():
@@ -1037,7 +1037,7 @@ def testASynchronousWorkerStillRuns():
         listRan.append("ran")
         return "done"
 
-    assert commitCarrier._fnCallWorkerSynchronously(
+    assert commitCarrier._fgenericCallWorkerSynchronously(
         _fnWorker, object(),
     ) == "done"
     assert listRan == ["ran"]
@@ -1099,4 +1099,4 @@ def testAnAwaitableWithoutCloseStillRaisesTypeError():
         return _AwaitableWithoutClose()
 
     with pytest.raises(TypeError, match="awaitable"):
-        commitCarrier._fnCallWorkerSynchronously(_fnWorker, object())
+        commitCarrier._fgenericCallWorkerSynchronously(_fnWorker, object())

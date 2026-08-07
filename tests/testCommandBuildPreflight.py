@@ -472,13 +472,13 @@ def test_build_warns_but_proceeds_on_arch_mismatch(
     mockProbe, mockColima, mockHost, mockVm, mockDisk,
     mockMem, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = SimpleNamespace(
         sProjectName="testproj",
         features=SimpleNamespace(bGpu=False),
     )
     runner = CliRunner()
-    result = runner.invoke(build)
+    result = runner.invoke(fnBuildCommand)
     assert result.exit_code == 0
     assert "QEMU" in result.output
     mockBuild.assert_called_once()
@@ -500,13 +500,13 @@ def test_build_aborts_on_arm_host_with_gpu(
     mockProbe, mockColima, mockHost, mockVm, mockDisk,
     mockMem, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = SimpleNamespace(
         sProjectName="testproj",
         features=SimpleNamespace(bGpu=True),
     )
     runner = CliRunner()
-    result = runner.invoke(build)
+    result = runner.invoke(fnBuildCommand)
     assert result.exit_code != 0
     assert "amd64-only" in result.output
     mockBuild.assert_not_called()

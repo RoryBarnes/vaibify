@@ -83,6 +83,8 @@ tool = _fmoduleLoadTool()
 
 DICT_TIER_ONE_AGREEMENT_COPY = {
     "n": set(),
+    "fn": {"Callable"},
+    "generic": set(),
     "b": {"bool"},
     "i": {"int"},
     "f": {"float"},
@@ -121,10 +123,20 @@ DICT_TIER_TWO_REGISTRY_COPY = {
                "ConnectionRecord", "DurableTaskRecord",
                "TerminalExecutionRecord", "PoisonRecord",
                "BrowserSessionRecord"},
-    "lock": {"Lock"},
+    "lock": {"Lock", "_RepoLockHolder"},
     "response": {"Response", "JSONResponse", "StreamingResponse",
                  "HTMLResponse", "PlainTextResponse", "FileResponse",
-                 "RedirectResponse"},
+                 "RedirectResponse", "ValidateResponse"},
+    "process": {"CompletedProcess", "Popen"},
+    "parser": {"ArgumentParser"},
+    "namespace": {"Namespace"},
+    "thread": {"Thread"},
+    "task": {"Task"},
+    "request": {"Request"},  # suffix family: any *Request model agrees
+    "httpresponse": {"HTTPResponse"},
+    "error": {"Exception", "RuntimeError", "ValueError", "OSError"},
+    "websocket": {"WebSocket"},
+    "logger": {"Logger"},
     "app": {"FastAPI"},
     "datetime": {"datetime"},
     "file": {"IO", "TextIO", "BinaryIO", "TextIOWrapper"},
@@ -151,12 +163,12 @@ DICT_TIER_TWO_REGISTRY_COPY = {
 # Lower the matching constant in the same commit as every burn-down.
 # ---------------------------------------------------------------------------
 
-I_LEGACY_NAME_BUDGET = 10
-I_LEGACY_FN_RETURN_BUDGET = 21
+I_LEGACY_NAME_BUDGET = 0
+I_LEGACY_FN_RETURN_BUDGET = 0
 I_LEGACY_YIELD_BUDGET = 0
 I_LEGACY_LITERAL_RETURN_BUDGET = 0
 I_LEGACY_RETURN_ANNOTATION_BUDGET = 0
-I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 1
+I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

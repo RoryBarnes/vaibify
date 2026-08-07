@@ -7,7 +7,7 @@ import posixpath
 
 from fastapi import HTTPException, Request
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     fdictRequireWorkflow,
@@ -138,7 +138,7 @@ async def _fdictCheckStandardsExist(
 def _fnRegisterStandardizePlots(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/standardize-plots."""
 
-    @fnAgentAction("accept-plots-as-standard")
+    @ffnAgentAction("accept-plots-as-standard")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/standardize-plots"
@@ -181,7 +181,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
             "sTimestamp": sTimestamp,
         }
 
-    @fnAgentAction("compare-plot")
+    @ffnAgentAction("compare-plot")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"
     )

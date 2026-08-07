@@ -190,10 +190,10 @@ def test_build_context_does_not_stage_director(tmp_path):
 def test_build_cli_command(
     mockProbe, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = _fConfigFull()
     runner = CliRunner()
-    result = runner.invoke(build)
+    result = runner.invoke(fnBuildCommand)
     assert result.exit_code == 0
     assert "Build complete" in result.output
     assert "vaibify stop && vaibify start" in result.output
@@ -208,10 +208,10 @@ def test_build_cli_command(
 def test_build_cli_no_cache(
     mockProbe, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = _fConfigFull()
     runner = CliRunner()
-    result = runner.invoke(build, ["--no-cache"])
+    result = runner.invoke(fnBuildCommand, ["--no-cache"])
     assert result.exit_code == 0
     bNoCache = mockBuild.call_args[0][2]
     assert bNoCache is True
@@ -259,9 +259,9 @@ def test_init_with_template_no_config(
 ):
     # Config-writing is mocked, so registration is mocked too; otherwise
     # init correctly refuses to register a nonexistent config.
-    from vaibify.cli.commandInit import init
+    from vaibify.cli.commandInit import fnInitCommand
     runner = CliRunner()
-    result = runner.invoke(init, ["--template", "sandbox"])
+    result = runner.invoke(fnInitCommand, ["--template", "sandbox"])
     assert result.exit_code == 0
     assert "Initialized" in result.output
     mockCopy.assert_called_once_with("sandbox")
@@ -283,10 +283,10 @@ def test_init_with_template_no_config(
 def test_start_cli_command(
     mockDir, mockResolvePath, mockConfig, mockStart, mockPreflight,
 ):
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     mockConfig.return_value = _fConfigFull()
     runner = CliRunner()
-    result = runner.invoke(start)
+    result = runner.invoke(fnStartCommand)
     assert result.exit_code == 0
     assert "Starting" in result.output
 
@@ -335,10 +335,10 @@ def test_fnStartContainer_no_command(mockStart):
 def test_start_with_gui(
     mockDir, mockResolvePath, mockConfig, mockStart, mockGui, mockPreflight,
 ):
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     mockConfig.return_value = _fConfigFull()
     runner = CliRunner()
-    result = runner.invoke(start, ["--gui"])
+    result = runner.invoke(fnStartCommand, ["--gui"])
     assert result.exit_code == 0
     mockGui.assert_called_once()
 

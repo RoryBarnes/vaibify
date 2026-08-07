@@ -237,7 +237,7 @@ def testPermittedReleaseClosesChannelsBeforeFreeingTheFlock():
     containerOwnership.fnRegisterSessionSocket(
         stateApp.dictSessionSockets,
         containerOwnership.ConnectionRecord(
-            connection=connectionObserving,
+            websocket=connectionObserving,
             sBrowserSessionId=S_SESSION_ID,
             iOwnerGeneration=1,
             sLane=containerOwnership.S_LANE_PIPELINE,

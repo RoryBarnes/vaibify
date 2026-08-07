@@ -35,7 +35,7 @@ _F_READY_POLL_INTERVAL_SECONDS = 0.05
 S_SUPPRESS_BROWSER_ENV = "VAIBIFY_SUPPRESS_BROWSER"
 
 
-def _fnLaunchDetachedHub(iPort):
+def _fprocessLaunchDetachedHub(iPort):
     """Spawn a detached vaibify hub child on the given port.
 
     Sets ``VAIBIFY_SUPPRESS_BROWSER=1`` in the child's environment so
@@ -116,7 +116,7 @@ def _fnRegisterSpawn(app):
                 f"(limit {_I_MAX_LIVE_SPAWNS}).",
             )
         iPort = fiPickFreePort(iPreferred=8050)
-        child = _fnLaunchDetachedHub(iPort)
+        child = _fprocessLaunchDetachedHub(iPort)
         listChildren.append(child)
         await _fbAwaitChildReady(iPort, _F_READY_TIMEOUT_SECONDS)
         return {

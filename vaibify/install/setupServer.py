@@ -118,7 +118,7 @@ def _fnRegisterConfigRoutes(app, sOutputDirectory):
     @app.post(
         "/api/setup/validate", response_model=ValidateResponse
     )
-    async def fnValidateConfig(request: WizardConfigRequest):
+    async def fresponseValidateConfig(request: WizardConfigRequest):
         listErrors = _flistCollectErrors(request)
         return ValidateResponse(
             bValid=len(listErrors) == 0,

@@ -56,7 +56,7 @@ independently edited copies in `tools/generateStyleInventory.py` and
 `tests/testStyleInvariants.py`, and growing either tier takes both
 edits plus my approval.
 
-3. Function names should begin with an "f" and should be followed by additional lowercase letter(s) that describe the return type, e.g. "fb" for a function that returns a Boolean, or "flist" for a function that returns a list. If a function does not return anything, use "fn" as the prefix.
+3. Function names should begin with an "f" and should be followed by additional lowercase letter(s) that describe the return type, e.g. "fb" for a function that returns a Boolean, or "flist" for a function that returns a list. If a function does not return anything, use "fn" as the prefix. Two special runs: "ffn" returns a *function* (decorators, callback factories; the inner return type is deliberately undeclared — decorators cannot know it), and "fgeneric" returns the *caller-determined* type (parametric executors; the future mypy lane pins it with TypeVar annotations). A `@property` is a computed variable and carries a VARIABLE cast prefix, not a function prefix. Every name conforms unless a FOREIGN contract owns it (dunders, framework overrides like `dispatch`/`emit`/`read` — the closed interface-method list in the style inventory); Click command functions conform too, with the user-facing verb pinned by an explicit `@click.command("verb")` string.
 
 3a. This naming contract is ENFORCED: `tests/testStyleInvariants.py`
 fails CI on any new nonconforming name, any `fn*` that returns or
@@ -659,7 +659,7 @@ vaibify-shipped template at CI time.
 Every new state-mutating HTTP or WebSocket route that a researcher can
 invoke from the UI must also be registered with the agent-action
 catalog — either by an entry in `LIST_AGENT_ACTIONS` plus a
-`@fnAgentAction("action-name")` decorator on the handler, or by an
+`@ffnAgentAction("action-name")` decorator on the handler, or by an
 explicit entry in `SET_INTENTIONALLY_EXCLUDED_PATHS` (with a short
 rationale on the same line or in the preceding comment block) if the
 route is genuinely not agent-invokable.
@@ -670,7 +670,7 @@ the agent has no way to translate that request into a backend call,
 so the dashboard silently drifts out of sync as the agent improvises.
 
 **`bAgentSafe` is enforced server-side (2026-07-26).** It used to be
-advertisement: `fnAgentAction` changes no behaviour, and the flag was
+advertisement: `ffnAgentAction` changes no behaviour, and the flag was
 consumed only by `vaibify/containerImage/vaibifyDo.py` *inside* the container, which
 an agent bypasses with `curl`. `SessionTokenMiddleware` now resolves
 each request to its route template and refuses the agent lane for any

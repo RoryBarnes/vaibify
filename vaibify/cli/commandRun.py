@@ -133,7 +133,7 @@ def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
     "--from", "iFrom", default=None, type=int,
     help="Run from this step onward (1-based).",
 )
-def run(sProjectName, iStep, iFrom):
+def fnRunCommand(sProjectName, iStep, iFrom):
     """Run pipeline steps in the container."""
     _fnValidateStepOptions(iStep, iFrom)
     configProject = fconfigResolveProject(sProjectName)

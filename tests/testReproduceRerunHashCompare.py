@@ -103,7 +103,7 @@ def _fdictInvokeRerunWithDivergentStep(pathRepo, sNewContent):
         side_effect=fdictRerunMutatingOutput,
     ):
         resultClick = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(pathRepo), "--rerun"],
         )
     pathAttestation = pathRepo / ".vaibify" / "l3_attestation.json"

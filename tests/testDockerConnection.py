@@ -724,10 +724,10 @@ def test_fbaFetchFile_under_cap_returns_bytes(mockGetDocker):
 
 
 def test_module_init_filters_deprecation_warning():
-    """A subprocess import shows the heartbeat-flood filter installed.
+    """A subprocess import shows the heartbeat-flood fnFilterCommand installed.
 
     pytest's per-test ``catch_warnings`` context saves and restores the
-    filter list, so the filter installed at module-import is invisible
+    fnFilterCommand list, so the fnFilterCommand installed at module-import is invisible
     inside an active pytest session. Verifying via subprocess sidesteps
     that without weakening the assertion.
     """

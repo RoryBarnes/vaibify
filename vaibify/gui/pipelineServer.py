@@ -840,7 +840,7 @@ async def fnPipelineMessageLoop(
             if dictOverwriteRefusal is not None:
                 await fnCallback(dictOverwriteRefusal)
                 continue
-            def fnStartDispatchTask(
+            def ftaskStartDispatch(
                 sActionBound=sAction, dictRequestBound=dictRequest,
             ):
                 return asyncio.create_task(
@@ -853,7 +853,7 @@ async def fnPipelineMessageLoop(
                 )
 
             taskPipeline, iOwnerGeneration = await _ftLaunchDispatchTask(
-                dictDurableContext, sContainerId, fnStartDispatchTask,
+                dictDurableContext, sContainerId, ftaskStartDispatch,
             )
             if taskPipeline is None:
                 await fnCallback(
@@ -870,7 +870,7 @@ async def fnPipelineMessageLoop(
 
 
 async def _ftLaunchDispatchTask(
-    dictDurableContext, sContainerId, fnStartDispatchTask,
+    dictDurableContext, sContainerId, ftaskStartDispatch,
 ):
     """Launch a dispatch as a mode-(c) durable task when wired.
 
@@ -884,13 +884,13 @@ async def _ftLaunchDispatchTask(
     exactly as before.
     """
     if dictDurableContext is None:
-        return (fnStartDispatchTask(), 1)
+        return (ftaskStartDispatch(), 1)
     from . import commitCarrier
     try:
         dictLaunch = await commitCarrier.fdictLaunchDurableTask(
             dictDurableContext["appState"], dictDurableContext["sName"],
             sContainerId, dictDurableContext["dictLaneTuple"],
-            fnStartDispatchTask,
+            ftaskStartDispatch,
         )
     except commitCarrier.CommitRefusedError as error:
         logger.warning(

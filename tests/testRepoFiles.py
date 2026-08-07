@@ -238,7 +238,7 @@ def test_host_run_command_missing_binary_is_soft_failure(filesHost):
 
 
 def test_host_lock_round_trip(filesHost):
-    with filesHost.fnWithLock(".vaibify/syncStatus.json"):
+    with filesHost.flockAcquireForFile(".vaibify/syncStatus.json"):
         filesHost.fnWriteJsonAtomic(".vaibify/syncStatus.json", {})
     assert filesHost.fbIsFile(".vaibify/syncStatus.json")
 
@@ -260,7 +260,7 @@ def test_host_write_rejects_traversal_and_empty_root(filesHost):
         HostRepoFiles("").fnWriteTextAtomic("a.txt", "x")
     assert filesHost.fbRemoveFile("../escape.txt") is False
     with pytest.raises(ValueError):
-        HostRepoFiles("").fnWithLock("a.json")
+        HostRepoFiles("").flockAcquireForFile("a.json")
 
 
 def test_container_write_rejects_traversal_and_empty_root(
@@ -446,10 +446,10 @@ def test_container_local_root_is_none(filesContainer):
 def test_container_lock_is_shared_per_container_and_path(connectionFake):
     filesOne = ContainerRepoFiles(connectionFake, "cid", "/repo")
     filesTwo = ContainerRepoFiles(connectionFake, "cid", "/repo")
-    lockOne = filesOne.fnWithLock(".vaibify/syncStatus.json")
-    lockTwo = filesTwo.fnWithLock(".vaibify/syncStatus.json")
+    lockOne = filesOne.flockAcquireForFile(".vaibify/syncStatus.json")
+    lockTwo = filesTwo.flockAcquireForFile(".vaibify/syncStatus.json")
     assert lockOne is lockTwo
-    lockOther = filesOne.fnWithLock(".vaibify/other.json")
+    lockOther = filesOne.flockAcquireForFile(".vaibify/other.json")
     assert lockOther is not lockOne
 
 

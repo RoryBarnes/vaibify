@@ -201,7 +201,7 @@ by default (`bArchiveTests`, absent means true).
 ## Required after backend edits
 
 - If you added a state-mutating route, register it in
-  `actionCatalog.LIST_AGENT_ACTIONS` with a `@fnAgentAction` decorator,
+  `actionCatalog.LIST_AGENT_ACTIONS` with a `@ffnAgentAction` decorator,
   OR add `(method, path)` to `SET_INTENTIONALLY_EXCLUDED_PATHS` with a
   comment explaining why.
   `tests/testArchitecturalInvariants.py::testAgentActionRegistered`

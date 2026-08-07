@@ -146,7 +146,7 @@ def _fdictBuildGitEnv(sAskpassPath):
     return dictEnv
 
 
-def _fresultSyntheticGitFailure(listArgs, iReturncode, sStderr):
+def _fprocessSyntheticGitFailure(listArgs, iReturncode, sStderr):
     """Return a CompletedProcess representing a failed git invocation."""
     return subprocess.CompletedProcess(
         args=["git"] + listArgs,
@@ -156,7 +156,7 @@ def _fresultSyntheticGitFailure(listArgs, iReturncode, sStderr):
     )
 
 
-def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
+def _fprocessRunGit(listArgs, sCwd=None, dictEnv=None):
     """Run a git command and return a CompletedProcess; never raises.
 
     Always sets ``GIT_TERMINAL_PROMPT=0`` so a misconfigured git
@@ -188,9 +188,9 @@ def _fnRunGit(listArgs, sCwd=None, dictEnv=None):
             timeout=_F_GIT_TIMEOUT_SECONDS,
         )
     except FileNotFoundError as error:
-        return _fresultSyntheticGitFailure(listArgs, 127, str(error))
+        return _fprocessSyntheticGitFailure(listArgs, 127, str(error))
     except subprocess.TimeoutExpired:
-        return _fresultSyntheticGitFailure(
+        return _fprocessSyntheticGitFailure(
             listArgs, 124, "git command timed out",
         )
 
@@ -210,7 +210,7 @@ def _fnClonePartial(sProjectId, sAskpassPath):
         "clone", "--filter=blob:none", "--no-checkout",
         "--no-recurse-submodules", sUrl, sMirror,
     ]
-    result = _fnRunGit(listArgs, dictEnv=dictEnv)
+    result = _fprocessRunGit(listArgs, dictEnv=dictEnv)
     if result.returncode != 0:
         raise RuntimeError(
             f"Mirror clone failed: {_fsStrippedStderr(result)}"
@@ -231,7 +231,7 @@ def _fnFetchOrigin(sProjectId, dictEnv):
         "fetch", "--filter=blob:none",
         "--no-recurse-submodules", "origin",
     ]
-    result = _fnRunGit(listArgs, sCwd=sMirror, dictEnv=dictEnv)
+    result = _fprocessRunGit(listArgs, sCwd=sMirror, dictEnv=dictEnv)
     if result.returncode != 0:
         raise RuntimeError(
             f"Mirror fetch failed: {_fsStrippedStderr(result)}"
@@ -244,7 +244,7 @@ def _fnResetToOriginHead(sProjectId, dictEnv):
     listArgs = list(LIST_GIT_HARDENING_CONFIG) + [
         "reset", "--hard", "origin/HEAD",
     ]
-    result = _fnRunGit(listArgs, sCwd=sMirror, dictEnv=dictEnv)
+    result = _fprocessRunGit(listArgs, sCwd=sMirror, dictEnv=dictEnv)
     if result.returncode != 0:
         raise RuntimeError(
             f"Mirror reset failed: {_fsStrippedStderr(result)}"
@@ -260,7 +260,7 @@ def fsReadMirrorHeadSha(sProjectId):
     if not _fbMirrorExists(sProjectId):
         return ""
     sMirror = _fsMirrorPath(sProjectId)
-    result = _fnRunGit(
+    result = _fprocessRunGit(
         ["rev-parse", "HEAD"], sCwd=sMirror,
     )
     if result.returncode != 0:
@@ -362,7 +362,7 @@ def flistListMirrorTree(sProjectId):
     if not _fbMirrorExists(sProjectId):
         return []
     sMirror = _fsMirrorPath(sProjectId)
-    result = _fnRunGit(
+    result = _fprocessRunGit(
         ["ls-tree", "-r", "--long", "HEAD"], sCwd=sMirror,
     )
     if result.returncode != 0:
@@ -634,7 +634,7 @@ def _fnFullClone(sProjectId, sAskpassPath, sTempDir):
         "clone", "--depth=1", "--no-recurse-submodules",
         sUrl, sCloneTarget,
     ]
-    result = _fnRunGit(listArgs, dictEnv=dictEnv)
+    result = _fprocessRunGit(listArgs, dictEnv=dictEnv)
     if result.returncode != 0:
         raise RuntimeError(
             f"Remote hash fetch failed: {_fsStrippedStderr(result)}"

@@ -1307,7 +1307,7 @@ def testAnUntraceableClientIsDeclaredRatherThanDropped(moduleGenerator):
     """
     visitor = moduleGenerator._VisitorCallSites("synthetic.py")
     visitor.fnCollect(ast.parse(textwrap.dedent("""
-        def fsDescribeImage(dockerClient, config):
+        def fsDescribeImage(dockerClient, fnConfigCommand):
             return dockerClient.images.get(config.sImageName)
     """)))
     assert visitor.listRows == []

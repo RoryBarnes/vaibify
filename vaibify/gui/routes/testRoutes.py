@@ -7,7 +7,7 @@ import posixpath
 
 from fastapi import HTTPException, Request
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import (
     fbMaybeAutoArchive,
     fsWorkflowSlugFromPath,
@@ -195,7 +195,7 @@ async def _fdictRunOneTestCategory(
 def _fnRegisterTestGenerate(app, dictCtx):
     """Register test generation and deletion routes."""
 
-    @fnAgentAction("generate-tests")
+    @ffnAgentAction("generate-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/generate-test"
     )
@@ -229,7 +229,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         )
         return _fdictBuildGenerateResponse(dictResult)
 
-    @fnAgentAction("delete-generated-tests")
+    @ffnAgentAction("delete-generated-tests")
     @app.delete(
         "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
     )
@@ -442,7 +442,7 @@ def _fdictBuildRunCategoryResponse(bPassed, resultExec):
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
-    @fnAgentAction("save-and-run-test")
+    @ffnAgentAction("save-and-run-test")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/save-and-run-test"
@@ -485,7 +485,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
 def _fnRegisterTestRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-tests."""
 
-    @fnAgentAction("run-unit-tests")
+    @ffnAgentAction("run-unit-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
     )
@@ -531,7 +531,7 @@ def _fnRegisterTestRun(app, dictCtx):
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
 
-    @fnAgentAction("run-test-category")
+    @ffnAgentAction("run-test-category")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/run-test-category"

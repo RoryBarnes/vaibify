@@ -1071,7 +1071,7 @@ def test_fnRunHeartbeatLoop_logs_and_continues_on_write_failure(caplog):
     )
 
 
-# Need to import threading at module level for the heartbeat test
+# Need to import threading at module level for the heartbeat fnTestCommand
 import threading  # noqa: E402
 
 

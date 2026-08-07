@@ -1018,7 +1018,7 @@ async def _fnCloseDetachedConnections(listDetached):
     """
     for recordConnection in listDetached:
         try:
-            await recordConnection.connection.close(code=4401)
+            await recordConnection.websocket.close(code=4401)
         except Exception:  # noqa: BLE001 — a dead socket is already closed
             pass
 

@@ -29,7 +29,7 @@ import time
 
 from fastapi import HTTPException
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import ffilesForWorkflow
@@ -96,7 +96,7 @@ def _fsRequireProjectRepo(dictWorkflow):
 def _fnRegisterReadiness(app, dictCtx):
     """Register GET /api/workflow/{sContainerId}/level3/readiness."""
 
-    @fnAgentAction("check-l3-readiness")
+    @ffnAgentAction("check-l3-readiness")
     @app.get("/api/workflow/{sContainerId}/level3/readiness")
     async def fdictHandleL3Readiness(sContainerId: str):
         dictCtx["require"]()
@@ -114,7 +114,7 @@ def _fnRegisterReadiness(app, dictCtx):
 def _fnRegisterAttestation(app, dictCtx):
     """Register GET /api/workflow/{sContainerId}/level3/attestation."""
 
-    @fnAgentAction("view-l3-attestation")
+    @ffnAgentAction("view-l3-attestation")
     @app.get("/api/workflow/{sContainerId}/level3/attestation")
     async def fdictL3AttestationGet(sContainerId: str):
         dictCtx["require"]()
@@ -153,7 +153,7 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
 def _fnRegisterVerify(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/level3/verify."""
 
-    @fnAgentAction("verify-l3-reproducibility")
+    @ffnAgentAction("verify-l3-reproducibility")
     @app.post("/api/workflow/{sContainerId}/level3/verify")
     async def fdictL3Verify(sContainerId: str):
         dictCtx["require"]()
@@ -392,7 +392,7 @@ def _fnPersistAttestation(
 def _fnRegisterGenerateScript(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/level3/reproduce-script."""
 
-    @fnAgentAction("generate-reproduce-script")
+    @ffnAgentAction("generate-reproduce-script")
     @app.post(
         "/api/workflow/{sContainerId}/level3/reproduce-script"
     )
@@ -442,21 +442,21 @@ def _fnRegisterGenerateScript(app, dictCtx):
 def _fnRegisterDeclareBinaries(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/binaries/declare."""
 
-    @fnAgentAction("declare-standalone-binaries")
+    @ffnAgentAction("declare-standalone-binaries")
     @app.post(
         "/api/workflow/{sContainerId}/binaries/declare"
     )
-    async def fdictDeclareBinaries(sContainerId: str, request: dict):
+    async def fdictDeclareBinaries(sContainerId: str, dictBody: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        _fnValidateBinaryDeclarationBody(request)
+        _fnValidateBinaryDeclarationBody(dictBody)
         dictWorkflow["bNoStandaloneBinaries"] = bool(
-            request.get("bNoStandaloneBinaries", False),
+            dictBody.get("bNoStandaloneBinaries", False),
         )
         dictWorkflow["listDeclaredBinaries"] = list(
-            request.get("listDeclaredBinaries") or [],
+            dictBody.get("listDeclaredBinaries") or [],
         )
         dictCtx["save"](sContainerId, dictWorkflow)
         return {
@@ -510,18 +510,18 @@ def _fnValidateDeclaredBinaryEntries(listDeclared):
 def _fnRegisterCaptureBinary(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/binaries/capture."""
 
-    @fnAgentAction("capture-binary-environment")
+    @ffnAgentAction("capture-binary-environment")
     @app.post(
         "/api/workflow/{sContainerId}/binaries/capture"
     )
-    async def fdictCaptureBinary(sContainerId: str, request: dict):
+    async def fdictCaptureBinary(sContainerId: str, dictBody: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         _fsRequireProjectRepo(dictWorkflow)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        sBinaryPath = (request or {}).get("sBinaryPath") or ""
+        sBinaryPath = (dictBody or {}).get("sBinaryPath") or ""
         if not isinstance(sBinaryPath, str) or not sBinaryPath.strip():
             raise HTTPException(400, "sBinaryPath is required.")
         dictCaptured = fdictCaptureSingleBinary(filesRepo, sBinaryPath)
@@ -618,16 +618,16 @@ def _fdictValidateDeterminismBody(dictRequest):
 def _fnRegisterDeclareDeterminism(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/determinism/declare."""
 
-    @fnAgentAction("declare-determinism")
+    @ffnAgentAction("declare-determinism")
     @app.post(
         "/api/workflow/{sContainerId}/determinism/declare"
     )
-    async def fdictDeclareDeterminism(sContainerId: str, request: dict):
+    async def fdictDeclareDeterminism(sContainerId: str, dictBody: dict):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        dictDeclared = _fdictValidateDeterminismBody(request)
+        dictDeclared = _fdictValidateDeterminismBody(dictBody)
         dictDeterminism = dict(
             dictWorkflow.get("dictDeterminism") or {},
         )
@@ -652,7 +652,7 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
     caller can see what the regeneration achieved.
     """
 
-    @fnAgentAction("regenerate-envelope")
+    @ffnAgentAction("regenerate-envelope")
     @app.post(
         "/api/workflow/{sContainerId}/level3/envelope"
     )
@@ -685,7 +685,7 @@ def _fnRegisterDeleteDeterminism(app, dictCtx):
     first and the researcher re-declares what still applies.
     """
 
-    @fnAgentAction("delete-determinism")
+    @ffnAgentAction("delete-determinism")
     @app.delete(
         "/api/workflow/{sContainerId}/determinism"
     )
@@ -707,7 +707,7 @@ def _fnRegisterVerifyDependencyLock(app, dictCtx):
     report what is wrong rather than a bare pass/fail.
     """
 
-    @fnAgentAction("verify-dependency-lock")
+    @ffnAgentAction("verify-dependency-lock")
     @app.post(
         "/api/workflow/{sContainerId}/dependencies/verify"
     )

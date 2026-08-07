@@ -272,7 +272,7 @@ class ConnectionRecord:
     per accepted socket.
     """
 
-    connection: object
+    websocket: "WebSocket"
     sBrowserSessionId: str
     iOwnerGeneration: int
     sLane: str

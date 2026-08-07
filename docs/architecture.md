@@ -688,7 +688,7 @@ in the request path; a request that names no container fails closed.
 
 Authorizing the agent lane answers *which container* an agent may act
 on. It does not answer *what it may do there*, and for a long time
-nothing did. `fnAgentAction` attaches a name to a handler and changes
+nothing did. `ffnAgentAction` attaches a name to a handler and changes
 no behaviour; `bAgentSafe` was consumed only by `vaibify/containerImage/vaibifyDo.py`
 **inside** the container, which an agent bypasses with `curl`. Every
 route the catalog marked researcher-only — `clean-outputs`,

@@ -471,7 +471,7 @@ def fnWriteSyncStatus(filesRepo, dictStatus):
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     sService = dictStatus["sService"]
     sRelPath = _fsSyncStatusRelativePath()
-    with filesRepo.fnWithLock(sRelPath):
+    with filesRepo.flockAcquireForFile(sRelPath):
         dictAll = _fdictReadAllStatuses(filesRepo)
         dictAll[sService] = dictStatus
         filesRepo.fnWriteJsonAtomic(sRelPath, dictAll)
@@ -488,7 +488,7 @@ def fnDeleteSyncStatus(filesRepo, sService):
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     sRelPath = _fsSyncStatusRelativePath()
-    with filesRepo.fnWithLock(sRelPath):
+    with filesRepo.flockAcquireForFile(sRelPath):
         dictAll = _fdictReadAllStatuses(filesRepo)
         if sService not in dictAll:
             return

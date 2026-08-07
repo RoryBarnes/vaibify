@@ -244,34 +244,34 @@ def test_fnPrintDescribe_emits_pretty_json(
 
 
 # -----------------------------------------------------------------------
-# _fnCoerceScalar + ftParsePositionalArgs
+# _fjsonCoerceScalar + ftParsePositionalArgs
 # -----------------------------------------------------------------------
 
 
 def test_coerce_scalar_booleans(modCli):
-    assert modCli._fnCoerceScalar("true") is True
-    assert modCli._fnCoerceScalar("FALSE") is False
+    assert modCli._fjsonCoerceScalar("true") is True
+    assert modCli._fjsonCoerceScalar("FALSE") is False
 
 
 def test_coerce_scalar_int_and_float(modCli):
-    assert modCli._fnCoerceScalar("7") == 7
-    assert modCli._fnCoerceScalar("3.14") == 3.14
+    assert modCli._fjsonCoerceScalar("7") == 7
+    assert modCli._fjsonCoerceScalar("3.14") == 3.14
 
 
 def test_coerce_scalar_json_list(modCli):
-    assert modCli._fnCoerceScalar("[1,2,3]") == [1, 2, 3]
+    assert modCli._fjsonCoerceScalar("[1,2,3]") == [1, 2, 3]
 
 
 def test_coerce_scalar_json_object(modCli):
-    assert modCli._fnCoerceScalar("{\"a\":1}") == {"a": 1}
+    assert modCli._fjsonCoerceScalar("{\"a\":1}") == {"a": 1}
 
 
 def test_coerce_scalar_bad_json_falls_back_to_string(modCli):
-    assert modCli._fnCoerceScalar("[nope") == "[nope"
+    assert modCli._fjsonCoerceScalar("[nope") == "[nope"
 
 
 def test_coerce_scalar_plain_string(modCli):
-    assert modCli._fnCoerceScalar("hello") == "hello"
+    assert modCli._fjsonCoerceScalar("hello") == "hello"
 
 
 def test_parse_positional_args_splits(modCli):
@@ -937,7 +937,7 @@ def test_ws_handshake_empty_response_exits(modCli, capsys):
 
 
 # -----------------------------------------------------------------------
-# ftWsEndpoint + fnRunWebsocket
+# ftWsEndpoint + fiRunWebsocket
 # -----------------------------------------------------------------------
 
 
@@ -961,30 +961,30 @@ def test_ftWsEndpoint_https_defaults_443(modCli):
     assert bTls is True
 
 
-def test_fnRunWebsocket_refuses_tls(modCli, capsys):
+def test_fiRunWebsocket_refuses_tls(modCli, capsys):
     dictEnv = {
         "VAIBIFY_HOST_URL": "https://example.com",
         "VAIBIFY_SESSION_TOKEN": "t",
         "VAIBIFY_CONTAINER_ID": "c",
     }
     with pytest.raises(SystemExit) as excInfo:
-        modCli.fnRunWebsocket(dictEnv, {"sAction": "runAll"}, False)
+        modCli.fiRunWebsocket(dictEnv, {"sAction": "runAll"}, False)
     assert excInfo.value.code == 4
 
 
-def test_fnRunWebsocket_connect_error_exits(modCli, dictValidEnv):
+def test_fiRunWebsocket_connect_error_exits(modCli, dictValidEnv):
     with patch.object(
         modCli.socket, "create_connection",
         side_effect=OSError("refused"),
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnRunWebsocket(
+            modCli.fiRunWebsocket(
                 dictValidEnv, {"sAction": "runAll"}, False,
             )
     assert excInfo.value.code == 4
 
 
-def test_fnRunWebsocket_full_flow_completed(
+def test_fiRunWebsocket_full_flow_completed(
     modCli, dictValidEnv,
 ):
     """End-to-end: connect, handshake, send, stream, completed."""
@@ -1009,13 +1009,13 @@ def test_fnRunWebsocket_full_flow_completed(
     with patch.object(
         modCli.socket, "create_connection", return_value=sockMock,
     ):
-        iCode = modCli.fnRunWebsocket(
+        iCode = modCli.fiRunWebsocket(
             dictValidEnv, {"sAction": "runAll"}, False,
         )
     assert iCode == 0
 
 
-def test_fnRunWebsocket_enables_tcp_keepalive(modCli, dictValidEnv):
+def test_fiRunWebsocket_enables_tcp_keepalive(modCli, dictValidEnv):
     """Connecting must turn on SO_KEEPALIVE plus the Linux tuning knobs."""
     dataDone = b'{"sType":"completed","iExitCode":0}'
     sockMock = _MockSocket([
@@ -1025,7 +1025,7 @@ def test_fnRunWebsocket_enables_tcp_keepalive(modCli, dictValidEnv):
     with patch.object(
         modCli.socket, "create_connection", return_value=sockMock,
     ):
-        modCli.fnRunWebsocket(
+        modCli.fiRunWebsocket(
             dictValidEnv, {"sAction": "runAll"}, False,
         )
     setOptions = {(iLevel, iOpt) for iLevel, iOpt, _ in sockMock.listSockOpts}
@@ -1056,7 +1056,7 @@ def test_f_read_timeout_below_graceful_ceiling(modCli):
     assert modCli.F_READ_TIMEOUT <= 120.0
 
 
-def test_fnRunWebsocket_error_event_returns_one(modCli, dictValidEnv):
+def test_fiRunWebsocket_error_event_returns_one(modCli, dictValidEnv):
     dataError = b'{"sType":"error","sMessage":"boom"}'
     sock = _MockSocket([
         b"HTTP/1.1 101 Switching Protocols\r\n\r\n",
@@ -1065,7 +1065,7 @@ def test_fnRunWebsocket_error_event_returns_one(modCli, dictValidEnv):
     with patch.object(
         modCli.socket, "create_connection", return_value=sock,
     ):
-        iCode = modCli.fnRunWebsocket(
+        iCode = modCli.fiRunWebsocket(
             dictValidEnv, {"sAction": "runAll"}, False,
         )
     assert iCode == 1

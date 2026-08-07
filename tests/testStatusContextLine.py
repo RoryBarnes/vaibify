@@ -23,7 +23,7 @@ def _fdockerClient():
 
 def test_status_prints_active_docker_context_when_known():
     """`vaibify status` prints the active context when one is reported."""
-    from vaibify.cli.commandStatus import status
+    from vaibify.cli.commandStatus import fnStatusCommand
     with patch(
         "vaibify.cli.commandStatus.fbDockerAvailable", return_value=True,
     ), patch(
@@ -36,14 +36,14 @@ def test_status_prints_active_docker_context_when_known():
         "vaibify.docker.dockerContext.fsActiveDockerContext",
         return_value="colima",
     ):
-        result = CliRunner().invoke(status, [])
+        result = CliRunner().invoke(fnStatusCommand, [])
     assert result.exit_code == 0
     assert "Docker context: colima" in result.output
 
 
 def test_status_omits_context_line_when_unknown():
     """No context line is printed when the helper returns ''."""
-    from vaibify.cli.commandStatus import status
+    from vaibify.cli.commandStatus import fnStatusCommand
     with patch(
         "vaibify.cli.commandStatus.fbDockerAvailable", return_value=True,
     ), patch(
@@ -56,6 +56,6 @@ def test_status_omits_context_line_when_unknown():
         "vaibify.docker.dockerContext.fsActiveDockerContext",
         return_value="",
     ):
-        result = CliRunner().invoke(status, [])
+        result = CliRunner().invoke(fnStatusCommand, [])
     assert result.exit_code == 0
     assert "Docker context" not in result.output

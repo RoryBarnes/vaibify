@@ -12,8 +12,8 @@ from typing import Optional
 from .. import browserSession
 from .. import containerOwnership
 from .. import workflowManager
-from ..actionCatalog import fnAgentAction
-from ..routeScope import fnRouteScope, fsLeaseFromRequest, S_SCOPE_OWNER_ESTABLISHING
+from ..actionCatalog import ffnAgentAction
+from ..routeScope import ffnRouteScope, fsLeaseFromRequest, S_SCOPE_OWNER_ESTABLISHING
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     CreateWorkflowRequest,
@@ -231,7 +231,7 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
     suggested name, for the researcher to review and confirm.
     """
 
-    @fnAgentAction("create-project")
+    @ffnAgentAction("create-project")
     @app.post("/api/workflows/{sContainerId}/request-creation")
     async def fdictRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
@@ -336,7 +336,7 @@ def _fnRegisterConnect(app, dictCtx):
     """Register POST /api/connect route."""
 
     @app.post("/api/connect/{sContainerId}")
-    @fnRouteScope(S_SCOPE_OWNER_ESTABLISHING, "sContainerId", "id")
+    @ffnRouteScope(S_SCOPE_OWNER_ESTABLISHING, "sContainerId", "id")
     async def fdictHandleConnectRequest(
         requestHttp: Request,
         sContainerId: str,

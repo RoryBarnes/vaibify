@@ -90,7 +90,7 @@ def test_preflight_fails_when_daemon_unreachable_linux_systemd():
 
 def test_start_command_exits_one_when_daemon_unreachable():
     """`vaibify start` exits 1 and prints the daemon-down report."""
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     from vaibify.cli.preflightResult import PreflightResult
     listFail = [PreflightResult(
         sName="docker-daemon", sLevel="fail",
@@ -109,7 +109,7 @@ def test_start_command_exits_one_when_daemon_unreachable():
     ), patch(
         "vaibify.cli.commandStart._fnStartContainer",
     ) as mockStart:
-        result = CliRunner().invoke(start, [])
+        result = CliRunner().invoke(fnStartCommand, [])
     assert result.exit_code == 1
     assert "Docker daemon not reachable" in result.output
     mockStart.assert_not_called()
@@ -305,7 +305,7 @@ def test_preflight_reports_all_missing_bind_mounts(tmp_path):
 
 def test_start_command_proceeds_when_all_preflight_passes():
     """All-ok pre-flight results invoke _fnStartContainer."""
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     from vaibify.cli.preflightResult import PreflightResult
     listOk = [
         PreflightResult(
@@ -329,14 +329,14 @@ def test_start_command_proceeds_when_all_preflight_passes():
     ), patch(
         "vaibify.cli.commandStart._fnStartContainer", mockStart,
     ):
-        result = CliRunner().invoke(start, [])
+        result = CliRunner().invoke(fnStartCommand, [])
     assert result.exit_code == 0
     mockStart.assert_called_once()
 
 
 def test_start_command_prints_warn_results_then_proceeds():
     """A warn-level result is printed and start continues."""
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     from vaibify.cli.preflightResult import PreflightResult
     listMixed = [
         PreflightResult(
@@ -360,7 +360,7 @@ def test_start_command_prints_warn_results_then_proceeds():
     ), patch(
         "vaibify.cli.commandStart._fnStartContainer", mockStart,
     ):
-        result = CliRunner().invoke(start, [])
+        result = CliRunner().invoke(fnStartCommand, [])
     assert result.exit_code == 0
     assert "Removed stopped container" in result.output
     mockStart.assert_called_once()
@@ -368,7 +368,7 @@ def test_start_command_prints_warn_results_then_proceeds():
 
 def test_start_command_combined_fail_image_and_port():
     """Image-missing and port-conflict both surface in one report."""
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     from vaibify.cli.preflightResult import PreflightResult
     listFails = [
         PreflightResult(
@@ -394,7 +394,7 @@ def test_start_command_combined_fail_image_and_port():
     ), patch(
         "vaibify.cli.commandStart._fnStartContainer",
     ) as mockStart:
-        result = CliRunner().invoke(start, [])
+        result = CliRunner().invoke(fnStartCommand, [])
     assert result.exit_code == 1
     assert "Image proj:latest not found" in result.output
     assert "Host port 8050 already in use" in result.output

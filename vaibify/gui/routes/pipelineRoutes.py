@@ -13,7 +13,7 @@ from docker.errors import APIError, NotFound
 from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
 from .. import containerOwnership
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
 from ..pipelineServer import (
@@ -31,7 +31,7 @@ from ..serverLifespan import (
 from ..webSocketAuthorization import (
     I_REJECT_POISONED,
     fbContainerIsPoisoned,
-    ffbBuildPerFrameCredentialCheck,
+    ffnBuildPerFrameCredentialCheck,
     fiContainerSessionRejectionCode,
     fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
@@ -206,7 +206,7 @@ def _fnRegisterPipelineState(app, dictCtx):
     reconciliation against the raw pipeline_state.json file.
     """
 
-    @fnAgentAction("get-pipeline-state")
+    @ffnAgentAction("get-pipeline-state")
     @app.get("/api/pipeline/{sContainerId}/state")
     async def fdictGetPipelineState(sContainerId: str):
         from ..pipelineState import fdictReadReconciledState
@@ -299,7 +299,7 @@ def _flistSanitizedIncidents(sContainerId, listIncidents):
 def _fnRegisterHostLogTail(app, dictCtx):
     """Register GET /api/pipeline/{id}/host-log-tail endpoint."""
 
-    @fnAgentAction("get-host-log-tail")
+    @ffnAgentAction("get-host-log-tail")
     @app.get("/api/pipeline/{sContainerId}/host-log-tail")
     async def fdictGetHostLogTail(
         request: Request,
@@ -339,7 +339,7 @@ def _fnRegisterHostLogTail(app, dictCtx):
 def _fnRegisterPipelineKill(app, dictCtx):
     """Register POST /api/pipeline/{id}/kill endpoint."""
 
-    @fnAgentAction("kill-pipeline")
+    @ffnAgentAction("kill-pipeline")
     @app.post("/api/pipeline/{sContainerId}/kill")
     async def fdictKillRunningTasks(sContainerId: str):
         dictCtx["require"]()
@@ -371,7 +371,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
 def _fnRegisterPipelineClean(app, dictCtx):
     """Register POST /api/pipeline/{id}/clean endpoint."""
 
-    @fnAgentAction("clean-outputs")
+    @ffnAgentAction("clean-outputs")
     @app.post("/api/pipeline/{sContainerId}/clean")
     async def fdictCleanOutputs(sContainerId: str):
         dictCtx["require"]()
@@ -422,7 +422,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
             await fnHandlePipelineWs(
                 websocket, dictCtx, sContainerId,
                 fbFrameCredentialStillActive=(
-                    ffbBuildPerFrameCredentialCheck(
+                    ffnBuildPerFrameCredentialCheck(
                         websocket, dictCtx.get("dictBrowserSessions"),
                         dictContainerOwners=dictContainerOwners,
                         sName=sName,
@@ -444,7 +444,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
 def _fnRegisterAcknowledgeStep(app, dictCtx):
     """Register POST endpoint to acknowledge step completion."""
 
-    @fnAgentAction("acknowledge-step")
+    @ffnAgentAction("acknowledge-step")
     @app.post(
         "/api/pipeline/{sContainerId}"
         "/acknowledge-step/{iStepIndex}"
@@ -2657,7 +2657,7 @@ def _fnRegisterManifestVerify(app, dictCtx):
     """Register POST /api/workflow/{id}/manifest/verify endpoint."""
     from vaibify.reproducibility import manifestWriter
 
-    @fnAgentAction("verify-manifest")
+    @ffnAgentAction("verify-manifest")
     @app.post("/api/workflow/{sContainerId}/manifest/verify")
     async def fdictVerifyManifest(sContainerId: str):
         dictCtx["require"]()

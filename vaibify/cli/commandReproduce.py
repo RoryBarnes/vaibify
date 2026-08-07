@@ -841,7 +841,7 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     type=click.Choice(_T_TIER_CHOICES),
     help="Skip the given tier (1, 2, 3, or 4). May be repeated.",
 )
-def reproduce(sRepo, bRerun, sWorkflowName, saSkipTier):
+def fnReproduceCommand(sRepo, bRerun, sWorkflowName, saSkipTier):
     """Verify a project's PROOF L3 reproducibility envelope."""
     sProjectRepo = sRepo or str(Path.cwd())
     setSkipTiers = set(saSkipTier)

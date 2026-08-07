@@ -44,7 +44,7 @@ from .. import (
     stateContract,
     workflowManager,
 )
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import fdictRequireWorkflow, fnBumpSyncEpoch
 from ..routeContext import (
     ffilesForWorkflow,
@@ -345,7 +345,7 @@ def _fnRegisterManifestCheck(app, dictCtx):
 def _fnRegisterCommitCanonical(app, dictCtx):
     """Register POST /api/git/{sContainerId}/commit-canonical."""
 
-    @fnAgentAction("commit-canonical")
+    @ffnAgentAction("commit-canonical")
     @app.post("/api/git/{sContainerId}/commit-canonical")
     async def fdictHandleCommitCanonical(
         sContainerId: str, request: CommitCanonicalRequest,
@@ -451,7 +451,7 @@ def _fsDefaultCommitMessage():
 def _fnRegisterUntrackAiDeclaration(app, dictCtx):
     """Register POST /api/git/{sContainerId}/untrack-ai-declaration."""
 
-    @fnAgentAction("untrack-ai-declaration")
+    @ffnAgentAction("untrack-ai-declaration")
     @app.post("/api/git/{sContainerId}/untrack-ai-declaration")
     async def fdictUntrackAiDeclaration(
         sContainerId: str, request: UntrackAiDeclarationRequest,
@@ -594,7 +594,7 @@ def _fdictFetchStatusView(dictGit, bCacheUsed):
 def _fnRegisterFetchProjectRepo(app, dictCtx):
     """Register POST /api/git/{sContainerId}/fetch-project-repo."""
 
-    @fnAgentAction("fetch-project-repo")
+    @ffnAgentAction("fetch-project-repo")
     @app.post("/api/git/{sContainerId}/fetch-project-repo")
     async def fdictFetchProjectRepo(
         sContainerId: str,
@@ -647,7 +647,7 @@ async def _fdictCollectRefreshRemotesView(
 def _fnRegisterRefreshRemotes(app, dictCtx):
     """Register POST /api/git/{sContainerId}/refresh-remotes."""
 
-    @fnAgentAction("refresh-remotes")
+    @ffnAgentAction("refresh-remotes")
     @app.post("/api/git/{sContainerId}/refresh-remotes")
     async def fdictRefreshRemotes(
         sContainerId: str,
@@ -699,7 +699,7 @@ async def _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo):
 def _fnRegisterPullProjectRepo(app, dictCtx):
     """Register POST /api/git/{sContainerId}/pull-project-repo."""
 
-    @fnAgentAction("pull-project-repo")
+    @ffnAgentAction("pull-project-repo")
     @app.post("/api/git/{sContainerId}/pull-project-repo")
     async def fdictPullProjectRepo(sContainerId: str):
         dictCtx["require"]()
@@ -805,7 +805,7 @@ def _fnRegisterReconcileRemoteState(app, dictCtx):
     proved, and bumps the sync epoch so every open tab repaints once.
     """
 
-    @fnAgentAction("reconcile-remote-state")
+    @ffnAgentAction("reconcile-remote-state")
     @app.post("/api/git/{sContainerId}/reconcile-remote-state")
     async def fdictReconcileRemoteState(sContainerId: str):
         dictCtx["require"]()

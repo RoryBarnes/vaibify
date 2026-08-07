@@ -173,7 +173,7 @@ def _fnEmitProofSection(config):
     "--json", "bJson", is_flag=True, default=False,
     help="Emit environment and PROOF status as one JSON object.",
 )
-def status(sProjectName, bProof, bJson):
+def fnStatusCommand(sProjectName, bProof, bJson):
     """Show the status of the Vaibify environment."""
     if not fbDockerAvailable():
         click.echo(

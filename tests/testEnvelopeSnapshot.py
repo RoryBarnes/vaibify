@@ -166,7 +166,7 @@ def test_every_write_method_raises(filesSnapshot):
     with pytest.raises(NotImplementedError):
         filesSnapshot.fbRemoveFile("a.txt")
     with pytest.raises(NotImplementedError):
-        filesSnapshot.fnWithLock("a.txt")
+        filesSnapshot.flockAcquireForFile("a.txt")
     with pytest.raises(NotImplementedError):
         filesSnapshot.ftRunCommand(["true"], 1.0)
     with pytest.raises(NotImplementedError):

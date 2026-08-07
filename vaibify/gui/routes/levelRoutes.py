@@ -22,7 +22,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
@@ -131,7 +131,7 @@ def _fsRequireProjectRepo(dictWorkflow):
 def _fnRegisterLevel2Readiness(app, dictCtx):
     """Register GET /api/workflow/{sContainerId}/level2/readiness."""
 
-    @fnAgentAction("check-l2-readiness")
+    @ffnAgentAction("check-l2-readiness")
     @app.get(
         "/api/workflow/{sContainerId}/level2/readiness"
     )
@@ -153,7 +153,7 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
 def _fnRegisterGenerateTemplate(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/ai-declaration/generate-template."""
 
-    @fnAgentAction("generate-ai-declaration-template")
+    @ffnAgentAction("generate-ai-declaration-template")
     @app.post(
         "/api/workflow/{sContainerId}"
         "/ai-declaration/generate-template"
@@ -223,7 +223,7 @@ def _fdictBuildStepFromAddRequest(dictWorkflow, request):
 def _fnRegisterAddStep(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/ai-declaration/add-step."""
 
-    @fnAgentAction("add-ai-declaration-step")
+    @ffnAgentAction("add-ai-declaration-step")
     @app.post(
         "/api/workflow/{sContainerId}"
         "/ai-declaration/add-step"

@@ -1205,7 +1205,7 @@ async def _fiRunStepsAndLog(
         sAction, sLogPath,
     )
     eventStopHeartbeat = threading.Event()
-    threadHeartbeat = _fnStartHeartbeatThread(
+    threadHeartbeat = _fthreadStartHeartbeat(
         connectionDocker, sContainerId, dictState,
         stateWriter, eventStopHeartbeat,
     )
@@ -1239,7 +1239,7 @@ async def _fiRunStepsAndLog(
     return iResult
 
 
-def _fnStartHeartbeatThread(
+def _fthreadStartHeartbeat(
     connectionDocker, sContainerId, dictState, lockOrWriter, eventStop,
 ):
     """Spawn a daemon thread that refreshes ``sLastHeartbeat`` periodically.

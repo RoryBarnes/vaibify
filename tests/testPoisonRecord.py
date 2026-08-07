@@ -129,7 +129,7 @@ def _tBuildPerFrameCheck(webSocketAuthorization):
     }
     return (
         dictStore,
-        webSocketAuthorization.ffbBuildPerFrameCredentialCheck(
+        webSocketAuthorization.ffnBuildPerFrameCredentialCheck(
             _FakeConnection(), dictStore,
             dictContainerOwners=dictOwners, sName=S_PROJECT,
             iAcceptedGeneration=1,
@@ -247,11 +247,11 @@ def test_poisoning_returns_only_the_pipeline_connections_to_fence():
         sBrowserSessionId="session-a",
     )
     recordPipeline = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     recordOther = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_TERMINAL,
     )
     dictSessionSockets = {"session-a": {recordPipeline, recordOther}}

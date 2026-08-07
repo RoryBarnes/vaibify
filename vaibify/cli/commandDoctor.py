@@ -131,7 +131,7 @@ def _fnPrintDoctorSummary(listResults):
     "--start", "bStartScope", is_flag=True, default=False,
     help="Run only the start-relevant subset.",
 )
-def doctor(sProjectName, bQuiet, bBuildScope, bStartScope):
+def fnDoctorCommand(sProjectName, bQuiet, bBuildScope, bStartScope):
     """Run pre-flight checks and print a status report."""
     config = _fconfigResolveProjectOrNone(sProjectName)
     if config is None:

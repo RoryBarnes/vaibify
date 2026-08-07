@@ -15,7 +15,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from .. import syncDispatcher, trackedReposManager
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fnBumpSyncEpoch
 from ..routeContext import fsRefreshVerifyCacheAfterPush
@@ -389,7 +389,7 @@ def _fdictDoInitProjectRepo(
 def _fnRegisterInit(app, dictCtx):
     """Register POST /api/repos/{id}/init route."""
 
-    @fnAgentAction("init-project-repo")
+    @ffnAgentAction("init-project-repo")
     @app.post("/api/repos/{sContainerId}/init")
     async def fdictInitProjectRepo(
         sContainerId: str, request: InitRepoRequest,

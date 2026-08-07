@@ -195,6 +195,6 @@ def fiRunOpenCommand(sContainerName):
 
 @click.command("open")
 @click.argument("container")
-def open_container(container):
+def fnOpenContainerCommand(container):
     """Move a container's live session into a fresh browser tab."""
     sys.exit(fiRunOpenCommand(container))

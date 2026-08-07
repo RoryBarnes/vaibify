@@ -505,7 +505,7 @@ def _fnEnforcePreflightOrExit(listResults):
     help="Start in the background instead of attaching a terminal.",
 )
 @click.argument("command", required=False, default=None)
-def start(bGui, bJupyter, iPort, sProjectName, bDetach, command):
+def fnStartCommand(bGui, bJupyter, iPort, sProjectName, bDetach, command):
     """Start the Vaibify environment."""
     config = fconfigResolveProject(sProjectName)
     sConfigPath = fsResolveProjectConfigPath(sProjectName)

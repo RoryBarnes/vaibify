@@ -2071,7 +2071,7 @@ def _fsWorkflowDepCacheKey(dictWorkflow):
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
-def _fdepCacheGet(sKey, sField):
+def _fdictDepCacheGet(sKey, sField):
     """Return the cached field value for sKey, or None on miss."""
     dictEntry = _DICT_DEP_CACHE.get(sKey)
     if dictEntry is None:
@@ -2181,7 +2181,7 @@ def fdictBuildDirectDependencies(dictWorkflow):
     ``_I_DEP_CACHE_MAX_ENTRIES`` entries.
     """
     sKey = _fsWorkflowDepCacheKey(dictWorkflow)
-    dictCached = _fdepCacheGet(sKey, "dictDirect")
+    dictCached = _fdictDepCacheGet(sKey, "dictDirect")
     if dictCached is not None:
         return dictCached
     dictDirect = _fdictComputeDirectDependencies(dictWorkflow)
@@ -2244,7 +2244,7 @@ def fdictBuildDownstreamMap(dictWorkflow):
     and the closure are cached under the same workflow-hash key.
     """
     sKey = _fsWorkflowDepCacheKey(dictWorkflow)
-    dictCached = _fdepCacheGet(sKey, "dictDownstream")
+    dictCached = _fdictDepCacheGet(sKey, "dictDownstream")
     if dictCached is not None:
         return dictCached
     dictDownstream = _fdictComputeDownstreamMap(dictWorkflow)

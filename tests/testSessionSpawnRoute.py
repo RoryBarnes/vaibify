@@ -48,7 +48,7 @@ def testSpawnRouteReturnsUrlAndPort(fixtureClient):
     with patch(
         "vaibify.cli.portAllocator.fiPickFreePort", return_value=8055,
     ), patch(
-        "vaibify.gui.routes.sessionRoutes._fnLaunchDetachedHub",
+        "vaibify.gui.routes.sessionRoutes._fprocessLaunchDetachedHub",
         return_value=_fmockAlivePopen(),
     ) as mockLaunch:
         response = fixtureClient.post("/api/session/spawn")
@@ -60,12 +60,12 @@ def testSpawnRouteReturnsUrlAndPort(fixtureClient):
 
 
 def testSpawnRouteLaunchesClosedShapeCommand():
-    """_fnLaunchDetachedHub uses sys.executable -m vaibify --port N."""
+    """_fprocessLaunchDetachedHub uses sys.executable -m vaibify --port N."""
     from vaibify.gui.routes.sessionRoutes import (
-        S_SUPPRESS_BROWSER_ENV, _fnLaunchDetachedHub,
+        S_SUPPRESS_BROWSER_ENV, _fprocessLaunchDetachedHub,
     )
     with patch("subprocess.Popen") as mockPopen:
-        _fnLaunchDetachedHub(8099)
+        _fprocessLaunchDetachedHub(8099)
     tArgs, dictKwargs = mockPopen.call_args
     saCommand = tArgs[0]
     assert saCommand == [
@@ -80,7 +80,7 @@ def testSpawnRouteRejectsContainerAgentCaller(fixtureApp, fixtureClient):
     with patch(
         "vaibify.cli.portAllocator.fiPickFreePort", return_value=8055,
     ), patch(
-        "vaibify.gui.routes.sessionRoutes._fnLaunchDetachedHub",
+        "vaibify.gui.routes.sessionRoutes._fprocessLaunchDetachedHub",
     ) as mockLaunch:
         response = fixtureClient.post(
             "/api/session/spawn",
@@ -99,7 +99,7 @@ def testSpawnRouteRateLimitsAtFiveLiveChildren(fixtureApp, fixtureClient):
     with patch(
         "vaibify.cli.portAllocator.fiPickFreePort", return_value=8055,
     ), patch(
-        "vaibify.gui.routes.sessionRoutes._fnLaunchDetachedHub",
+        "vaibify.gui.routes.sessionRoutes._fprocessLaunchDetachedHub",
     ):
         response = fixtureClient.post("/api/session/spawn")
     assert response.status_code == 429
@@ -118,7 +118,7 @@ def testSpawnRoutePrunesDeadChildrenBeforeRateLimiting(
     with patch(
         "vaibify.cli.portAllocator.fiPickFreePort", return_value=8055,
     ), patch(
-        "vaibify.gui.routes.sessionRoutes._fnLaunchDetachedHub",
+        "vaibify.gui.routes.sessionRoutes._fprocessLaunchDetachedHub",
         return_value=_fmockAlivePopen(),
     ):
         response = fixtureClient.post("/api/session/spawn")
@@ -263,7 +263,7 @@ def testSpawnRouteAwaitsChildReadyBeforeReturning(fixtureClient, monkeypatch):
     with patch(
         "vaibify.cli.portAllocator.fiPickFreePort", return_value=8055,
     ), patch(
-        "vaibify.gui.routes.sessionRoutes._fnLaunchDetachedHub",
+        "vaibify.gui.routes.sessionRoutes._fprocessLaunchDetachedHub",
         return_value=_fmockAlivePopen(),
     ):
         response = fixtureClient.post("/api/session/spawn")

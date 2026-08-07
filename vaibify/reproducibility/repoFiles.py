@@ -309,7 +309,7 @@ class HostRepoFiles:
             resultProcess.stderr or "",
         )
 
-    def fnWithLock(self, sRelPath):
+    def flockAcquireForFile(self, sRelPath):
         """Return a context manager holding an exclusive flock.
 
         Locks a sibling ``<file>.lock`` with the bounded non-blocking
@@ -320,10 +320,10 @@ class HostRepoFiles:
         _fnRequireWritableRelativePath(self.sRootPath, sRelPath)
         sAbsolute = self._fsAbsolute(sRelPath)
         os.makedirs(os.path.dirname(sAbsolute) or ".", exist_ok=True)
-        return _fnAcquireHostLock(sAbsolute + ".lock")
+        return _flockAcquireHost(sAbsolute + ".lock")
 
 
-def _fnAcquireHostLock(sLockPath):
+def _flockAcquireHost(sLockPath):
     """Acquire an exclusive flock on sLockPath with bounded retries."""
     iFileDescriptor = os.open(sLockPath, os.O_WRONLY | os.O_CREAT, 0o600)
     for _iAttempt in range(_I_LOCK_RETRY_MAX):
@@ -675,7 +675,7 @@ class ContainerRepoFiles:
             resultExec.iExitCode, resultExec.sStdout, resultExec.sStderr,
         )
 
-    def fnWithLock(self, sRelPath):
+    def flockAcquireForFile(self, sRelPath):
         """Return a process-local lock for a container-side file.
 
         A ``threading.Lock`` keyed by ``(sContainerId, sRelPath)`` is
@@ -1028,6 +1028,6 @@ class SnapshotRepoFiles:
         """Snapshots are read-only; writes must use a live adapter."""
         raise NotImplementedError("SnapshotRepoFiles is read-only")
 
-    def fnWithLock(self, sRelPath):
+    def flockAcquireForFile(self, sRelPath):
         """Snapshots are read-only; locking implies an intent to write."""
         raise NotImplementedError("SnapshotRepoFiles is read-only")

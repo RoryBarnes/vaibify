@@ -397,7 +397,7 @@ def _fnCloneOverleafRepo(sOverleafId, sDestination, listCredArgs=None):
         "clone", "--depth", "1", "--no-recurse-submodules",
         sRepoUrl, sDestination,
     ])
-    _fnRunSubprocess(listCommand, "Failed to clone Overleaf project")
+    _fprocessRunSubprocess(listCommand, "Failed to clone Overleaf project")
 
 
 # ------------------------------------------------------------------
@@ -507,7 +507,7 @@ def _fbHasUncommittedChanges(sRepoDir):
 
 def _fnGitAdd(sRepoDir):
     """Stage all changes in the repository."""
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "add", "-A"], "git add failed", sCwd=sRepoDir,
     )
 
@@ -518,11 +518,11 @@ _S_COMMIT_USER_EMAIL = "vaibify@localhost"
 
 def _fnSetLocalCommitIdentity(sRepoDir):
     """Set user.name/user.email locally so commit doesn't need globals."""
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "config", "user.name", _S_COMMIT_USER_NAME],
         "git config user.name failed", sCwd=sRepoDir,
     )
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "config", "user.email", _S_COMMIT_USER_EMAIL],
         "git config user.email failed", sCwd=sRepoDir,
     )
@@ -539,7 +539,7 @@ def _fnGitCommit(sRepoDir, sMirrorSha=""):
     sMessage = f"{_COMMIT_MARKER} Update figures"
     if sMirrorSha:
         sMessage += f" (from mirror {sMirrorSha[:7]})"
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "commit", "-m", sMessage],
         "git commit failed", sCwd=sRepoDir,
     )
@@ -552,7 +552,7 @@ def _fnGitPush(sRepoDir, listCredArgs=None):
         listCommand.extend(listCredArgs)
     listCommand.append("push")
     try:
-        _fnRunSubprocess(
+        _fprocessRunSubprocess(
             listCommand, "git push failed", sCwd=sRepoDir,
         )
     except OverleafError as error:
@@ -658,7 +658,7 @@ def _fnRemoveTokenFile(sPath):
         pass
 
 
-def _fnRunSubprocess(listCommand, sErrorMessage, sCwd=None):
+def _fprocessRunSubprocess(listCommand, sErrorMessage, sCwd=None):
     """Run a subprocess and raise OverleafError on failure."""
     try:
         resultProcess = subprocess.run(
@@ -797,7 +797,7 @@ def _fnRunPull(args):
     sys.stdout.write("ok\n")
 
 
-def _fnBuildParser():
+def _fparserBuildCommandLine():
     """Build the argparse parser with four subcommands."""
     parser = argparse.ArgumentParser(
         prog="overleafSync",
@@ -858,7 +858,7 @@ def _fnAddPullParser(subparsers):
 
 def main(listArgv=None):
     """CLI entry point; dispatches to the requested subcommand."""
-    parser = _fnBuildParser()
+    parser = _fparserBuildCommandLine()
     args = parser.parse_args(listArgv)
     try:
         args.func(args)

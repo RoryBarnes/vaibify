@@ -1141,7 +1141,7 @@ def testNoRootUserInDispatcherCalls():
     ``sudo`` was deliberately removed in commit 426f6b7).
 
     If a future feature genuinely needs root, fix the entrypoint root
-    phase or extend ``fnMigrateWorkspaceOwnership`` — do not punch a
+    phase or extend ``fnMigrateWorkspaceOwnership`` — fnDoCommand not punch a
     hole at the runtime-exec layer.
 
     ``dockerConnection.py`` itself is exempt: its docstrings reference
@@ -1287,10 +1287,10 @@ def _fappBuildApplication():
 def testAgentActionRegistered():
     """Every state-mutating route must be in the agent catalog or excluded.
 
-    The in-container ``vaibify-do`` CLI reads
+    The in-container ``vaibify-fnDoCommand`` CLI reads
     ``vaibify.gui.actionCatalog.LIST_AGENT_ACTIONS`` to translate
     researcher intent into backend calls. A state-mutating HTTP route
-    that is neither decorated with ``@fnAgentAction`` nor declared in
+    that is neither decorated with ``@ffnAgentAction`` nor declared in
     ``SET_INTENTIONALLY_EXCLUDED_PATHS`` is invisible to the agent —
     and the dashboard silently drifts when the agent improvises.
     """
@@ -1369,8 +1369,8 @@ def testAgentActionCatalogShape():
 def testEveryCatalogActionHasCliCommand():
     """Every catalog action must be reachable from the host CLI.
 
-    ``LIST_AGENT_ACTIONS`` is the inventory of what a researcher can do
-    from the dashboard, and ``vaibify do`` is generated from it, so a
+    ``LIST_AGENT_ACTIONS`` is the inventory of what a researcher can fnDoCommand
+    from the dashboard, and ``vaibify fnDoCommand`` is generated from it, so a
     researcher can drive the same actions from a script. An entry the
     generator cannot dispatch — an unsupported transport, a path
     placeholder no CLI argument supplies — would otherwise disappear
@@ -1378,7 +1378,7 @@ def testEveryCatalogActionHasCliCommand():
     escape hatch is ``SET_ACTIONS_WITHOUT_CLI``, which must name real
     actions and carry a written rationale.
 
-    WHAT THIS DOES AND DOES NOT PROVE. Because ``vaibify do`` is
+    WHAT THIS DOES AND DOES NOT PROVE. Because ``vaibify fnDoCommand`` is
     *generated* from the catalog, a well-formed entry on a supported
     transport gets a command automatically, and this test passes for it
     by construction. Verified: adding a fake POST action leaves this
@@ -1395,7 +1395,7 @@ def testEveryCatalogActionHasCliCommand():
     thing comes from driving it against a live hub, not from here.
     """
     from vaibify.cli.actionCommands import (
-        SET_ACTIONS_WITHOUT_CLI, do, flistArgumentPlaceholders,
+        SET_ACTIONS_WITHOUT_CLI, fnDoCommand, flistArgumentPlaceholders,
     )
     from vaibify.gui import actionCatalog
     listViolations = []
@@ -1405,7 +1405,7 @@ def testEveryCatalogActionHasCliCommand():
         setCatalogNames.add(sName)
         if sName in SET_ACTIONS_WITHOUT_CLI:
             continue
-        commandAction = do.commands.get(sName)
+        commandAction = fnDoCommand.commands.get(sName)
         if commandAction is None:
             listViolations.append(
                 f"{sName} ({dictEntry['sMethod']} {dictEntry['sPath']}) "
@@ -1528,7 +1528,7 @@ def _fbParameterIsNotAQueryField(sName, parameter, typeBaseModel):
 
 
 def testGeneratedActionsNeverShadowTopLevelCommands():
-    """Generated action commands must stay nested under ``vaibify do``.
+    """Generated action commands must stay nested under ``vaibify fnDoCommand``.
 
     Several catalog names mean something different from the top-level
     command they resemble — ``vaibify push`` copies host files into the
@@ -1537,7 +1537,7 @@ def testGeneratedActionsNeverShadowTopLevelCommands():
     generator that registered flat would replace a hand-written command
     with no error at all.
     """
-    from vaibify.cli.actionCommands import do
+    from vaibify.cli.actionCommands import fnDoCommand
     from vaibify.cli.main import main
     from vaibify.gui import actionCatalog
     setCatalogNames = {
@@ -1549,7 +1549,7 @@ def testGeneratedActionsNeverShadowTopLevelCommands():
         "Catalog actions registered as top-level commands: "
         + ", ".join(sorted(setShadowed))
     )
-    assert main.commands.get("do") is do, (
+    assert main.commands.get("do") is fnDoCommand, (
         "The generated action group must be registered as 'vaibify do'"
     )
 
@@ -1563,7 +1563,7 @@ def testHostHashRouteIsNeverAgentInvokable():
     about credentials or dotfiles byte-for-byte). The route must stay
     in ``SET_INTENTIONALLY_EXCLUDED_PATHS``, must never gain a
     ``LIST_AGENT_ACTIONS`` entry, and its live handler must carry no
-    ``@fnAgentAction`` marker.
+    ``@ffnAgentAction`` marker.
     """
     from vaibify.gui import actionCatalog
     sHashPath = "/api/workflow/{sContainerId}/personal-layer/hash"
@@ -1588,7 +1588,7 @@ def testHostHashRouteIsNeverAgentInvokable():
                 fnEndpoint, "_sAgentActionName", None,
             ) is None, (
                 "The host-file hash handler must not carry an "
-                "@fnAgentAction marker"
+                "@ffnAgentAction marker"
             )
 
 
@@ -3315,7 +3315,7 @@ def testThePipelineSocketIsFencedByPoison():
         "at accept, or a transfer cannot fence a socket mid-frame"
     )
     sGuardSource = fsReadSource(GUI_DIR / "webSocketAuthorization.py")
-    iPerFrame = sGuardSource.find("def ffbBuildPerFrameCredentialCheck")
+    iPerFrame = sGuardSource.find("def ffnBuildPerFrameCredentialCheck")
     assert "fbContainerIsPoisoned(" in sGuardSource[iPerFrame:], (
         "the per-frame backstop must re-read the poison state, not "
         "capture it at accept"
@@ -4225,7 +4225,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # operation and quarantine a container before being caught.
     "commitCarrier.py": 1062,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
-    # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
+    # allowlisted operation, `mint-bootstrap` (the headless `vaibify fnDoCommand`
     # credential, §6b), to hostControlChannel.py. The module IS the
     # closed operation schema plus the one peer-credential portability
     # shim that guards every operation in it; a handler homed elsewhere
@@ -4414,7 +4414,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # host-file hash oracle must never be agent-invokable.
     # +49 (2026-07-25): fbAgentLanePermitsRoute — the server-side
     # enforcement point for bAgentSafe, which until now existed only as
-    # client-side advice in vaibify-do. It belongs beside the data it
+    # client-side advice in vaibify-fnDoCommand. It belongs beside the data it
     # decides on; the catalog stays one cohesive responsibility.
     # +17 (2026-07-26): the reconcile-remote-state entry plus the
     # push-to-github description that now names it. One catalog

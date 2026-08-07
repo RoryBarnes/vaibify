@@ -272,7 +272,7 @@ def test_fnLaunchGui_exits_when_session_limit_reached():
 def test_start_command_without_gui_starts_container_only():
     """`vaibify start` without --gui starts the container, skips the GUI."""
     from click.testing import CliRunner
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     mockConfig = _fConfigStub()
     mockStart = MagicMock()
     mockLaunch = MagicMock()
@@ -292,7 +292,7 @@ def test_start_command_without_gui_starts_container_only():
     ), patch(
         "vaibify.cli.commandStart.fnLaunchGui", mockLaunch,
     ):
-        result = CliRunner().invoke(start, [])
+        result = CliRunner().invoke(fnStartCommand, [])
     assert result.exit_code == 0
     mockStart.assert_called_once()
     mockLaunch.assert_not_called()
@@ -301,7 +301,7 @@ def test_start_command_without_gui_starts_container_only():
 def test_start_command_with_gui_and_port_launches_gui():
     """`vaibify start --gui --port 8062` forwards the explicit port + config path."""
     from click.testing import CliRunner
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     mockConfig = _fConfigStub()
     mockLaunch = MagicMock()
     with patch(
@@ -320,7 +320,7 @@ def test_start_command_with_gui_and_port_launches_gui():
     ), patch(
         "vaibify.cli.commandStart.fnLaunchGui", mockLaunch,
     ):
-        result = CliRunner().invoke(start, ["--gui", "--port", "8062"])
+        result = CliRunner().invoke(fnStartCommand, ["--gui", "--port", "8062"])
     assert result.exit_code == 0
     mockLaunch.assert_called_once_with(
         mockConfig, 8062, "/tmp/vaibify.yml",

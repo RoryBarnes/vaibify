@@ -261,14 +261,14 @@ def _ftInvokeReproduce(saExtraArgs, pathRepo):
 
     Tiers 2 and 3 are skipped rather than mocked. They shell out to pip
     and ``docker pull``, and the usual way to neutralise them —
-    ``patch("...commandReproduce.subprocess.run")`` — rebinds ``run`` on
+    ``patch("...commandReproduce.subprocess.run")`` — rebinds ``fnRunCommand`` on
     the shared ``subprocess`` module object, so it would also silence
     the container stand-in's real shell calls and turn every hash into
     ``None``. Skipping is honest and leaves the tiers that matter here
     (1 and 4 on the clone, 5 in the container) genuinely executed.
     """
     resultClick = CliRunner().invoke(
-        commandReproduce.reproduce,
+        commandReproduce.fnReproduceCommand,
         [
             "--repo", str(pathRepo), "--rerun",
             "--skip-tier", "2", "--skip-tier", "3",

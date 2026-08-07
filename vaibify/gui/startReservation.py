@@ -114,7 +114,7 @@ class StartTaskRecord:
 
     sStartTaskId: str
     sJournalOperationId: str
-    processDocker: object = None
+    processDocker: Optional["Popen"] = None
     sCreatedContainerId: str = ""
     bCancelRequested: bool = False
     bProcessWasSignalled: bool = False

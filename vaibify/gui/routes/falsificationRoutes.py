@@ -28,7 +28,7 @@ import time
 
 from fastapi import HTTPException
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import ffilesForWorkflow
@@ -98,7 +98,7 @@ def _fdictInFlightStatus(sContainerId, iStepIndex):
 def _fnRegisterView(app, dictCtx):
     """Register GET /api/steps/{id}/{step}/falsification."""
 
-    @fnAgentAction("view-falsification-attestation")
+    @ffnAgentAction("view-falsification-attestation")
     @app.get(
         "/api/steps/{sContainerId}/{iStepIndex}/falsification"
     )
@@ -119,7 +119,7 @@ def _fnRegisterView(app, dictCtx):
 def _fnRegisterRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-falsification."""
 
-    @fnAgentAction("run-falsification")
+    @ffnAgentAction("run-falsification")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"
     )

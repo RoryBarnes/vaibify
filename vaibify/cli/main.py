@@ -85,27 +85,27 @@ def _fnConfigureErrorLogging(sLogDirOverride=None):
         loggerVaibify.addHandler(rotatingHandler)
     _fnAttachHostIncidentHandler(loggerVaibify)
 
-from .actionCommands import do
-from .commandBuild import build
-from .commandCat import cat
-from .commandConfig import config
-from .commandDestroy import destroy
-from .commandDoctor import doctor
-from .commandGenerateStandards import generate_standards
-from .commandInit import init
-from .commandLs import ls
-from .commandOpen import open_container
-from .commandReconcile import reconcile
-from .commandRegister import register
-from .commandReproduce import reproduce
-from .commandRevoke import revoke
-from .commandRun import run
-from .commandSessions import sessions
-from .commandStart import start
-from .commandStatus import status
-from .commandTest import test
-from .commandVerifyStep import verify_step
-from .commandWorkflow import workflow
+from .actionCommands import fnDoCommand
+from .commandBuild import fnBuildCommand
+from .commandCat import fnCatCommand
+from .commandConfig import fnConfigCommand
+from .commandDestroy import fnDestroyCommand
+from .commandDoctor import fnDoctorCommand
+from .commandGenerateStandards import fnGenerateStandardsCommand
+from .commandInit import fnInitCommand
+from .commandLs import fnListCommand
+from .commandOpen import fnOpenContainerCommand
+from .commandReconcile import fnReconcileCommand
+from .commandRegister import fnRegisterCommand
+from .commandReproduce import fnReproduceCommand
+from .commandRevoke import fnRevokeCommand
+from .commandRun import fnRunCommand
+from .commandSessions import fnListSessionsCommand
+from .commandStart import fnStartCommand
+from .commandStatus import fnStatusCommand
+from .commandTest import fnTestCommand
+from .commandVerifyStep import fnVerifyStepCommand
+from .commandWorkflow import fnWorkflowCommand
 from .configLoader import fconfigResolveProject
 
 
@@ -226,27 +226,27 @@ def fnLaunchHub(iExplicitPort):
         fnReleaseSessionSlot(fileHandleSession)
 
 
-main.add_command(init)
-main.add_command(build)
-main.add_command(start)
-main.add_command(status)
-main.add_command(destroy)
-main.add_command(config)
-main.add_command(reproduce)
-main.add_command(run)
-main.add_command(workflow)
-main.add_command(verify_step)
-main.add_command(ls)
-main.add_command(cat)
-main.add_command(register)
-main.add_command(revoke)
-main.add_command(test)
-main.add_command(generate_standards)
-main.add_command(doctor)
-main.add_command(sessions)
-main.add_command(do)
-main.add_command(reconcile)
-main.add_command(open_container)
+main.add_command(fnInitCommand)
+main.add_command(fnBuildCommand)
+main.add_command(fnStartCommand)
+main.add_command(fnStatusCommand)
+main.add_command(fnDestroyCommand)
+main.add_command(fnConfigCommand)
+main.add_command(fnReproduceCommand)
+main.add_command(fnRunCommand)
+main.add_command(fnWorkflowCommand)
+main.add_command(fnVerifyStepCommand)
+main.add_command(fnListCommand)
+main.add_command(fnCatCommand)
+main.add_command(fnRegisterCommand)
+main.add_command(fnRevokeCommand)
+main.add_command(fnTestCommand)
+main.add_command(fnGenerateStandardsCommand)
+main.add_command(fnDoctorCommand)
+main.add_command(fnListSessionsCommand)
+main.add_command(fnDoCommand)
+main.add_command(fnReconcileCommand)
+main.add_command(fnOpenContainerCommand)
 
 
 @main.command("stop")
@@ -255,7 +255,7 @@ main.add_command(open_container)
     help="Project name (omit if in a project directory "
     "or only one project exists).",
 )
-def stop(sProjectName):
+def fnStopCommand(sProjectName):
     """Stop the running Vaibify environment."""
     configProject = fconfigResolveProject(sProjectName)
     from vaibify.docker.containerManager import fnStopContainer
@@ -274,7 +274,7 @@ def stop(sProjectName):
     "--project", "-p", default=None,
     help="Project name (optional if only one project exists).",
 )
-def connect(project):
+def fnConnectCommand(project):
     """Open a shell inside the running container."""
     configProject = fconfigResolveProject(project)
     sUser = configProject.sContainerUser
@@ -290,7 +290,7 @@ def connect(project):
     help="Project name (omit if in a project directory "
     "or only one project exists).",
 )
-def verify(sProjectName):
+def fnVerifyCommand(sProjectName):
     """Run the isolation check script inside the container."""
     configProject = fconfigResolveProject(sProjectName)
     sUser = configProject.sContainerUser
@@ -302,7 +302,7 @@ def verify(sProjectName):
 
 
 @main.command("setup")
-def setup():
+def fnSetupCommand():
     """Launch the setup wizard to create or edit configuration."""
     from vaibify.install.setupServer import fappCreateSetupWizard
     import uvicorn
@@ -321,7 +321,7 @@ def setup():
     "--project", "-p", "sProjectName", default=None,
     help="Project name (omit to show the landing page).",
 )
-def gui(sProjectName):
+def fnGuiCommand(sProjectName):
     """Launch the Vaibify pipeline viewer GUI."""
     from vaibify.gui.pipelineServer import fappCreateApplication
     import uvicorn
@@ -365,7 +365,7 @@ def _ftResolveGuiConfig(sProjectName):
 )
 @click.argument("source")
 @click.argument("destination")
-def push(project, source, destination):
+def fnPushCommand(project, source, destination):
     """Push files from the host into the container workspace."""
     configProject = fconfigResolveProject(project)
     from vaibify.docker.fileTransfer import fnPushToContainer
@@ -380,7 +380,7 @@ def push(project, source, destination):
 )
 @click.argument("source")
 @click.argument("destination")
-def pull(project, source, destination):
+def fnPullCommand(project, source, destination):
     """Pull files from the container workspace to the host."""
     configProject = fconfigResolveProject(project)
     from vaibify.docker.fileTransfer import fnPullFromContainer

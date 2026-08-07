@@ -453,7 +453,7 @@ class _RunShellConnection:
         )
 
 
-def _fnRunGit(sRepoPath, *saArguments):
+def _fprocessRunGit(sRepoPath, *saArguments):
     subprocess.run(
         ["git", "-C", sRepoPath, *saArguments],
         check=True, capture_output=True,
@@ -471,12 +471,12 @@ def _tBuildClonePair(pathTmp):
     """Return (sClonePath, sOriginPath): a work clone with upstream."""
     sSeed = str(pathTmp / "seed")
     (pathTmp / "seed").mkdir()
-    _fnRunGit(sSeed, "init", "--initial-branch=main")
-    _fnRunGit(sSeed, "config", "user.email", "test@example.com")
-    _fnRunGit(sSeed, "config", "user.name", "Test")
+    _fprocessRunGit(sSeed, "init", "--initial-branch=main")
+    _fprocessRunGit(sSeed, "config", "user.email", "test@example.com")
+    _fprocessRunGit(sSeed, "config", "user.name", "Test")
     (pathTmp / "seed" / "base.txt").write_text("base\n")
-    _fnRunGit(sSeed, "add", "base.txt")
-    _fnRunGit(sSeed, "commit", "-m", "base")
+    _fprocessRunGit(sSeed, "add", "base.txt")
+    _fprocessRunGit(sSeed, "commit", "-m", "base")
     sOrigin = str(pathTmp / "origin.git")
     subprocess.run(
         ["git", "clone", "--bare", "--quiet", sSeed, sOrigin],
@@ -487,14 +487,14 @@ def _tBuildClonePair(pathTmp):
         ["git", "clone", "--quiet", sOrigin, sClone],
         check=True, capture_output=True,
     )
-    _fnRunGit(sClone, "config", "user.email", "test@example.com")
-    _fnRunGit(sClone, "config", "user.name", "Test")
+    _fprocessRunGit(sClone, "config", "user.email", "test@example.com")
+    _fprocessRunGit(sClone, "config", "user.name", "Test")
     # The dispatcher command carries the production hardening flags,
     # and protocol.file.allow=never rightly refuses a plain-path
     # remote. git's ext transport is user-allowed under the same
     # policy, so the push stays real without weakening the flags.
     # (%s tokenizes on spaces — pytest tmp paths contain none.)
-    _fnRunGit(
+    _fprocessRunGit(
         sClone, "remote", "set-url", "origin",
         "ext::git %s " + sOrigin,
     )
@@ -515,8 +515,8 @@ def test_push_staged_pushes_an_already_committed_repo_real_git(
     """
     sClone, sOrigin = _tBuildClonePair(tmp_path)
     (tmp_path / "work" / "declaration.md").write_text("declared\n")
-    _fnRunGit(sClone, "add", "declaration.md")
-    _fnRunGit(sClone, "commit", "-m", "already committed")
+    _fprocessRunGit(sClone, "add", "declaration.md")
+    _fprocessRunGit(sClone, "commit", "-m", "already committed")
 
     iExit, sOut = syncDispatcher.ftResultPushStagedToGithub(
         _RunShellConnection(), "cid", "unused message", sClone,
@@ -539,7 +539,7 @@ def test_push_staged_commits_staged_changes_then_pushes_real_git(
     """
     sClone, sOrigin = _tBuildClonePair(tmp_path)
     (tmp_path / "work" / "base.txt").write_text("updated\n")
-    _fnRunGit(sClone, "add", "base.txt")
+    _fprocessRunGit(sClone, "add", "base.txt")
 
     iExit, sOut = syncDispatcher.ftResultPushStagedToGithub(
         _RunShellConnection(), "cid", "staged update", sClone,
@@ -562,13 +562,13 @@ def _tBuildDeclarationRepo(pathTmp):
     declaration file committed and clean."""
     sRepo = str(pathTmp / "projectRepo")
     (pathTmp / "projectRepo").mkdir()
-    _fnRunGit(sRepo, "init", "--initial-branch=main")
-    _fnRunGit(sRepo, "config", "user.email", "test@example.com")
-    _fnRunGit(sRepo, "config", "user.name", "Test")
+    _fprocessRunGit(sRepo, "init", "--initial-branch=main")
+    _fprocessRunGit(sRepo, "config", "user.email", "test@example.com")
+    _fprocessRunGit(sRepo, "config", "user.name", "Test")
     (pathTmp / "projectRepo" / "declaration.md").write_text("declared\n")
     (pathTmp / "projectRepo" / "other.txt").write_text("other\n")
-    _fnRunGit(sRepo, "add", "declaration.md", "other.txt")
-    _fnRunGit(sRepo, "commit", "-m", "base")
+    _fprocessRunGit(sRepo, "add", "declaration.md", "other.txt")
+    _fprocessRunGit(sRepo, "commit", "-m", "base")
     dictWorkflow = {
         "sPlotDirectory": "Plot",
         "listSteps": [{
@@ -661,7 +661,7 @@ def test_untrack_refuses_when_other_changes_staged_real_git(tmp_path):
     """
     client, sRepo = _tBuildDeclarationRepo(tmp_path)
     (tmp_path / "projectRepo" / "other.txt").write_text("staged edit\n")
-    _fnRunGit(sRepo, "add", "other.txt")
+    _fprocessRunGit(sRepo, "add", "other.txt")
     response = client.post(
         "/api/git/cid-real/untrack-ai-declaration",
         json={"sPath": "declaration.md"},

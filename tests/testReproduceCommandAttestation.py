@@ -307,7 +307,7 @@ def test_reproduce_rerun_passes_emits_confirmed_line(fixtureRepo):
         return_value=fdictVerifyRerunOutputs(str(fixtureRepo), True),
     ):
         result = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(fixtureRepo), "--rerun"],
         )
     assert result.exit_code == 0
@@ -321,7 +321,7 @@ def test_reproduce_rerun_failure_emits_failed_line(fixtureRepo):
         return_value=fdictVerifyRerunOutputs(str(fixtureRepo), False),
     ):
         result = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(fixtureRepo), "--rerun"],
         )
     assert result.exit_code == 1
@@ -339,7 +339,7 @@ def test_tier4_failure_emits_per_verifier_status(fixtureRepo, tmp_path):
     (fixtureRepo / "Dockerfile").write_text("FROM python:3.11\n")
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(fixtureRepo),
              "--skip-tier", "1",
              "--skip-tier", "2",
@@ -431,7 +431,7 @@ def test_report_incomplete_coverage_skips_when_no_workflows(tmp_path):
     assert not (pathDir / "workflows").exists()
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(tmp_path),
              "--skip-tier", "2", "--skip-tier", "3", "--skip-tier", "4"],
         )
@@ -502,7 +502,7 @@ def test_uv_fallback_invoked_when_pip_hash_failure(fixtureRepo):
         return_value="/usr/bin/uv",  # uv on PATH
     ):
         result = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(fixtureRepo),
              "--skip-tier", "1",
              "--skip-tier", "3",
@@ -526,7 +526,7 @@ def test_load_image_digest_exits_when_digest_missing(fixtureRepo):
     pathEnv.write_text(json.dumps({}))
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(fixtureRepo),
              "--skip-tier", "1", "--skip-tier", "2",
              "--skip-tier", "4"],
@@ -556,7 +556,7 @@ def test_pip_install_failure_without_hash_in_stderr_no_uv_fallback(fixtureRepo):
         return_value="/usr/bin/uv",  # uv on PATH
     ):
         result = CliRunner().invoke(
-            commandReproduce.reproduce,
+            commandReproduce.fnReproduceCommand,
             ["--repo", str(fixtureRepo),
              "--skip-tier", "1", "--skip-tier", "3",
              "--skip-tier", "4"],
@@ -577,7 +577,7 @@ def _fnScaffoldProjectWithInit(pathRepo):
 
     from click.testing import CliRunner
 
-    from vaibify.cli.commandInit import init
+    from vaibify.cli.commandInit import fnInitCommand
 
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=str(pathRepo)) as sCwd:
@@ -585,7 +585,7 @@ def _fnScaffoldProjectWithInit(pathRepo):
         # so it cannot be redirected by an environment variable.
         with patch("vaibify.cli.commandInit.fnAddProject"):
             resultInit = runner.invoke(
-                init, ["--template", "workflow"],
+                fnInitCommand, ["--template", "workflow"],
                 catch_exceptions=False,
             )
         assert resultInit.exit_code == 0, resultInit.output

@@ -40,7 +40,7 @@ _LIST_VALID_ZENODO_INSTANCES = ["sandbox", "production"]
         "Zenodo only: target the sandbox or production keyring slot."
     ),
 )
-def revoke(sservice, sKeyringSlot, sZenodoInstance):
+def fnRevokeCommand(sservice, sKeyringSlot, sZenodoInstance):
     """Revoke a stored credential and clear the local keyring slot."""
     dictResult = _fdictRevokeForService(
         sservice.lower(), sKeyringSlot, sZenodoInstance.lower(),

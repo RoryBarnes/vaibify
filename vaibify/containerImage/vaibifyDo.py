@@ -142,7 +142,7 @@ def ftParsePositionalArgs(listArgs):
             sKey, sValue = sArg.split("=", 1)
             if sKey.startswith("--"):
                 sKey = _fsResolveLongFlagAlias(sKey)
-            dictBody[sKey] = _fnCoerceScalar(sValue)
+            dictBody[sKey] = _fjsonCoerceScalar(sValue)
         elif sArg.startswith("{"):
             dictBody.update(json.loads(sArg))
         elif (
@@ -186,7 +186,7 @@ def _flistMergeSpaceSeparatedFlags(listArgs):
     return listMerged
 
 
-def _fnCoerceScalar(sValue):
+def _fjsonCoerceScalar(sValue):
     """Coerce CLI string to int/float/bool/JSON where obvious."""
     if sValue.lower() in ("true", "false"):
         return sValue.lower() == "true"
@@ -523,7 +523,7 @@ def ftRecvWsFrame(sockConn):
     return ("text", dataPayload.decode("utf-8", errors="replace"))
 
 
-def fnRunWebsocket(dictEnv, dictPayload, bJsonMode):
+def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
     """Open the pipeline socket, send one action, stream events."""
     sHost, iPort, sPath, bTls = ftWsEndpoint(dictEnv)
     if bTls:
@@ -638,13 +638,13 @@ def fnDispatch(dictEntry, listArgs, dictEnv, bJsonMode):
     """Send the action and exit with the appropriate code."""
     if dictEntry["sMethod"] == "WS":
         dictPayload = fdictResolveWsPayload(dictEntry, listArgs)
-        sys.exit(fnRunWebsocket(dictEnv, dictPayload, bJsonMode))
+        sys.exit(fiRunWebsocket(dictEnv, dictPayload, bJsonMode))
     dictTarget = fdictResolveHttpTarget(dictEntry, listArgs, dictEnv)
     sys.exit(fiSendHttpRequest(dictTarget, dictEnv["VAIBIFY_SESSION_TOKEN"],
                         dictEntry["sMethod"], bJsonMode))
 
 
-def fnParseArguments():
+def fnamespaceParseArguments():
     """Build the argparse parser for vaibify-do."""
     parser = argparse.ArgumentParser(
         prog="vaibify-do",
@@ -687,7 +687,7 @@ def fnRejectGlobalFlagsInRemainder(listArgs):
 
 
 def main():
-    args = fnParseArguments()
+    args = fnamespaceParseArguments()
     fnRejectGlobalFlagsInRemainder(args.listArgs)
     dictCatalog = fdictReadCatalog()
     if args.list:

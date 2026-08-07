@@ -71,6 +71,8 @@ S_SCHEMA_VERSION = "1"
 # annotation); arrays additionally check their subscript element.
 DICT_TIER_ONE_AGREEMENT = {
     "n": set(),
+    "fn": {"Callable"},
+    "generic": set(),
     "b": {"bool"},
     "i": {"int"},
     "f": {"float"},
@@ -113,10 +115,20 @@ DICT_TIER_TWO_REGISTRY = {
                "ConnectionRecord", "DurableTaskRecord",
                "TerminalExecutionRecord", "PoisonRecord",
                "BrowserSessionRecord"},
-    "lock": {"Lock"},
+    "lock": {"Lock", "_RepoLockHolder"},
     "response": {"Response", "JSONResponse", "StreamingResponse",
                  "HTMLResponse", "PlainTextResponse", "FileResponse",
-                 "RedirectResponse"},
+                 "RedirectResponse", "ValidateResponse"},
+    "process": {"CompletedProcess", "Popen"},
+    "parser": {"ArgumentParser"},
+    "namespace": {"Namespace"},
+    "thread": {"Thread"},
+    "task": {"Task"},
+    "request": {"Request"},  # suffix family: any *Request model agrees
+    "httpresponse": {"HTTPResponse"},
+    "error": {"Exception", "RuntimeError", "ValueError", "OSError"},
+    "websocket": {"WebSocket"},
+    "logger": {"Logger"},
     "app": {"FastAPI"},
     "datetime": {"datetime"},
     "file": {"IO", "TextIO", "BinaryIO", "TextIOWrapper"},
@@ -141,10 +153,18 @@ DICT_ALL_AGREEMENT = {**DICT_TIER_ONE_AGREEMENT, **DICT_TIER_TWO_REGISTRY}
 
 # Variable-name governance uses the same vocabulary minus "n" (a
 # variable cannot "return nothing") and "context" (a decorated shape,
-# not a value cast).
+# not a value cast). "fn" IS a variable prefix: a variable holding a
+# function carries the held function's own prefix (the codebase's own
+# convention, ratified 2026-08-06 -- fnStatusCallback holds an
+# fn-function).
 SET_VARIABLE_PREFIXES = (
     set(DICT_ALL_AGREEMENT) - {"n", "context"}
 )
+
+# "generic" declares a caller-determined (parametric) return; the name
+# cannot spell a type variable, so agreement checks skip it and the
+# future mypy lane pins it with TypeVar annotations instead.
+S_PREFIX_GENERIC = "generic"
 
 # Imprecision on a prefixed name defeats the contract (ruling R4).
 SET_FORBIDDEN_ANNOTATION_BASES = {"object", "Any"}
@@ -172,15 +192,11 @@ LIST_DEBT_CLASSES = [
     S_CLASS_ANNOTATION_MISMATCH,
 ]
 
-# Standing categories: rows with a stated reason, not debt.
-S_CATEGORY_CLI_VERB = "cli-verb"
+# Standing categories: rows with a stated reason, not debt. Only one
+# survives the strict doctrine (2026-08-06): a name a FOREIGN contract
+# owns. CLI verbs conform (the Click string keeps the user-facing
+# verb) and security-pinned retired with the texec rename.
 S_CATEGORY_INTERFACE = "interface-method"
-S_CATEGORY_SECURITY_PINNED = "security-pinned"
-
-S_REASON_CLI_VERB = (
-    "Click command; the user-facing verb and the function name stay "
-    "identical by ruling R6"
-)
 
 # Reviewed, human-written dispositions keyed by qualified identity.
 # The scanner still finds these sites; this map only converts their
@@ -298,15 +314,6 @@ def fbHasPropertyDecorator(nodeFunction):
     return False
 
 
-def fbHasClickCommandDecorator(nodeFunction):
-    """Detect Click command/group registration (standing category cli-verb)."""
-    for nodeDecorator in nodeFunction.decorator_list:
-        sText = fsUnparseDecorator(nodeDecorator)
-        if sText.endswith(".command") or sText.endswith(".group"):
-            return True
-    return False
-
-
 def fbHasContextManagerDecorator(nodeFunction):
     """Detect @contextmanager / @asynccontextmanager (ruling R8)."""
     for nodeDecorator in nodeFunction.decorator_list:
@@ -405,6 +412,11 @@ def fbAnnotationPartAgrees(sPrefix, tPart):
     sBase, nodeSubscript = tPart
     if sBase in SET_FORBIDDEN_ANNOTATION_BASES:
         return False
+    if sPrefix == "request" and sBase.endswith("Request"):
+        # The request family is a SUFFIX family: urllib's Request plus
+        # every pydantic route-body model (AddProjectRequest, ...), so
+        # a new route model conforms without a vocabulary edit.
+        return True
     setAgreement = DICT_ALL_AGREEMENT[sPrefix]
     if sBase not in setAgreement:
         return False
@@ -426,6 +438,8 @@ def _fbArrayElementAgrees(sPrefix, nodeSubscript):
 
 def fbLiteralAgreesWithPrefix(sPrefix, sLiteralType):
     """Does a literal return's type satisfy the prefix? bool beats int."""
+    if sPrefix == S_PREFIX_GENERIC:
+        return True
     if sLiteralType == "NoneType":
         return True
     if sPrefix in ("f", "d") and sLiteralType == "int":
@@ -482,6 +496,13 @@ class StyleViolationScanner(ast.NodeVisitor):
         if node.name.startswith("test"):
             return None
         if fbHasPropertyDecorator(node):
+            # A property is a computed variable, so it carries a
+            # VARIABLE cast prefix (doctrine 2026-08-06); its body is
+            # not driven through the function checks.
+            if fsParseVariablePrefix(node.name) is None:
+                self.fnRecord(sIdentity, S_CLASS_NAME,
+                              "property name carries no variable cast "
+                              "prefix")
             return None
         sPrefix = fsParseFunctionPrefix(node.name)
         if sPrefix is not None:
@@ -489,8 +510,6 @@ class StyleViolationScanner(ast.NodeVisitor):
         if sIdentity in DICT_REVIEWED_DISPOSITIONS:
             sCategory, sReason = DICT_REVIEWED_DISPOSITIONS[sIdentity]
             self.fnRecord(sIdentity, sCategory, sReason)
-        elif fbHasClickCommandDecorator(node):
-            self.fnRecord(sIdentity, S_CATEGORY_CLI_VERB, S_REASON_CLI_VERB)
         else:
             self.fnRecord(sIdentity, S_CLASS_NAME,
                           "no valid prefix in the closed vocabulary")
@@ -540,7 +559,7 @@ class StyleViolationScanner(ast.NodeVisitor):
                 return
 
     def _fnCheckReturnAnnotation(self, node, sIdentity, sPrefix):
-        if node.returns is None:
+        if node.returns is None or sPrefix == S_PREFIX_GENERIC:
             return
         try:
             listParts = flistResolveAnnotationParts(node.returns)
@@ -594,7 +613,7 @@ class StyleViolationScanner(ast.NodeVisitor):
 
     def _fnCheckVariableAnnotation(self, sIdentity, sName, nodeAnnotation):
         sPrefix = fsParseVariablePrefix(sName)
-        if sPrefix is None:
+        if sPrefix is None or sPrefix == S_PREFIX_GENERIC:
             return
         try:
             listParts = flistResolveAnnotationParts(nodeAnnotation)

@@ -7,22 +7,22 @@ from click.testing import CliRunner
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
-from vaibify.cli.commandRun import run, fnCliStatusCallback, _fnValidateStepOptions
+from vaibify.cli.commandRun import fnRunCommand, fnCliStatusCallback, _fnValidateStepOptions
 from vaibify.cli.commandWorkflow import (
-    workflow,
+    fnWorkflowCommand,
     _fnPrintStepRow,
     _fdictStepDetail,
     _fdictWorkflowSummary,
 )
 from vaibify.cli.commandVerifyStep import (
-    verify_step,
+    fnVerifyStepCommand,
     _fnValidateStatus,
     _fnValidateStepIndex,
     _fnSetUserVerification,
 )
-from vaibify.cli.commandLs import ls, _fsNormalizePath as _fsNormalizePathLs
-from vaibify.cli.commandCat import cat, _fsNormalizePath as _fsNormalizePathCat
-from vaibify.cli.commandTest import test, _flistCollectTestCommands
+from vaibify.cli.commandLs import fnListCommand, _fsNormalizePath as _fsNormalizePathLs
+from vaibify.cli.commandCat import fnCatCommand, _fsNormalizePath as _fsNormalizePathCat
+from vaibify.cli.commandTest import fnTestCommand, _flistCollectTestCommands
 
 
 # -----------------------------------------------------------------------

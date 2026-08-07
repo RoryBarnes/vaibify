@@ -20,7 +20,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from .. import draftManager
 from ..pipelineServer import (
     fsValidatePathWithinRoot,
@@ -110,7 +110,7 @@ def _fnRejectOversize(sContent):
 def _fnRegisterDraftWrite(app, dictCtx):
     """Register PUT /api/draft/{sContainerId}/{sFilePath:path}."""
 
-    @fnAgentAction("write-draft")
+    @ffnAgentAction("write-draft")
     @app.put("/api/draft/{sContainerId}/{sFilePath:path}")
     async def fdictWriteDraft(
         sContainerId: str, sFilePath: str,
@@ -171,7 +171,7 @@ def _fnRegisterDraftRead(app, dictCtx):
 def _fnRegisterDraftDelete(app, dictCtx):
     """Register DELETE /api/draft/{sContainerId}/{sFilePath:path}."""
 
-    @fnAgentAction("delete-draft")
+    @ffnAgentAction("delete-draft")
     @app.delete("/api/draft/{sContainerId}/{sFilePath:path}")
     async def fdictDeleteDraft(
         sContainerId: str, sFilePath: str,

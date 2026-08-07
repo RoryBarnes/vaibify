@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from vaibify.cli.commandReproduce import reproduce
+from vaibify.cli.commandReproduce import fnReproduceCommand
 
 
 _S_FIXTURE_FILE_NAME = "result.txt"
@@ -142,7 +142,7 @@ def test_reproduce_happy_path_exit_zero(fixtureRepo):
     """
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
     assert result.exit_code == 0, result.output
     assert "L3 reproduction ready" in result.output
@@ -162,7 +162,7 @@ def test_reproduce_tier1_mismatch_exit_one(fixtureRepo):
     (fixtureRepo / _S_FIXTURE_FILE_NAME).write_text("tampered\n")
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
     assert result.exit_code == 1
     assert _S_FIXTURE_FILE_NAME in result.output
@@ -177,7 +177,7 @@ def test_reproduce_tier1_mismatch_exit_one(fixtureRepo):
 def test_reproduce_missing_manifest_exit_two(fixtureRepo):
     """A missing MANIFEST.sha256 yields an actionable usage error and exit 2."""
     os.remove(fixtureRepo / "MANIFEST.sha256")
-    result = CliRunner().invoke(reproduce, ["--repo", str(fixtureRepo)])
+    result = CliRunner().invoke(fnReproduceCommand, ["--repo", str(fixtureRepo)])
     assert result.exit_code == 2
     assert "MANIFEST.sha256" in result.output
 
@@ -209,7 +209,7 @@ def test_reproduce_tier2_install_failure_exit_one(fixtureRepo):
         "vaibify.cli.commandReproduce.shutil.which", return_value=None,
     ):
         result = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
     assert result.exit_code == 1
     assert "pip install" in result.output.lower()
@@ -225,7 +225,7 @@ def test_reproduce_missing_lockfile_exit_two(fixtureRepo):
     os.remove(fixtureRepo / "requirements.lock")
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
     assert result.exit_code == 2
     assert "requirements.lock" in result.output
@@ -241,7 +241,7 @@ def test_reproduce_missing_environment_json_exit_two(fixtureRepo):
     os.remove(fixtureRepo / ".vaibify" / "environment.json")
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
     assert result.exit_code == 2
     assert "environment.json" in result.output
@@ -265,7 +265,7 @@ def test_reproduce_docker_pull_failure_exit_one(fixtureRepo):
         side_effect=fakeSubprocessRun,
     ):
         result = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
     assert result.exit_code == 1
     assert "docker pull" in result.output.lower()
@@ -284,7 +284,7 @@ def test_reproduce_all_tiers_skipped_exit_zero(fixtureRepo):
     through to the Tier 5 placeholder.
     """
     result = CliRunner().invoke(
-        reproduce, [
+        fnReproduceCommand, [
             "--repo", str(fixtureRepo),
             "--skip-tier", "1",
             "--skip-tier", "2",
@@ -335,7 +335,7 @@ def test_reproduce_tier1_matches_sha256sum_check(fixtureRepo):
     bShasumOk = _fbInvokeSha256SumCheck(fixtureRepo, sBinary)
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, [
+            fnReproduceCommand, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
             ],
@@ -347,7 +347,7 @@ def test_reproduce_tier1_matches_sha256sum_check(fixtureRepo):
     bShasumOkAfter = _fbInvokeSha256SumCheck(fixtureRepo, sBinary)
     with _fnPatchAllSubprocessesSucceeding():
         resultAfter = CliRunner().invoke(
-            reproduce, [
+            fnReproduceCommand, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
             ],
@@ -377,10 +377,10 @@ def test_reproduce_is_idempotent(fixtureRepo):
     """Running reproduce twice yields identical exit codes and stable output."""
     with _fnPatchAllSubprocessesSucceeding():
         resultFirst = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
         resultSecond = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo)],
+            fnReproduceCommand, ["--repo", str(fixtureRepo)],
         )
     assert resultFirst.exit_code == resultSecond.exit_code == 0
     assert _fsScrubVariableLines(resultFirst.output) == \
@@ -477,7 +477,7 @@ def test_rerun_handles_unregistered_project_gracefully(fixtureRepo):
         side_effect=_fnRaiseSystemExit,
     ), _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, ["--repo", str(fixtureRepo), "--rerun"],
+            fnReproduceCommand, ["--repo", str(fixtureRepo), "--rerun"],
         )
     assert result.exit_code == 1
     assert "failed to invoke pipeline runner" in result.output
@@ -522,7 +522,7 @@ def test_reproduce_rejects_malformed_image_digest(fixtureRepo):
     pathEnv.write_text(json.dumps(dictPayload))
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, [
+            fnReproduceCommand, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "1", "--skip-tier", "2",
             ],
@@ -576,7 +576,7 @@ def test_reproduce_tier1_warns_when_workflow_declares_more(fixtureRepo):
     }]})
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, [
+            fnReproduceCommand, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
                 "--skip-tier", "4",
@@ -597,7 +597,7 @@ def test_reproduce_tier1_silent_when_no_workflow_present(fixtureRepo):
     """
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, [
+            fnReproduceCommand, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
                 "--skip-tier", "4",
@@ -634,7 +634,7 @@ def test_reproduce_tier1_aggregates_multiple_workflows(fixtureRepo):
     }]}))
     with _fnPatchAllSubprocessesSucceeding():
         result = CliRunner().invoke(
-            reproduce, [
+            fnReproduceCommand, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "2", "--skip-tier", "3",
                 "--skip-tier", "4",
@@ -659,7 +659,7 @@ def test_image_digest_invocation_uses_argv_form(fixtureRepo):
         side_effect=fakeSubprocessRun,
     ):
         result = CliRunner().invoke(
-            reproduce, [
+            fnReproduceCommand, [
                 "--repo", str(fixtureRepo),
                 "--skip-tier", "1", "--skip-tier", "2",
             ],

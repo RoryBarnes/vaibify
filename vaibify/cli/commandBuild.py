@@ -38,7 +38,7 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache):
     its path printed, because a failed image build is exactly when
     someone wants to read the context that produced it.
     """
-    fnBuildImage = _fImportBuildOrExit()
+    fnBuildImage = _ffnImportBuildOrExit()
     sStagedDir = fsStageBuildContext(config, sDockerDir)
     try:
         fnPrepareBuildContext(config, sStagedDir)
@@ -129,7 +129,7 @@ def fnRecordBaseImageDigestIfFloating(config):
     _fnPersistBaseImageDigest(config, sDigest)
 
 
-def _fImportBuildOrExit():
+def _ffnImportBuildOrExit():
     """Lazy-import imageBuilder.fnBuildImage; exit cleanly on missing extra."""
     try:
         from vaibify.docker.imageBuilder import fnBuildImage
@@ -957,7 +957,7 @@ def _fnEnforceBuildPreflight(config):
     help="Project name (omit if in a project directory "
     "or only one project exists).",
 )
-def build(bNoCache, sProjectName):
+def fnBuildCommand(bNoCache, sProjectName):
     """Build the Vaibify Docker image from vaibify.yml."""
     config = fconfigResolveProject(sProjectName)
     sDockerDir = fsDockerDir()

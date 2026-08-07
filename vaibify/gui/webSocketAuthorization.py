@@ -31,7 +31,7 @@ __all__ = [
     "fbAuthorizeContainerSession",
     "fiContainerSessionRejectionCode",
     "fbRefuseSecondLiveConnection",
-    "ffbBuildPerFrameCredentialCheck",
+    "ffnBuildPerFrameCredentialCheck",
     "fnCloseWithCode",
     "fnServeUnderLiveConnectionCounters",
     "fbContainerIsPoisoned",
@@ -198,7 +198,7 @@ def fbContainerIsPoisoned(dictContainerOwners, sName):
     ) is not None
 
 
-def ffbBuildPerFrameCredentialCheck(
+def ffnBuildPerFrameCredentialCheck(
     connection, dictBrowserSessions, dictContainerOwners=None, sName="",
     iAcceptedGeneration=None,
 ):
@@ -320,7 +320,7 @@ def _frecordBuildConnectionRecord(
 ):
     """Build the tracked record for an admitted browser WebSocket."""
     return containerOwnership.ConnectionRecord(
-        connection=connection,
+        websocket=connection,
         sBrowserSessionId=fsBrowserSessionIdForCredential(
             connection, dictBrowserSessions or {},
         ),

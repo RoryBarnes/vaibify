@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
 from .. import pipelineServer as _pipelineServer
@@ -103,7 +103,7 @@ def _fdictTestExistenceBatch(
 def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/exist for batched existence checks."""
 
-    @fnAgentAction("check-files-exist")
+    @ffnAgentAction("check-files-exist")
     @app.post("/api/files/{sContainerId}/exist")
     async def fdictCheckFilesExist(
         sContainerId: str, request: FileExistenceRequest,
@@ -160,7 +160,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/upload."""
     import base64
 
-    @fnAgentAction("upload-file")
+    @ffnAgentAction("upload-file")
     @app.post("/api/files/{sContainerId}/upload")
     async def fdictUploadFile(
         sContainerId: str, request: FileUploadRequest,
@@ -301,7 +301,7 @@ def _fnValidateAgentPullDestination(sResolvedPath, sContainerId):
 def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/pull."""
 
-    @fnAgentAction("pull-file")
+    @ffnAgentAction("pull-file")
     @app.post("/api/files/{sContainerId}/pull")
     async def fdictPullFile(
         requestHttp: Request,
@@ -399,7 +399,7 @@ def _fnRaiseConflictIfBaseHashMismatch(
 def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
     """Register PUT /api/file route for saving edited text files."""
 
-    @fnAgentAction("write-file")
+    @ffnAgentAction("write-file")
     @app.put("/api/file/{sContainerId}/{sFilePath:path}")
     async def fdictWriteFile(
         sContainerId: str, sFilePath: str,

@@ -391,7 +391,7 @@ def fdictCommitSynchronousMutation(
             f"Refusing to commit to container '{sName}': the owner "
             "record changed between admission and the commit point."
         )
-    resultEffect = _fRunEffectAdmitted(
+    resultEffect = _fgenericRunEffectAdmitted(
         sName, sContainerId, S_ADMISSION_MODE_SYNCHRONOUS, fnEffect,
     )
     bJournalSettled = _fbSettleQuietly(sName, sOperationId)
@@ -403,7 +403,7 @@ def fdictCommitSynchronousMutation(
     }
 
 
-def _fRunEffectAdmitted(sName, sContainerId, sMode, fnEffect):
+def _fgenericRunEffectAdmitted(sName, sContainerId, sMode, fnEffect):
     """Run an effect closure under a freshly activated admission."""
     admission = _fadmissionMintForCommitCarrier(sName, sContainerId, sMode)
     tokenAdmission = ftokenActivateAdmission(admission)
@@ -438,7 +438,7 @@ class MutationSupervisor:
     sName: str
     sContainerId: str
     dictLaneTuple: dict
-    fnTerminateWorker: object = None
+    fnTerminateWorker: Optional["Callable"] = None
     sOperationId: str = ""
     # What the lock holder is DOING, recorded so a refusal can say so.
     # A bare locked asyncio.Lock cannot explain itself, which is why a
@@ -447,7 +447,7 @@ class MutationSupervisor:
     # holder was a two-second write or a half-hour rebuild.
     sOperationKind: str = ""
     sTarget: str = ""
-    taskSupervisor: object = None
+    taskSupervisor: Optional["Task"] = None
     eventCancelRequested: threading.Event = field(
         default_factory=threading.Event,
     )
@@ -500,12 +500,12 @@ async def fdictRunLockHeldMutation(
     supervisor.taskSupervisor = taskSupervisor
     dictRegistry[supervisor.sSupervisorId] = supervisor
     taskSupervisor.add_done_callback(
-        _fnBuildSupervisorEviction(dictRegistry, supervisor),
+        _ffnBuildSupervisorEviction(dictRegistry, supervisor),
     )
     return await asyncio.shield(taskSupervisor)
 
 
-def _fnBuildSupervisorEviction(dictRegistry, supervisor):
+def _ffnBuildSupervisorEviction(dictRegistry, supervisor):
     """Return the done-callback that compare-and-deletes the entry.
 
     Also consumes the task's exception: an abandoned (request-
@@ -574,7 +574,7 @@ async def _fdictRunAndSettleWorker(supervisor, fnWorker):
     tokenAdmission = ftokenActivateAdmission(admission)
     try:
         resultWorker = await asyncio.to_thread(
-            _fnCallWorkerSynchronously, fnWorker, supervisor,
+            _fgenericCallWorkerSynchronously, fnWorker, supervisor,
         )
     except BaseException as errorWorker:
         _fnSettleAfterFailedWorker(supervisor, errorWorker)
@@ -606,7 +606,7 @@ def _fnAssertWorkerIsNotACoroutineFunction(fnWorker):
         )
 
 
-def _fnCallWorkerSynchronously(fnWorker, supervisor):
+def _fgenericCallWorkerSynchronously(fnWorker, supervisor):
     """Call a worker in the carrier's thread, refusing a coroutine.
 
     The carrier runs workers with ``asyncio.to_thread``, so an
@@ -737,7 +737,7 @@ class DurableTaskRecord:
     sName: str
     sContainerId: str
     iOwnerGeneration: int
-    taskAsync: object
+    taskAsync: Optional["Task"]
     admission: Optional["MutationAdmission"]
     sState: str = "running"
 

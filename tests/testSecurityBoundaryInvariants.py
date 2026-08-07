@@ -467,7 +467,7 @@ def _fnAssertEveryMutatingRouteResolvesToItsDeclaredScope(listRoutes):
     mutating route this asserts the resolved scope is exactly what its class
     demands:
 
-    * an explicit ``@fnRouteScope`` stamp (e.g. the owner-establishing
+    * an explicit ``@ffnRouteScope`` stamp (e.g. the owner-establishing
       connect route) must resolve to that stamped scope;
     * a ``{sContainerId}`` route with no stamp must resolve to
       ``container-owner`` — the scope ``ContainerAwareRoute`` actually
@@ -528,7 +528,7 @@ def testUnscopedMutatingRouteFailsAppConstruction():
     """A mutating route with no declared scope must fail construction.
 
     Default-deny made mechanical: a route that is neither a
-    ``{sContainerId}`` container route, an explicit ``@fnRouteScope``, nor a
+    ``{sContainerId}`` container route, an explicit ``@ffnRouteScope``, nor a
     named control-plane entry has no authorization scope, so it would ship
     unauthorized. :func:`routeScope.fnValidateRouteScopesOrRaise` refuses to
     build such an app. A properly scoped route passes the same check.

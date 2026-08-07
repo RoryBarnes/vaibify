@@ -73,7 +73,7 @@ Add the module name to both the `__all__` list and the
 `from . import (...)` block. Preserve the existing order grouping
 where it makes sense; otherwise append.
 
-### 3. Register state-mutating endpoints with `@fnAgentAction`
+### 3. Register state-mutating endpoints with `@ffnAgentAction`
 
 If any endpoint on the new module mutates state and a researcher
 could reasonably invoke it from the UI (run, test, verify, commit,
@@ -86,9 +86,9 @@ Two things go together:
 1. **Decorate the handler.** Import the decorator and apply it
    directly above the FastAPI path-op decorator:
    ```python
-   from ..actionCatalog import fnAgentAction
+   from ..actionCatalog import ffnAgentAction
 
-   @fnAgentAction("my-new-action")
+   @ffnAgentAction("my-new-action")
    @app.post("/api/my-thing/{sContainerId}/do-it")
    async def fnDoIt(sContainerId: str): ...
    ```

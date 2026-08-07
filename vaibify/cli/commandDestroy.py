@@ -53,7 +53,7 @@ def fnRequireDocker():
     help="Project name (omit if in a project directory "
     "or only one project exists).",
 )
-def destroy(sProjectName):
+def fnDestroyCommand(sProjectName):
     """Remove the Vaibify workspace volume and optionally the image."""
     fnRequireDocker()
     config = fconfigResolveProject(sProjectName)

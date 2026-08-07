@@ -2,204 +2,9 @@
   "sSchemaVersion": "1",
   "listRows": [
     {
-      "sIdentity": "vaibify/cli/actionCommands.py::do",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/actionCommands.py::fnCoerceFieldValue",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/commandBuild.py::_fImportBuildOrExit",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/cli/commandBuild.py::build",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandCat.py::cat",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandConfig.py::config",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandConfig.py::configEdit",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandConfig.py::configExport",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandConfig.py::configImport",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandDestroy.py::destroy",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandDoctor.py::doctor",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandGenerateStandards.py::generate_standards",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandInit.py::init",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandLs.py::ls",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandOpen.py::open_container",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandPublish.py::publish",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandPublish.py::publishArchive",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandPublish.py::publishWorkflow",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandReconcile.py::reconcile",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandRegister.py::register",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandReproduce.py::reproduce",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandRevoke.py::revoke",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandRun.py::run",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandSessions.py::sessions",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandSessions.py::stop",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandStart.py::start",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandStatus.py::status",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandVerifyStep.py::verify_step",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/commandWorkflow.py::workflow",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
       "sIdentity": "vaibify/cli/main.py::_DefaultContainerIdFilter.filter",
       "sDebtClass": "interface-method",
       "sReason": "logging.Filter override; the name is the protocol"
-    },
-    {
-      "sIdentity": "vaibify/cli/main.py::connect",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/main.py::gui",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/main.py::pull",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/main.py::push",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/main.py::setup",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/main.py::stop",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/cli/main.py::verify",
-      "sDebtClass": "cli-verb",
-      "sReason": "Click command; the user-facing verb and the function name stay identical by ruling R6"
-    },
-    {
-      "sIdentity": "vaibify/containerImage/vaibifyDo.py::_fnCoerceScalar",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnParseArguments",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnRunWebsocket",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
     },
     {
       "sIdentity": "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe.read",
@@ -207,54 +12,9 @@
       "sReason": "file-like protocol method consumed by tarfile"
     },
     {
-      "sIdentity": "vaibify/docker/imageBuilder.py::_ferrorBuildFailed",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/actionCatalog.py::fnAgentAction",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/actionCatalog.py::fnAgentAction._fnDecorator",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/commitCarrier.py::_fRunEffectAdmitted",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/commitCarrier.py::_fnBuildSupervisorEviction",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/commitCarrier.py::_fnCallWorkerSynchronously",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/containerOwnership.py::ConnectionRecord.connection",
-      "sDebtClass": "legacy-annotation-mismatch",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/hostIncidents.py::HostIncidentHandler.emit",
       "sDebtClass": "interface-method",
       "sReason": "logging.Handler override; the name is the protocol"
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineRunner.py::_fnStartHeartbeatThread",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/pipelineServer.py::fnPipelineMessageLoop.fnStartDispatchTask",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
     },
     {
       "sIdentity": "vaibify/gui/routeContext.py::RouteContext.get",
@@ -267,16 +27,6 @@
       "sReason": "dict-compatible accessor kept for mapping-style callers"
     },
     {
-      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.require",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routeContext.py::RouteContext.save",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/gui/routeContext.py::RouteContext.setdefault",
       "sDebtClass": "interface-method",
       "sReason": "dict-compatible accessor kept for mapping-style callers"
@@ -285,26 +35,6 @@
       "sIdentity": "vaibify/gui/routeScope.py::ContainerAwareRoute.get_route_handler",
       "sDebtClass": "interface-method",
       "sReason": "fastapi APIRoute override; the name is the protocol"
-    },
-    {
-      "sIdentity": "vaibify/gui/routeScope.py::fnContainerOwner",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routeScope.py::fnRouteScope",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routeScope.py::fnRouteScope._fnDecorator",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fnLaunchDetachedHub",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
     },
     {
       "sIdentity": "vaibify/gui/serverMiddleware.py::ActivityTrackingMiddleware.dispatch",
@@ -322,77 +52,17 @@
       "sReason": "BaseHTTPMiddleware override; the name is the protocol"
     },
     {
-      "sIdentity": "vaibify/gui/webSocketAuthorization.py::ffbBuildPerFrameCredentialCheck",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/gui/workflowManager.py::_fdepCacheGet",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/install/setupServer.py::_fnRegisterConfigRoutes.fnValidateConfig",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
       "sIdentity": "vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request",
       "sDebtClass": "interface-method",
       "sReason": "urllib HTTPRedirectHandler override; the name is the protocol"
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/githubMirror.py::_fobjectBuildRequest",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/githubMirror.py::_fobjectOpenRequest",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/overleafMirror.py::_fnRunGit",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/overleafMirror.py::_fresultSyntheticGitFailure",
-      "sDebtClass": "legacy-name",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/overleafSync.py::_fnBuildParser",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/overleafSync.py::_fnRunSubprocess",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/repoFiles.py::ContainerRepoFiles.fnWithLock",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/repoFiles.py::HostRepoFiles.fnWithLock",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
-    },
-    {
-      "sIdentity": "vaibify/reproducibility/repoFiles.py::_fnAcquireHostLock",
-      "sDebtClass": "legacy-fn-return",
-      "sReason": ""
     }
   ],
   "dictBudgets": {
-    "legacy-name": 10,
-    "legacy-fn-return": 21,
+    "legacy-name": 0,
+    "legacy-fn-return": 0,
     "legacy-yield": 0,
     "legacy-literal-return": 0,
     "legacy-return-annotation": 0,
-    "legacy-annotation-mismatch": 1
+    "legacy-annotation-mismatch": 0
   }
 }

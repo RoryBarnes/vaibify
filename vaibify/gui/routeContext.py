@@ -149,32 +149,32 @@ class RouteContext:
     # --- typed attribute access ---
 
     @property
-    def docker(self):
+    def connectionDocker(self):
         """Docker connection for executing container commands."""
         return self._dictRaw["docker"]
 
     @property
-    def workflows(self):
+    def dictWorkflows(self):
         """Dict of {sContainerId: dictWorkflow} cache."""
         return self._dictRaw["workflows"]
 
     @property
-    def paths(self):
+    def dictPaths(self):
         """Dict of {sContainerId: sWorkflowPath} cache."""
         return self._dictRaw["paths"]
 
     @property
-    def terminals(self):
+    def dictTerminals(self):
         """Dict of {sSessionId: TerminalSession} cache."""
         return self._dictRaw["terminals"]
 
     @property
-    def containerUsers(self):
+    def dictContainerUsers(self):
         """Dict of {sContainerId: sUsername} cache."""
         return self._dictRaw["containerUsers"]
 
     @property
-    def pipelineTasks(self):
+    def dictPipelineTasks(self):
         """Dict of {sContainerId: asyncio.Task} for running pipelines."""
         return self._dictRaw["pipelineTasks"]
 
@@ -183,13 +183,13 @@ class RouteContext:
         """Session token for WebSocket origin validation."""
         return self._dictRaw.get("sSessionToken", "")
 
-    def require(self):
+    def fnRequireDocker(self):
         """Raise if Docker is not available."""
-        return self._dictRaw["require"]()
+        self._dictRaw["require"]()
 
-    def save(self, sContainerId, dictWorkflow):
+    def fnSaveWorkflow(self, sContainerId, dictWorkflow):
         """Persist workflow to container."""
-        return self._dictRaw["save"](sContainerId, dictWorkflow)
+        self._dictRaw["save"](sContainerId, dictWorkflow)
 
     def fdictGetVariables(self, sContainerId):
         """Build variable substitution dict for a container."""

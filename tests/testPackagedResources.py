@@ -354,7 +354,7 @@ def testInitScaffoldsAProjectThatDiscoveryActuallyFinds():
 
     from click.testing import CliRunner
 
-    from vaibify.cli.commandInit import init
+    from vaibify.cli.commandInit import fnInitCommand
 
     with tempfile.TemporaryDirectory() as sTempDir:
         pathRoot = pathlib.Path(sTempDir)
@@ -369,7 +369,7 @@ def testInitScaffoldsAProjectThatDiscoveryActuallyFinds():
             # happens to share the template's name.
             with patch("vaibify.cli.commandInit.fnAddProject"):
                 resultInit = runner.invoke(
-                    init, ["--template", "workflow"],
+                    fnInitCommand, ["--template", "workflow"],
                     catch_exceptions=False,
                 )
             assert resultInit.exit_code == 0, resultInit.output
@@ -410,7 +410,7 @@ def testInitRefusedByAnExistingProjectWritesNothing():
 
     from click.testing import CliRunner
 
-    from vaibify.cli.commandInit import init
+    from vaibify.cli.commandInit import fnInitCommand
     from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
 
     runner = CliRunner()
@@ -428,7 +428,7 @@ def testInitRefusedByAnExistingProjectWritesNothing():
 
             with patch("vaibify.cli.commandInit.fnAddProject"):
                 resultInit = runner.invoke(
-                    init, ["--template", "workflow"],
+                    fnInitCommand, ["--template", "workflow"],
                     catch_exceptions=False,
                 )
 

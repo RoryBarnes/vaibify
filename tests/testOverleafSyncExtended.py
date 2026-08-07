@@ -878,20 +878,20 @@ def test_fnAssertRealPathUnderRoot_rejects_symlink_escape(tmp_path):
 
 
 # -----------------------------------------------------------------------
-# _fnRunSubprocess: error mapping and credential redaction
+# _fprocessRunSubprocess: error mapping and credential redaction
 # -----------------------------------------------------------------------
 
 
-def test_fnRunSubprocess_raises_overleaf_error_on_missing_binary():
-    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+def test_fprocessRunSubprocess_raises_overleaf_error_on_missing_binary():
+    from vaibify.reproducibility.overleafSync import _fprocessRunSubprocess
     with pytest.raises(OverleafError, match="command not found"):
-        _fnRunSubprocess(
+        _fprocessRunSubprocess(
             ["definitely-not-a-real-binary-xyz"], "git add failed",
         )
 
 
-def test_fnRunSubprocess_raises_overleaf_error_on_called_process_error():
-    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+def test_fprocessRunSubprocess_raises_overleaf_error_on_called_process_error():
+    from vaibify.reproducibility.overleafSync import _fprocessRunSubprocess
 
     def _fnFakeRun(*args, **kwargs):
         raise subprocess.CalledProcessError(
@@ -900,12 +900,12 @@ def test_fnRunSubprocess_raises_overleaf_error_on_called_process_error():
 
     with patch.object(subprocess, "run", side_effect=_fnFakeRun):
         with pytest.raises(OverleafError, match="git add failed"):
-            _fnRunSubprocess(["git", "add", "-A"], "git add failed")
+            _fprocessRunSubprocess(["git", "add", "-A"], "git add failed")
 
 
-def test_fnRunSubprocess_redacts_credentials_in_error_message():
+def test_fprocessRunSubprocess_redacts_credentials_in_error_message():
     """Tokens embedded in git URLs must not surface in OverleafError."""
-    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+    from vaibify.reproducibility.overleafSync import _fprocessRunSubprocess
 
     sLeakyStderr = (
         "fatal: unable to access "
@@ -919,7 +919,7 @@ def test_fnRunSubprocess_redacts_credentials_in_error_message():
 
     with patch.object(subprocess, "run", side_effect=_fnFakeRun):
         try:
-            _fnRunSubprocess(["git", "fetch"], "git fetch failed")
+            _fprocessRunSubprocess(["git", "fetch"], "git fetch failed")
         except OverleafError as error:
             sMessage = str(error)
             assert "supersecrettoken123" not in sMessage
@@ -928,8 +928,8 @@ def test_fnRunSubprocess_redacts_credentials_in_error_message():
             pytest.fail("Expected OverleafError")
 
 
-def test_fnRunSubprocess_maps_auth_failure_to_auth_error():
-    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+def test_fprocessRunSubprocess_maps_auth_failure_to_auth_error():
+    from vaibify.reproducibility.overleafSync import _fprocessRunSubprocess
 
     def _fnFakeRun(*args, **kwargs):
         raise subprocess.CalledProcessError(
@@ -938,11 +938,11 @@ def test_fnRunSubprocess_maps_auth_failure_to_auth_error():
 
     with patch.object(subprocess, "run", side_effect=_fnFakeRun):
         with pytest.raises(OverleafAuthError):
-            _fnRunSubprocess(["git", "push"], "git push failed")
+            _fprocessRunSubprocess(["git", "push"], "git push failed")
 
 
-def test_fnRunSubprocess_maps_rate_limit_to_rate_limit_error():
-    from vaibify.reproducibility.overleafSync import _fnRunSubprocess
+def test_fprocessRunSubprocess_maps_rate_limit_to_rate_limit_error():
+    from vaibify.reproducibility.overleafSync import _fprocessRunSubprocess
 
     def _fnFakeRun(*args, **kwargs):
         raise subprocess.CalledProcessError(
@@ -951,4 +951,4 @@ def test_fnRunSubprocess_maps_rate_limit_to_rate_limit_error():
 
     with patch.object(subprocess, "run", side_effect=_fnFakeRun):
         with pytest.raises(OverleafRateLimitError):
-            _fnRunSubprocess(["git", "push"], "git push failed")
+            _fprocessRunSubprocess(["git", "push"], "git push failed")

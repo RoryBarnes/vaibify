@@ -8,7 +8,7 @@ import posixpath
 from fastapi import HTTPException
 
 from .. import stepRename, workflowManager
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import fbMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiProofLevel
 from ..routeContext import ffilesForWorkflow
@@ -76,7 +76,7 @@ def _fnRegisterStepsList(app, dictCtx):
         }
 
     @app.get("/api/steps/{sContainerId}/resolve-commands")
-    @fnAgentAction("resolve-commands")
+    @ffnAgentAction("resolve-commands")
     async def fdictResolveCommands(sContainerId: str):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -139,7 +139,7 @@ def _fdictStepFromRequestChecked(dictWorkflow, request):
 def _fnRegisterStepCreate(app, dictCtx):
     """Register POST /api/steps/{id}/create route."""
 
-    @fnAgentAction("create-step")
+    @ffnAgentAction("create-step")
     @app.post("/api/steps/{sContainerId}/create")
     async def fdictHandleCreateStep(
         sContainerId: str, request: StepCreateRequest
@@ -167,7 +167,7 @@ def _fnRegisterStepCreate(app, dictCtx):
 def _fnRegisterStepInsert(app, dictCtx):
     """Register POST /api/steps/{id}/insert route."""
 
-    @fnAgentAction("insert-step")
+    @ffnAgentAction("insert-step")
     @app.post("/api/steps/{sContainerId}/insert/{iPosition}")
     async def fdictInsertStep(
         sContainerId: str, iPosition: int,
@@ -197,7 +197,7 @@ def _fnRegisterStepInsert(app, dictCtx):
 def _fnRegisterStepUpdate(app, dictCtx):
     """Register PUT /api/steps/{id}/{index} route."""
 
-    @fnAgentAction("update-step")
+    @ffnAgentAction("update-step")
     @app.put("/api/steps/{sContainerId}/{iStepIndex}")
     async def fdictUpdateStep(
         sContainerId: str, iStepIndex: int,
@@ -332,7 +332,7 @@ def _fnRequireDestructiveConfirm(
 def _fnRegisterStepDelete(app, dictCtx):
     """Register DELETE /api/steps/{id}/{index} route."""
 
-    @fnAgentAction("delete-step")
+    @ffnAgentAction("delete-step")
     @app.delete("/api/steps/{sContainerId}/{iStepIndex}")
     async def fdictDeleteStep(sContainerId: str, iStepIndex: int):
         dictCtx["require"]()
@@ -353,7 +353,7 @@ def _fnRegisterStepDelete(app, dictCtx):
 def _fnRegisterStepReorder(app, dictCtx):
     """Register POST /api/steps/{id}/reorder route."""
 
-    @fnAgentAction("reorder-steps")
+    @ffnAgentAction("reorder-steps")
     @app.post("/api/steps/{sContainerId}/reorder")
     async def fdictReorderSteps(
         sContainerId: str, request: ReorderRequest
@@ -375,7 +375,7 @@ def _fnRegisterStepReorder(app, dictCtx):
 def _fnRegisterInputDataAdd(app, dictCtx):
     """Register POST /api/steps/{id}/{index}/input-data route."""
 
-    @fnAgentAction("add-input-data-file")
+    @ffnAgentAction("add-input-data-file")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/input-data")
     async def fdictAddInputDataFile(
         sContainerId: str, iStepIndex: int,
@@ -408,7 +408,7 @@ def _fnRegisterInputDataAdd(app, dictCtx):
 def _fnRegisterStepRename(app, dictCtx):
     """Register POST /api/steps/{id}/{index}/rename route."""
 
-    @fnAgentAction("rename-step")
+    @ffnAgentAction("rename-step")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/rename")
     async def fdictRenameStep(
         sContainerId: str, iStepIndex: int,
@@ -472,7 +472,7 @@ def _fnRegisterStepRename(app, dictCtx):
 def _fnRegisterAlignDirectories(app, dictCtx):
     """Register POST /api/steps/{id}/align-directories route."""
 
-    @fnAgentAction("align-step-directories")
+    @ffnAgentAction("align-step-directories")
     @app.post("/api/steps/{sContainerId}/align-directories")
     async def fdictAlignStepDirectories(sContainerId: str):
         """Migrate every nonconforming step to the slug contract.
@@ -544,7 +544,7 @@ def _fnRegisterAlignDirectories(app, dictCtx):
 def _fnRegisterDeclareNoInputData(app, dictCtx):
     """Register POST /api/steps/{id}/declare-no-input-data route."""
 
-    @fnAgentAction("declare-no-input-data")
+    @ffnAgentAction("declare-no-input-data")
     @app.post("/api/steps/{sContainerId}/declare-no-input-data")
     async def fdictDeclareNoInputData(sContainerId: str):
         dictCtx["require"]()

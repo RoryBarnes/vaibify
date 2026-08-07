@@ -11,9 +11,9 @@ never the per-container owning lease.
 
 The mechanism is a scope marker plus a route class:
 
-* :func:`fnRouteScope` (and the :func:`fnContainerOwner` specialization)
+* :func:`ffnRouteScope` (and the :func:`ffnContainerOwner` specialization)
   stamps a scope declaration onto an endpoint, exactly as
-  ``actionCatalog.fnAgentAction`` stamps an agent-action name. A
+  ``actionCatalog.ffnAgentAction`` stamps an agent-action name. A
   ``container-owner`` declaration names its target path parameter and the
   identity kind (``"id"`` resolves via ``OwnerRecord.sContainerId``;
   ``"name"`` is the owner-map key directly).
@@ -55,8 +55,8 @@ __all__ = [
     "DICT_CONTROL_PLANE_SCOPES",
     "SET_CONTAINER_READ_ROUTES",
     "ContainerAwareRoute",
-    "fnRouteScope",
-    "fnContainerOwner",
+    "ffnRouteScope",
+    "ffnContainerOwner",
     "fdictResolveRouteScope",
     "fiAuthorizeContainerHttp",
     "fiAuthorizeContainerLifecycleHttp",
@@ -244,10 +244,10 @@ SET_CONTAINER_READ_ROUTES = frozenset({
 })
 
 
-def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
+def ffnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
     """Stamp an authorization scope onto an HTTP route endpoint.
 
-    Metadata only, exactly like ``actionCatalog.fnAgentAction``: the
+    Metadata only, exactly like ``actionCatalog.ffnAgentAction``: the
     behaviour lives in :class:`ContainerAwareRoute`, which reads this stamp
     when it builds the route handler. A ``container-owner`` (or
     ``owner-establishing``) declaration must also name its ``sTargetParam``
@@ -263,10 +263,10 @@ def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
     if sScope not in _SET_VALID_SCOPES:
         raise ValueError(f"Unknown route scope: {sScope!r}")
 
-    def _fnDecorator(fnEndpoint):
+    def _ffnDecorator(fnEndpoint):
         if isinstance(fnEndpoint, APIRoute) or not callable(fnEndpoint):
             raise TypeError(
-                "fnRouteScope must decorate an endpoint function, below the "
+                "ffnRouteScope must decorate an endpoint function, below the "
                 "@app.<verb> line; it received a "
                 f"{type(fnEndpoint).__name__}."
             )
@@ -276,19 +276,19 @@ def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
             "sIdentityKind": sIdentityKind,
         }
         return fnEndpoint
-    return _fnDecorator
+    return _ffnDecorator
 
 
-def fnContainerOwner(sTargetParam="sContainerId", sIdentityKind="id"):
+def ffnContainerOwner(sTargetParam="sContainerId", sIdentityKind="id"):
     """Declare a route as container-owner scoped (the common specialization).
 
-    A thin wrapper over :func:`fnRouteScope`; use it to gate a mutating
+    A thin wrapper over :func:`ffnRouteScope`; use it to gate a mutating
     route whose owner is keyed by ``sIdentityKind`` on ``sTargetParam``.
     Most container routes need no decoration — the ``{sContainerId}``
     segment implies this scope — so this exists for the routes whose target
     parameter or identity kind departs from that default.
     """
-    return fnRouteScope(
+    return ffnRouteScope(
         S_SCOPE_CONTAINER_OWNER, sTargetParam, sIdentityKind,
     )
 
@@ -296,7 +296,7 @@ def fnContainerOwner(sTargetParam="sContainerId", sIdentityKind="id"):
 def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
     """Return the scope declaration for a route, or ``None`` when unscoped.
 
-    Resolution order: an explicit :func:`fnRouteScope` stamp wins; else a
+    Resolution order: an explicit :func:`ffnRouteScope` stamp wins; else a
     mutating ``{sContainerId}`` path is container-owner by convention, and a
     non-mutating (GET/HEAD) ``{sContainerId}`` path is container-read by the
     mirror convention (both enforced by ``ContainerAwareRoute`` with the
@@ -594,7 +594,7 @@ def fnValidateRouteScopesOrRaise(app):
         raise RuntimeError(
             "Mutating routes with no declared authorization scope "
             "(default-deny — add a {sContainerId} segment, an explicit "
-            "@fnRouteScope, or a DICT_CONTROL_PLANE_SCOPES entry):\n  "
+            "@ffnRouteScope, or a DICT_CONTROL_PLANE_SCOPES entry):\n  "
             + "\n  ".join(
                 f"{listMethods} {sPath}"
                 for listMethods, sPath in sorted(listUnscoped)

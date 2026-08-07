@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from vaibify.cli.commandDoctor import doctor, flistRunDoctorChecks
+from vaibify.cli.commandDoctor import fnDoctorCommand, flistRunDoctorChecks
 from vaibify.cli.preflightChecks import (
     fpreflightColimaVersion,
     fpreflightDaemon,
@@ -257,7 +257,7 @@ def _runDoctor(saArgs, listShared=None, listBuild=None, listStart=None):
         "vaibify.cli.commandDoctor._flistSharedChecks",
         return_value=list(listShared),
     ), contextScope[0] as mockBuild, contextScope[1] as mockStart:
-        result = CliRunner().invoke(doctor, saArgs)
+        result = CliRunner().invoke(fnDoctorCommand, saArgs)
     return result, mockBuild, mockStart
 
 
@@ -448,7 +448,7 @@ def test_doctor_runs_environment_checks_without_any_project():
         commandDoctor, "_flistSharedChecks",
         return_value=[_fresultOk("docker-daemon")],
     ):
-        result = CliRunner().invoke(doctor, [])
+        result = CliRunner().invoke(fnDoctorCommand, [])
     assert result.exit_code == 0, result.output
     assert "environment checks only" in result.output
     assert "1 ok / 0 warn / 0 fail" in result.output
@@ -460,6 +460,6 @@ def test_doctor_explicit_project_lookup_still_fails_loudly():
         "vaibify.cli.commandDoctor.fconfigResolveProject",
         side_effect=SystemExit(1),
     ) as mockResolve:
-        result = CliRunner().invoke(doctor, ["--project", "ghost"])
+        result = CliRunner().invoke(fnDoctorCommand, ["--project", "ghost"])
     assert result.exit_code == 1
     mockResolve.assert_called_once_with("ghost")

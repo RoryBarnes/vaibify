@@ -16,7 +16,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
 from .. import containerGit, workflowManager
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..routeContext import (
     fdictRunRemoteVerifyBlocking,
@@ -575,7 +575,7 @@ def _fnRegisterPullManuscript(app, dictCtx):
     """Register POST /api/overleaf/{id}/pull-manuscript."""
     from .. import syncDispatcher
 
-    @fnAgentAction("pull-manuscript")
+    @ffnAgentAction("pull-manuscript")
     @app.post("/api/overleaf/{sContainerId}/pull-manuscript")
     async def fdictPullManuscript(sContainerId: str):
         return await _fdictHandlePullManuscript(
@@ -587,7 +587,7 @@ def _fnRegisterOverleafPush(app, dictCtx):
     """Register POST /api/overleaf/{id}/push endpoint."""
     from .. import syncDispatcher
 
-    @fnAgentAction("push-to-overleaf")
+    @ffnAgentAction("push-to-overleaf")
     @app.post("/api/overleaf/{sContainerId}/push")
     async def fdictOverleafPush(
         sContainerId: str, request: SyncPushRequest,
@@ -631,7 +631,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
     """Register POST /api/zenodo/{id}/archive endpoint."""
     from .. import syncDispatcher
 
-    @fnAgentAction("publish-to-zenodo")
+    @ffnAgentAction("publish-to-zenodo")
     @app.post("/api/zenodo/{sContainerId}/archive")
     async def fdictZenodoArchive(
         sContainerId: str, request: SyncPushRequest,
@@ -737,7 +737,7 @@ def _fnRegisterZenodoMetadata(app, dictCtx):
         )
         return dictResponse
 
-    @fnAgentAction("set-zenodo-metadata")
+    @ffnAgentAction("set-zenodo-metadata")
     @app.post("/api/zenodo/{sContainerId}/metadata")
     async def fdictSetZenodoMetadata(
         sContainerId: str, request: ZenodoMetadataRequest,
@@ -1058,7 +1058,7 @@ def _fnRegisterGithubPush(app, dictCtx):
     cache automatically because the digest changes.
     """
 
-    @fnAgentAction("push-to-github")
+    @ffnAgentAction("push-to-github")
     @app.post("/api/github/{sContainerId}/push")
     async def fdictGithubPush(
         sContainerId: str, request: SyncPushRequest,
@@ -1135,7 +1135,7 @@ def _fnValidateGitIdentity(sName, sEmail):
 def _fnRegisterGithubIdentity(app, dictCtx):
     """Register POST /api/github/{id}/identity endpoint."""
 
-    @fnAgentAction("set-git-identity")
+    @ffnAgentAction("set-git-identity")
     @app.post("/api/github/{sContainerId}/identity")
     async def fdictGithubIdentity(
         sContainerId: str, request: GitIdentityRequest,
@@ -1199,7 +1199,7 @@ async def _fdictRunGithubAddFile(
 def _fnRegisterGithubAddFile(app, dictCtx):
     """Register POST /api/github/{id}/add-file endpoint."""
 
-    @fnAgentAction("add-file-to-github")
+    @ffnAgentAction("add-file-to-github")
     @app.post("/api/github/{sContainerId}/add-file")
     async def fdictGithubAddFile(
         sContainerId: str, request: GitAddFileRequest,
@@ -1899,7 +1899,7 @@ def _fnRegisterDatasetDownload(app, dictCtx):
     """Register Zenodo dataset download endpoint."""
     from .. import syncDispatcher
 
-    @fnAgentAction("download-zenodo-dataset")
+    @ffnAgentAction("download-zenodo-dataset")
     @app.post("/api/zenodo/{sContainerId}/download")
     async def fdictDownloadDataset(
         sContainerId: str, request: DatasetDownloadRequest,
@@ -1945,7 +1945,7 @@ def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
     """Register POST /api/overleaf/{id}/mirror/refresh endpoint."""
     from .. import syncDispatcher
 
-    @fnAgentAction("refresh-overleaf-mirror")
+    @ffnAgentAction("refresh-overleaf-mirror")
     @app.post("/api/overleaf/{sContainerId}/mirror/refresh")
     async def fdictRefreshMirror(sContainerId: str):
         dictCtx["require"]()
@@ -2102,7 +2102,7 @@ def _fsSuggestCanonicalTarget(listCaseCollisions, sTypedTarget):
 def _fnRegisterOverleafMirrorDelete(app, dictCtx):
     """Register DELETE /api/overleaf/{id}/mirror endpoint."""
 
-    @fnAgentAction("delete-overleaf-mirror")
+    @ffnAgentAction("delete-overleaf-mirror")
     @app.delete("/api/overleaf/{sContainerId}/mirror")
     async def fdictDeleteMirror(sContainerId: str):
         dictCtx["require"]()
@@ -2216,7 +2216,7 @@ def _fnRegisterRemoteVerify(app, dictCtx):
     the one action that leaves the screen un-repainted.
     """
 
-    @fnAgentAction("verify-remote")
+    @ffnAgentAction("verify-remote")
     @app.post("/api/sync/{sContainerId}/{sService}/verify")
     async def fdictHandleVerifyRemote(sContainerId: str, sService: str):
         dictCtx["require"]()
@@ -2388,7 +2388,7 @@ def _fsClearArxivSyncCache(filesRepo):
 def _fnRegisterArxivConfigure(app, dictCtx):
     """Register POST /api/sync/{id}/arxiv/configure endpoint."""
 
-    @fnAgentAction("configure-arxiv")
+    @ffnAgentAction("configure-arxiv")
     @app.post("/api/sync/{sContainerId}/arxiv/configure")
     async def fdictConfigureArxiv(
         sContainerId: str, request: ArxivConfigureRequest,

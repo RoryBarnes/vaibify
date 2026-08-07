@@ -96,7 +96,7 @@ def testMatchedGenerationRecordDecrementsCounters():
         iLiveConnectionCount=2, iLivePipelineConnectionCount=1,
     )}
     recordConnection = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     containerOwnership.fnDecrementLiveConnectionForRecord(
@@ -115,7 +115,7 @@ def testStaleGenerationRecordDecrementsNothing():
     )
     dictOwners = {S_PROJECT_NAME: recordOwner}
     recordStale = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     containerOwnership.fnDecrementLiveConnectionForRecord(
@@ -137,7 +137,7 @@ def testUnownedGenerationZeroNeverMatchesARealOwner():
     ) == 0
     dictOwners = {S_PROJECT_NAME: _frecordOwner(iLiveConnectionCount=1)}
     recordPreClaim = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=0, sLane=containerOwnership.S_LANE_TERMINAL,
     )
     containerOwnership.fnDecrementLiveConnectionForRecord(
@@ -153,11 +153,11 @@ def testSessionSocketIndexRegistersAndDrainsPerSession():
     """Records accumulate per session; the emptied set drops its key."""
     dictSockets = containerOwnership.fdictCreateSessionSocketIndex()
     recordFirst = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     recordSecond = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_TERMINAL,
     )
     containerOwnership.fnRegisterSessionSocket(dictSockets, recordFirst)
@@ -173,7 +173,7 @@ def testSessionSocketIndexIgnoresAnonymousAndAbsentRecords():
     """No session id, no index entry; None inputs are tolerated."""
     dictSockets = containerOwnership.fdictCreateSessionSocketIndex()
     recordAnonymous = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="",
+        websocket=object(), sBrowserSessionId="",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     containerOwnership.fnRegisterSessionSocket(dictSockets, recordAnonymous)

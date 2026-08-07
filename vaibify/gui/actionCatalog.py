@@ -10,7 +10,7 @@ Design notes:
 
 - The authoritative list is :data:`LIST_AGENT_ACTIONS` below. Every
   state-mutating HTTP route should also be decorated with
-  :func:`fnAgentAction` so the invariant test can pair them up and
+  :func:`ffnAgentAction` so the invariant test can pair them up and
   catch drift.
 - WebSocket actions are dispatched via a switch in
   :func:`pipelineServer.fnDispatchAction`, so there is no per-handler
@@ -33,7 +33,7 @@ __all__ = [
     "fbAgentLanePermitsRoute",
     "fdictBuildCatalogJson",
     "fdictLookupAction",
-    "fnAgentAction",
+    "ffnAgentAction",
 ]
 
 
@@ -43,12 +43,12 @@ S_SESSION_HEADER_NAME = "X-Vaibify-Session"
 S_CATALOG_SCHEMA_VERSION = "1.0"
 
 
-def fnAgentAction(sName):
+def ffnAgentAction(sName):
     """Attach the agent-action name to an HTTP route handler.
 
     Usage::
 
-        @fnAgentAction("run-step")
+        @ffnAgentAction("run-step")
         @app.post("/api/steps/{sContainerId}/{iStepIndex}/run-tests")
         async def fnHandler(...): ...
 
@@ -62,10 +62,10 @@ def fnAgentAction(sName):
     state-mutating route either has this marker or is explicitly
     excluded via :data:`SET_INTENTIONALLY_EXCLUDED_PATHS`.
     """
-    def _fnDecorator(fn):
+    def _ffnDecorator(fn):
         fn._sAgentActionName = sName
         return fn
-    return _fnDecorator
+    return _ffnDecorator
 
 
 LIST_AGENT_ACTIONS = [
