@@ -4382,7 +4382,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shim documents that contract instead of forwarding blindly.
     # +4 (2026-08-02): the force-abandon routes its poison through the
     # single writer and schedules the connection fencing.
-    "hostControlChannel.py": 819,
+    # 819 -> 833 on 2026-08-07: a cross-platform fix, not new
+    # responsibility. A hub that closes on a peer it will not serve
+    # surfaces as EOF on macOS and RST on Linux, so the client had to
+    # catch the reset and give the same sentence; the comment explaining
+    # that is most of the rise, and it earns its place -- the suite is
+    # developed on macOS and CI was the only place the difference could
+    # ever appear.
+    "hostControlChannel.py": 833,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one

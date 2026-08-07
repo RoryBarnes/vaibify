@@ -7269,4 +7269,13 @@ def _fdictEntry(sRel):
         ),
         new='    ftaskStartVerification()\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testHostControlChannel.py::'
+            'test_a_reset_by_the_hub_reads_as_an_unreadable_response'
+        ),
+        source='vaibify/gui/hostControlChannel.py',
+        old='        except (ConnectionResetError, BrokenPipeError):',
+        new='        except (BrokenPipeError,):',
+    ),
 ]

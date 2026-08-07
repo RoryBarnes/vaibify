@@ -469,7 +469,7 @@
       "sFile": "gui/hostControlChannel.py",
       "sFingerprint": "f99fabd6e43d4352",
       "sScope": "fdictSendHostControlRequest",
-      "sScopeFingerprint": "6b594556b2cf506a"
+      "sScopeFingerprint": "f7fc80213409d7aa"
     },
     {
       "iLine": 2224,
@@ -511,7 +511,7 @@
       "sScopeFingerprint": "03d351699a9a82f0"
     },
     {
-      "iLine": 685,
+      "iLine": 692,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "bfe85893c9a5f46f"
     },
     {
-      "iLine": 680,
+      "iLine": 687,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "bfe85893c9a5f46f"
     },
     {
-      "iLine": 1153,
+      "iLine": 1160,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -550,7 +550,7 @@
       "sScopeFingerprint": "080bd17dd03730e2"
     },
     {
-      "iLine": 1190,
+      "iLine": 1197,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -563,7 +563,7 @@
       "sScopeFingerprint": "220a80388f2e758d"
     },
     {
-      "iLine": 621,
+      "iLine": 628,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -576,7 +576,7 @@
       "sScopeFingerprint": "feb0e76fb552f520"
     },
     {
-      "iLine": 618,
+      "iLine": 625,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -589,7 +589,7 @@
       "sScopeFingerprint": "feb0e76fb552f520"
     },
     {
-      "iLine": 651,
+      "iLine": 658,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",

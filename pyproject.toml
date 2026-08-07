@@ -64,6 +64,13 @@ formats = [
 dev = [
     "pytest-asyncio",
     "httpx",
+    # `.[dev]` must be enough to run the whole suite. detect-secrets is
+    # the `replay` extra's dependency, but tests/testTranscriptSanitizerCoverage.py
+    # asserts the sanitizer is AVAILABLE -- these are credential-redaction
+    # tests, so skipping them when the dependency is absent would report
+    # a pass for having checked nothing. Six of them failed unnoticed in
+    # CI from 2026-07-29 until the tests-linux lane was repaired.
+    "detect-secrets>=1.4",
 ]
 browser = [
     # Lane 1: real Chromium against a real uvicorn hub. Playwright's
