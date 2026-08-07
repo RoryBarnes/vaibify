@@ -21,7 +21,12 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
-from vaibify.gui.routeScope import fsLeaseFromRequest
+from vaibify.gui.routeScope import (
+    S_CARRIER_LIFECYCLE_TRANSACTION,
+    S_CARRIER_SEPARATE_AUTHORITY,
+    fnDeclareCarrierMode,
+    fsLeaseFromRequest,
+)
 
 logger = logging.getLogger("vaibify")
 
@@ -469,7 +474,17 @@ def _fnRegisterStartContainer(app, dictCtx):
             ))
         return JSONResponse(status_code=iStatusCode, content=dictBody)
 
+    # lifecycle-transaction: unlike the stop below, this one HAS the
+    # authority the declaration names, and it is not this handler's.
+    # `startReservation.ftCancelStart` holds the reservation lock across
+    # the authorize-and-flag step, marks the START record
+    # CANCEL_REQUESTED rather than writing a record of its own, and a
+    # transfer arriving mid-cancel ADOPTS the reservation. The handler
+    # is a pass-through to that transaction and must not open a second
+    # one: minting a container admission here would mean two authorities
+    # over one cancel, which is worse than none.
     @app.post("/api/containers/{sName}/start/cancel")
+    @fnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
     async def fnCancelStartContainer(
         request: Request, sName: str, sReservationId: str = "",
     ):
@@ -519,7 +534,37 @@ def _fconfigLoadForProject(dictProject):
 def _fnRegisterStopContainer(app, dictCtx):
     """Register POST /api/containers/{sName}/stop."""
 
+    # lifecycle-transaction, and the audit behind it is a FINDING rather
+    # than a label. As measured: this route holds NO container mutation
+    # lock, writes NO journal record of its own, and a hand-over
+    # arriving mid-stop does not see it.
+    #
+    # The authority is real but it is not the carrier's. The stop runs
+    # through `containerManager`, the lifecycle gateway, which contains
+    # no `mutationAdmission` call anywhere -- so there is no gated
+    # primitive on this path for a carrier to admit, and adding one
+    # would declare an authority that never engages. That is what
+    # `lifecycle-transaction` means here: the gateway is answerable for
+    # the container's existence, and the commit carrier is answerable
+    # for writes INTO a container that exists.
+    #
+    # Two consequences, stated rather than hidden. `container-lifecycle`
+    # is unioned into `_SET_AUTHORIZED_CONTAINER_SCOPES` WITHOUT joining
+    # `_SET_LEASE_ENFORCED_SCOPES`, so a stop stays answerable for a
+    # container nobody owns -- which is the recovery path for a stuck
+    # container and must not be traded away for a bookkeeping entry. And
+    # a stop CAN still interleave with an in-flight guarded write; the
+    # write's supervisor will find the container gone. Closing that
+    # needs a force-stop path for the unowned case, which is a product
+    # decision, not a migration one.
+    #
+    # An earlier version of this comment claimed a carrier here would
+    # refuse the unowned stop. That was wrong -- it named the lease as
+    # the obstacle when the real answer is that nothing on this path is
+    # gated at all. The test written to prove it passed trivially and
+    # was removed rather than kept.
     @app.post("/api/containers/{sName}/stop")
+    @fnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
     async def fnStopContainer(sName: str):
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
@@ -585,7 +630,17 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 )
         return dictResult
 
+    # separate-authority, not typed-read. Every write here lands in the
+    # project's own `vaibify.yml` on the researcher's machine through
+    # `_fnUpdateYamlBoolField` / `_fnUpdateYamlNumberField`; the route
+    # opens no container connection at all. `typed-read` would be
+    # literally true of its container reach and would still be the wrong
+    # record, because a reader takes it to mean the route writes
+    # nothing. What governs it is `_fdictRequireProject`, which binds
+    # the name to a registered project and its config path, and
+    # `_fnRequireValidResourceLimits`. Ruling 2026-08-05.
     @app.post("/api/containers/{sName}/settings")
+    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fnSetContainerSettings(
         sName: str, request: ContainerSettingsRequest
     ):

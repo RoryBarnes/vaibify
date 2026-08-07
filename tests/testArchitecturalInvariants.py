@@ -4546,7 +4546,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-08-02): the release force flag's docstring records that
     # an unreadable body fails CLOSED, replacing a rationale that
     # named a pagehide beacon the frontend deliberately never sends.
-    "registryRoutes.py": 1237,
+    # 1237 -> 1281 on 2026-08-06, the last three routes of the carrier
+    # migration (stop, start/cancel, settings). Almost all of it is
+    # rationale rather than code: the stop route's entry records an
+    # AUDIT FINDING -- it holds no lock and writes no journal record,
+    # because `container-lifecycle` is authorized without being
+    # lease-enforced, so a stop must answer for a container nobody owns
+    # and cannot take a lock that needs an owner record. Trimming that
+    # to hit the number would delete the finding and leave the bare
+    # declaration reading like a guarantee.
+    "registryRoutes.py": 1288,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

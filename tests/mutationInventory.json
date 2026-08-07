@@ -511,7 +511,7 @@
       "sScopeFingerprint": "03d351699a9a82f0"
     },
     {
-      "iLine": 637,
+      "iLine": 685,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -524,7 +524,7 @@
       "sScopeFingerprint": "bfe85893c9a5f46f"
     },
     {
-      "iLine": 632,
+      "iLine": 680,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +537,7 @@
       "sScopeFingerprint": "bfe85893c9a5f46f"
     },
     {
-      "iLine": 1105,
+      "iLine": 1153,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -550,7 +550,7 @@
       "sScopeFingerprint": "080bd17dd03730e2"
     },
     {
-      "iLine": 1142,
+      "iLine": 1190,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -563,7 +563,7 @@
       "sScopeFingerprint": "220a80388f2e758d"
     },
     {
-      "iLine": 583,
+      "iLine": 621,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -576,7 +576,7 @@
       "sScopeFingerprint": "feb0e76fb552f520"
     },
     {
-      "iLine": 580,
+      "iLine": 618,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -589,7 +589,7 @@
       "sScopeFingerprint": "feb0e76fb552f520"
     },
     {
-      "iLine": 603,
+      "iLine": 651,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -599,7 +599,7 @@
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "b1f7c52f65c25d30",
       "sScope": "fnSetContainerSettings",
-      "sScopeFingerprint": "08bcc85e314bb9c0"
+      "sScopeFingerprint": "bf9ca304cd7ed7c6"
     },
     {
       "iLine": 24,
@@ -654,7 +654,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 2014,
+      "iLine": 2130,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
