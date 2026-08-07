@@ -818,6 +818,106 @@ The `vaibify sessions` CLI (see [CLI Reference](cli.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
 
+## Container mutations announce themselves
+
+The section above says a container is owned by one session at a time
+and that ownership can be handed over. That is only half a guarantee.
+The other half is that a hand-over must not commit while the previous
+owner's work is still running -- and until the 2026-08 migration,
+nothing enforced it.
+
+The concrete failure: "clean outputs" started a `rm` on a worker thread
+that nothing tracked, and answered immediately. A hand-over arriving a
+second later asked "is anything running in this container?", saw an
+idle container because the delete was invisible, and committed. The new
+owner then held a container quietly deleting the previous owner's
+files, and neither session was told. On a single desktop this is not
+two researchers fighting over a server; it is the in-container AI agent
+and the dashboard acting at once, or a researcher reclaiming a
+container after a reload.
+
+**The carrier is the thing that makes work visible.** A route that
+mutates a container opens an admission through
+`vaibify/gui/commitCarrier.py` around each logical mutation, in one of
+three shapes:
+
+| Mode | Shape | Used when |
+|---|---|---|
+| (a) synchronous | linearized commit plus journal transition, inside the request | one bounded write, e.g. saving `project.json` |
+| (b) lock-held | holds the container mutation lock for the worker's whole lifetime, and registers what it is doing | work that crosses a thread boundary or runs long -- a delete, a push, a test run |
+| (c) durable | registers the work before the response returns | a background job the request does not wait for |
+
+Mode (b) registers an operation kind and target, because an
+`asyncio.Lock` knows only that it is held: a refusal that can only say
+"busy" tells a researcher nothing. A run arriving while a mode-(b)
+worker holds the drain is refused at dispatch and told which operation
+holds it, rather than queued behind it -- and that refusal deliberately
+does not offer the Kill button, because Kill stops a pipeline action
+and does nothing to a carrier worker.
+
+**A declaration authorizes nothing.** `routeScope.fnDeclareCarrierMode`
+stamps intent from a closed set (`typed-read`, `mode-a-synchronous`,
+`mode-b-lock-held`, `mode-c-durable`, `lifecycle-transaction`,
+`separate-authority`); a route may carry several, because a handler
+that writes synchronously and then starts durable work is a real shape.
+The stamp routes the request to a branch with **no** admission, so the
+handler must open one per mutation. Forget one and the primitive raises
+`MutationNotAdmittedError`. **That refusal is the proof** -- a
+decorator that pre-admitted the handler would delete it, which is the
+`bAgentSafe` mistake one level up.
+
+Three rules follow from what the migration found, and each exists
+because the obvious alternative was demonstrated wrong.
+
+**A refusal is not an I/O error.** `MutationNotAdmittedError` and
+`CommitRefusedError` derive from `ControlPlaneRefusalError(Exception)`,
+not `PermissionError`. They used to subclass `PermissionError`, which
+reads well and is an `OSError` -- so all 85 `except OSError` /
+`except PermissionError` clauses in the package swallowed them,
+including a dozen written to answer conservatively when a file cannot
+be read. That is how a carrier refusal came to silently DOWNGRADE a
+workflow's reproducibility badge.
+
+**A carrier worker must not raise an expected refusal.** A worker that
+raises poisons its journal record and quarantines the container until
+`vaibify reconcile`. An expected 4xx or 502 -- a duplicate project
+name, an unreachable git remote, a bad step index -- is carried back as
+a value through `routeContext.fdictCarryARefusalBackInsteadOfRaising`
+and re-raised outside, after the record settles. A genuinely
+half-finished write still poisons, correctly: nobody knows what state
+it left behind. Deciding which is which is done by reading the
+failure paths, never by inferring from the shape.
+
+**A typed read is exempt only inside its adapter.**
+`DockerConnection._texecRunTypedRead` is the single grant point. It
+takes an operation name from a fixed table plus a path or a flat
+sequence of paths, and BUILDS the command; it never accepts one. That
+distinction is what keeps the carve-out from becoming a general bypass.
+
+**Scope, stated so the record is not read as more than it is.** The
+migration was scoped to the routes that mutate. 83 of 130
+container-scoped routes are declared; the 46 read-only ones stay on the
+legacy ambient admission by decision (2026-08-05), so
+`SET_ROUTES_AWAITING_CARRIER_MODE` bottoms out at 46 rather than empty.
+Read-only routes cannot cause the hand-over failure; declaring them
+would have caught a *future* mistake where somebody adds a write to a
+shared helper, which is worth having and was not worth the remaining
+cost. `POST /api/zenodo/{id}/download` is the one mutating route left
+undeclared, deliberately: it calls a function that does not exist, so
+migrating it would quarantine a working container over a broken button.
+
+**Nothing here is verified by the ordinary route tests.** 27 test files
+define a `fnWriteFile` mock and none of them consults the admission
+gate, so "forget a carrier and the primitive raises loudly" is true of
+the real `DockerConnection` and false of every route test -- a migrated
+route with its carrier call deleted outright passed its whole test
+file. `tests/testCarrierMigratedRoutes.py` is the verification path: a
+double that calls the same gates, under the same primitive names, at
+the same points the real connection calls them, recording the live
+admission MODE at each. It asserts the mode, never merely that nothing
+raised, because "no exception" is equally true of a route riding the
+ambient mint.
+
 ## Python backend
 
 The backend lives under `vaibify/gui/` and is organized into four

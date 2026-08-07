@@ -565,9 +565,9 @@ container-scoped routes, but `/ws/pipeline/{sContainerId}` and
 they never receive, and nothing could ever migrate them out of it.
 
 **What the boundary still does NOT do, stated so nobody reads the above
-as more than it is.** **60 of 130 routes are migrated; 70 still
+as more than it is.** **83 of 130 routes are migrated; 47 still
 await** and take the ambient branch, where the gate catches DIRECT
-primitive reach, not undeclared intent. **46 of those 70 are
+primitive reach, not undeclared intent. **46 of those 47 are
 `container-read` and will stay there by decision (2026-08-05)** — the
 migration was scoped to the mutating routes, so this list bottoms out
 at 46 rather than empty, and phase 4 does not happen. For the rest, a
@@ -944,6 +944,21 @@ without discussion:
   accepting the field produced a container without the requested
   packages and said nothing. Wiring it is the honest fix; refusing is
   the honest interim.
+- **`POST /api/zenodo/{id}/download` cannot work, and its two tests
+  pass anyway.** It calls `syncDispatcher.ftResultDownloadDataset`,
+  which exists nowhere — verified at runtime, `hasattr` is `False`, so
+  every real call raises `AttributeError` and answers 500. The tests in
+  `testSyncRoutesCoverage.py` patch the name into existence with
+  `create=True`, which is why the suite has been exercising a function
+  the product does not have. It is advertised to the in-container agent
+  as `download-zenodo-dataset` with `bAgentSafe: True`, so an agent
+  asked to fetch a dataset calls it and fails. **Do not "fix" this by
+  deleting or loosening the tests** — the missing function is the
+  defect. It is also the one mutating route left undeclared by the
+  carrier migration, deliberately: inside a carrier that
+  `AttributeError` would poison the journal and quarantine a working
+  container over a broken button. Writing the function is a feature
+  decision.
 - `terminalContainment.py` and the `terminal` journal kind survive the
   terminal being disabled, and must. They are what reconciles a record
   written by an earlier version — release, the safe reaper and shutdown
