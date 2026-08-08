@@ -1,5 +1,5 @@
 {
-  "iAcquisitionCount": 64,
+  "iAcquisitionCount": 60,
   "iRowCount": 311,
   "iUnresolvedSiteCount": 30,
   "listAcquisitions": [
@@ -303,6 +303,19 @@
       "sScopeFingerprint": "2b0dfd1fe935b926"
     },
     {
+      "iLine": 1198,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import-from",
+      "sCapability": "docker-client",
+      "sCapabilityName": "docker.errors.APIError",
+      "sDisposition": "UNCLASSIFIED",
+      "sDispositionRationale": "UNCLASSIFIED",
+      "sFile": "docker/dockerConnection.py",
+      "sFingerprint": "c5af6a270937ab16",
+      "sScope": "fbErrorMeansContainerUnreachable",
+      "sScopeFingerprint": "b45d1041a2fca605"
+    },
+    {
       "iLine": 14,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -420,32 +433,6 @@
       "sScopeFingerprint": "87797fde8f837aac"
     },
     {
-      "iLine": 46,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.APIError",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/fileStatusManager.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
-    },
-    {
-      "iLine": 46,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.NotFound",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/fileStatusManager.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
-    },
-    {
       "iLine": 23,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -496,19 +483,6 @@
       "sFingerprint": "856a29a936ceb530",
       "sScope": "__getattr__",
       "sScopeFingerprint": "287144c24c2e3acd"
-    },
-    {
-      "iLine": 43,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineState.py",
-      "sFingerprint": "03d351699a9a82f0",
-      "sScope": "<module>",
-      "sScopeFingerprint": "03d351699a9a82f0"
     },
     {
       "iLine": 692,
@@ -613,32 +587,6 @@
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
-    },
-    {
-      "iLine": 12,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.APIError",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/routes/pipelineRoutes.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
-    },
-    {
-      "iLine": 12,
-      "iOrdinal": 0,
-      "sAcquisitionKind": "import-from",
-      "sCapability": "docker-client",
-      "sCapabilityName": "docker.errors.NotFound",
-      "sDisposition": "UNCLASSIFIED",
-      "sDispositionRationale": "UNCLASSIFIED",
-      "sFile": "gui/routes/pipelineRoutes.py",
-      "sFingerprint": "ce9b8d3f2c6bb477",
-      "sScope": "<module>",
-      "sScopeFingerprint": "ce9b8d3f2c6bb477"
     },
     {
       "iLine": 23,

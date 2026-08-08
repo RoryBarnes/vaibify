@@ -143,7 +143,15 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 # own `docker cp` were routed through gateway primitives, so neither
 # registryRoutes nor routes/fileRoutes imports subprocess any more.
 # Neither acquisition became disposed of; both stopped existing.
-I_UNDISPOSED_ACQUISITION_BUDGET = 64
+#
+# 64 -> 60: the three GUI poll lanes stopped naming Docker SDK exception
+# types in their own except clauses (five acquisitions gone) and ask the
+# gateway's fbErrorMeansContainerUnreachable predicate instead, whose
+# one lazy `from docker.errors import APIError` arrived in the same
+# change (named in testCapabilityAuthorities under the exception-type
+# class). Net: five exception-type acquisitions became one, and it
+# lives in the module that owns the docker capability.
+I_UNDISPOSED_ACQUISITION_BUDGET = 60
 
 
 def _fmoduleGenerator():
@@ -1520,4 +1528,8 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",
+    # Its weaker sibling: classifies an already-raised error as "the
+    # substrate gave no answer" for the poll lanes. Same shape — an
+    # isinstance test over an exception object, no daemon call.
+    "fbErrorMeansContainerUnreachable",
 }

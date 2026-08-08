@@ -4064,7 +4064,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # worker rather than a typed-read declaration, and the two to_thread
     # hops it used to make became direct calls inside that worker.
     # **No route in this module is awaiting any longer.**
-    "routes/pipelineRoutes.py": 3070,
+    # +3 (2026-08-08): the test-marker fetch stopped naming Docker SDK
+    # exception types and asks the connection-level predicate
+    # fbErrorMeansContainerUnreachable instead — the re-raise branch
+    # for non-substrate errors is the pinned behaviour, not padding
+    # (host-mode connections raise plain OSErrors that the old except
+    # clause misclassified).
+    "routes/pipelineRoutes.py": 3073,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4179,7 +4185,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the mtime comparison alone discarded every attestation on a
     # machine hop; content decides now. Cohesive with the verification
     # state machine this module already owns.
-    "fileStatusManager.py": 2196,
+    # +1 (2026-08-08): the vanished-mid-poll net migrated from naming
+    # Docker SDK exception types to the connection-level predicate
+    # fbErrorMeansContainerUnreachable, keeping its re-raise branch for
+    # non-substrate errors explicit.
+    "fileStatusManager.py": 2197,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

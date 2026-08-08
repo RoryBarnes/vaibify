@@ -73,11 +73,14 @@ SET_RAW_EFFECT_CAPABILITIES = frozenset({
 })
 
 # The one disposition that is a CLASS rather than a per-site judgement.
-# All five Docker-client acquisitions under vaibify/gui/ are
-# ``docker.errors`` exception TYPES named in an ``except`` clause. An
-# exception type conveys no capability: it cannot construct a client,
-# open a socket, or issue a request. Disposing five of them one at a time
-# as though they were clients would bury the real ones.
+# It covers ``docker.errors`` exception TYPES bound only to classify an
+# already-raised error (an ``except`` clause or an ``isinstance`` test).
+# An exception type conveys no capability: it cannot construct a client,
+# open a socket, or issue a request. Disposing such bindings one at a
+# time as though they were clients would bury the real ones. The class
+# once held five members across the GUI poll lanes; they were replaced
+# by the gateway predicate ``fbErrorMeansContainerUnreachable``, whose
+# single lazy APIError import is now the class's one member.
 #
 # The scanner deliberately over-records (safe direction) and its
 # vocabulary is kill-confirm-covered, so this is recorded as a reviewed
@@ -195,6 +198,16 @@ DICT_NAMED_AUTHORITIES = {
             "environment does not carry one, so a Colima or Rancher "
             "socket is found before the client is built.",
         ),
+    "docker/dockerConnection.py|fbErrorMeansContainerUnreachable|"
+    "docker-client|docker.errors.APIError|import-from|0":
+        _fdictAuthority(
+            [S_LANE_EXCEPTION_TYPE],
+            "The substrate-failure predicate's lazy binding of the SDK's "
+            "APIError, used only in an isinstance test. It replaced the "
+            "five except-clause acquisitions the GUI poll lanes held, so "
+            "the exception-type class now has one member, inside the "
+            "gateway that owns the docker capability.",
+        ),
     "docker/dockerContext.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["host-cli", "http"],
@@ -245,12 +258,6 @@ DICT_NAMED_AUTHORITIES = {
             "Reads `docker context inspect` to name the runtime in the "
             "dashboard. Read-only daemon query.",
         ),
-    "gui/fileStatusManager.py|<module>|docker-client|docker.errors.APIError|"
-    "import-from|0":
-        _fdictAuthority([S_LANE_EXCEPTION_TYPE], "Caught, never raised."),
-    "gui/fileStatusManager.py|<module>|docker-client|docker.errors.NotFound|"
-    "import-from|0":
-        _fdictAuthority([S_LANE_EXCEPTION_TYPE], "Caught, never raised."),
     "gui/gitStatus.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["http", "background"],
@@ -267,17 +274,6 @@ DICT_NAMED_AUTHORITIES = {
             "container is the bind-mount hole fixed in 345f6b2; this "
             "socket is the hub talking to itself.",
         ),
-    "gui/pipelineState.py|<module>|docker-client|docker|import|0":
-        _fdictAuthority(
-            ["http", "background"],
-            "`import docker.errors as _dockerErrors`, whose only use is "
-            "building the tuple of exception types to catch. Deliberately "
-            "NOT filed under the exception-type class: the scan records "
-            "the acquisition under the ROOT package name `docker`, and a "
-            "class that covered a name resolving to the whole SDK would "
-            "cover a client too. Per-site, so the narrower fact is the "
-            "one on record.",
-        ),
     "gui/registryRoutes.py|_fbDockerContainerExists|process-launch|"
     "subprocess|import|0":
         _fdictAuthority(
@@ -293,12 +289,6 @@ DICT_NAMED_AUTHORITIES = {
             "memory tiles. Read-only daemon query; the disk half of this "
             "module went through the typed-read exemption instead.",
         ),
-    "gui/routes/pipelineRoutes.py|<module>|docker-client|"
-    "docker.errors.APIError|import-from|0":
-        _fdictAuthority([S_LANE_EXCEPTION_TYPE], "Caught, never raised."),
-    "gui/routes/pipelineRoutes.py|<module>|docker-client|"
-    "docker.errors.NotFound|import-from|0":
-        _fdictAuthority([S_LANE_EXCEPTION_TYPE], "Caught, never raised."),
     "gui/routes/sessionRoutes.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["http"],
@@ -391,8 +381,11 @@ DICT_NAMED_AUTHORITIES = {
 # Docker-client (all of them exception types), 1 Unix socket. 19 -> 18
 # when the stop route's own `docker stop` went through the lifecycle
 # gateway instead, 18 -> 17 when the file pull's own `docker cp` went
-# through the gateway's streaming read.
-I_GUI_RAW_CAPABILITY_BUDGET = 17
+# through the gateway's streaming read. 17 -> 12 when the five
+# exception-type acquisitions left the GUI tree for the gateway's
+# fbErrorMeansContainerUnreachable predicate, leaving zero Docker-client
+# acquisitions under vaibify/gui/.
+I_GUI_RAW_CAPABILITY_BUDGET = 12
 
 
 def _fmoduleGenerator():
@@ -748,11 +741,11 @@ def testAnUnnamedAuthorityBehindAHelperIsStillReported(tmp_path):
 def testTheExceptionTypeClassOnlyEverCoversAnException():
     """The one CLASS disposition, kept honest by resolving the name.
 
-    All five Docker-client acquisitions under ``vaibify/gui/`` are
-    ``docker.errors`` types named in an ``except`` clause, and disposing
-    them one at a time as clients would bury the real ones. A class
-    disposition is only safe while it cannot be stretched: this resolves
-    each covered name and fails if it is not a subclass of
+    Every acquisition filed under it is a ``docker.errors`` type bound
+    only to classify an already-raised error, and disposing those one
+    at a time as clients would bury the real ones. A class disposition
+    is only safe while it cannot be stretched: this resolves each
+    covered name and fails if it is not a subclass of
     ``BaseException`` -- so filing ``docker.APIClient`` under it is a
     test failure, not a review comment.
 

@@ -43,8 +43,7 @@ import logging
 import posixpath
 import shlex
 
-from docker.errors import APIError, NotFound
-
+from ..docker.dockerConnection import fbErrorMeansContainerUnreachable
 from ..reproducibility.stepPredicates import (
     fbStepTestsPassing,
     fbStepTimingClean,
@@ -1570,7 +1569,9 @@ def _ftStatAndFingerprintViaPathfile(
         _iExit, sOutput = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCmd,
         )
-    except (APIError, NotFound):
+    except Exception as error:
+        if not fbErrorMeansContainerUnreachable(error):
+            raise
         logger.info(
             "container vanished mid-poll, container=%s", sContainerId,
         )
