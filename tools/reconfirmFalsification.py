@@ -342,10 +342,16 @@ def fsetSelectNodeIdsNeedingALiveDaemon():
     stale the first time a marked test is added, renamed, or moved --
     silently, and in the direction that drops entries.
     """
+    dictEnvironment = dict(os.environ)
+    # Same reason as the test runs below: an editable install resolves
+    # ``vaibify`` to the real checkout, and this must report on the tree
+    # the mutations are applied to.
+    dictEnvironment["PYTHONPATH"] = str(PATH_TREE)
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q",
          "-m", S_LIVE_DAEMON_MARKER, "-p", "no:cacheprovider"],
         cwd=PATH_TREE, capture_output=True, text=True,
+        env=dictEnvironment,
     )
     if result.returncode != 0:
         raise RuntimeError(
