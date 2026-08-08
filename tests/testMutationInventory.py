@@ -330,8 +330,18 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # here, which is the safe direction, but eight entries claiming a review
 # was owed on code that could not reach a container is still eight
 # reviews aimed at fiction.
+# 18 -> 19 on 2026-08-08: the host gateway's single launch primitive
+# (hostConnection._ftLaunchGatedAndStream) takes its command as a
+# parameter BY DESIGN -- it is the one surface every host subprocess is
+# forced through (ruling 12), so the parameter is the funnel, not a
+# leak. The site is admission-gated, write-ahead journaled under the
+# host-exec kind, and pinned as the only launcher under vaibify/host/
+# by testHostSubprocessConfinement. The same shape as the 23 -> 27
+# increase above: the record honestly admits one more site it cannot
+# read, rather than a scanner exemption that would silently shrink the
+# declared blind spot for the Docker gateways too.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 18,
+    "opaque-subprocess-command": 19,
     "untraceable-docker-sdk-root": 12,
 }
 

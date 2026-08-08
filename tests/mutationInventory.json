@@ -1,7 +1,7 @@
 {
-  "iAcquisitionCount": 60,
-  "iRowCount": 311,
-  "iUnresolvedSiteCount": 30,
+  "iAcquisitionCount": 61,
+  "iRowCount": 314,
+  "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
       "iLine": 10,
@@ -662,6 +662,19 @@
       "sDisposition": "UNCLASSIFIED",
       "sDispositionRationale": "UNCLASSIFIED",
       "sFile": "gui/workspacePath.py",
+      "sFingerprint": "7d8752c4c7ea34c2",
+      "sScope": "<module>",
+      "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 52,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "import",
+      "sCapability": "process-launch",
+      "sCapabilityName": "subprocess",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The host gateway's single subprocess import. Every launch goes through _ftLaunchGatedAndStream: suspended spawn behind a stdin gate, host-exec journal record promoted and identity-gated (fnPromoteJournaledHostExec) before release, admission asserted (fnAssertContainerCommandAdmitted / fnAssertDurableExecAdmitted) at the two public entry points; testHostSubprocessConfinement pins this module as the only launcher under vaibify/host/.",
+      "sFile": "host/hostConnection.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
@@ -8482,6 +8495,92 @@
       "sReferenceKind": "direct-docker-cli"
     },
     {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "synchronous",
+        "durable"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "route-wrapper",
+        "carrier-supervisor"
+      ],
+      "sAccess": "unknown-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "This row IS the enforcement point, not a caller of it: admission is asserted at its two public entry points (fnAssertContainerCommandAdmitted / fnAssertDurableExecAdmitted) before it runs, and every launch is write-ahead journaled as host-exec with the child suspended behind a gate until its identity is persisted. A carrier admits callers; this is the gate they hit.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "001a2030acc0bc3e",
+      "sFunction": "_ftLaunchGatedAndStream",
+      "sJournalKind": "host-exec",
+      "sLifetime": "outlives-request",
+      "sLogicalOperation": "the single gated launch every host-project subprocess goes through",
+      "sOperationMetadata": "command text in via parameter (the declared opaque-subprocess-command blind-spot row); bounded lane kills its recorded group on timeout; durable lane relies on the journaled group identity for Cancel and quiescence",
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Duck-type alias kept only for signature parity; it delegates to fnWriteFile, where fnAssertContainerWriteAdmitted asserts before any byte lands. No tar archive is involved on the host leg.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "69ab34bf6f2655e6",
+      "sFunction": "fnWriteFileViaTar",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "duck-type write alias delegating to the gated host write",
+      "sOperationMetadata": "path validated against the two host roots; atomic temp-write-then-rename preserving the replaced file's mode",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Backward-compat merged-stream wrapper delegating to ftRunInContainerStreamed, where the command admission asserts; it adds no authority of its own.",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "3588aa81fdf28d49",
+      "sFunction": "ftResultExecuteCommand",
+      "sJournalKind": "host-exec",
+      "sLifetime": "request",
+      "sLogicalOperation": "merged-stream compatibility wrapper over the gated launch",
+      "sOperationMetadata": "returns (iExitCode, stdout+stderr) for legacy call sites",
+      "sPrimitive": "ftRunInContainerStreamed",
+      "sReferenceKind": "direct-call"
+    },
+    {
       "bInsideGateway": false,
       "bMutationCapable": true,
       "iOrdinal": 0,
@@ -9088,6 +9187,15 @@
       "sFingerprint": "b1cf458ca0cf9524",
       "sFunction": "_ftRunHostLsRemote",
       "sScopeFingerprint": "1416c2b66127daa3"
+    },
+    {
+      "iLine": 377,
+      "iOrdinal": 0,
+      "sBlindSpotKind": "opaque-subprocess-command",
+      "sFile": "host/hostConnection.py",
+      "sFingerprint": "001a2030acc0bc3e",
+      "sFunction": "_ftLaunchGatedAndStream",
+      "sScopeFingerprint": "2a241fb7c18d806e"
     },
     {
       "iLine": 192,

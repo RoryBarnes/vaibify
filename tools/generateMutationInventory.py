@@ -326,10 +326,16 @@ TUPLE_ACQUISITION_REVIEWER_FIELDS = (
 )
 
 # The modules that DEFINE the primitives. Their own definitions and
-# internal helpers are the boundary itself, not callers of it.
+# internal helpers are the boundary itself, not callers of it. The
+# host gateway joined 2026-08-08: it is the single permitted subprocess
+# launcher under vaibify/host/ (testHostSubprocessConfinement pins
+# that), every launch it makes is gated, journaled, and
+# admission-checked, and its acquisition carries a reviewed
+# disposition in the inventory.
 SET_GATEWAY_MODULES = frozenset({
     "docker/dockerConnection.py",
     "docker/containerManager.py",
+    "host/hostConnection.py",
 })
 
 # The reviewer's fields: everything that needs judgement rather than
@@ -374,7 +380,8 @@ DICT_REVIEWER_ENUMS = {
 
 DICT_REVIEWER_SCALAR_ENUMS = {
     "sJournalKind": frozenset({
-        "start", "exec", "terminal", "helper", "file-write", "none",
+        "start", "exec", "terminal", "helper", "file-write",
+        "host-exec", "none",
     }),
     "sLifetime": frozenset({"request", "outlives-request"}),
     # EXCLUDED demands a rationale. A boundary whose exceptions are
