@@ -67,6 +67,7 @@ def testStatViaPathfileSwallowsApiError():
     assert dictResult == {}
 
 
+@pytest.mark.falsification
 def testStatViaPathfilePropagatesNonSubstrateErrors():
     """A failure that is NOT the container substrate escapes the poll net.
 
@@ -74,7 +75,15 @@ def testStatViaPathfilePropagatesNonSubstrateErrors():
     error (the Docker SDK's ``APIError`` family today) may degrade to
     "no answer this tick". A coding error such as a ``ValueError``
     raised by the connection must propagate — swallowing it would
-    report a healthy-looking empty poll over a real bug.
+    report a healthy-looking empty poll over a real bug. The catch
+    migrated from ``except (APIError, NotFound)`` to the gateway's
+    ``fbErrorMeansContainerUnreachable`` predicate, and this is the
+    guard that keeps the migrated shape from decaying into a blanket
+    ``except Exception: pass``.
+
+    Kills: replacing the ``fbErrorMeansContainerUnreachable`` check in
+    ``_ftStatAndFingerprintViaPathfile`` with a blanket pass
+    (``if False: raise``).
     """
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.side_effect = ValueError(

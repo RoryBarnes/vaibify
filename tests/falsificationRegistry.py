@@ -7398,4 +7398,25 @@ def _fdictEntry(sRel):
             '            continue\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testFileStatusManager.py::'
+            'testStatViaPathfilePropagatesNonSubstrateErrors'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The migrated poll net decays into a blanket pass: every
+        # exception — a coding bug included — reads as "container
+        # vanished mid-poll" and the poll reports a healthy-looking
+        # empty answer over a real defect.
+        old=(
+            '    except Exception as error:\n'
+            '        if not fbErrorMeansContainerUnreachable(error):\n'
+            '            raise\n'
+        ),
+        new=(
+            '    except Exception as error:\n'
+            '        if False:\n'
+            '            raise\n'
+        ),
+    ),
 ]
