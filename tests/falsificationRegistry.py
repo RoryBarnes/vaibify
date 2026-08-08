@@ -7378,4 +7378,134 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+
+    # --- Host-mode Phase A (2026-08-08). The mode-aware guarantees are
+    # registered in symmetric pairs where a pair exists: one mutant
+    # proves the host branch works, its twin proves the container
+    # branch still does. A green suite over only one direction would
+    # hide a mode detector stuck at a constant.
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testMutateRegistryLockedReadsUnderTheLock'
+        ),
+        source='vaibify/config/registryManager.py',
+        # The pre-fix ordering: reading before the flock lets two
+        # concurrent registrations pass their duplicate checks against
+        # the same stale snapshot.
+        old=(
+            '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
+            '    with _ffileOpenRegistryLock():\n'
+            '        dictRegistry = fdictLoadRegistry()\n'
+            '        fnMutateRegistry(dictRegistry)\n'
+        ),
+        new=(
+            '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
+            '    dictRegistry = fdictLoadRegistry()\n'
+            '    with _ffileOpenRegistryLock():\n'
+            '        fnMutateRegistry(dictRegistry)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testAddProjectRejectsSameDirectoryUnderNewName'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Deleting the physical-directory check restores the pre-fix
+        # behavior: one directory, two names, two "exclusive" sessions.
+        old=(
+            '        if _fbSamePhysicalDirectory(\n'
+            '            dictExisting["sDirectory"], sDirectory,\n'
+            '        ):\n'
+            '            raise ValueError(\n'
+            '                f"Directory \'{sDirectory}\' is already '
+            'registered "\n'
+            '                f"as \'{dictExisting[\'sName\']}\'"\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRouteContextCoverage.py::'
+            'TestStampDockerIdForJournal::'
+            'test_host_resource_omits_the_key_entirely'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Mode detector stuck at "container": a host save would stamp
+        # the Docker id and journal a probe against a container that
+        # does not exist.
+        old='    return dictProject.get("sMode") == "host"\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRouteContextCoverage.py::'
+            'TestStampDockerIdForJournal::'
+            'test_registered_container_project_still_stamps'
+        ),
+        source='vaibify/config/registryManager.py',
+        # The symmetric twin: stuck at "host", a registered container
+        # project loses its stamp and its writes stop being verified
+        # in the container.
+        old='    return dictProject.get("sMode") == "host"\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOperationJournal.py::'
+            'testFileWriteProbeWithoutDockerIdUsesTheHostHashBranch'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Probe stuck on the container branch: the poison connection in
+        # the test raises on any use, so this cannot pass quietly.
+        old=(
+            '    if dictRecord.get("sDockerContainerId"):\n'
+            '        return _fdictProbeContainerFileHash(dictRecord, '
+            'connectionDocker)\n'
+            '    return _fdictCompareHostFileHash(dictRecord)\n'
+        ),
+        new=(
+            '    return _fdictProbeContainerFileHash(dictRecord, '
+            'connectionDocker)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOperationJournal.py::'
+            'testFileWriteProbeWithDockerIdRequiresTheConnection'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # The symmetric twin: stuck on the host branch, a container
+        # write would be "verified" against the host filesystem, where
+        # the file legitimately may not exist.
+        old=(
+            '    if dictRecord.get("sDockerContainerId"):\n'
+            '        return _fdictProbeContainerFileHash(dictRecord, '
+            'connectionDocker)\n'
+            '    return _fdictCompareHostFileHash(dictRecord)\n'
+        ),
+        new='    return _fdictCompareHostFileHash(dictRecord)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCapabilityInventory.py::'
+            'testInventoryMatchesTheSource'
+        ),
+        source='tools/generateHostCapabilityInventory.py',
+        # Dropping the passed-callable decode blinds the scanner to the
+        # asyncio.to_thread shape -- the eight rows (including the main
+        # step launch) degrade to UNKNOWN and the committed inventory
+        # no longer matches.
+        old=(
+            '        else:\n'
+            '            self._fnRecordPassedCallableArguments'
+            '(nodeCall)\n'
+        ),
+        new=(
+            '        else:\n'
+            '            pass\n'
+        ),
+    ),
 ]
