@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.1.dev844 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.1.dev855 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=141a0fbe"></script>
+      <script src="_static/documentation_options.js?v=d4ad5be3"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -183,8 +183,16 @@ docstring, the exact mutation it is proven to catch.</p></li>
 <li><p><strong>The registry</strong> — <code class="docutils literal notranslate"><span class="pre">tests/falsificationRegistry.py</span></code> — records that
 mutation in a <em>machine-applicable</em> form: one
 <code class="docutils literal notranslate"><span class="pre">Falsification(nodeid,</span> <span class="pre">source,</span> <span class="pre">old,</span> <span class="pre">new)</span></code> entry per test, where <code class="docutils literal notranslate"><span class="pre">old</span></code>
-is the exact text that occurs once in the source file and <code class="docutils literal notranslate"><span class="pre">new</span></code> is the
-break.</p></li>
+is the exact text to replace and <code class="docutils literal notranslate"><span class="pre">new</span></code> is the break.</p>
+<p><code class="docutils literal notranslate"><span class="pre">old</span></code> must occur exactly <code class="docutils literal notranslate"><span class="pre">iExpectedOccurrences</span></code> times (default 1). A
+guard that is deliberately checked in more than one place — the
+ownership-transfer conditions run once before anything is minted and
+again at the commit point — needs <strong>every</strong> copy mutated: disabling
+one changes nothing a caller can observe, so the entry reports
+SURVIVED and reads as an undefended guard. Stating the count makes a
+copy appearing or vanishing an error rather than a quiet
+half-mutation.</p>
+</li>
 <li><p><strong>The re-kill harness</strong> — <code class="docutils literal notranslate"><span class="pre">tools/reconfirmFalsification.py</span></code> — is the
 standing negative control. For every registry entry it requires the
 test to pass on clean code, applies the mutation, requires the test to
@@ -196,6 +204,16 @@ mutates source, so it is deliberately <strong>not</strong> collected by
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/reconfirmFalsification.py
 </pre></div>
 </div>
+<p>Entries whose test drives a real container (<code class="docutils literal notranslate"><span class="pre">docker_live</span></code>) cannot be
+judged on a host with no Docker daemon: the harness demands a daemon
+for every run it judges, precisely so a skip is never miscounted as a
+surviving mutant, and that same demand turns those entries into
+errors where no daemon can exist. They are reported by name as NOT
+EVALUATED and left out of the denominator instead. That is safe only
+because they <em>are</em> judged wherever a daemon exists, so the Linux CI
+legs set <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_DOCKER_DAEMON</span></code>, which refuses the deferral
+outright — losing Docker there turns the lane red rather than
+silently shrinking what it reports against.</p>
 </li>
 </ol>
 <p>Three architectural invariants keep the class from silently decaying:
