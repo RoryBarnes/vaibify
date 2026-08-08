@@ -185,6 +185,8 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/containers/{sName}/settings"):
         S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,
+    ("PUT", "/api/preferences/host-warning-acknowledged"):
+        S_SCOPE_BROWSER_HUB,
     ("POST", "/api/projects/create"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/registry/{sName}/claim"): S_SCOPE_OWNER_ESTABLISHING,
     ("POST", "/api/registry/{sName}/release"): S_SCOPE_BROWSER_HUB,

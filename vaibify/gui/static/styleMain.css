@@ -4502,6 +4502,16 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     letter-spacing: 0.04em;
     color: var(--text-muted, var(--text-secondary));
 }
+.confirm-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 14px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
 .confirm-details-command {
     background: var(--bg-input);
     color: var(--color-pale-blue);

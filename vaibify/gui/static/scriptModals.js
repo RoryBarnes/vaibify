@@ -19,6 +19,7 @@ var VaibifyModals = (function () {
             '<p style="white-space:pre-wrap;margin-bottom:16px">' +
             fnEscapeHtml(sMessage) + '</p>' +
             _fsBuildConfirmDetails(dictDetails) +
+            _fsBuildConfirmCheckbox(dictDetails) +
             '<div class="modal-actions">' +
             '<button class="btn" id="btnConfirmCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +
@@ -30,9 +31,31 @@ var VaibifyModals = (function () {
         );
         document.getElementById("btnConfirmOk").addEventListener(
             "click", function () {
+                // Read the optional checkbox BEFORE the modal leaves
+                // the DOM. Callers without sCheckboxLabel receive
+                // false and existing ones ignore the argument, so
+                // every current call site behaves identically.
+                var elCheckbox = document.getElementById(
+                    "checkboxConfirmModal");
+                var bCheckboxChecked =
+                    !!(elCheckbox && elCheckbox.checked);
                 elModal.remove();
-                fnOnConfirm();
+                fnOnConfirm(bCheckboxChecked);
             }
+        );
+    }
+
+    function _fsBuildConfirmCheckbox(dictDetails) {
+        // Optional opt-in checkbox (dictDetails.sCheckboxLabel), e.g.
+        // "Don't warn me again". Its checked state is passed to the
+        // confirm callback; rendering is skipped entirely when the
+        // caller does not request it.
+        if (!dictDetails || !dictDetails.sCheckboxLabel) return "";
+        return (
+            '<label class="confirm-checkbox-row">' +
+            '<input type="checkbox" id="checkboxConfirmModal"> ' +
+            fnEscapeHtml(dictDetails.sCheckboxLabel) +
+            '</label>'
         );
     }
 
