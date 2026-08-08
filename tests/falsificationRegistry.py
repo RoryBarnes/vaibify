@@ -7378,4 +7378,24 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSubprocessConfinement.py::'
+            'testHostConfinementScannerDetectsEachAcquisitionShape'
+        ),
+        source='tests/testHostSubprocessConfinement.py',
+        # Every module reads as the exempt gateway, so the walk skips
+        # the whole host tree and the confinement invariant passes over
+        # any acquisition anybody writes — indistinguishable from the
+        # vacuous pass the invariant legitimately has while
+        # vaibify/host/ does not exist.
+        old=(
+            '        if pathModule.name == S_HOST_GATEWAY_MODULE:\n'
+            '            continue\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            continue\n'
+        ),
+    ),
 ]
