@@ -1174,6 +1174,33 @@ def fbErrorMeansContainerGone(error):
     return iStatusCode == 409 and "not running" in str(error).lower()
 
 
+def fbErrorMeansContainerUnreachable(error):
+    """Return True when the substrate failed to answer for a container.
+
+    Weaker than :func:`fbErrorMeansContainerGone`: it proves nothing
+    about the container's processes, only that the connection layer
+    could not complete the operation — so a poll-lane caller should
+    degrade to "no answer this tick" instead of crashing the poll.
+
+    Connection-level on purpose. GUI modules used to name the Docker
+    SDK's exception types in their own ``except`` clauses, which
+    misclassifies any other connection implementation (a host-mode
+    connection raises plain ``OSError``\\ s). They now ask this
+    predicate, so teaching the classification a new connection's error
+    shapes is one edit here, not one per poll lane.
+
+    Docker leg: exactly the SDK's ``APIError`` family (``NotFound``
+    included), the set the poll lanes historically caught. The lazy
+    import keeps this module loadable without docker-py, and no
+    ``APIError`` can exist in-process without docker-py.
+    """
+    try:
+        from docker.errors import APIError
+    except ImportError:
+        return False
+    return isinstance(error, APIError)
+
+
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):
     """Yield the single-file payload from a docker get_archive stream.
 

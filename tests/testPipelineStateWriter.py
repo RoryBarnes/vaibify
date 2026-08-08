@@ -240,6 +240,25 @@ def test_read_state_absorbs_docker_api_error():
     assert fdictReadState(MockBadDocker(), "ctr1") is None
 
 
+def test_read_state_propagates_non_benign_errors():
+    """The degrade-to-None net has a boundary, and this pins it.
+
+    The benign net is the stdlib tuple (JSON, OSError, TypeError,
+    ValueError) plus the container substrate's own errors. Anything
+    else — here a RuntimeError standing in for a coding error or a
+    control-plane refusal — must surface loudly, exactly as the
+    ``fdictReadState`` docstring promises for carrier refusals.
+    """
+    from vaibify.gui.pipelineState import fdictReadState
+
+    class MockBrokenDocker:
+        def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+            raise RuntimeError("a real bug, not a benign read failure")
+
+    with pytest.raises(RuntimeError):
+        fdictReadState(MockBrokenDocker(), "ctr1")
+
+
 # ---------------------------------------------------------------------------
 # Output coalescing
 # ---------------------------------------------------------------------------

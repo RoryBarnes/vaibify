@@ -1196,8 +1196,41 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     Pair with ``testContainerUserUidIsOneThousand``: that test pins the
     Dockerfile's user UID to 1000; this test pins the dispatcher's
     default to the same value.
+
+    SCOPE: the DOCKER leg only, and the scope is pinned rather than
+    assumed. The uid-1000 contract exists because a tarball entry's
+    uid/gid IS the file's owner inside a container; a host-mode
+    connection (``vaibify/host/``) writes host files as the invoking
+    user, never builds tar entries, and carries its own guardrails
+    (``tests/testHostSubprocessConfinement.py``). The scan below pins
+    that scope structurally: every ``tarfile.TarInfo`` construction in
+    the package lives in ``vaibify/docker/dockerConnection.py``, so a
+    second tar-building write path cannot appear outside this
+    invariant's reach, and moving the builder out of the Docker leg
+    fails here instead of silently orphaning the test.
     """
     from vaibify.docker.dockerConnection import DockerConnection
+    assert DockerConnection._finfoBuildTarEntry.__module__ == (
+        "vaibify.docker.dockerConnection"
+    ), (
+        "the tar-entry builder left the Docker gateway; this invariant "
+        "is scoped to the Docker leg and must move (or split) with it"
+    )
+    listTarBuilders = []
+    for pathFile in PACKAGE_DIR.rglob("*.py"):
+        if "__pycache__" in pathFile.parts:
+            continue
+        if "TarInfo(" in fsReadSource(pathFile):
+            listTarBuilders.append(
+                str(pathFile.relative_to(REPO_ROOT))
+            )
+    assert listTarBuilders == ["vaibify/docker/dockerConnection.py"], (
+        f"tar entries are built in {listTarBuilders}; this invariant "
+        f"pins the uid-1000 default of the ONE builder in the Docker "
+        f"gateway. A new tar-building write path is outside its reach "
+        f"— either route the write through the gateway or give the new "
+        f"path its own ownership invariant before extending this list."
+    )
     infoTarDefault = DockerConnection._finfoBuildTarEntry(
         "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
     )
@@ -1891,7 +1924,31 @@ def testContainerUserUidIsOneThousand():
     keyring files would become unreadable across rebuilds and the
     user would silently lose stored Overleaf and Zenodo tokens.
     Defense-in-depth for audit finding F-R-07.
+
+    SCOPE: the DOCKER leg only, and the scope is pinned rather than
+    assumed. The uid-1000 contract binds the container image's user to
+    the keyring volume and to the tar-write default
+    (``testFnWriteFileDefaultsToContainerUserOwnership``); a host-mode
+    connection (``vaibify/host/``) runs as the invoking host user, has
+    no image, and must never inherit a hard-coded uid — its guardrails
+    live in ``tests/testHostSubprocessConfinement.py``. The scan below
+    pins the scope: the ONE ``useradd`` in the package's Dockerfiles is
+    the base image's, so an agent-overlay or future host-leg Dockerfile
+    minting a differently-numbered user fails here instead of sitting
+    silently outside this invariant.
     """
+    listUseraddFiles = sorted(
+        str(pathFile.relative_to(REPO_ROOT))
+        for pathFile in PACKAGE_DIR.rglob("Dockerfile*")
+        if "__pycache__" not in pathFile.parts
+        and "useradd" in fsReadSource(pathFile)
+    )
+    assert listUseraddFiles == ["vaibify/containerImage/Dockerfile"], (
+        f"user creation happens in {listUseraddFiles}; this invariant "
+        f"pins the uid of the ONE useradd in the base image. A second "
+        f"Dockerfile creating a user is outside its reach — pin that "
+        f"user's uid with its own invariant before extending this list."
+    )
     sDockerfile = fsReadSource(
         REPO_ROOT / "vaibify" / "containerImage" / "Dockerfile",
     )
@@ -4063,7 +4120,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # worker rather than a typed-read declaration, and the two to_thread
     # hops it used to make became direct calls inside that worker.
     # **No route in this module is awaiting any longer.**
-    "routes/pipelineRoutes.py": 3070,
+    # +3 (2026-08-08): the test-marker fetch stopped naming Docker SDK
+    # exception types and asks the connection-level predicate
+    # fbErrorMeansContainerUnreachable instead — the re-raise branch
+    # for non-substrate errors is the pinned behaviour, not padding
+    # (host-mode connections raise plain OSErrors that the old except
+    # clause misclassified).
+    "routes/pipelineRoutes.py": 3073,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4178,7 +4241,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the mtime comparison alone discarded every attestation on a
     # machine hop; content decides now. Cohesive with the verification
     # state machine this module already owns.
-    "fileStatusManager.py": 2196,
+    # +1 (2026-08-08): the vanished-mid-poll net migrated from naming
+    # Docker SDK exception types to the connection-level predicate
+    # fbErrorMeansContainerUnreachable, keeping its re-raise branch for
+    # non-substrate errors explicit.
+    "fileStatusManager.py": 2197,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

@@ -7605,4 +7605,45 @@ def _fdictEntry(sRel):
         old='            os.fchmod(iDescriptor, iEffectiveMode)\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSubprocessConfinement.py::'
+            'testHostConfinementScannerDetectsEachAcquisitionShape'
+        ),
+        source='tests/testHostSubprocessConfinement.py',
+        # Every module reads as the exempt gateway, so the walk skips
+        # the whole host tree and the confinement invariant passes over
+        # any acquisition anybody writes — indistinguishable from the
+        # vacuous pass the invariant legitimately has while
+        # vaibify/host/ does not exist.
+        old=(
+            '        if pathModule.name == S_HOST_GATEWAY_MODULE:\n'
+            '            continue\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFileStatusManager.py::'
+            'testStatViaPathfilePropagatesNonSubstrateErrors'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The migrated poll net decays into a blanket pass: every
+        # exception — a coding bug included — reads as "container
+        # vanished mid-poll" and the poll reports a healthy-looking
+        # empty answer over a real defect.
+        old=(
+            '    except Exception as error:\n'
+            '        if not fbErrorMeansContainerUnreachable(error):\n'
+            '            raise\n'
+        ),
+        new=(
+            '    except Exception as error:\n'
+            '        if False:\n'
+            '            raise\n'
+        ),
+    ),
 ]

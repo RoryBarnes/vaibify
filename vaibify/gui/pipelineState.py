@@ -39,11 +39,7 @@ import queue
 import threading
 from datetime import datetime, timezone
 
-try:
-    import docker.errors as _dockerErrors
-    _T_DOCKER_API_ERROR = (_dockerErrors.APIError,)
-except ImportError:  # docker SDK absent in some test environments
-    _T_DOCKER_API_ERROR = ()
+from ..docker.dockerConnection import fbErrorMeansContainerUnreachable
 
 _loggerState = logging.getLogger("vaibify")
 
@@ -287,12 +283,12 @@ def fdictReadState(connectionDocker, sContainerId):
     ``fbaFetchFile`` spells "absent" as ``FileNotFoundError``, which is
     an ``OSError`` and so already lands in that net; a carrier refusal
     is NOT, because ``ControlPlaneRefusalError`` is deliberately not an
-    ``OSError``, so a refusal still surfaces loudly.
+    ``OSError``, so a refusal still surfaces loudly. The substrate's own
+    errors are recognised by the connection-level predicate rather than
+    by naming Docker SDK types here, so a host-mode connection's plain
+    ``OSError``\\ s classify identically.
     """
-    tBenignErrors = (
-        (json.JSONDecodeError, OSError, TypeError, ValueError)
-        + _T_DOCKER_API_ERROR
-    )
+    tBenignErrors = (json.JSONDecodeError, OSError, TypeError, ValueError)
     try:
         baContent = connectionDocker.fbaFetchFile(
             sContainerId, S_STATE_PATH,
@@ -302,6 +298,10 @@ def fdictReadState(connectionDocker, sContainerId):
         return json.loads(baContent)
     except tBenignErrors:
         return None
+    except Exception as error:
+        if fbErrorMeansContainerUnreachable(error):
+            return None
+        raise
 
 
 def fnClearState(connectionDocker, sContainerId):

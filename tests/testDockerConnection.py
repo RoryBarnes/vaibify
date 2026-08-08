@@ -749,3 +749,33 @@ def test_module_init_filters_deprecation_warning():
     assert resultProcess.stdout.strip() == "True", (
         resultProcess.stdout, resultProcess.stderr,
     )
+
+
+def test_fbErrorMeansContainerUnreachable_matches_the_api_error_family():
+    """The Docker leg of the substrate predicate is exactly APIError.
+
+    ``fbErrorMeansContainerUnreachable`` replaced GUI modules' own
+    ``except (APIError, NotFound)`` clauses, so its Docker-leg answer
+    must be exactly that historical catch set: the ``APIError`` family
+    (``NotFound`` is an ``APIError`` subclass) and nothing else. A
+    plain ``OSError`` — the shape a host-mode connection raises — is
+    NOT the Docker substrate and classifies False here; the host leg
+    teaches the predicate its own shapes when it lands.
+    """
+    import docker.errors
+    from vaibify.docker.dockerConnection import (
+        fbErrorMeansContainerUnreachable,
+    )
+
+    assert fbErrorMeansContainerUnreachable(
+        docker.errors.APIError("500 daemon contention"),
+    ) is True
+    assert fbErrorMeansContainerUnreachable(
+        docker.errors.NotFound("container gone"),
+    ) is True
+    for errorForeign in (
+        OSError("host subprocess failed"),
+        ValueError("a coding bug"),
+        RuntimeError("a coding bug"),
+    ):
+        assert fbErrorMeansContainerUnreachable(errorForeign) is False

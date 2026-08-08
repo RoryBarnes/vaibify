@@ -9,8 +9,9 @@ import logging
 import posixpath
 import re
 
-from docker.errors import APIError, NotFound
 from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+
+from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
 
 from .. import containerOwnership
 from ..actionCatalog import ffnAgentAction
@@ -2455,7 +2456,9 @@ def _fdictFetchTestMarkers(
         iExit, sOutput = connectionDocker.ftResultExecuteCommand(
             sContainerId, sCommand
         )
-    except (APIError, NotFound):
+    except Exception as error:
+        if not fbErrorMeansContainerUnreachable(error):
+            raise
         return {
             "markers": {},
             "testFiles": {},
