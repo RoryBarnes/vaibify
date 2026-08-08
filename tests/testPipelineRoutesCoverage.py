@@ -809,6 +809,67 @@ class TestFdictFetchTestMarkers:
                 "missingConftest": [],
             }
 
+    def test_docker_api_error_returns_empty(self):
+        """A real docker SDK APIError degrades to an empty marker set."""
+        import docker.errors
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.side_effect = (
+            docker.errors.APIError("500 daemon contention")
+        )
+        with patch(
+            "vaibify.gui.syncDispatcher"
+            ".fsBuildTestMarkerCheckCommand",
+            return_value="echo test",
+        ):
+            dictResult = _fdictFetchTestMarkers(
+                mockDocker, "cid1", ["/workspace/step1"],
+                "/workspace/DemoRepo", "demo",
+            )
+        assert dictResult == {
+            "markers": {},
+            "testFiles": {},
+            "missingConftest": [],
+        }
+
+    def test_docker_not_found_returns_empty(self):
+        """A real docker SDK NotFound degrades to an empty marker set."""
+        import docker.errors
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.side_effect = (
+            docker.errors.NotFound("container gone")
+        )
+        with patch(
+            "vaibify.gui.syncDispatcher"
+            ".fsBuildTestMarkerCheckCommand",
+            return_value="echo test",
+        ):
+            dictResult = _fdictFetchTestMarkers(
+                mockDocker, "cid1", ["/workspace/step1"],
+                "/workspace/DemoRepo", "demo",
+            )
+        assert dictResult == {
+            "markers": {},
+            "testFiles": {},
+            "missingConftest": [],
+        }
+
+    def test_non_substrate_error_propagates(self):
+        """Only substrate failures degrade; a coding error must surface."""
+        mockDocker = MagicMock()
+        mockDocker.ftResultExecuteCommand.side_effect = ValueError(
+            "a real bug, not a container failure",
+        )
+        with patch(
+            "vaibify.gui.syncDispatcher"
+            ".fsBuildTestMarkerCheckCommand",
+            return_value="echo test",
+        ):
+            with pytest.raises(ValueError):
+                _fdictFetchTestMarkers(
+                    mockDocker, "cid1", ["/workspace/step1"],
+                    "/workspace/DemoRepo", "demo",
+                )
+
 
 # ── _fnRefreshConftestsAndMigrateMarkers wiring ──────────────────
 
