@@ -709,12 +709,12 @@ def test_fsReadMirrorHeadSha_returns_empty_when_mirror_missing(
     assert sSha == ""
 
 
-def test_fnRunGit_does_not_raise_on_missing_cwd(
+def test_fprocessRunGit_does_not_raise_on_missing_cwd(
     monkeypatch, tmp_path,
 ):
-    """_fnRunGit must convert FileNotFoundError into returncode=127."""
+    """_fprocessRunGit must convert FileNotFoundError into returncode=127."""
     sMissing = str(tmp_path / "does-not-exist")
-    result = overleafMirror._fnRunGit(
+    result = overleafMirror._fprocessRunGit(
         ["rev-parse", "HEAD"], sCwd=sMissing,
     )
     assert result.returncode == 127

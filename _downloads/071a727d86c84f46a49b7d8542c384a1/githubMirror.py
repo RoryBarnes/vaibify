@@ -131,7 +131,7 @@ _OBJECT_OPENER = urllib.request.build_opener(
 )
 
 
-def _fobjectOpenRequest(objectRequest, fTimeoutSeconds):
+def _fhttpresponseOpenRequest(objectRequest, fTimeoutSeconds):
     """Open a request via the auth-stripping opener.
 
     Routed through ``urllib.request.urlopen`` only when the
@@ -151,7 +151,7 @@ def _fobjectOpenRequest(objectRequest, fTimeoutSeconds):
 _S_REAL_URLOPEN = urllib.request.urlopen
 
 
-def _fobjectBuildRequest(sUrl, sToken):
+def _frequestBuildGithub(sUrl, sToken):
     """Build a urllib Request with optional bearer-token authorization."""
     objectRequest = urllib.request.Request(sUrl, method="GET")
     objectRequest.add_header("Accept", "application/octet-stream")
@@ -220,9 +220,9 @@ def _fsHashOneRemote(sUrl, sToken):
     timeout so a stalled GitHub mirror cannot hang the verification
     sweep indefinitely.
     """
-    objectRequest = _fobjectBuildRequest(sUrl, sToken)
+    objectRequest = _frequestBuildGithub(sUrl, sToken)
     try:
-        with _fobjectOpenRequest(
+        with _fhttpresponseOpenRequest(
             objectRequest, _F_REQUEST_TIMEOUT_SECONDS,
         ) as objectResponse:
             return _fsHashResponseStream(objectResponse)

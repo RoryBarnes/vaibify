@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.1.dev857 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.1.dev882 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=472d5590"></script>
+      <script src="_static/documentation_options.js?v=a339d299"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -62,7 +62,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#canonical-remote-data">Canonical remote data</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#aics-level-3-reproducible">AICS Level 3 — Reproducible</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#proof-level-3-reproducible">PROOF Level 3 — Reproducible</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-envelope">The Reproducibility Envelope</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#tier-1-artifacts-manifest-sha256">Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#tier-2-python-dependencies-requirements-lock">Tier 2 — Python dependencies (<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>)</a></li>
@@ -193,10 +193,10 @@ auto-committed — it flows through the normal review-and-commit
 canonical flow.</p>
 </section>
 </section>
-<section id="aics-level-3-reproducible">
-<h2>AICS Level 3 — Reproducible<a class="headerlink" href="#aics-level-3-reproducible" title="Link to this heading"></a></h2>
-<p>Vaibify targets <strong>AICS Level 3 (“Reproducible”)</strong> on the AI
-Containment Scale: third parties can confirm, at the bit level, that
+<section id="proof-level-3-reproducible">
+<h2>PROOF Level 3 — Reproducible<a class="headerlink" href="#proof-level-3-reproducible" title="Link to this heading"></a></h2>
+<p>Vaibify targets <strong>PROOF Level 3 (“Reproducible”)</strong> on the PROOF
+ladder: third parties can confirm, at the bit level, that
 the artefacts they hold are byte-for-byte identical to the artefacts
 the original project produced. Level 3 is a claim about <em>file-byte
 identity</em>, not numerical re-derivation. Re-running the project on a
@@ -385,7 +385,7 @@ above the final summary.</p></li>
 <p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> is a convenience orchestrator, <strong>not</strong> the trust
 anchor. The trust anchor for Tier 1 is <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span> <span class="pre">MANIFEST.sha256</span></code>,
 a <code class="docutils literal notranslate"><span class="pre">coreutils</span></code> binary every verifier already has. If <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> is ever wrong, a third party verifying by hand catches the
-discrepancy. This is the load-bearing reason the AICS levels are
+discrepancy. This is the load-bearing reason the PROOF levels are
 defined independently of vaibify: it makes vaibify <em>auditable</em> rather
 than authoritative. The same independence applies to Tier 2 (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--require-hashes</span></code>) and Tier 3 (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span> <span class="pre">&lt;image&gt;&#64;sha256:...</span></code>); each step can be performed manually by anyone
 who reads the three files.</p>
@@ -472,7 +472,7 @@ result to <code class="docutils literal notranslate"><span class="pre">.github/w
 </section>
 <section id="archiving-to-zenodo">
 <h2>Archiving to Zenodo<a class="headerlink" href="#archiving-to-zenodo" title="Link to this heading"></a></h2>
-<p>Zenodo archiving is real and reachable — through the AICS Level 2
+<p>Zenodo archiving is real and reachable — through the PROOF Level 2
 workflow in the dashboard, not through the CLI.</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>

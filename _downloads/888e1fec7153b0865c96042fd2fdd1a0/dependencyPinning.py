@@ -189,7 +189,7 @@ def _fnRunLockCompile(pathRepo, sInput, listCompilePrefix):
     """
     listCommand = _flistBuildLockCompileCommand(listCompilePrefix, sInput)
     try:
-        completed = subprocess.run(
+        processCompleted = subprocess.run(
             listCommand,
             cwd=str(pathRepo),
             capture_output=True,
@@ -200,12 +200,12 @@ def _fnRunLockCompile(pathRepo, sInput, listCompilePrefix):
         raise FileNotFoundError(_S_LOCK_TOOL_MISSING_MESSAGE) from None
     except subprocess.TimeoutExpired as errorTimeout:
         _fnRaiseLockCompileTimeout(listCommand, errorTimeout)
-    if completed.returncode != 0:
+    if processCompleted.returncode != 0:
         raise subprocess.CalledProcessError(
-            completed.returncode,
+            processCompleted.returncode,
             listCommand,
-            output=completed.stdout,
-            stderr=fsRedactCredentials(completed.stderr or ""),
+            output=processCompleted.stdout,
+            stderr=fsRedactCredentials(processCompleted.stderr or ""),
         )
 
 

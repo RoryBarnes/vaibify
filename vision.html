@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vision &mdash; Vaibify 0.0.1.dev857 documentation</title>
+  <title>Vision &mdash; Vaibify 0.0.1.dev882 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=472d5590"></script>
+      <script src="_static/documentation_options.js?v=a339d299"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -46,11 +46,11 @@
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Vision</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#the-problem">The problem</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-ladder">The reproducibility ladder</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-proof-ladder">The PROOF ladder</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#l1-self-consistent">L1 — Self-Consistent</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#l2-published">L2 — Published</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#l3-reproducible">L3 — Reproducible</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#l4-archived">L4 — Archived</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#l4-traceable">L4 — Traceable</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#l5-attested">L5 — Attested</a></li>
 </ul>
 </li>
@@ -145,10 +145,13 @@ not as a PDF plus some code, but as a content-addressed chain of
 evidence whose integrity any third party — human or agent — can
 verify without rerunning the computation.</p>
 </section>
-<section id="the-reproducibility-ladder">
-<h2>The reproducibility ladder<a class="headerlink" href="#the-reproducibility-ladder" title="Link to this heading"></a></h2>
+<section id="the-proof-ladder">
+<h2>The PROOF ladder<a class="headerlink" href="#the-proof-ladder" title="Link to this heading"></a></h2>
 <p>Reproducibility is not a binary. We distinguish five levels, each
-strictly harder than the last. The structure follows the pattern
+strictly harder than the last. The ladder is named for the five
+pillars a result must rest on to be trusted by someone who was not
+there: <strong>P</strong>rovenance, <strong>R</strong>eproducibility, <strong>O</strong>penness,
+<strong>O</strong>versight, <strong>F</strong>alsifiability. The structure follows the pattern
 used in other trust-across-boundaries domains: SLSA in software
 supply-chain security, evidence-based medicine hierarchies, NIST
 metrological traceability, art-world provenance. At each level we
@@ -201,11 +204,19 @@ this tooling exists in the
 <a class="reference external" href="https://reproducible-builds.org/">reproducible-builds</a> community;
 vaibify’s role is to package it for working scientists.</p>
 </section>
-<section id="l4-archived">
-<h3>L4 — Archived<a class="headerlink" href="#l4-archived" title="Link to this heading"></a></h3>
+<section id="l4-traceable">
+<h3>L4 — Traceable<a class="headerlink" href="#l4-traceable" title="Link to this heading"></a></h3>
 <p>Every external input is recorded with <code class="docutils literal notranslate"><span class="pre">(source</span> <span class="pre">URL,</span> <span class="pre">fetch</span> <span class="pre">timestamp,</span> <span class="pre">content</span> <span class="pre">hash)</span></code> in a committed manifest. Re-fetching the URL produces
 a matching hash; archival services (Zenodo, Software Heritage, Wayback
 Machine) hold snapshots in case the source disappears.</p>
+<p>The rung is named for the unbroken chain, not the copies that back it
+up: what L4 adds is metrological <em>traceability</em> — every input is
+followed back to a documented origin, the same relation that anchors a
+measurement to a reference standard or a painting to its provenance.
+L3 proves you can regenerate the outputs; L4 proves you can vouch for
+what went in. (It was called “Archived” until 2026-08, which named a
+mechanism rather than the claim, and named one that L2 already uses:
+a Zenodo DOI is a publication authority there.)</p>
 <ul class="simple">
 <li><p><strong>Proves</strong>: the full causal chain from raw observation to published
 plot is tamper-evident.</p></li>

@@ -62,8 +62,8 @@ _LIST_CATEGORY_KEYS = (
 __all__ = [
     "fdictCollectOutputPathsByStep",
     "fdictCollectInputPathsByStep",
-    "fnCollectScriptPathsByStep",
-    "fnCollectMarkerPathsByStep",
+    "fdictHandleCollectScriptPathsByStep",
+    "fdictHandleCollectMarkerPathsByStep",
     "fsMarkerNameFromStepDirectory",
     "fsWorkflowSlugFromPath",
     "fbReconcileUpstreamFlags",
@@ -72,7 +72,7 @@ __all__ = [
     "fbStepTimingClean",
     "fbStepUserApproved",
     "flistStepRemoteFiles",
-    "fnMaybeAutoArchive",
+    "fbMaybeAutoArchive",
 ]
 
 def fsMarkerNameFromStepDirectory(sStepDirectory):
@@ -96,7 +96,7 @@ def fsWorkflowSlugFromPath(sWorkflowPath):
     return sBase
 
 
-def fnCollectMarkerPathsByStep(
+def fdictHandleCollectMarkerPathsByStep(
     dictWorkflow, sProjectRepoPath, sWorkflowPath,
 ):
     """Return {iStepIndex: sMarkerPath} for each step with a directory.
@@ -138,7 +138,7 @@ _T_DATA_SCRIPT_KEYS = ("saDataCommands", "saSetupCommands", "saCommands")
 _T_PLOT_SCRIPT_KEYS = ("saPlotCommands",)
 
 
-def fnCollectScriptPathsByStep(dictWorkflow):
+def fdictHandleCollectScriptPathsByStep(dictWorkflow):
     """Return {iStepIndex: {"data": [paths...], "plot": [paths...]}}."""
     dictResult = {}
     for iIndex, dictStep in enumerate(
@@ -260,7 +260,7 @@ def _fbPipelineIsRunning(dictCtx, sContainerId):
     Raw read — does not reconcile a vanished runner. Async callers
     must resolve liveness via ``pipelineState.fdictReadReconciledState``
     and pass the resulting boolean down through
-    ``_flistDetectAndInvalidate``; this helper survives as the sync
+    ``_fdictDetectAndInvalidate``; this helper survives as the sync
     fallback for code paths (and tests) that don't have an event loop
     on hand.
     """
@@ -1016,7 +1016,7 @@ def _fnAppendUserStale(listStale, listBuckets, iEpoch, dictModTimes):
         ), "user", sCategory)
 
 
-def _fbStepIsPencilStale(
+def _ftStepIsPencilStale(
     dictStep, dictStepScripts, listStepOutputPaths, dictModTimes,
     iMarkerMtime=None, setResolvedPlotPaths=None,
     listStepInputPaths=None,
@@ -1050,7 +1050,7 @@ def _fdictBuildArtifactBuckets(
     setResolvedPlotPaths, listStepInputPaths=None,
 ):
     """Return {category: [paths]} for each artifact bucket."""
-    listDataFiles, listPlotFiles = _flistSplitOutputPaths(
+    listDataFiles, listPlotFiles = _ftSplitOutputPaths(
         dictStep, listStepOutputPaths, setResolvedPlotPaths,
     )
     return {
@@ -1068,7 +1068,7 @@ def _fbPathIsPlot(sPath, setResolvedPlotPaths, bByBasename):
     return sKey in setResolvedPlotPaths
 
 
-def _flistSplitOutputPaths(
+def _ftSplitOutputPaths(
     dictStep, listOutputPaths, setResolvedPlotPaths=None,
 ):
     """Split a step's output-path list into (data_files, plot_files)."""
@@ -1097,7 +1097,7 @@ def _fdictBuildStepStatusEntry(
 ):
     """Compute {sStatus, listStaleArtifacts} for a single step.
 
-    The mtime-based verdict (``_fbStepIsPencilStale``) is the source
+    The mtime-based verdict (``_ftStepIsPencilStale``) is the source
     of "may be stale". The optional manifest short-circuit refines it
     to "is/isn't actually drifted": if the project repo carries a
     ``MANIFEST.sha256`` that matches every output of this step, an
@@ -1109,7 +1109,7 @@ def _fdictBuildStepStatusEntry(
         sResolved for sResolved, _sBase
         in _flistResolvePlotPaths(dictStep, dictResolvedVars)
     }
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictStepScripts, listOutputs, dictModTimes,
         iMarkerMtime=iMarkerMtime,
         setResolvedPlotPaths=setPlotPaths,
@@ -1216,7 +1216,7 @@ def _fdictBuildScriptStatus(
     manifest short-circuit reads container truth instead of probing
     the host filesystem at a container path.
     """
-    dictScriptsByStep = fnCollectScriptPathsByStep(dictWorkflow)
+    dictScriptsByStep = fdictHandleCollectScriptPathsByStep(dictWorkflow)
     dictOutputsByStep = fdictCollectOutputPathsByStep(
         dictWorkflow, dictVars,
     )
@@ -1428,7 +1428,7 @@ def _fdictUnionChangedFiles(dictMtimeChanged, dictHashStaleAbs):
     return dictResult
 
 
-def _flistDetectAndInvalidate(
+def _fdictDetectAndInvalidate(
     dictCtx, sContainerId, dictWorkflow, dictNewModTimes,
     dictVars=None, dictMarkersByStep=None, dictCache=None,
     bPipelineRunning=None,
@@ -1622,7 +1622,7 @@ def _flistEvictAbsentKeys(dictAll, setKeysToKeep):
 # Authoritative list of every container-id-keyed dict that lives on
 # the shared ``dictCtx`` and grows once per container forever unless
 # swept. Two side effects:
-#   1. ``fnSweepAllContainerCaches`` iterates this list to evict stale
+#   1. ``fsetSweepAllContainerCaches`` iterates this list to evict stale
 #      keys from each dict in lockstep with the running-container set.
 #   2. ``fdictBuildContext`` in ``pipelineServer`` initializes most of
 #      these keys eagerly. ``dictManifestShaCache`` is the exception:
@@ -1650,7 +1650,7 @@ _LIST_CONTAINER_KEYED_CACHES = (
 )
 
 
-def fnSweepAllContainerCaches(dictCtx, listRunningContainers):
+def fsetSweepAllContainerCaches(dictCtx, listRunningContainers):
     """Fan eviction across every per-container cache vaibify keeps.
 
     Without one coordinator the docker-substrate cache, the state-lock
@@ -1837,7 +1837,7 @@ def flistStepRemoteFiles(dictWorkflow, iStepIndex, sService):
     return listResult
 
 
-def _fnPushOverleafForAutoArchive(
+def _fbPushOverleafForAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, listFiles,
 ):
     """Push files to Overleaf for the auto-archive flow."""
@@ -1861,7 +1861,7 @@ def _fnPushOverleafForAutoArchive(
     return True
 
 
-def _fnArchiveZenodoForAutoArchive(
+def _fbArchiveZenodoForAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, listFiles,
 ):
     """Archive files to Zenodo for the auto-archive flow."""
@@ -1906,9 +1906,9 @@ def _fnPersistAutoArchiveZenodoDigests(
         workflowManager.fnUpdateZenodoDigests(
             dictWorkflow, dictDigests, sZenodoService=sZenodoService,
         )
-    except Exception as exc:
+    except Exception as errorCaught:
         logging.getLogger("vaibify").warning(
-            "Auto Archive: Zenodo digest stamp failed: %s", exc,
+            "Auto Archive: Zenodo digest stamp failed: %s", errorCaught,
         )
 
 
@@ -2024,7 +2024,7 @@ def _fbDispatchOverleafAutoPush(
     if not listOverleaf:
         return False
     try:
-        return _fnPushOverleafForAutoArchive(
+        return _fbPushOverleafForAutoArchive(
             connectionDocker, sContainerId, dictWorkflow, listOverleaf,
         )
     except Exception as error:
@@ -2048,7 +2048,7 @@ def _fbDispatchZenodoAutoArchive(
     if not listZenodo:
         return False
     try:
-        return _fnArchiveZenodoForAutoArchive(
+        return _fbArchiveZenodoForAutoArchive(
             connectionDocker, sContainerId, dictWorkflow, listZenodo,
         )
     except Exception as error:
@@ -2059,9 +2059,9 @@ def _fbDispatchZenodoAutoArchive(
         return False
 
 
-def fnMaybeAutoArchive(
+def fbMaybeAutoArchive(
     connectionDocker, sContainerId, dictWorkflow, iStepIndex,
-    iAICSLevelBefore,
+    iProofLevelBefore,
 ):
     """Push step's tracked files to Overleaf/Zenodo on L1 transition.
 
@@ -2072,7 +2072,7 @@ def fnMaybeAutoArchive(
     in a thread that cannot await.
 
     Fires only when this step's transition promoted the workflow to
-    ``iAICSLevel >= 1`` (was below 1, is now at or above) AND the
+    ``iProofLevel >= 1`` (was below 1, is now at or above) AND the
     workflow's bAutoArchive setting is True. Pushes never block the
     caller: failures are logged and the manual sync UI remains the
     recovery path. Returns True when at least one remote was pushed
@@ -2084,12 +2084,12 @@ def fnMaybeAutoArchive(
     independently of bAutoArchive so the local repo's manifest always
     reflects the latest fully-verified state.
     """
-    from vaibify.reproducibility.levelGates import fiAICSLevel
+    from vaibify.reproducibility.levelGates import fiProofLevel
     filesRepo = _ffilesForWorkflowRepo(
         dictWorkflow, connectionDocker, sContainerId,
     )
-    iLevelNow = fiAICSLevel(dictWorkflow, filesRepo)
-    bPromoted = iAICSLevelBefore < 1 <= iLevelNow
+    iLevelNow = fiProofLevel(dictWorkflow, filesRepo)
+    bPromoted = iProofLevelBefore < 1 <= iLevelNow
     _fnDispatchEnvelopeRefreshIfPromoted(
         dictWorkflow, sContainerId, bPromoted, connectionDocker,
     )

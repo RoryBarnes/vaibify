@@ -274,13 +274,13 @@ def fdictRevokeGitHubToken(sKeyringSlot=""):
 def _ftRevokeGitHubUpstream():
     """Best-effort ``gh auth logout`` for the github.com host."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["gh", "auth", "logout", "--hostname", "github.com"],
             capture_output=True, text=True, timeout=10,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return (False, "gh CLI unavailable; upstream not revoked.")
-    if resultProcess.returncode == 0:
+    if processResult.returncode == 0:
         return (True, "gh logout for github.com succeeded.")
     return (
         False,

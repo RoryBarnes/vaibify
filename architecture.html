@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.1.dev857 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.1.dev882 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=472d5590"></script>
+      <script src="_static/documentation_options.js?v=a339d299"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -94,7 +94,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#dependency-graph">Dependency graph</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#re-export-pattern">Re-export pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification-state-machine">Verification state machine</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#two-aics-level-truth-systems">Two AICS-level truth systems</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#two-proof-level-truth-systems">Two PROOF-level truth systems</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-replay-axis-ai-provenance">The Replay axis (AI provenance)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#javascript-frontend">JavaScript frontend</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#foundation-modules-loaded-first">Foundation modules (loaded first)</a></li>
@@ -248,7 +248,7 @@ The click was registered by the delegated handlers in
 the singleton in <code class="docutils literal notranslate"><span class="pre">scriptWebSocket.js</span></code> that owns the connection to the
 backend. The payload is <code class="docutils literal notranslate"><span class="pre">{sAction:</span> <span class="pre">&quot;runAll&quot;}</span></code>.</p></li>
 <li><p>On the backend, the WebSocket handler in <code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code>
-dispatches actions to <code class="docutils literal notranslate"><span class="pre">pipelineRunner.fnRunAllSteps()</span></code>. The runner
+dispatches actions to <code class="docutils literal notranslate"><span class="pre">pipelineRunner.fiRunAllSteps()</span></code>. The runner
 validates the project (via <code class="docutils literal notranslate"><span class="pre">pipelineValidator</span></code>), opens a log file
 (via <code class="docutils literal notranslate"><span class="pre">pipelineLogger</span></code>), and walks the step list.</p></li>
 <li><p>For each step, the runner executes the step’s command inside the
@@ -273,7 +273,7 @@ output files and degrades stale verifications.</p></li>
   <span class="o">-&gt;</span> <span class="n">VaibifyPipelineRunner</span><span class="o">.</span><span class="n">fnRunAll</span><span class="p">()</span>
   <span class="o">-&gt;</span> <span class="n">VaibifyWebSocket</span><span class="o">.</span><span class="n">fnSend</span><span class="p">({</span><span class="n">sAction</span><span class="p">:</span> <span class="s2">&quot;runAll&quot;</span><span class="p">})</span>
   <span class="o">-&gt;</span> <span class="n">Backend</span><span class="p">:</span> <span class="n">pipelineServer</span> <span class="n">WebSocket</span> <span class="n">handler</span>
-  <span class="o">-&gt;</span> <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">fnRunAllSteps</span><span class="p">()</span>
+  <span class="o">-&gt;</span> <span class="n">pipelineRunner</span><span class="o">.</span><span class="n">fiRunAllSteps</span><span class="p">()</span>
   <span class="o">-&gt;</span> <span class="n">For</span> <span class="n">each</span> <span class="n">step</span><span class="p">:</span> <span class="n">backend</span> <span class="n">emits</span> <span class="n">stepStarted</span><span class="p">,</span> <span class="n">output</span><span class="p">,</span> <span class="n">stepPass</span> <span class="ow">or</span>
      <span class="n">stepFail</span> <span class="n">via</span> <span class="n">WebSocket</span>
   <span class="o">-&gt;</span> <span class="n">Frontend</span><span class="p">:</span> <span class="n">VaibifyWebSocket</span> <span class="n">dispatches</span> <span class="n">to</span> <span class="n">registered</span> <span class="n">handlers</span>
@@ -415,7 +415,7 @@ files to host, browse host directories, and sync to GitHub possible at
 all. The cost is that path traversal is a live concern: any path that
 originates from an HTTP request body, a <code class="docutils literal notranslate"><span class="pre">project.json</span></code> field, or a
 config file must be validated against its intended root before the
-backend opens it. <code class="docutils literal notranslate"><span class="pre">fnValidatePathWithinRoot(sAbsPath,</span> <span class="pre">WORKSPACE_ROOT)</span></code>
+backend opens it. <code class="docutils literal notranslate"><span class="pre">fsValidatePathWithinRoot(sAbsPath,</span> <span class="pre">WORKSPACE_ROOT)</span></code>
 in <code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code> is the canonical guard; the trap list in
 <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">AGENTS.md</a> flags this explicitly.</p>
 <p><strong>Docker containers, not Python-level sandboxing.</strong> Vaibify does not
@@ -612,7 +612,7 @@ replaying a <em>copied lease value</em> is refused, because connect would take
 over the workflow and the container’s agent session, and release would
 drop the owner record. Connect enforces this in
 <code class="docutils literal notranslate"><span class="pre">workflowRoutes._fnRequireOwningLeaseForConnect</span></code>; release enforces it in
-<code class="docutils literal notranslate"><span class="pre">containerOwnership.fnReleaseOwnership</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">containerOwnership.fbReleaseOwnership</span></code>.</p>
 <p>The name-keyed container-lifecycle routes — <code class="docutils literal notranslate"><span class="pre">start</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span></code>, <code class="docutils literal notranslate"><span class="pre">build</span></code>,
 <code class="docutils literal notranslate"><span class="pre">settings</span></code>, and the ownership-<em>establishing</em> <code class="docutils literal notranslate"><span class="pre">claim</span></code> — are classified
 <code class="docutils literal notranslate"><span class="pre">browser-hub</span></code> in <code class="docutils literal notranslate"><span class="pre">routeScope.DICT_CONTROL_PLANE_SCOPES</span></code> and are <strong>not</strong>
@@ -687,7 +687,7 @@ see “PID-reuse-proof staleness” below;
 </section>
 <section id="claim-arbitration">
 <h3>Claim arbitration<a class="headerlink" href="#claim-arbitration" title="Link to this heading"></a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">containerOwnership.ftdictClaim</span></code> replaces the old short-circuit (the
+<p><code class="docutils literal notranslate"><span class="pre">containerOwnership.ftClaim</span></code> replaces the old short-circuit (the
 pre-refactor claim returned <code class="docutils literal notranslate"><span class="pre">bClaimed:</span> <span class="pre">True</span></code> whenever the container was
 already locked, silently admitting a second same-hub tab). The arbiter
 now has three outcomes:</p>
@@ -813,7 +813,7 @@ in the request path; a request that names no container fails closed.</p>
 <h3><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised<a class="headerlink" href="#bagentsafe-is-enforced-not-advertised" title="Link to this heading"></a></h3>
 <p>Authorizing the agent lane answers <em>which container</em> an agent may act
 on. It does not answer <em>what it may do there</em>, and for a long time
-nothing did. <code class="docutils literal notranslate"><span class="pre">fnAgentAction</span></code> attaches a name to a handler and changes
+nothing did. <code class="docutils literal notranslate"><span class="pre">ffnAgentAction</span></code> attaches a name to a handler and changes
 no behaviour; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was consumed only by <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/vaibifyDo.py</span></code>
 <strong>inside</strong> the container, which an agent bypasses with <code class="docutils literal notranslate"><span class="pre">curl</span></code>. Every
 route the catalog marked researcher-only — <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>,
@@ -988,7 +988,7 @@ worker holds the drain is refused at dispatch and told which operation
 holds it, rather than queued behind it – and that refusal deliberately
 does not offer the Kill button, because Kill stops a pipeline action
 and does nothing to a carrier worker.</p>
-<p><strong>A declaration authorizes nothing.</strong> <code class="docutils literal notranslate"><span class="pre">routeScope.fnDeclareCarrierMode</span></code>
+<p><strong>A declaration authorizes nothing.</strong> <code class="docutils literal notranslate"><span class="pre">routeScope.ffnDeclareCarrierMode</span></code>
 stamps intent from a closed set (<code class="docutils literal notranslate"><span class="pre">typed-read</span></code>, <code class="docutils literal notranslate"><span class="pre">mode-a-synchronous</span></code>,
 <code class="docutils literal notranslate"><span class="pre">mode-b-lock-held</span></code>, <code class="docutils literal notranslate"><span class="pre">mode-c-durable</span></code>, <code class="docutils literal notranslate"><span class="pre">lifecycle-transaction</span></code>,
 <code class="docutils literal notranslate"><span class="pre">separate-authority</span></code>); a route may carry several, because a handler
@@ -1018,7 +1018,7 @@ half-finished write still poisons, correctly: nobody knows what state
 it left behind. Deciding which is which is done by reading the
 failure paths, never by inferring from the shape.</p>
 <p><strong>A typed read is exempt only inside its adapter.</strong>
-<code class="docutils literal notranslate"><span class="pre">DockerConnection._texecRunTypedRead</span></code> is the single grant point. It
+<code class="docutils literal notranslate"><span class="pre">DockerConnection._ftRunTypedRead</span></code> is the single grant point. It
 takes an operation name from a fixed table plus a path or a flat
 sequence of paths, and BUILDS the command; it never accepts one. That
 distinction is what keeps the carve-out from becoming a general bypass.</p>
@@ -1087,8 +1087,8 @@ list and each module’s public API.</p>
 <p>These carry the core execution logic:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineRunner.py</span></code> — pipeline step execution orchestrator. Public
-API: <code class="docutils literal notranslate"><span class="pre">fnRunAllSteps</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunFromStep</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunSelectedSteps</span></code>,
-<code class="docutils literal notranslate"><span class="pre">fnVerifyOnly</span></code>, <code class="docutils literal notranslate"><span class="pre">fnRunAllTests</span></code>.</p></li>
+API: <code class="docutils literal notranslate"><span class="pre">fiRunAllSteps</span></code>, <code class="docutils literal notranslate"><span class="pre">fiRunFromStep</span></code>, <code class="docutils literal notranslate"><span class="pre">fiRunSelectedSteps</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fiVerifyOnly</span></code>, <code class="docutils literal notranslate"><span class="pre">fiRunAllTests</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">pipelineUtils.py</span></code> — deliberate leaf module with zero intra-package
 imports. Contains <code class="docutils literal notranslate"><span class="pre">fsShellQuote</span></code> and all <code class="docutils literal notranslate"><span class="pre">_fnEmit*</span></code> event helpers.
 Exists to break circular import cycles. Do not add imports from
@@ -1233,19 +1233,19 @@ results.</p></li>
 guarantee: the GUI must always reflect the true state of the project.
 See the relevant trap in <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md">../AGENTS.md</a>.</p>
 </section>
-<section id="two-aics-level-truth-systems">
-<h2>Two AICS-level truth systems<a class="headerlink" href="#two-aics-level-truth-systems" title="Link to this heading"></a></h2>
-<p>The backend computes the reproducibility ladder (AICS L1–L3) in two
+<section id="two-proof-level-truth-systems">
+<h2>Two PROOF-level truth systems<a class="headerlink" href="#two-proof-level-truth-systems" title="Link to this heading"></a></h2>
+<p>The backend computes the reproducibility ladder (PROOF L1–L3) in two
 deliberately different shapes, and misreading one as the other is the
 most likely way to misjudge the dashboard:</p>
 <ol class="arabic simple">
-<li><p><strong>The scalar aggregate</strong> — <code class="docutils literal notranslate"><span class="pre">levelGates.fiAICSLevel</span></code> /
+<li><p><strong>The scalar aggregate</strong> — <code class="docutils literal notranslate"><span class="pre">levelGates.fiProofLevel</span></code> /
 <code class="docutils literal notranslate"><span class="pre">fbAtLeastLevelN</span></code>. Strictly additive over the whole project: L1
 requires every step’s L1 blockers clear, L2 requires L1, L3
 requires L2. This is “what level is this project at,” and it is
-what the AICS chip in the dashboard header renders. (Historical
+what the PROOF chip in the dashboard header renders. (Historical
 note: an early boolean <code class="docutils literal notranslate"><span class="pre">bVaibified</span></code> predated the ladder and meant
-what <code class="docutils literal notranslate"><span class="pre">fiAICSLevel</span> <span class="pre">&gt;=</span> <span class="pre">1</span></code> means now; the v4 project migration drops
+what <code class="docutils literal notranslate"><span class="pre">fiProofLevel</span> <span class="pre">&gt;=</span> <span class="pre">1</span></code> means now; the v4 project migration drops
 the key on load, which is the excision mechanism — do not remove
 the migration.)</p></li>
 <li><p><strong>The independent cell projections</strong> —
@@ -1287,7 +1287,7 @@ below “none” on the ladder and never stamps a high-water mark.</p>
 </section>
 <section id="the-replay-axis-ai-provenance">
 <h2>The Replay axis (AI provenance)<a class="headerlink" href="#the-replay-axis-ai-provenance" title="Link to this heading"></a></h2>
-<p>The AICS ladder measures the state of the artifact; the Replay axis
+<p>The PROOF ladder measures the state of the artifact; the Replay axis
 measures the provenance of the process — which AI models did the
 work, under what standing instructions, and whether the development
 dialogue is preserved. States, each requiring the ones below it:

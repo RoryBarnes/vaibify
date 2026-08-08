@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.1.dev857 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.1.dev882 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=472d5590"></script>
+      <script src="_static/documentation_options.js?v=a339d299"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -75,7 +75,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#per-file-remote-badges">Per-file remote badges</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#the-aics-tab">The AICS tab</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-proof-tab">The PROOF tab</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-help-panel">The Help panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification">Verification</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-and-remote-sync">Publishing and remote sync</a><ul>
@@ -138,14 +138,14 @@
 <p>The dashboard is what you arrive at after the <a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a>:
 the running container’s control surface, in your browser. It is where
 you run pipeline steps, inspect outputs, attest that you have looked at
-them, climb the AICS reproducibility ladder, push results to GitHub or
+them, climb the PROOF reproducibility ladder, push results to GitHub or
 Overleaf, and (optionally) let an AI coding agent work alongside you.</p>
 <p>This page is a tour of every panel.</p>
 <section id="layout">
 <h2>Layout<a class="headerlink" href="#layout" title="Link to this heading"></a></h2>
 <p>The dashboard has a fixed layout:</p>
 <ul class="simple">
-<li><p><strong>Top toolbar</strong> — container name, active project, the three AICS
+<li><p><strong>Top toolbar</strong> — container name, active project, the three PROOF
 level badges, the <strong>?</strong> Help button, and the Run, Sync, View, and
 Admin menus. <strong>View → Resource Monitor</strong> opens a small on-demand
 panel with live CPU and memory sparklines and the container’s disk
@@ -153,14 +153,14 @@ usage (with a warning banner when the disk is nearly full); when a
 reading is unavailable — Docker unreachable, container stopped —
 the panel says so rather than showing a stale number.</p></li>
 <li><p><strong>Left panel</strong> — a tabbed panel. For projects with a <code class="docutils literal notranslate"><span class="pre">project.json</span></code>
-the tabs are <strong>Main</strong>, <strong>AICS</strong>, <strong>Files</strong>, and <strong>Logs</strong>; for sandbox
+the tabs are <strong>Main</strong>, <strong>PROOF</strong>, <strong>Files</strong>, and <strong>Logs</strong>; for sandbox
 and toolkit projects (no <code class="docutils literal notranslate"><span class="pre">project.json</span></code>) they are <strong>Files</strong>, <strong>Repos</strong>,
 and <strong>Logs</strong>.</p></li>
 <li><p><strong>Top panels</strong> — Two “Viewing Windows” to display plots and files.</p></li>
 <li><p><strong>Bottom panel(s)</strong> — Terminal window(s)/tab(s) for work inside the
 container.</p></li>
 </ul>
-<p>Beside the project name, three copies of the vaibify badge mark AICS
+<p>Beside the project name, three copies of the vaibify badge mark PROOF
 Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
 when the project attains that level, and the whole dashboard theme
 shifts colour with the highest level attained: pale blue before Level
@@ -218,7 +218,7 @@ see <a class="reference internal" href="#agent-actions">Agent actions</a> below.
 <p>The Repos panel is the home tab for sandbox and toolkit projects (the
 templates without a <code class="docutils literal notranslate"><span class="pre">project.json</span></code>). In a project the tab is
 hidden, but the panel is one click away: every “Open the Repos panel”
-link in the Main tab’s Project block and on the AICS tab lands there.
+link in the Main tab’s Project block and on the PROOF tab lands there.
 It lists the git repositories inside the container with their branch,
 dirty status, and push controls.</p>
 <p>When you first open a container, repositories already present in the
@@ -707,9 +707,9 @@ Overleaf, Zenodo, arXiv), tinted by that remote’s state:</p>
 rows list figure files only.</p>
 </section>
 </section>
-<section id="the-aics-tab">
-<h2>The AICS tab<a class="headerlink" href="#the-aics-tab" title="Link to this heading"></a></h2>
-<p>The AICS tab is the requirements ledger for the reproducibility
+<section id="the-proof-tab">
+<h2>The PROOF tab<a class="headerlink" href="#the-proof-tab" title="Link to this heading"></a></h2>
+<p>The PROOF tab is the requirements ledger for the reproducibility
 ladder. A header card names the project’s current level (for
 example, “Level 1: Self-Consistent”) with a clickable progression
 strip, followed by three expandable sections — <strong>Level 1 —
@@ -763,7 +763,7 @@ shell inside the container (<code class="docutils literal notranslate"><span cla
 why skipping per-command permission prompts is the intended, safe
 mode inside the sandbox: the container isolates the agent from
 your host, every edit is tracked in git and hash-pinned, and a
-full rebuild ultimately checks the analysis — the AICS Level 3
+full rebuild ultimately checks the analysis — the PROOF Level 3
 posture.</p></li>
 <li><p>The <strong>Legend</strong> — the symbol key, in four divisions matching the
 dashboard’s surfaces: <strong>Steps</strong> (run checkbox, run light, warning
@@ -775,7 +775,7 @@ per-file badges and red file-name styles).</p></li>
 <p>The legend is generated from the same catalog the dashboard renders
 from, so it cannot drift from the glyphs you actually see. Status
 itself is deliberately <em>not</em> in the panel — status lives on the
-banners and the AICS tab.</p>
+banners and the PROOF tab.</p>
 </section>
 <section id="verification">
 <h2>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h2>
@@ -939,9 +939,9 @@ saying so in the task prompt.</p></li>
 e-print TeX source instead of the PDF (far fewer tokens, and figure
 captions arrive as searchable text), read selectively, record the
 version read, and fall back to the PDF only when no source exists.</p></li>
-<li><p><strong>aics-ladder</strong> — the ordered L1→L2→L3 walkthrough for raising or
+<li><p><strong>proof-ladder</strong> — the ordered L1→L2→L3 walkthrough for raising or
 auditing a project’s reproducibility level, with the known audit
-traps codified (<code class="docutils literal notranslate"><span class="pre">iAICSLevel</span></code> is the only authoritative signal;
+traps codified (<code class="docutils literal notranslate"><span class="pre">iProofLevel</span></code> is the only authoritative signal;
 marker hashes are git blob SHA-1s; publication is user-only).</p></li>
 <li><p><strong>create-pipeline-step</strong> — the five-phase protocol for authoring a
 fully wired step, centred on the <code class="docutils literal notranslate"><span class="pre">{StepNN.varname}</span></code> cross-step

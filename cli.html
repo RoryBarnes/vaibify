@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.1.dev857 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.1.dev882 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=472d5590"></script>
+      <script src="_static/documentation_options.js?v=a339d299"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -428,9 +428,9 @@ remove it with <code class="docutils literal notranslate"><span class="pre">dock
 <section id="vaibify-status">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">status</span></code><a class="headerlink" href="#vaibify-status" title="Link to this heading"></a></h3>
 <p>Report the state of the container, image, and workspace volume — and,
-on request, the project’s AICS level and everything blocking the next
+on request, the project’s PROOF level and everything blocking the next
 one.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--aics<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--proof<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -440,11 +440,11 @@ one.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--aics</span></code></p></td>
-<td><p>Also print the AICS level and its blockers</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--proof</span></code></p></td>
+<td><p>Also print the PROOF level and its blockers</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
-<td><p>Emit environment and AICS status as one JSON object</p></td>
+<td><p>Emit environment and PROOF status as one JSON object</p></td>
 </tr>
 </tbody>
 </table>
@@ -452,7 +452,7 @@ one.</p>
 renders, read straight from the container, so no browser and no running
 hub is needed:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;import json,sys; print(json.load(sys.stdin)[&#39;dictAics&#39;][&#39;iAICSLevel&#39;])&quot;</span>
+<span class="w">  </span><span class="s2">&quot;import json,sys; print(json.load(sys.stdin)[&#39;dictProof&#39;][&#39;iProofLevel&#39;])&quot;</span>
 </pre></div>
 </div>
 <p>One criterion is honestly absent. The dashboard polls file modification
@@ -721,7 +721,7 @@ vaibify<span class="w"> </span>generate-standards<span class="w"> </span>--workf
 <h2>Reproducibility<a class="headerlink" href="#reproducibility" title="Link to this heading"></a></h2>
 <section id="vaibify-reproduce">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code><a class="headerlink" href="#vaibify-reproduce" title="Link to this heading"></a></h3>
-<p>Verify a project’s AICS L3 reproducibility envelope: manifest
+<p>Verify a project’s PROOF L3 reproducibility envelope: manifest
 integrity, hash-pinned dependency install, pinned container image,
 the seven L3 artifact-coherence checks, and — with <code class="docutils literal notranslate"><span class="pre">--rerun</span></code> — a full
 re-run of the workflow with a post-run hash compare and an L3
@@ -960,7 +960,7 @@ sections below describe intended behaviour only.</p>
 publishing machinery was “already available” through one; it never
 existed, and <code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/githubWorkflow.py</span></code> — the GitHub
 Actions generator behind that claim — has no caller anywhere in the
-product. Zenodo archiving is real and reachable, but through the AICS
+product. Zenodo archiving is real and reachable, but through the PROOF
 Level 2 workflow in the dashboard, not a publish pane.</p>
 <section id="vaibify-publish-workflow-coming-soon">
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> <em>(coming soon)</em><a class="headerlink" href="#vaibify-publish-workflow-coming-soon" title="Link to this heading"></a></h3>
