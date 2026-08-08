@@ -78,7 +78,7 @@ def _fdictBuildApplicationContext(app, dictConfig, sSessionToken):
     """Build the route context and wire shared identifiers onto it."""
     from . import pipelineServer
     dictCtx = pipelineServer.fdictBuildContext(
-        pipelineServer._fconnectionCreateDocker(),
+        pipelineServer.fconnectionBuildRouted(),
     )
     dictCtx["sSessionToken"] = sSessionToken
     dictCtx["sTerminalUser"] = dictConfig["sTerminalUser"]

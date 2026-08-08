@@ -1,6 +1,6 @@
 {
-  "iAcquisitionCount": 61,
-  "iRowCount": 314,
+  "iAcquisitionCount": 62,
+  "iRowCount": 326,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -407,6 +407,19 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
+      "iLine": 167,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "reflection-call",
+      "sCapability": "reflection",
+      "sCapabilityName": "getattr(dynamic)",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The router's Docker-only tail delegation: __getattr__ forwards an attribute READ to the Docker leg verbatim, raising the typed DockerLegUnavailableError when no leg exists. It mints no authority: the delegated methods are DockerConnection's own, each carrying its own admission gates, and the resource-routed surface is twelve explicit methods above it, not this fallback.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "45e2af14fee8a79c",
+      "sScope": "__getattr__",
+      "sScopeFingerprint": "b8aaab6dde0be2b1"
+    },
+    {
       "iLine": 28,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -459,7 +472,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2224,
+      "iLine": 2230,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -472,7 +485,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2219,
+      "iLine": 2225,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -485,7 +498,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 692,
+      "iLine": 698,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -498,7 +511,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 687,
+      "iLine": 693,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -511,7 +524,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 1160,
+      "iLine": 1169,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -524,7 +537,7 @@
       "sScopeFingerprint": "8af36da422b672dd"
     },
     {
-      "iLine": 1197,
+      "iLine": 1206,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -537,7 +550,7 @@
       "sScopeFingerprint": "d012680a30c7b6d4"
     },
     {
-      "iLine": 628,
+      "iLine": 634,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -550,7 +563,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 625,
+      "iLine": 631,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -563,7 +576,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 658,
+      "iLine": 664,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -2720,6 +2733,342 @@
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "24beb50dfcd7301d",
+      "sFunction": "fbContainerPathIsDirectory",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fbContainerPathIsDirectory",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "c7d589584f4c77fd",
+      "sFunction": "fbContainerPathIsFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fbContainerPathIsFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "4da81a24b7a7baab",
+      "sFunction": "fbaFetchFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "d9c0afd640e0b518",
+      "sFunction": "fdictReadFilesystemUsage",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fdictReadFilesystemUsage",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "b0b29ae1212023e4",
+      "sFunction": "fiterStreamFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fiterStreamFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "5b4d327b479bb2b4",
+      "sFunction": "flistContainerPathsExist",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "flistContainerPathsExist",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "cf8eb6112b3dc39a",
+      "sFunction": "flistDirectoryEntries",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "flistDirectoryEntries",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "e56c110d29b74073",
+      "sFunction": "fnWriteFileViaTar",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fnWriteFileViaTar",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "archive-write",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "4066083a1efbdbdd",
+      "sFunction": "fnWriteFile",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "e7242e38c9fd9b56",
+      "sFunction": "ftResultExecuteCommand",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "ftResultExecuteCommand",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "86d7baad5e255a7d",
+      "sFunction": "ftRunInContainerStreamedWithChunks",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "ftRunInContainerStreamedWithChunks",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "e3200e1cf6d74318",
+      "sFunction": "ftRunInContainerStreamed",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {

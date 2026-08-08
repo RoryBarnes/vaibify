@@ -70,6 +70,11 @@
       "sRationale": "The introspection-script runner has a host implementation specified in the plan.",
       "sSupportingSymbols": "_fsRunIntrospection, sScriptPath"
     },
+    "4ceb26ba8d9ac42d1116f77a6d222705a2800f860b4956b6877e4be3651b8940": {
+      "sDisposition": "host-variant",
+      "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.",
+      "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
+    },
     "53000c9137848d404188467861c4fb5e86a9061f66fbe511e43f5c9883e1e718": {
       "sDisposition": "host-variant",
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
@@ -260,6 +265,11 @@
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
       "sSupportingSymbols": "ftResultGitRemoveCachedInContainer, sCommand"
     },
+    "c0ac51736b26f000a12321e35bd4ef5092e850400968dd03f4ee4eb0f06bba3b": {
+      "sDisposition": "host-variant",
+      "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.",
+      "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
+    },
     "c610242fd0b06ccd70e000bcad2895135fe56a00577b25aa71633ba47dcd906d": {
       "sDisposition": "host-variant",
       "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
@@ -339,9 +349,14 @@
       "sDisposition": "host-variant",
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "ftResultGenerateDagSvg, sConvert"
+    },
+    "ff86645ad0f11e50a470acaa688a9d956bf82d1285041ac8872ee34c28948c97": {
+      "sDisposition": "host-variant",
+      "sRationale": "The router's explicit dispatch of one duck method to the leg the registry mode names -- pure delegation, no command of its own; both legs carry their own admission gates.",
+      "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     }
   },
-  "iRowCount": 135,
+  "iRowCount": 138,
   "iUndisposedSiteBudget": 67,
   "listRows": [
     {
@@ -406,6 +421,27 @@
       "sFingerprint": "6b505702e72b1420b67a2d63d4025e67b3da6308d005d25ab6813f33ca8633c8",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/conftestManager.py"
+    },
+    {
+      "sCommandExpression": "UNKNOWN",
+      "sEnclosingFunction": "ConnectionRouter.ftResultExecuteCommand",
+      "sFingerprint": "c0ac51736b26f000a12321e35bd4ef5092e850400968dd03f4ee4eb0f06bba3b",
+      "sMethod": "ftResultExecuteCommand",
+      "sModule": "vaibify/gui/connectionRouter.py"
+    },
+    {
+      "sCommandExpression": "UNKNOWN",
+      "sEnclosingFunction": "ConnectionRouter.ftRunInContainerStreamed",
+      "sFingerprint": "ff86645ad0f11e50a470acaa688a9d956bf82d1285041ac8872ee34c28948c97",
+      "sMethod": "ftRunInContainerStreamed",
+      "sModule": "vaibify/gui/connectionRouter.py"
+    },
+    {
+      "sCommandExpression": "UNKNOWN",
+      "sEnclosingFunction": "ConnectionRouter.ftRunInContainerStreamedWithChunks",
+      "sFingerprint": "4ceb26ba8d9ac42d1116f77a6d222705a2800f860b4956b6877e4be3651b8940",
+      "sMethod": "ftRunInContainerStreamedWithChunks",
+      "sModule": "vaibify/gui/connectionRouter.py"
     },
     {
       "sCommandExpression": "sCommand",

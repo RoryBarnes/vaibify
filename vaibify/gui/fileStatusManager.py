@@ -1951,7 +1951,10 @@ def _ffilesForWorkflowRepo(dictWorkflow, connectionDocker, sContainerId):
     dual-accept wraps it in a host adapter.
     """
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if connectionDocker is None or not sContainerId:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker) or not sContainerId:
         return sProjectRepoPath
     from vaibify.reproducibility.repoFiles import ContainerRepoFiles
     return ContainerRepoFiles(

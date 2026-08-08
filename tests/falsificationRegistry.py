@@ -7646,4 +7646,61 @@ def _fdictEntry(sRel):
             '            raise\n'
         ),
     ),
+
+    # --- Host-mode wave 2: the connection router, in symmetric pairs
+    # (2026-08-08). A dispatcher stuck at either leg is invisible to a
+    # suite that only proves one direction.
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestRouterDispatch::'
+            'test_host_project_routes_to_the_host_leg'
+        ),
+        source='vaibify/gui/connectionRouter.py',
+        # Stuck at Docker: the host branch vanishes and a host
+        # project's calls land on the Docker leg (the poison leg in
+        # the test raises on any touch).
+        old=(
+            '        if fbIsHostProject(sResourceId):\n'
+            '            return self.connectionHostLeg\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestRouterDispatch::'
+            'test_container_id_routes_to_the_docker_leg'
+        ),
+        source='vaibify/gui/connectionRouter.py',
+        # The symmetric twin, stuck at host: every resource reads as a
+        # host project and container calls land on the host leg.
+        old='        if fbIsHostProject(sResourceId):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestDockerReachablePredicate::'
+            'test_router_answers_for_its_docker_leg'
+        ),
+        source='vaibify/config/connectionAvailability.py',
+        # A predicate that stops asking the marker reports a leg-less
+        # router as reachable, and every daemon-down branch it guards
+        # silently dies -- the exact hazard the predicate exists for.
+        old='    return fnProbeLeg()\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConnectionRouter.py::TestRequireDockerHostBypass::'
+            'test_host_resource_needs_no_daemon'
+        ),
+        source='vaibify/gui/dockerStatus.py',
+        # Dropping the host bypass 503s every host-project route the
+        # moment the daemon is down, though host projects need none.
+        old=(
+            '    if sResourceId is not None and '
+            'fbIsHostProject(sResourceId):\n'
+            '        return\n'
+        ),
+        new='',
+    ),
 ]

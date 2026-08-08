@@ -4245,7 +4245,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Docker SDK exception types to the connection-level predicate
     # fbErrorMeansContainerUnreachable, keeping its re-raise branch for
     # non-substrate errors explicit.
-    "fileStatusManager.py": 2197,
+    # +3 (2026-08-08): the poll's repo-file builder asks
+    # fbDockerReachable instead of `is None`, so a leg-less
+    # connection router reads as daemon-down (host-mode wave 2).
+    "fileStatusManager.py": 2200,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -4412,7 +4415,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the event, the loop and the ordering between them.
     # +1 (2026-08-08): registration line for the preferencesRoutes
     # module in _fnRegisterAllRoutes, like every other route module.
-    "pipelineServer.py": 2490,
+    # +19 (2026-08-08): the routed-connection factory
+    # (fconnectionBuildRouted), the require closure's resource-id
+    # pass-through, and the name resolver's designed host branch
+    # (host-mode wave 2) -- context plumbing, the module's own
+    # responsibility.
+    "pipelineServer.py": 2509,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4541,7 +4549,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # re-derive the reservation's state to act.
     # +13 (2026-08-02): the quarantine path poisons through the single
     # writer and fences the container's pipeline socket.
-    "startReservation.py": 973,
+    # +3 (2026-08-08): the reservation probe's daemon-down guard
+    # asks fbDockerReachable (host-mode wave 2).
+    "startReservation.py": 976,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -4630,7 +4640,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and cannot take a lock that needs an owner record. Trimming that
     # to hit the number would delete the finding and leave the bare
     # declaration reading like a guarantee.
-    "registryRoutes.py": 1288,
+    # +9 (2026-08-08): three daemon-down guards ask
+    # fbDockerReachable instead of `is None` (host-mode wave 2's
+    # connection router made bare None checks meaningless).
+    "registryRoutes.py": 1297,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

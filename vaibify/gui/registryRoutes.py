@@ -288,7 +288,10 @@ def _fsResolveContainerId(dictCtx, sName):
     every request.
     """
     connectionDocker = dictCtx.get("docker")
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return ""
     try:
         for dictRow in connectionDocker.flistGetRunningContainers():
@@ -307,7 +310,10 @@ def _fbNameHasRunningPipeline(dictCtx, sName):
     fails safe to busy (``True``), keeping the existing owner in place.
     """
     connectionDocker = dictCtx.get("docker")
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return False
     try:
         from .fileStatusManager import _fbPipelineIsRunning
@@ -811,7 +817,10 @@ def _ftDiscoverAllContainers(dictCtx):
         have ``.vaibify/`` inside and unrecognized do not.
     """
     connectionDocker = dictCtx.get("docker")
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return [], []
     try:
         listContainers = connectionDocker.flistGetRunningContainers()

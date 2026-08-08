@@ -88,6 +88,7 @@ import secrets
 import shlex
 import threading
 
+from vaibify.config.connectionAvailability import fbDockerReachable
 from vaibify.config.pidFileRegistry import (
     fbIsSafeRegistryName,
     fnEnsureDirectory,
@@ -771,7 +772,7 @@ def _fdictProbeExecOperation(dictRecord, connectionDocker):
         return _fdictProbeOutcome(
             False, False, False, "exec record is missing its exec id",
         )
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the exec settled",
@@ -820,7 +821,7 @@ def _fdictProbeTerminalOperation(dictRecord, connectionDocker):
             False, False, False,
             "terminal record is missing its exec id or container id",
         )
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the terminal "
@@ -893,7 +894,7 @@ def _fdictProbeStartOperation(dictRecord, connectionDocker):
             "start record has neither a container id nor a reservation "
             "label",
         )
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the start settled",
@@ -989,7 +990,7 @@ def _fsComputeHostFileSha256(sTargetPath):
 
 def _fdictProbeContainerFileHash(dictRecord, connectionDocker):
     """Settle a container-side file write via an in-container hash."""
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return _fdictProbeOutcome(
             False, False, True,
             "no Docker connection is available to verify the container "

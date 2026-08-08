@@ -81,9 +81,20 @@ def fdictDetectDockerRuntime():
         "sleeping during long pipeline runs."}
 
 
-def _fnRequireDocker(connectionDocker):
-    """Raise 503 if Docker is unavailable, with a specific diagnosis."""
-    if connectionDocker is not None:
+def _fnRequireDocker(connectionDocker, sResourceId=None):
+    """Raise 503 if Docker is unavailable, with a specific diagnosis.
+
+    A registered host project needs no daemon, so a caller that
+    knows its resource id passes it and a host id returns
+    immediately; a bare call keeps the historical behavior.
+    """
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    from vaibify.config.registryManager import fbIsHostProject
+    if sResourceId is not None and fbIsHostProject(sResourceId):
+        return
+    if fbDockerReachable(connectionDocker):
         return
     sDetail = _fsBuildDockerUnavailableDetail()
     raise HTTPException(503, sDetail)
@@ -167,5 +178,9 @@ def fdictRetryDockerConnection(dictCtx):
     """
     from . import pipelineServer
     connectionNew = pipelineServer._fconnectionCreateDocker()
-    dictCtx["docker"] = connectionNew
+    connectionCurrent = dictCtx.get("docker")
+    if hasattr(connectionCurrent, "fbDockerLegPresent"):
+        connectionCurrent.connectionDockerLeg = connectionNew
+    else:
+        dictCtx["docker"] = connectionNew
     return fdictGetDockerStatus()

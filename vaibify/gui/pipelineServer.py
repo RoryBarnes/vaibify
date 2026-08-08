@@ -1906,7 +1906,13 @@ def fsContainerNameForId(connectionDocker, sContainerId):
     is not in the running set, so a caller that already holds a name (the
     viewer, or a test fixture where name == id) is unaffected.
     """
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sContainerId):
+        return sContainerId
+    if not fbDockerReachable(connectionDocker):
         return sContainerId
     try:
         for dictRow in connectionDocker.flistGetRunningContainers():
@@ -2260,8 +2266,8 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
     routes without restarting vaibify.
     """
 
-    def fnRequire():
-        _fnRequireDocker(dictRaw["docker"])
+    def fnRequire(sResourceId=None):
+        _fnRequireDocker(dictRaw["docker"], sResourceId=sResourceId)
 
     def fnSave(sContainerId, dictWorkflow):
         sPath = fsRequireWorkflowPath(dictPaths, sContainerId)
@@ -2423,6 +2429,19 @@ def _fnRegisterLastResortExceptionHandler(app):
 # Internal callers should import from the canonical module; these
 # bindings keep external importers and the test patch surface
 # (e.g. ``pipelineServer._fconnectionCreateDocker``) working.
+
+
+def fconnectionBuildRouted():
+    """Build the two-leg connection router the hub context holds.
+
+    The Docker leg comes from ``_fconnectionCreateDocker`` resolved
+    through this module's globals AT CALL TIME, so the browser
+    lane's conftest patch of that symbol is honored and its fake
+    becomes the router's Docker leg.
+    """
+    from vaibify.host.hostConnection import HostConnection
+    from .connectionRouter import ConnectionRouter
+    return ConnectionRouter(_fconnectionCreateDocker(), HostConnection())
 # ---------------------------------------------------------------
 
 from .dockerStatus import (  # noqa: E402,F401

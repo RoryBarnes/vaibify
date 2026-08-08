@@ -168,7 +168,10 @@ async def _fnRunOneContainerSweep(dictCtx):
     """Execute a single sweep tick against the current running set."""
     from .fileStatusManager import fsetSweepAllContainerCaches
     connectionDocker = dictCtx.get("docker") if dictCtx else None
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return
     try:
         listContainers = await asyncio.to_thread(

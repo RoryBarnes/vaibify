@@ -125,7 +125,15 @@ I_UNCLASSIFIED_ROW_BUDGET = 299
 # outright on an enforced lane -- so migrating the Kill route meant
 # either carrying a READ or removing its command authority. This is the
 # second.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
+# 212 -> 217 on 2026-08-08: the connection router landed -- twelve
+# explicit per-method delegations in gui/connectionRouter.py, of which
+# five are mutation-capable (three execs, two writes). More rows,
+# strictly less authority, the same shape as the 2026-08-02 note above:
+# each row forwards one call to the leg the registry mode names, adds
+# no command or path of its own, and the admission gate for the
+# operation asserts inside the leg's primitive. All twelve are
+# classified `excluded` with that rationale in the same change.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 217
 
 
 # Every acquisition of a declared capability that still has no reviewed

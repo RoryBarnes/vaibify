@@ -293,7 +293,10 @@ def _fsRefusalForAlreadyRunningContainer(connectionDocker, sName):
     runs inside the launch, where losing the race is an ordinary start
     failure rather than a lost lease.
     """
-    if connectionDocker is None:
+    from vaibify.config.connectionAvailability import (
+        fbDockerReachable,
+    )
+    if not fbDockerReachable(connectionDocker):
         return ""
     try:
         listRunning = connectionDocker.flistGetRunningContainers()
