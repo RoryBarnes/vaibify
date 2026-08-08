@@ -22,9 +22,22 @@ see the vaibify-falsification-notes synthesis.)
 Each entry:
 - ``nodeid``: the pytest node id of the falsification test.
 - ``source``: the source file the mutation is applied to.
-- ``old``: the EXACT text to replace; must occur exactly once in ``source``.
+- ``old``: the EXACT text to replace; must occur in ``source`` exactly
+  ``iExpectedOccurrences`` times.
 - ``new``: the replacement (``old != new``); realizes the break the test
   is meant to catch.
+- ``iExpectedOccurrences``: how many copies of ``old`` the mutation must
+  replace, defaulting to one.
+
+DEFENCE IN DEPTH NEEDS MORE THAN ONE COPY MUTATED. Some guards exist
+deliberately twice -- the ownership-transfer checks run once before
+anything is minted and again at the synchronous commit point. Disabling
+either copy alone changes NOTHING a caller can observe, because the other
+still refuses, so a one-copy mutation reports SURVIVED and reads as an
+undefended guard. Three did, for a week. The honest mutation is "this
+guard is gone", which means every copy; the count is stated so that a
+third copy appearing makes the entry fail loudly instead of silently
+leaving one live.
 """
 
 from dataclasses import dataclass
@@ -38,6 +51,7 @@ class Falsification:
     source: str
     old: str
     new: str
+    iExpectedOccurrences: int = 1
 
 
 # Each entry below is confirmed by tools/reconfirmFalsification.py to
@@ -3610,23 +3624,30 @@ def _fdictEntry(sRel):
 
     # --- Slice 5: the host-authorized transfer transaction (design
     # §6.1/§6.2). Cases 2/3/4/5/6/8/12/14/15/23/26b/31/44/46, transfer
-    # halves. Where the transaction checks a condition at BOTH the
-    # pre-mint layer and the commit point, the pre-mint mutant is
-    # detected through the DRAINING side effect (a doomed transfer
-    # must never touch the sitting owner's terminals), because the
-    # commit-point backstop makes the refusal itself indistinguishable.
+    # halves. Three of these conditions are checked at BOTH the pre-mint
+    # layer and the commit point, so disabling one copy changes nothing
+    # observable and reads as SURVIVED.
+    #
+    # These entries originally mutated the pre-mint copy alone and
+    # detected it through a DRAINING side effect: a doomed transfer must
+    # not drain the sitting owner's terminals, so the backstop's refusal
+    # arrived with the terminals already gone. That phase was later
+    # removed -- a transfer now refuses a busy container at once and
+    # never waits for a drain (AGENTS.md, "A busy container refuses a
+    # hand-over at once") -- which silently made the discriminator
+    # vacuous and the three entries unkillable. They survived for a week
+    # while reading as three undefended ownership guards.
+    #
+    # So the mutation is now "the guard is gone", every copy, with the
+    # count stated. Where two guards can still produce the same refusal,
+    # the TEST discriminates on the message that names the cause.
     # Case 2 (stale-generation refusal, the ABA guard):
     Falsification(
         nodeid='tests/testHostTransfer.py::testStaleGenerationTransferIsRefused',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''    if recordOwner.iOwnerGeneration != iExpectedGen:
-        browserSession.fnExpireCapability(dictStore, sCapability)
-        return (S_TRANSFER_STALE_GENERATION, {
-            "sMessage": f"Container '{sName}' changed owners after this "''',
-        new='''    if False:
-        browserSession.fnExpireCapability(dictStore, sCapability)
-        return (S_TRANSFER_STALE_GENERATION, {
-            "sMessage": f"Container '{sName}' changed owners after this "''',
+        old='    if recordOwner.iOwnerGeneration != iExpectedGen:',
+        new='    if False:',
+        iExpectedOccurrences=2,
     ),
     # Case 2/15 (ACTIVE transfer revokes the old session in-commit):
     Falsification(
@@ -3655,37 +3676,21 @@ def _fdictEntry(sRel):
         browserSession.fnExpireCapability(dictStore, sCapability)
         return (S_TRANSFER_BUSY_RETRY, {''',
     ),
-    # Case 26b (poison refuses transfer before the DRAINING phase):
+    # Case 26b (a poisoned record refuses every transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testPoisonedRecordRefusesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''    if getattr(recordOwner, "poison", None) is not None:
-        return (S_TRANSFER_REFUSED, {
-            "sMessage": f"Container '{sName}' carries a force-abandoned "''',
-        new='''    if False:
-        return (S_TRANSFER_REFUSED, {
-            "sMessage": f"Container '{sName}' carries a force-abandoned "''',
+        old='    if getattr(recordOwner, "poison", None) is not None:',
+        new='    if False:',
+        iExpectedOccurrences=2,
     ),
     # Case 31 (a cancel that won the lock blocks the transfer):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCancelRequestedDurableTaskRefusesTransfer',
         source='vaibify/gui/sessionLifecycle.py',
-        old='''    recordTask = _frecordLiveDurableTask(appState, sName)
-    if recordTask is not None and recordTask.sState != "running":
-        return (S_TRANSFER_REFUSED, {
-            "sMessage": f"Container '{sName}' has a durable task whose "
-                        "cancellation is in progress; retry once it has "
-                        "settled.",
-        })
-    sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
-        new='''    recordTask = _frecordLiveDurableTask(appState, sName)
-    if recordTask is not None and False:
-        return (S_TRANSFER_REFUSED, {
-            "sMessage": f"Container '{sName}' has a durable task whose "
-                        "cancellation is in progress; retry once it has "
-                        "settled.",
-        })
-    sJournalReason = _fsUnadoptableJournalReason(appState, sName, recordTask)''',
+        old='    if recordTask is not None and recordTask.sState != "running":',
+        new='    if recordTask is not None and False:',
+        iExpectedOccurrences=2,
     ),
     # Case 23 (the barrier test: adoption, not a blanket live-task
     # refusal — the exact "different operation ⇒ refuse" mistake the

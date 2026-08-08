@@ -171,6 +171,32 @@ def test_the_reconfirmation_harness_demands_a_daemon_for_its_runs():
 # daemon is supposed to exist -- is what these pin.
 # ---------------------------------------------------------------------
 
+def testADriftedOccurrenceCountErrorsRatherThanUnderMutating():
+    """A guard that exists twice must not be half-disabled and scored.
+
+    Disabling one copy of a defence-in-depth pair changes nothing a
+    caller can observe, so the entry reports SURVIVED and reads as an
+    undefended guard. Three transfer entries did exactly that. Stating
+    the count is what makes a copy appearing or vanishing loud.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    entry = Falsification(
+        nodeid="tests/testAny.py::testAny", source="anySource.py",
+        old="    if bGuard:", new="    if False:",
+        iExpectedOccurrences=2,
+    )
+    sStatus = moduleTool._fsReconfirmOne(
+        entry, "    if bGuard:\n", bPreconditionKnownGood=True,
+    )
+    assert sStatus.startswith("ERROR"), (
+        "one copy where the entry expects two must not be mutated and "
+        "scored as though the guard were gone"
+    )
+    assert "1x" in sStatus and "2x" in sStatus, (
+        "the error must name both counts, or it cannot be acted on"
+    )
+
+
 def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
     """No daemon and no demand: partition, do not pretend to judge."""
     moduleTool = _fmoduleReconfirmationHarness()

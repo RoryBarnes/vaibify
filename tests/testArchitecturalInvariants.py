@@ -4814,10 +4814,14 @@ def testFalsificationRegistryIsWellFormed():
             listOffenders.append(f"{entry.nodeid}: missing source {entry.source}")
             continue
         iCount = pathSource.read_text(encoding="utf-8").count(entry.old)
-        if iCount != 1:
+        # Not always 1: a guard checked at both the pre-mint layer and
+        # the commit point must have EVERY copy mutated, or disabling
+        # one changes nothing observable and the entry reads SURVIVED.
+        # The entry states how many it expects so drift is loud.
+        if iCount != entry.iExpectedOccurrences:
             listOffenders.append(
-                f"{entry.nodeid}: 'old' occurs {iCount}x (need exactly 1) "
-                f"in {entry.source}"
+                f"{entry.nodeid}: 'old' occurs {iCount}x (entry expects "
+                f"{entry.iExpectedOccurrences}x) in {entry.source}"
             )
         if entry.old == entry.new:
             listOffenders.append(f"{entry.nodeid}: old == new (no mutation)")

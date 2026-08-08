@@ -200,9 +200,15 @@ def _fsReconfirmOne(entry, sOriginal, bPreconditionKnownGood=False):
     pathSource = PATH_TREE / entry.source
     if entry.old not in sOriginal:
         return "ERROR: old-text absent"
-    if sOriginal.count(entry.old) != 1:
-        return "ERROR: old-text not unique"
-    sMutated = sOriginal.replace(entry.old, entry.new, 1)
+    iFound = sOriginal.count(entry.old)
+    if iFound != entry.iExpectedOccurrences:
+        # Drift in EITHER direction is a real signal: a copy deleted, or
+        # a fourth added that this mutation would now leave standing.
+        return (f"ERROR: old-text occurs {iFound}x, entry expects "
+                f"{entry.iExpectedOccurrences}x")
+    sMutated = sOriginal.replace(
+        entry.old, entry.new, entry.iExpectedOccurrences,
+    )
     if not _fbMutationCompiles(sMutated, pathSource):
         return "ERROR: mutation does not compile"
     if not bPreconditionKnownGood and _fiRunTest(entry.nodeid) != 0:
