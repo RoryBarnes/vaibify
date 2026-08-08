@@ -98,6 +98,52 @@ def fnIsolateOperationJournalDirectory(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def fnStubTheDockerBinaryStatusProbes(request, monkeypatch):
+    """Keep the ordinary suite off the host's ``docker`` executable.
+
+    Same host-state hazard class as the log, keyring and journal
+    fixtures above, and it hid for weeks because the hazard is
+    INVERTED: those leak test state onto the researcher's machine,
+    while this one silently borrows the machine's state into the test.
+
+    ``/api/registry`` enriches each project with its image and container
+    status, and both probes shell out to ``docker``. Tests about
+    reservations, ownership and route wiring reach that listing
+    incidentally -- they are not about Docker at all -- so on a machine
+    WITH Docker installed they pass, and on one without they raise
+    ``FileNotFoundError: 'docker'``. Every macOS CI runner is the
+    second kind and every developer machine here is the first, so the
+    suite was green locally and red on six macOS legs at once, for
+    every Python version. A test whose verdict depends on what is
+    installed on the machine running it is not testing the code.
+
+    Answering "no image, no container" is the honest default: it is what
+    a fresh machine reports, and the tests that care about a real
+    daemon carry the ``docker`` or ``docker_live`` marker and are left
+    alone here -- stubbing those would make a live-daemon lane pass
+    without a daemon, which is the skip-reports-success failure this
+    repository has already shipped once.
+    """
+    if any(
+        request.node.get_closest_marker(sMarker) is not None
+        for sMarker in ("docker", "docker_live", "dockerProbeUnderTest")
+    ):
+        yield
+        return
+    from vaibify.docker import containerManager, imageBuilder
+    monkeypatch.setattr(
+        imageBuilder, "fbImageExists", lambda sImageName: False,
+    )
+    monkeypatch.setattr(
+        containerManager, "fdictGetContainerStatus",
+        lambda sProjectName: {
+            "bExists": False, "bRunning": False, "sStatus": "",
+        },
+    )
+    yield
+
+
+@pytest.fixture(autouse=True)
 def fnClearPushDedupeCache():
     """Reset the syncRoutes push idempotency cache between tests.
 

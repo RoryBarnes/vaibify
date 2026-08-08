@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from tests import testDockerConnectionLive as moduleLive
+from tests.falsificationRegistry import Falsification
 
 
 _PATH_WORKFLOWS = (
@@ -158,4 +159,130 @@ def test_the_reconfirmation_harness_demands_a_daemon_for_its_runs():
     ).read_text()
     assert 'dictEnvironment[S_REQUIRE_DAEMON_ENV] = "1"' in sSource, (
         "the harness must demand a live daemon for the runs it judges"
+    )
+
+
+# ---------------------------------------------------------------------
+# Demanding the daemon has a cost: on a host that cannot have one, every
+# real-container entry becomes an ERROR that reads exactly like a broken
+# guard. The macOS falsification legs had timed out for weeks, so the
+# first one to finish reported seven of them at once. The third answer
+# -- name them as unevaluated, and refuse that deferral wherever a
+# daemon is supposed to exist -- is what these pin.
+# ---------------------------------------------------------------------
+
+def testADriftedOccurrenceCountErrorsRatherThanUnderMutating():
+    """A guard that exists twice must not be half-disabled and scored.
+
+    Disabling one copy of a defence-in-depth pair changes nothing a
+    caller can observe, so the entry reports SURVIVED and reads as an
+    undefended guard. Three transfer entries did exactly that. Stating
+    the count is what makes a copy appearing or vanishing loud.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    entry = Falsification(
+        nodeid="tests/testAny.py::testAny", source="anySource.py",
+        old="    if bGuard:", new="    if False:",
+        iExpectedOccurrences=2,
+    )
+    sStatus = moduleTool._fsReconfirmOne(
+        entry, "    if bGuard:\n", bPreconditionKnownGood=True,
+    )
+    assert sStatus.startswith("ERROR"), (
+        "one copy where the entry expects two must not be mutated and "
+        "scored as though the guard were gone"
+    )
+    assert "1x" in sStatus and "2x" in sStatus, (
+        "the error must name both counts, or it cannot be acted on"
+    )
+
+
+def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
+    """No daemon and no demand: partition, do not pretend to judge."""
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: False)
+    monkeypatch.delenv(moduleTool.S_REQUIRE_DAEMON_ENV, raising=False)
+
+    listEvaluable, listDeferred = moduleTool._tPartitionRegistryForThisHost()
+
+    setMarked = moduleTool.fsetSelectNodeIdsNeedingALiveDaemon()
+    assert listDeferred, (
+        "the registry has real-container entries, so a host with no "
+        "daemon must defer some of them"
+    )
+    assert all(entry.nodeid in setMarked for entry in listDeferred), (
+        "an entry was deferred without carrying the live-daemon marker"
+    )
+    assert not any(entry.nodeid in setMarked for entry in listEvaluable), (
+        "a marked entry stayed in the evaluable set, so it will be "
+        "judged by a run that cannot execute it"
+    )
+    assert len(listEvaluable) + len(listDeferred) == len(
+        moduleTool.LIST_FALSIFICATIONS
+    ), "the partition dropped or duplicated an entry"
+
+
+@pytest.mark.falsification
+def testDemandingADaemonRefusesRatherThanQuietlyDeferring(monkeypatch):
+    """Kills: deferring on a lane that is supposed to have Docker.
+
+    Mutation: let ``_tPartitionRegistryForThisHost`` fall through to the
+    partition when the daemon is demanded but unreachable. The lane
+    would then report every remaining entry killed and exit zero, having
+    silently stopped checking the real-container guards -- the same
+    false green as ``docker info || exit 0``, one layer up.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: False)
+    monkeypatch.setenv(moduleTool.S_REQUIRE_DAEMON_ENV, "1")
+
+    with pytest.raises(SystemExit) as excinfo:
+        moduleTool._tPartitionRegistryForThisHost()
+    assert excinfo.value.code != 0
+
+
+@pytest.mark.falsification
+def testDeferredEntriesAreNamedAndLeftOutOfTheDenominator(monkeypatch, capsys):
+    """Kills: dropping deferred entries from the report entirely.
+
+    Mutation: stop printing the deferred entries. The score line then
+    reads as a clean sweep of a denominator nobody was told had shrunk,
+    which is precisely the reading that makes a smaller number look like
+    success.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    entryJudged = Falsification(
+        nodeid="tests/testJudged.py::testJudged",
+        source="sourceUnderTest", old="alpha", new="beta",
+    )
+    entryDeferred = Falsification(
+        nodeid="tests/testLive.py::testNeedsARealContainer",
+        source="sourceUnderTest", old="alpha", new="beta",
+    )
+    monkeypatch.setattr(
+        moduleTool, "_tPartitionRegistryForThisHost",
+        lambda: ([entryJudged], [entryDeferred]),
+    )
+    monkeypatch.setattr(
+        moduleTool, "_fdictCaptureOriginals", lambda: {"sourceUnderTest": "alpha"},
+    )
+    monkeypatch.setattr(moduleTool, "_fnRestoreOriginals", lambda dictAny: None)
+    monkeypatch.setattr(
+        moduleTool, "_fbAllPreconditionsPassInOneRun", lambda listAny: True,
+    )
+    monkeypatch.setattr(
+        moduleTool, "_fsReconfirmOne", lambda *args, **kwargs: "KILLED",
+    )
+    monkeypatch.setattr(moduleTool, "_flistMarkedTestsWithoutEntry", list)
+
+    moduleTool.fnReconfirmAll()
+
+    sOutput = capsys.readouterr().out
+    assert entryDeferred.nodeid in sOutput, (
+        "a deferred entry vanished from the report, so a reader cannot "
+        "tell the denominator shrank"
+    )
+    assert "NOT EVALUATED" in sOutput
+    assert "1/1 kill-confirmed" in sOutput, (
+        "an entry this host could not run must not be counted as judged"
     )

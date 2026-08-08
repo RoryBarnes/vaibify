@@ -233,6 +233,40 @@ def test_darwin_xucred_parser_reads_a_packed_struct_and_fails_closed():
         hostControlChannel._ftupleParseDarwinPeerCredentials(b"\x00\x01")
 
 
+def test_a_reset_by_the_hub_reads_as_an_unreadable_response(
+    fixtureShortControlDirectory, monkeypatch,
+):
+    """A refusal delivered as RST must say what a refusal delivered as EOF says.
+
+    The hub closes on a peer it will not serve without writing a byte.
+    macOS surfaces that to the client as EOF, so the reader returns b""
+    and the unreadable-response branch handles it. Linux sends RST when
+    a socket is closed with unread data still in its receive buffer, so
+    the identical refusal arrives as ConnectionResetError instead --
+    and before this guard existed it escaped as a raw traceback on
+    Linux while macOS printed a clean sentence. The suite is developed
+    on macOS, so CI was the only place this could show, and the lane
+    that would have shown it could not check the repository out.
+
+    Kills: in hostControlChannel.fdictSendHostControlRequest, remove
+    ConnectionResetError from the except clause guarding the send and
+    read, so the reset escapes instead of becoming a HostControlError.
+    """
+    import socket as socketModule
+
+    def _fnResetOnSend(self, *args, **kwargs):
+        raise ConnectionResetError(104, "Connection reset by peer")
+
+    monkeypatch.setattr(socketModule.socket, "sendall", _fnResetOnSend)
+    app = _fappBuildFakeHubApplication()
+    with pytest.raises(HostControlError) as excInfo:
+        _fdictSendToFakeHub(app, {"sOperation": "reconcile"})
+    assert "unreadable" in str(excInfo.value), (
+        "a reset must give the researcher the same sentence an EOF "
+        f"does; got {excInfo.value!r}"
+    )
+
+
 def test_a_foreign_peer_is_closed_without_a_byte_of_response(
     fixtureShortControlDirectory, monkeypatch,
 ):

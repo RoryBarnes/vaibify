@@ -66,8 +66,16 @@ enforceable, re-checkable guarantee:
 3. **The registry** — `tests/falsificationRegistry.py` — records that
    mutation in a *machine-applicable* form: one
    `Falsification(nodeid, source, old, new)` entry per test, where `old`
-   is the exact text that occurs once in the source file and `new` is the
-   break.
+   is the exact text to replace and `new` is the break.
+
+   `old` must occur exactly `iExpectedOccurrences` times (default 1). A
+   guard that is deliberately checked in more than one place — the
+   ownership-transfer conditions run once before anything is minted and
+   again at the commit point — needs **every** copy mutated: disabling
+   one changes nothing a caller can observe, so the entry reports
+   SURVIVED and reads as an undefended guard. Stating the count makes a
+   copy appearing or vanishing an error rather than a quiet
+   half-mutation.
 
 4. **The re-kill harness** — `tools/reconfirmFalsification.py` — is the
    standing negative control. For every registry entry it requires the
@@ -81,6 +89,17 @@ enforceable, re-checkable guarantee:
    ```bash
    python tools/reconfirmFalsification.py
    ```
+
+   Entries whose test drives a real container (`docker_live`) cannot be
+   judged on a host with no Docker daemon: the harness demands a daemon
+   for every run it judges, precisely so a skip is never miscounted as a
+   surviving mutant, and that same demand turns those entries into
+   errors where no daemon can exist. They are reported by name as NOT
+   EVALUATED and left out of the denominator instead. That is safe only
+   because they *are* judged wherever a daemon exists, so the Linux CI
+   legs set `VAIBIFY_REQUIRE_DOCKER_DAEMON`, which refuses the deferral
+   outright — losing Docker there turns the lane red rather than
+   silently shrinking what it reports against.
 
 Three architectural invariants keep the class from silently decaying:
 `testFalsificationFilesDeclareMarker`,
