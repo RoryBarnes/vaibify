@@ -4,8 +4,10 @@ The style guide's naming contract was prose until 2026-08-05; these
 tests make it an enforced architectural invariant in the pattern of
 testArchitecturalInvariants.py and the mutation-inventory drift check.
 The scanner lives in tools/generateStyleInventory.py and is imported
-in-process (never a subprocess), so CI enforces the contract through
-the ordinary pytest lanes with no dedicated workflow.
+in-process (never a subprocess), so the ordinary pytest lanes enforce
+the contract as the rot-resistant backbone, and the dedicated
+`.github/workflows/styleContract.yml` lane gives every merge a named,
+requirable `style-contract` status on top.
 
 Ratchet mechanics, and why there are two of them:
 
