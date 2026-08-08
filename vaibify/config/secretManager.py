@@ -79,7 +79,7 @@ def _fnValidateSecretName(sName):
 def _fsRetrieveViaGhAuth():
     """Run gh auth token and return the output."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["gh", "auth", "token"],
             capture_output=True, text=True, check=True,
         )
@@ -93,13 +93,13 @@ def _fsRetrieveViaGhAuth():
             f"gh auth token failed (exit {error.returncode}). "
             "Run 'gh auth login' first."
         )
-    return resultProcess.stdout.strip()
+    return processResult.stdout.strip()
 
 
 def _fsRetrieveViaKeyring(sName):
     """Retrieve a secret from the OS keyring."""
-    keyringModule = _fnLoadKeyringModule()
-    sValue = keyringModule.get_password("vaibify", sName)
+    moduleKeyring = _fmoduleLoadKeyring()
+    sValue = moduleKeyring.get_password("vaibify", sName)
     if sValue is None:
         raise KeyError(
             f"No keyring entry found for secret '{sName}' "
@@ -132,8 +132,8 @@ def fnStoreSecret(sName, sValue, sMethod):
 
 def _fnStoreViaKeyring(sName, sValue):
     """Set a password in the OS keyring under service 'vaibify'."""
-    keyringModule = _fnLoadKeyringModule()
-    keyringModule.set_password("vaibify", sName, sValue)
+    moduleKeyring = _fmoduleLoadKeyring()
+    moduleKeyring.set_password("vaibify", sName, sValue)
 
 
 def fnDeleteSecret(sName, sMethod):
@@ -149,10 +149,10 @@ def fnDeleteSecret(sName, sMethod):
 
 def _fnDeleteViaKeyring(sName):
     """Delete a keyring entry, suppressing the absent-entry error."""
-    keyringModule = _fnLoadKeyringModule()
+    moduleKeyring = _fmoduleLoadKeyring()
     from keyring.errors import PasswordDeleteError
     try:
-        keyringModule.delete_password("vaibify", sName)
+        moduleKeyring.delete_password("vaibify", sName)
     except PasswordDeleteError:
         pass
 
@@ -172,8 +172,8 @@ def fbSecretExists(sName, sMethod):
 def _fbKeyringHasSecret(sName):
     """Return True if the OS keyring has an entry for sName."""
     try:
-        keyringModule = _fnLoadKeyringModule()
-        return keyringModule.get_password("vaibify", sName) is not None
+        moduleKeyring = _fmoduleLoadKeyring()
+        return moduleKeyring.get_password("vaibify", sName) is not None
     except Exception:
         return False
 
@@ -191,7 +191,7 @@ def _fbDockerSecretExists(sName):
     return Path(f"/run/secrets/{sName}").exists()
 
 
-def _fnLoadKeyringModule():
+def _fmoduleLoadKeyring():
     """Import and return the keyring module with a helpful error."""
     try:
         import keyring

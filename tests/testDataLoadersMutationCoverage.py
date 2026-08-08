@@ -11,20 +11,20 @@ import numpy as np
 import pytest
 
 from vaibify.gui import dataLoaders
-from vaibify.gui.dataLoaders import fLoadValue
+from vaibify.gui.dataLoaders import ffLoadValue
 
 pytestmark = pytest.mark.falsification
 
 
 # ----------------------------------------------------------------------
-# Hole 1: _fExtractArrayValue default index must be [-1] (last), not [0].
+# Hole 1: _ffExtractArrayValue default index must be [-1] (last), not [0].
 # ----------------------------------------------------------------------
 
 
 def test_extractArrayValue_default_index_is_last_element(tmp_path):
-    """Kills: _fExtractArrayValue: default index [-1] -> [0]"""
+    """Kills: _ffExtractArrayValue: default index [-1] -> [0]"""
     np.save(str(tmp_path / "data.npy"), np.array([10.0, 20.0, 30.0]))
-    fResult = fLoadValue("data.npy", "", str(tmp_path))
+    fResult = ffLoadValue("data.npy", "", str(tmp_path))
     assert fResult == 30.0
 
 
@@ -43,61 +43,61 @@ def test_splitHeaderAndData_mixed_first_line_treated_as_header():
 
 
 # ----------------------------------------------------------------------
-# Hole 3: _fLoadCsvNegativeRow returns dequeTail[0] (the requested
+# Hole 3: _ffLoadCsvNegativeRow returns dequeTail[0] (the requested
 # negative row), not dequeTail[-1] (always the last row).
 # ----------------------------------------------------------------------
 
 
 def test_loadCsvNegativeRow_index_minus_two_is_second_to_last(tmp_path):
-    """Kills: _fLoadCsvNegativeRow: dequeTail[0] -> dequeTail[-1]"""
+    """Kills: _ffLoadCsvNegativeRow: dequeTail[0] -> dequeTail[-1]"""
     listLines = ["a,b\n"] + [f"{i},{i * 2}\n" for i in range(10)]
     (tmp_path / "t.csv").write_text("".join(listLines))
-    fResult = fLoadValue("t.csv", "column:b,index:-2", str(tmp_path))
+    fResult = ffLoadValue("t.csv", "column:b,index:-2", str(tmp_path))
     assert fResult == 16.0
 
 
 # ----------------------------------------------------------------------
-# Hole 4: _fLoadCsvByRowIndex routes only iIndex < 0 to the tail path;
+# Hole 4: _ffLoadCsvByRowIndex routes only iIndex < 0 to the tail path;
 # index:0 must read the first data row, not crash.
 # ----------------------------------------------------------------------
 
 
 def test_loadCsvByRowIndex_index_zero_returns_first_row(tmp_path):
-    """Kills: _fLoadCsvByRowIndex: iIndex < 0 -> iIndex <= 0"""
+    """Kills: _ffLoadCsvByRowIndex: iIndex < 0 -> iIndex <= 0"""
     (tmp_path / "r.csv").write_text("time,flux\n0,1.0\n1,2.5\n")
-    fResult = fLoadValue("r.csv", "column:flux,index:0", str(tmp_path))
+    fResult = ffLoadValue("r.csv", "column:flux,index:0", str(tmp_path))
     assert fResult == 1.0
 
 
 # ----------------------------------------------------------------------
-# Hole 5: _fExtractHdf5Value adds np.prod(shape) for negative flat
+# Hole 5: _ffExtractHdf5Value adds np.prod(shape) for negative flat
 # indices (iFlat += ...), so index:-1 on a 10x10 grid maps to 99.
 # ----------------------------------------------------------------------
 
 
 def test_extractHdf5Value_negative_flat_index_maps_to_last(tmp_path):
-    """Kills: _fExtractHdf5Value: iFlat += np.prod(tShape) -> iFlat -= np.prod(tShape)"""
+    """Kills: _ffExtractHdf5Value: iFlat += np.prod(tShape) -> iFlat -= np.prod(tShape)"""
     h5py = pytest.importorskip("h5py")
     sPath = tmp_path / "grid.h5"
     with h5py.File(str(sPath), "w") as fileHdf5:
         fileHdf5.create_dataset("g", data=np.arange(100).reshape(10, 10))
-    fResult = fLoadValue("grid.h5", "dataset:g,index:-1", str(tmp_path))
+    fResult = ffLoadValue("grid.h5", "dataset:g,index:-1", str(tmp_path))
     assert fResult == 99.0
 
 
 # ----------------------------------------------------------------------
-# Hole 6: _fLoadFitsValue selects listIndices[1] when len > 1, so a
+# Hole 6: _ffLoadFitsValue selects listIndices[1] when len > 1, so a
 # two-component index:0,2 reads element 2 of the flattened HDU data.
 # ----------------------------------------------------------------------
 
 
 def test_loadFitsValue_two_component_index_selects_second(tmp_path):
-    """Kills: _fLoadFitsValue: len(listIndices) > 1 -> > 2"""
+    """Kills: _ffLoadFitsValue: len(listIndices) > 1 -> > 2"""
     pytest.importorskip("astropy")
     from astropy.io import fits as fitsLib
     sPath = tmp_path / "a.fits"
     fitsLib.PrimaryHDU(
         data=np.array([1.0, 2.0, 3.0, 4.0]),
     ).writeto(str(sPath))
-    fResult = fLoadValue("a.fits", "hdu:0,index:0,2", str(tmp_path))
+    fResult = ffLoadValue("a.fits", "hdu:0,index:0,2", str(tmp_path))
     assert fResult == 3.0

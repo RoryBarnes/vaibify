@@ -238,7 +238,7 @@ DICT_NAMED_AUTHORITIES = {
             "live, so the dashboard reports sleep state honestly. Host "
             "process read.",
         ),
-    "gui/dockerStatus.py|fsDetectDockerRuntime|process-launch|subprocess|"
+    "gui/dockerStatus.py|fdictDetectDockerRuntime|process-launch|subprocess|"
     "import|0":
         _fdictAuthority(
             ["http"],

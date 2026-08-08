@@ -92,10 +92,10 @@ def _fdictMaybeAdvisory(
     """Return one advisory dict iff the producer is undeclared and newer."""
     if _fbShouldSkipPair(iConsumer, iProducer, setDeclared, listSteps):
         return None
-    fProducerMax = _fMaxMtime(dictMtimesByIndex.get(iProducer, {}))
+    fProducerMax = _ffMaxMtime(dictMtimesByIndex.get(iProducer, {}))
     if fProducerMax <= 0:
         return None
-    listOffending, fAgeDelta = _flistOffendingForPair(
+    listOffending, fAgeDelta = _ftOffendingForPair(
         dictConsumerMtimes, fProducerMax, fMarginSeconds,
     )
     if not listOffending:
@@ -124,7 +124,7 @@ def _fdictBuildAdvisoryEntry(
     }
 
 
-def _flistOffendingForPair(
+def _ftOffendingForPair(
     dictConsumerMtimes, fProducerMax, fMarginSeconds,
 ):
     """Return (offending_paths, max_age_delta) for one consumer/producer pair."""
@@ -186,20 +186,20 @@ def _fdictMtimesForStep(dictStep, dictNewModTimes, sRepoRoot):
         for sRelPath in dictStep.get(sKey, []) or []:
             if "{" in sRelPath:
                 continue
-            fMtime = _fLookupMtime(sRelPath, sDirectory, sRepoRoot, dictNewModTimes)
+            fMtime = _ffLookupMtime(sRelPath, sDirectory, sRepoRoot, dictNewModTimes)
             if fMtime > 0:
                 dictResult[sRelPath] = fMtime
     return dictResult
 
 
-def _fLookupMtime(sRelPath, sStepDirectory, sRepoRoot, dictNewModTimes):
+def _ffLookupMtime(sRelPath, sStepDirectory, sRepoRoot, dictNewModTimes):
     """Look up a file's mtime under either of its plausible key forms."""
     listCandidates = _flistMtimeCandidateKeys(
         sRelPath, sStepDirectory, sRepoRoot,
     )
     for sKey in listCandidates:
         if sKey in dictNewModTimes:
-            return _fParseMtime(dictNewModTimes[sKey])
+            return _ffParseMtime(dictNewModTimes[sKey])
     return 0.0
 
 
@@ -217,7 +217,7 @@ def _flistMtimeCandidateKeys(sRelPath, sStepDirectory, sRepoRoot):
     return listCandidates
 
 
-def _fParseMtime(value):
+def _ffParseMtime(value):
     """Convert a dictNewModTimes value to a float; missing -> 0.0."""
     if value is None:
         return 0.0
@@ -227,7 +227,7 @@ def _fParseMtime(value):
         return 0.0
 
 
-def _fMaxMtime(dictMtimes):
+def _ffMaxMtime(dictMtimes):
     """Return the largest float mtime in a step's mtime dict (0.0 if empty)."""
     fMax = 0.0
     for fMtime in dictMtimes.values():

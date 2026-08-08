@@ -27,7 +27,7 @@
       "sFile": "cli/commandBuild.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fsGitBranch",
-      "sScopeFingerprint": "156f8d4db22f2095"
+      "sScopeFingerprint": "c2ff02656e4a27fe"
     },
     {
       "iLine": 504,
@@ -40,7 +40,7 @@
       "sFile": "cli/commandBuild.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fsGitRemoteUrl",
-      "sScopeFingerprint": "b6b02efce22d0244"
+      "sScopeFingerprint": "e15319ef3bd62a74"
     },
     {
       "iLine": 27,
@@ -196,7 +196,7 @@
       "sFile": "containerImage/vaibifyDo.py",
       "sFingerprint": "b2e7229682200a98",
       "sScope": "fnEnableTcpKeepalive",
-      "sScopeFingerprint": "6c8e4e92351d5f7b"
+      "sScopeFingerprint": "bef9acd21272cff3"
     },
     {
       "iLine": 4,
@@ -287,7 +287,7 @@
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fnEnsureDockerHost",
-      "sScopeFingerprint": "cb6af7e1d67b5191"
+      "sScopeFingerprint": "1ab05dda8dd6c60a"
     },
     {
       "iLine": 118,
@@ -381,7 +381,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 84,
+      "iLine": 85,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -404,7 +404,7 @@
       "sFile": "gui/dockerStatus.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fbCaffeinateRunning",
-      "sScopeFingerprint": "5569050a05554574"
+      "sScopeFingerprint": "afb14c9594b92cdb"
     },
     {
       "iLine": 66,
@@ -416,8 +416,8 @@
       "sDispositionRationale": "UNCLASSIFIED",
       "sFile": "gui/dockerStatus.py",
       "sFingerprint": "7d8752c4c7ea34c2",
-      "sScope": "fsDetectDockerRuntime",
-      "sScopeFingerprint": "0be798d50208ec6b"
+      "sScope": "fdictDetectDockerRuntime",
+      "sScopeFingerprint": "87797fde8f837aac"
     },
     {
       "iLine": 46,
@@ -469,7 +469,7 @@
       "sFile": "gui/hostControlChannel.py",
       "sFingerprint": "f99fabd6e43d4352",
       "sScope": "fdictSendHostControlRequest",
-      "sScopeFingerprint": "2ef12476aa78eed0"
+      "sScopeFingerprint": "9e460f82d688866b"
     },
     {
       "iLine": 2224,
@@ -547,7 +547,7 @@
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fbDockerContainerExists",
-      "sScopeFingerprint": "29c4d15858ffb0c1"
+      "sScopeFingerprint": "8af36da422b672dd"
     },
     {
       "iLine": 1197,
@@ -572,8 +572,8 @@
       "sDispositionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "67cea75a2716b36a",
-      "sScope": "fnGetContainerSettings",
-      "sScopeFingerprint": "d849895172bf3703"
+      "sScope": "fdictGetContainerSettings",
+      "sScopeFingerprint": "b44c07589c323215"
     },
     {
       "iLine": 625,
@@ -585,8 +585,8 @@
       "sDispositionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "eaf3a2285c4dea75",
-      "sScope": "fnGetContainerSettings",
-      "sScopeFingerprint": "d849895172bf3703"
+      "sScope": "fdictGetContainerSettings",
+      "sScopeFingerprint": "b44c07589c323215"
     },
     {
       "iLine": 658,
@@ -598,8 +598,8 @@
       "sDispositionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "b1f7c52f65c25d30",
-      "sScope": "fnSetContainerSettings",
-      "sScopeFingerprint": "cef90fae462795fa"
+      "sScope": "fdictSetContainerSettings",
+      "sScopeFingerprint": "17766111cf4e2cca"
     },
     {
       "iLine": 24,
@@ -664,7 +664,7 @@
       "sFile": "gui/routes/syncRoutes.py",
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "_fsReadHostGitUserName",
-      "sScopeFingerprint": "0726d99edd44040d"
+      "sScopeFingerprint": "f5f03ff3b7eb02ca"
     },
     {
       "iLine": 100,
@@ -855,7 +855,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/commandBuild.py",
       "sFingerprint": "de15ea7a97aab0a5",
-      "sFunction": "_fdiDockerDfBytes",
+      "sFunction": "_fiDockerDfBytes",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -985,7 +985,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/commandCat.py",
       "sFingerprint": "92a1b34c4a030d1d",
-      "sFunction": "cat",
+      "sFunction": "fnCatCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -1089,7 +1089,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/commandLs.py",
       "sFingerprint": "c9dc08f10f9cf15c",
-      "sFunction": "ls",
+      "sFunction": "fnListCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -1141,7 +1141,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/commandReproduce.py",
       "sFingerprint": "6a5d45b326a64bda",
-      "sFunction": "_fiRunPipInstall",
+      "sFunction": "_ftRunPipInstall",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -1166,7 +1166,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/commandReproduce.py",
-      "sFingerprint": "e10214444aef2519",
+      "sFingerprint": "4a100a01ba0a9be1",
       "sFunction": "fbVerifyTier3",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -1349,7 +1349,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/main.py",
       "sFingerprint": "d34600a2fef31008",
-      "sFunction": "connect",
+      "sFunction": "fnConnectCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -1375,7 +1375,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/main.py",
       "sFingerprint": "dc467e93b80ddf82",
-      "sFunction": "stop",
+      "sFunction": "fnStopCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -1401,7 +1401,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "cli/main.py",
       "sFingerprint": "ee6dc5e600db4c30",
-      "sFunction": "verify",
+      "sFunction": "fnVerifyCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -1998,13 +1998,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "808667b2740dfebf",
-      "sFunction": "_texecRunTypedRead",
+      "sFingerprint": "ee19c3e75f819b30",
+      "sFunction": "_ftRunTypedRead",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -2024,13 +2024,39 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "afdf3455c7d8deea",
+      "sFingerprint": "8f54468408afbe4e",
       "sFunction": "fdictProbeProcessGroupMembers",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftupleRunRootShellProbe",
+      "sPrimitive": "ftRunRootShellProbe",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": true,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "docker/dockerConnection.py",
+      "sFingerprint": "ebee0c2530b36d1a",
+      "sFunction": "fiterStreamFile",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "fcontainerGetById",
       "sReferenceKind": "direct-call"
     },
     {
@@ -2061,32 +2087,6 @@
     },
     {
       "bInsideGateway": true,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "typed-read",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "ebee0c2530b36d1a",
-      "sFunction": "fnIterStreamFile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fcontainerGetById",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": true,
       "bMutationCapable": true,
       "iOrdinal": 0,
       "listCarrierModes": [
@@ -2102,13 +2102,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "d3bf8b72f032a3d1",
+      "sFingerprint": "6a8cdd308112a564",
       "sFunction": "fnSignalProcessGroupMembers",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftupleRunRootShellProbe",
+      "sPrimitive": "ftRunRootShellProbe",
       "sReferenceKind": "direct-call"
     },
     {
@@ -2206,13 +2206,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
-      "sFingerprint": "58d6bc8d5be27bbb",
+      "sFingerprint": "3588aa81fdf28d49",
       "sFunction": "ftResultExecuteCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -2233,7 +2233,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "ebee0c2530b36d1a",
-      "sFunction": "ftupleRunRootShellProbe",
+      "sFunction": "ftRunInContainerStreamedWithChunks",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -2259,7 +2259,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "ebee0c2530b36d1a",
-      "sFunction": "texecRunInContainerStreamedWithChunks",
+      "sFunction": "ftRunInContainerStreamed",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -2285,7 +2285,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "ebee0c2530b36d1a",
-      "sFunction": "texecRunInContainerStreamed",
+      "sFunction": "ftRunRootShellProbe",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -2544,13 +2544,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/aiProvenanceCapture.py",
-      "sFingerprint": "f71ef56456cf7fdd",
+      "sFingerprint": "1273d6788ab05bd7",
       "sFunction": "_fdictCaptureAgentCliVersions",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -2604,6 +2604,32 @@
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "process UNKNOWN",
       "sReferenceKind": "unknown-command"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": true,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "arbitrary-command",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/conftestManager.py",
+      "sFingerprint": "124406051a84157f",
+      "sFunction": "fbWriteConftestMarkersBatch",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "ftResultExecuteCommand",
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -2676,32 +2702,6 @@
       "sFile": "gui/conftestManager.py",
       "sFingerprint": "7ee19fd5af6710ca",
       "sFunction": "fnMigrateFlatMarkers",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/conftestManager.py",
-      "sFingerprint": "124406051a84157f",
-      "sFunction": "fnWriteConftestMarkersBatch",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -3273,7 +3273,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/diskSpace.py",
       "sFingerprint": "bf942e55459b092c",
-      "sFunction": "fnCheckWorkspaceFreeBytes",
+      "sFunction": "fiCheckWorkspaceFreeBytes",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -3299,7 +3299,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/dockerStatus.py",
       "sFingerprint": "27b2ee694fe43adb",
-      "sFunction": "fsDetectDockerRuntime",
+      "sFunction": "fdictDetectDockerRuntime",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -3736,18 +3736,18 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "archive-write",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineLogger.py",
-      "sFingerprint": "483d7ccb276e69f1",
-      "sFunction": "_fnEnsureLogsDirectory",
+      "sFingerprint": "9fca0d7b5d55a6a2",
+      "sFunction": "_fnSaveWorkflowStats",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "passed-callable"
+      "sPrimitive": "fnWriteFile",
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -3762,18 +3762,18 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "archive-write",
+      "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineLogger.py",
-      "sFingerprint": "9fca0d7b5d55a6a2",
-      "sFunction": "_fnSaveWorkflowStats",
+      "sFingerprint": "483d7ccb276e69f1",
+      "sFunction": "_fsEnsureLogsDirectory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "direct-call"
+      "sPrimitive": "ftResultExecuteCommand",
+      "sReferenceKind": "passed-callable"
     },
     {
       "bInsideGateway": false,
@@ -3974,13 +3974,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineRunner.py",
-      "sFingerprint": "08d50694a3855eb1",
+      "sFingerprint": "8c004fbc35288b0c",
       "sFunction": "_ftRunSingleCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamedWithChunks",
+      "sPrimitive": "ftRunInContainerStreamedWithChunks",
       "sReferenceKind": "passed-callable"
     },
     {
@@ -4001,7 +4001,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineRunner.py",
       "sFingerprint": "483d7ccb276e69f1",
-      "sFunction": "fiRunStepCommands",
+      "sFunction": "ftRunStepCommands",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -4364,13 +4364,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/promptRecordManager.py",
-      "sFingerprint": "e3bcdde0367f6dfa",
+      "sFingerprint": "dc4589e39f686a6c",
       "sFunction": "fdictListContainerTranscripts",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4573,7 +4573,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
       "sFingerprint": "bb7e01454147f385",
-      "sFunction": "_ftupleDiscoverAllContainers",
+      "sFunction": "_ftDiscoverAllContainers",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -4755,7 +4755,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/draftRoutes.py",
       "sFingerprint": "960fc98f36c55a3f",
-      "sFunction": "fnReadDraft",
+      "sFunction": "fdictReadDraft",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -4832,13 +4832,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/falsificationRoutes.py",
-      "sFingerprint": "d6f3f80921d7dd3c",
+      "sFingerprint": "ea924c7caf327474",
       "sFunction": "_fdictRunMutationSync",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4858,13 +4858,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/falsificationRoutes.py",
-      "sFingerprint": "8abf220690c84503",
+      "sFingerprint": "26320e0886cc1384",
       "sFunction": "_fdictSummarizeMutationSession",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4936,13 +4936,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/falsificationRoutes.py",
-      "sFingerprint": "6d8704379ffc7564",
+      "sFingerprint": "9eca0d607c7b435f",
       "sFunction": "_fsPrepareMutationSession",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4962,13 +4962,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/falsificationRoutes.py",
-      "sFingerprint": "031dd9db939a5819",
+      "sFingerprint": "3fe3c6c541ff8eb6",
       "sFunction": "_fsRequireCosmicRay",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -4989,7 +4989,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/figureRoutes.py",
       "sFingerprint": "df100b3af4cac2bd",
-      "sFunction": "fnCheckFigure",
+      "sFunction": "fresponseCheckFigure",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -5040,32 +5040,6 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "17c67f7b5db5df51",
-      "sFunction": "_fnProbeFirstChunk",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnIterStreamFile",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": false,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "typed-read",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/routes/fileRoutes.py",
       "sFingerprint": "75b544347f69cd67",
       "sFunction": "_fnRefuseDirectorySource",
       "sJournalKind": "UNCLASSIFIED",
@@ -5092,13 +5066,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/fileRoutes.py",
-      "sFingerprint": "ef3aae632e61e559",
+      "sFingerprint": "969e94878922ad2e",
       "sFunction": "_fsPullContainerFileToHost",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnIterStreamFile",
+      "sPrimitive": "fiterStreamFile",
       "sReferenceKind": "direct-call"
     },
     {
@@ -5125,6 +5099,32 @@
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
       "sPrimitive": "fbaFetchFile",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "UNCLASSIFIED"
+      ],
+      "listExecutionLanes": [
+        "UNCLASSIFIED"
+      ],
+      "listLockOwners": [
+        "UNCLASSIFIED"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "UNCLASSIFIED",
+      "sExclusionRationale": "UNCLASSIFIED",
+      "sFile": "gui/routes/fileRoutes.py",
+      "sFingerprint": "20589e1a7f7ef245",
+      "sFunction": "_ftProbeFirstChunk",
+      "sJournalKind": "UNCLASSIFIED",
+      "sLifetime": "UNCLASSIFIED",
+      "sLogicalOperation": "UNCLASSIFIED",
+      "sOperationMetadata": "UNCLASSIFIED",
+      "sPrimitive": "fiterStreamFile",
       "sReferenceKind": "direct-call"
     },
     {
@@ -5379,7 +5379,7 @@
       "sExclusionRationale": "",
       "sFile": "gui/routes/pipelineRoutes.py",
       "sFingerprint": "5a905743d7cba8bd",
-      "sFunction": "fnDeleteTheOutputs",
+      "sFunction": "ftDeleteTheOutputs",
       "sJournalKind": "helper",
       "sLifetime": "request",
       "sLogicalOperation": "delete every declared output and plot file of the workflow's automated steps",
@@ -5508,13 +5508,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/replayRoutes.py",
-      "sFingerprint": "5041088286a15cad",
+      "sFingerprint": "2dec3f1d572797d5",
       "sFunction": "_fnReplaceRootWithSymlink",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -5795,7 +5795,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/sessionRoutes.py",
       "sFingerprint": "c8af822a73f69a2d",
-      "sFunction": "_fnLaunchDetachedHub",
+      "sFunction": "_fprocessLaunchDetachedHub",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -5821,7 +5821,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/settingsRoutes.py",
       "sFingerprint": "a06e3e23921ae1b4",
-      "sFunction": "fnGetLogContent",
+      "sFunction": "fresponseGetLogContent",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -6002,13 +6002,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/testRoutes.py",
-      "sFingerprint": "0ec94ff3d79a2490",
+      "sFingerprint": "ddb374019ae8c4d9",
       "sFunction": "_fdictRunOneTestCategory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -6054,13 +6054,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/testRoutes.py",
-      "sFingerprint": "82cdb581fdf8308e",
-      "sFunction": "_fresultRunSaveAndRunTest",
+      "sFingerprint": "d0bab111d52eac90",
+      "sFunction": "_ftRunCategoryCommands",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -6080,13 +6080,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/routes/testRoutes.py",
-      "sFingerprint": "d00188def4371d0e",
-      "sFunction": "_ftRunCategoryCommands",
+      "sFingerprint": "27d12c3a5903a9c6",
+      "sFunction": "_ftRunSaveAndRunTest",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -6679,7 +6679,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/stateManager.py",
       "sFingerprint": "28964ddba4789149",
-      "sFunction": "_ftupleTryLoadStateFile",
+      "sFunction": "_ftTryLoadStateFile",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -6783,7 +6783,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/stepRename.py",
       "sFingerprint": "24585945803edfdb",
-      "sFunction": "_fnMoveStepDirectory",
+      "sFunction": "_fbMoveStepDirectory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -6809,7 +6809,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/stepRename.py",
       "sFingerprint": "557926109f912c06",
-      "sFunction": "_fnMoveStepDirectory",
+      "sFunction": "_fbMoveStepDirectory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -6835,7 +6835,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/stepRename.py",
       "sFingerprint": "561fa5dd7d55b327",
-      "sFunction": "_fnMoveStepDirectory",
+      "sFunction": "_fbMoveStepDirectory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -7744,13 +7744,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/terminalContainment.py",
-      "sFingerprint": "5060d5937de7c80b",
+      "sFingerprint": "eeba23b8dd5c4139",
       "sFunction": "fiDiscoverTerminalProcessGroup",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftupleRunRootShellProbe",
+      "sPrimitive": "ftRunRootShellProbe",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8394,8 +8394,8 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/workflowManager.py",
-      "sFingerprint": "87dffa9057df3b63",
-      "sFunction": "_flistDiscoverCandidatePaths",
+      "sFingerprint": "ce4ff9983ee4c5ab",
+      "sFunction": "_fiRmRfDirectory",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -8420,8 +8420,8 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/workflowManager.py",
-      "sFingerprint": "ce4ff9983ee4c5ab",
-      "sFunction": "_fnRmRfDirectory",
+      "sFingerprint": "87dffa9057df3b63",
+      "sFunction": "_flistDiscoverCandidatePaths",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -8550,7 +8550,7 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/dependencyPinning.py",
-      "sFingerprint": "c076281192dfa7ce",
+      "sFingerprint": "14767a7059d787c2",
       "sFunction": "_fnRunLockCompile",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
@@ -8603,7 +8603,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/overleafMirror.py",
       "sFingerprint": "7c81788c4602e2a1",
-      "sFunction": "_fnRunGit",
+      "sFunction": "_fprocessRunGit",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -8655,7 +8655,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/overleafSync.py",
       "sFingerprint": "b0510f124733ec16",
-      "sFunction": "_fnRunSubprocess",
+      "sFunction": "_fprocessRunSubprocess",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -8680,13 +8680,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/repoFiles.py",
-      "sFingerprint": "00ea5bd9aac22743",
+      "sFingerprint": "1479ce050110d9b2",
       "sFunction": "_ftExec",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8784,13 +8784,13 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/repoFiles.py",
-      "sFingerprint": "f71ef56456cf7fdd",
+      "sFingerprint": "1273d6788ab05bd7",
       "sFunction": "ffilesFetch",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
+      "sPrimitive": "ftRunInContainerStreamed",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8832,18 +8832,18 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "unknown-command",
+      "sAccess": "arbitrary-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/repoFiles.py",
-      "sFingerprint": "39aa391935897972",
+      "sFingerprint": "1479ce050110d9b2",
       "sFunction": "ftRunCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "process UNKNOWN",
-      "sReferenceKind": "unknown-command"
+      "sPrimitive": "ftRunInContainerStreamed",
+      "sReferenceKind": "direct-call"
     },
     {
       "bInsideGateway": false,
@@ -8858,18 +8858,18 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "unknown-command",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/repoFiles.py",
-      "sFingerprint": "00ea5bd9aac22743",
+      "sFingerprint": "39aa391935897972",
       "sFunction": "ftRunCommand",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "texecRunInContainerStreamed",
-      "sReferenceKind": "direct-call"
+      "sPrimitive": "process UNKNOWN",
+      "sReferenceKind": "unknown-command"
     },
     {
       "bInsideGateway": false,
@@ -8915,7 +8915,7 @@
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "reproducibility/reproduceScriptGenerator.py",
       "sFingerprint": "5d25ff9da50d99e2",
-      "sFunction": "fnGenerateReproduceScript",
+      "sFunction": "fsGenerateReproduceScript",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
@@ -8931,8 +8931,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "cli/commandReproduce.py",
       "sFingerprint": "6a5d45b326a64bda",
-      "sFunction": "_fiRunPipInstall",
-      "sScopeFingerprint": "19f8f48df28c39fe"
+      "sFunction": "_ftRunPipInstall",
+      "sScopeFingerprint": "9517d8fd2efbecaa"
     },
     {
       "iLine": 98,
@@ -8968,7 +8968,7 @@
       "sFile": "docker/__init__.py",
       "sFingerprint": "0ef298531b11936b",
       "sFunction": "fnRunDockerCommand",
-      "sScopeFingerprint": "362bb7c279c5de6d"
+      "sScopeFingerprint": "c1b290922e54a712"
     },
     {
       "iLine": 302,
@@ -8977,7 +8977,7 @@
       "sFile": "docker/containerManager.py",
       "sFingerprint": "2b203f61461c649a",
       "sFunction": "_fsRunDetachedCommand",
-      "sScopeFingerprint": "7db4709255ba613d"
+      "sScopeFingerprint": "b525d756ca545ff4"
     },
     {
       "iLine": 148,
@@ -8995,7 +8995,7 @@
       "sFile": "docker/containerManager.py",
       "sFingerprint": "3e0d9b37f9555453",
       "sFunction": "_ftRunProbeCommand",
-      "sScopeFingerprint": "9d9c71cf878e088f"
+      "sScopeFingerprint": "60f361fd2a414d1d"
     },
     {
       "iLine": 567,
@@ -9004,7 +9004,7 @@
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "6325322d09d6a70d",
       "sFunction": "_ftStreamExecLines",
-      "sScopeFingerprint": "1e87e2df50bd7f29"
+      "sScopeFingerprint": "48b2dac70f916724"
     },
     {
       "iLine": 431,
@@ -9066,8 +9066,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "7c8e1470ff62ee5c",
-      "sFunction": "texecRunInContainerStreamedWithChunks",
-      "sScopeFingerprint": "dc820dbeb136d415"
+      "sFunction": "ftRunInContainerStreamedWithChunks",
+      "sScopeFingerprint": "de871645e02ba7a2"
     },
     {
       "iLine": 530,
@@ -9075,8 +9075,8 @@
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
       "sFingerprint": "bee0f0dbf681aa2c",
-      "sFunction": "texecRunInContainerStreamedWithChunks",
-      "sScopeFingerprint": "dc820dbeb136d415"
+      "sFunction": "ftRunInContainerStreamedWithChunks",
+      "sScopeFingerprint": "de871645e02ba7a2"
     },
     {
       "iLine": 306,
@@ -9097,7 +9097,7 @@
       "sScopeFingerprint": "6535cacbfa91dba8"
     },
     {
-      "iLine": 935,
+      "iLine": 936,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/commitCarrier.py",
@@ -9120,8 +9120,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "gui/routes/sessionRoutes.py",
       "sFingerprint": "c8af822a73f69a2d",
-      "sFunction": "_fnLaunchDetachedHub",
-      "sScopeFingerprint": "3a7b1ee2a7bf4eec"
+      "sFunction": "_fprocessLaunchDetachedHub",
+      "sScopeFingerprint": "e02a6840322d9b13"
     },
     {
       "iLine": 187,
@@ -9130,7 +9130,7 @@
       "sFile": "gui/setupServer.py",
       "sFingerprint": "20c087c30127daf7",
       "sFunction": "ftResultRunBuild",
-      "sScopeFingerprint": "a800be49bf2826a8"
+      "sScopeFingerprint": "4820c8f27ce656a2"
     },
     {
       "iLine": 1121,
@@ -9139,16 +9139,16 @@
       "sFile": "gui/syncDispatcher.py",
       "sFingerprint": "b1cf458ca0cf9524",
       "sFunction": "_ftRunHostLsRemote",
-      "sScopeFingerprint": "8d2e498e92cd5b5b"
+      "sScopeFingerprint": "1416c2b66127daa3"
     },
     {
       "iLine": 192,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/dependencyPinning.py",
-      "sFingerprint": "c076281192dfa7ce",
+      "sFingerprint": "14767a7059d787c2",
       "sFunction": "_fnRunLockCompile",
-      "sScopeFingerprint": "7197e48507b70a3e"
+      "sScopeFingerprint": "9151263bfbcd27dc"
     },
     {
       "iLine": 128,
@@ -9157,7 +9157,7 @@
       "sFile": "reproducibility/environmentSnapshot.py",
       "sFingerprint": "09ae1a395807713a",
       "sFunction": "_fsRunCheckedCommand",
-      "sScopeFingerprint": "9b53ce2730096906"
+      "sScopeFingerprint": "172a1306097020e4"
     },
     {
       "iLine": 182,
@@ -9165,8 +9165,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafMirror.py",
       "sFingerprint": "7c81788c4602e2a1",
-      "sFunction": "_fnRunGit",
-      "sScopeFingerprint": "1f1c8d469d8fab2a"
+      "sFunction": "_fprocessRunGit",
+      "sScopeFingerprint": "a70c6cbf82fb0b00"
     },
     {
       "iLine": 751,
@@ -9175,7 +9175,7 @@
       "sFile": "reproducibility/overleafSync.py",
       "sFingerprint": "1a630c647c3aee6f",
       "sFunction": "_fnRunLsRemote",
-      "sScopeFingerprint": "16d13fa43f3eaff5"
+      "sScopeFingerprint": "34b42eb45b049d14"
     },
     {
       "iLine": 664,
@@ -9183,8 +9183,8 @@
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "reproducibility/overleafSync.py",
       "sFingerprint": "b0510f124733ec16",
-      "sFunction": "_fnRunSubprocess",
-      "sScopeFingerprint": "6b67ff1aa30269e0"
+      "sFunction": "_fprocessRunSubprocess",
+      "sScopeFingerprint": "345a987d0722c18e"
     },
     {
       "iLine": 300,
@@ -9193,7 +9193,7 @@
       "sFile": "reproducibility/repoFiles.py",
       "sFingerprint": "39aa391935897972",
       "sFunction": "ftRunCommand",
-      "sScopeFingerprint": "286b544ac7dd1538"
+      "sScopeFingerprint": "11d2de885cacefef"
     }
   ],
   "sPurpose": "Every acquisition of a declared capability in vaibify/, and every container-mutation call site, one entry each. Machine-derived identity; reviewer-classified meaning. See tools/generateMutationInventory.py."

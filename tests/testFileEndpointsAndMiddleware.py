@@ -93,7 +93,7 @@ class MockDockerTransfer:
             f"Cannot list directory in container: {sDirectoryPath}"
         )
 
-    def fnIterStreamFile(
+    def fiterStreamFile(
         self, sContainerId, sPath, iChunkSizeBytes=1048576,
     ):
         baBytes = self.fbaFetchFile(sContainerId, sPath)
@@ -824,14 +824,14 @@ def test_fsResolveFigurePath_relative():
 
 
 def test_fnValidatePathWithinRoot_valid():
-    sResult = pipelineServer.fnValidatePathWithinRoot(
+    sResult = pipelineServer.fsValidatePathWithinRoot(
         "/workspace/step1/data.npy", "/workspace"
     )
     assert sResult == "/workspace/step1/data.npy"
 
 
 def test_fnValidatePathWithinRoot_root_exact():
-    sResult = pipelineServer.fnValidatePathWithinRoot(
+    sResult = pipelineServer.fsValidatePathWithinRoot(
         "/workspace", "/workspace"
     )
     assert sResult == "/workspace"
@@ -839,7 +839,7 @@ def test_fnValidatePathWithinRoot_root_exact():
 
 def test_fnValidatePathWithinRoot_traversal():
     with pytest.raises(Exception) as excInfo:
-        pipelineServer.fnValidatePathWithinRoot(
+        pipelineServer.fsValidatePathWithinRoot(
             "/workspace/../etc/passwd", "/workspace"
         )
     assert excInfo.value.status_code == 403
@@ -847,7 +847,7 @@ def test_fnValidatePathWithinRoot_traversal():
 
 def test_fnValidatePathWithinRoot_outside():
     with pytest.raises(Exception) as excInfo:
-        pipelineServer.fnValidatePathWithinRoot(
+        pipelineServer.fsValidatePathWithinRoot(
             "/etc/hosts", "/workspace"
         )
     assert excInfo.value.status_code == 403

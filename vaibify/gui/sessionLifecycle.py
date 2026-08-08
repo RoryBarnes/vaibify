@@ -38,7 +38,7 @@ Two invariants (design §3.5), recorded while they are true:
    future "move my session to container B" must be release-A then
    claim-B, never a combined switch holding both.
 2. **The locks live here, wrapping the SYNCHRONOUS ownership
-   primitives.** ``ftdictClaim``, ``fnReleaseOwnership``, and
+   primitives.** ``ftClaim``, ``fbReleaseOwnership``, and
    ``flistReapIdleOwnerships`` stay synchronous; the ``asyncio.Lock``s
    are taken in this lifecycle layer around those calls, never pushed
    down into them. Corollary: build is browser-hub scoped and takes no
@@ -67,7 +67,7 @@ __all__ = [
     "fdictCreateLifecycleLockStore",
     "flockContainerMutationForAppState",
     "flockSessionCardinalityForAppState",
-    "ftdictClaimWithCardinality",
+    "ftClaimWithCardinality",
     "ftReserveContainerForStart",
     "ftSettleFailedStartOwnership",
     "S_START_RESERVED",
@@ -251,7 +251,7 @@ def flockSessionCardinalityForAppState(appState):
     )
 
 
-async def ftdictClaimWithCardinality(
+async def ftClaimWithCardinality(
     appState, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, sBrowserSessionId="", connectionDocker=None,
 ):
@@ -259,7 +259,7 @@ async def ftdictClaimWithCardinality(
 
     The sole claim path for routes: acquires the container-mutation lock
     (the drain), then the hub-wide cardinality lock, and only then runs
-    the synchronous :func:`containerOwnership.ftdictClaim`, whose
+    the synchronous :func:`containerOwnership.ftClaim`, whose
     cardinality read-check-write on ``dictSessionOwner`` therefore
     executes atomically against every other creation path. Two
     concurrent claims by one session on two DIFFERENT containers take
@@ -273,7 +273,7 @@ async def ftdictClaimWithCardinality(
     dictSessionOwner = getattr(appState, "dictSessionOwner", None)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
-            return containerOwnership.ftdictClaim(
+            return containerOwnership.ftClaim(
                 dictContainerOwners, sName, sLeaseId, iPort,
                 sContainerId=sContainerId,
                 fbPipelineRunning=fbPipelineRunning,
@@ -309,13 +309,13 @@ async def ftReserveContainerForStart(
     dictLockStore = _fdictLockStoreForAppState(appState)
     async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
-            return _tReserveForStartUnderLocks(
+            return _ftReserveForStartUnderLocks(
                 appState, sName, sBrowserSessionId, iPort, connectionDocker,
                 fnMintReservation, fsRefusalForPriorOutcome,
             )
 
 
-def _tReserveForStartUnderLocks(
+def _ftReserveForStartUnderLocks(
     appState, sName, sBrowserSessionId, iPort, connectionDocker,
     fnMintReservation, fsRefusalForPriorOutcome,
 ):
@@ -334,7 +334,7 @@ def _tReserveForStartUnderLocks(
     if sRefusal:
         return (S_START_REFUSED, {"sName": sName, "sMessage": sRefusal}, None)
     if recordOwner is None:
-        iStatusCode, dictPayload = containerOwnership.ftdictClaim(
+        iStatusCode, dictPayload = containerOwnership.ftClaim(
             dictOwners, sName, "", iPort,
             sBrowserSessionId=sBrowserSessionId,
             dictSessionOwner=getattr(appState, "dictSessionOwner", None),
@@ -405,7 +405,7 @@ async def ftSettleFailedStartOwnership(
                 return
             if not bMayRelease:
                 return
-            containerOwnership.fnReleaseOwnership(
+            containerOwnership.fbReleaseOwnership(
                 dictOwners, sName, recordOwner.sLeaseId,
                 sBrowserSessionId=recordOwner.sBrowserSessionId,
                 dictSessionOwner=getattr(appState, "dictSessionOwner", None),
@@ -489,7 +489,7 @@ async def ftReleaseExplicit(
             return (S_RELEASE_BUSY, {"sMessage": sBusyMessage})
         await _fnDrainAndCloseBeforeRelease(appState, sName)
         async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fnReleaseOwnership(
+            bReleased = containerOwnership.fbReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
@@ -610,7 +610,7 @@ async def ftTransferOwnership(appState, sCapability):
             "sMessage": "Unknown transfer capability; mint a fresh one "
                         "with 'vaibify open'.",
         })
-    tPrecheck = _tOutcomeForCapabilityState(dictStore, sCapability,
+    tPrecheck = _ftOutcomeForCapabilityState(dictStore, sCapability,
                                             dictInspect)
     if tPrecheck is not None:
         return tPrecheck
@@ -623,13 +623,13 @@ async def ftTransferOwnership(appState, sCapability):
         # and a half-hour rebuild are the same locked lock -- and the
         # researcher is left staring at a command that has not answered.
         # An immediate, specific refusal lets them decide.
-        return _tOutcomeForBusyContainer(appState, sCapability, sName)
+        return _ftOutcomeForBusyContainer(appState, sCapability, sName)
     # Uncontended, so this cannot yield: there is no await between the
     # check above and the acquisition, and a single-threaded event loop
     # cannot interleave another coroutine into that gap.
     await lockMutation.acquire()
     try:
-        return await _tTransferUnderDrain(
+        return await _ftTransferUnderDrain(
             appState, dictStore, dictLockStore, sCapability, sName,
             dictInspect["iExpectedOwnerGeneration"],
         )
@@ -637,7 +637,7 @@ async def ftTransferOwnership(appState, sCapability):
         lockMutation.release()
 
 
-def _tOutcomeForCapabilityState(dictStore, sCapability, dictInspect):
+def _ftOutcomeForCapabilityState(dictStore, sCapability, dictInspect):
     """Return the pre-lock outcome, or None when the transfer may run.
 
     Handles bounded replay (a REDEEMED capability inside its window
@@ -669,7 +669,7 @@ def _tOutcomeForCapabilityState(dictStore, sCapability, dictInspect):
     return None
 
 
-def _tOutcomeForBusyContainer(appState, sCapability, sName):
+def _ftOutcomeForBusyContainer(appState, sCapability, sName):
     """Refuse a transfer into a busy container, naming what holds it.
 
     Nothing is minted, revoked, bumped, or CONSUMED: the capability
@@ -692,7 +692,7 @@ def _tOutcomeForBusyContainer(appState, sCapability, sName):
     })
 
 
-async def _tTransferUnderDrain(
+async def _ftTransferUnderDrain(
     appState, dictStore, dictLockStore, sCapability, sName, iExpectedGen,
 ):
     """Run the pre-checks and commit under the held drain.
@@ -702,12 +702,12 @@ async def _tTransferUnderDrain(
     two reasons that reinforce each other: the terminal is disabled, so
     no such record can be created; and a legacy record from an earlier
     version is an unsettled journal record, which
-    ``_tRefusalBeforePremint`` already refuses over, naming 'vaibify
+    ``_ftRefusalBeforePremint`` already refuses over, naming 'vaibify
     reconcile'. Draining would also have made the transfer WAIT --
     inside the held lock, on a thread -- which is exactly what a
     hand-over must not do.
     """
-    tRefusal = _tRefusalBeforePremint(
+    tRefusal = _ftRefusalBeforePremint(
         appState, dictStore, sCapability, sName, iExpectedGen,
     )
     if tRefusal is not None:
@@ -719,13 +719,13 @@ async def _tTransferUnderDrain(
     async with _flockObtainSessionCardinality(dictLockStore):
         # Final check + commit: SYNCHRONOUS from here to the return —
         # no await may separate the generation check from the commit.
-        tLateRefusal = _tRefusalAtCommitPoint(
+        tLateRefusal = _ftRefusalAtCommitPoint(
             appState, dictStore, sNewCredential, sName, iExpectedGen,
             sCapability,
         )
         if tLateRefusal is not None:
             return tLateRefusal
-        dictPayload, listDetached = _tCommitTransfer(
+        dictPayload, listDetached = _ftCommitTransfer(
             appState, dictStore, sCapability, sName,
             sNewSessionId, sNewCredential,
         )
@@ -733,7 +733,7 @@ async def _tTransferUnderDrain(
     return (S_TRANSFER_TRANSFERRED, dictPayload)
 
 
-def _tRefusalBeforePremint(
+def _ftRefusalBeforePremint(
     appState, dictStore, sCapability, sName, iExpectedGen,
 ):
     """Return the pre-mint refusal outcome, or None to proceed.
@@ -840,7 +840,7 @@ def _fsUnadoptableJournalReason(appState, sName, recordTask):
     return ""
 
 
-def _tRefusalAtCommitPoint(
+def _ftRefusalAtCommitPoint(
     appState, dictStore, sNewCredential, sName, iExpectedGen, sCapability,
 ):
     """Return the final synchronous refusal, or None to commit.
@@ -897,7 +897,7 @@ def _tRefusalAtCommitPoint(
     return None
 
 
-def _tCommitTransfer(
+def _ftCommitTransfer(
     appState, dictStore, sCapability, sName, sNewSessionId, sNewCredential,
 ):
     """The synchronous linearization point (design §6.1).
@@ -928,7 +928,7 @@ def _tCommitTransfer(
     listDetached = _flistDetachOldSessionConnections(
         appState, recordOwner, sOldSessionId,
     )
-    browserSession.fnRevokeSessionById(dictStore, sOldSessionId)
+    browserSession.fbRevokeSessionById(dictStore, sOldSessionId)
     browserSession.fnStoreTransferResult(
         dictStore, sCapability, sNewSessionId, sNewCredential, sNewLease,
         iNewGeneration,
@@ -1018,7 +1018,7 @@ async def _fnCloseDetachedConnections(listDetached):
     """
     for recordConnection in listDetached:
         try:
-            await recordConnection.connection.close(code=4401)
+            await recordConnection.websocket.close(code=4401)
         except Exception:  # noqa: BLE001 — a dead socket is already closed
             pass
 
@@ -1075,7 +1075,7 @@ def _flistCommitOrphanSynchronously(appState, sName, fbStillWarranted):
     dictStore = getattr(appState, "dictBrowserSessions", None) or {}
     sSessionId = recordOwner.sBrowserSessionId
     # (a) The credential authorizes nothing from this statement on.
-    browserSession.fnRevokeSessionById(dictStore, sSessionId)
+    browserSession.fbRevokeSessionById(dictStore, sSessionId)
     # (d) Unused capabilities die with the session (tickets and
     # download capabilities join this call when their slices land).
     browserSession.fnExpireCapabilitiesForSession(dictStore, sSessionId)
@@ -1271,7 +1271,7 @@ async def _fnCommitSessionExpiry(
 ):
     """Commit one expired session: orphan its owner, or revoke it bare."""
     if not _fbOwnerRecordIsOwnedByActiveSession(recordOwner, sSessionId):
-        browserSession.fnRevokeSessionById(dictStore, sSessionId)
+        browserSession.fbRevokeSessionById(dictStore, sSessionId)
         return
 
     def fbStillOwnedByThisSession(recordAny):

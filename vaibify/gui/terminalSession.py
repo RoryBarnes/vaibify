@@ -125,7 +125,7 @@ class TerminalSession:
             )
             recordTerminal.iProcessGroup = iProcessGroup
         except Exception:
-            terminalContainment.fnDrainSessionRecord(self)
+            terminalContainment.fdictDrainSessionRecord(self)
             self.fnClose()
             raise
 
@@ -178,7 +178,7 @@ class TerminalSession:
         Closing the socket is NOT proof the terminal died — a
         signal-trapping shell survives all three keystrokes below.
         Every production close path therefore also drains the
-        containment record (``terminalContainment.fnDrainSessionRecord``),
+        containment record (``terminalContainment.fdictDrainSessionRecord``),
         which terminates the recorded process group and PROVES it
         empty or quarantines.
         """

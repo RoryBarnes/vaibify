@@ -44,19 +44,19 @@ from .. import (
     stateContract,
     workflowManager,
 )
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import fdictRequireWorkflow, fnBumpSyncEpoch
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     ffilesForWorkflow,
-    fnCommitWorkflowSave,
-    fobjRunWorkerUnderTheDrain,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
     fsRefreshVerifyCacheAfterPush,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility.manifestPaths import flistStepDeclarationRepoPaths
@@ -223,7 +223,7 @@ def _fnRegisterGitStatus(app, dictCtx):
     """Register GET /api/git/{sContainerId}/status."""
 
     @app.get("/api/git/{sContainerId}/status")
-    async def fnGitStatus(sContainerId: str):
+    async def fdictHandleGitStatus(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -253,7 +253,7 @@ def _fdictProjectGitView(dictGit, sRemoteUrl):
     }
 
 
-async def _tCollectGitBadgeInputs(docker, sContainerId, dictWorkflow, sRepo):
+async def _ftCollectGitBadgeInputs(docker, sContainerId, dictWorkflow, sRepo):
     """Gather badge inputs: three independent execs run concurrently,
     then blob hashing runs against the resolved tracked-file list.
 
@@ -286,7 +286,7 @@ def _fnRegisterGitBadges(app, dictCtx):
     """Register GET /api/git/{sContainerId}/badges."""
 
     @app.get("/api/git/{sContainerId}/badges")
-    async def fnGitBadges(sContainerId: str):
+    async def fdictGitBadges(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -296,7 +296,7 @@ def _fnRegisterGitBadges(app, dictCtx):
             return _fdictNoProjectRepoResponse()
         docker = dictCtx["docker"]
         dictGit, listTracked, dictHashes, sRemoteUrl = (
-            await _tCollectGitBadgeInputs(
+            await _ftCollectGitBadgeInputs(
                 docker, sContainerId, dictWorkflow, sRepo,
             )
         )
@@ -326,7 +326,7 @@ def _fnRegisterManifestCheck(app, dictCtx):
     """Register GET /api/git/{sContainerId}/manifest-check."""
 
     @app.get("/api/git/{sContainerId}/manifest-check")
-    async def fnManifestCheck(
+    async def fdictManifestCheck(
         sContainerId: str, sService: str = "",
     ):
         dictCtx["require"]()
@@ -361,7 +361,7 @@ def _fnRegisterManifestCheck(app, dictCtx):
         )
 
 
-async def _fobjRunGitWorkerUnderTheDrain(
+async def _fgenericRunGitWorkerUnderTheDrain(
     sContainerId, fnEffect, sOperationTarget, requestHttp,
 ):
     """Run one git-panel mutation under the drain; re-raise its refusal.
@@ -387,24 +387,24 @@ async def _fobjRunGitWorkerUnderTheDrain(
     here is the reason THIS panel is mode (b) and the status set only
     this panel carries.
     """
-    def fnRunTheEffect(supervisor=None):
+    def fdictRunTheEffect(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             fnEffect, _SET_GIT_REMOTE_REFUSAL_STATUSES,
         )
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnRunTheEffect, sOperationTarget, requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictRunTheEffect, sOperationTarget, requestHttp,
     )
 
 
 def _fnRegisterCommitCanonical(app, dictCtx):
     """Register POST /api/git/{sContainerId}/commit-canonical."""
 
-    @fnAgentAction("commit-canonical")
+    @ffnAgentAction("commit-canonical")
     @app.post("/api/git/{sContainerId}/commit-canonical")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnCommitCanonical(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleCommitCanonical(
         sContainerId: str, request: CommitCanonicalRequest,
         requestHttp: Request,
     ):
@@ -416,7 +416,7 @@ def _fnRegisterCommitCanonical(app, dictCtx):
         # workflow outside a git work tree is a 409 without a journal
         # record ever existing.
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictScanThenCommitCanonical(
                 dictCtx["docker"], sContainerId, dictWorkflow, sRepo,
@@ -543,10 +543,10 @@ def _fsDefaultCommitMessage():
 def _fnRegisterUntrackAiDeclaration(app, dictCtx):
     """Register POST /api/git/{sContainerId}/untrack-ai-declaration."""
 
-    @fnAgentAction("untrack-ai-declaration")
+    @ffnAgentAction("untrack-ai-declaration")
     @app.post("/api/git/{sContainerId}/untrack-ai-declaration")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnUntrackAiDeclaration(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictUntrackAiDeclaration(
         sContainerId: str, request: UntrackAiDeclarationRequest,
         requestHttp: Request,
     ):
@@ -558,7 +558,7 @@ def _fnRegisterUntrackAiDeclaration(app, dictCtx):
         # container, so they answer before any journal record exists.
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         _fnRequireDeclarationPath(dictWorkflow, request.sPath)
-        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictRemoveDeclarationFromTheIndex(
                 dictCtx["docker"], sContainerId, sRepo, request.sPath,
@@ -707,10 +707,10 @@ def _fdictFetchStatusView(dictGit, bCacheUsed):
 def _fnRegisterFetchProjectRepo(app, dictCtx):
     """Register POST /api/git/{sContainerId}/fetch-project-repo."""
 
-    @fnAgentAction("fetch-project-repo")
+    @ffnAgentAction("fetch-project-repo")
     @app.post("/api/git/{sContainerId}/fetch-project-repo")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnFetchProjectRepo(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleFetchProjectRepo(
         sContainerId: str, requestHttp: Request,
         request: FetchProjectRepoRequest = FetchProjectRepoRequest(),
     ):
@@ -720,7 +720,7 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
-        return await _fobjRunGitWorkerUnderTheDrain(
+        return await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictFetchThenReadStatus(
                 dictCtx, sContainerId, sRepo, bCacheUsed,
@@ -776,10 +776,10 @@ def _fdictCollectRefreshRemotesView(
 def _fnRegisterRefreshRemotes(app, dictCtx):
     """Register POST /api/git/{sContainerId}/refresh-remotes."""
 
-    @fnAgentAction("refresh-remotes")
+    @ffnAgentAction("refresh-remotes")
     @app.post("/api/git/{sContainerId}/refresh-remotes")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnRefreshRemotes(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictRefreshRemotes(
         sContainerId: str, requestHttp: Request,
         request: RefreshRemotesRequest = RefreshRemotesRequest(),
     ):
@@ -789,7 +789,7 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
         bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
-        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictFetchThenCollectRemotes(
                 dictCtx["docker"], sContainerId, sRepo, bCacheUsed,
@@ -847,16 +847,16 @@ def _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo):
 def _fnRegisterPullProjectRepo(app, dictCtx):
     """Register POST /api/git/{sContainerId}/pull-project-repo."""
 
-    @fnAgentAction("pull-project-repo")
+    @ffnAgentAction("pull-project-repo")
     @app.post("/api/git/{sContainerId}/pull-project-repo")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnPullProjectRepo(sContainerId: str, requestHttp: Request):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandlePullProjectRepo(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        return await _fobjRunGitWorkerUnderTheDrain(
+        return await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictCheckCleanThenFastForward(
                 dictCtx, sContainerId, sRepo,
@@ -960,7 +960,7 @@ def _fdictReconcileSyncStatusFromVerify(
         workflowManager.fnUpdateSyncStatus(
             dictWorkflow, listProven, "Github",
         )
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The reconcile bookkeeping save",
         )
@@ -984,12 +984,12 @@ def _fnRegisterReconcileRemoteState(app, dictCtx):
     proved, and bumps the sync epoch so every open tab repaints once.
     """
 
-    @fnAgentAction("reconcile-remote-state")
+    @ffnAgentAction("reconcile-remote-state")
     @app.post("/api/git/{sContainerId}/reconcile-remote-state")
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
     )
-    async def fnReconcileRemoteState(
+    async def fdictReconcileRemoteState(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -1002,7 +1002,7 @@ def _fnRegisterReconcileRemoteState(app, dictCtx):
         # drain, and a mode-(b) carrier opened inside another's held
         # lock would deadlock on it. Each completes before the next
         # begins.
-        dictResponse = await _fobjRunGitWorkerUnderTheDrain(
+        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictFetchThenCollectRemotes(
                 dictCtx["docker"], sContainerId, sRepo, False,

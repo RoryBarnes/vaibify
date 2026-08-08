@@ -143,22 +143,22 @@ SET_MUTATING_DOCKER_SUBCOMMANDS = frozenset({
 # testMutationInventory::testEveryDockerPrimitiveIsInTheScopeList.
 DICT_PRIMITIVE_ACCESS = {
     # --- vaibify/docker/dockerConnection.py: mutation-capable ---
-    "texecRunInContainerStreamed": S_ACCESS_ARBITRARY_COMMAND,
-    "texecRunInContainerStreamedWithChunks": S_ACCESS_ARBITRARY_COMMAND,
+    "ftRunInContainerStreamed": S_ACCESS_ARBITRARY_COMMAND,
+    "ftRunInContainerStreamedWithChunks": S_ACCESS_ARBITRARY_COMMAND,
     "ftResultExecuteCommand": S_ACCESS_ARBITRARY_COMMAND,
     "fnWriteFile": S_ACCESS_ARCHIVE_WRITE,
     "fnWriteFileViaTar": S_ACCESS_ARCHIVE_WRITE,
     "fsExecCreate": S_ACCESS_EXEC_CREATE,
     "fsocketExecStart": S_ACCESS_EXEC_CREATE,
     "fnExecResize": S_ACCESS_EXEC_STATE,
-    "ftupleRunRootShellProbe": S_ACCESS_ROOT_SHELL,
+    "ftRunRootShellProbe": S_ACCESS_ROOT_SHELL,
     "fdictProbeProcessGroupMembers": S_ACCESS_ARBITRARY_COMMAND,
     "fnSignalProcessGroupMembers": S_ACCESS_SIGNAL,
     # --- vaibify/docker/dockerConnection.py: read / cache ---
     "flistGetRunningContainers": S_ACCESS_TYPED_READ,
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
-    "fnIterStreamFile": S_ACCESS_TYPED_READ,
+    "fiterStreamFile": S_ACCESS_TYPED_READ,
     "fdictInspectExec": S_ACCESS_TYPED_READ,
     "fnEvictAbsentContainers": S_ACCESS_TYPED_READ,
     # The audited adapter behind `vaibify ls`: the caller supplies a

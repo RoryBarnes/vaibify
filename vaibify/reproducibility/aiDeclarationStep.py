@@ -13,7 +13,7 @@ codebase has one place to look:
    used when generating a starter file.
 2. ``fbStepIsAiDeclaration`` — the predicate used by the renderer and
    the L2 gate to recognize the kind.
-3. ``fnWriteDeclarationTemplate`` — atomically writes the starter
+3. ``fsWriteDeclarationTemplate`` — atomically writes the starter
    template to ``<projectRepo>/<sRelativePath>`` without clobbering an
    existing file.
 
@@ -39,7 +39,7 @@ __all__ = [
     "S_DECLARATION_TEMPLATE",
     "fbStepIsAiDeclaration",
     "fbDeclarationFileExists",
-    "fnWriteDeclarationTemplate",
+    "fsWriteDeclarationTemplate",
     "fdictBuildAiDeclarationStep",
 ]
 
@@ -90,7 +90,7 @@ def fbDeclarationFileExists(filesRepo, sRelativePath):
     return filesRepo.fbIsFile(sRelativePath)
 
 
-def fnWriteDeclarationTemplate(filesRepo, sRelativePath):
+def fsWriteDeclarationTemplate(filesRepo, sRelativePath):
     """Write the starter template to <projectRepo>/<sRelativePath>.
 
     Refuses to overwrite an existing file or directory (caller should

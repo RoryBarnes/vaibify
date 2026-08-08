@@ -118,7 +118,7 @@ def test_build_mutation_test_command_reruns_data_then_pytest():
 
 def _fnConnectionReturning(result):
     conn = MagicMock()
-    conn.texecRunInContainerStreamed.return_value = result
+    conn.ftRunInContainerStreamed.return_value = result
     return conn
 
 

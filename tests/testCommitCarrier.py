@@ -141,14 +141,14 @@ def clientWithProbeRoutes():
 
     @app.post("/api/carrier-probe/durable-exec")
     async def fnProbeDurableExec():
-        connectionDocker.texecRunInContainerStreamedWithChunks(
+        connectionDocker.ftRunInContainerStreamedWithChunks(
             S_CONTAINER_ID, "touch /tmp/effect", None, sUser="probe",
         )
         return {"bLaunched": True}
 
     @app.post("/api/carrier-probe/admitted-write")
     async def fnProbeAdmittedWrite():
-        tAdmissionTokens = commitCarrier.ftupleOpenEstablishingAdmission(
+        tAdmissionTokens = commitCarrier.ftOpenEstablishingAdmission(
             S_CONTAINER_NAME, S_CONTAINER_ID,
         )
         try:
@@ -233,7 +233,7 @@ def test_route_durable_exec_without_mode_c_guard_is_refused(
     durable-task guard, before ``exec_create`` is ever reached.
 
     Kills: removing the ``fnAssertDurableExecAdmitted`` gate from
-    ``dockerConnection.texecRunInContainerStreamedWithChunks``.
+    ``dockerConnection.ftRunInContainerStreamedWithChunks``.
     """
     clientHttp, stubContainer, connectionDocker = clientWithProbeRoutes
     responseHttp = clientHttp.post("/api/carrier-probe/durable-exec")
@@ -336,7 +336,7 @@ def test_hub_shutdown_retains_flock_while_guarded_worker_lives(
             lambda: MagicMock(),
         ):
             app = appFactory.fappCreateHubApplication()
-        fileHandleLock = containerLock.fnAcquireContainerLock(
+        fileHandleLock = containerLock.ffileAcquireContainerLock(
             S_CONTAINER_NAME, 8137,
         )
         app.state.dictContainerOwners[S_CONTAINER_NAME] = OwnerRecord(
@@ -367,7 +367,7 @@ def test_hub_shutdown_retains_flock_while_guarded_worker_lives(
             await fnShutdown(app)
         assert S_CONTAINER_NAME in app.state.dictContainerOwners
         with pytest.raises(containerLock.ContainerLockedError):
-            containerLock.fnAcquireContainerLock(S_CONTAINER_NAME, 9999)
+            containerLock.ffileAcquireContainerLock(S_CONTAINER_NAME, 9999)
         eventRelease.set()
         dictOutcome = await asyncio.wait_for(taskRequest, 5)
         assert dictOutcome["bCommitted"] is True
@@ -955,7 +955,7 @@ def test_durable_task_journals_execs_through_create_journal_start():
 
         async def _fnBody():
             return await asyncio.to_thread(
-                connectionDocker.texecRunInContainerStreamedWithChunks,
+                connectionDocker.ftRunInContainerStreamedWithChunks,
                 S_CONTAINER_ID, "python run.py", None, None, "runner",
             )
 
@@ -999,7 +999,7 @@ def testACoroutineWorkerIsRefusedAtRuntime():
         return "never runs"
 
     with pytest.raises(TypeError, match="coroutine function"):
-        commitCarrier._fnCallWorkerSynchronously(
+        commitCarrier._fgenericCallWorkerSynchronously(
             _fnAsyncWorker, object(),
         )
 
@@ -1025,7 +1025,7 @@ def testAWorkerReturningAnAwaitableIsRefusedAtRuntime():
         _CallableWithAsyncCall(),
     ):
         with pytest.raises(TypeError, match="awaitable|coroutine"):
-            commitCarrier._fnCallWorkerSynchronously(fnWorker, object())
+            commitCarrier._fgenericCallWorkerSynchronously(fnWorker, object())
 
 
 def testASynchronousWorkerStillRuns():
@@ -1037,7 +1037,7 @@ def testASynchronousWorkerStillRuns():
         listRan.append("ran")
         return "done"
 
-    assert commitCarrier._fnCallWorkerSynchronously(
+    assert commitCarrier._fgenericCallWorkerSynchronously(
         _fnWorker, object(),
     ) == "done"
     assert listRan == ["ran"]
@@ -1099,7 +1099,7 @@ def testAnAwaitableWithoutCloseStillRaisesTypeError():
         return _AwaitableWithoutClose()
 
     with pytest.raises(TypeError, match="awaitable"):
-        commitCarrier._fnCallWorkerSynchronously(_fnWorker, object())
+        commitCarrier._fgenericCallWorkerSynchronously(_fnWorker, object())
 
 
 # ---------------------------------------------------------------------

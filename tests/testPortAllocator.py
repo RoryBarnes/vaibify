@@ -263,7 +263,7 @@ def test_fiResolveProjectPort_assigns_and_persists_when_zero(capsys):
     iResolved = fiResolveProjectPort(
         config, iExplicitPort=None,
         sConfigPath="/tmp/vaibify.yml",
-        fnSaveConfig=_fnRecordSave,
+        fdictSaveConfig=_fnRecordSave,
     )
     assert iResolved > 0
     assert config.iDashboardPort == iResolved
@@ -285,7 +285,7 @@ def test_fiResolveProjectPort_warns_when_save_fails(capsys):
     iResolved = fiResolveProjectPort(
         config, iExplicitPort=None,
         sConfigPath="/tmp/vaibify.yml",
-        fnSaveConfig=_fnRaisingSave,
+        fdictSaveConfig=_fnRaisingSave,
     )
     assert iResolved > 0
     sErr = capsys.readouterr().err

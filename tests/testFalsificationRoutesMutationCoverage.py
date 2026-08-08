@@ -31,7 +31,7 @@ class _ConnectionStub:
             iExitCode=iExitCode, sStdout=sStdout, sStderr=sStderr,
         )
 
-    def texecRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand):
         return self._result
 
 

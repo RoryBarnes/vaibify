@@ -17,8 +17,8 @@ from vaibify.gui.pipelineServer import (
     _flistExtractStepDirectories,
     _fdictBuildTestMarkerStatus,
     _fbMarkerStale,
-    _fnApplyExternalTestResults,
-    _fnApplyMarkerCategory,
+    _fbApplyExternalTestResults,
+    _fbApplyMarkerCategory,
     _fdictBuildTestFileChanges,
     _fsetExtractRegisteredTestFiles,
     _flistResolveTestCommands as flistResolveTestCommandsServer,
@@ -299,7 +299,7 @@ def test_fbMarkerStale_missing_timestamp():
     assert _fbMarkerStale(dictMarker, dictFileInfo) is True
 
 
-# ---- pipelineServer: _fnApplyExternalTestResults ----
+# ---- pipelineServer: _fbApplyExternalTestResults ----
 
 def test_fnApplyExternalTestResults_applies_passed():
     dictWorkflow = {
@@ -315,7 +315,7 @@ def test_fnApplyExternalTestResults_applies_passed():
             },
         }
     }
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sIntegrity"] == "passed"
 
@@ -334,7 +334,7 @@ def test_fnApplyExternalTestResults_applies_failed():
             },
         }
     }
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sQualitative"] == "failed"
 
@@ -360,7 +360,7 @@ def test_fnApplyExternalTestResults_resets_stale_categories_to_untested():
             },
         },
     }
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sIntegrity"] == "untested"
 
@@ -373,37 +373,37 @@ def test_fnApplyExternalTestResults_skips_out_of_range():
             "dictMarker": {"dictCategories": {}},
         }
     }
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     assert "dictVerification" not in dictWorkflow["listSteps"][0]
 
 
-# ---- pipelineServer: _fnApplyMarkerCategory ----
+# ---- pipelineServer: _fbApplyMarkerCategory ----
 
 def test_fnApplyMarkerCategory_passed():
     dictVerify = {}
     dictCategories = {"integrity": {"iPassed": 5, "iFailed": 0}}
-    _fnApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
     assert dictVerify["sIntegrity"] == "passed"
 
 
 def test_fnApplyMarkerCategory_failed():
     dictVerify = {}
     dictCategories = {"integrity": {"iPassed": 3, "iFailed": 2}}
-    _fnApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
     assert dictVerify["sIntegrity"] == "failed"
 
 
 def test_fnApplyMarkerCategory_missing_category():
     dictVerify = {}
     dictCategories = {}
-    _fnApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
     assert dictVerify == {}
 
 
 def test_fnApplyMarkerCategory_zero_passed_zero_failed():
     dictVerify = {}
     dictCategories = {"integrity": {"iPassed": 0, "iFailed": 0}}
-    _fnApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
     assert "sIntegrity" not in dictVerify
 
 

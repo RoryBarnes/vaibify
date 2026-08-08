@@ -16,9 +16,9 @@ All paths are under `/usr/share/vaibify/docs/`.
 
 | You need to know… | Doc | Section |
 |---|---|---|
-| What a dashboard panel/badge/row means | dashboard.md | `## Status lights and colours`, `## The Main tab`, `## The AICS tab` |
+| What a dashboard panel/badge/row means | dashboard.md | `## Status lights and colours`, `## The Main tab`, `## The PROOF tab` |
 | The agent-action catalog and shipped skills | dashboard.md | `## Agent actions`, `### Shipped agent skills` |
-| What each AICS level proves / requires | reproducibility.md | `## The Reproducibility Stack`, `## AICS Level 3 — Reproducible` |
+| What each PROOF level proves / requires | reproducibility.md | `## The Reproducibility Stack`, `## PROOF Level 3 — Reproducible` |
 | The reproducibility envelope files | reproducibility.md | `## The Reproducibility Envelope` (Tier 1/2/3 subsections) |
 | How `vaibify reproduce` verifies | reproducibility.md | `## The verification ceremony` |
 | The full ladder incl. L4/L5 (out of scope) | vision.md | (whole file is short) |
@@ -36,6 +36,6 @@ All paths are under `/usr/share/vaibify/docs/`.
   content.
 - Section titles drift. If a named section is absent,
   `grep -n '^#' <file>` and pick the closest.
-- For task recipes (reaching an AICS level, authoring a step,
+- For task recipes (reaching a PROOF level, authoring a step,
   diagnosing a failed run, reading a paper) prefer the dedicated
   skill over reading docs raw.

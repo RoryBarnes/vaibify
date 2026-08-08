@@ -104,7 +104,7 @@ def _fnBuildObservingHandler(hostPrimitive, tupleDeclarations, fnRunEffect):
         return {"ok": True}
 
     if tupleDeclarations:
-        routeScope.fnDeclareCarrierMode(*tupleDeclarations)(fnHandler)
+        routeScope.ffnDeclareCarrierMode(*tupleDeclarations)(fnHandler)
     return fnHandler
 
 

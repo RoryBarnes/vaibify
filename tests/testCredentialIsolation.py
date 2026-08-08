@@ -35,7 +35,7 @@ def test_overleaf_mirror_git_runner_prepends_isolation():
         "vaibify.reproducibility.overleafMirror.subprocess.run",
         mockRun,
     ):
-        overleafMirror._fnRunGit(["status"])
+        overleafMirror._fprocessRunGit(["status"])
     listCommand = mockRun.call_args[0][0]
     assert listCommand[:3] == ["git", "-c", "credential.helper="]
 

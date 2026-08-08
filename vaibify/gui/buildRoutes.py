@@ -66,7 +66,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
     """Register POST /api/containers/{sName}/build."""
 
     @app.post("/api/containers/{sName}/build")
-    async def fnBuildContainer(
+    async def fdictBuildContainer(
         sName: str, bNoCache: bool = False,
     ):
         from vaibify.gui.registryRoutes import _fdictRequireProject
@@ -108,7 +108,7 @@ def _fnRegisterBuildProgress(app, dictCtx):
     """
 
     @app.get("/api/containers/{sName}/build/progress")
-    async def fnGetBuildProgress(sName: str):
+    async def fdictGetBuildProgress(sName: str):
         dictCtx["require"]()
         dictProgress = _DICT_BUILD_PROGRESS.get(sName)
         if dictProgress is None:

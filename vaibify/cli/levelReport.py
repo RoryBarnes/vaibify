@@ -1,4 +1,4 @@
-"""Report a project's AICS level and what blocks the next one.
+"""Report a project's PROOF level and what blocks the next one.
 
 The dashboard has always been able to answer "what level is this
 project at, and what is stopping it?" — the poll computes it on every
@@ -74,20 +74,20 @@ def _flistBuildStepReports(dictWorkflow, dictStepStates):
 
 
 def fdictBuildLevelReport(dictWorkflow, filesRepo):
-    """Return the AICS level, the three blocker lists, and per-step cells."""
+    """Return the PROOF level, the three blocker lists, and per-step cells."""
     from vaibify.reproducibility.levelGates import (
-        fdictComputeStepLevelStates, fiAICSLevel, flistLevel1Blockers,
+        fdictComputeStepLevelStates, fiProofLevel, flistLevel1Blockers,
         flistLevel2Blockers, flistLevel3Blockers,
     )
     listLevel1Blockers = flistLevel1Blockers(dictWorkflow, {}, filesRepo)
     listLevel2Blockers = flistLevel2Blockers(dictWorkflow, filesRepo)
     listLevel3Blockers = flistLevel3Blockers(dictWorkflow, filesRepo)
-    iLevel = fiAICSLevel(dictWorkflow, filesRepo)
+    iLevel = fiProofLevel(dictWorkflow, filesRepo)
     return {
         "sWorkflowName": dictWorkflow.get("sWorkflowName", ""),
         "sProjectRepoPath": dictWorkflow.get("sProjectRepoPath", ""),
-        "iAICSLevel": iLevel,
-        "sAICSLevelName": _DICT_LEVEL_NAMES.get(iLevel, "unknown"),
+        "iProofLevel": iLevel,
+        "sProofLevelName": _DICT_LEVEL_NAMES.get(iLevel, "unknown"),
         "listLevel1Blockers": listLevel1Blockers,
         "listLevel2Blockers": listLevel2Blockers,
         "listLevel3Blockers": listLevel3Blockers,
@@ -114,9 +114,9 @@ def _fsSummarizeBlocker(dictBlocker):
 def fnPrintLevelReport(dictReport):
     """Print the level, then every blocker grouped by level."""
     click.echo(
-        "AICS level: %d (%s) - %s"
+        "PROOF level: %d (%s) - %s"
         % (
-            dictReport["iAICSLevel"], dictReport["sAICSLevelName"],
+            dictReport["iProofLevel"], dictReport["sProofLevelName"],
             dictReport["sWorkflowName"] or "(unnamed project)",
         )
     )

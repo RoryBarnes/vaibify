@@ -7,14 +7,14 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 
 from vaibify.gui.pipelineRunner import (
-    fiRunStepCommands,
-    _fiRunSetupIfNeeded,
+    ftRunStepCommands,
+    _ftRunSetupIfNeeded,
     _ftRunCommandList,
     _ftRunSingleCommand,
-    fnRunAllSteps,
-    fnRunFromStep,
-    fnRunSelectedSteps,
-    fnVerifyOnly,
+    fiRunAllSteps,
+    fiRunFromStep,
+    fiRunSelectedSteps,
+    fiVerifyOnly,
     _fbVerifyStepOutputs,
     _fsetSnapshotDirectory,
     _fnEmitDiscoveredOutputs,
@@ -22,7 +22,7 @@ from vaibify.gui.pipelineRunner import (
     _fiReportPreflightFailure,
     _fnUpdatePipelineState,
     _fiRunStepList,
-    _fnRunOneStep,
+    _fiRunOneStep,
     _fiCheckDependencies,
     _fiExecuteAndRecord,
     _fnWriteTestLog,
@@ -56,7 +56,7 @@ def _fMockDocker(iExitCode=0, sOutput=""):
 
 
 def _fnConfigureStreamingMock(mockDocker, listResults):
-    """Set ``texecRunInContainerStreamedWithChunks`` to stream listResults.
+    """Set ``ftRunInContainerStreamedWithChunks`` to stream listResults.
 
     Each ``(iExitCode, sOutput)`` is consumed by one call to the
     streaming method. The mock walks ``sOutput`` line-by-line and
@@ -80,7 +80,7 @@ def _fnConfigureStreamingMock(mockDocker, listResults):
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
         fnStreamingSideEffect
     )
 
@@ -159,25 +159,25 @@ def test_ftRunCommandList_runs_all():
 
 
 # -----------------------------------------------------------------------
-# _fiRunSetupIfNeeded
+# _ftRunSetupIfNeeded
 # -----------------------------------------------------------------------
 
 
-def test_fiRunSetupIfNeeded_plot_only():
+def test_ftRunSetupIfNeeded_plot_only():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     dictStep = {"bPlotOnly": True}
-    iResult, fCpu = _fnRunAsync(_fiRunSetupIfNeeded(
+    iResult, fCpu = _fnRunAsync(_ftRunSetupIfNeeded(
         mockDocker, "cid", dictStep, "/work", {}, fnCallback,
     ))
     assert iResult == 0
 
 
-def test_fiRunSetupIfNeeded_runs_data():
+def test_ftRunSetupIfNeeded_runs_data():
     mockDocker = _fMockDocker(0, "")
     fnCallback, _ = _fMockCallback()
     dictStep = {"bPlotOnly": False, "saDataCommands": ["cmd1"]}
-    iResult, fCpu = _fnRunAsync(_fiRunSetupIfNeeded(
+    iResult, fCpu = _fnRunAsync(_ftRunSetupIfNeeded(
         mockDocker, "cid", dictStep, "/work", {}, fnCallback,
     ))
     assert iResult == 0
@@ -487,11 +487,11 @@ def test_fbVerifyStepOutputs_partial_missing_reports_first_gap():
 
 
 # -----------------------------------------------------------------------
-# fiRunStepCommands
+# ftRunStepCommands
 # -----------------------------------------------------------------------
 
 
-def test_fiRunStepCommands_plot_only():
+def test_ftRunStepCommands_plot_only():
     mockDocker = _fMockDocker(0, "")
     fnCallback, _ = _fMockCallback()
     dictStep = {
@@ -500,7 +500,7 @@ def test_fiRunStepCommands_plot_only():
         "saPlotCommands": ["python plot.py"],
         "saPlotFiles": [],
     }
-    iResult, fCpu = _fnRunAsync(fiRunStepCommands(
+    iResult, fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", dictStep, "/work",
         {"sPlotDirectory": "Plot"}, fnCallback,
     ))
@@ -508,19 +508,19 @@ def test_fiRunStepCommands_plot_only():
 
 
 # -----------------------------------------------------------------------
-# fnRunAllSteps
+# fiRunAllSteps
 # -----------------------------------------------------------------------
 
 
 @patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
        new_callable=AsyncMock, return_value=0)
-def test_fnRunAllSteps_success(mockRun):
+def test_fiRunAllSteps_success(mockRun):
     dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [{"sName": "A"}],
     }
     fnCallback, _ = _fMockCallback()
-    iResult = _fnRunAsync(fnRunAllSteps(
+    iResult = _fnRunAsync(fiRunAllSteps(
         _fMockDocker(), "cid", dictWorkflow,
         "/workspace/.vaibify/workflows/test.json",
         "/work", fnCallback,
@@ -530,14 +530,14 @@ def test_fnRunAllSteps_success(mockRun):
 
 @patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
        new_callable=AsyncMock, return_value=0)
-def test_fnRunAllSteps_force_clears_stats(mockRun):
+def test_fiRunAllSteps_force_clears_stats(mockRun):
     dictStep = {"sName": "A", "dictRunStats": {"sLastRun": "x"}}
     dictWorkflow = {
         "sWorkflowName": "Test",
         "listSteps": [dictStep],
     }
     fnCallback, _ = _fMockCallback()
-    _fnRunAsync(fnRunAllSteps(
+    _fnRunAsync(fiRunAllSteps(
         _fMockDocker(), "cid", dictWorkflow, "/w/test.json",
         "/work", fnCallback,
         bForceRun=True,
@@ -547,7 +547,7 @@ def test_fnRunAllSteps_force_clears_stats(mockRun):
 
 @patch("vaibify.gui.pipelineRunner._fiRunWithLogging",
        new_callable=AsyncMock, return_value=0)
-def test_fnRunAllSteps_uses_passed_workflow_not_alphabetical_first(
+def test_fiRunAllSteps_uses_passed_workflow_not_alphabetical_first(
     mockRun,
 ):
     """Guard against runner-side workflow rediscovery.
@@ -564,7 +564,7 @@ def test_fnRunAllSteps_uses_passed_workflow_not_alphabetical_first(
     }
     sActivePath = "/workspace/projectBeta/.vaibify/workflows/beta.json"
     fnCallback, _ = _fMockCallback()
-    _fnRunAsync(fnRunAllSteps(
+    _fnRunAsync(fiRunAllSteps(
         _fMockDocker(), "cid", dictWorkflowActive, sActivePath,
         "/work", fnCallback,
     ))
@@ -574,7 +574,7 @@ def test_fnRunAllSteps_uses_passed_workflow_not_alphabetical_first(
 
 
 # -----------------------------------------------------------------------
-# fnRunFromStep
+# fiRunFromStep
 # -----------------------------------------------------------------------
 
 
@@ -583,7 +583,7 @@ def test_fnRunAllSteps_uses_passed_workflow_not_alphabetical_first(
 def test_fnRunFromStep_success(mockRun):
     dictWorkflow = {"sWorkflowName": "Test", "listSteps": []}
     fnCallback, _ = _fMockCallback()
-    iResult = _fnRunAsync(fnRunFromStep(
+    iResult = _fnRunAsync(fiRunFromStep(
         _fMockDocker(), "cid", 2, dictWorkflow, "/w/test.json",
         "/work", fnCallback,
     ))
@@ -593,7 +593,7 @@ def test_fnRunFromStep_success(mockRun):
 
 
 # -----------------------------------------------------------------------
-# fnVerifyOnly
+# fiVerifyOnly
 # -----------------------------------------------------------------------
 
 
@@ -606,7 +606,7 @@ def test_fnVerifyOnly_all_present():
     }
     mockDocker = _fMockDocker(0, "")
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(fnVerifyOnly(
+    iResult = _fnRunAsync(fiVerifyOnly(
         mockDocker, "cid", dictWorkflow, "/w/test.json",
         "/work", fnCallback,
     ))
@@ -624,7 +624,7 @@ def test_fnVerifyOnly_missing_files():
     }
     mockDocker = _fMockDocker(1, "")
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(fnVerifyOnly(
+    iResult = _fnRunAsync(fiVerifyOnly(
         mockDocker, "cid", dictWorkflow, "/w/test.json",
         "/work", fnCallback,
     ))
@@ -632,7 +632,7 @@ def test_fnVerifyOnly_missing_files():
 
 
 # -----------------------------------------------------------------------
-# fnRunSelectedSteps
+# fiRunSelectedSteps
 # -----------------------------------------------------------------------
 
 
@@ -644,7 +644,7 @@ def test_fnRunSelectedSteps_does_not_persist_run_scope(
 ):
     """Run scope is a per-call parameter, not a workflow mutation.
 
-    fnRunSelectedSteps must not save the workflow during the run; the
+    fiRunSelectedSteps must not save the workflow during the run; the
     pre-refactor implementation toggled bEnabled and then restored it
     via finally, which corrupted on-disk state when restoration was
     interrupted. The new implementation passes setRunStepIndices into
@@ -659,7 +659,7 @@ def test_fnRunSelectedSteps_does_not_persist_run_scope(
             {"sName": "B", "bRunEnabled": True},
         ],
     }
-    iResult = _fnRunAsync(fnRunSelectedSteps(
+    iResult = _fnRunAsync(fiRunSelectedSteps(
         mockDocker, "cid", [0], dictWorkflow,
         "/wf.json", "/work", fnCallback,
     ))
@@ -947,7 +947,7 @@ def test_ftRunCommandList_threads_env_prefix_to_executed_command():
         mockDocker, "cid", ["echo hi"],
         "/work", dictVariables, fnCallback,
     ))
-    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+    sExecuted = mockDocker.ftRunInContainerStreamedWithChunks \
         .call_args[0][1]
     assert "SOURCE_DATE_EPOCH=42" in sExecuted
 
@@ -958,13 +958,13 @@ def test_ftRunSingleCommand_no_env_prefix_by_default():
     _fnRunAsync(_ftRunSingleCommand(
         mockDocker, "cid", "echo hi", "echo hi", "/work", fnCallback,
     ))
-    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+    sExecuted = mockDocker.ftRunInContainerStreamedWithChunks \
         .call_args[0][1]
     assert "SOURCE_DATE_EPOCH" not in sExecuted
 
 
 # -----------------------------------------------------------------------
-# fnRunSelectedSteps: invalid sRunMode rejection
+# fiRunSelectedSteps: invalid sRunMode rejection
 # -----------------------------------------------------------------------
 
 
@@ -973,7 +973,7 @@ def test_fnRunSelectedSteps_rejects_unknown_run_mode():
     mockDocker = _fMockDocker()
     fnCallback, _ = _fMockCallback()
     with pytest.raises(ValueError) as excinfo:
-        _fnRunAsync(fnRunSelectedSteps(
+        _fnRunAsync(fiRunSelectedSteps(
             mockDocker, "cid", [0],
             {"sWorkflowName": "T", "listSteps": [{"sName": "A"}]},
             "/wf.json", "/work", fnCallback,
@@ -1071,7 +1071,7 @@ def test_fnRunHeartbeatLoop_logs_and_continues_on_write_failure(caplog):
     )
 
 
-# Need to import threading at module level for the heartbeat test
+# Need to import threading at module level for the heartbeat fnTestCommand
 import threading  # noqa: E402
 
 
@@ -1105,7 +1105,7 @@ def test_verify_step_exec_timeout_does_not_hang():
     with patch.object(
         pipelineRunner, "_F_VERIFY_STEP_EXEC_TIMEOUT_SECONDS", 0.05,
     ):
-        iExit = _asyncio.run(pipelineRunner.fnVerifyOnly(
+        iExit = _asyncio.run(pipelineRunner.fiVerifyOnly(
             mockDocker, "cid", dictWorkflow, "wf.json", "/repo",
             fnCallback,
         ))

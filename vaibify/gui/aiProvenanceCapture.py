@@ -30,8 +30,8 @@ def _fsHashWorkspacePrompt(connectionDocker, sContainerId):
         baContent = connectionDocker.fbaFetchFile(
             sContainerId, S_WORKSPACE_PROMPT_PATH,
         )
-    except Exception as exc:  # noqa: BLE001 — absence is a provenance fact
-        logger.info("Workspace prompt not hashable: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — absence is a provenance fact
+        logger.info("Workspace prompt not hashable: %s", errorCaught)
         return ""
     return fsHashFileObjectSha256(io.BytesIO(baContent))
 
@@ -45,16 +45,16 @@ def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
         'printf "%s\\t%s\\n" "${sAgent}" "${sVersion}"; fi; done'
     )
     try:
-        resultExec = connectionDocker.texecRunInContainerStreamed(
+        tExecResult = connectionDocker.ftRunInContainerStreamed(
             sContainerId, sCommand,
         )
-    except Exception as exc:  # noqa: BLE001 — absence is a provenance fact
-        logger.info("Agent CLI versions not capturable: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — absence is a provenance fact
+        logger.info("Agent CLI versions not capturable: %s", errorCaught)
         return {}
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         return {}
     dictVersions = {}
-    for sLine in resultExec.sStdout.splitlines():
+    for sLine in tExecResult.sStdout.splitlines():
         sAgent, sSeparator, sVersion = sLine.partition("\t")
         if sSeparator and sAgent in {
             "claude", "codex", "gemini", "opencode", "cline",

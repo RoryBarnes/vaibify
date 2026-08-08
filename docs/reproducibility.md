@@ -80,10 +80,10 @@ question to the researcher), and the fresh data is never
 auto-committed — it flows through the normal review-and-commit
 canonical flow.
 
-## AICS Level 3 — Reproducible
+## PROOF Level 3 — Reproducible
 
-Vaibify targets **AICS Level 3 ("Reproducible")** on the AI
-Containment Scale: third parties can confirm, at the bit level, that
+Vaibify targets **PROOF Level 3 ("Reproducible")** on the PROOF
+ladder: third parties can confirm, at the bit level, that
 the artefacts they hold are byte-for-byte identical to the artefacts
 the original project produced. Level 3 is a claim about *file-byte
 identity*, not numerical re-derivation. Re-running the project on a
@@ -288,7 +288,7 @@ Exit codes:
 anchor. The trust anchor for Tier 1 is `sha256sum -c MANIFEST.sha256`,
 a `coreutils` binary every verifier already has. If `vaibify
 reproduce` is ever wrong, a third party verifying by hand catches the
-discrepancy. This is the load-bearing reason the AICS levels are
+discrepancy. This is the load-bearing reason the PROOF levels are
 defined independently of vaibify: it makes vaibify *auditable* rather
 than authoritative. The same independence applies to Tier 2 (`pip
 install --require-hashes`) and Tier 3 (`docker pull
@@ -379,7 +379,7 @@ The generated workflow would:
 
 ## Archiving to Zenodo
 
-Zenodo archiving is real and reachable — through the AICS Level 2
+Zenodo archiving is real and reachable — through the PROOF Level 2
 workflow in the dashboard, not through the CLI.
 
 ```{warning}

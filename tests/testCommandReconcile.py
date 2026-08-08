@@ -115,7 +115,7 @@ def test_crash_time_reconcile_shows_the_records_and_restores_claim(capsys):
         S_PROJECT, sOperationId,
     )
     with pytest.raises(containerLock.ContainerQuarantinedError):
-        containerLock.fnAcquireContainerLock(S_PROJECT, 8200)
+        containerLock.ffileAcquireContainerLock(S_PROJECT, 8200)
     assert fiRunReconcileCommand(S_PROJECT, True) == 0
     sOutput = capsys.readouterr().out
     assert sOperationId in sOutput
@@ -123,7 +123,7 @@ def test_crash_time_reconcile_shows_the_records_and_restores_claim(capsys):
     assert "prepared:" in sOutput
     assert "claimable again" in sOutput
     assert not os.path.exists(operationJournal.fsJournalPathFor(S_PROJECT))
-    fileHandle = containerLock.fnAcquireContainerLock(S_PROJECT, 8200)
+    fileHandle = containerLock.ffileAcquireContainerLock(S_PROJECT, 8200)
     containerLock.fnReleaseContainerLock(fileHandle)
 
 
@@ -212,7 +212,7 @@ def fnHoldContainerFlockInChild(
     """Child: hold the container flock as a live foreign process."""
     import vaibify.config.containerLock as childLockModule
     childLockModule._S_LOCK_DIRECTORY = sLockDirectory
-    fileHandleLock = childLockModule.fnAcquireContainerLock(
+    fileHandleLock = childLockModule.ffileAcquireContainerLock(
         sProjectName, iPort,
     )
     eventRelease.wait(timeout=60)

@@ -656,7 +656,7 @@ async def testOldGenerationCleanupCannotTouchNewGenerationState():
     recordOwner = stateApp.dictContainerOwners[S_PROJECT_NAME]
     connectionOld = _FakeWebSocketConnection()
     recordConnection = containerOwnership.ConnectionRecord(
-        connection=connectionOld, sBrowserSessionId=sOldSessionId,
+        websocket=connectionOld, sBrowserSessionId=sOldSessionId,
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     containerOwnership.fnRegisterSessionSocket(

@@ -412,7 +412,7 @@ def test_whitespace_loader_headerless():
 def test_npz_in_format_map():
     sCode = fsBuildQuantitativeTestCode()
     assert '".npz": "npz"' in sCode
-    assert "_fLoadNpzValue" in sCode
+    assert "_ffLoadNpzValue" in sCode
 
 
 # -----------------------------------------------------------------------
@@ -1228,7 +1228,7 @@ def test_loader_npy(tmp_path):
     daData = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     np.save(str(tmp_path / "data.npy"), daData)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.npy", "index:0", str(tmp_path),
     )
     assert fResult == 1.0
@@ -1238,7 +1238,7 @@ def test_loader_npy_aggregate_mean(tmp_path):
     daData = np.array([2.0, 4.0, 6.0])
     np.save(str(tmp_path / "data.npy"), daData)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.npy", "index:mean", str(tmp_path),
     )
     assert abs(fResult - 4.0) < 1e-10
@@ -1248,7 +1248,7 @@ def test_loader_npy_last_index(tmp_path):
     daData = np.array([10.0, 20.0, 30.0])
     np.save(str(tmp_path / "data.npy"), daData)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.npy", "index:-1", str(tmp_path),
     )
     assert fResult == 30.0
@@ -1260,7 +1260,7 @@ def test_loader_npz(tmp_path):
         temperatures=np.array([100.0, 200.0, 300.0]),
     )
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "archive.npz", "key:temperatures,index:2", str(tmp_path),
     )
     assert fResult == 300.0
@@ -1271,7 +1271,7 @@ def test_loader_csv(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("time,temperature\n0.0,288.15\n1.0,290.0\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "results.csv", "column:temperature,index:-1", str(tmp_path),
     )
     assert fResult == 290.0
@@ -1282,7 +1282,7 @@ def test_loader_csv_aggregate(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("x\n1.0\n2.0\n3.0\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.csv", "column:x,index:min", str(tmp_path),
     )
     assert fResult == 1.0
@@ -1293,7 +1293,7 @@ def test_loader_json(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         json.dump({"fMass": 5.972e24, "sName": "Earth"}, fh)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "config.json", "key:fMass", str(tmp_path),
     )
     assert abs(fResult - 5.972e24) < 1e18
@@ -1304,7 +1304,7 @@ def test_loader_json_nested(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         json.dump({"results": {"temperature": 288.15}}, fh)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "nested.json", "key:results.temperature", str(tmp_path),
     )
     assert abs(fResult - 288.15) < 1e-10
@@ -1315,7 +1315,7 @@ def test_loader_json_array(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         json.dump({"daValues": [1.0, 2.0, 3.0]}, fh)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "arrays.json", "key:daValues,index:1", str(tmp_path),
     )
     assert fResult == 2.0
@@ -1326,7 +1326,7 @@ def test_loader_json_array_aggregate(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         json.dump({"daValues": [10.0, 20.0, 30.0]}, fh)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "agg.json", "key:daValues,index:max", str(tmp_path),
     )
     assert fResult == 30.0
@@ -1337,7 +1337,7 @@ def test_loader_whitespace_with_header(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("# comment line\ntime flux\n0.0 1.5\n1.0 2.5\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "output.dat", "column:flux,index:-1", str(tmp_path),
     )
     assert fResult == 2.5
@@ -1348,7 +1348,7 @@ def test_loader_whitespace_headerless(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("1.0 2.0\n3.0 4.0\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.txt", "index:0,0", str(tmp_path),
     )
     assert fResult == 1.0
@@ -1359,7 +1359,7 @@ def test_loader_keyvalue(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("# parameters\nfMass = 5.972e24\nsName = Earth\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "params.txt", "key:fMass", str(tmp_path), sFormat="keyvalue",
     )
     assert abs(fResult - 5.972e24) < 1e18
@@ -1370,7 +1370,7 @@ def test_loader_jsonl(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write('{"temp": 288.0}\n{"temp": 290.0}\n{"temp": 292.0}\n')
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "records.jsonl", "key:temp,index:2", str(tmp_path),
     )
     assert fResult == 292.0
@@ -1381,7 +1381,7 @@ def test_loader_fasta(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write(">seq1\nACGTACGT\n>seq2\nACGT\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "seqs.fasta", "index:0", str(tmp_path),
     )
     assert fResult == 8.0
@@ -1392,7 +1392,7 @@ def test_loader_fastq(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("@read1\nACGT\n+\nIIII\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "reads.fastq", "key:length,index:0", str(tmp_path),
     )
     assert fResult == 4.0
@@ -1405,7 +1405,7 @@ def test_loader_syslog(tmp_path):
         fh.write("2024-01-01 WARN high temp\n")
         fh.write("2024-01-01 INFO stopped\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "events.log", "index:0", str(tmp_path),
     )
     assert fResult == 3.0
@@ -1417,7 +1417,7 @@ def test_loader_cef(tmp_path):
         fh.write("CEF:0|Vendor|Product|1.0|100|Alert|5|\n")
         fh.write("CEF:0|Vendor|Product|1.0|101|Alert|3|\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "alerts.cef", "index:0", str(tmp_path),
     )
     assert fResult == 2.0
@@ -1428,7 +1428,7 @@ def test_loader_fixedwidth(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("1.0 2.0 3.0\n4.0 5.0 6.0\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "table.dat", "index:-1", str(tmp_path),
         sFormat="fixedwidth",
     )
@@ -1454,7 +1454,7 @@ def test_npy_allow_pickle_rejected(tmp_path):
     )
     dictNs = _fdictExecTemplate()
     with pytest.raises(ValueError):
-        dictNs["_fLoadValue"](
+        dictNs["_ffLoadValue"](
             "pickled.npy", "index:0", str(tmp_path),
         )
 
@@ -1537,7 +1537,7 @@ def test_loader_npy_corrupt_file(tmp_path):
         fh.write(b"this is not a numpy file")
     dictNs = _fdictExecTemplate()
     with pytest.raises(ValueError, match="Failed to load"):
-        dictNs["_fLoadValue"](
+        dictNs["_ffLoadValue"](
             "bad.npy", "index:0", str(tmp_path),
         )
 
@@ -1548,7 +1548,7 @@ def test_loader_csv_missing_column(tmp_path):
         fh.write("x,y\n1.0,2.0\n")
     dictNs = _fdictExecTemplate()
     with pytest.raises(ValueError, match="Failed to access"):
-        dictNs["_fLoadValue"](
+        dictNs["_ffLoadValue"](
             "data.csv", "column:nonexistent,index:0", str(tmp_path),
         )
 
@@ -1559,7 +1559,7 @@ def test_loader_json_corrupt(tmp_path):
         fh.write("{not valid json")
     dictNs = _fdictExecTemplate()
     with pytest.raises(ValueError, match="Failed to load"):
-        dictNs["_fLoadValue"](
+        dictNs["_ffLoadValue"](
             "bad.json", "key:x", str(tmp_path),
         )
 
@@ -1569,7 +1569,7 @@ def test_loader_unsupported_format(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("1.0 2.0\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.xyz", "index:0,0", str(tmp_path),
     )
     assert isinstance(fResult, float)
@@ -1581,7 +1581,7 @@ def test_loader_keyvalue_missing_key(tmp_path):
         fh.write("fMass = 5.972e24\n")
     dictNs = _fdictExecTemplate()
     with pytest.raises(KeyError):
-        dictNs["_fLoadValue"](
+        dictNs["_ffLoadValue"](
             "params.txt", "key:fRadius", str(tmp_path),
             sFormat="keyvalue",
         )
@@ -1712,7 +1712,7 @@ def test_loader_vcf(tmp_path):
         fh.write("chr1\t100\t.\tA\tT\t30.0\tPASS\t.\n")
         fh.write("chr1\t200\t.\tG\tC\t45.0\tPASS\t.\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "variants.vcf", "column:POS,index:0", str(tmp_path),
     )
     assert fResult == 100.0
@@ -1725,7 +1725,7 @@ def test_loader_bed(tmp_path):
         fh.write("chr1\t100\t200\tgene1\t500\t+\n")
         fh.write("chr2\t300\t400\tgene2\t600\t-\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "regions.bed", "column:chromStart,index:0", str(tmp_path),
     )
     assert fResult == 100.0
@@ -1738,7 +1738,7 @@ def test_loader_gff(tmp_path):
         fh.write("chr1\tvaibify\tgene\t100\t500\t0.5\t+\t.\tID=g1\n")
         fh.write("chr1\tvaibify\texon\t200\t400\t0.8\t+\t.\tID=e1\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "annots.gff", "column:start,index:0", str(tmp_path),
     )
     assert fResult == 100.0
@@ -1752,7 +1752,7 @@ def test_loader_sam(tmp_path):
         fh.write("read1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII\n")
         fh.write("read2\t0\tchr1\t200\t42\t4M\t*\t0\t0\tTGCA\tIIII\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "aligns.sam", "column:POS,index:0", str(tmp_path),
     )
     assert fResult == 100.0
@@ -1764,7 +1764,7 @@ def test_loader_multitable(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("1.0 2.0\n3.0 4.0\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "multi.dat", "section:0,index:0,0", str(tmp_path),
         sFormat="multitable",
     )
@@ -1778,7 +1778,7 @@ def test_loader_hdf5(tmp_path):
     with h5py.File(sPath, "w") as fh:
         fh.create_dataset("temperatures", data=[288.15, 290.0, 300.0])
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.h5", "dataset:temperatures,index:0", str(tmp_path),
     )
     assert abs(fResult - 288.15) < 1e-10
@@ -1795,7 +1795,7 @@ def test_loader_excel(tmp_path):
     ws.append([1.0, 2.5])
     wb.save(sPath)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.xlsx", "column:flux,index:-1", str(tmp_path),
     )
     assert fResult == 2.5
@@ -1809,7 +1809,7 @@ def test_loader_fits(tmp_path):
     hdu = fitsLib.PrimaryHDU(data=np.array([1.0, 2.0, 3.0]))
     hdu.writeto(sPath)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.fits", "hdu:0,index:0", str(tmp_path),
     )
     assert fResult == 1.0
@@ -1822,7 +1822,7 @@ def test_loader_matlab(tmp_path):
     sPath = str(tmp_path / "data.mat")
     savemat(sPath, {"daTemps": np.array([100.0, 200.0, 300.0])})
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.mat", "key:daTemps,index:0", str(tmp_path),
     )
     assert fResult == 100.0
@@ -1836,7 +1836,7 @@ def test_loader_parquet(tmp_path):
     table = pa.table({"flux": [1.5, 2.5, 3.5]})
     pq.write_table(table, sPath)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.parquet", "column:flux,index:-1", str(tmp_path),
     )
     assert fResult == 3.5
@@ -1850,7 +1850,7 @@ def test_loader_image(tmp_path):
     img = Image.new("L", (4, 4), color=128)
     img.save(sPath)
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "test.png", "index:0", str(tmp_path),
     )
     assert fResult == 128.0
@@ -1960,7 +1960,7 @@ def test_npy_error_includes_filepath(tmp_path):
         fh.write(b"not numpy")
     dictNs = _fdictExecTemplate()
     with pytest.raises(ValueError, match="bad.npy"):
-        dictNs["_fLoadValue"]("bad.npy", "index:0", str(tmp_path))
+        dictNs["_ffLoadValue"]("bad.npy", "index:0", str(tmp_path))
 
 
 def test_json_error_includes_format(tmp_path):
@@ -1970,7 +1970,7 @@ def test_json_error_includes_format(tmp_path):
         fh.write("{invalid json")
     dictNs = _fdictExecTemplate()
     with pytest.raises(ValueError, match="json"):
-        dictNs["_fLoadValue"]("bad.json", "key:x", str(tmp_path))
+        dictNs["_ffLoadValue"]("bad.json", "key:x", str(tmp_path))
 
 
 def test_csv_error_preserves_original(tmp_path):
@@ -1980,7 +1980,7 @@ def test_csv_error_preserves_original(tmp_path):
         fh.write("x,y\n1.0,2.0\n")
     dictNs = _fdictExecTemplate()
     with pytest.raises(ValueError, match="data.csv"):
-        dictNs["_fLoadValue"](
+        dictNs["_ffLoadValue"](
             "data.csv", "column:missing,index:0", str(tmp_path),
         )
 
@@ -2313,7 +2313,7 @@ def test_loader_vcf_aggregate(tmp_path):
         fh.write("chr1\t100\t.\tA\tT\t30.0\tPASS\t.\n")
         fh.write("chr1\t300\t.\tG\tC\t50.0\tPASS\t.\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.vcf", "column:POS,index:mean", str(tmp_path),
     )
     assert abs(fResult - 200.0) < 1e-10
@@ -2327,7 +2327,7 @@ def test_loader_sam_last_row(tmp_path):
         fh.write("r1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII\n")
         fh.write("r2\t0\tchr1\t999\t42\t4M\t*\t0\t0\tTGCA\tIIII\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.sam", "column:POS,index:-1", str(tmp_path),
     )
     assert fResult == 999.0
@@ -2339,7 +2339,7 @@ def test_loader_bed_score(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("chr1\t0\t100\tgene1\t750\t+\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.bed", "column:score,index:0", str(tmp_path),
     )
     assert fResult == 750.0
@@ -2351,7 +2351,7 @@ def test_loader_gff_end_column(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("seq\tsrc\tgene\t1\t500\t.\t+\t.\tID=g1\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "data.gff", "column:end,index:0", str(tmp_path),
     )
     assert fResult == 500.0
@@ -2363,7 +2363,7 @@ def test_loader_fasta_aggregate_mean(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write(">seq1\nACGT\n>seq2\nACGTACGT\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "seqs.fasta", "index:mean", str(tmp_path),
     )
     assert abs(fResult - 6.0) < 1e-10
@@ -2375,7 +2375,7 @@ def test_loader_fastq_quality(tmp_path):
     with open(sPath, "w", encoding="utf-8") as fh:
         fh.write("@r1\nACGT\n+\nIIII\n@r2\nACGT\n+\nAAAA\n")
     dictNs = _fdictExecTemplate()
-    fResult = dictNs["_fLoadValue"](
+    fResult = dictNs["_ffLoadValue"](
         "reads.fastq", "key:quality,index:0", str(tmp_path),
     )
     assert fResult > 0.0
@@ -2460,9 +2460,9 @@ from vaibify.gui.testGenerator import (
     _F_SIGMA_MULT,
     _fdictMergePreservingOverrides,
     _fsClassifyStochasticity,
-    _ftolMeanFromCv,
-    _ftolPercentileFromN,
-    _ftolStdFromN,
+    _ffMeanToleranceFromCv,
+    _ffPercentileToleranceFromN,
+    _ffStdToleranceFromN,
     fbStepProducesStochasticOutputs,
 )
 
@@ -2538,22 +2538,22 @@ def test_fdictBuildQuantitativeStandards_stochastic_includes_percentiles():
     }
 
 
-def test_ftolMeanFromCv_known_value():
-    fRtol = _ftolMeanFromCv(0.05, 1000)
+def test_ffMeanToleranceFromCv_known_value():
+    fRtol = _ffMeanToleranceFromCv(0.05, 1000)
     fExpected = max(_F_SIGMA_MULT * 0.05 / _math.sqrt(1000), _F_FLOOR_RTOL)
     assert abs(fRtol - fExpected) < 1e-12
 
 
-def test_ftolStdFromN_known_value():
-    fRtol = _ftolStdFromN(1000)
+def test_ffStdToleranceFromN_known_value():
+    fRtol = _ffStdToleranceFromN(1000)
     fExpected = max(
         _F_SIGMA_MULT * _math.sqrt(2.0 / 999), _F_FLOOR_RTOL,
     )
     assert abs(fRtol - fExpected) < 1e-12
 
 
-def test_ftolPercentileFromN_uses_floor_for_zero_value():
-    assert _ftolPercentileFromN(0.5, 1000, 0.05, 0.0) == _F_FLOOR_RTOL
+def test_ffPercentileToleranceFromN_uses_floor_for_zero_value():
+    assert _ffPercentileToleranceFromN(0.5, 1000, 0.05, 0.0) == _F_FLOOR_RTOL
 
 
 def test_fdictMergePreservingOverrides_keeps_user_fRtol():
@@ -2708,15 +2708,15 @@ def test_loader_npy_percentile_aggregates(tmp_path):
     sPath = str(tmp_path / "data.npy")
     np.save(sPath, np.arange(101, dtype=float))
     dictNs = _fdictExecTemplate()
-    fP50 = dictNs["_fLoadValue"](
+    fP50 = dictNs["_ffLoadValue"](
         "data.npy", "index:p50", str(tmp_path),
     )
     assert fP50 == 50.0
-    fP5 = dictNs["_fLoadValue"](
+    fP5 = dictNs["_ffLoadValue"](
         "data.npy", "index:p5", str(tmp_path),
     )
     assert fP5 == 5.0
-    fP95 = dictNs["_fLoadValue"](
+    fP95 = dictNs["_ffLoadValue"](
         "data.npy", "index:p95", str(tmp_path),
     )
     assert fP95 == 95.0
@@ -2728,14 +2728,14 @@ def test_loader_npy_std_aggregate(tmp_path):
     daValues = np.arange(101, dtype=float)
     np.save(sPath, daValues)
     dictNs = _fdictExecTemplate()
-    fStd = dictNs["_fLoadValue"](
+    fStd = dictNs["_ffLoadValue"](
         "data.npy", "index:std", str(tmp_path),
     )
     assert abs(fStd - float(daValues.std(ddof=1))) < 1e-9
 
 
 # -----------------------------------------------------------------------
-# Tolerance branches in _ftolMeanFromCv / _ftolStdFromN / etc.
+# Tolerance branches in _ffMeanToleranceFromCv / _ffStdToleranceFromN / etc.
 # -----------------------------------------------------------------------
 
 
@@ -2748,42 +2748,42 @@ from vaibify.gui.testGenerator import (
     _fdictGenerateQuantitativeCategory,
     _fdictErrorResult,
     _fnAppendErrorLog,
-    _ftolForStochasticKind,
+    _ffToleranceForStochasticKind,
     _ftExtractStepInfo,
 )
 
 
-def test_ftolMeanFromCv_returns_floor_when_sample_size_zero():
+def test_ffMeanToleranceFromCv_returns_floor_when_sample_size_zero():
     """Line 445: iSampleSize <= 0 returns the floor rtol."""
-    assert _ftolMeanFromCv(0.05, 0) == _F_FLOOR_RTOL
+    assert _ffMeanToleranceFromCv(0.05, 0) == _F_FLOOR_RTOL
 
 
-def test_ftolMeanFromCv_returns_floor_when_sample_size_negative():
-    assert _ftolMeanFromCv(0.05, -3) == _F_FLOOR_RTOL
+def test_ffMeanToleranceFromCv_returns_floor_when_sample_size_negative():
+    assert _ffMeanToleranceFromCv(0.05, -3) == _F_FLOOR_RTOL
 
 
-def test_ftolStdFromN_returns_floor_when_sample_size_below_two():
+def test_ffStdToleranceFromN_returns_floor_when_sample_size_below_two():
     """Line 459: N < 2 returns the floor rtol."""
-    assert _ftolStdFromN(1) == _F_FLOOR_RTOL
-    assert _ftolStdFromN(0) == _F_FLOOR_RTOL
+    assert _ffStdToleranceFromN(1) == _F_FLOOR_RTOL
+    assert _ffStdToleranceFromN(0) == _F_FLOOR_RTOL
 
 
-def test_ftolForStochasticKind_returns_default_for_unknown_kind():
+def test_ffToleranceForStochasticKind_returns_default_for_unknown_kind():
     """Line 499: an unrecognised sMetricKind falls through to default."""
     dictStandard = {
         "sMetricKind": "kurtosis", "iSampleSize": 100,
         "fObservedCv": 0.05, "fValue": 1.0,
     }
-    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    fRtol = _ffToleranceForStochasticKind(dictStandard, 0.123)
     assert fRtol == 0.123
 
 
-def test_ftolForStochasticKind_dispatches_to_std_for_std_kind():
+def test_ffToleranceForStochasticKind_dispatches_to_std_for_std_kind():
     dictStandard = {
         "sMetricKind": "std", "iSampleSize": 1000,
         "fObservedCv": 0.05, "fValue": 1.0,
     }
-    fRtol = _ftolForStochasticKind(dictStandard, 0.123)
+    fRtol = _ffToleranceForStochasticKind(dictStandard, 0.123)
     assert fRtol != 0.123
     assert fRtol > 0
 

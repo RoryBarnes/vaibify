@@ -81,7 +81,7 @@ def _fnSetUserVerification(dictWorkflow, iStepIndex, sStatus):
     type=click.Choice(T_VALID_STATUSES, case_sensitive=False),
     help="Verification status to set.",
 )
-def verify_step(sProjectName, sStep, sStatus):
+def fnVerifyStepCommand(sProjectName, sStep, sStatus):
     """Set the user verification status for a pipeline step."""
     _fnValidateStatus(sStatus)
     configProject = fconfigResolveProject(sProjectName)

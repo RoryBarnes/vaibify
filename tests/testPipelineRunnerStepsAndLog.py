@@ -220,16 +220,16 @@ def test_fiRunStepsAndLog_starts_heartbeat_thread(
     listStartedThreads = []
 
     def fnSpyStart(*args, **kwargs):
-        threadHeartbeat = pipelineRunner._fnStartHeartbeatThread.__wrapped__(
+        threadHeartbeat = pipelineRunner._fthreadStartHeartbeat.__wrapped__(
             *args, **kwargs)
         listStartedThreads.append(threadHeartbeat)
         return threadHeartbeat
 
-    fnOriginal = pipelineRunner._fnStartHeartbeatThread
+    fnOriginal = pipelineRunner._fthreadStartHeartbeat
     fnSpyStart.__wrapped__ = fnOriginal
-    pipelineRunner._fnStartHeartbeatThread.__wrapped__ = fnOriginal
+    pipelineRunner._fthreadStartHeartbeat.__wrapped__ = fnOriginal
     with patch(
-        "vaibify.gui.pipelineRunner._fnStartHeartbeatThread",
+        "vaibify.gui.pipelineRunner._fthreadStartHeartbeat",
         side_effect=lambda *a, **kw: (
             listStartedThreads.append(fnOriginal(*a, **kw))
             or listStartedThreads[-1]

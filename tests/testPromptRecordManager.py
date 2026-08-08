@@ -37,7 +37,7 @@ class _StubDockerTranscripts:
     def __init__(self, dictTranscripts):
         self.dictTranscripts = dictTranscripts
 
-    def texecRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand):
         dictSizes = {
             sPath: len(baContent)
             for sPath, baContent in self.dictTranscripts.items()

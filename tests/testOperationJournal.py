@@ -3,7 +3,7 @@
 Covers the two-phase write API, the bounded fail-closed schema, the
 probe catalog's structural completeness, the two-tier resolution with
 real (spawned and reaped) holder processes, and the choke-point wiring:
-``fnAcquireContainerLock``, the stale-lock reaper, the hub startup
+``ffileAcquireContainerLock``, the stale-lock reaper, the hub startup
 hook, the claim arbitration, and the registry listing annotation.
 
 The falsification (kill-confirmed) halves of cases 27, 36, 37, 42 and
@@ -285,7 +285,7 @@ def test_unsupported_verifier_poisons_the_record_permanently():
 
 
 def test_reaper_auto_probe_clears_settled_and_skips_a_held_flock():
-    fileHandleLock = containerLock.fnAcquireContainerLock(S_PROJECT, 8050)
+    fileHandleLock = containerLock.ffileAcquireContainerLock(S_PROJECT, 8050)
     iDeadPid = _fiSpawnExitedProcessInOwnGroup()
     sOperationId = fsPrepareOperation(S_PROJECT, "helper", "runStepBatch")
     fnPromoteOperationToInFlight(
@@ -326,9 +326,9 @@ def test_hub_startup_hook_runs_the_journal_auto_probe():
 
 
 def test_claim_refuses_a_quarantined_container_with_the_reason():
-    from vaibify.gui.containerOwnership import ftdictClaim
+    from vaibify.gui.containerOwnership import ftClaim
     _fnWriteRawJournalBytes(S_PROJECT, b"this is not a journal")
-    iStatusCode, dictPayload = ftdictClaim({}, S_PROJECT, "", 8050)
+    iStatusCode, dictPayload = ftClaim({}, S_PROJECT, "", 8050)
     assert iStatusCode == 409
     assert dictPayload["bClaimed"] is False
     assert dictPayload["bQuarantined"] is True
@@ -367,7 +367,7 @@ def test_busy_resolution_reaches_the_claim_as_locked_not_quarantined():
         dictResolution = fdictResolveContainerJournal(S_PROJECT)
         assert dictResolution["sResolution"] == S_RESOLUTION_BUSY
         with pytest.raises(containerLock.ContainerBusyOperationError):
-            containerLock.fnAcquireContainerLock(S_PROJECT, 8050)
+            containerLock.ffileAcquireContainerLock(S_PROJECT, 8050)
     finally:
         processLive.terminate()
         processLive.wait()

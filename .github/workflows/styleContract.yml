@@ -1,0 +1,59 @@
+# Named, requirable check for the Hungarian-notation style contract.
+#
+# The style-invariant tests already run on the full 24-cell matrix via
+# tests-linux.yml / tests-macos.yml, which collect them through
+# `pytest tests/`. That in-suite placement is the rot-resistant
+# backbone: a check inside the ordinary suite cannot be skip-greened or
+# forgotten. What it cannot provide is a NAMED gate — buried among
+# thousands of tests, a style failure reads as "tests failed", branch
+# protection cannot require "style" by name, and a future marker filter
+# on the suite lanes would silently remove per-merge enforcement with
+# nothing standing guard. This lane is that named guard: mark
+# `style-contract` as a required status check and every merge must pass
+# the naming contract explicitly.
+#
+# One leg only, deliberately: the scanner is pure-AST plus a JSON
+# comparison, with no OS, interpreter, or Docker variance to sample.
+# A single stable check name is also the easiest thing to Require —
+# falsification.yml records where matrix-shaped names led.
+#
+# No skip paths. Every step here fails closed; a lane that can report
+# success for having run nothing is the failure class AGENTS.md
+# records (`docker info || exit 0`).
+
+name: style-contract
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  style-contract:
+    name: style-contract
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Style invariants
+        timeout-minutes: 10
+        run: |
+          python -m pytest tests/testStyleInvariants.py -v
+
+      - name: Inventory drift check
+        timeout-minutes: 5
+        run: |
+          python tools/generateStyleInventory.py --check

@@ -50,13 +50,13 @@ def _ftDockerInfoProbe():
     response.
     """
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "info"],
             capture_output=True, text=True, timeout=10,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return -1, ""
-    return resultProcess.returncode, (resultProcess.stderr or "")
+    return processResult.returncode, (processResult.stderr or "")
 
 
 # -----------------------------------------------------------------------
@@ -266,25 +266,25 @@ def fpreflightColimaHostagentLog():
 def _fsSystemDockerServiceStatus():
     """Return ``systemctl is-active docker`` output, '' on missing tool."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["systemctl", "is-active", "docker"],
             capture_output=True, text=True, timeout=5,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
-    return (resultProcess.stdout or "").strip()
+    return (processResult.stdout or "").strip()
 
 
 def _fsRecentDockerJournalTail():
     """Return last 50 lines from journalctl, '' on failure."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["journalctl", "-u", "docker.service", "-n", "50", "--no-pager"],
             capture_output=True, text=True, timeout=5,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
-    return resultProcess.stdout or ""
+    return processResult.stdout or ""
 
 
 def _fdictDefaultLinuxDockerStartDiagnosis():

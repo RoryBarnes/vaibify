@@ -56,7 +56,7 @@ __all__ = [
     "fdictTerminateAndProveRecord",
     "fdictDrainTerminalRecordsForContainer",
     "fdictDrainAllTerminalRecords",
-    "fnDrainSessionRecord",
+    "fdictDrainSessionRecord",
     "fbContainerHasLiveTerminalRecords",
     "fsetNamesWithLiveTerminalRecords",
 ]
@@ -64,6 +64,7 @@ __all__ = [
 import logging
 import re
 import secrets
+from typing import Optional
 import shlex
 import threading
 import time
@@ -125,9 +126,9 @@ class TerminalExecutionRecord:
     sContainerId: str
     sDockerExecId: str
     iOwnerGeneration: int
-    connectionDocker: object
-    dictRegistry: object
-    session: object = None
+    connectionDocker: "DockerConnection"
+    dictRegistry: Optional[dict]
+    session: Optional["TerminalSession"] = None
     iProcessGroup: int = 0
     sState: str = S_RECORD_STATE_LIVE
 
@@ -264,7 +265,7 @@ def fiDiscoverTerminalProcessGroup(
     fDeadline = time.monotonic() + fTimeoutSeconds
     while True:
         try:
-            iExitCode, sOutput = connectionDocker.ftupleRunRootShellProbe(
+            iExitCode, sOutput = connectionDocker.ftRunRootShellProbe(
                 sContainerId, sScript,
             )
         except Exception:
@@ -554,7 +555,7 @@ def fdictDrainAllTerminalRecords(appState):
     return dictOutcomes
 
 
-def fnDrainSessionRecord(session):
+def fdictDrainSessionRecord(session):
     """Drain the containment record attached to one terminal session.
 
     The socket-close path (§7: a socket closing is not a terminal

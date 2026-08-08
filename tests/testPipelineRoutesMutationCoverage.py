@@ -12,7 +12,7 @@ applied. The holes covered here are:
   tests are, not merely ``pytest.raises``,
 * every non-L1 signal in the file-status ETag,
 * mtime revalidation in ``_ftSplitCachedAndChanged``,
-* single-field change detection in ``_fnUpdateShaCache``.
+* single-field change detection in ``_fbUpdateShaCache``.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -33,7 +33,7 @@ class TestKillRouteAuthGate:
     """An unauthorized caller is rejected before the kill exec runs."""
 
     def test_unauthorized_kill_rejected_before_count_exec(self):
-        """Kills: Delete the dictCtx['require']() auth gate at the top of fnKillRunningTasks."""
+        """Kills: Delete the dictCtx['require']() auth gate at the top of fdictKillRunningTasks."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
@@ -235,7 +235,7 @@ class TestFileStatusEtagSignals:
         return {
             "dictModTimes": {"a/b": "1"},
             "dictMaxMtimeByStep": {"0": 1},
-            "iAICSLevel": 1,
+            "iProofLevel": 1,
             "iL1BlockerCount": 0,
             "iL2BlockerCount": 0,
             "iL3BlockerCount": 0,
@@ -252,10 +252,10 @@ class TestFileStatusEtagSignals:
         dictChanged = dict(dictBase, dictMaxMtimeByStep={"0": 2})
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
-    def test_aics_level_change_advances_tag(self):
-        """Kills: Add "iAICSLevel" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
+    def test_proof_level_change_advances_tag(self):
+        """Kills: Add "iProofLevel" to _SET_ETAG_VOLATILE_KEYS in pipelineRoutes.py."""
         dictBase = self._fdictBase()
-        dictChanged = dict(dictBase, iAICSLevel=2)
+        dictChanged = dict(dictBase, iProofLevel=2)
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
     def test_l2_blocker_count_change_advances_tag(self):
@@ -297,7 +297,7 @@ class TestSplitCachedAndChanged:
         assert "out/a.dat" not in listNeedHash
 
 
-# ── Hole 6: _fnUpdateShaCache detects a single-field change ──────
+# ── Hole 6: _fbUpdateShaCache detects a single-field change ──────
 
 
 class _FakeFilesFixedSha:
@@ -321,18 +321,18 @@ class TestUpdateShaCacheSingleFieldChange:
     """A change in either sha or mtime alone signals persistence."""
 
     def test_mtime_only_change_signals_persistence(self):
-        """Kills: Change the change-detection disjunction in _fnUpdateShaCache from OR to AND."""
+        """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-        bChanged = pipelineRoutes._fnUpdateShaCache(
+        bChanged = pipelineRoutes._fbUpdateShaCache(
             dictCache, _FakeFilesFixedSha("aa"),
             ["out/a.dat"], {"out/a.dat": "1800"},
         )
         assert bChanged is True
 
     def test_sha_only_change_signals_persistence(self):
-        """Kills: Change the change-detection disjunction in _fnUpdateShaCache from OR to AND."""
+        """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-        bChanged = pipelineRoutes._fnUpdateShaCache(
+        bChanged = pipelineRoutes._fbUpdateShaCache(
             dictCache, _FakeFilesFixedSha("bb"),
             ["out/a.dat"], {"out/a.dat": "1700"},
         )

@@ -8,7 +8,7 @@ __all__ = [
     "fsReadInstalledConftestVersion",
     "fdictReadInstalledConftestVersions",
     "fnWriteConftestMarker",
-    "fnWriteConftestMarkersBatch",
+    "fbWriteConftestMarkersBatch",
     "fnEnsureTestsDirectory",
     "fnEnsureConftestsCurrent",
     "fnMigrateFlatMarkers",
@@ -288,7 +288,7 @@ def _fdictParseVersionsProbeOutput(sOutput):
     return dictLoaded
 
 
-def fnWriteConftestMarkersBatch(
+def fbWriteConftestMarkersBatch(
     connectionDocker, sContainerId, listConftestPaths, sContent,
 ):
     """Write the same conftest source to every path in a single docker exec.
@@ -359,7 +359,7 @@ def fnEnsureConftestsCurrent(
     if not listStale:
         _fnRememberRefreshKey(_SET_REFRESHED_KEYS, tKey)
         return
-    bWritten = fnWriteConftestMarkersBatch(
+    bWritten = fbWriteConftestMarkersBatch(
         connectionDocker, sContainerId, listStale,
         fsBuildConftestSource(sProjectRepoPath),
     )

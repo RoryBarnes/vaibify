@@ -42,7 +42,7 @@ class _FakeExecDockerConnection:
     real against the symlink the test created.
     """
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         resultProcess = subprocess.run(

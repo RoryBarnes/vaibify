@@ -1,7 +1,7 @@
-"""AICS Level 1-3 gate functions.
+"""PROOF Level 1-3 gate functions.
 
-Single source of truth for the ``iAICSLevel`` integer that drives the
-dashboard theme. ``fiAICSLevel`` short-circuits up the ladder. All
+Single source of truth for the ``iProofLevel`` integer that drives the
+dashboard theme. ``fiProofLevel`` short-circuits up the ladder. All
 three rungs are implemented here: L1 (Self-Consistent), L2
 (Publication) via ``_fbComputeLevel2``'s seven conjuncts, and L3
 (Reproducible) via ``fbAtLeastLevel3`` -- L2 plus ``fbL3ReadinessOK``'s
@@ -90,14 +90,14 @@ __all__ = [
     "fdictComputeWorkflowScopeLevelStates",
     "fdictL3ReadinessGaps",
     "fdictLevel2Gaps",
-    "fiAICSLevel",
+    "fiProofLevel",
     "fiLowestNonAttainedLevel",
-    "fiStepAICSLevel",
+    "fiStepProofLevel",
     "flistLevel1Blockers",
     "flistLevel2Blockers",
     "flistLevel3Blockers",
     "fnClearLevelBlockerCache",
-    "fnLevelComputationContext",
+    "fcontextLevelComputation",
 ]
 
 
@@ -116,10 +116,10 @@ F_MAX_STALE_HOURS = 24.0
 
 # Per-call memoization scope for the L1/L2/L3 chain.
 #
-# ``fiAICSLevel`` evaluates L1, then L2 (which internally calls L1),
+# ``fiProofLevel`` evaluates L1, then L2 (which internally calls L1),
 # then L3 (which internally calls L2, which calls L1). At N=100 steps
 # the inner L1 calls iterate the verifications three times even though
-# the answer is identical. ``fnLevelComputationContext`` activates a
+# the answer is identical. ``fcontextLevelComputation`` activates a
 # thread-local memo dict that ``fbAtLeastLevel1`` / ``fbAtLeastLevel2``
 # consult before recomputing. The memo lives only for the lifetime of
 # the context — no cross-poll state, no stale-cache risk.
@@ -127,10 +127,10 @@ _THREAD_LOCAL = threading.local()
 
 
 @contextmanager
-def fnLevelComputationContext():
+def fcontextLevelComputation():
     """Activate a per-call memo for ``fbAtLeastLevel{1,2}``.
 
-    Use inside ``fiAICSLevel`` or any other path that drives the L1/L2/L3
+    Use inside ``fiProofLevel`` or any other path that drives the L1/L2/L3
     chain repeatedly on the same workflow + project-repo pair. Outside
     the context, the gates fall back to uncached evaluation so individual
     callers (e.g. the auto-archive envelope-refresh hook) keep their
@@ -284,11 +284,11 @@ def _fsRepoFingerprint(filesRepo):
     return sRepoRoot if isinstance(sRepoRoot, str) else "unknown"
 
 
-def fiAICSLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
-    """Return the integer AICS level (0..3) for a workflow.
+def fiProofLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
+    """Return the integer PROOF level (0..3) for a workflow.
 
     Short-circuits up the ladder so each gate runs at most once. Wraps
-    the L1/L2/L3 chain in ``fnLevelComputationContext`` so the inner
+    the L1/L2/L3 chain in ``fcontextLevelComputation`` so the inner
     recursive calls (L2 -> L1, L3 -> L2 -> L1) hit a memo instead of
     re-iterating every step. ``dictScriptStatus`` threads through to
     L1 so callers with mtime info honor the script-stale criterion.
@@ -296,7 +296,7 @@ def fiAICSLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
     ``repoFiles`` adapter (container or poll snapshot).
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    with fnLevelComputationContext():
+    with fcontextLevelComputation():
         if not fbAtLeastLevel1(
             dictWorkflow, filesRepo, dictScriptStatus,
         ):
@@ -356,7 +356,7 @@ def flistLevel1Blockers(
     """Return per-step L1 blockers with per-file granularity.
 
     Each entry uses the unified blocker schema (Section A of the
-    AICS-ladder plan)::
+    PROOF-ladder plan)::
 
         {"iLevel": 1,
          "iStepIndex": int,
@@ -949,7 +949,7 @@ def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
     ``listOffendingFiles`` projects the step's declared outputs so the
     dashboard can mark them with the *re-run-to-clear* remediation.
     Conforms to the unified blocker schema (Section A of the
-    AICS-ladder plan): every L1 entry carries ``iLevel``, ``sScope``,
+    PROOF-ladder plan): every L1 entry carries ``iLevel``, ``sScope``,
     and a non-empty ``sRemediationHint`` so the Section G tooltip
     pipeline can read it directly.
     """
@@ -1336,7 +1336,7 @@ def _fdictCollectL3ReadinessFlags(dictWorkflow, filesRepo, bRepo):
 def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     """Return per-verifier pass/fail for the L3 readiness card.
 
-    The shape matches what the AICS tab's L3 readiness card binds
+    The shape matches what the PROOF tab's L3 readiness card binds
     against; missing entries are explicit so the rendering code can
     iterate keys directly. The ``bL3AttestationCurrent`` entry is a
     separate read so the UI can render the "Verify L3 Reproducibility"
@@ -1659,7 +1659,7 @@ def _fdictRecomputeSupervisionEvidence(dictWorkflow, filesRepo):
     """Return the supervision evidence recomputed from the repo files.
 
     Read from the append-only attribution log rather than the
-    workflow's persisted flag count, so the AICS row cannot be turned
+    workflow's persisted flag count, so the PROOF row cannot be turned
     green by editing ``project.json``. An unreadable repo yields
     ``None``, which the gate treats as fail-closed.
     """
@@ -1694,7 +1694,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
             "bAtLeastLevel2": bool,
         }
 
-    The frontend AICS tab consumes this dict directly; each False
+    The frontend PROOF tab consumes this dict directly; each False
     entry maps to a red row with a "fix here" link. ``bArxivFullySynced``
     is True trivially when the workflow records no arXiv submission so
     an untracked manuscript does not surface a fake gap.
@@ -1706,7 +1706,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     personal-layer question answered with any of its three statuses —
     disclosure is never required); ``bProjectContextFileExists`` and
     ``bPromptRecordCurrent`` are informational only — they feed the
-    optional AICS rows and never join the conjunction (the Prompt
+    optional PROOF rows and never join the conjunction (the Prompt
     Record follows the arXiv rule: unconfigured is trivially True).
     """
     bL1 = fbAtLeastLevel1(dictWorkflow, filesRepo)
@@ -1747,7 +1747,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
 
 
 # ------------------------------------------------------------------------
-# L2 per-step blocker surface (Stage 3 of the AICS-ladder plan).
+# L2 per-step blocker surface (Stage 3 of the PROOF-ladder plan).
 #
 # ``flistLevel2Blockers`` mirrors ``flistLevel1Blockers`` but for the
 # Publication gate. It does NOT change the boolean ``_fbComputeLevel2``;
@@ -2001,7 +2001,7 @@ def _fdictZenodoVerifyStaleBlocker():
 
 
 # ----------------------------------------------------------------------
-# L2 Overleaf + arXiv blocker surfaces (Stage 4 of the AICS-ladder plan).
+# L2 Overleaf + arXiv blocker surfaces (Stage 4 of the PROOF-ladder plan).
 #
 # The Overleaf helper emits per-step ``figure-not-frozen`` blockers,
 # suppressed when the workflow has no Overleaf binding — a data-only
@@ -2771,7 +2771,7 @@ def flistStepDependedBinaryPaths(dictStep, listDeclaredBinaries):
 # Its cells cover only the requirements that attach to the workflow
 # as a whole (L1: project repo present; L2: sync-verify freshness +
 # arXiv; L3: the envelope artifacts). The all-steps aggregate is the
-# scalar ``fiAICSLevel`` gate rendered by the AICS chip. A workflow
+# scalar ``fiProofLevel`` gate rendered by the PROOF chip. A workflow
 # L1 check above red step rows is therefore a consistent display.
 # ----------------------------------------------------------------------
 
@@ -3356,7 +3356,7 @@ def _fsLevelCellState(iSatisfied, iTotal, sInactivityState, bUnknown):
     return "none"
 
 
-def fiStepAICSLevel(dictStepStates):
+def fiStepProofLevel(dictStepStates):
     """Return the highest contiguous attained level (0-3) for one step.
 
     Contiguity matters: an attained L3 above a partial L2 is level 1
@@ -3381,7 +3381,7 @@ def fiLowestNonAttainedLevel(dictStepStates):
 
     4 means every level is attained — there is no warning anchor.
     """
-    return fiStepAICSLevel(dictStepStates) + 1
+    return fiStepProofLevel(dictStepStates) + 1
 
 
 _S_BINARY_STALE_WARNING_HINT = (

@@ -17,18 +17,18 @@ from pydantic import BaseModel
 from vaibify.reproducibility.credentialRedactor import fsRedactCredentials
 
 from .. import syncDispatcher, trackedReposManager
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fnBumpSyncEpoch
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
-    fobjRunWorkerUnderTheDrain,
+    fgenericRunWorkerUnderTheDrain,
     fsRefreshVerifyCacheAfterPush,
 )
 from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 
 
@@ -243,7 +243,7 @@ def _fnRegisterStatus(app, dictCtx):
     """Register GET /api/repos/{id}/status route."""
 
     @app.get("/api/repos/{sContainerId}/status")
-    async def fnRepoStatus(sContainerId: str):
+    async def fdictHandleRepoStatus(sContainerId: str):
         dictCtx["require"]()
         return await asyncio.to_thread(
             _fdictBuildStatusResponse,
@@ -251,7 +251,7 @@ def _fnRegisterStatus(app, dictCtx):
         )
 
 
-def _fnDoTrackRepo(dictCtx, sContainerId, sRepoName):
+def _fdictDoTrackRepo(dictCtx, sContainerId, sRepoName):
     """Validate and add sRepoName to the tracked sidecar list."""
     _fnRequireValidRepoName(sRepoName)
     dictStatus = trackedReposManager.fdictComputeRepoStatus(
@@ -374,7 +374,7 @@ def _fnRunGitInitWithInitialCommit(
         )
 
 
-def _fnDoInitProjectRepo(
+def _fdictDoInitProjectRepo(
     connectionDocker, sContainerId, sDirectory, bCreateIfMissing,
 ):
     """Validate and initialize /workspace/<sDirectory> as a git repo.
@@ -413,17 +413,17 @@ def _fnDoInitProjectRepo(
 def _fnRegisterInit(app, dictCtx):
     """Register POST /api/repos/{id}/init route."""
 
-    @fnAgentAction("init-project-repo")
+    @ffnAgentAction("init-project-repo")
     @app.post("/api/repos/{sContainerId}/init")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnInitProjectRepo(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleInitProjectRepo(
         sContainerId: str, request: InitRepoRequest,
         requestHttp: Request,
     ):
         dictCtx["require"]()
-        return await _fobjRunRepoWorkerUnderTheDrain(
+        return await _fgenericRunRepoWorkerUnderTheDrain(
             sContainerId,
-            lambda: _fnDoInitProjectRepo(
+            lambda: _fdictDoInitProjectRepo(
                 dictCtx["docker"], sContainerId,
                 request.sDirectory, request.bCreateIfMissing,
             ),
@@ -435,19 +435,19 @@ def _fnRegisterTrack(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/track route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/track")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnTrackRepo(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleTrackRepo(
         sContainerId: str, sRepoName: str, requestHttp: Request,
     ):
         dictCtx["require"]()
-        return await _fobjRunRepoWorkerUnderTheDrain(
+        return await _fgenericRunRepoWorkerUnderTheDrain(
             sContainerId,
-            lambda: _fnDoTrackRepo(dictCtx, sContainerId, sRepoName),
+            lambda: _fdictDoTrackRepo(dictCtx, sContainerId, sRepoName),
             "track-repository", requestHttp,
         )
 
 
-async def _fobjRunRepoWorkerUnderTheDrain(
+async def _fgenericRunRepoWorkerUnderTheDrain(
     sContainerId, fnEffect, sOperationTarget, requestHttp,
 ):
     """Run one repo mutation under the drain; re-raise a 4xx refusal here.
@@ -456,16 +456,16 @@ async def _fobjRunRepoWorkerUnderTheDrain(
     mutation is a sidecar write that failed partway, which is exactly
     the unknown state the quarantine exists for.
     """
-    def fnRunTheEffect(supervisor=None):
+    def fdictHandleRunTheEffect(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(fnEffect)
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnRunTheEffect, sOperationTarget, requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictHandleRunTheEffect, sOperationTarget, requestHttp,
     )
 
 
-async def _fnRewriteTheSidecarUnderTheDrain(
+async def _fdictRewriteTheSidecarUnderTheDrain(
     dictCtx, sContainerId, sRepoName, fnRewrite, sOperationTarget,
     requestHttp,
 ):
@@ -505,14 +505,14 @@ async def _fnRewriteTheSidecarUnderTheDrain(
         requestHttp, sContainerId, sOperationTarget,
     )
 
-    def fnRewriteTheSidecar(supervisor=None):
+    def fgenericRewriteTheSidecar(supervisor=None):
         del supervisor
         return fnRewrite(dictCtx["docker"], sContainerId, sRepoName)
 
     return await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", sOperationTarget,
-        fnRewriteTheSidecar,
+        fgenericRewriteTheSidecar,
     )
 
 
@@ -520,13 +520,13 @@ def _fnRegisterIgnore(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/ignore route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/ignore")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnIgnoreRepo(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictIgnoreRepo(
         sContainerId: str, sRepoName: str, requestHttp: Request,
     ):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
-        await _fnRewriteTheSidecarUnderTheDrain(
+        await _fdictRewriteTheSidecarUnderTheDrain(
             dictCtx, sContainerId, sRepoName,
             trackedReposManager.fnAddIgnored,
             "ignore-repository", requestHttp,
@@ -538,13 +538,13 @@ def _fnRegisterUntrack(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/untrack route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/untrack")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnUntrackRepo(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictUntrackRepo(
         sContainerId: str, sRepoName: str, requestHttp: Request,
     ):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
-        await _fnRewriteTheSidecarUnderTheDrain(
+        await _fdictRewriteTheSidecarUnderTheDrain(
             dictCtx, sContainerId, sRepoName,
             trackedReposManager.fnRemoveTracked,
             "untrack-repository", requestHttp,
@@ -610,7 +610,7 @@ def _fdictResolveRemoteThenPush(
     """
     dictSidecar = _fdictLoadSidecar(dictCtx["docker"], sContainerId)
 
-    def fnCheckTrackedThenPush():
+    def fgenericCheckTrackedThenPush():
         _fnRequireTrackedInSidecar(dictSidecar, sRepoName)
         if supervisor is not None:
             supervisor.sTarget = _fsDescribePushTarget(
@@ -618,7 +618,7 @@ def _fdictResolveRemoteThenPush(
             )
         return fnPush()
 
-    return fdictCarryARefusalBackInsteadOfRaising(fnCheckTrackedThenPush)
+    return fdictCarryARefusalBackInsteadOfRaising(fgenericCheckTrackedThenPush)
 
 
 async def _fdictPushRepositoryUnderTheDrain(
@@ -643,7 +643,7 @@ async def _fdictPushRepositoryUnderTheDrain(
         requestHttp, sContainerId, f"The push of '{sRepoName}'",
     )
 
-    def fnPushUnderTheSupervisor(supervisor=None):
+    def fdictPushUnderTheSupervisor(supervisor=None):
         return _fdictResolveRemoteThenPush(
             dictCtx, sContainerId, sRepoName, fnPush, supervisor,
         )
@@ -651,7 +651,7 @@ async def _fdictPushRepositoryUnderTheDrain(
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper",
-        _fsDescribePushTarget(sRepoName, ""), fnPushUnderTheSupervisor,
+        _fsDescribePushTarget(sRepoName, ""), fdictPushUnderTheSupervisor,
     )
     dictCarried = dictOutcome["result"]
     if dictCarried["errorRefused"] is not None:
@@ -708,8 +708,8 @@ def _fnRegisterPushStaged(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/push-staged route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/push-staged")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnPushStaged(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictPushStaged(
         sContainerId: str, sRepoName: str,
         request: PushStagedRequest, requestHttp: Request,
     ):
@@ -734,8 +734,8 @@ def _fnRegisterPushFiles(app, dictCtx):
     """Register POST /api/repos/{id}/{name}/push-files route."""
 
     @app.post("/api/repos/{sContainerId}/{sRepoName}/push-files")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnPushFiles(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictPushFiles(
         sContainerId: str, sRepoName: str,
         request: PushFilesRequest, requestHttp: Request,
     ):
@@ -761,7 +761,7 @@ def _fnRegisterDirtyFiles(app, dictCtx):
     """Register GET /api/repos/{id}/{name}/dirty-files route."""
 
     @app.get("/api/repos/{sContainerId}/{sRepoName}/dirty-files")
-    async def fnDirtyFiles(sContainerId: str, sRepoName: str):
+    async def fdictDirtyFiles(sContainerId: str, sRepoName: str):
         dictCtx["require"]()
         _fnRequireValidRepoName(sRepoName)
         _fnRequireTracked(

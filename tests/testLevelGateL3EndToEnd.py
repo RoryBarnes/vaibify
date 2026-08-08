@@ -1,9 +1,9 @@
-"""End-to-end test: a synthetic L3-ready workflow reaches iAICSLevel == 3.
+"""End-to-end test: a synthetic L3-ready workflow reaches iProofLevel == 3.
 
 Builds a project repo that satisfies every L1, L2, and L3 criterion
 (L2 GitHub/Zenodo cached as fully-synced, AI declaration step, L3
 envelope artefacts, plus a passing attestation) and confirms that
-``fiAICSLevel`` returns 3. Then mutates the manifest to confirm the
+``fiProofLevel`` returns 3. Then mutates the manifest to confirm the
 gate falls back to 2 once the attestation goes stale.
 """
 
@@ -26,7 +26,7 @@ from vaibify.reproducibility.l3Attestation import (
 )
 from vaibify.reproducibility.levelGates import (
     fbAtLeastLevel3,
-    fiAICSLevel,
+    fiProofLevel,
 )
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
@@ -154,7 +154,7 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
     dictWorkflow = _fdictBuildLevel3Workflow()
     sRepo = str(fixtureLevel3Repo)
     # Without attestation we cap at L2 even with full readiness.
-    assert fiAICSLevel(dictWorkflow, sRepo) == 2
+    assert fiProofLevel(dictWorkflow, sRepo) == 2
     # Write a passing attestation.
     sDigest = fsCurrentManifestDigest(sRepo)
     fnWriteAttestation(sRepo, fdictBuildAttestation(
@@ -162,11 +162,11 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
         12.0, 2, 2, [], "",
     ))
     assert fbAtLeastLevel3(dictWorkflow, sRepo)
-    assert fiAICSLevel(dictWorkflow, sRepo) == 3
+    assert fiProofLevel(dictWorkflow, sRepo) == 3
     # Mutate the manifest — attestation goes stale, gate falls to L2.
     (fixtureLevel3Repo / "MANIFEST.sha256").write_text(
         "# changed\n"
     )
     assert not fbAtLeastLevel3(dictWorkflow, sRepo)
     # With L3 readiness now also failing (no entries), level drops to L2
-    assert fiAICSLevel(dictWorkflow, sRepo) == 2
+    assert fiProofLevel(dictWorkflow, sRepo) == 2

@@ -40,15 +40,43 @@ correspond to the variable type or cast, i.e. Hungarian notation. Use the follow
 - Integer = "i"
 - Float = "f"
 - Double = "d"
-- Arrays should include an "a", e.g., an array of doubles starts with "da"
+- String = "s"
+- Arrays should include an "a", e.g., an array of doubles starts with "da". An array prefix declares its element type and is satisfied by `list[<element>]` (numeric arrays also by `numpy.ndarray`); a bare "list" prefix declares only "a list". Exception by live convention: "ba" means bytes/bytearray, never array-of-bool.
 - Dictionary = "dict"
 - List = "list"
-- JSON = "json"
+- JSON = "json" — a *decoded* JSON value; encoded JSON text is a string and takes "s"
 - Tuple = "t"
+- Generator/iterator = "iter"
+- A `@contextmanager`/`@asynccontextmanager` function = "context" (its return annotation, if any, describes the undecorated generator: `Iterator[T]`, never `ContextManager[T]`)
 
-If a cast is not listed above, ask me.
+If a cast is not listed above, ask me. Beyond these core casts, a
+closed registry of domain prefixes (e.g. `set`, `path`, `config`,
+`connection`) maps each to its concrete type family; it lives in two
+independently edited copies in `tools/generateStyleInventory.py` and
+`tests/testStyleInvariants.py`, and growing either tier takes both
+edits plus my approval. This rule governs EVERY binding site —
+assignments, parameters, loop and `with` targets, `except ... as`
+names — not only annotated ones: a binding whose name parses to no
+vocabulary prefix fails `testVariableBindingsCarryCastPrefixes`
+(legacy bindings are seeded; the budget only falls). A variable
+holding a function composes: it carries "f" plus the held function's
+own run (`fnStatusCallback` holds a procedure, `fbIsIdle` a
+bool-returner). Conventional exemptions: `_`, `self`/`cls`,
+`*args`/`**kwargs`, and ALL_CAPS constants.
 
-3. Function names should begin with an "f" and should be followed by additional lowercase letter(s) that describe the return type, e.g. "fb" for a function that returns a Boolean, or "flist" for a function that returns a list. If a function does not return anything, use "fn" as the prefix.
+3. Function names should begin with an "f" and should be followed by additional lowercase letter(s) that describe the return type, e.g. "fb" for a function that returns a Boolean, or "flist" for a function that returns a list. If a function does not return anything, use "fn" as the prefix. Two special runs: "ffn" returns a *function* (decorators, callback factories; the inner return type is deliberately undeclared — decorators cannot know it), and "fgeneric" returns the *caller-determined* type (parametric executors; the future mypy lane pins it with TypeVar annotations). A `@property` is a computed variable and carries a VARIABLE cast prefix, not a function prefix. Every name conforms unless a FOREIGN contract owns it (dunders, framework overrides like `dispatch`/`emit`/`read` — the closed interface-method list in the style inventory); Click command functions conform too, with the user-facing verb pinned by an explicit `@click.command("verb")` string.
+
+3a. This naming contract is ENFORCED: `tests/testStyleInvariants.py`
+fails CI on any new nonconforming name, any `fn*` that returns or
+yields a value, any literal return or annotation that contradicts its
+prefix, and any drift between `tests/styleInventory.json` and the
+source. Existing violations are grandfathered in a frozen seed with
+exact per-class budgets that may only fall; fixing one lowers the
+matching budget constant in the same commit
+(`python tools/generateStyleInventory.py --write`). Honesty of scope:
+prefix/type consistency is checked where prefixes and annotations
+exist — unannotated, unprefixed names are not governed, and the
+action-verb rule in rule 6 is not machine-enforced.
 
 4. Prefer functions under ~20–30 lines, because a single-purpose function usually fits there and stays easy to navigate. This is a guideline, not a hard limit. When a long function contains a block that is of broader use or marks a real conceptual boundary, extract it. When the function is long but irreducibly one purpose — its only "helpers" would be single-call pass-throughs sharing threaded state — leave it whole; that is clearer than artificial fragmentation, which also costs an agent navigability by smearing one behavior across many call hops.
 
@@ -247,7 +275,7 @@ Overleaf, GitHub, and Zenodo. Failure modes to audit against:
   mounts. Any path that originated from a user-facing source (HTTP
   request body, project.json, config file) must be validated
   against its intended root before being opened, read, written, or
-  listed. The existing helper `fnValidatePathWithinRoot(sAbsPath,
+  listed. The existing helper `fsValidatePathWithinRoot(sAbsPath,
   WORKSPACE_ROOT)` in `pipelineServer.py` does this — do not remove
   or weaken it.
 - Credential leakage through logs, error messages, or generated test
@@ -407,7 +435,7 @@ remainder is deliberate and named, never a silent claim of coverage.
 **A typed read is exempt only inside its adapter.** Reading a file
 means running a program in the container, so guarding the exec would
 refuse reads too. Exactly one private method,
-`DockerConnection._texecRunTypedRead`, grants the exemption. It takes
+`DockerConnection._ftRunTypedRead`, grants the exemption. It takes
 an operation NAME from a fixed table, plus a path **or a flat sequence
 of paths**, and builds the command itself; it never accepts one. The
 sequence form was added on 2026-08-05 for the batched file-existence
@@ -467,7 +495,7 @@ builder filling it is swapped from git to `docker rm`, so a manual
 disposition must name the supporting symbols its review relied on.
 
 **A route declares its carrier mode, and the declaration authorizes
-NOTHING.** `routeScope.fnDeclareCarrierMode` stamps one or more of
+NOTHING.** `routeScope.ffnDeclareCarrierMode` stamps one or more of
 `typed-read`, `mode-a-synchronous`, `mode-b-lock-held`,
 `mode-c-durable`, `lifecycle-transaction`, `separate-authority` onto a
 handler. A declared route takes a branch with NO admission, so its
@@ -613,7 +641,7 @@ cannot introspect arbitrary script source. A cross-step reference hidden
 inside a script literal (e.g. `path = "../OtherStep/output.json"`) is
 invisible to the parser, so the dependency edge does not exist in the
 graph, `bUpstreamModified` cannot fire correctly, and the workflow
-cannot honestly reach AICS Level 1.
+cannot honestly reach PROOF Level 1.
 
 A step's script *may* read its own step-directory files via hardcoded
 relative paths. The boundary is the step. Anything from another step
@@ -636,7 +664,7 @@ vaibify-shipped template at CI time.
 Every new state-mutating HTTP or WebSocket route that a researcher can
 invoke from the UI must also be registered with the agent-action
 catalog — either by an entry in `LIST_AGENT_ACTIONS` plus a
-`@fnAgentAction("action-name")` decorator on the handler, or by an
+`@ffnAgentAction("action-name")` decorator on the handler, or by an
 explicit entry in `SET_INTENTIONALLY_EXCLUDED_PATHS` (with a short
 rationale on the same line or in the preceding comment block) if the
 route is genuinely not agent-invokable.
@@ -647,7 +675,7 @@ the agent has no way to translate that request into a backend call,
 so the dashboard silently drifts out of sync as the agent improvises.
 
 **`bAgentSafe` is enforced server-side (2026-07-26).** It used to be
-advertisement: `fnAgentAction` changes no behaviour, and the flag was
+advertisement: `ffnAgentAction` changes no behaviour, and the flag was
 consumed only by `vaibify/containerImage/vaibifyDo.py` *inside* the container, which
 an agent bypasses with `curl`. `SessionTokenMiddleware` now resolves
 each request to its route template and refuses the agent lane for any

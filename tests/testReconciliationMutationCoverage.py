@@ -94,7 +94,7 @@ def _fnCrashMidExecOperationInChildProcess(
     import vaibify.config.operationJournal as childJournalModule
     childLockModule._S_LOCK_DIRECTORY = sLockDirectory
     childJournalModule._S_JOURNAL_DIRECTORY = sJournalDirectory
-    childLockModule.fnAcquireContainerLock(sProjectName, 8123)
+    childLockModule.ffileAcquireContainerLock(sProjectName, 8123)
     sOperationId = childJournalModule.fsPrepareOperation(
         sProjectName, "exec", "container-side command",
     )
@@ -139,7 +139,7 @@ def test_reconcile_cli_clears_a_sigkill_quarantine_and_restores_claim(
     """
     _fnCrashChildMidOperation()
     with pytest.raises(containerLock.ContainerQuarantinedError):
-        containerLock.fnAcquireContainerLock(S_PROJECT, 8200)
+        containerLock.ffileAcquireContainerLock(S_PROJECT, 8200)
     setOperationIds = set(
         fdictReadJournalOutcome(S_PROJECT)["dictOperations"]
     )
@@ -156,7 +156,7 @@ def test_reconcile_cli_clears_a_sigkill_quarantine_and_restores_claim(
     assert S_PROJECT in sOutput
     assert "prepared:" in sOutput
     assert not os.path.exists(fsJournalPathFor(S_PROJECT))
-    fileHandle = containerLock.fnAcquireContainerLock(S_PROJECT, 8200)
+    fileHandle = containerLock.ffileAcquireContainerLock(S_PROJECT, 8200)
     containerLock.fnReleaseContainerLock(fileHandle)
 
 
@@ -242,12 +242,12 @@ def test_reconcile_versus_claim_is_atomic_on_the_container_flock():
         threadReconcile.start()
         assert eventCleanupEntered.wait(timeout=30)
         with pytest.raises(containerLock.ContainerLockedError):
-            containerLock.fnAcquireContainerLock(S_PROJECT, 8400)
+            containerLock.ffileAcquireContainerLock(S_PROJECT, 8400)
     finally:
         eventReleaseCleanup.set()
         threadReconcile.join(timeout=30)
         dictCatalogEntry["fnCleanupAfterSettledProbe"] = fnOriginalCleanup
-    fileHandle = containerLock.fnAcquireContainerLock(S_PROJECT, 8400)
+    fileHandle = containerLock.ffileAcquireContainerLock(S_PROJECT, 8400)
     containerLock.fnReleaseContainerLock(fileHandle)
 
 

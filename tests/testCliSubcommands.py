@@ -9,26 +9,26 @@ from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 from vaibify.cli.commandConfig import (
-    config,
+    fnConfigCommand,
     fnWriteYaml,
     fdictLoadYamlFile,
 )
 from vaibify.cli.commandDestroy import (
-    destroy,
+    fnDestroyCommand,
     fnRequireDocker,
     fnRemoveVolume,
     fnRemoveImage,
 )
 from vaibify.cli.commandInit import (
-    init,
+    fnInitCommand,
     flistAvailableTemplates,
     fnPrintAvailableTemplates,
     fnCopyDirectoryContents,
     fbConfigExists,
 )
-from vaibify.cli.commandStart import start
-from vaibify.cli.commandStatus import status
-from vaibify.cli.commandPublish import publish
+from vaibify.cli.commandStart import fnStartCommand
+from vaibify.cli.commandStatus import fnStatusCommand
+from vaibify.cli.commandPublish import fnPublishCommand
 
 
 # -----------------------------------------------------------------------
@@ -87,7 +87,7 @@ def test_fdictLoadYamlFile_valid(tmp_path):
 
 def test_config_help_shows_subcommands():
     runner = CliRunner()
-    result = runner.invoke(config, ["--help"])
+    result = runner.invoke(fnConfigCommand, ["--help"])
     assert result.exit_code == 0
     assert "export" in result.output
     assert "edit" in result.output
@@ -103,7 +103,7 @@ def test_config_help_shows_subcommands():
 def test_config_export_calls_save(mockSave, mockLoad):
     mockLoad.return_value = SimpleNamespace(sProjectName="proj")
     runner = CliRunner()
-    result = runner.invoke(config, ["export", "/tmp/out.yml"])
+    result = runner.invoke(fnConfigCommand, ["export", "/tmp/out.yml"])
     assert result.exit_code == 0
     assert "exported" in result.output.lower()
 
@@ -123,7 +123,7 @@ def test_config_import_with_valid_file(tmp_path):
     ):
         runner = CliRunner()
         result = runner.invoke(
-            config, ["import", sInputPath], input="y\n")
+            fnConfigCommand, ["import", sInputPath], input="y\n")
         assert result.exit_code == 0
 
 
@@ -138,7 +138,7 @@ def test_config_edit_missing_file_exits():
         return_value="/nonexistent_xyz.yml",
     ):
         runner = CliRunner()
-        result = runner.invoke(config, ["edit"])
+        result = runner.invoke(fnConfigCommand, ["edit"])
         assert result.exit_code != 0
 
 
@@ -151,7 +151,7 @@ def test_config_edit_opens_editor(mockEdit, tmp_path):
         return_value=sConfigPath,
     ):
         runner = CliRunner()
-        result = runner.invoke(config, ["edit"])
+        result = runner.invoke(fnConfigCommand, ["edit"])
         assert result.exit_code == 0
         mockEdit.assert_called_once()
 
@@ -185,7 +185,7 @@ def test_fnRequireDocker_passes_when_available(mockAvail):
 
 def test_destroy_help_text():
     runner = CliRunner()
-    result = runner.invoke(destroy, ["--help"])
+    result = runner.invoke(fnDestroyCommand, ["--help"])
     assert result.exit_code == 0
     assert "Remove" in result.output
 
@@ -229,25 +229,25 @@ def test_fnCopyDirectoryContents_copies_subdirs(tmp_path):
 
 
 # -----------------------------------------------------------------------
-# commandInit: init help and --template=None
+# commandInit: fnInitCommand help and --template=None
 # -----------------------------------------------------------------------
 
 
 def test_init_help_text():
     runner = CliRunner()
-    result = runner.invoke(init, ["--help"])
+    result = runner.invoke(fnInitCommand, ["--help"])
     assert result.exit_code == 0
     assert "Initialize" in result.output
 
 
 def test_init_no_template_lists_available():
     runner = CliRunner()
-    result = runner.invoke(init, [])
+    result = runner.invoke(fnInitCommand, [])
     assert result.exit_code == 0
 
 
 # -----------------------------------------------------------------------
-# commandInit: init with --force
+# commandInit: fnInitCommand with --force
 # -----------------------------------------------------------------------
 
 
@@ -258,7 +258,7 @@ def test_init_existing_config_no_force_exits(
     mockExists, mockWrite, mockCopy,
 ):
     runner = CliRunner()
-    result = runner.invoke(init, ["--template", "sandbox"])
+    result = runner.invoke(fnInitCommand, ["--template", "sandbox"])
     assert result.exit_code != 0
 
 
@@ -269,12 +269,12 @@ def test_init_existing_config_no_force_exits(
 def test_init_existing_config_force_succeeds(
     mockExists, mockWrite, mockCopy, mockAdd,
 ):
-    # fnWriteDefaultConfig is mocked, so no config lands on disk;
-    # registration must be mocked too, else init correctly fails to
-    # register a project whose config does not exist.
+    # fnWriteDefaultConfig is mocked, so no fnConfigCommand lands on disk;
+    # registration must be mocked too, else fnInitCommand correctly fails to
+    # register a project whose fnConfigCommand does not exist.
     runner = CliRunner()
     result = runner.invoke(
-        init, ["--template", "sandbox", "--force"])
+        fnInitCommand, ["--template", "sandbox", "--force"])
     assert result.exit_code == 0
     assert "Initialized" in result.output
 
@@ -286,7 +286,7 @@ def test_init_existing_config_force_succeeds(
 
 def test_start_help_text():
     runner = CliRunner()
-    result = runner.invoke(start, ["--help"])
+    result = runner.invoke(fnStartCommand, ["--help"])
     assert result.exit_code == 0
     assert "Start" in result.output
 
@@ -298,7 +298,7 @@ def test_start_help_text():
 
 def test_status_help_text():
     runner = CliRunner()
-    result = runner.invoke(status, ["--help"])
+    result = runner.invoke(fnStatusCommand, ["--help"])
     assert result.exit_code == 0
     assert "status" in result.output.lower()
 
@@ -310,7 +310,7 @@ def test_status_help_text():
 
 def test_publish_help_text():
     runner = CliRunner()
-    result = runner.invoke(publish, ["--help"])
+    result = runner.invoke(fnPublishCommand, ["--help"])
     assert result.exit_code == 0
     assert "archive" in result.output
     assert "workflow" in result.output
@@ -318,13 +318,13 @@ def test_publish_help_text():
 
 def test_publish_archive_stub():
     runner = CliRunner()
-    result = runner.invoke(publish, ["archive"])
+    result = runner.invoke(fnPublishCommand, ["archive"])
     assert result.exit_code == 0
     assert "Not yet implemented" in result.output
 
 
 def test_publish_workflow_stub():
     runner = CliRunner()
-    result = runner.invoke(publish, ["workflow"])
+    result = runner.invoke(fnPublishCommand, ["workflow"])
     assert result.exit_code == 0
     assert "Not yet implemented" in result.output

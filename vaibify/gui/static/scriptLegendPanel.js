@@ -5,7 +5,7 @@
    how to start the AI coding assistant inside the container (and why
    the sandbox makes that safe), and carries the symbol legend — what
    each mark means, nothing more. The requirements themselves and how
-   to meet them live on the AICS tab. Criterion rows come from
+   to meet them live on the PROOF tab. Criterion rows come from
    ``VaibifyApp.fdictBlockerGlyphCatalog`` so the legend cannot
    drift from the glyphs actually rendered. */
 
@@ -14,8 +14,8 @@ var VaibifyLegendPanel = (function () {
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
 
-    var _S_PANEL_ID = "aicsLegendPanel";
-    var _S_BUTTON_ID = "aicsLegendButton";
+    var _S_PANEL_ID = "proofLegendPanel";
+    var _S_BUTTON_ID = "proofLegendButton";
     var _S_DOCUMENTATION_URL = "https://RoryBarnes.github.io/vaibify";
     // A container hosts whichever agents its build features enabled;
     // each command carries that agent's own skip-permissions flag.
@@ -46,12 +46,12 @@ var VaibifyLegendPanel = (function () {
     var _LIST_STEP_MARKS = [
         {
             sSampleHtml: '<input type="checkbox" ' +
-                'class="aics-legend-checkbox-sample" disabled>',
+                'class="proof-legend-checkbox-sample" disabled>',
             sLabel: "Run checkbox — include this step in the " +
                 "next run",
         },
         {
-            sIcon: "●", sClass: "aics-legend-orange-light-sample",
+            sIcon: "●", sClass: "proof-legend-orange-light-sample",
             sLabel: "Run light (beside each step's checkbox) — " +
                 "execution only: hollow grey = not run this " +
                 "session, filled grey = queued, blinking orange = " +
@@ -114,7 +114,7 @@ var VaibifyLegendPanel = (function () {
         {
             sSampleHtml: '<span class="envelope-light ' +
                 'envelope-light-unknown ' +
-                'aics-legend-inline-sample"></span>',
+                'proof-legend-inline-sample"></span>',
             sLabel: "Hollow grey circle — never checked: refresh " +
                 "remote status to find out",
         },
@@ -201,16 +201,16 @@ var VaibifyLegendPanel = (function () {
             sLabel: "Badge faded grey — not synced to this remote",
         },
         {
-            sIcon: "file", sClass: "aics-legend-red-missing-sample",
+            sIcon: "file", sClass: "proof-legend-red-missing-sample",
             sLabel: "Red upright file name — declared file missing",
         },
         {
-            sIcon: "file", sClass: "aics-legend-red-stale-sample",
+            sIcon: "file", sClass: "proof-legend-red-stale-sample",
             sLabel: "Red dotted-underlined file name — file changed " +
                 "since its last test run",
         },
         {
-            sIcon: "file", sClass: "aics-legend-red-unattested-sample",
+            sIcon: "file", sClass: "proof-legend-red-unattested-sample",
             sLabel: "Red italic file name — present but never " +
                 "verified by you",
         },
@@ -259,7 +259,7 @@ var VaibifyLegendPanel = (function () {
     }
 
     function _fnBindCloseButton(elPanel) {
-        var elClose = elPanel.querySelector(".aics-legend-close");
+        var elClose = elPanel.querySelector(".proof-legend-close");
         if (elClose) {
             elClose.addEventListener("click", fnClose);
         }
@@ -277,11 +277,11 @@ var VaibifyLegendPanel = (function () {
     function _fsRenderPanelInner() {
         // Symbols only in the legend: live blocker counts were
         // dropped so the panel cannot become a second, staler status
-        // page — status lives on the banner strips and the AICS tab.
+        // page — status lives on the banner strips and the PROOF tab.
         return _fsRenderHeader() +
             _fsRenderDocumentationSection() +
             _fsRenderUsingAiSection() +
-            '<div class="aics-help-heading">Legend</div>' +
+            '<div class="proof-help-heading">Legend</div>' +
             _fsRenderStepsDivision() +
             _fsRenderProjectDivision() +
             _fsRenderLevelLightsDivision() +
@@ -297,15 +297,15 @@ var VaibifyLegendPanel = (function () {
     }
 
     function _fsRenderHeader() {
-        return '<div class="aics-legend-header">' +
+        return '<div class="proof-legend-header">' +
             '<span>Help</span>' +
-            '<button class="aics-legend-close" ' +
+            '<button class="proof-legend-close" ' +
             'title="Close">&times;</button>' +
             '</div>';
     }
 
     function _fsRenderDocumentationSection() {
-        return '<div class="aics-help-section aics-help-docs">' +
+        return '<div class="proof-help-section proof-help-docs">' +
             '<a href="' + _S_DOCUMENTATION_URL + '" ' +
             'target="_blank" rel="noopener">' +
             'Read the full vaibify documentation</a>' +
@@ -313,7 +313,7 @@ var VaibifyLegendPanel = (function () {
     }
 
     function _fsRenderUsingAiSection() {
-        return '<details class="aics-help-details">' +
+        return '<details class="proof-help-details">' +
             '<summary>Using AI</summary>' +
             '<p>A container can host Claude Code, Codex, or Gemini, ' +
             'depending on the features it was built with. To start ' +
@@ -331,7 +331,7 @@ var VaibifyLegendPanel = (function () {
             '— never your host machine. Every file it edits ' +
             'is tracked in git, hash-pinned in the project ' +
             'manifest, and ultimately checked by a full rebuild of ' +
-            'the analysis — that is what AICS Level 3 ' +
+            'the analysis — that is what PROOF Level 3 ' +
             '(Reproducible) certifies.</p>' +
             '<p>Your protection therefore comes from verifying ' +
             'results, not from approving each command: the ' +
@@ -348,7 +348,7 @@ var VaibifyLegendPanel = (function () {
             var dictAgent = _LIST_AGENT_START_COMMANDS[i];
             sHtml += '<p><strong>' +
                 fnEscapeHtml(dictAgent.sAgentName) + '</strong></p>' +
-                '<code class="aics-help-command">' +
+                '<code class="proof-help-command">' +
                 fnEscapeHtml(dictAgent.sCommand) + '</code>';
         }
         return sHtml;
@@ -356,10 +356,10 @@ var VaibifyLegendPanel = (function () {
 
     function _fsRenderStepsDivision() {
         var dictCatalog = _fdictGlyphCatalog();
-        return '<div class="aics-legend-section">' +
-            '<div class="aics-legend-section-title">Steps</div>' +
+        return '<div class="proof-legend-section">' +
+            '<div class="proof-legend-section-title">Steps</div>' +
             _fsRenderMarkRows(_LIST_STEP_MARKS) +
-            '<div class="aics-legend-subsection-title">' +
+            '<div class="proof-legend-subsection-title">' +
             'Why a step shows a warning</div>' +
             _fsRenderCriteriaRows(dictCatalog.iLevel1 || {}) +
             _fsRenderAxisSubStateRows() +
@@ -368,24 +368,24 @@ var VaibifyLegendPanel = (function () {
 
     function _fsRenderProjectDivision() {
         var dictCatalog = _fdictGlyphCatalog();
-        return '<div class="aics-legend-section">' +
-            '<div class="aics-legend-section-title">' +
+        return '<div class="proof-legend-section">' +
+            '<div class="proof-legend-section-title">' +
             'Project</div>' +
             _fsRenderMarkRows(_LIST_WORKFLOW_MARKS) +
-            '<div class="aics-legend-subsection-title">' +
+            '<div class="proof-legend-subsection-title">' +
             'Publication warnings (Level 2)</div>' +
             _fsRenderCriteriaRows(dictCatalog.iLevel2 || {}) +
-            '<div class="aics-legend-subsection-title">' +
+            '<div class="proof-legend-subsection-title">' +
             'Reproducibility warnings (Level 3)</div>' +
             _fsRenderCriteriaRows(dictCatalog.iLevel3 || {}) +
             '</div>';
     }
 
     function _fsRenderLevelLightsDivision() {
-        return '<div class="aics-legend-section">' +
-            '<div class="aics-legend-section-title">' +
+        return '<div class="proof-legend-section">' +
+            '<div class="proof-legend-section-title">' +
             'Level status lights</div>' +
-            '<div class="aics-legend-division-note">The ' +
+            '<div class="proof-legend-division-note">The ' +
             'L1&thinsp;|&thinsp;L2&thinsp;|&thinsp;L3 cells on ' +
             'step rows, both banners, and requirement rows:</div>' +
             _fsRenderMarkRows(_LIST_LEVEL_CELL_MARKS) +
@@ -393,10 +393,10 @@ var VaibifyLegendPanel = (function () {
     }
 
     function _fsRenderFilesAndRemotesDivision() {
-        return '<div class="aics-legend-section">' +
-            '<div class="aics-legend-section-title">' +
+        return '<div class="proof-legend-section">' +
+            '<div class="proof-legend-section-title">' +
             'Files and remotes</div>' +
-            '<div class="aics-legend-division-note">GitHub, ' +
+            '<div class="proof-legend-division-note">GitHub, ' +
             'Overleaf, Zenodo, and arXiv badges beside file ' +
             'names, and the file-name text styles:</div>' +
             _fsRenderMarkRows(_LIST_FILE_REMOTE_MARKS) +
@@ -410,13 +410,13 @@ var VaibifyLegendPanel = (function () {
         // orange level cell carries that state.
         var dictSubStates =
             _fdictGlyphCatalog().dictAxisSubStates || {};
-        var sHtml = '<div class="aics-legend-subsection-title">' +
+        var sHtml = '<div class="proof-legend-subsection-title">' +
             'Why a test shows a warning</div>' +
-            '<ul class="aics-legend-criteria">';
+            '<ul class="proof-legend-criteria">';
         Object.keys(dictSubStates).forEach(function (sSubState) {
             var dictMeta = dictSubStates[sSubState];
             if (!dictMeta) return;
-            sHtml += '<li><span class="aics-legend-glyph ' +
+            sHtml += '<li><span class="proof-legend-glyph ' +
                 fnEscapeHtml(dictMeta.sClass) + '">' +
                 fnEscapeHtml(dictMeta.sIcon) + '</span> ' +
                 fnEscapeHtml(dictMeta.sLabel) + '</li>';
@@ -428,10 +428,10 @@ var VaibifyLegendPanel = (function () {
         // Rows show the catalog's plain-English label only: the dict
         // keys are wire literals (e.g. hyphenated criterion names)
         // and must never surface as user-facing text.
-        var sHtml = '<ul class="aics-legend-criteria">';
+        var sHtml = '<ul class="proof-legend-criteria">';
         Object.keys(dictGlyphs).forEach(function (sCriterion) {
             var dictMeta = dictGlyphs[sCriterion];
-            sHtml += '<li><span class="aics-legend-glyph ' +
+            sHtml += '<li><span class="proof-legend-glyph ' +
                 fnEscapeHtml(dictMeta.sClass) + '">' +
                 fnEscapeHtml(dictMeta.sIcon) + '</span> ' +
                 fnEscapeHtml(dictMeta.sLabel) + '</li>';
@@ -441,7 +441,7 @@ var VaibifyLegendPanel = (function () {
     }
 
     function _fsRenderMarkRows(listMarks) {
-        var sHtml = '<ul class="aics-legend-criteria">';
+        var sHtml = '<ul class="proof-legend-criteria">';
         for (var i = 0; i < listMarks.length; i++) {
             var dictMark = listMarks[i];
             sHtml += '<li>' + _fsRenderMarkSample(dictMark) + ' ' +
@@ -454,19 +454,19 @@ var VaibifyLegendPanel = (function () {
         // ``sSampleHtml`` entries are static, trusted markup defined
         // above — never user data — so they render verbatim.
         if (dictMark.sSampleHtml) return dictMark.sSampleHtml;
-        return '<span class="aics-legend-glyph ' +
+        return '<span class="proof-legend-glyph ' +
             fnEscapeHtml(dictMark.sClass) + '">' +
             fnEscapeHtml(dictMark.sIcon) + '</span>';
     }
 
     function _fsRenderFooter() {
-        return '<div class="aics-legend-footer">' +
+        return '<div class="proof-legend-footer">' +
             'Getting started: pick a container, open a project, ' +
             'then run and verify each step in the Steps block to ' +
             'reach Level 1; climb further through the ' +
             'Project rows. The requirements themselves ' +
             '— and how to meet each one — live on the ' +
-            'AICS tab.</div>';
+            'PROOF tab.</div>';
     }
 
     document.addEventListener("DOMContentLoaded", fnInitialize);

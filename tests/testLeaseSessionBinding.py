@@ -16,7 +16,7 @@ def _fdictOwners():
 
 def _fnRecord(dictOwners, sName, sSessionId):
     """Record an unowned claim bound to a browser session; return its lease."""
-    return containerOwnership._fnRecordNewOwner(
+    return containerOwnership._fsRecordNewOwner(
         dictOwners, sName, fileHandleLock=None, sContainerId="cid-" + sName,
         sBrowserSessionId=sSessionId,
     )
@@ -73,10 +73,10 @@ def test_unknown_container_fails_closed():
     ) is False
 
 
-def test_ftdictClaim_threads_the_session_id_onto_the_record():
+def test_ftClaim_threads_the_session_id_onto_the_record():
     """The public claim path binds the session, not only the private mint."""
     dictOwners = _fdictOwners()
-    iStatus, dictPayload = containerOwnership.ftdictClaim(
+    iStatus, dictPayload = containerOwnership.ftClaim(
         dictOwners, "proj", sLeaseId="", iPort=0, sContainerId="cid",
         sBrowserSessionId="session-A",
     )

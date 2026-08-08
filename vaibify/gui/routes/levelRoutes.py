@@ -22,7 +22,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
@@ -30,13 +30,13 @@ from ..pipelineServer import (
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     ffilesForWorkflow,
-    fnCommitWorkflowSave,
-    fobjRunWorkerUnderTheDrain,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ...reproducibility.aiDeclarationStep import (
     S_DEFAULT_DECLARATION_DIRECTORY,
@@ -44,11 +44,11 @@ from ...reproducibility.aiDeclarationStep import (
     fbDeclarationFileExists,
     fbStepIsAiDeclaration,
     fdictBuildAiDeclarationStep,
-    fnWriteDeclarationTemplate,
+    fsWriteDeclarationTemplate,
 )
 from ...reproducibility.levelGates import (
     fdictLevel2Gaps,
-    fiAICSLevel,
+    fiProofLevel,
 )
 
 
@@ -141,11 +141,11 @@ def _fsRequireProjectRepo(dictWorkflow):
 def _fnRegisterLevel2Readiness(app, dictCtx):
     """Register GET /api/workflow/{sContainerId}/level2/readiness."""
 
-    @fnAgentAction("check-l2-readiness")
+    @ffnAgentAction("check-l2-readiness")
     @app.get(
         "/api/workflow/{sContainerId}/level2/readiness"
     )
-    async def fnLevel2Readiness(sContainerId: str):
+    async def fdictLevel2Readiness(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -155,7 +155,7 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         )
         dictGaps = fdictLevel2Gaps(dictWorkflow, filesRepo)
         return {
-            "iAICSLevel": fiAICSLevel(dictWorkflow, filesRepo),
+            "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictLevel2Gaps": dictGaps,
         }
 
@@ -163,13 +163,13 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
 def _fnRegisterGenerateTemplate(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/ai-declaration/generate-template."""
 
-    @fnAgentAction("generate-ai-declaration-template")
+    @ffnAgentAction("generate-ai-declaration-template")
     @app.post(
         "/api/workflow/{sContainerId}"
         "/ai-declaration/generate-template"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnGenerateTemplate(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleGenerateTemplate(
         sContainerId: str,
         request: AiDeclarationTemplateRequest,
         requestHttp: Request,
@@ -211,15 +211,15 @@ async def _fdictGenerateTemplateUnderTheDrain(
     a decision made BEFORE any byte is written. Neither is the unknown
     state a quarantine exists for.
     """
-    def fnGenerateTheTemplate(supervisor=None):
+    def fdictGenerateTheTemplate(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fdictProbeThenWriteTemplate(filesRepo, sRelative),
             setAlsoCarriedStatusCodes=frozenset({500}),
         )
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnGenerateTheTemplate, "ai-declaration-template",
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictGenerateTheTemplate, "ai-declaration-template",
         requestHttp,
     )
 
@@ -233,7 +233,7 @@ def _fdictProbeThenWriteTemplate(filesRepo, sRelative):
             f"edit it in place rather than regenerating.",
         )
     try:
-        sAbsolute = fnWriteDeclarationTemplate(filesRepo, sRelative)
+        sAbsolute = fsWriteDeclarationTemplate(filesRepo, sRelative)
     except (OSError, ValueError) as error:
         raise HTTPException(
             500,
@@ -276,13 +276,13 @@ def _fdictBuildStepFromAddRequest(dictWorkflow, request):
 def _fnRegisterAddStep(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/ai-declaration/add-step."""
 
-    @fnAgentAction("add-ai-declaration-step")
+    @ffnAgentAction("add-ai-declaration-step")
     @app.post(
         "/api/workflow/{sContainerId}"
         "/ai-declaration/add-step"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnAddAiDeclarationStep(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictHandleAddAiDeclarationStep(
         sContainerId: str,
         request: AiDeclarationAddStepRequest,
         requestHttp: Request,
@@ -294,7 +294,7 @@ def _fnRegisterAddStep(app, dictCtx):
         _fnRefuseDuplicateAiDeclarationStep(dictWorkflow)
         dictStep = _fdictBuildStepFromAddRequest(dictWorkflow, request)
         dictWorkflow.setdefault("listSteps", []).append(dictStep)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The AI Declaration step",
         )

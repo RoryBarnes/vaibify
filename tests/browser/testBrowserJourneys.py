@@ -633,7 +633,7 @@ def _fnReleaseBrowserLaneOwnership(stateApp):
     recordOwner = stateApp.dictContainerOwners.get(S_CONTAINER_NAME)
     if recordOwner is None:
         return
-    containerOwnership.fnReleaseOwnership(
+    containerOwnership.fbReleaseOwnership(
         stateApp.dictContainerOwners, S_CONTAINER_NAME,
         recordOwner.sLeaseId,
         sBrowserSessionId=recordOwner.sBrowserSessionId,

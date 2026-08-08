@@ -94,7 +94,7 @@ def test_build_from_config_forces_no_cache_on_drift(tmp_path):
     """fnBuildFromConfig prepends --no-cache when ARG-hash drifts."""
     listSeenNoCache = []
 
-    def fakeBuild(config, sDockerDir, bNoCache=False):
+    def fakeBuild(fnConfigCommand, sDockerDir, bNoCache=False):
         listSeenNoCache.append(bNoCache)
 
     config = _fConfigArgs(sPython="3.11")
@@ -121,7 +121,7 @@ def test_build_from_config_does_not_force_when_first_build(tmp_path):
     """Without a prior hash file the build runs with bNoCache=False."""
     listSeenNoCache = []
 
-    def fakeBuild(config, sDockerDir, bNoCache=False):
+    def fakeBuild(fnConfigCommand, sDockerDir, bNoCache=False):
         listSeenNoCache.append(bNoCache)
 
     config = _fConfigArgs()

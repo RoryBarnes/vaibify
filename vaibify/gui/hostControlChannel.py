@@ -5,7 +5,7 @@ Design §6b/§14. Each hub serves one Unix domain socket at
 socket mode ``0600``, NEVER HTTP or TCP, and unreachable from any
 container (the directory is on ``bindMountValidator``'s denied host
 prefixes). Every connection is peer-authenticated to the hub's own uid
-through one portability shim, :func:`fituplePeerUidGid` — ``SO_PEERCRED``
+through one portability shim, :func:`ftPeerUidGid` — ``SO_PEERCRED``
 on Linux, ``getpeereid``-equivalent ``LOCAL_PEERCRED`` on macOS — and a
 foreign uid is closed without a byte of response.
 
@@ -48,7 +48,7 @@ __all__ = [
     "S_SOCKET_OPERATION_MINT_BOOTSTRAP",
     "F_RECONCILE_DRAIN_WAIT_SECONDS",
     "HostControlError",
-    "fituplePeerUidGid",
+    "ftPeerUidGid",
     "fsControlSocketPathForPort",
     "fnUnlinkStaleControlSockets",
     "fnRegisterHostControlChannel",
@@ -114,7 +114,7 @@ class HostControlError(RuntimeError):
 # Peer credentials — the ONE portability shim (design §6b).
 # ---------------------------------------------------------------------
 
-def fituplePeerUidGid(socketConnection):
+def ftPeerUidGid(socketConnection):
     """Return ``(iUid, iGid)`` of a connected Unix-socket peer.
 
     ``SO_PEERCRED`` on Linux, ``LOCAL_PEERCRED`` (the ``getpeereid``
@@ -123,13 +123,13 @@ def fituplePeerUidGid(socketConnection):
     unauthorized peer, never as a pass.
     """
     if hasattr(socket, "SO_PEERCRED"):
-        return _ftupleParseLinuxPeerCredentials(
+        return _ftParseLinuxPeerCredentials(
             socketConnection.getsockopt(
                 socket.SOL_SOCKET, socket.SO_PEERCRED,
                 struct.calcsize(_S_LINUX_UCRED_FORMAT),
             )
         )
-    return _ftupleParseDarwinPeerCredentials(
+    return _ftParseDarwinPeerCredentials(
         socketConnection.getsockopt(
             _I_SOL_LOCAL_DARWIN, _I_LOCAL_PEERCRED_DARWIN,
             _I_DARWIN_XUCRED_BYTES,
@@ -137,7 +137,7 @@ def fituplePeerUidGid(socketConnection):
     )
 
 
-def _ftupleParseLinuxPeerCredentials(byteCredentials):
+def _ftParseLinuxPeerCredentials(byteCredentials):
     """Parse a Linux ``struct ucred`` into ``(iUid, iGid)``."""
     try:
         _, iPeerUid, iPeerGid = struct.unpack(
@@ -148,7 +148,7 @@ def _ftupleParseLinuxPeerCredentials(byteCredentials):
     return (iPeerUid, iPeerGid)
 
 
-def _ftupleParseDarwinPeerCredentials(byteCredentials):
+def _ftParseDarwinPeerCredentials(byteCredentials):
     """Parse a macOS ``struct xucred`` into ``(iUid, iGid)``."""
     try:
         iVersion, iPeerUid, iGroupCount = struct.unpack_from(
@@ -318,7 +318,7 @@ def _fbPeerIsThisUser(writer):
     if socketPeer is None:
         return False
     try:
-        iPeerUid, _ = fituplePeerUidGid(socketPeer)
+        iPeerUid, _ = ftPeerUidGid(socketPeer)
     except (HostControlError, OSError):
         return False
     return iPeerUid == os.getuid()
@@ -784,7 +784,7 @@ def fdictSendHostControlRequest(iPort, dictRequest, fTimeoutSeconds=30.0):
             socketClient.sendall(
                 json.dumps(dictRequest).encode("utf-8") + b"\n",
             )
-            byteResponse = _fbyteReadResponseLine(socketClient)
+            byteResponse = _fbaReadResponseLine(socketClient)
         except (ConnectionResetError, BrokenPipeError):
             # The hub closed on us without answering -- which is exactly
             # what it does to a peer it will not serve. macOS reports
@@ -813,7 +813,7 @@ def fdictSendHostControlRequest(iPort, dictRequest, fTimeoutSeconds=30.0):
     return dictResponse
 
 
-def _fbyteReadResponseLine(socketClient):
+def _fbaReadResponseLine(socketClient):
     """Read one bounded response line (closed connection ends it)."""
     listChunks = []
     iTotalBytes = 0

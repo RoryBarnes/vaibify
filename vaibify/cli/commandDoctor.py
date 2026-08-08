@@ -27,28 +27,28 @@ __all__ = ["doctor", "flistRunDoctorChecks"]
 def _flistBuildOnlyChecks(config):
     """Run build-only pre-flight helpers and return their results."""
     from .commandBuild import (
-        _fpreflightArch, _fpreflightDisk, _fpreflightMemory,
+        _flistPreflightArch, _flistPreflightDisk, _flistPreflightMemory,
     )
     listResults = []
-    listResults.extend(_fpreflightArch(config))
-    listResults.extend(_fpreflightDisk())
-    listResults.extend(_fpreflightMemory())
+    listResults.extend(_flistPreflightArch(config))
+    listResults.extend(_flistPreflightDisk())
+    listResults.extend(_flistPreflightMemory())
     return listResults
 
 
 def _flistStartOnlyChecks(config):
     """Run start-only pre-flight helpers and return their results."""
     from .commandStart import (
-        _flistpreflightBindMountFormats, _flistpreflightBindMounts,
-        _flistpreflightColimaSharedRoots, _flistpreflightPorts,
+        _flistPreflightBindMountFormats, _flistPreflightBindMounts,
+        _flistPreflightColimaSharedRoots, _flistPreflightPorts,
         _fpreflightContainerName, _fpreflightImage,
     )
     listResults = [_fpreflightImage(config)]
-    listResults.extend(_flistpreflightPorts(config))
+    listResults.extend(_flistPreflightPorts(config))
     listResults.append(_fpreflightContainerName(config))
-    listResults.extend(_flistpreflightBindMounts(config))
-    listResults.extend(_flistpreflightBindMountFormats(config))
-    listResults.extend(_flistpreflightColimaSharedRoots(config))
+    listResults.extend(_flistPreflightBindMounts(config))
+    listResults.extend(_flistPreflightBindMountFormats(config))
+    listResults.extend(_flistPreflightColimaSharedRoots(config))
     return listResults
 
 
@@ -131,7 +131,7 @@ def _fnPrintDoctorSummary(listResults):
     "--start", "bStartScope", is_flag=True, default=False,
     help="Run only the start-relevant subset.",
 )
-def doctor(sProjectName, bQuiet, bBuildScope, bStartScope):
+def fnDoctorCommand(sProjectName, bQuiet, bBuildScope, bStartScope):
     """Run pre-flight checks and print a status report."""
     config = _fconfigResolveProjectOrNone(sProjectName)
     if config is None:

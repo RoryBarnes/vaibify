@@ -42,10 +42,13 @@ not as a PDF plus some code, but as a content-addressed chain of
 evidence whose integrity any third party — human or agent — can
 verify without rerunning the computation.
 
-## The reproducibility ladder
+## The PROOF ladder
 
 Reproducibility is not a binary. We distinguish five levels, each
-strictly harder than the last. The structure follows the pattern
+strictly harder than the last. The ladder is named for the five
+pillars a result must rest on to be trusted by someone who was not
+there: **P**rovenance, **R**eproducibility, **O**penness,
+**O**versight, **F**alsifiability. The structure follows the pattern
 used in other trust-across-boundaries domains: SLSA in software
 supply-chain security, evidence-based medicine hierarchies, NIST
 metrological traceability, art-world provenance. At each level we
@@ -97,12 +100,21 @@ this tooling exists in the
 [reproducible-builds](https://reproducible-builds.org/) community;
 vaibify's role is to package it for working scientists.
 
-### L4 — Archived
+### L4 — Traceable
 
 Every external input is recorded with `(source URL, fetch timestamp,
 content hash)` in a committed manifest. Re-fetching the URL produces
 a matching hash; archival services (Zenodo, Software Heritage, Wayback
 Machine) hold snapshots in case the source disappears.
+
+The rung is named for the unbroken chain, not the copies that back it
+up: what L4 adds is metrological *traceability* — every input is
+followed back to a documented origin, the same relation that anchors a
+measurement to a reference standard or a painting to its provenance.
+L3 proves you can regenerate the outputs; L4 proves you can vouch for
+what went in. (It was called "Archived" until 2026-08, which named a
+mechanism rather than the claim, and named one that L2 already uses:
+a Zenodo DOI is a publication authority there.)
 
 - **Proves**: the full causal chain from raw observation to published
   plot is tamper-evident.

@@ -165,7 +165,7 @@ def test_supervision_is_not_gradeable_on_the_persisted_count():
     """A zeroed ``project.json`` count must not turn the row green.
 
     ``iUnattributedFlagCount`` lives in a file the supervised
-    in-container agent edits routinely. Grading on it let the AICS row
+    in-container agent edits routinely. Grading on it let the PROOF row
     read clean while the flags file was full of permanent findings —
     supervision gradeable on self-report.
 

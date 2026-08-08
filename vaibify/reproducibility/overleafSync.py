@@ -397,7 +397,7 @@ def _fnCloneOverleafRepo(sOverleafId, sDestination, listCredArgs=None):
         "clone", "--depth", "1", "--no-recurse-submodules",
         sRepoUrl, sDestination,
     ])
-    _fnRunSubprocess(listCommand, "Failed to clone Overleaf project")
+    _fprocessRunSubprocess(listCommand, "Failed to clone Overleaf project")
 
 
 # ------------------------------------------------------------------
@@ -483,31 +483,31 @@ def _fnCommitAndPush(sRepoDir, sMirrorSha="", listCredArgs=None):
 def _fnEmitHeadSha(sRepoDir):
     """Print a ``HEAD_SHA=<sha>`` line for the repo's current HEAD."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=sRepoDir, capture_output=True, text=True,
         )
     except FileNotFoundError:
         return
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return
-    sHead = (resultProcess.stdout or "").strip()
+    sHead = (processResult.stdout or "").strip()
     if sHead:
         sys.stdout.write(f"HEAD_SHA={sHead}\n")
 
 
 def _fbHasUncommittedChanges(sRepoDir):
     """Return True if the repo has staged or unstaged changes."""
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=sRepoDir, capture_output=True, text=True,
     )
-    return len(resultProcess.stdout.strip()) > 0
+    return len(processResult.stdout.strip()) > 0
 
 
 def _fnGitAdd(sRepoDir):
     """Stage all changes in the repository."""
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "add", "-A"], "git add failed", sCwd=sRepoDir,
     )
 
@@ -518,11 +518,11 @@ _S_COMMIT_USER_EMAIL = "vaibify@localhost"
 
 def _fnSetLocalCommitIdentity(sRepoDir):
     """Set user.name/user.email locally so commit doesn't need globals."""
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "config", "user.name", _S_COMMIT_USER_NAME],
         "git config user.name failed", sCwd=sRepoDir,
     )
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "config", "user.email", _S_COMMIT_USER_EMAIL],
         "git config user.email failed", sCwd=sRepoDir,
     )
@@ -539,7 +539,7 @@ def _fnGitCommit(sRepoDir, sMirrorSha=""):
     sMessage = f"{_COMMIT_MARKER} Update figures"
     if sMirrorSha:
         sMessage += f" (from mirror {sMirrorSha[:7]})"
-    _fnRunSubprocess(
+    _fprocessRunSubprocess(
         ["git", "commit", "-m", sMessage],
         "git commit failed", sCwd=sRepoDir,
     )
@@ -552,7 +552,7 @@ def _fnGitPush(sRepoDir, listCredArgs=None):
         listCommand.extend(listCredArgs)
     listCommand.append("push")
     try:
-        _fnRunSubprocess(
+        _fprocessRunSubprocess(
             listCommand, "git push failed", sCwd=sRepoDir,
         )
     except OverleafError as error:
@@ -658,10 +658,10 @@ def _fnRemoveTokenFile(sPath):
         pass
 
 
-def _fnRunSubprocess(listCommand, sErrorMessage, sCwd=None):
+def _fprocessRunSubprocess(listCommand, sErrorMessage, sCwd=None):
     """Run a subprocess and raise OverleafError on failure."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             listCommand, cwd=sCwd,
             capture_output=True, text=True, check=True,
         )
@@ -675,7 +675,7 @@ def _fnRunSubprocess(listCommand, sErrorMessage, sCwd=None):
         _fnDetectAuthFailure(sOutput)
         _fnDetectRateLimit(sOutput)
         raise OverleafError(f"{sErrorMessage}: {sOutput}")
-    return resultProcess
+    return processResult
 
 
 def _fsCombineErrorOutput(error):
@@ -748,14 +748,14 @@ def _fnRunLsRemote(args):
         sUrl = f"https://{_OVERLEAF_GIT_HOST}/{args.project}"
         listCommand = ["git"] + listCredArgs + _LIST_GIT_HARDENING_CONFIG
         listCommand.extend(["ls-remote", sUrl, "HEAD"])
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             listCommand, capture_output=True, text=True,
         )
     finally:
         _fnRemoveTokenFile(sTokenPath)
-    if resultProcess.returncode != 0:
-        sys.stderr.write(_fsRedactStderr(resultProcess.stderr or ""))
-        sys.exit(resultProcess.returncode or _EXIT_ERROR)
+    if processResult.returncode != 0:
+        sys.stderr.write(_fsRedactStderr(processResult.stderr or ""))
+        sys.exit(processResult.returncode or _EXIT_ERROR)
     sys.exit(_EXIT_OK)
 
 
@@ -797,7 +797,7 @@ def _fnRunPull(args):
     sys.stdout.write("ok\n")
 
 
-def _fnBuildParser():
+def _fparserBuildCommandLine():
     """Build the argparse parser with four subcommands."""
     parser = argparse.ArgumentParser(
         prog="overleafSync",
@@ -858,7 +858,7 @@ def _fnAddPullParser(subparsers):
 
 def main(listArgv=None):
     """CLI entry point; dispatches to the requested subcommand."""
-    parser = _fnBuildParser()
+    parser = _fparserBuildCommandLine()
     args = parser.parse_args(listArgv)
     try:
         args.func(args)

@@ -1,4 +1,4 @@
-"""Unit tests for the AICS Level 2 (Publication) gate.
+"""Unit tests for the PROOF Level 2 (Publication) gate.
 
 Phase 2 ships ``fbAtLeastLevel2`` composed of three orthogonal
 predicates on top of L1: GitHub mirror fully synced at the verified
@@ -26,7 +26,7 @@ from vaibify.reproducibility.aiDeclarationStep import (
     fbDeclarationFileExists,
     fbStepIsAiDeclaration,
     fdictBuildAiDeclarationStep,
-    fnWriteDeclarationTemplate,
+    fsWriteDeclarationTemplate,
 )
 from vaibify.reproducibility.levelGates import (
     fbAtLeastLevel1,
@@ -35,7 +35,7 @@ from vaibify.reproducibility.levelGates import (
     fbWorkflowFullySyncedWithZenodo,
     fbWorkflowHasAiDeclarationStep,
     fdictLevel2Gaps,
-    fiAICSLevel,
+    fiProofLevel,
 )
 
 
@@ -327,7 +327,7 @@ def test_fbAtLeastLevel2_all_criteria_green_returns_true(tmp_path):
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbAtLeastLevel1(dictWorkflow, sProjectRepo) is True
     assert fbAtLeastLevel2(dictWorkflow, sProjectRepo) is True
-    assert fiAICSLevel(dictWorkflow, sProjectRepo) == 2
+    assert fiProofLevel(dictWorkflow, sProjectRepo) == 2
 
 
 @pytest.mark.falsification
@@ -353,7 +353,7 @@ def test_fbAtLeastLevel2_committed_sha_drift_blocks_l2(tmp_path):
     dictWorkflow["dictRemotes"]["github"]["sCommittedSha"] = "def456"
     assert fbAtLeastLevel1(dictWorkflow, sProjectRepo) is True
     assert fbAtLeastLevel2(dictWorkflow, sProjectRepo) is False
-    assert fiAICSLevel(dictWorkflow, sProjectRepo) == 1
+    assert fiProofLevel(dictWorkflow, sProjectRepo) == 1
 
 
 def test_fbAtLeastLevel2_no_ai_declaration_step_returns_false(tmp_path):
@@ -416,7 +416,7 @@ def test_fdictLevel2Gaps_all_green_when_l2_satisfied(tmp_path):
 
 
 def test_fnWriteDeclarationTemplate_writes_template(tmp_path):
-    sAbsolute = fnWriteDeclarationTemplate(
+    sAbsolute = fsWriteDeclarationTemplate(
         str(tmp_path), S_DEFAULT_DECLARATION_FILENAME,
     )
     assert os.path.isfile(sAbsolute)
@@ -426,23 +426,23 @@ def test_fnWriteDeclarationTemplate_writes_template(tmp_path):
 
 def test_fnWriteDeclarationTemplate_refuses_to_overwrite(tmp_path):
     sRelative = S_DEFAULT_DECLARATION_FILENAME
-    fnWriteDeclarationTemplate(str(tmp_path), sRelative)
+    fsWriteDeclarationTemplate(str(tmp_path), sRelative)
     with pytest.raises(FileExistsError):
-        fnWriteDeclarationTemplate(str(tmp_path), sRelative)
+        fsWriteDeclarationTemplate(str(tmp_path), sRelative)
 
 
 def test_fnWriteDeclarationTemplate_requires_repo(tmp_path):
     with pytest.raises(ValueError):
-        fnWriteDeclarationTemplate("", "AI_USAGE.md")
+        fsWriteDeclarationTemplate("", "AI_USAGE.md")
     with pytest.raises(ValueError):
-        fnWriteDeclarationTemplate(str(tmp_path), "")
+        fsWriteDeclarationTemplate(str(tmp_path), "")
 
 
 def test_fbDeclarationFileExists_returns_false_for_missing(tmp_path):
     assert fbDeclarationFileExists(
         str(tmp_path), "AI_USAGE.md",
     ) is False
-    fnWriteDeclarationTemplate(str(tmp_path), "AI_USAGE.md")
+    fsWriteDeclarationTemplate(str(tmp_path), "AI_USAGE.md")
     assert fbDeclarationFileExists(
         str(tmp_path), "AI_USAGE.md",
     ) is True

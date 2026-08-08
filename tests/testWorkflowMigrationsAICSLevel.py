@@ -5,6 +5,13 @@ purple-theme flag that occasionally got hand-persisted) and any
 pre-existing ``iAICSLevel`` (so the post-load derivation hook in
 ``workflowManager`` recomputes against current state.json rather
 than trusting a stale persisted integer).
+
+``iAICSLevel`` is the spelling the key carried in the v3 era, before
+the ladder was renamed to PROOF. The literals in this file are
+deliberately NOT renamed: they describe documents written to disk
+under the old name, which is exactly what this migrator reads. The
+rename of the live key is covered by
+``testWorkflowMigrationsProofLevelRename.py``.
 """
 
 from vaibify.gui import workflowMigrations
@@ -16,7 +23,7 @@ def test_v3_to_v4_drops_legacy_bVaibified():
         "bVaibified": True,
         "listSteps": [],
     }
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert "bVaibified" not in dictWorkflow
     assert dictWorkflow["iWorkflowSchemaVersion"] == (
         workflowMigrations.I_CURRENT_WORKFLOW_VERSION
@@ -35,7 +42,7 @@ def test_v3_to_v4_drops_pre_existing_iAICSLevel():
         "iAICSLevel": 2,
         "listSteps": [],
     }
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert "iAICSLevel" not in dictWorkflow
 
 
@@ -45,7 +52,7 @@ def test_v3_to_v4_is_idempotent_when_keys_absent():
         "iWorkflowSchemaVersion": 3,
         "listSteps": [{"sName": "A", "sDirectory": "A"}],
     }
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert dictWorkflow["iWorkflowSchemaVersion"] == (
         workflowMigrations.I_CURRENT_WORKFLOW_VERSION
     )
@@ -56,7 +63,7 @@ def test_v3_to_v4_is_idempotent_when_keys_absent():
 def test_v3_to_v4_handles_empty_workflow_defensively():
     """A minimal dict at v3 must not crash the migrator."""
     dictWorkflow = {"iWorkflowSchemaVersion": 3}
-    workflowMigrations.fnApplyMigrations(dictWorkflow)
+    workflowMigrations.fiApplyMigrations(dictWorkflow)
     assert dictWorkflow["iWorkflowSchemaVersion"] == (
         workflowMigrations.I_CURRENT_WORKFLOW_VERSION
     )

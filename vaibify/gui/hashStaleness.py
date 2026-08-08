@@ -8,7 +8,7 @@ reliable way to tell whether current disk content still matches the
 verified baseline.
 
 The module also exposes a SHA-256 path keyed off ``MANIFEST.sha256``
-(the AICS Level 3 reproducibility envelope's Tier 1 artefact). The
+(the PROOF Level 3 reproducibility envelope's Tier 1 artefact). The
 two digest paths coexist: test markers stay on git blob SHA-1 (the
 locked-in choice for execution verification); the manifest path lets
 the dashboard answer "did anything in the archive deposit drift?"

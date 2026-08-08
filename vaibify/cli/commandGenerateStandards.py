@@ -122,7 +122,7 @@ def _fiResolveStepIndexFromLabel(sWorkflowPath, sStepLabel):
     "--detect-stochastic", "bDetectStochastic", is_flag=True, default=False,
     help="Scan the step's data*.py scripts for unseeded RNG before generating.",
 )
-def generate_standards(
+def fnGenerateStandardsCommand(
     sStepDir, sWorkflowPath, sStepLabel, fRtol, bDetectStochastic,
 ):
     """Refresh or generate a step's quantitative_standards.json from live data."""

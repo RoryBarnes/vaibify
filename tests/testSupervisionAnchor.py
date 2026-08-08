@@ -20,7 +20,7 @@ import pytest
 from vaibify.gui.attributionLog import (
     S_ATTRIBUTION_FLAGS_PATH,
     fdictSummarizeSupervisionEvidence,
-    fnAppendFlag,
+    fdictAppendFlag,
 )
 from vaibify.gui import supervisionAnchor
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
@@ -62,7 +62,7 @@ def test_anchor_seeds_itself_and_does_not_flag_a_first_observation(
     """With no prior anchor there is nothing to contradict."""
     pathRepo = tmp_path / "repo"
     filesRepo = ffilesEnsureRepoFiles(str(pathRepo))
-    fnAppendFlag(filesRepo, "unattributed-modification", "fileA")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "fileA")
     dictWorkflow = _fdictSupervisedWorkflow(str(pathRepo), 1)
 
     dictEvidence = fdictSummarizeSupervisionEvidence(
@@ -80,11 +80,11 @@ def test_growing_the_flag_log_advances_the_anchor(
     """Normal accumulation of new flags is never a contradiction."""
     pathRepo = tmp_path / "repo"
     filesRepo = ffilesEnsureRepoFiles(str(pathRepo))
-    fnAppendFlag(filesRepo, "unattributed-modification", "fileA")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "fileA")
     fdictSummarizeSupervisionEvidence(
         filesRepo, _fdictSupervisedWorkflow(str(pathRepo), 1),
     )
-    fnAppendFlag(filesRepo, "unattributed-modification", "fileB")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "fileB")
 
     dictEvidence = fdictSummarizeSupervisionEvidence(
         filesRepo, _fdictSupervisedWorkflow(str(pathRepo), 2),
@@ -112,7 +112,7 @@ def test_truncating_the_log_and_the_count_together_still_fails_the_gate(
     pathRepo = tmp_path / "repo"
     filesRepo = ffilesEnsureRepoFiles(str(pathRepo))
     for sDetail in ("fileA", "fileB", "fileC"):
-        fnAppendFlag(filesRepo, "unattributed-modification", sDetail)
+        fdictAppendFlag(filesRepo, "unattributed-modification", sDetail)
 
     # The hub observes three flags and anchors them host-side.
     dictEvidence = fdictSummarizeSupervisionEvidence(
@@ -151,7 +151,7 @@ def test_rewriting_records_in_place_is_caught_by_the_head_digest(
     """
     pathRepo = tmp_path / "repo"
     filesRepo = ffilesEnsureRepoFiles(str(pathRepo))
-    fnAppendFlag(filesRepo, "unattributed-modification", "the real finding")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "the real finding")
     fdictSummarizeSupervisionEvidence(
         filesRepo, _fdictSupervisedWorkflow(str(pathRepo), 1),
     )
@@ -206,7 +206,7 @@ def test_supervision_disabled_writes_no_host_anchor(
     """
     pathRepo = tmp_path / "repo"
     filesRepo = ffilesEnsureRepoFiles(str(pathRepo))
-    fnAppendFlag(filesRepo, "unattributed-modification", "fileA")
+    fdictAppendFlag(filesRepo, "unattributed-modification", "fileA")
     dictUnsupervised = {
         "sProjectRepoPath": str(pathRepo),
         "dictAiProvenance": {"dictSupervision": {"bEnabled": False}},

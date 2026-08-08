@@ -14,11 +14,11 @@ from . import workflowManager
 __all__ = [
     "fdictMapOutputTokenStems",
     "fsShellQuote",
-    "fnRunAllSteps",
-    "fnRunFromStep",
-    "fnRunSelectedSteps",
-    "fnVerifyOnly",
-    "fnRunAllTests",
+    "fiRunAllSteps",
+    "fiRunFromStep",
+    "fiRunSelectedSteps",
+    "fiVerifyOnly",
+    "fiRunAllTests",
     "fsGenerateLogFilename",
     "fdictCreateInteractiveContext",
     "fnSetInteractiveResponse",
@@ -74,7 +74,7 @@ from .pipelineLogger import (  # noqa: F401
     ffBuildLoggingCallback,
     _fsExtractLogLine,
     fnWriteLogToContainer,
-    _fnEnsureLogsDirectory,
+    _fsEnsureLogsDirectory,
     fsGenerateLogFilename,
     fnPruneOldLogs,
     I_MAX_LOG_LINES,
@@ -93,7 +93,7 @@ from .pipelineTestRunner import (  # noqa: F401
     _flistCollectCategoryLogs,
     _fnWriteTestLog,
     _flistResolveTestCommands,
-    fnRunAllTests,
+    fiRunAllTests,
 )
 
 from .interactiveSteps import (  # noqa: F401
@@ -236,26 +236,26 @@ async def _ftRunSingleCommand(
     sTimedCmd = sEnvPrefix + _fsWrapWithTime(sResolved)
     loopMain = asyncio.get_running_loop()
     dictAccum = {"fCpu": 0.0}
-    fnEmitChunk, faDrainPending = _ftBuildBatchingEmitter(
+    fnEmitChunk, fnDrainPending = _ftBuildBatchingEmitter(
         fnStatusCallback, loopMain, dictAccum,
     )
-    async with _actxWebSocketHeartbeat(fnStatusCallback):
+    async with _fcontextWebSocketHeartbeat(fnStatusCallback):
         try:
-            resultExec = await asyncio.to_thread(
-                connectionDocker.texecRunInContainerStreamedWithChunks,
+            tExecResult = await asyncio.to_thread(
+                connectionDocker.ftRunInContainerStreamedWithChunks,
                 sContainerId, sTimedCmd, fnEmitChunk,
                 sWorkdir=sWorkdir,
             )
         finally:
-            await faDrainPending()
-    if resultExec.iExitCode != 0:
+            await fnDrainPending()
+    if tExecResult.iExitCode != 0:
         await fnStatusCallback({
             "sType": "commandFailed",
             "sCommand": sResolved,
             "sDirectory": sWorkdir,
-            "iExitCode": resultExec.iExitCode,
+            "iExitCode": tExecResult.iExitCode,
         })
-    return (resultExec.iExitCode, dictAccum["fCpu"])
+    return (tExecResult.iExitCode, dictAccum["fCpu"])
 
 
 # Coalescing thresholds for the streaming chunk emitter. A subprocess
@@ -267,7 +267,7 @@ F_BATCH_MAX_INTERVAL_SECONDS = 0.1
 
 
 def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
-    """Build a ``(fnEmitChunk, faDrainPending)`` pair that coalesces lines.
+    """Build a ``(fnEmitChunk, fnDrainPending)`` pair that coalesces lines.
 
     Lines arriving on the worker thread are accumulated into a buffer
     and flushed as a single ``{"sType": "outputBatch", "listLines":
@@ -279,7 +279,7 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
     fired, which on a sporadic chatty step delayed dashboard output by
     seconds.
 
-    ``faDrainPending`` is an async coroutine that empties the buffer on
+    ``fnDrainPending`` is an async coroutine that empties the buffer on
     per-command teardown so no lines are stuck after the docker exec
     returns; it must be ``await``-ed from the event-loop thread (the
     same thread that runs the docker ``asyncio.to_thread`` await).
@@ -296,11 +296,11 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
 
     def fnEmitChunk(sStream, sLine):
         if sLine.startswith("__VAIBIFY_CPU__ "):
-            dictAccum["fCpu"] = _fParseCpuTime(sLine)
+            dictAccum["fCpu"] = _ffParseCpuTime(sLine)
             return
         if dictBatch["bDisabled"]:
             return
-        listToSend, bFirstLine = _flistAppendAndMaybeDrainBatch(
+        listToSend, bFirstLine = _ftAppendAndMaybeDrainBatch(
             dictBatch, lockBuffer, sLine,
         )
         if listToSend:
@@ -312,7 +312,7 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
                 dictBatch, lockBuffer, fnStatusCallback, loopMain,
             )
 
-    async def faDrainPending():
+    async def fnDrainPending():
         _fnCancelTimerFlush(dictBatch)
         with lockBuffer:
             listToSend = dictBatch["listLines"]
@@ -320,11 +320,11 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
             dictBatch["fFirstLineAt"] = 0.0
         if not listToSend or dictBatch["bDisabled"]:
             return
-        await _faFlushBatchFromLoop(
+        await _fnFlushBatchFromLoop(
             dictBatch, fnStatusCallback, listToSend,
         )
 
-    return fnEmitChunk, faDrainPending
+    return fnEmitChunk, fnDrainPending
 
 
 def _fnScheduleTimerFlush(
@@ -341,7 +341,7 @@ def _fnScheduleTimerFlush(
             return
         dictBatch["handleTimer"] = loopMain.call_later(
             F_BATCH_MAX_INTERVAL_SECONDS,
-            lambda: loopMain.create_task(_faTimerFlush(
+            lambda: loopMain.create_task(_fnTimerFlush(
                 dictBatch, lockBuffer, fnStatusCallback,
             )),
         )
@@ -359,7 +359,7 @@ def _fnCancelTimerFlush(dictBatch):
         dictBatch["handleTimer"] = None
 
 
-async def _faTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
+async def _fnTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
     """Loop-side timer callback: drain whatever has accumulated."""
     dictBatch["handleTimer"] = None
     with lockBuffer:
@@ -368,12 +368,12 @@ async def _faTimerFlush(dictBatch, lockBuffer, fnStatusCallback):
         dictBatch["fFirstLineAt"] = 0.0
     if not listToSend or dictBatch["bDisabled"]:
         return
-    await _faFlushBatchFromLoop(
+    await _fnFlushBatchFromLoop(
         dictBatch, fnStatusCallback, listToSend,
     )
 
 
-def _flistAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
+def _ftAppendAndMaybeDrainBatch(dictBatch, lockBuffer, sLine):
     """Append ``sLine``; return ``(drained_lines, bFirstLine)``.
 
     ``bFirstLine`` is True when this call started a fresh batch — the
@@ -424,7 +424,7 @@ def _fnFlushBatchFromWorker(
         )
 
 
-async def _faFlushBatchFromLoop(
+async def _fnFlushBatchFromLoop(
     dictBatch, fnStatusCallback, listLines,
 ):
     """Await one batch directly on the event-loop thread.
@@ -452,7 +452,7 @@ def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
 
     Production callers should use :func:`_ftBuildBatchingEmitter` to
     benefit from the per-100ms / 50-line coalescing and the matching
-    ``faDrainPending`` async teardown. This shim exists for callers
+    ``fnDrainPending`` async teardown. This shim exists for callers
     that imported the symbol directly and treat the emitter as a
     one-line-at-a-time forwarder; each emit triggers an immediate
     batch-of-one flush so the dispatched event shape matches the
@@ -465,7 +465,7 @@ def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
 
     def fnEmitOne(sStream, sLine):
         if sLine.startswith("__VAIBIFY_CPU__ "):
-            dictAccum["fCpu"] = _fParseCpuTime(sLine)
+            dictAccum["fCpu"] = _ffParseCpuTime(sLine)
             return
         if dictBatch["bDisabled"]:
             return
@@ -484,7 +484,7 @@ F_WS_HEARTBEAT_INTERVAL = 15.0
 
 
 @contextlib.asynccontextmanager
-async def _actxWebSocketHeartbeat(fnStatusCallback):
+async def _fcontextWebSocketHeartbeat(fnStatusCallback):
     """Emit ``wsHeartbeat`` events on the WS while a command runs.
 
     Keeps the in-container ``vaibify-do`` socket's per-recv inactivity
@@ -535,7 +535,7 @@ def _fsWrapWithTime(sCommand):
     )
 
 
-def _fParseCpuTime(sOutput):
+def _ffParseCpuTime(sOutput):
     """Extract user+system CPU seconds from time output."""
     for sLine in sOutput.splitlines():
         if sLine.startswith("__VAIBIFY_CPU__ "):
@@ -553,7 +553,7 @@ def _fParseCpuTime(sOutput):
 # Step running helpers
 # ---------------------------------------------------------------------------
 
-async def fiRunStepCommands(
+async def ftRunStepCommands(
     connectionDocker, sContainerId, dictStep,
     sWorkdir, dictVariables, fnStatusCallback,
     iStepNumber=0, sRunMode="full",
@@ -577,7 +577,7 @@ async def fiRunStepCommands(
     )
     iExitCode, fCpuTime = 0, 0.0
     if sRunMode != "plotsOnly":
-        iExitCode, fCpuTime = await _fiRunSetupIfNeeded(
+        iExitCode, fCpuTime = await _ftRunSetupIfNeeded(
             connectionDocker, sContainerId, dictStep,
             sStepDirectory, dictVariables, fnStatusCallback,
         )
@@ -598,7 +598,7 @@ async def fiRunStepCommands(
     return (iPlotExit, fCpuTime + fPlotCpu)
 
 
-async def _fiRunSetupIfNeeded(
+async def _ftRunSetupIfNeeded(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
 ):
@@ -968,7 +968,7 @@ async def _fiCheckDependencies(
 # Single-step execution
 # ---------------------------------------------------------------------------
 
-async def _fnRunOneStep(
+async def _fiRunOneStep(
     connectionDocker, sContainerId, dictStep,
     iStepNumber, sWorkdir, dictVariables, fnStatusCallback,
     sStepLabel=None, sRunMode="full", fWallClockBudgetSeconds=0.0,
@@ -1014,14 +1014,14 @@ async def _fiExecuteAndRecord(
         dictStep.get("sDirectory", sWorkdir), dictVariables,
     )
     await asyncio.to_thread(
-        workflowManager.fnCleanStepScratchDirs,
+        workflowManager.flistCleanStepScratchDirs,
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
     setFilesBefore = await _fsetSnapshotDirectory(
         connectionDocker, sContainerId, sStepDir,
         _fiDiscoveryMaxDepthForStep(dictStep),
     )
-    iExitCode, fCpuTime = await fiRunStepCommands(
+    iExitCode, fCpuTime = await ftRunStepCommands(
         connectionDocker, sContainerId,
         dictStep, sWorkdir, dictVariables, fnStatusCallback,
         iStepNumber=iStepNumber, sRunMode=sRunMode,
@@ -1159,7 +1159,7 @@ async def _fiRunStepList(
             fBudget = workflowManager.ffResolveStepWallClockBudget(
                 dictWorkflow, dictStep,
             )
-            iExitCode = await _fnRunOneStep(
+            iExitCode = await _fiRunOneStep(
                 connectionDocker, sContainerId, dictStep,
                 iStepNumber, sWorkdir, dictVariables,
                 fnStatusCallback, sStepLabel=sStepLabel,
@@ -1205,7 +1205,7 @@ async def _fiRunStepsAndLog(
         sAction, sLogPath,
     )
     eventStopHeartbeat = threading.Event()
-    threadHeartbeat = _fnStartHeartbeatThread(
+    threadHeartbeat = _fthreadStartHeartbeat(
         connectionDocker, sContainerId, dictState,
         stateWriter, eventStopHeartbeat,
     )
@@ -1239,7 +1239,7 @@ async def _fiRunStepsAndLog(
     return iResult
 
 
-def _fnStartHeartbeatThread(
+def _fthreadStartHeartbeat(
     connectionDocker, sContainerId, dictState, lockOrWriter, eventStop,
 ):
     """Spawn a daemon thread that refreshes ``sLastHeartbeat`` periodically.
@@ -1300,7 +1300,7 @@ async def _ftPrepareLogAndVariables(
     """Set up log path, logging callback, variables, and clear output flags."""
     from .pipelineLogger import fnPruneOldLogs
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
-    sLogsDir = await _fnEnsureLogsDirectory(
+    sLogsDir = await _fsEnsureLogsDirectory(
         connectionDocker, sContainerId
     )
     await fnPruneOldLogs(connectionDocker, sContainerId, sLogsDir)
@@ -1369,7 +1369,7 @@ async def _fiRunWithLogging(
 # incident where a container held two workflows and the alphabetical
 # first was silently run instead of the dashboard-selected one.
 
-async def fnRunAllSteps(
+async def fiRunAllSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
     bForceRun=False, dictInteractive=None, iSourceDateEpochOverride=0,
@@ -1394,7 +1394,7 @@ async def fnRunAllSteps(
     )
 
 
-async def fnRunFromStep(
+async def fiRunFromStep(
     connectionDocker, sContainerId, iStartStep,
     dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback, dictInteractive=None,
@@ -1409,7 +1409,7 @@ async def fnRunFromStep(
     )
 
 
-async def fnVerifyOnly(
+async def fiVerifyOnly(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
 ):
@@ -1431,7 +1431,7 @@ async def fnVerifyOnly(
 # Selected-steps execution
 # ---------------------------------------------------------------------------
 
-async def fnRunSelectedSteps(
+async def fiRunSelectedSteps(
     connectionDocker, sContainerId, listStepIndices,
     dictWorkflow, sWorkflowPath, sWorkdir, fnStatusCallback,
     sRunMode="full",

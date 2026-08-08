@@ -117,14 +117,14 @@ def test_fsBuildQuantitativeTestCode():
 def test_fsBuildQuantitativeTestCode_has_hdf5_loader():
     from vaibify.gui.testGenerator import fsBuildQuantitativeTestCode
     sCode = fsBuildQuantitativeTestCode()
-    assert "_fLoadHdf5Value" in sCode
+    assert "_ffLoadHdf5Value" in sCode
     assert "import h5py" in sCode
 
 
 def test_fsBuildQuantitativeTestCode_has_whitespace_loader():
     from vaibify.gui.testGenerator import fsBuildQuantitativeTestCode
     sCode = fsBuildQuantitativeTestCode()
-    assert "_fLoadWhitespaceValue" in sCode
+    assert "_ffLoadWhitespaceValue" in sCode
 
 
 def test_fsBuildQuantitativeTestCode_has_format_dispatch():

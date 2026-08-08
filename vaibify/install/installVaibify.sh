@@ -28,9 +28,9 @@ bAssumeYes=false
 fnPrintError() { echo "ERROR: $1" >&2; }
 
 # ---------------------------------------------------------------------------
-# fnParseArguments: Handle command-line flags
+# fnamespaceParseArguments: Handle command-line flags
 # ---------------------------------------------------------------------------
-fnParseArguments() {
+fnamespaceParseArguments() {
     while [ $# -gt 0 ]; do
         case "$1" in
             -y|--yes)
@@ -410,7 +410,7 @@ if [ -n "${VC_TESTING:-}" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
-fnParseArguments "$@"
+fnamespaceParseArguments "$@"
 fnDetectPlatform
 echo "[install] Detected platform: ${sPlatform}"
 

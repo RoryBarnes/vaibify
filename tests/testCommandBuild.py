@@ -95,11 +95,11 @@ def test_fnWriteBinariesEnv_empty():
 def test_build_catches_runtime_error(
     mockPreflight, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = _fConfigForBuild()
     mockBuild.side_effect = RuntimeError("Docker command failed")
     runner = CliRunner()
-    result = runner.invoke(build)
+    result = runner.invoke(fnBuildCommand)
     assert result.exit_code != 0
     assert "Docker build failed" in result.output
     assert "Traceback" not in result.output
@@ -114,11 +114,11 @@ def test_build_catches_runtime_error(
 def test_build_catches_file_not_found(
     mockPreflight, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = _fConfigForBuild()
     mockBuild.side_effect = FileNotFoundError("director.py")
     runner = CliRunner()
-    result = runner.invoke(build)
+    result = runner.invoke(fnBuildCommand)
     assert result.exit_code != 0
     assert "Build context preparation failed" in result.output
 
@@ -132,11 +132,11 @@ def test_build_catches_file_not_found(
 def test_build_catches_value_error(
     mockPreflight, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = _fConfigForBuild()
     mockBuild.side_effect = ValueError("Unknown overlay name: 'bogus'")
     runner = CliRunner()
-    result = runner.invoke(build)
+    result = runner.invoke(fnBuildCommand)
     assert result.exit_code != 0
     assert "Unknown overlay name" in result.output
 
@@ -152,10 +152,10 @@ def test_build_catches_value_error(
 def test_build_exits_when_docker_unreachable(
     mockContext, mockProbe, mockDir, mockConfig, mockBuild,
 ):
-    from vaibify.cli.commandBuild import build
+    from vaibify.cli.commandBuild import fnBuildCommand
     mockConfig.return_value = _fConfigForBuild()
     runner = CliRunner()
-    result = runner.invoke(build)
+    result = runner.invoke(fnBuildCommand)
     assert result.exit_code != 0
     assert "Docker daemon not reachable" in result.output
     mockBuild.assert_not_called()

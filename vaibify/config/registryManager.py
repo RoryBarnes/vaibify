@@ -43,11 +43,11 @@ def fnSaveRegistry(dictRegistry):
         Registry dict with key ``listProjects``.
     """
     os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)
-    with _fnOpenRegistryLock():
+    with _ffileOpenRegistryLock():
         _fnWriteRegistryAtomic(dictRegistry)
 
 
-def _fnOpenRegistryLock():
+def _ffileOpenRegistryLock():
     """Open and acquire an exclusive lock for registry writes."""
     fileHandle = open(_S_LOCK_PATH, "w")
     fcntl.flock(fileHandle, fcntl.LOCK_EX)

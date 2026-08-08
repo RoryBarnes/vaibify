@@ -11,18 +11,18 @@ import click
 
 
 @click.group("publish")
-def publish():
+def fnPublishCommand():
     """Publish reproducible archives and workflows."""
     pass
 
 
-@publish.command("archive")
-def publishArchive():
+@fnPublishCommand.command("archive")
+def fnPublishArchiveCommand():
     """Create a reproducible archive of the current project."""
     click.echo("Not yet implemented.")
 
 
-@publish.command("workflow")
-def publishWorkflow():
+@fnPublishCommand.command("workflow")
+def fnPublishWorkflowCommand():
     """Publish a workflow definition for the current project."""
     click.echo("Not yet implemented.")

@@ -537,7 +537,7 @@ def test_hash_route_rejects_agent_token_lane(
     """The agent lane must never reach the host-file hash oracle.
 
     Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call
-    from ``fnHashPersonalLayerFile`` in ``replayRoutes.py`` — the
+    from ``fdictHashPersonalLayerFile`` in ``replayRoutes.py`` — the
     request carrying the in-container agent header would then be
     served, handing a compromised agent a hash oracle over host
     files.
@@ -612,7 +612,7 @@ def test_context_import_rejects_agent_token_lane(
     itself must fail the agent lane closed.
 
     Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call
-    from ``fnImportProjectContext`` in ``replayRoutes.py``.
+    from ``fdictImportProjectContext`` in ``replayRoutes.py``.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
     pathFile = tmp_path / "hostNotes.md"

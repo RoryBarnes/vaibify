@@ -255,7 +255,7 @@ def _fdictBuildHubRequest(
     help="Poison the named wedged operation on the live hub that holds "
          "this container; mutation is refused until reconciled.",
 )
-def reconcile(container, bAssumeYes, sBreakGlassSha256,
+def fnReconcileCommand(container, bAssumeYes, sBreakGlassSha256,
               sForceAbandonOperationId):
     """Prove a quarantined container's past operations settled."""
     sys.exit(fiRunReconcileCommand(

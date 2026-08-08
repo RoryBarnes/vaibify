@@ -167,8 +167,8 @@ reproduce and never stamps, never regresses, and never renders as
 attained. The workflow header row is NOT an aggregate of the step
 rows — its cells cover only workflow-attached requirements (L1:
 project repo present; L2: sync freshness + arXiv; L3: envelope
-artifacts); the all-steps aggregate is the scalar `fiAICSLevel`
-rendered by the AICS chip, so a workflow L1 check above red step
+artifacts); the all-steps aggregate is the scalar `fiProofLevel`
+rendered by the PROOF chip, so a workflow L1 check above red step
 rows is a consistent display.
 The poll also emits `dictStepLevelWarnings` (regression/timestamp
 warnings gated server-side to each step's lowest non-attained level;
@@ -201,7 +201,7 @@ by default (`bArchiveTests`, absent means true).
 ## Required after backend edits
 
 - If you added a state-mutating route, register it in
-  `actionCatalog.LIST_AGENT_ACTIONS` with a `@fnAgentAction` decorator,
+  `actionCatalog.LIST_AGENT_ACTIONS` with a `@ffnAgentAction` decorator,
   OR add `(method, path)` to `SET_INTENTIONALLY_EXCLUDED_PATHS` with a
   comment explaining why.
   `tests/testArchitecturalInvariants.py::testAgentActionRegistered`

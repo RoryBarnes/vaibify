@@ -93,7 +93,7 @@ Still inside the loader-source block, add the mapping:
 ```python
 DICT_LOADERS = {
     ...
-    "netcdf": _fLoadNetcdf,
+    "netcdf": _ffLoadNetcdf,
     ...
 }
 ```
@@ -101,7 +101,7 @@ DICT_LOADERS = {
 ### 4. Confirm public symbols are unchanged
 
 The module-level `__all__` should still be
-`["DICT_FORMAT_MAP", "DICT_LOADERS", "fLoadValue", "fsReadLoaderSource"]`.
+`["DICT_FORMAT_MAP", "DICT_LOADERS", "ffLoadValue", "fsReadLoaderSource"]`.
 Do not add the new loader function to `__all__` — loaders are
 internal to the dispatch.
 
@@ -111,7 +111,7 @@ Create `tests/testDataLoader<FormatName>.py`. At minimum:
 
 - Confirm the extension is in `_DICT_FORMAT_MAP`.
 - Confirm the format string is in `DICT_LOADERS`.
-- Call `fLoadValue` against a small fixture file and assert the
+- Call `ffLoadValue` against a small fixture file and assert the
   returned scalar matches the expected value.
 - If the format requires an optional dependency, add a test that
   skips cleanly when the dependency is absent.

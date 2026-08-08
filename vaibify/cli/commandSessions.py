@@ -20,7 +20,7 @@ from vaibify.config.sessionRegistry import flistReadAllSlots
 
 @click.group("sessions", invoke_without_command=True)
 @click.pass_context
-def sessions(ctx):
+def fnListSessionsCommand(ctx):
     """List or stop live Vaibify sessions."""
     if ctx.invoked_subcommand is None:
         fnListSessions()
@@ -62,13 +62,13 @@ def fsJoinHeldContainers(dictSlot, listHolders):
     return ", ".join(listNames)
 
 
-@sessions.command("stop")
+@fnListSessionsCommand.command("stop")
 @click.argument("ipid", metavar="PID", type=int, required=False)
 @click.option(
     "--all", "bAll", is_flag=True,
     help="Stop every live session except the current one.",
 )
-def stop(ipid, bAll):
+def fnStopSessionCommand(ipid, bAll):
     """Gracefully stop a Vaibify session by PID, or every session with --all."""
     if bAll:
         fnStopAllSessions()

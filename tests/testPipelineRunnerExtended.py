@@ -169,7 +169,7 @@ def test_ffBuildLoggingCallback_forwards_to_original():
 
 
 def test_fnRunSelectedSteps_does_not_mutate_bRunEnabled():
-    """fnRunSelectedSteps must not toggle bRunEnabled on disk.
+    """fiRunSelectedSteps must not toggle bRunEnabled on disk.
 
     Run scope is a per-call parameter; the workflow's persisted
     bRunEnabled flags survive the call regardless of which indices
@@ -189,7 +189,7 @@ def test_fnRunSelectedSteps_does_not_mutate_bRunEnabled():
     with patch.object(
         pipelineRunner, "_fiRunWithLogging", fnFakeRun,
     ):
-        _fnRunAsync(pipelineRunner.fnRunSelectedSteps(
+        _fnRunAsync(pipelineRunner.fiRunSelectedSteps(
             connectionDocker=MagicMock(), sContainerId="cid",
             listStepIndices=[0, 2], dictWorkflow=dictWorkflow,
             sWorkflowPath="/w/wf.json", sWorkdir="/w",

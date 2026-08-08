@@ -60,7 +60,7 @@ PATH_PACKAGE = PATH_REPOSITORY / "vaibify"
 # below against the source it describes.
 DICT_LIFECYCLE_AUDIT = {
     ("POST", "/api/containers/{sName}/stop"): {
-        "sHandler": "fnStopContainer",
+        "sHandler": "fdictStopContainer",
         "bHoldsMutationLock": False,
         "bWritesJournalRecord": False,
         "sTransfer": "invisible",
@@ -75,7 +75,7 @@ DICT_LIFECYCLE_AUDIT = {
         ),
     },
     ("POST", "/api/containers/{sName}/start/cancel"): {
-        "sHandler": "fnCancelStartContainer",
+        "sHandler": "fresponseHandleCancelStartContainer",
         "bHoldsMutationLock": True,
         "bWritesJournalRecord": True,
         "sTransfer": "adopted",
@@ -95,7 +95,7 @@ DICT_LIFECYCLE_AUDIT = {
         ),
     },
     ("POST", "/api/containers/{sName}/settings"): {
-        "sHandler": "fnSetContainerSettings",
+        "sHandler": "fdictSetContainerSettings",
         "bHoldsMutationLock": False,
         "bWritesJournalRecord": False,
         "sTransfer": "not-applicable",
@@ -156,7 +156,7 @@ def _flistCallablesBehind(tRoute):
         ],
         ("POST", "/api/containers/{sName}/start/cancel"): [
             startReservation.ftCancelStart,
-            startReservation._tMarkCancelRequested,
+            startReservation._ftMarkCancelRequested,
         ],
         ("POST", "/api/containers/{sName}/settings"): [
             registryRoutes._fbApplyAgentAutoUpdate,

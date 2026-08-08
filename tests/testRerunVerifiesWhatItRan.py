@@ -53,7 +53,7 @@ S_CONTAINER_NAME = "rerun-acceptance-container"
 
 
 class _ExecResult:
-    """The ``texecRunInContainerStreamed`` result shape."""
+    """The ``ftRunInContainerStreamed`` result shape."""
 
     def __init__(self, iExitCode, sStdout, sStderr):
         self.iExitCode = iExitCode
@@ -83,7 +83,7 @@ class LocalShellContainer:
         )
         return completed.returncode, completed.stdout
 
-    def texecRunInContainerStreamed(self, sContainerId, sCommand, **kwargs):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand, **kwargs):
         """Return the streamed-exec result shape from a real shell run."""
         self.listCommands.append(sCommand)
         completed = subprocess.run(
@@ -106,10 +106,10 @@ class LocalShellContainer:
 
     # The existence probes are typed reads, and these are the REAL
     # implementations borrowed off DockerConnection: they need only
-    # ``texecRunInContainerStreamed``, which this class runs for real,
+    # ``ftRunInContainerStreamed``, which this class runs for real,
     # so the shipped program text executes against the real tree like
     # everything else here. Nothing answers a canned value.
-    _texecRunTypedRead = DockerConnection._texecRunTypedRead
+    _ftRunTypedRead = DockerConnection._ftRunTypedRead
     fbContainerPathIsFile = DockerConnection.fbContainerPathIsFile
     fbContainerPathIsDirectory = DockerConnection.fbContainerPathIsDirectory
 
@@ -248,7 +248,7 @@ def _fnPatchContainerLane(
             side_effect=_fdictLoad,
         ),
         patch(
-            "vaibify.gui.pipelineRunner.fnRunAllSteps",
+            "vaibify.gui.pipelineRunner.fiRunAllSteps",
             side_effect=_fiRunAllSteps,
         ),
     ]
@@ -271,14 +271,14 @@ def _ftInvokeReproduce(saExtraArgs, pathRepo):
 
     Tiers 2 and 3 are skipped rather than mocked. They shell out to pip
     and ``docker pull``, and the usual way to neutralise them —
-    ``patch("...commandReproduce.subprocess.run")`` — rebinds ``run`` on
+    ``patch("...commandReproduce.subprocess.run")`` — rebinds ``fnRunCommand`` on
     the shared ``subprocess`` module object, so it would also silence
     the container stand-in's real shell calls and turn every hash into
     ``None``. Skipping is honest and leaves the tiers that matter here
     (1 and 4 on the clone, 5 in the container) genuinely executed.
     """
     resultClick = CliRunner().invoke(
-        commandReproduce.reproduce,
+        commandReproduce.fnReproduceCommand,
         [
             "--repo", str(pathRepo), "--rerun",
             "--skip-tier", "2", "--skip-tier", "3",
@@ -639,7 +639,7 @@ def test_dashboard_verify_reruns_the_workflow_it_was_given(
         return 0
 
     with patch(
-        "vaibify.gui.pipelineRunner.fnRunAllSteps",
+        "vaibify.gui.pipelineRunner.fiRunAllSteps",
         side_effect=_fiRunAllSteps,
     ):
         dictResult = _fdictRunReproductionSync(

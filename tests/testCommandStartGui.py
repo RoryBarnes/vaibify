@@ -30,7 +30,7 @@ def _fnPatchLockAndPort(iResolvedPort=8050):
     """Return patch context managers for lock, session, and port helpers."""
     mockLockHandle = MagicMock()
     patchAcquire = patch(
-        "vaibify.config.containerLock.fnAcquireContainerLock",
+        "vaibify.config.containerLock.ffileAcquireContainerLock",
         return_value=mockLockHandle,
     )
     patchRelease = patch(
@@ -41,7 +41,7 @@ def _fnPatchLockAndPort(iResolvedPort=8050):
         return_value=iResolvedPort,
     )
     patchAcquireSession = patch(
-        "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+        "vaibify.config.sessionRegistry.ffileAcquireSessionSlot",
         return_value=MagicMock(),
     )
     patchReleaseSession = patch(
@@ -147,7 +147,7 @@ def test_fnLaunchGui_exits_when_container_locked():
     mockCreate = MagicMock(return_value=MagicMock())
     mockUvicorn = MagicMock()
     patchAcquire = patch(
-        "vaibify.config.containerLock.fnAcquireContainerLock",
+        "vaibify.config.containerLock.ffileAcquireContainerLock",
         side_effect=ContainerLockedError("demo", 4242, 8050),
     )
     patchResolvePort = patch(
@@ -155,7 +155,7 @@ def test_fnLaunchGui_exits_when_container_locked():
         return_value=8050,
     )
     patchAcquireSlot = patch(
-        "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+        "vaibify.config.sessionRegistry.ffileAcquireSessionSlot",
         return_value=MagicMock(),
     )
     patchReleaseSlot = patch(
@@ -180,7 +180,7 @@ def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
     mockLockHandle = MagicMock()
     mockRelease = MagicMock()
     patchAcquire = patch(
-        "vaibify.config.containerLock.fnAcquireContainerLock",
+        "vaibify.config.containerLock.ffileAcquireContainerLock",
         return_value=mockLockHandle,
     )
     patchRelease = patch(
@@ -192,7 +192,7 @@ def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
         return_value=8050,
     )
     patchAcquireSlot = patch(
-        "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+        "vaibify.config.sessionRegistry.ffileAcquireSessionSlot",
         return_value=MagicMock(),
     )
     patchReleaseSlot = patch(
@@ -257,7 +257,7 @@ def test_fnLaunchGui_exits_when_session_limit_reached():
         return_value=8050,
     )
     patchAcquireSlot = patch(
-        "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+        "vaibify.config.sessionRegistry.ffileAcquireSessionSlot",
         side_effect=SessionLimitExceededError(99, 99),
     )
     with patch.dict(
@@ -272,7 +272,7 @@ def test_fnLaunchGui_exits_when_session_limit_reached():
 def test_start_command_without_gui_starts_container_only():
     """`vaibify start` without --gui starts the container, skips the GUI."""
     from click.testing import CliRunner
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     mockConfig = _fConfigStub()
     mockStart = MagicMock()
     mockLaunch = MagicMock()
@@ -292,7 +292,7 @@ def test_start_command_without_gui_starts_container_only():
     ), patch(
         "vaibify.cli.commandStart.fnLaunchGui", mockLaunch,
     ):
-        result = CliRunner().invoke(start, [])
+        result = CliRunner().invoke(fnStartCommand, [])
     assert result.exit_code == 0
     mockStart.assert_called_once()
     mockLaunch.assert_not_called()
@@ -301,7 +301,7 @@ def test_start_command_without_gui_starts_container_only():
 def test_start_command_with_gui_and_port_launches_gui():
     """`vaibify start --gui --port 8062` forwards the explicit port + config path."""
     from click.testing import CliRunner
-    from vaibify.cli.commandStart import start
+    from vaibify.cli.commandStart import fnStartCommand
     mockConfig = _fConfigStub()
     mockLaunch = MagicMock()
     with patch(
@@ -320,7 +320,7 @@ def test_start_command_with_gui_and_port_launches_gui():
     ), patch(
         "vaibify.cli.commandStart.fnLaunchGui", mockLaunch,
     ):
-        result = CliRunner().invoke(start, ["--gui", "--port", "8062"])
+        result = CliRunner().invoke(fnStartCommand, ["--gui", "--port", "8062"])
     assert result.exit_code == 0
     mockLaunch.assert_called_once_with(
         mockConfig, 8062, "/tmp/vaibify.yml",

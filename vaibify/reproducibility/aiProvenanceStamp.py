@@ -57,7 +57,7 @@ def fsStampRelativePath():
     return posixpath.join(_S_VAIBIFY_DIRECTORY, S_STAMP_FILENAME)
 
 
-def _sHashProjectContext(filesRepo):
+def _fsHashProjectContext(filesRepo):
     """Return the SHA-256 of the project context file, '' when absent."""
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictHashes = filesRepo.fdictHashFiles([S_PROJECT_CONTEXT_RELATIVE_PATH])
@@ -88,7 +88,7 @@ def fdictBuildAiProvenanceStamp(
         "sHubInvokerModelId": sHubInvokerModelId,
         "dictAgentCliVersions": dict(dictAgentCliVersions or {}),
         "sWorkspacePromptSha256": sWorkspacePromptSha256,
-        "sProjectContextSha256": _sHashProjectContext(filesRepo),
+        "sProjectContextSha256": _fsHashProjectContext(filesRepo),
         "bNetworkIsolatedAtCapture": bNetworkIsolatedAtCapture,
         "sTrustBaseStatement": S_TRUST_BASE_STATEMENT,
         "sCapturedAtUtc": datetime.now(timezone.utc).isoformat(),
@@ -223,7 +223,7 @@ def fbStampMatchesDeclaration(dictStamp, dictWorkflow, filesRepo=None):
         return False
     if filesRepo is None:
         return True
-    return dictStamp.get("sProjectContextSha256") == _sHashProjectContext(
+    return dictStamp.get("sProjectContextSha256") == _fsHashProjectContext(
         filesRepo,
     )
 

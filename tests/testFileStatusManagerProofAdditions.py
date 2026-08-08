@@ -2,7 +2,7 @@
 
 Covers ``_fnRefreshEnvelopeIfLevel1`` (the L3-envelope refresh hook
 fired on the L1 promotion edge) and the previously-untested branches
-inside ``fnMaybeAutoArchive``.
+inside ``fbMaybeAutoArchive``.
 """
 
 from unittest.mock import MagicMock, patch
@@ -15,7 +15,7 @@ import pytest
 
 from vaibify.gui.fileStatusManager import (
     _fnRefreshEnvelopeIfLevel1,
-    fnMaybeAutoArchive,
+    fbMaybeAutoArchive,
 )
 
 
@@ -105,7 +105,7 @@ def test_refresh_envelope_passes_host_binaries():
 
 
 # ============================================================================
-# fnMaybeAutoArchive — line 1371 (invalid step index)
+# fbMaybeAutoArchive — line 1371 (invalid step index)
 # ============================================================================
 
 
@@ -113,8 +113,8 @@ def test_auto_archive_returns_false_on_invalid_step_index():
     """Line 1371: an iStepIndex outside listSteps returns False."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     dictWorkflow["bAutoArchive"] = True
-    # iAICSLevelBefore=0 → promoted; iStepIndex=999 is out of range.
-    bResult = fnMaybeAutoArchive(
+    # iProofLevelBefore=0 → promoted; iStepIndex=999 is out of range.
+    bResult = fbMaybeAutoArchive(
         fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 999, 0,
     )
     assert bResult is False
@@ -124,7 +124,7 @@ def test_auto_archive_negative_step_index_returns_false():
     """A negative iStepIndex also returns False."""
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
     dictWorkflow["bAutoArchive"] = True
-    bResult = fnMaybeAutoArchive(
+    bResult = fbMaybeAutoArchive(
         fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, -1, 0,
     )
     assert bResult is False
@@ -137,16 +137,16 @@ def test_auto_archive_promoted_runs_envelope_refresh():
     with patch(
         "vaibify.reproducibility.dataArchiver.fnGenerateReproducibilityEnvelope",
     ) as mockGenerate:
-        fnMaybeAutoArchive(
+        fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "ctr", dictWorkflow, 0, 0,
         )
     assert mockGenerate.called
 
 
-def test_fiAICSLevel_evaluates_L1_once_per_call():
+def test_fiProofLevel_evaluates_L1_once_per_call():
     """Switch-time perf invariant: when L2 and L3 also call into L1
     via their internal short-circuits, the per-step iteration only
-    runs once thanks to fnLevelComputationContext.
+    runs once thanks to fcontextLevelComputation.
     """
     from vaibify.reproducibility import levelGates
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
@@ -154,11 +154,11 @@ def test_fiAICSLevel_evaluates_L1_once_per_call():
         "vaibify.reproducibility.levelGates._fbComputeLevel1",
         wraps=levelGates._fbComputeLevel1,
     ) as mockCompute:
-        levelGates.fiAICSLevel(dictWorkflow, "/workspace/repo")
+        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
     assert mockCompute.call_count == 1
 
 
-def test_fiAICSLevel_evaluates_L2_at_most_once_per_call():
+def test_fiProofLevel_evaluates_L2_at_most_once_per_call():
     """Same invariant for L2 — L3 calls L2 internally, but the memo
     ensures the heavy github/zenodo sync-status checks fire only once.
     """
@@ -168,7 +168,7 @@ def test_fiAICSLevel_evaluates_L2_at_most_once_per_call():
         "vaibify.reproducibility.levelGates._fbComputeLevel2",
         wraps=levelGates._fbComputeLevel2,
     ) as mockCompute:
-        levelGates.fiAICSLevel(dictWorkflow, "/workspace/repo")
+        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
     assert mockCompute.call_count <= 1
 
 
@@ -188,7 +188,7 @@ def test_fbAtLeastLevel1_uncached_outside_context():
 
 
 def test_aics_memo_does_not_leak_across_invocations():
-    """Two consecutive fiAICSLevel calls re-evaluate L1 cleanly so a
+    """Two consecutive fiProofLevel calls re-evaluate L1 cleanly so a
     state mutation between polls is picked up immediately."""
     from vaibify.reproducibility import levelGates
     dictWorkflow = _fdictBuildL1ReadyWorkflow()
@@ -196,6 +196,6 @@ def test_aics_memo_does_not_leak_across_invocations():
         "vaibify.reproducibility.levelGates._fbComputeLevel1",
         wraps=levelGates._fbComputeLevel1,
     ) as mockCompute:
-        levelGates.fiAICSLevel(dictWorkflow, "/workspace/repo")
-        levelGates.fiAICSLevel(dictWorkflow, "/workspace/repo")
+        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
+        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
     assert mockCompute.call_count == 2

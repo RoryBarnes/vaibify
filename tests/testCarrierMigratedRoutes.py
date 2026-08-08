@@ -10,7 +10,7 @@ the primitive, and **that refusal is the migration's only proof**.
 
 The refusal lives in :mod:`vaibify.config.mutationAdmission`, which the
 REAL ``DockerConnection`` calls from ``fnWriteFileViaTar`` and
-``texecRunInContainerStreamed``. Every route test in this suite drives a
+``ftRunInContainerStreamed``. Every route test in this suite drives a
 permissive Docker mock that answers a write by storing bytes and never
 calls that gate — so a route that lost its carrier call passes all of
 them. This is not hypothetical: the first kill-confirm of this migration
@@ -77,7 +77,7 @@ from vaibify.gui import (
 
 
 S_PRIMITIVE_WRITE = "fnWriteFileViaTar"
-S_PRIMITIVE_EXEC = "texecRunInContainerStreamed"
+S_PRIMITIVE_EXEC = "ftRunInContainerStreamed"
 
 # The owner map, the host flock and the journal are all keyed by
 # container NAME, while these routes address the container by id. The
@@ -94,7 +94,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
     than a second, divergent model of a container.
 
     ``ftResultExecuteCommand`` is where the gate is placed because the
-    parent's ``texecRunInContainerStreamed`` delegates to it — gating
+    parent's ``ftRunInContainerStreamed`` delegates to it — gating
     both would double-count one exec, and gating neither is the hole
     this file exists to close.
     """
@@ -212,7 +212,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         self.listTypedPathProbes.append(sPath)
         raise FileNotFoundError(f"Not a directory: {sPath}")
 
-    def fnIterStreamFile(
+    def fiterStreamFile(
         self, sContainerId, sPath, iChunkSizeBytes=1048576,
     ):
         """Stream a file out the way ``get_archive`` does: ungated.
@@ -731,7 +731,7 @@ async def testATransferArrivingMidCleanIsRefusedAndNamesTheClean():
     4. the refusal is IMMEDIATE, because waiting would spend the
        capability's window on an operation of unknown length.
 
-    Kills: replacing ``_fnDeleteOutputsUnderTheDrain``'s
+    Kills: replacing ``_fdictDeleteOutputsUnderTheDrain``'s
     fdictRunLockHeldMutation call with the bare ``asyncio.to_thread``
     the route used before the migration.
     """
@@ -835,7 +835,7 @@ async def testTheCleanDeletesUnderTheDrainAndSavesSynchronously():
     recording the clean is one synchronous write. Asserting a single
     mode for the whole route would have let either carrier be dropped.
 
-    Kills: replacing ``fnCleanOutputs``'s fnCommitWorkflowSave call with
+    Kills: replacing ``fnCleanOutputs``'s fdictCommitWorkflowSave call with
     a direct ``dictCtx["save"]``.
     """
     app, connectionDocker = _tBuildAsgiHubWithBlockedClean()
@@ -955,7 +955,7 @@ def testThePlotStandardizationSavesSynchronously(tclientGatedWithPlots):
     proves neither: with the save's carrier removed the conversion still
     runs correctly under the drain, and only this test fails.
 
-    Kills: replacing ``fnStandardizePlots``'s ``fnCommitWorkflowSave``
+    Kills: replacing ``fdictStandardizePlots``'s ``fdictCommitWorkflowSave``
     call with a direct ``dictCtx["save"]``.
     """
     client, connectionDocker = tclientGatedWithPlots
@@ -983,7 +983,7 @@ def testTheRepoSidecarRewriteRunsUnderTheDrain(tclientGated, sAction):
     helper, so it fails both parametrizations -- which is one defect
     landing on one shape, not on two.
 
-    Kills: replacing ``_fnRewriteTheSidecarUnderTheDrain``'s
+    Kills: replacing ``_fdictRewriteTheSidecarUnderTheDrain``'s
     fdictRunLockHeldMutation call with a bare
     ``asyncio.to_thread(fnRewriteTheSidecar, None)``.
     """
@@ -1048,7 +1048,7 @@ def testTheRepoTrackRunsUnderTheDrain(tclientGated):
     DECIDING read happened inside the drain, which is what stops a
     hand-over landing between "does it exist" and "record it".
 
-    Kills: passing ``_fobjRunRepoWorkerUnderTheDrain``'s worker to
+    Kills: passing ``_fgenericRunRepoWorkerUnderTheDrain``'s worker to
     ``fdictCommitSynchronousMutation`` instead of
     ``fdictRunLockHeldMutation``.
 
@@ -1126,7 +1126,7 @@ def testAnExpectedRefusalLeavesTheContainerUsable(tclientGated):
 # hidden inside them.
 # ---------------------------------------------------------------------
 
-# The three test-execution routes probe ``fiAICSLevel`` before and after
+# The three test-execution routes probe ``fiProofLevel`` before and after
 # running. On an ordinary fixture that probe clears without touching a
 # general exec, so a migration that left it OUTSIDE the carrier would
 # pass every test in this suite and then be REFUSED in the field — for
@@ -1462,7 +1462,7 @@ def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
 ):
     """Each test-execution route probes AND runs in one mode-(b) worker.
 
-    Every one of them brackets its run with ``fiAICSLevel`` to decide
+    Every one of them brackets its run with ``fiProofLevel`` to decide
     whether the step's transition promoted the workflow, and on a
     published workflow that probe is not a cheap dictionary read: it
     hashes every Overleaf-pushed figure through the general exec
@@ -1493,7 +1493,7 @@ def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
     ``commitCarrier.fdictCommitSynchronousMutation`` instead of
     ``fdictRunLockHeldMutation``.
 
-    Deliberately NOT "hoist ``fiAICSLevel`` out of the worker", which is
+    Deliberately NOT "hoist ``fiProofLevel`` out of the worker", which is
     the defect this test exists for: that mutant refuses the request
     outright, so the save and the auto-archive never happen and it lands
     on the two tests below as well. A mutant that kills three tests
@@ -1531,7 +1531,7 @@ def testTheLevelProbeAndTheTestRunShareOneLockHeldAdmission(
 def testTheAutoArchiveProbeRunsUnderItsOwnDrain(tclientPublished):
     """POST .../run-tests carries its post-save auto-archive too.
 
-    ``fnMaybeAutoArchive`` re-reads the AICS level — the same general
+    ``fbMaybeAutoArchive`` re-reads the AICS level — the same general
     exec — then writes the L3 envelope and pushes to Overleaf and
     Zenodo. It is reached from all three test-execution routes, so
     migrating them without carrying it would refuse every run on a
@@ -1588,7 +1588,7 @@ def testTheTestResultSaveCommitsSynchronously(tclientPublished):
 
     Kills: running ``fnRunTests``'s save through
     ``_ftProbeLevelThenRunUnderTheDrain`` instead of
-    ``fnCommitWorkflowSave``, which commits the same bytes under
+    ``fdictCommitWorkflowSave``, which commits the same bytes under
     ``lockHeldAsync``.
 
     Deliberately not "drop the carrier entirely": an unadmitted save
@@ -2379,7 +2379,7 @@ async def testALivePushNamesItsRemoteWithoutLeakingItsToken(caplog):
 #
 # All seven do the same thing: edit the workflow dict, then persist
 # project.json. They therefore share ONE helper,
-# ``routeContext.fnCommitWorkflowSave``, and the isolation question is
+# ``routeContext.fdictCommitWorkflowSave``, and the isolation question is
 # what that sharing does to a kill-confirm. The parametrization answers
 # it: the mutant for a route is that route's OWN call site reverted to
 # ``dictCtx["save"](...)``, which kills exactly its own parameter case.
@@ -2480,7 +2480,7 @@ def testTheDeclarationSaveCommitsThroughTheSynchronousCarrier(
     disk. A lock-held worker would journal a ``helper`` record, which
     proves nothing about the bytes.
 
-    Kills: reverting this route's ``fnCommitWorkflowSave(...)`` call to
+    Kills: reverting this route's ``fdictCommitWorkflowSave(...)`` call to
     ``dictCtx["save"](sContainerId, dictWorkflow)``. On the enforced
     branch that save reaches the write primitive with no admission open
     at all, so the recorded mode is ``''``.
@@ -2525,7 +2525,7 @@ def testEveryMigratedDeclarationRouteStillAnswersTwoHundred(
 # The same shape as the declaration family above, and for the same
 # reason: every one of these routes edits the workflow dict and then
 # persists project.json through the shared
-# ``routeContext.fnCommitWorkflowSave``, so the isolation question is
+# ``routeContext.fdictCommitWorkflowSave``, so the isolation question is
 # again what that sharing does to a kill-confirm. The parametrization
 # answers it the same way -- the mutant for a route is that route's OWN
 # call site reverted to ``dictCtx["save"](...)``, which kills exactly
@@ -2576,7 +2576,7 @@ def testTheStepEditCommitsThroughTheSynchronousCarrier(
     afterwards by hashing the file on disk. A lock-held worker would
     journal a ``helper`` record, which proves nothing about the bytes.
 
-    Kills: reverting this route's ``fnCommitWorkflowSave(...)`` call to
+    Kills: reverting this route's ``fdictCommitWorkflowSave(...)`` call to
     ``dictCtx["save"](sContainerId, dictWorkflow)``. On the enforced
     branch that save reaches the write primitive with no admission open
     at all, so the recorded mode is ``''``.
@@ -2767,7 +2767,7 @@ def testTheHundredStepWarningSaveIsCarriedToo():
     that drives BOTH can tell a missing one from a present one.
 
     Kills: reverting the ``bShouldWarn`` branch's
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = _tConnectGatedClient(
         DockerDoubleServingNinetyNineSteps(),
@@ -2846,7 +2846,7 @@ def testTheSyncTrackingToggleCommitsThroughTheSynchronousCarrier(
 ):
     """POST /api/sync/{id}/track persists project.json under mode (a).
 
-    Kills: reverting ``fnSetTracking``'s ``fnCommitWorkflowSave(...)``
+    Kills: reverting ``fdictSetTracking``'s ``fdictCommitWorkflowSave(...)``
     call to ``dictCtx["save"](sContainerId, dictWorkflow)``. On the
     enforced branch that save reaches the write primitive with no
     admission open at all, so the recorded mode is ``''``.
@@ -2874,7 +2874,7 @@ def testTheGitIdentityWriteRunsUnderTheDrain(tclientGated):
     connect handler's own git probes, and turned the assertion into
     noise.
 
-    Kills: reverting ``fnGithubIdentity`` to
+    Kills: reverting ``fdictGithubIdentity`` to
     ``await asyncio.to_thread(_ftWriteGitIdentity, ...)``. That exec then
     reaches the primitive with no admission, recording ``''``.
     """
@@ -2900,7 +2900,7 @@ def testTheSingleFileGithubPushRunsUnderTheDrain(tclientGated):
     ``_fnAssertSelectedRanUnder`` reports rather than passes, and is how
     this marker came to be chosen.
 
-    Kills: reverting ``fnGithubAddFile`` to the coroutine chain it
+    Kills: reverting ``fdictGithubAddFile`` to the coroutine chain it
     replaced, whose three ``to_thread`` hops reach the exec primitive
     with no admission open.
     """
@@ -2960,7 +2960,7 @@ def testTheArxivConfigureSaveCommitsSynchronously(tclientGated):
     means the cache rewrite.
 
     Kills: reverting ``_fnPersistArxivConfig``'s
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = tclientGated
     with _fnRemoteVerifyStubbed("arxiv"):
@@ -3398,7 +3398,7 @@ def testTheReconcileBookkeepingSaveCommitsSynchronously(tclientGated):
     failing means the bookkeeping save.
 
     Kills: reverting ``_fdictReconcileSyncStatusFromVerify``'s
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = tclientGated
     with _fnGithubVerifyProvesOnePath():
@@ -3481,7 +3481,7 @@ def testAnUnreachableRemoteLeavesTheContainerUsable(tclientGated):
 # held for the WORKER's life rather than for a function call.
 #
 # The step update declares BOTH modes, and the two are asserted
-# separately -- its save still goes through ``fnCommitWorkflowSave``, so
+# separately -- its save still goes through ``fdictCommitWorkflowSave``, so
 # a regression in the save and a regression in the surrounding drain are
 # different defects and must fail different tests.
 # ---------------------------------------------------------------------
@@ -3562,7 +3562,7 @@ def testTheStepRenameCascadeRunsUnderTheDrain(tclientCascade):
     unadmitted.
 
     Kills: replacing ``_fdictApplyRenameUnderTheDrain``'s
-    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    fgenericRunWorkerUnderTheDrain call with a direct call to its worker.
     """
     client, connectionDocker = tclientCascade
     response = client.post(
@@ -3589,7 +3589,7 @@ def testTheRenameCascadeSaveSharesTheCascadesDrain(tclientCascade):
     at a directory which no longer exists.
 
     Kills: moving ``dictCtx["save"](sContainerId, dictWorkflow)`` out of
-    ``fnRenameThenSave`` and back into the handler, after the await.
+    ``fdictRenameThenSave`` and back into the handler, after the await.
     """
     client, connectionDocker = tclientCascade
     response = client.post(
@@ -3615,7 +3615,7 @@ def testTheRenamePreviewScanRunsUnderTheDrain(tclientCascade):
     outright.
 
     Kills: replacing ``_flistScanScriptsUnderTheDrain``'s
-    fobjRunWorkerUnderTheDrain call with a direct call to
+    fgenericRunWorkerUnderTheDrain call with a direct call to
     ``stepRename.flistScanScriptsForOldName``.
     """
     client, connectionDocker = tclientCascade
@@ -3687,7 +3687,7 @@ def testATakenStepNameIsRefusedWithoutQuarantiningTheContainer(tclientGated):
     409 fires on the real path rather than a patched one.
 
     Kills: dropping ``fdictCarryARefusalBackInsteadOfRaising`` from
-    ``fnApplyTheRename``, so the 409 is re-raised inside the worker.
+    ``fdictApplyTheRename``, so the 409 is re-raised inside the worker.
     """
     from vaibify.config import operationJournal
 
@@ -3738,7 +3738,7 @@ def testAnUnrecoverableSplitSavesUnderTheDrainAndThenPoisons(tclientCascade):
     changes the cascade's mode fail this test too, so neither kill would
     isolate anything.
 
-    Kills: reordering ``fnRenameThenSave``'s split branch to raise
+    Kills: reordering ``fdictRenameThenSave``'s split branch to raise
     before it saves.
     """
     from vaibify.config import operationJournal
@@ -3801,7 +3801,7 @@ def testTheStepUpdateSaveCommitsThroughTheSynchronousCarrier(tclientGated):
     would journal something that proves nothing about the bytes.
 
     Kills: reverting ``fnUpdateSaveAndArchive``'s
-    ``fnCommitWorkflowSave(...)`` call to
+    ``fdictCommitWorkflowSave(...)`` call to
     ``dictCtx["save"](sContainerId, dictWorkflow)``.
     """
     client, connectionDocker = tclientGated
@@ -3819,7 +3819,7 @@ def testTheStepUpdateSaveCommitsThroughTheSynchronousCarrier(tclientGated):
 def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
     """The edit's before/after level readings share one held drain.
 
-    ``fnMaybeAutoArchive`` archives on a TRANSITION -- the workflow was
+    ``fbMaybeAutoArchive`` archives on a TRANSITION -- the workflow was
     below L1 and is now at or above it -- so it compares a level read
     taken before the edit with one taken after. Both readings hash the
     repo through the container, so both are guarded operations, and if
@@ -3832,7 +3832,7 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
     test above and this one alone reports the drain.
 
     THE LEVEL GATE IS STUBBED HERE, AND THAT IS THE POINT. Against this
-    harness the real ``fiAICSLevel`` declines at L1's first criterion --
+    harness the real ``fiProofLevel`` declines at L1's first criterion --
     the one step is ``untested``/``untested``, so it is not user-approved
     -- and returns 0 without ever reaching the container. Asserting on
     the primitive ledger would then be an assertion about a read that
@@ -3842,7 +3842,7 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
     contextvar at the exact statement whose admission is in question.
 
     Kills: replacing ``_fnUpdateThenArchiveUnderTheDrain``'s
-    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    fgenericRunWorkerUnderTheDrain call with a direct call to its worker.
     """
     from vaibify.gui.routes import stepRoutes
 
@@ -3861,7 +3861,7 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
         return 0
 
     with patch.object(
-        stepRoutes, "fiAICSLevel", fiRecordTheLiveAdmission,
+        stepRoutes, "fiProofLevel", fiRecordTheLiveAdmission,
     ):
         response = client.put(
             f"/api/steps/{S_CONTAINER_ID}/0",
@@ -3888,7 +3888,7 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
 #
 # * the plain context UPDATE is a single write with a hash the journal
 #   can adjudicate, so it is mode (a) -- but through its OWN record, not
-#   through fnCommitWorkflowSave, whose expected hash belongs to
+#   through fdictCommitWorkflowSave, whose expected hash belongs to
 #   project.json;
 # * the TEMPLATE and the IMPORT are probe-then-write sequences whose
 #   probe IS the guard ("only if absent"), so each holds one drain
@@ -3948,7 +3948,7 @@ def testTheProjectContextUpdateCommitsThroughTheSynchronousCarrier(
     commit window resolves to "landed" or "did not" instead of to a
     quarantine.
 
-    Kills: replacing ``_fnCommitContextWrite``'s
+    Kills: replacing ``_fdictCommitContextWrite``'s
     fdictCommitSynchronousMutation call with a direct call to
     ``_fnWriteContextFile``.
     """
@@ -3980,7 +3980,7 @@ def testTheContextTemplateProbeAndWriteShareOneDrain(tclientReplay):
     overwrites a context the first researcher just wrote.
 
     Kills: replacing ``_fnWriteTheTemplateUnderTheDrain``'s
-    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    fgenericRunWorkerUnderTheDrain call with a direct call to its worker.
     """
     client, connectionDocker = tclientReplay
     response = client.post(
@@ -4011,7 +4011,7 @@ def testTheContextImportRePointsTheRootUnderTheSameDrain(tclientReplay):
     the claim about that window rather than about the write alone.
 
     Kills: replacing ``_fnImportTheContextUnderTheDrain``'s
-    fobjRunWorkerUnderTheDrain call with a direct call to its worker.
+    fgenericRunWorkerUnderTheDrain call with a direct call to its worker.
     """
     client, connectionDocker = tclientReplay
     connectionDocker._dictFiles[S_ADOPTABLE_ROOT_PATH] = (
@@ -4039,7 +4039,7 @@ def testAnUnadoptableRootFileIsRefusedWithoutQuarantining(tclientReplay):
     file that is not in the repository.
 
     Kills: dropping ``fdictCarryARefusalBackInsteadOfRaising`` from
-    ``fnRunTheImport``, so the 404 is re-raised inside the worker.
+    ``fdictRunTheImport``, so the 404 is re-raised inside the worker.
     """
     from vaibify.config import operationJournal
 
@@ -4288,7 +4288,7 @@ def testTheAcknowledgeStepSaveCommitsThroughTheSynchronousCarrier(
     happens. Removing the SAVE's carrier fails only this one. So both
     failing points at the probe; this one alone points at the save.
 
-    Kills: reverting ``fnAcknowledgeStep``'s ``fnCommitWorkflowSave``
+    Kills: reverting ``fdictAcknowledgeStep``'s ``fdictCommitWorkflowSave``
     to ``dictCtx["save"](sContainerId, dictWorkflow)``.
     """
     client, connectionDocker = tclientGatedWithPlots
@@ -4321,7 +4321,7 @@ def testTheGeneratedTestRemovalCommitsThroughTheSynchronousCarrier(
     Selected on the ``rm -rf`` command text, so the workflow save that
     follows cannot answer for it.
 
-    Kills: replacing ``_fnCommitTestDirectoryRemoval``'s
+    Kills: replacing ``_fdictCommitTestDirectoryRemoval``'s
     ``fdictCommitSynchronousMutation`` call with a direct call to
     ``_fnRemoveTestDirectory``.
 
@@ -4349,8 +4349,8 @@ def testTheGeneratedTestRemovalSaveCommitsThroughItsOwnCarrier(
     carrier fails both tests, while losing the save's fails only this
     one.
 
-    Kills: reverting ``fnDeleteGeneratedTest``'s
-    ``fnCommitWorkflowSave`` to ``dictCtx["save"](...)``.
+    Kills: reverting ``fdictDeleteGeneratedTest``'s
+    ``fdictCommitWorkflowSave`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = tclientGated
     client.delete(
@@ -4607,7 +4607,7 @@ def testTheKillProcessSweepRunsUnderOneHeldDrain():
     what keeps this test's kill-confirm from also failing theirs.
 
     Kills: passing ``_fiCountThenKillUnderTheDrain``'s worker to
-    ``asyncio.to_thread`` instead of ``fobjRunWorkerUnderTheDrain``.
+    ``asyncio.to_thread`` instead of ``fgenericRunWorkerUnderTheDrain``.
     """
     client, connectionDocker = _tConnectGatedKillClient(
         DICT_WORKFLOW_WITH_KILLABLE_COMMANDS,
@@ -4634,7 +4634,7 @@ def testTheKillStoppedStateWriteRunsUnderItsOwnDrain():
     rename and the write is the irreversible half.
 
     Kills: passing ``_fnMarkPipelineStopped``'s stopped-state worker to
-    ``asyncio.to_thread`` instead of ``fobjRunWorkerUnderTheDrain``.
+    ``asyncio.to_thread`` instead of ``fgenericRunWorkerUnderTheDrain``.
     """
     client, connectionDocker = _tConnectGatedKillClient(
         DICT_WORKFLOW,
@@ -4776,7 +4776,7 @@ def testTheTestGenerationRunsUnderTheDrain(tclientGatedForGeneration):
     under mode (a) -- cannot answer for this carrier.
 
     Kills: passing ``_fdictRunTestGeneration``'s worker to
-    ``asyncio.to_thread`` instead of ``fobjRunWorkerUnderTheDrain``.
+    ``asyncio.to_thread`` instead of ``fgenericRunWorkerUnderTheDrain``.
     """
     client, connectionDocker = tclientGatedForGeneration
     _fresponsePostGenerateTest(client)
@@ -4805,7 +4805,7 @@ def testTheGeneratedTestsAreRecordedSynchronously(
     before the save is reached. Only this one failing means the save.
 
     Kills: reverting ``_fnApplyGeneratedTests``'s
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = tclientGatedForGeneration
     _fresponsePostGenerateTest(client)
@@ -4964,7 +4964,7 @@ def testTheOverleafDiffDigestsItsFilesUnderTheDrain(tclientSyncBound):
     primitive, which the gate must treat as mutating because command
     text cannot be told apart from a delete.
 
-    Kills: reverting ``fnOverleafDiff`` to
+    Kills: reverting ``fdictOverleafDiff`` to
     ``await asyncio.to_thread(_fdictBuildDiffResult, ...)``. That exec
     then reaches the primitive with no admission at all, so nothing
     matching the marker is recorded and the assertion reports the
@@ -5105,7 +5105,7 @@ def testTheZenodoMetadataSaveCommitsThroughTheSynchronousCarrier(
 ):
     """POST /api/zenodo/{id}/metadata persists project.json under mode (a).
 
-    Kills: reverting ``fnSetZenodoMetadata``'s ``fnCommitWorkflowSave``
+    Kills: reverting ``fnSetZenodoMetadata``'s ``fdictCommitWorkflowSave``
     call to ``dictCtx["save"](sContainerId, dictWorkflow)``. On the
     enforced branch that save reaches the write primitive with no
     admission open at all, so the recorded mode is ``''``.
@@ -5149,7 +5149,7 @@ def testTheCredentialSetupProbesTheServiceUnderTheDrain(tclientSyncBound):
     asserts the admission of the CONTAINER probe, which runs either
     way.
 
-    Kills: reverting ``fnSetupConnection`` to
+    Kills: reverting ``fdictSetupConnection`` to
     ``await _fdictRunSetup(...)`` with its ``asyncio.to_thread`` hops.
     That probe then reaches the exec primitive with no admission, so
     nothing matching the marker is recorded.
@@ -5196,7 +5196,7 @@ def testTheCredentialSetupSavesItsBindingSynchronously(
     both ways -- each carrier's removal fails one test and only one.
 
     Kills: reverting ``_fnPersistServiceSettings``'s
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     from vaibify.gui import syncDispatcher
     client, connectionDocker = tclientSyncBound
@@ -5365,7 +5365,7 @@ def testTheZenodoArchiveRecordCommitsSynchronously(tclientSyncBound):
     save.
 
     Kills: reverting ``_fnPersistZenodoArchiveSuccess``'s
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = tclientSyncBound
     _fresponsePostZenodoArchive(client)
@@ -5578,7 +5578,7 @@ def testTheGithubPushBookkeepingSaveCommitsSynchronously(
     is reached.
 
     Kills: reverting ``_fsApplyPushBookkeeping``'s
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = tclientSyncBound
     with _fnGithubPushHostSidePlanted():
@@ -5603,7 +5603,7 @@ def testTheBookkeepingSaveRefusalIsNotAbsorbedIntoAWarning(
     ``_fsApplyPushBookkeeping`` catches ``Exception`` and answers
     "badges may lag until the next refresh", which is right for a
     genuine save failure and catastrophic for a carrier refusal: a
-    route whose ``fnCommitWorkflowSave`` call was deleted would answer
+    route whose ``fdictCommitWorkflowSave`` call was deleted would answer
     200 with a friendly toast, and the migration's only proof would
     reach the researcher as a cosmetic lag.
 
@@ -5636,7 +5636,7 @@ def testTheBookkeepingSaveRefusalIsNotAbsorbedIntoAWarning(
     from vaibify.gui.routes import syncRoutes as moduleSync
     moduleSync._DICT_RECENT_PUSH_RESULTS.clear()
     with _fnGithubPushHostSidePlanted(), patch(
-        "vaibify.gui.routes.syncRoutes.fnCommitWorkflowSave",
+        "vaibify.gui.routes.syncRoutes.fdictCommitWorkflowSave",
         fnRefuseTheSave,
     ):
         responseHttp = _fresponsePostGithubPush(client)
@@ -5767,7 +5767,7 @@ def testTheOverleafPushRunsUnderTheDrain(tclientSyncBound):
     carrier is the only thing admitting the exec.
 
     Kills: reverting ``_ftRunOverleafPushCall`` to its
-    ``await asyncio.to_thread(fnPushWorker)`` branch.
+    ``await asyncio.to_thread(ftPushWorker)`` branch.
     """
     client, _connectionDocker = tclientSyncBound
     with _tlistRecordEveryOverleafPush() as listCalls:
@@ -5830,7 +5830,7 @@ def testTheOverleafPushBookkeepingSaveCommitsSynchronously(
     after a push that did freeze them.
 
     Kills: reverting ``_fnFinalizeOverleafPush``'s
-    ``fnCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
+    ``fdictCommitWorkflowSave(...)`` to ``dictCtx["save"](...)``.
     """
     client, connectionDocker = tclientSyncBound
     _fresponsePostOverleafPush(client)
@@ -5922,7 +5922,7 @@ def _fnAssertTheDeclarationSavedSynchronously(connectionDocker):
 def testTheDeterminismDeclarationCommitsSynchronously(tclientLevelThree):
     """POST .../determinism/declare saves under mode (a).
 
-    Kills: reverting ``fnDeclareDeterminism``'s ``fnCommitWorkflowSave``
+    Kills: reverting ``fdictDeclareDeterminism``'s ``fdictCommitWorkflowSave``
     to ``dictCtx["save"](sContainerId, dictWorkflow)``.
     """
     client, connectionDocker = tclientLevelThree
@@ -5937,7 +5937,7 @@ def testTheDeterminismDeclarationCommitsSynchronously(tclientLevelThree):
 def testTheBinaryDeclarationCommitsSynchronously(tclientLevelThree):
     """POST .../binaries/declare saves under mode (a).
 
-    Kills: reverting ``fnDeclareBinaries``'s ``fnCommitWorkflowSave``
+    Kills: reverting ``fdictDeclareBinaries``'s ``fdictCommitWorkflowSave``
     to ``dictCtx["save"](sContainerId, dictWorkflow)``.
     """
     client, connectionDocker = tclientLevelThree
@@ -5952,7 +5952,7 @@ def testTheBinaryDeclarationCommitsSynchronously(tclientLevelThree):
 def testTheDeterminismDeletionCommitsSynchronously(tclientLevelThree):
     """DELETE .../determinism saves under mode (a).
 
-    Kills: reverting ``fnDeleteDeterminism``'s ``fnCommitWorkflowSave``
+    Kills: reverting ``fdictDeleteDeterminism``'s ``fdictCommitWorkflowSave``
     to ``dictCtx["save"](sContainerId, dictWorkflow)``.
     """
     client, connectionDocker = tclientLevelThree
@@ -6322,7 +6322,7 @@ def testAnExistingDeclarationIsRefusedWithoutQuarantining(
     instead -- the trap where a green test measures the wrong refusal.
 
     Kills: dropping the ``fdictCarryARefusalBackInsteadOfRaising``
-    wrapper from ``fnGenerateTheTemplate``, so the 409 raises out of the
+    wrapper from ``fdictGenerateTheTemplate``, so the 409 raises out of the
     worker; the response then becomes a 500 rather than the 409 the
     dashboard tells the researcher to act on.
     """

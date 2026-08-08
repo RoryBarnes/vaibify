@@ -45,47 +45,47 @@ def test_fbIsProcessAlive_true_on_permission_error(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# fdtParseClaimIso
+# fdatetimeParseClaimIso
 # ---------------------------------------------------------------------------
 
 
-def test_fdtParseClaimIso_parses_naive_iso():
-    from vaibify.config.processLiveness import fdtParseClaimIso
-    dtParsed = fdtParseClaimIso("2026-06-25T12:30:00")
+def test_fdatetimeParseClaimIso_parses_naive_iso():
+    from vaibify.config.processLiveness import fdatetimeParseClaimIso
+    dtParsed = fdatetimeParseClaimIso("2026-06-25T12:30:00")
     assert dtParsed == datetime.datetime(2026, 6, 25, 12, 30, 0)
 
 
-def test_fdtParseClaimIso_normalizes_aware_to_naive_local():
-    from vaibify.config.processLiveness import fdtParseClaimIso
-    dtParsed = fdtParseClaimIso("2026-06-25T12:30:00+00:00")
+def test_fdatetimeParseClaimIso_normalizes_aware_to_naive_local():
+    from vaibify.config.processLiveness import fdatetimeParseClaimIso
+    dtParsed = fdatetimeParseClaimIso("2026-06-25T12:30:00+00:00")
     assert dtParsed.tzinfo is None
 
 
-def test_fdtParseClaimIso_returns_none_for_empty_or_malformed():
-    from vaibify.config.processLiveness import fdtParseClaimIso
-    assert fdtParseClaimIso("") is None
-    assert fdtParseClaimIso(None) is None
-    assert fdtParseClaimIso("not-a-timestamp") is None
+def test_fdatetimeParseClaimIso_returns_none_for_empty_or_malformed():
+    from vaibify.config.processLiveness import fdatetimeParseClaimIso
+    assert fdatetimeParseClaimIso("") is None
+    assert fdatetimeParseClaimIso(None) is None
+    assert fdatetimeParseClaimIso("not-a-timestamp") is None
 
 
 # ---------------------------------------------------------------------------
-# fdtReadProcessStartClock
+# fdatetimeReadProcessStartClock
 # ---------------------------------------------------------------------------
 
 
-def test_fdtReadProcessStartClock_returns_datetime_for_self():
-    from vaibify.config.processLiveness import fdtReadProcessStartClock
-    dtStart = fdtReadProcessStartClock(os.getpid())
+def test_fdatetimeReadProcessStartClock_returns_datetime_for_self():
+    from vaibify.config.processLiveness import fdatetimeReadProcessStartClock
+    dtStart = fdatetimeReadProcessStartClock(os.getpid())
     assert isinstance(dtStart, datetime.datetime)
 
 
-def test_fdtReadProcessStartClock_returns_none_for_invalid_pid():
-    from vaibify.config.processLiveness import fdtReadProcessStartClock
-    assert fdtReadProcessStartClock(0) is None
-    assert fdtReadProcessStartClock(-1) is None
+def test_fdatetimeReadProcessStartClock_returns_none_for_invalid_pid():
+    from vaibify.config.processLiveness import fdatetimeReadProcessStartClock
+    assert fdatetimeReadProcessStartClock(0) is None
+    assert fdatetimeReadProcessStartClock(-1) is None
 
 
-def test_fdtReadProcessStartClock_returns_none_on_unparsable_output(
+def test_fdatetimeReadProcessStartClock_returns_none_on_unparsable_output(
     monkeypatch,
 ):
     from vaibify.config import processLiveness
@@ -94,7 +94,7 @@ def test_fdtReadProcessStartClock_returns_none_on_unparsable_output(
         "_fsReadStartTimeFromProcessStatus",
         lambda iPid: "garbage start time",
     )
-    assert processLiveness.fdtReadProcessStartClock(os.getpid()) is None
+    assert processLiveness.fdatetimeReadProcessStartClock(os.getpid()) is None
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ def test_fbIsProcessAliveSince_conservative_when_start_unreadable(
     """Unreadable start time falls back to the PID-only check (alive)."""
     from vaibify.config import processLiveness
     monkeypatch.setattr(
-        processLiveness, "fdtReadProcessStartClock", lambda iPid: None,
+        processLiveness, "fdatetimeReadProcessStartClock", lambda iPid: None,
     )
     assert processLiveness.fbIsProcessAliveSince(
         os.getpid(), "2000-01-01T00:00:00",

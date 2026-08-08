@@ -96,7 +96,7 @@ def _fnCrashMidExecOperationInChildProcess(
     import vaibify.config.operationJournal as childJournalModule
     childLockModule._S_LOCK_DIRECTORY = sLockDirectory
     childJournalModule._S_JOURNAL_DIRECTORY = sJournalDirectory
-    childLockModule.fnAcquireContainerLock(sProjectName, 8123)
+    childLockModule.ffileAcquireContainerLock(sProjectName, 8123)
     sOperationId = childJournalModule.fsPrepareOperation(
         sProjectName, "exec", "container-side command",
     )
@@ -116,7 +116,7 @@ def test_quarantine_survives_hub_sigkill_and_blocks_the_next_claim(tmp_path):
     must refuse, and the stale-lock reaper must not clear the record,
     because the exec's fate is unproven until reconciliation (3c).
 
-    Kills: in containerLock.fnAcquireContainerLock, return the freshly
+    Kills: in containerLock.ffileAcquireContainerLock, return the freshly
     acquired flock handle directly instead of routing it through
     _ffileRefuseUnsettledJournal, so acquisition never consults the
     journal.
@@ -136,13 +136,13 @@ def test_quarantine_survives_hub_sigkill_and_blocks_the_next_claim(tmp_path):
         "path is genuinely exercised"
     )
     with pytest.raises(ContainerQuarantinedError):
-        containerLock.fnAcquireContainerLock(S_PROJECT, 8050)
+        containerLock.ffileAcquireContainerLock(S_PROJECT, 8050)
     containerLock.fnReapStaleContainerLocks()
     assert os.path.exists(fsJournalPathFor(S_PROJECT)), (
         "the reaper must not clear an unproven record"
     )
     with pytest.raises(ContainerQuarantinedError):
-        containerLock.fnAcquireContainerLock(S_PROJECT, 8050)
+        containerLock.ffileAcquireContainerLock(S_PROJECT, 8050)
 
 
 def test_auto_tier_clears_a_provably_dead_leftover_with_a_logged_note(caplog):
@@ -200,7 +200,7 @@ def test_live_in_flight_holder_reads_busy_never_quarantined():
         assert dictResolution["sResolution"] == S_RESOLUTION_BUSY
         assert dictResolution["listBusyOperationIds"] == [sOperationId]
         with pytest.raises(ContainerBusyOperationError):
-            containerLock.fnAcquireContainerLock(S_PROJECT, 8050)
+            containerLock.ffileAcquireContainerLock(S_PROJECT, 8050)
     finally:
         processLive.terminate()
         processLive.wait()
@@ -232,7 +232,7 @@ def test_malformed_unreadable_and_newer_journals_read_quarantined():
     assert dictResolution["sResolution"] == S_RESOLUTION_QUARANTINED
     assert dictResolution["bRequiresUpgrade"] is True
     with pytest.raises(ContainerQuarantinedError):
-        containerLock.fnAcquireContainerLock("garbled", 8050)
+        containerLock.ffileAcquireContainerLock("garbled", 8050)
 
 
 def test_journal_survives_a_torn_write():
@@ -328,7 +328,7 @@ def test_journal_is_a_set_and_claimable_only_when_every_record_settles():
         S_PROJECT, FakeDockerConnectionExecSettled(),
     )
     assert dictResolution["sResolution"] == S_RESOLUTION_SETTLED
-    fileHandleLock = containerLock.fnAcquireContainerLock(S_PROJECT, 8050)
+    fileHandleLock = containerLock.ffileAcquireContainerLock(S_PROJECT, 8050)
     containerLock.fnReleaseContainerLock(fileHandleLock)
     sSettledId = fsPrepareOperation(S_PROJECT, "helper", "neverLaunched")
     sPoisonedId = fsPrepareOperation(S_PROJECT, "exec", "terminalCommand")
@@ -340,7 +340,7 @@ def test_journal_is_a_set_and_claimable_only_when_every_record_settles():
     assert dictResolution["listAutoClearedOperationIds"] == [sSettledId]
     assert dictResolution["listQuarantinedOperationIds"] == [sPoisonedId]
     with pytest.raises(ContainerQuarantinedError):
-        containerLock.fnAcquireContainerLock(S_PROJECT, 8050)
+        containerLock.ffileAcquireContainerLock(S_PROJECT, 8050)
     dictRecord = fdictReadJournalOutcome(S_PROJECT)["dictOperations"][
         sPoisonedId
     ]

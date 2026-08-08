@@ -38,14 +38,14 @@ def test_redact_empty_is_empty():
 def test_run_subprocess_returns_result_on_success():
     with patch("subprocess.run") as mockRun:
         mockRun.return_value = subprocess.CompletedProcess([], 0, "ok", "")
-        result = ov._fnRunSubprocess(["git", "status"], "failed")
+        result = ov._fprocessRunSubprocess(["git", "status"], "failed")
     assert result.returncode == 0
 
 
 def test_run_subprocess_maps_missing_command():
     with patch("subprocess.run", side_effect=FileNotFoundError()):
         with pytest.raises(ov.OverleafError) as excinfo:
-            ov._fnRunSubprocess(["git"], "clone failed")
+            ov._fprocessRunSubprocess(["git"], "clone failed")
     assert "command not found" in str(excinfo.value)
 
 
@@ -53,7 +53,7 @@ def test_run_subprocess_detects_auth_failure():
     error = subprocess.CalledProcessError(1, ["git"], "", "HTTP 401")
     with patch("subprocess.run", side_effect=error):
         with pytest.raises(ov.OverleafAuthError):
-            ov._fnRunSubprocess(["git"], "push failed")
+            ov._fprocessRunSubprocess(["git"], "push failed")
 
 
 def test_run_subprocess_detects_rate_limit():
@@ -61,14 +61,14 @@ def test_run_subprocess_detects_rate_limit():
     error = subprocess.CalledProcessError(1, ["git"], "", sHint)
     with patch("subprocess.run", side_effect=error):
         with pytest.raises(ov.OverleafRateLimitError):
-            ov._fnRunSubprocess(["git"], "push failed")
+            ov._fprocessRunSubprocess(["git"], "push failed")
 
 
 def test_run_subprocess_generic_failure():
     error = subprocess.CalledProcessError(1, ["git"], "", "disk full")
     with patch("subprocess.run", side_effect=error):
         with pytest.raises(ov.OverleafError) as excinfo:
-            ov._fnRunSubprocess(["git"], "push failed")
+            ov._fprocessRunSubprocess(["git"], "push failed")
     assert not isinstance(excinfo.value, ov.OverleafAuthError)
     assert "disk full" in str(excinfo.value)
 

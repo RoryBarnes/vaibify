@@ -184,8 +184,8 @@ def fbRunWorkflowInContainer(
     importing this module does not pull the GUI pipeline machinery into
     the CLI's import graph.
     """
-    from vaibify.gui.pipelineRunner import fnRunAllSteps
-    iExitCode = asyncio.run(fnRunAllSteps(
+    from vaibify.gui.pipelineRunner import fiRunAllSteps
+    iExitCode = asyncio.run(fiRunAllSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         sWorkdir, fnStatusCallback or _fnDiscardStatusEvent,
         iSourceDateEpochOverride=iSourceDateEpochOverride,

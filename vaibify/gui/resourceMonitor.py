@@ -67,7 +67,7 @@ def _ftRunDockerStats(sContainerId):
         sContainerId,
     ]
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             listCommand,
             capture_output=True, text=True, timeout=10,
         )
@@ -75,9 +75,9 @@ def _ftRunDockerStats(sContainerId):
         return (False, _S_REASON_DAEMON, "")
     except subprocess.TimeoutExpired:
         return (False, _S_REASON_TIMEOUT, "")
-    if resultProcess.returncode != 0:
-        return (False, _fsClassifyDockerError(resultProcess.stderr), "")
-    return (True, "", resultProcess.stdout.strip())
+    if processResult.returncode != 0:
+        return (False, _fsClassifyDockerError(processResult.stderr), "")
+    return (True, "", processResult.stdout.strip())
 
 
 def _fsClassifyDockerError(sStderr):

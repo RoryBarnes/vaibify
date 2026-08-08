@@ -116,10 +116,10 @@ def _fsExtractPackageName(sRequirement):
     return matchResult.group(0)
 
 
-def _flistImportableNames(config):
+def _flistImportableNames(fnConfigCommand):
     """Return candidate Python import names from listPythonPackages."""
     listNames = []
-    for sRequirement in config.listPythonPackages:
+    for sRequirement in fnConfigCommand.listPythonPackages:
         sName = _fsExtractPackageName(sRequirement)
         if sName:
             listNames.append(sName)
@@ -139,15 +139,15 @@ def _fsRepoDestination(dictRepo, sWorkspaceRoot):
     return f"{sWorkspaceRoot.rstrip('/')}/{sName}"
 
 
-def _fsImageTag(config, sTag):
+def _fsImageTag(fnConfigCommand, sTag):
     """Return the fully-qualified image tag for this project."""
-    return f"{config.sProjectName}:{sTag}"
+    return f"{fnConfigCommand.sProjectName}:{sTag}"
 
 
-def _fsContainerName(config):
+def _fsContainerName(fnConfigCommand):
     """Return the deterministic smoke-test container name."""
     sSafeProject = re.sub(
-        r"[^A-Za-z0-9_.-]", "_", config.sProjectName
+        r"[^A-Za-z0-9_.-]", "_", fnConfigCommand.sProjectName
     )
     return f"vaibify_integration_{sSafeProject}"
 

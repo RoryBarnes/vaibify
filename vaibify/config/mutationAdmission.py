@@ -104,7 +104,7 @@ class ControlPlaneRefusalError(Exception):
     Nothing in production catches either class by name, and nothing
     depended on the ``OSError`` ancestry; the two host-filesystem
     handlers that catch ``PermissionError``
-    (``registryRoutes._fnCreateHostFolder``, ``_flistScanHostEntries``)
+    (``registryRoutes._fsCreateHostFolder``, ``_flistScanHostEntries``)
     guard ``os.makedirs`` and ``os.scandir``, which cannot reach a
     container.
     """

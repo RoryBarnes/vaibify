@@ -390,7 +390,7 @@ def test_fsStartContainerDetached_does_not_delete_secret_files(tmp_path):
     with open(sTempPath, "w") as fh:
         fh.write("secret-value")
 
-    def _fnRecordMount(config, saRunArgs, listCleanupFiles):
+    def _fnRecordMount(fnConfigCommand, saRunArgs, listCleanupFiles):
         listCleanupFiles.append(sTempPath)
         saRunArgs.extend(["-v", f"{sTempPath}:/run/secrets/probe:ro"])
 

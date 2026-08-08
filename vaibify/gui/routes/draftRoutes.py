@@ -21,7 +21,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from .. import draftManager
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
@@ -29,10 +29,10 @@ from ..routeContext import (
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ..pipelineServer import (
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     _fsSanitizeServerError,
 )
 
@@ -43,7 +43,7 @@ class DraftWriteRequest(BaseModel):
     sWorkdir: str = ""
 
 
-def _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
+def _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     """Return ``(sProjectRepoPath, sWorkflowPath)`` or raise HTTP 400.
 
     The workflow path lives in ``dictCtx["paths"]`` because the
@@ -65,7 +65,7 @@ def _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     return sProjectRepoPath, sWorkflowPath
 
 
-def _fsResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
+def _ftResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
     """Return the absolute draft path inside the project repo.
 
     Validates that the computed draft path lives under the per-workflow
@@ -73,7 +73,7 @@ def _fsResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
     for the workflow.
     """
     sProjectRepoPath, sWorkflowPath = (
-        _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
+        _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
     )
     sDraftDir = draftManager.fsDraftDirectory(
         sProjectRepoPath, sWorkflowPath,
@@ -83,7 +83,7 @@ def _fsResolveDraftFile(dictCtx, sContainerId, sFilePath, sWorkdir):
     sDraftPath = posixpath.join(
         sDraftDir, draftManager.fsDraftFilename(sFilePath, sWorkdir),
     )
-    fnValidatePathWithinRoot(sDraftPath, sDraftDir)
+    fsValidatePathWithinRoot(sDraftPath, sDraftDir)
     return sDraftDir, sDraftPath
 
 
@@ -119,19 +119,19 @@ def _fnRejectOversize(sContent):
 def _fnRegisterDraftWrite(app, dictCtx):
     """Register PUT /api/draft/{sContainerId}/{sFilePath:path}."""
 
-    @fnAgentAction("write-draft")
+    @ffnAgentAction("write-draft")
     @app.put("/api/draft/{sContainerId}/{sFilePath:path}")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnWriteDraft(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictWriteDraft(
         sContainerId: str, sFilePath: str,
         request: DraftWriteRequest, requestHttp: Request,
     ):
         dictCtx["require"]()
         _fnRejectOversize(request.sContent)
-        sDraftDir, sDraftPath = _fsResolveDraftFile(
+        sDraftDir, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, request.sWorkdir,
         )
-        sJsonPayload = draftManager.fjsonBuildDraftPayload(
+        sJsonPayload = draftManager.fsBuildDraftPayload(
             sFilePath, request.sWorkdir, request.sContent,
             request.sBaseHash,
         )
@@ -198,12 +198,12 @@ def _fnRegisterDraftRead(app, dictCtx):
     """Register GET /api/draft/{sContainerId}/{sFilePath:path}."""
 
     @app.get("/api/draft/{sContainerId}/{sFilePath:path}")
-    async def fnReadDraft(
+    async def fdictReadDraft(
         sContainerId: str, sFilePath: str,
         sWorkdir: str = "",
     ):
         dictCtx["require"]()
-        _, sDraftPath = _fsResolveDraftFile(
+        _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
         try:
@@ -225,15 +225,15 @@ def _fnRegisterDraftRead(app, dictCtx):
 def _fnRegisterDraftDelete(app, dictCtx):
     """Register DELETE /api/draft/{sContainerId}/{sFilePath:path}."""
 
-    @fnAgentAction("delete-draft")
+    @ffnAgentAction("delete-draft")
     @app.delete("/api/draft/{sContainerId}/{sFilePath:path}")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeleteDraft(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeleteDraft(
         sContainerId: str, sFilePath: str, requestHttp: Request,
         sWorkdir: str = "",
     ):
         dictCtx["require"]()
-        _, sDraftPath = _fsResolveDraftFile(
+        _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
         _fnCommitDraftDelete(dictCtx, sContainerId, sDraftPath, requestHttp)
@@ -286,10 +286,10 @@ def _fnRegisterDraftList(app, dictCtx):
     """Register GET /api/drafts/{sContainerId}."""
 
     @app.get("/api/drafts/{sContainerId}")
-    async def fnListDrafts(sContainerId: str):
+    async def fdictHandleListDrafts(sContainerId: str):
         dictCtx["require"]()
         sProjectRepoPath, sWorkflowPath = (
-            _fsRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
+            _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
         )
         sDraftDir = draftManager.fsDraftDirectory(
             sProjectRepoPath, sWorkflowPath,

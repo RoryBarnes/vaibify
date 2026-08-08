@@ -8,7 +8,7 @@ fault-detection *sensitivity*, never about the result's *accuracy* —
 a test can be exquisitely sensitive to change while asserting a wrong
 value. Equivalent mutants (mutations with no observable effect) make
 a 100% kill-rate unreachable in general, so the attestation is
-deliberately NON-GATING: it feeds no AICS rung and must never be
+deliberately NON-GATING: it feeds no PROOF rung and must never be
 presented as a pass/fail gate.
 
 The persisted record lives at

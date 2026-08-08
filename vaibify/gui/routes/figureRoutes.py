@@ -12,7 +12,7 @@ from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     WORKSPACE_ROOT,
     fbaFetchFigureWithFallback,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     fsResolveFigurePath,
 )
 
@@ -35,7 +35,7 @@ def _flistBuildFigureCheckPaths(
         else:
             sFallback = posixpath.join(sDir, sWorkdir, sFilePath)
         listPaths.append(
-            fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))
+            fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))
     return listPaths
 
 
@@ -45,7 +45,7 @@ def _fnRegisterFigure(app, dictCtx):
     @app.head(
         "/api/figure/{sContainerId}/{sFilePath:path}"
     )
-    async def fnCheckFigure(
+    async def fresponseCheckFigure(
         sContainerId: str, sFilePath: str,
         sWorkdir: str = "",
     ):
@@ -53,7 +53,7 @@ def _fnRegisterFigure(app, dictCtx):
         dictCtx["require"]()
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
-        fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
+        fsValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
         listPaths = _flistBuildFigureCheckPaths(
             sAbsPath, sWorkdir, sDir, sFilePath,
         )
@@ -72,7 +72,7 @@ def _fnRegisterFigure(app, dictCtx):
     @app.get(
         "/api/figure/{sContainerId}/{sFilePath:path}"
     )
-    async def fnServeFigure(
+    async def fresponseServeFigure(
         sContainerId: str, sFilePath: str,
         sWorkdir: str = "",
     ):
@@ -80,7 +80,7 @@ def _fnRegisterFigure(app, dictCtx):
         dictCtx["require"]()
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
-        fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
+        fsValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)
         baContent = await asyncio.to_thread(
             fbaFetchFigureWithFallback,
             dictCtx["docker"], sContainerId, sAbsPath,

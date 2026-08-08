@@ -8,7 +8,7 @@ from tests.dockerConnectionDoubles import (
 
 from vaibify.gui.fileStatusManager import (
     flistStepRemoteFiles,
-    fnMaybeAutoArchive,
+    fbMaybeAutoArchive,
 )
 from vaibify.reproducibility.levelGates import fbStepIsAtLeastLevel1
 
@@ -210,10 +210,10 @@ def test_flistStepRemoteFiles_no_sync_status_returns_empty():
 
 
 # ---------------------------------------------------------------------------
-# fnMaybeAutoArchive — final positional arg renamed from
-# ``bWasFullyVerifiedBefore`` (boolean) to ``iAICSLevelBefore``
+# fbMaybeAutoArchive — final positional arg renamed from
+# ``bWasFullyVerifiedBefore`` (boolean) to ``iProofLevelBefore``
 # (integer 0..3). Promotion is now defined as
-# ``iAICSLevelBefore < 1 <= fiAICSLevel(...)``.
+# ``iProofLevelBefore < 1 <= fiProofLevel(...)``.
 # ---------------------------------------------------------------------------
 
 
@@ -222,7 +222,7 @@ def test_fnMaybeAutoArchive_noop_when_setting_off():
     dictWorkflow["bAutoArchive"] = False
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "passed"}
-    bResult = fnMaybeAutoArchive(
+    bResult = fbMaybeAutoArchive(
         fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
     )
     assert bResult is False
@@ -233,9 +233,9 @@ def test_fnMaybeAutoArchive_noop_when_already_verified():
     dictWorkflow["bAutoArchive"] = True
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "passed"}
-    bResult = fnMaybeAutoArchive(
+    bResult = fbMaybeAutoArchive(
         fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0,
-        iAICSLevelBefore=1,
+        iProofLevelBefore=1,
     )
     assert bResult is False
 
@@ -245,7 +245,7 @@ def test_fnMaybeAutoArchive_noop_when_step_not_now_verified():
     dictWorkflow["bAutoArchive"] = True
     dictWorkflow["listSteps"][0]["dictVerification"] = {
         "sUser": "untested"}
-    bResult = fnMaybeAutoArchive(
+    bResult = fbMaybeAutoArchive(
         fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
     )
     assert bResult is False
@@ -261,7 +261,7 @@ def test_fnMaybeAutoArchive_pushes_overleaf_on_transition():
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
         return_value=(0, "ok"),
     ) as mockPush:
-        bResult = fnMaybeAutoArchive(
+        bResult = fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         )
     assert bResult is True
@@ -279,7 +279,7 @@ def test_fnMaybeAutoArchive_pushes_zenodo_on_transition():
         "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
         return_value=(0, "ok"),
     ) as mockArchive:
-        bResult = fnMaybeAutoArchive(
+        bResult = fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         )
     assert bResult is True
@@ -303,7 +303,7 @@ def test_fnMaybeAutoArchive_pushes_both_remotes():
         "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo",
         return_value=(0, "ok"),
     ) as mockZenodo:
-        bResult = fnMaybeAutoArchive(
+        bResult = fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         )
     assert bResult is True
@@ -321,7 +321,7 @@ def test_fnMaybeAutoArchive_swallows_overleaf_failure():
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
         side_effect=RuntimeError("network down"),
     ):
-        bResult = fnMaybeAutoArchive(
+        bResult = fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         )
     assert bResult is False
@@ -336,7 +336,7 @@ def test_fnMaybeAutoArchive_no_remotes_configured_returns_false():
     with patch(
         "vaibify.gui.syncDispatcher.ftResultPushToOverleaf",
     ) as mockPush:
-        bResult = fnMaybeAutoArchive(
+        bResult = fbMaybeAutoArchive(
             fconnectionDoubleWithNoContainerPaths(), "cid", dictWorkflow, 0, 0,
         )
     assert bResult is False

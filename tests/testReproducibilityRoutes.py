@@ -176,13 +176,13 @@ def _fnSeedReadyL3Repo(sProjectRepo):
 
 
 def test_l3_readiness_returns_gap_dict(fixtureClient):
-    """A bare workflow returns iAICSLevel=0 and the readiness gap dict."""
+    """A bare workflow returns iProofLevel=0 and the readiness gap dict."""
     response = fixtureClient.get(
         f"/api/workflow/{S_CONTAINER_ID}/level3/readiness",
     )
     assert response.status_code == 200
     dictBody = response.json()
-    assert "iAICSLevel" in dictBody
+    assert "iProofLevel" in dictBody
     dictGaps = dictBody["dictL3ReadinessGaps"]
     for sKey in (
         "bManifestComplete", "bDependencyLockHashed",
@@ -694,7 +694,7 @@ def test_generate_reproduce_script_handles_oserror(
 ):
     """An OSError during write surfaces as 500."""
     with patch(
-        "vaibify.gui.routes.reproducibilityRoutes.fnGenerateReproduceScript",
+        "vaibify.gui.routes.reproducibilityRoutes.fsGenerateReproduceScript",
         side_effect=OSError("disk full"),
     ):
         response = fixtureClient.post(

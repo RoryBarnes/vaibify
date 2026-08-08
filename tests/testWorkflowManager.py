@@ -1184,11 +1184,11 @@ def test_flistResolveStepScratchDirs_empty_when_absent():
 
 def test_fnCleanStepScratchDirs_invokes_rm_rf_per_path():
     from unittest.mock import MagicMock
-    from vaibify.gui.workflowManager import fnCleanStepScratchDirs
+    from vaibify.gui.workflowManager import flistCleanStepScratchDirs
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (0, "")
     dictStep = {"sDirectory": "stepA", "saScratchDirs": ["tmp", "cache"]}
-    listResults = fnCleanStepScratchDirs(
+    listResults = flistCleanStepScratchDirs(
         mockDocker, "cid", dictStep, {"sRepoRoot": "/repo"},
     )
     assert listResults == [
@@ -1205,21 +1205,21 @@ def test_fnCleanStepScratchDirs_invokes_rm_rf_per_path():
 
 def test_fnCleanStepScratchDirs_returns_empty_when_absent():
     from unittest.mock import MagicMock
-    from vaibify.gui.workflowManager import fnCleanStepScratchDirs
+    from vaibify.gui.workflowManager import flistCleanStepScratchDirs
     mockDocker = MagicMock()
     dictStep = {"sDirectory": "stepA"}
-    listResults = fnCleanStepScratchDirs(mockDocker, "cid", dictStep, {})
+    listResults = flistCleanStepScratchDirs(mockDocker, "cid", dictStep, {})
     assert listResults == []
     mockDocker.ftResultExecuteCommand.assert_not_called()
 
 
 def test_fnCleanStepScratchDirs_reports_nonzero_exit():
     from unittest.mock import MagicMock
-    from vaibify.gui.workflowManager import fnCleanStepScratchDirs
+    from vaibify.gui.workflowManager import flistCleanStepScratchDirs
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (1, "missing")
     dictStep = {"sDirectory": "stepA", "saScratchDirs": ["tmp"]}
-    listResults = fnCleanStepScratchDirs(
+    listResults = flistCleanStepScratchDirs(
         mockDocker, "cid", dictStep, {"sRepoRoot": "/repo"},
     )
     assert listResults == [("/repo/stepA/tmp", 1)]

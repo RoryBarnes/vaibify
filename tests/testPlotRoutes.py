@@ -292,7 +292,7 @@ class TestRouteStandardizePlots:
            "_flistConvertPlotsUnderTheDrain",
            new_callable=AsyncMock,
            return_value=["fig_standard.png"])
-    @patch("vaibify.gui.routes.plotRoutes.fnCommitWorkflowSave")
+    @patch("vaibify.gui.routes.plotRoutes.fdictCommitWorkflowSave")
     @patch("vaibify.gui.routes.plotRoutes.fdictRequireWorkflow")
     def test_standardize_success(
         self, mockRequire, mockSave, mockConvert, mockResolve,

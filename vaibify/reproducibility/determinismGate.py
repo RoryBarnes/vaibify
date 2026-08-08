@@ -1,4 +1,4 @@
-"""Determinism audit for the AICS L3 readiness gate.
+"""Determinism audit for the PROOF L3 readiness gate.
 
 Wraps :mod:`vaibify.testing.stochasticDetector` and adds rules that
 catch determinism leaks the per-script detector cannot see by itself:

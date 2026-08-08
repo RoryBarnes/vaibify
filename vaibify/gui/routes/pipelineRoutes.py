@@ -13,7 +13,7 @@ from docker.errors import APIError, NotFound
 from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
 from .. import containerOwnership
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
 from ..pipelineServer import (
@@ -31,7 +31,7 @@ from ..serverLifespan import (
 from ..webSocketAuthorization import (
     I_REJECT_POISONED,
     fbContainerIsPoisoned,
-    ffbBuildPerFrameCredentialCheck,
+    ffnBuildPerFrameCredentialCheck,
     fiContainerSessionRejectionCode,
     fnCloseWithCode,
     fnServeUnderLiveConnectionCounters,
@@ -50,14 +50,14 @@ from ..fileStatusManager import (
     ftGetModTimesAndFingerprint,
     _flistResolveTestSourcePaths,
     _flistCollectOutputPaths,
-    _flistDetectAndInvalidate,
+    _fdictDetectAndInvalidate,
     _fnClearStepModificationState,
     _fnUpdateModTimeBaseline,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
-    fnCollectMarkerPathsByStep,
+    fdictHandleCollectMarkerPathsByStep,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
@@ -67,13 +67,13 @@ from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
-    fnCommitWorkflowSave,
-    fobjRunWorkerUnderTheDrain,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ..pathContract import fdictAbsKeysToRepoRelative
 from ..randomnessLint import fnApplyRandomnessLintToWorkflow
@@ -131,7 +131,7 @@ def _ffnBuildCarriedStatePersister(dictCtx, sContainerId, requestHttp):
     from .. import pipelineState
 
     async def fnPersistReconciledUnderTheDrain(dictReconciled):
-        def fnWriteTheReconciledState(supervisor=None):
+        def fdictWriteTheReconciledState(supervisor=None):
             del supervisor
             # No 4xx is reachable inside this worker — the write raises
             # docker errors, never an HTTPException — so the carry-back
@@ -145,8 +145,8 @@ def _ffnBuildCarriedStatePersister(dictCtx, sContainerId, requestHttp):
                     dictCtx["docker"], sContainerId, dictReconciled,
                 ),
             )
-        await fobjRunWorkerUnderTheDrain(
-            sContainerId, fnWriteTheReconciledState,
+        await fgenericRunWorkerUnderTheDrain(
+            sContainerId, fdictWriteTheReconciledState,
             "pipeline-state-reconcile", requestHttp,
         )
     return fnPersistReconciledUnderTheDrain
@@ -171,7 +171,7 @@ async def _fnMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
     if dictState is None or not dictState.get("bRunning"):
         return
 
-    def fnWriteTheStoppedState(supervisor=None):
+    def fdictWriteTheStoppedState(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: pipelineState.fnUpdateState(
@@ -179,8 +179,8 @@ async def _fnMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
                 pipelineState.fdictBuildCompletedState(130),
             ),
         )
-    await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnWriteTheStoppedState,
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictWriteTheStoppedState,
         "pipeline-state-kill", requestHttp,
     )
 
@@ -269,7 +269,7 @@ async def _fiCountThenKillUnderTheDrain(
     calls therefore lost their own ``asyncio.to_thread`` wrappers
     rather than gaining a second thread hop inside one.
     """
-    def fnCountThenKill(supervisor=None):
+    def fdictCountThenKill(supervisor=None):
         del supervisor
         # Nothing in here raises an HTTPException, so the carry-back is
         # a pass-through; a docker failure part-way through a kill
@@ -281,8 +281,8 @@ async def _fiCountThenKillUnderTheDrain(
                 sGrepPattern,
             ),
         )
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnCountThenKill, "kill-pipeline", requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictCountThenKill, "kill-pipeline", requestHttp,
     )
 
 
@@ -309,9 +309,9 @@ def _fnRegisterPipelineState(app, dictCtx):
     reconciliation against the raw pipeline_state.json file.
     """
 
-    @fnAgentAction("get-pipeline-state")
+    @ffnAgentAction("get-pipeline-state")
     @app.get("/api/pipeline/{sContainerId}/state")
-    async def fnGetPipelineState(sContainerId: str):
+    async def fdictGetPipelineState(sContainerId: str):
         from ..pipelineState import fdictReadReconciledState
         dictCtx["require"]()
         dictState = await fdictReadReconciledState(
@@ -402,9 +402,9 @@ def _flistSanitizedIncidents(sContainerId, listIncidents):
 def _fnRegisterHostLogTail(app, dictCtx):
     """Register GET /api/pipeline/{id}/host-log-tail endpoint."""
 
-    @fnAgentAction("get-host-log-tail")
+    @ffnAgentAction("get-host-log-tail")
     @app.get("/api/pipeline/{sContainerId}/host-log-tail")
-    async def fnGetHostLogTail(
+    async def fdictHandleGetHostLogTail(
         request: Request,
         sContainerId: str,
         iLines: int = I_HOST_LOG_TAIL_DEFAULT_LINES,
@@ -442,10 +442,10 @@ def _fnRegisterHostLogTail(app, dictCtx):
 def _fnRegisterPipelineKill(app, dictCtx):
     """Register POST /api/pipeline/{id}/kill endpoint."""
 
-    @fnAgentAction("kill-pipeline")
+    @ffnAgentAction("kill-pipeline")
     @app.post("/api/pipeline/{sContainerId}/kill")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnKillRunningTasks(sContainerId: str, requestHttp: Request):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -474,29 +474,29 @@ def _fnRegisterPipelineKill(app, dictCtx):
 def _fnRegisterPipelineClean(app, dictCtx):
     """Register POST /api/pipeline/{id}/clean endpoint."""
 
-    @fnAgentAction("clean-outputs")
+    @ffnAgentAction("clean-outputs")
     @app.post("/api/pipeline/{sContainerId}/clean")
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
-    async def fnCleanOutputs(sContainerId: str, requestHttp: Request):
+    async def fdictHandleCleanOutputs(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listCleanCommands = _flistBuildCleanCommands(
             dictWorkflow)
         if listCleanCommands:
-            await _fnDeleteOutputsUnderTheDrain(
+            await _fdictDeleteOutputsUnderTheDrain(
                 dictCtx, sContainerId, listCleanCommands, requestHttp,
             )
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the cleaned outputs",
         )
         return {"bSuccess": True}
 
 
-async def _fnDeleteOutputsUnderTheDrain(
+async def _fdictDeleteOutputsUnderTheDrain(
     dictCtx, sContainerId, listCleanCommands, requestHttp,
 ):
     """Delete the workflow's outputs holding the container's drain.
@@ -519,7 +519,7 @@ async def _fnDeleteOutputsUnderTheDrain(
 
     The worker is synchronous because the carrier runs workers in a
     thread; it refuses an ``async def`` outright, for the reasons
-    ``commitCarrier._fnCallWorkerSynchronously`` records.
+    ``commitCarrier._fgenericCallWorkerSynchronously`` records.
     """
     from .. import commitCarrier
     dictLaneTuple = fdictRequireLaneTupleForCommit(
@@ -527,7 +527,7 @@ async def _fnDeleteOutputsUnderTheDrain(
     )
     sCommand = " ; ".join(listCleanCommands)
 
-    def fnDeleteTheOutputs(supervisor=None):
+    def ftDeleteTheOutputs(supervisor=None):
         del supervisor
         return dictCtx["docker"].ftResultExecuteCommand(
             sContainerId, sCommand,
@@ -536,7 +536,7 @@ async def _fnDeleteOutputsUnderTheDrain(
     return await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", "clean-outputs",
-        fnDeleteTheOutputs,
+        ftDeleteTheOutputs,
     )
 
 
@@ -574,7 +574,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
             await fnHandlePipelineWs(
                 websocket, dictCtx, sContainerId,
                 fbFrameCredentialStillActive=(
-                    ffbBuildPerFrameCredentialCheck(
+                    ffnBuildPerFrameCredentialCheck(
                         websocket, dictCtx.get("dictBrowserSessions"),
                         dictContainerOwners=dictContainerOwners,
                         sName=sName,
@@ -616,7 +616,7 @@ async def _fdictRebaselineModTimesUnderTheDrain(
         requestHttp, sContainerId, "Re-baselining the step's outputs",
     )
 
-    def fnStatTheOutputs(supervisor=None):
+    def fdictStatTheOutputs(supervisor=None):
         del supervisor
         return _fdictGetModTimes(
             dictCtx["docker"], sContainerId, listPaths,
@@ -625,7 +625,7 @@ async def _fdictRebaselineModTimesUnderTheDrain(
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", "acknowledge-step",
-        fnStatTheOutputs,
+        fdictStatTheOutputs,
     )
     return dictOutcome["result"]
 
@@ -633,15 +633,15 @@ async def _fdictRebaselineModTimesUnderTheDrain(
 def _fnRegisterAcknowledgeStep(app, dictCtx):
     """Register POST endpoint to acknowledge step completion."""
 
-    @fnAgentAction("acknowledge-step")
+    @ffnAgentAction("acknowledge-step")
     @app.post(
         "/api/pipeline/{sContainerId}"
         "/acknowledge-step/{iStepIndex}"
     )
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
-    async def fnAcknowledgeStep(
+    async def fdictAcknowledgeStep(
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
         from .. import syncDispatcher as _syncDispatcher  # noqa: F401
@@ -659,7 +659,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         )
         _fnUpdateModTimeBaseline(
             dictCtx, sContainerId, dictModTimes)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the acknowledged step",
         )
@@ -704,12 +704,12 @@ def _fbApplyRandomnessLint(dictCtx, sContainerId, dictWorkflow):
         for dictStep in dictWorkflow.get("listSteps", [])
     ]
 
-    def fnReadFile(sPath):
+    def fsReadLintFile(sPath):
         return fsReadFileFromContainer(
             dictCtx["docker"], sContainerId, sPath,
         )
 
-    fnApplyRandomnessLintToWorkflow(dictWorkflow, fnReadFile)
+    fnApplyRandomnessLintToWorkflow(dictWorkflow, fsReadLintFile)
     listAfter = [
         dictStep.get("dictVerification", {}).get(
             "bUnseededRandomnessWarning", False,
@@ -786,7 +786,7 @@ def _fnRegisterFileStatus(app, dictCtx):
     """
 
     @app.get("/api/pipeline/{sContainerId}/file-status")
-    async def fnGetFileStatus(
+    async def fresponseHandleGetFileStatus(
         sContainerId: str, request: Request, response: Response,
         iWorkflowEpoch: int = -1,
     ):
@@ -851,7 +851,7 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
     """
 
     @app.get("/api/pipeline/{sContainerId}/workflow-discovery")
-    async def fnGetWorkflowDiscovery(sContainerId: str):
+    async def fdictGetWorkflowDiscovery(sContainerId: str):
         dictCtx["require"]()
         dictResult = await asyncio.to_thread(
             fdictDetectNewlyAvailableWorkflows,
@@ -976,7 +976,7 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     listOutputPaths = _flistCollectOutputPaths(dictWorkflow, dictVars)
     listScriptPaths = flistExtractAllScriptPaths(dictWorkflow)
-    listMarkerPaths = list(fnCollectMarkerPathsByStep(
+    listMarkerPaths = list(fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, sRepoRoot, sWorkflowPath,
     ).values())
     listTestSourcePaths = []
@@ -1122,7 +1122,7 @@ def _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow,
     )
     dictMtimeCache = _fdictLoadMtimeCacheForPoll(dictWorkflow)
-    listInvalidated = _flistDetectAndInvalidate(
+    listInvalidated = _fdictDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
         dictMarkersByStep=dictMarkersByStep,
         dictCache=dictMtimeCache,
@@ -1163,10 +1163,10 @@ def _fbReconcileUserVerificationByHash(
         return fbReconcileUserVerificationByContentHash(
             dictWorkflow, ffilesEnsureRepoFiles(filesPoll), sRepoRoot,
         )
-    except (OSError, ValueError) as exc:  # noqa: BLE001 — poll survives
+    except (OSError, ValueError) as errorCaught:  # noqa: BLE001 — poll survives
         logger.warning(
             "User-verification hash pass failed for %s: %s",
-            sContainerId, exc,
+            sContainerId, errorCaught,
         )
         return False
 
@@ -1200,10 +1200,10 @@ async def _fnMaintainAiProvenanceStamp(
             _fnRewriteAiProvenanceStamp, dictCtx, sContainerId,
             dictWorkflow,
         )
-    except Exception as exc:  # noqa: BLE001 — poll must survive
+    except Exception as errorCaught:  # noqa: BLE001 — poll must survive
         logger.warning(
             "AI-provenance stamp rewrite failed for %s: %s",
-            sContainerId, exc,
+            sContainerId, errorCaught,
         )
 
 
@@ -1265,10 +1265,10 @@ async def _fnRunSupervisionWatchdog(
             dictWorkflow, listUnattributed, bChainBroken,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
-    except Exception as exc:  # noqa: BLE001 — poll must survive
+    except Exception as errorCaught:  # noqa: BLE001 — poll must survive
         logger.warning(
             "Supervision watchdog failed for %s: %s",
-            sContainerId, exc,
+            sContainerId, errorCaught,
         )
 
 
@@ -1590,7 +1590,7 @@ def _ftSplitCachedAndChanged(listRelPaths, dictMtimesRel, dictShaCache):
     return dictSeed, listNeedHash
 
 
-def _fnUpdateShaCache(dictShaCache, filesPoll, listHashed, dictMtimesRel):
+def _fbUpdateShaCache(dictShaCache, filesPoll, listHashed, dictMtimesRel):
     """Record freshly hashed outputs in the in-memory cache.
 
     Returns True iff any cache entry was added or refreshed; the
@@ -1666,7 +1666,7 @@ def _ffilesFetchPollSnapshot(
         dictSeedHashes=dictSeed,
         listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
     )
-    bShaCacheChanged = _fnUpdateShaCache(
+    bShaCacheChanged = _fbUpdateShaCache(
         dictShaCache, filesPoll, listNeedHash, dictMtimesRel,
     )
     if bShaCacheChanged:
@@ -1781,7 +1781,7 @@ def _ftComputePollScriptContext(
     sRepoRoot, filesPoll,
 ):
     """Compute the per-step mtimes and script status for one poll."""
-    dictMarkerPathsByStep = fnCollectMarkerPathsByStep(
+    dictMarkerPathsByStep = fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, sRepoRoot, sWorkflowPath,
     )
     dictMtimes = _fdictComputeAllPerStepMtimes(
@@ -1800,10 +1800,10 @@ def _fdictComputePollLevelGates(
 ):
     """Evaluate the AICS level and the three blocker lists for one poll."""
     from vaibify.reproducibility.levelGates import (
-        fiAICSLevel, flistLevel1Blockers, flistLevel2Blockers,
+        fiProofLevel, flistLevel1Blockers, flistLevel2Blockers,
         flistLevel3Blockers,
     )
-    dictWorkflow["iAICSLevel"] = fiAICSLevel(
+    dictWorkflow["iProofLevel"] = fiProofLevel(
         dictWorkflow, filesPoll, dictScriptStatus,
     )
     return {
@@ -1842,7 +1842,7 @@ def _fdictAssemblePollResponse(
         "dictWorkflowEnvelopeDetail": _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesPoll,
         ),
-        "iAICSLevel": dictWorkflow["iAICSLevel"],
+        "iProofLevel": dictWorkflow["iProofLevel"],
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": dictScriptStatus,
         "sWorkflowFingerprint": (
@@ -2418,7 +2418,7 @@ async def _fdictFetchTestStatus(
         dictWorkflow, dictTestInfo,
         dictMaxOutputMtimeByStep=dictMaxOutputMtimeByStep,
     )
-    bChanged = _fnApplyExternalTestResults(
+    bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
     bChanged = fbRefreshAggregateTestStates(dictWorkflow) or bChanged
@@ -2667,18 +2667,18 @@ _LIST_MARKER_CATEGORY_KEYS = [
 ]
 
 
-def _fnApplyAllMarkerCategories(dictVerify, dictCategories):
+def _fbApplyAllMarkerCategories(dictVerify, dictCategories):
     """Apply all marker categories to a verification dict."""
     bChanged = False
     for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
-        if _fnApplyMarkerCategory(
+        if _fbApplyMarkerCategory(
             dictVerify, dictCategories, sCategory, sVerifyKey,
         ):
             bChanged = True
     return bChanged
 
 
-def _fnClearStaleMarkerCategories(dictVerify, dictCategories):
+def _fbClearStaleMarkerCategories(dictVerify, dictCategories):
     """Reset to "untested" any category the stale marker would touch.
 
     A stale marker isn't trustworthy enough to apply, but it does tell
@@ -2701,7 +2701,7 @@ def _fnClearStaleMarkerCategories(dictVerify, dictCategories):
     return bChanged
 
 
-def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
+def _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers):
     """Update workflow dictVerification from external test markers.
 
     Returns True when any verification field was modified, so the
@@ -2720,19 +2720,19 @@ def _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers):
             "dictCategories", {},
         )
         if dictEntry.get("bStale"):
-            if _fnClearStaleMarkerCategories(
+            if _fbClearStaleMarkerCategories(
                 dictVerify, dictCategories,
             ):
                 bChanged = True
             continue
-        if _fnApplyAllMarkerCategories(
+        if _fbApplyAllMarkerCategories(
             dictVerify, dictCategories,
         ):
             bChanged = True
     return bChanged
 
 
-def _fnApplyMarkerCategory(
+def _fbApplyMarkerCategory(
     dictVerify, dictCategories, sCategory, sVerifyKey,
 ):
     """Apply a single category result from a marker; return True if changed.
@@ -2851,9 +2851,9 @@ def _fnRegisterManifestVerify(app, dictCtx):
     """Register POST /api/workflow/{id}/manifest/verify endpoint."""
     from vaibify.reproducibility import manifestWriter
 
-    @fnAgentAction("verify-manifest")
+    @ffnAgentAction("verify-manifest")
     @app.post("/api/workflow/{sContainerId}/manifest/verify")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictVerifyManifest(
         sContainerId: str, requestHttp: Request,
     ):
@@ -2899,7 +2899,7 @@ async def _fdictVerifyManifestUnderTheDrain(
             ),
         )
 
-    return await fobjRunWorkerUnderTheDrain(
+    return await fgenericRunWorkerUnderTheDrain(
         sContainerId, fdictVerifyTheManifest, "manifest-verify",
         requestHttp,
     )
@@ -2996,7 +2996,7 @@ def _fnRegisterManifestText(app, dictCtx):
     """
 
     @app.get("/api/workflow/{sContainerId}/manifest/text")
-    async def fnGetManifestText(
+    async def fdictGetManifestText(
         sContainerId: str, iMaxBytes: int = _I_MANIFEST_TEXT_DEFAULT_MAX_BYTES,
     ):
         dictCtx["require"]()

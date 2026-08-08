@@ -30,7 +30,7 @@ def _fsNormalizePath(sPath):
     help="Output in JSON format.",
 )
 @click.argument("path", default="/workspace")
-def ls(sProjectName, bJson, path):
+def fnListCommand(sProjectName, bJson, path):
     """List files in the container workspace."""
     configProject = fconfigResolveProject(sProjectName)
     connectionDocker = fconnectionRequireDocker()

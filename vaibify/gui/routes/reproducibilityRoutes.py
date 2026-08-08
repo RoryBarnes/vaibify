@@ -30,22 +30,22 @@ import time
 from fastapi import HTTPException, Request
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..aiProvenanceCapture import fdictCaptureAiProvenanceStamp
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
-    fnCommitWorkflowSave,
-    fobjRunWorkerUnderTheDrain,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_MODE_C_DURABLE,
     S_CARRIER_TYPED_READ,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ...reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
@@ -73,14 +73,14 @@ from ...reproducibility.determinismGate import (
 from ...reproducibility.levelGates import (
     fbL3ReadinessOK,
     fdictL3ReadinessGaps,
-    fiAICSLevel,
+    fiProofLevel,
 )
 from ...reproducibility.rerunVerification import (
     fdictRerunAndVerifyWorkflow,
 )
 from ...reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
-    fnGenerateReproduceScript,
+    fsGenerateReproduceScript,
 )
 
 
@@ -110,9 +110,9 @@ def _fsRequireProjectRepo(dictWorkflow):
 def _fnRegisterReadiness(app, dictCtx):
     """Register GET /api/workflow/{sContainerId}/level3/readiness."""
 
-    @fnAgentAction("check-l3-readiness")
+    @ffnAgentAction("check-l3-readiness")
     @app.get("/api/workflow/{sContainerId}/level3/readiness")
-    async def fnL3Readiness(sContainerId: str):
+    async def fdictHandleL3Readiness(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -120,7 +120,7 @@ def _fnRegisterReadiness(app, dictCtx):
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         dictGaps = fdictL3ReadinessGaps(dictWorkflow, filesRepo)
         return {
-            "iAICSLevel": fiAICSLevel(dictWorkflow, filesRepo),
+            "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
             "dictL3ReadinessGaps": dictGaps,
         }
 
@@ -128,9 +128,9 @@ def _fnRegisterReadiness(app, dictCtx):
 def _fnRegisterAttestation(app, dictCtx):
     """Register GET /api/workflow/{sContainerId}/level3/attestation."""
 
-    @fnAgentAction("view-l3-attestation")
+    @ffnAgentAction("view-l3-attestation")
     @app.get("/api/workflow/{sContainerId}/level3/attestation")
-    async def fnL3AttestationGet(sContainerId: str):
+    async def fdictL3AttestationGet(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -167,12 +167,12 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
 def _fnRegisterVerify(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/level3/verify."""
 
-    @fnAgentAction("verify-l3-reproducibility")
+    @ffnAgentAction("verify-l3-reproducibility")
     @app.post("/api/workflow/{sContainerId}/level3/verify")
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_C_DURABLE,
     )
-    async def fnL3Verify(sContainerId: str, requestHttp: Request):
+    async def fdictL3Verify(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -214,7 +214,7 @@ async def _fsGateReadinessAndSnapshotDigest(
             lambda: _fsRequireReadinessThenDigest(dictWorkflow, filesRepo),
         )
 
-    return await fobjRunWorkerUnderTheDrain(
+    return await fgenericRunWorkerUnderTheDrain(
         sContainerId, fsGateThenSnapshot, "level3-verify-readiness",
         requestHttp,
     )
@@ -359,7 +359,7 @@ async def _fnRunVerificationWorker(
             _fdictRunReproductionSync, connectionDocker, sContainerId,
             dictWorkflow, sWorkflowPath, filesRepo,
         )
-    except (Exception, SystemExit) as exc:  # noqa: BLE001
+    except (Exception, SystemExit) as errorCaught:  # noqa: BLE001
         # SystemExit is caught too: it is not an Exception, so an
         # sys.exit() anywhere beneath the rerun would leave the task
         # done-with-exception, the phase stuck on "running", and no
@@ -372,13 +372,13 @@ async def _fnRunVerificationWorker(
         # ATTESTATION — a scientific claim, keyed to a manifest digest,
         # saying this workflow does not reproduce. A stuck phase is
         # recoverable; a false attestation on disk is not.
-        fnReRaiseControlPlaneRefusal(exc)
-        logger.exception("L3 verification crashed: %s", exc)
+        fnReRaiseControlPlaneRefusal(errorCaught)
+        logger.exception("L3 verification crashed: %s", errorCaught)
         dictResult = {
             "bPassed": False,
             "iOutputHashesMatched": 0,
             "iOutputHashesTotal": 0,
-            "listDivergedHashes": [f"verification crashed: {exc}"],
+            "listDivergedHashes": [f"verification crashed: {errorCaught}"],
             "sImageDigest": "",
             "sRunLogPath": "",
         }
@@ -409,8 +409,8 @@ async def _fdictCaptureProvenanceOrNone(
             fdictCaptureAiProvenanceStamp,
             dictWorkflow, filesRepo, sContainerId, connectionDocker,
         )
-    except Exception as exc:  # noqa: BLE001 — recorded as None, not raised
-        logger.error("AI-provenance capture failed: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — recorded as None, not raised
+        logger.error("AI-provenance capture failed: %s", errorCaught)
         return None
 
 
@@ -479,19 +479,19 @@ def _fnPersistAttestation(
     )
     try:
         fnWriteAttestation(filesRepo, dictAttestation)
-    except OSError as exc:
-        logger.error("Could not persist L3 attestation: %s", exc)
+    except OSError as errorCaught:
+        logger.error("Could not persist L3 attestation: %s", errorCaught)
 
 
 def _fnRegisterGenerateScript(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/level3/reproduce-script."""
 
-    @fnAgentAction("generate-reproduce-script")
+    @ffnAgentAction("generate-reproduce-script")
     @app.post(
         "/api/workflow/{sContainerId}/level3/reproduce-script"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnL3GenerateReproduceScript(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictL3GenerateReproduceScript(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -520,7 +520,7 @@ async def _fdictGenerateScriptUnderTheDrain(
     exec and then by a full repo hash, so it runs for as long as the
     tree takes and belongs in a worker thread.
     """
-    def fnGenerateTheScript(supervisor=None):
+    def fdictGenerateTheScript(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fdictWriteScriptThenRepinManifest(
@@ -531,8 +531,8 @@ async def _fdictGenerateScriptUnderTheDrain(
             # exists for -- so no 5xx is named here and it propagates.
         )
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnGenerateTheScript, "reproduce-script", requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictGenerateTheScript, "reproduce-script", requestHttp,
     )
 
 
@@ -545,15 +545,15 @@ def _fdictWriteScriptThenRepinManifest(
     await the ``to_thread`` hop the manifest re-pin used to make.
     """
     try:
-        sPathWritten = fnGenerateReproduceScript(
+        sPathWritten = fsGenerateReproduceScript(
             sProjectRepo, dictWorkflow,
             connectionDocker=dictCtx["docker"],
             sContainerId=sContainerId,
         )
-    except OSError as exc:
+    except OSError as errorCaught:
         raise HTTPException(
-            500, f"Could not write reproduce.sh: {exc}",
-        ) from exc
+            500, f"Could not write reproduce.sh: {errorCaught}",
+        ) from errorCaught
     return {
         "bWritten": True,
         "bManifestRefreshed": _fbRepinManifestOrWarn(
@@ -579,10 +579,10 @@ def _fbRepinManifestOrWarn(dictCtx, sContainerId, dictWorkflow):
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             dictWorkflow,
         )
-    except Exception as exc:
-        fnReRaiseControlPlaneRefusal(exc)
+    except Exception as errorCaught:
+        fnReRaiseControlPlaneRefusal(errorCaught)
         logging.getLogger("vaibify").warning(
-            "reproduce.sh written but manifest re-pin failed: %s", exc,
+            "reproduce.sh written but manifest re-pin failed: %s", errorCaught,
         )
         return False
     return True
@@ -591,26 +591,26 @@ def _fbRepinManifestOrWarn(dictCtx, sContainerId, dictWorkflow):
 def _fnRegisterDeclareBinaries(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/binaries/declare."""
 
-    @fnAgentAction("declare-standalone-binaries")
+    @ffnAgentAction("declare-standalone-binaries")
     @app.post(
         "/api/workflow/{sContainerId}/binaries/declare"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeclareBinaries(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclareBinaries(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        _fnValidateBinaryDeclarationBody(request)
+        _fnValidateBinaryDeclarationBody(dictBody)
         dictWorkflow["bNoStandaloneBinaries"] = bool(
-            request.get("bNoStandaloneBinaries", False),
+            dictBody.get("bNoStandaloneBinaries", False),
         )
         dictWorkflow["listDeclaredBinaries"] = list(
-            request.get("listDeclaredBinaries") or [],
+            dictBody.get("listDeclaredBinaries") or [],
         )
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The standalone-binary declaration",
         )
@@ -665,13 +665,13 @@ def _fnValidateDeclaredBinaryEntries(listDeclared):
 def _fnRegisterCaptureBinary(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/binaries/capture."""
 
-    @fnAgentAction("capture-binary-environment")
+    @ffnAgentAction("capture-binary-environment")
     @app.post(
         "/api/workflow/{sContainerId}/binaries/capture"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnCaptureBinary(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleCaptureBinary(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
@@ -679,7 +679,7 @@ def _fnRegisterCaptureBinary(app, dictCtx):
         )
         _fsRequireProjectRepo(dictWorkflow)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        sBinaryPath = (request or {}).get("sBinaryPath") or ""
+        sBinaryPath = (dictBody or {}).get("sBinaryPath") or ""
         if not isinstance(sBinaryPath, str) or not sBinaryPath.strip():
             raise HTTPException(400, "sBinaryPath is required.")
         return await _fdictCaptureBinaryUnderTheDrain(
@@ -704,14 +704,14 @@ async def _fdictCaptureBinaryUnderTheDrain(
     comes back as a capture entry with an empty hash -- so the worker
     does not poison its record for an outcome the researcher can read.
     """
-    def fnCaptureTheBinary(supervisor=None):
+    def fdictCaptureTheBinary(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fdictCaptureAndRecordBinary(filesRepo, sBinaryPath),
         )
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnCaptureTheBinary, "binary-capture", requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictCaptureTheBinary, "binary-capture", requestHttp,
     )
 
 
@@ -811,19 +811,19 @@ def _fdictValidateDeterminismBody(dictRequest):
 def _fnRegisterDeclareDeterminism(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/determinism/declare."""
 
-    @fnAgentAction("declare-determinism")
+    @ffnAgentAction("declare-determinism")
     @app.post(
         "/api/workflow/{sContainerId}/determinism/declare"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeclareDeterminism(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclareDeterminism(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        dictDeclared = _fdictValidateDeterminismBody(request)
+        dictDeclared = _fdictValidateDeterminismBody(dictBody)
         dictDeterminism = dict(
             dictWorkflow.get("dictDeterminism") or {},
         )
@@ -833,7 +833,7 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
             else:
                 dictDeterminism[sKey] = jsonValue
         dictWorkflow["dictDeterminism"] = dictDeterminism
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The determinism declaration",
         )
@@ -851,12 +851,12 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
     caller can see what the regeneration achieved.
     """
 
-    @fnAgentAction("regenerate-envelope")
+    @ffnAgentAction("regenerate-envelope")
     @app.post(
         "/api/workflow/{sContainerId}/level3/envelope"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnRegenerateEnvelope(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleRegenerateEnvelope(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -890,7 +890,7 @@ async def _fdictRegenerateEnvelopeUnderTheDrain(
     """
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
 
-    def fnRegenerateTheEnvelope(supervisor=None):
+    def fdictRegenerateTheEnvelope(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fdictGenerateEnvelopeThenReadGaps(
@@ -898,8 +898,8 @@ async def _fdictRegenerateEnvelopeUnderTheDrain(
             ),
         )
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnRegenerateTheEnvelope, "level3-envelope",
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictRegenerateTheEnvelope, "level3-envelope",
         requestHttp,
     )
 
@@ -933,12 +933,12 @@ def _fnRegisterDeleteDeterminism(app, dictCtx):
     first and the researcher re-declares what still applies.
     """
 
-    @fnAgentAction("delete-determinism")
+    @ffnAgentAction("delete-determinism")
     @app.delete(
         "/api/workflow/{sContainerId}/determinism"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeleteDeterminism(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeleteDeterminism(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -946,7 +946,7 @@ def _fnRegisterDeleteDeterminism(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         dictWorkflow["dictDeterminism"] = {}
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The determinism deletion",
         )
@@ -970,12 +970,12 @@ def _fnRegisterVerifyDependencyLock(app, dictCtx):
     state that the route mutates, which is false.
     """
 
-    @fnAgentAction("verify-dependency-lock")
+    @ffnAgentAction("verify-dependency-lock")
     @app.post(
         "/api/workflow/{sContainerId}/dependencies/verify"
     )
-    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
-    async def fnVerifyDependencyLock(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictVerifyDependencyLock(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,

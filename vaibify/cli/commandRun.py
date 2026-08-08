@@ -56,7 +56,7 @@ def _fnValidateStepOptions(iStep, iFrom):
 
 def _fiRunPipeline(connectionDocker, sContainerName, iStep, iFrom):
     """Dispatch to the correct pipeline runner function."""
-    from vaibify.gui.pipelineRunner import fnRunAllSteps, fnRunFromStep
+    from vaibify.gui.pipelineRunner import fiRunAllSteps, fiRunFromStep
     sWorkdir = "/workspace"
     if iStep is not None:
         return _fiRunSingleStep(
@@ -69,12 +69,12 @@ def _fiRunPipeline(connectionDocker, sContainerName, iStep, iFrom):
         click.echo("Error: No project found in container.")
         return 2
     if iFrom is not None:
-        return asyncio.run(fnRunFromStep(
+        return asyncio.run(fiRunFromStep(
             connectionDocker, sContainerName, iFrom,
             dictWorkflow, sWorkflowPath,
             sWorkdir, _fnAsyncStatusCallback,
         ))
-    return asyncio.run(fnRunAllSteps(
+    return asyncio.run(fiRunAllSteps(
         connectionDocker, sContainerName, dictWorkflow, sWorkflowPath,
         sWorkdir, _fnAsyncStatusCallback,
     ))
@@ -99,7 +99,7 @@ def _ftLoadFirstContainerWorkflow(connectionDocker, sContainerName):
 
 def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
     """Run a single step by index (1-based)."""
-    from vaibify.gui.pipelineRunner import fnRunSelectedSteps
+    from vaibify.gui.pipelineRunner import fiRunSelectedSteps
     sWorkflowPath, dictWorkflow = _ftLoadFirstContainerWorkflow(
         connectionDocker, sContainerName,
     )
@@ -113,7 +113,7 @@ def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
             f"Error: Step {iStep} out of range (1-{iStepCount})."
         )
         return 2
-    return asyncio.run(fnRunSelectedSteps(
+    return asyncio.run(fiRunSelectedSteps(
         connectionDocker, sContainerName,
         [iStepIndex], dictWorkflow, sWorkflowPath,
         sWorkdir, _fnAsyncStatusCallback,
@@ -133,7 +133,7 @@ def _fiRunSingleStep(connectionDocker, sContainerName, iStep, sWorkdir):
     "--from", "iFrom", default=None, type=int,
     help="Run from this step onward (1-based).",
 )
-def run(sProjectName, iStep, iFrom):
+def fnRunCommand(sProjectName, iStep, iFrom):
     """Run pipeline steps in the container."""
     _fnValidateStepOptions(iStep, iFrom)
     configProject = fconfigResolveProject(sProjectName)

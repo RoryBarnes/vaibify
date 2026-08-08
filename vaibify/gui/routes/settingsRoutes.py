@@ -12,7 +12,7 @@ from .. import workflowManager
 from ..routeContext import fdictRequireLaneTupleForCommit
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ..pipelineServer import (
     WORKSPACE_ROOT,
@@ -21,7 +21,7 @@ from ..pipelineServer import (
     fdictFilterNonNone,
     fdictRequireWorkflow,
     flistQueryDirectory,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     _fsSanitizeServerError,
 )
 
@@ -30,7 +30,7 @@ def _fnRegisterSettingsGet(app, dictCtx):
     """Register GET /api/settings route."""
 
     @app.get("/api/settings/{sContainerId}")
-    async def fnGetSettings(sContainerId: str):
+    async def fdictGetSettings(sContainerId: str):
         return fdictExtractSettings(
             fdictRequireWorkflow(
                 dictCtx["workflows"], sContainerId)
@@ -41,8 +41,8 @@ def _fnRegisterSettingsPut(app, dictCtx):
     """Register PUT /api/settings route."""
 
     @app.put("/api/settings/{sContainerId}")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnUpdateSettings(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictUpdateSettings(
         sContainerId: str,
         request: WorkflowSettingsRequest,
         requestHttp: Request,
@@ -98,7 +98,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
     """Register log listing and fetching routes."""
 
     @app.get("/api/logs/{sContainerId}")
-    async def fnListLogs(sContainerId: str):
+    async def flistLogs(sContainerId: str):
         dictCtx["require"]()
         sLogsDir = posixpath.join(
             WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
@@ -113,7 +113,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
         return sorted(listLogs, reverse=True)
 
     @app.get("/api/logs/{sContainerId}/{sLogFilename}")
-    async def fnGetLogContent(
+    async def fresponseGetLogContent(
         sContainerId: str, sLogFilename: str
     ):
         dictCtx["require"]()
@@ -121,7 +121,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
             WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
         )
         sLogPath = posixpath.join(sLogsDir, sLogFilename)
-        fnValidatePathWithinRoot(sLogPath, sLogsDir)
+        fsValidatePathWithinRoot(sLogPath, sLogsDir)
         try:
             baContent = await asyncio.to_thread(
                 dictCtx["docker"].fbaFetchFile,

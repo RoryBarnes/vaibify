@@ -87,7 +87,7 @@ def _fbSlotIsHeldByLiveProcess(sPath):
         fileHandle.close()
 
 
-def fnAcquireSessionSlot(sRole, iPort):
+def ffileAcquireSessionSlot(sRole, iPort):
     """Acquire a session slot and return its open file handle.
 
     Raises ``SessionLimitExceededError`` when the count of live slots

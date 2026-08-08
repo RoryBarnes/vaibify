@@ -296,7 +296,7 @@ def _fsBuildDirectoryMoveCommand(sRepo, sFromDirectory, sToDirectory):
     )
 
 
-def _fnMoveStepDirectory(
+def _fbMoveStepDirectory(
     connectionDocker, sContainerId, sRepo, dictPlan,
 ):
     """``git mv`` (or ``mv``) the step directory; raise on failure."""
@@ -516,7 +516,7 @@ def fdictApplyStepRename(
                 "so the verification marker cannot follow the "
                 "directory — refusing a rename that would orphan it",
             )
-        dictReport["bDirectoryMoved"] = _fnMoveStepDirectory(
+        dictReport["bDirectoryMoved"] = _fbMoveStepDirectory(
             connectionDocker, sContainerId, sRepo, dictPlan,
         )
         try:

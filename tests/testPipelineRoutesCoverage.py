@@ -21,9 +21,9 @@ from vaibify.gui.routes.pipelineRoutes import (
     _flistExtractKillPatterns,
     _flistExtractStepDirectories,
     _flistFindCustomTestFiles,
-    _fnApplyAllMarkerCategories,
-    _fnApplyExternalTestResults,
-    _fnApplyMarkerCategory,
+    _fbApplyAllMarkerCategories,
+    _fbApplyExternalTestResults,
+    _fbApplyMarkerCategory,
     _fnEnsureConftestTemplate,
     _fnMarkPipelineStopped,
     _fsetExtractRegisteredTestFiles,
@@ -39,7 +39,7 @@ from vaibify.gui.routes.pipelineRoutes import (
 def _frequestBuildStoodDownRequest():
     """Return the minimal request a stood-down carrier still reaches for.
 
-    ``fobjRunWorkerUnderTheDrain`` passes ``requestHttp.app.state`` to
+    ``fgenericRunWorkerUnderTheDrain`` passes ``requestHttp.app.state`` to
     the carrier before the stand-down's replacement discards it, so the
     attribute chain has to exist even though nothing reads it.
     """
@@ -374,7 +374,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -382,7 +382,7 @@ class TestFdictFetchOutputStatus:
             return_value=True,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -440,7 +440,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -448,7 +448,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value=dictInvalidated,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -508,7 +508,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -516,7 +516,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -589,7 +589,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -597,7 +597,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -667,7 +667,7 @@ class TestFdictFetchOutputStatus:
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -675,7 +675,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -739,7 +739,7 @@ class TestFdictFetchOutputStatus:
             return_value=["step01/run.py"],
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            ".fnCollectMarkerPathsByStep",
+            ".fdictHandleCollectMarkerPathsByStep",
             return_value={0: sMarkerPath},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -755,7 +755,7 @@ class TestFdictFetchOutputStatus:
             return_value=False,
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._flistDetectAndInvalidate",
+            "._fdictDetectAndInvalidate",
             return_value={},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
@@ -1479,8 +1479,8 @@ class TestWorkflowDiscoveryRoute:
 
 _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
     "fdictCollectOutputPathsByStep",
-    "fnCollectMarkerPathsByStep",
-    "_flistDetectAndInvalidate",
+    "fdictHandleCollectMarkerPathsByStep",
+    "_fdictDetectAndInvalidate",
     "_fdictLoadMarkersForPoll",
     "_fdictLoadMtimeCacheForPoll",
     "_fdictComputeMaxMtimeByStep",
@@ -1502,7 +1502,7 @@ def _fdictPollLevelPatchReturns(listLevel1, listLevel2, listLevel3):
     dictReturns[sModule + "_flistCollectOutputPaths"] = []
     dictReturns[sModule + "ftGetModTimesAndFingerprint"] = ({}, "")
     dictReturns[sModule + "_fbCheckStaleUserVerification"] = False
-    dictReturns[sGates + "fiAICSLevel"] = 1
+    dictReturns[sGates + "fiProofLevel"] = 1
     dictReturns[sGates + "flistLevel1Blockers"] = listLevel1
     dictReturns[sGates + "flistLevel2Blockers"] = listLevel2
     dictReturns[sGates + "flistLevel3Blockers"] = listLevel3
@@ -1784,7 +1784,7 @@ class TestFnSaveIfLevelHighWaterChanged:
     def test_flag_true_saves_once_and_pops_key(self):
         dictCtx = {"save": MagicMock()}
         dictWorkflow = {"listSteps": []}
-        dictRest = {_S_LEVEL_RATCHET_FLAG_KEY: True, "iAICSLevel": 1}
+        dictRest = {_S_LEVEL_RATCHET_FLAG_KEY: True, "iProofLevel": 1}
         _fnSaveIfLevelHighWaterChanged(
             dictCtx, "cid1", dictWorkflow, dictRest,
         )
@@ -1802,7 +1802,7 @@ class TestFnSaveIfLevelHighWaterChanged:
 
     def test_flag_absent_saves_nothing(self):
         dictCtx = {"save": MagicMock()}
-        dictRest = {"iAICSLevel": 1}
+        dictRest = {"iProofLevel": 1}
         _fnSaveIfLevelHighWaterChanged(
             dictCtx, "cid1", {"listSteps": []}, dictRest,
         )

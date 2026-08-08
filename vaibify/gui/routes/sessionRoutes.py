@@ -35,7 +35,7 @@ _F_READY_POLL_INTERVAL_SECONDS = 0.05
 S_SUPPRESS_BROWSER_ENV = "VAIBIFY_SUPPRESS_BROWSER"
 
 
-def _fnLaunchDetachedHub(iPort):
+def _fprocessLaunchDetachedHub(iPort):
     """Spawn a detached vaibify hub child on the given port.
 
     Sets ``VAIBIFY_SUPPRESS_BROWSER=1`` in the child's environment so
@@ -84,7 +84,7 @@ def _fbIsPortAcceptingConnections(iPort):
         sock.close()
 
 
-async def _fnAwaitChildReady(iPort, fTimeoutSeconds):
+async def _fbAwaitChildReady(iPort, fTimeoutSeconds):
     """Poll until the child's port accepts connections or timeout elapses.
 
     Returning early avoids the browser hitting a transient "unable to
@@ -116,9 +116,9 @@ def _fnRegisterSpawn(app):
                 f"(limit {_I_MAX_LIVE_SPAWNS}).",
             )
         iPort = fiPickFreePort(iPreferred=8050)
-        child = _fnLaunchDetachedHub(iPort)
+        child = _fprocessLaunchDetachedHub(iPort)
         listChildren.append(child)
-        await _fnAwaitChildReady(iPort, _F_READY_TIMEOUT_SECONDS)
+        await _fbAwaitChildReady(iPort, _F_READY_TIMEOUT_SECONDS)
         return {
             "sUrl": f"http://127.0.0.1:{iPort}",
             "iPort": iPort,

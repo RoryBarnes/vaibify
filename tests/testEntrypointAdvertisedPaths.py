@@ -249,7 +249,7 @@ def _tlistStagedModuleSources():
 def testEveryStagedModuleActuallyImports(tmp_path):
     """Assemble what the image receives, and import it from there.
 
-    The relative-import check above is a source-shape test, and a
+    The relative-import check above is a source-shape fnTestCommand, and a
     source-shape test proves what it inspects and nothing else: a
     staged file containing ``import missingSibling`` passes it while
     failing on the first execution exactly as director did. The whole

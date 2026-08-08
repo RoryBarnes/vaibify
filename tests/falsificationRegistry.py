@@ -60,6 +60,89 @@ LIST_FALSIFICATIONS = [
 
     Falsification(
         nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesFnReturningValue'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '            if listValueReturns:\n'
+            '                self.fnRecord(sIdentity, S_CLASS_FN_RETURN,\n'
+        ),
+        new=(
+            '            if False:\n'
+            '                self.fnRecord(sIdentity, S_CLASS_FN_RETURN,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesLiteralReturnMismatch'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '    if sLiteralType == "NoneType":\n'
+            '        return True\n'
+        ),
+        new=(
+            '    if sLiteralType == "NoneType" or True:\n'
+            '        return True\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesReturnAnnotationMismatch'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '        if not all(fbAnnotationPartAgrees(sPrefix, tPart)\n'
+            '                   for tPart in listParts):\n'
+            '            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n'
+        ),
+        new=(
+            '        if False and not all(fbAnnotationPartAgrees(sPrefix, tPart)\n'
+            '                   for tPart in listParts):\n'
+            '            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesBarePrefixlessFunction'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '        else:\n'
+            '            self.fnRecord(sIdentity, S_CLASS_NAME,\n'
+            '                          "no valid prefix in the closed vocabulary")\n'
+        ),
+        new=(
+            '        else:\n'
+            '            pass\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testStyleInvariants.py::'
+            'testScannerCatchesMisprefixedContextManager'
+        ),
+        source='tools/generateStyleInventory.py',
+        old=(
+            '        if bContextDecorated and sPrefix != "context":\n'
+            '            self.fnRecord(sIdentity, S_CLASS_YIELD,\n'
+        ),
+        new=(
+            '        if False:\n'
+            '            self.fnRecord(sIdentity, S_CLASS_YIELD,\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
             'tests/testEntrypointAdvertisedPaths.py::'
             'testTheGuideDoesNotAdvertiseTheWithdrawnDirector'
         ),
@@ -527,7 +610,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testMutationBoundary.py::testAnUnadmittedExecIsRefusedBeforeItRuns',
         source='vaibify/docker/dockerConnection.py',
         old="""        mutationAdmission.fnAssertContainerCommandAdmitted(
-            sContainerId, "texecRunInContainerStreamed",
+            sContainerId, "ftRunInContainerStreamed",
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
@@ -570,10 +653,10 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/sessionLifecycle.py',
         old="""    async with _flockObtainContainerMutation(dictLockStore, sName):
         async with _flockObtainSessionCardinality(dictLockStore):
-            return _tReserveForStartUnderLocks(""",
+            return _ftReserveForStartUnderLocks(""",
         new="""    async with _flockObtainContainerMutation(dictLockStore, sName):
         if True:
-            return _tReserveForStartUnderLocks(""",
+            return _ftReserveForStartUnderLocks(""",
     ),
 
     Falsification(
@@ -992,7 +1075,7 @@ LIST_FALSIFICATIONS = [
     return 0""",
     ),
     Falsification(
-        nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fiRunStepCommands_full_returns_plot_exit_code',
+        nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
         source='vaibify/gui/pipelineRunner.py',
         old='return (iPlotExit, fCpuTime + fPlotCpu)',
         new='return (iExitCode, fCpuTime + fPlotCpu)  # mutant',
@@ -1018,10 +1101,10 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteAuthGate::test_unauthorized_kill_rejected_before_count_exec',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""    async def fnKillRunningTasks(sContainerId: str, requestHttp: Request):
+        old="""    async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
         dictCtx["require"]()""",
         new=(
-            '    async def fnKillRunningTasks('
+            '    async def fdictHandleKillRunningTasks('
             'sContainerId: str, requestHttp: Request):'
         ),
     ),
@@ -1061,10 +1144,10 @@ LIST_FALSIFICATIONS = [
         new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"dictMaxMtimeByStep"})""",
     ),
     Falsification(
-        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_aics_level_change_advances_tag',
+        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_proof_level_change_advances_tag',
         source='vaibify/gui/routes/pipelineRoutes.py',
         old="""_SET_ETAG_VOLATILE_KEYS = frozenset()""",
-        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iAICSLevel"})""",
+        new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iProofLevel"})""",
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestFileStatusEtagSignals::test_l2_blocker_count_change_advances_tag',
@@ -1146,9 +1229,9 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testDataLoadersMutationCoverage.py::test_loadCsvByRowIndex_index_zero_returns_first_row',
         source='vaibify/gui/dataLoaders.py',
         old="""    if iIndex < 0:
-        return _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
+        return _ffLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
         new="""    if iIndex <= 0:
-        return _fLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
+        return _ffLoadCsvNegativeRow(sFullPath, sColumn, iIndex)""",
     ),
     Falsification(
         nodeid='tests/testDataLoadersMutationCoverage.py::test_extractHdf5Value_negative_flat_index_maps_to_last',
@@ -1419,7 +1502,7 @@ LIST_FALSIFICATIONS = [
         old='        iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)',
         new='        iExitCode, sStdout = (0, "ok")',
     ),
-    # fnApplyMigrations stamped the version DOWN to the current at the
+    # fiApplyMigrations stamped the version DOWN to the current at the
     # end, silently downgrading a future-version project.json and dropping
     # fields this build does not understand on the next save.
     Falsification(
@@ -2449,7 +2532,7 @@ def _fdictEntry(sRel):
         new='_SET_ETAG_VOLATILE_KEYS = frozenset({"dictRunState"})',
     ),
     Falsification(
-        # Grading supervision on the persisted count makes the AICS
+        # Grading supervision on the persisted count makes the PROOF
         # row gradeable on self-report: the supervised agent edits
         # project.json and the row turns green.
         nodeid='tests/testReplayGate.py::test_supervision_is_not_gradeable_on_the_persisted_count',
@@ -2562,7 +2645,7 @@ def _fdictEntry(sRel):
     Falsification(
         # Writing .git/hooks/pre-commit is code execution on the next
         # commit; writing .vaibify/ defeats the metadata-integrity
-        # contract the AICS truth system rests on.
+        # contract the PROOF truth system rests on.
         nodeid='tests/testAgentLaneEnforcement.py::testSaveAndRunTestRefusesDenylistedPaths',
         source='vaibify/gui/routes/testRoutes.py',
         old='    fnRejectWriteDenylistedPath(sNormalized, sRoot)',
@@ -2573,7 +2656,7 @@ def _fdictEntry(sRel):
         # an existence oracle over arbitrary container paths.
         nodeid='tests/testAgentLaneEnforcement.py::testFigureProbeValidatesTheWorkdirFallback',
         source='vaibify/gui/routes/figureRoutes.py',
-        old='            fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
+        old='            fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
         new='            sFallback)',
     ),
     Falsification(
@@ -2587,7 +2670,7 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         # A prefix compare accepts http://localhost.evil.example, the
-        # same prefix-attack class fnValidatePathWithinRoot defends
+        # same prefix-attack class fsValidatePathWithinRoot defends
         # against.
         nodeid='tests/testInjectionGuards.py::testLoopbackOriginRejectsASuffixDomain',
         source='vaibify/gui/pipelineServer.py',
@@ -3301,7 +3384,7 @@ def _fdictEntry(sRel):
         nodeid='tests/testCommitCarrier.py::test_route_durable_exec_without_mode_c_guard_is_refused',
         source='vaibify/docker/dockerConnection.py',
         old='''        mutationAdmission.fnAssertDurableExecAdmitted(
-            sContainerId, "texecRunInContainerStreamedWithChunks",
+            sContainerId, "ftRunInContainerStreamedWithChunks",
         )''',
         new='''        pass''',
     ),
@@ -3537,7 +3620,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/pipelineServer.py',
         old='''        taskReader.cancel()
         await asyncio.to_thread(
-            terminalContainment.fnDrainSessionRecord, session,
+            terminalContainment.fdictDrainSessionRecord, session,
         )
         session.fnClose()''',
         new='''        taskReader.cancel()
@@ -3653,7 +3736,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testHostTransfer.py::testCorrectGenerationActiveTransferSucceedsAndRevokes',
         source='vaibify/gui/sessionLifecycle.py',
-        old='    browserSession.fnRevokeSessionById(dictStore, sOldSessionId)',
+        old='    browserSession.fbRevokeSessionById(dictStore, sOldSessionId)',
         new='    pass',
     ),
     # Case 3 (bounded replay returns the STORED tuple):
@@ -4069,7 +4152,7 @@ def _fdictEntry(sRel):
         old='''    await fnOrphanSession(
         appState, sName, fbStillWarranted=fbStillOwnedByThisSession,
     )''',
-        new='''    browserSession.fnRevokeSessionById(dictStore, sSessionId)''',
+        new='''    browserSession.fbRevokeSessionById(dictStore, sSessionId)''',
     ),
     # A live WebSocket vetoes sliding idle: the socket layer never
     # refreshes the credential stamp, so without the veto a streaming
@@ -4164,13 +4247,13 @@ def _fdictEntry(sRel):
         source='vaibify/gui/sessionLifecycle.py',
         old='''        await _fnDrainAndCloseBeforeRelease(appState, sName)
         async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fnReleaseOwnership(
+            bReleased = containerOwnership.fbReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
             )''',
         new='''        async with _flockObtainSessionCardinality(dictLockStore):
-            bReleased = containerOwnership.fnReleaseOwnership(
+            bReleased = containerOwnership.fbReleaseOwnership(
                 dictContainerOwners, sName, sLeaseId,
                 sBrowserSessionId=sBrowserSessionId,
                 dictSessionOwner=dictSessionOwner,
@@ -4633,7 +4716,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routeScope.py',
         old=(
-            '    if ftupleResolveCarrierDeclaration(route.endpoint):\n'
+            '    if ftResolveCarrierDeclaration(route.endpoint):\n'
             '        return False\n'
             '    return fbRouteAwaitsCarrierMode(route.methods, route.path)\n'
         ),
@@ -4837,12 +4920,12 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routeScope.py',
         old=(
-            '    if ftupleResolveCarrierDeclaration(route.endpoint):\n'
+            '    if ftResolveCarrierDeclaration(route.endpoint):\n'
             '        return False\n'
             '    return fbRouteAwaitsCarrierMode(route.methods, route.path)\n'
         ),
         new=(
-            '    if ftupleResolveCarrierDeclaration(route.endpoint):\n'
+            '    if ftResolveCarrierDeclaration(route.endpoint):\n'
             '        return False\n'
             '    return False\n'
         ),
@@ -4873,10 +4956,10 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper", '
             '"clean-outputs",\n'
-            '        fnDeleteTheOutputs,\n'
+            '        ftDeleteTheOutputs,\n'
             '    )\n'
         ),
-        new='    return await asyncio.to_thread(fnDeleteTheOutputs, None)\n',
+        new='    return await asyncio.to_thread(ftDeleteTheOutputs, None)\n',
     ),
     Falsification(
         nodeid=(
@@ -4885,7 +4968,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/pipelineRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "Recording the cleaned outputs",\n'
             '        )\n'
@@ -4906,7 +4989,7 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper", '
             '"standardize-plots",\n'
-            '        fnConvertThePlots,\n'
+            '        flistConvertThePlots,\n'
             '    )\n'
         ),
         new=(
@@ -4916,7 +4999,7 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper", '
             '"standardize-plots",\n'
-            '        fnConvertThePlots, {"sDockerContainerId": '
+            '        flistConvertThePlots, {"sDockerContainerId": '
             'sContainerId},\n'
             '    )\n'
         ),
@@ -4928,10 +5011,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/plotRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
-            '            dictCtx, sContainerId, dictWorkflow, request,\n'
-            '            "Recording the standardized plots",\n'
-            '        )\n'
+            '        fdictCommitWorkflowSave(\n            dictCtx, sContainerId, dictWorkflow, request,\n            "Recording the standardized plots",\n        )\n'
         ),
         new='        dictCtx["save"](sContainerId, dictWorkflow)\n',
     ),
@@ -4947,11 +5027,11 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper", '
             'sOperationTarget,\n'
-            '        fnRewriteTheSidecar,\n'
+            '        fgenericRewriteTheSidecar,\n'
             '    )\n'
         ),
         new=(
-            '    return await asyncio.to_thread(fnRewriteTheSidecar, None)\n'
+            '    return await asyncio.to_thread(fgenericRewriteTheSidecar, None)\n'
         ),
     ),
 
@@ -5011,7 +5091,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/repoRoutes.py',
         # Retargeted 2026-08-05: the settle-then-raise ordering moved to
-        # routeContext.fobjRunWorkerUnderTheDrain on its fourth caller,
+        # routeContext.fgenericRunWorkerUnderTheDrain on its fourth caller,
         # so the drain invocation this used to mutate no longer lives in
         # repoRoutes. The DELEGATION to it does, and is this module's
         # own call site. It swaps the MODE rather than dropping the
@@ -5021,28 +5101,10 @@ def _fdictEntry(sRel):
         # testAnExpectedRefusalLeavesTheContainerUsable too and isolates
         # neither. Verified: this one fails that test alone.
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnRunTheEffect, sOperationTarget, '
-            'requestHttp,\n'
-            '    )\n'
+            '    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictHandleRunTheEffect, sOperationTarget, requestHttp,\n    )\n'
         ),
         new=(
-            '    from .. import commitCarrier\n'
-            '    dictLaneTuple = fdictRequireLaneTupleForCommit(\n'
-            '        requestHttp, sContainerId, sOperationTarget,\n'
-            '    )\n'
-            '    dictCarried = commitCarrier.fdictCommitSynchronousMutation('
-            '\n'
-            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
-            '\n'
-            '        sContainerId, dictLaneTuple, "helper", '
-            'sOperationTarget,\n'
-            '        fnRunTheEffect, {"sDockerContainerId": '
-            'sContainerId},\n'
-            '    )["result"]\n'
-            '    if dictCarried["errorRefused"] is not None:\n'
-            '        raise dictCarried["errorRefused"]\n'
-            '    return dictCarried["objResult"]\n'
+            '    from .. import commitCarrier\n    dictLaneTuple = fdictRequireLaneTupleForCommit(\n        requestHttp, sContainerId, sOperationTarget,\n    )\n    dictCarried = commitCarrier.fdictCommitSynchronousMutation(\n        requestHttp.app.state, dictLaneTuple["sContainerName"],\n        sContainerId, dictLaneTuple, "helper", sOperationTarget,\n        fdictHandleRunTheEffect, {"sDockerContainerId": sContainerId},\n    )["result"]\n    if dictCarried["errorRefused"] is not None:\n        raise dictCarried["errorRefused"]\n    return dictCarried["objResult"]\n'
         ),
     ),
     Falsification(
@@ -5057,7 +5119,7 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper",\n'
             '        _fsDescribePushTarget(sRepoName, ""), '
-            'fnPushUnderTheSupervisor,\n'
+            'fdictPushUnderTheSupervisor,\n'
             '    )\n'
         ),
         new=(
@@ -5067,7 +5129,7 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper",\n'
             '        _fsDescribePushTarget(sRepoName, ""), '
-            'fnPushUnderTheSupervisor,\n'
+            'fdictPushUnderTheSupervisor,\n'
             '        {"sDockerContainerId": sContainerId},\n'
             '    )\n'
         ),
@@ -5211,14 +5273,14 @@ def _fdictEntry(sRel):
             '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, "helper", sTarget, '
-            'fnProbeThenRun,\n'
+            'ftProbeThenRun,\n'
             '    )\n'
         ),
         new=(
             '    dictOutcome = commitCarrier.fdictCommitSynchronousMutation(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, "helper", sTarget, '
-            'fnProbeThenRun,\n'
+            'ftProbeThenRun,\n'
             '        {"iHolderPid": __import__("os").getpid(),\n'
             '         "iHolderProcessGroup": __import__("os").getpgrp()},\n'
             '    )\n'
@@ -5235,14 +5297,14 @@ def _fdictEntry(sRel):
             '    await commitCarrier.fdictRunLockHeldMutation(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, "helper", "auto-archive", '
-            'fnArchive,\n'
+            'fbArchive,\n'
             '    )\n'
         ),
         new=(
             '    commitCarrier.fdictCommitSynchronousMutation(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, "helper", "auto-archive", '
-            'fnArchive,\n'
+            'fbArchive,\n'
             '        {"iHolderPid": __import__("os").getpid(),\n'
             '         "iHolderProcessGroup": __import__("os").getpgrp()},\n'
             '    )\n'
@@ -5256,7 +5318,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/testRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "Recording the test results",\n'
             '        )\n'
@@ -5359,7 +5421,7 @@ def _fdictEntry(sRel):
     # ai-models/declare call site; the other six call sites were each
     # kill-confirmed by hand on 2026-08-05 and each killed only its own
     # parameter case, which is what establishes that sharing
-    # fnCommitWorkflowSave did not collapse seven guards into one
+    # fdictCommitWorkflowSave did not collapse seven guards into one
     # untested claim.
     Falsification(
         nodeid=(
@@ -5368,7 +5430,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The AI-model declaration",\n'
             '        )\n'
@@ -5389,7 +5451,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/stepRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The step creation",\n'
             '        )\n'
@@ -5408,7 +5470,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/stepRoutes.py',
         old=(
-            '            fnCommitWorkflowSave(\n'
+            '            fdictCommitWorkflowSave(\n'
             '                dictCtx, sContainerId, dictWorkflow, '
             'requestHttp,\n'
             '                "The hundred-step warning flag",\n'
@@ -5467,11 +5529,11 @@ def _fdictEntry(sRel):
             'dictLaneTuple["sContainerName"],\n'
             '        sContainerId, dictLaneTuple, "helper", '
             '"create-project",\n'
-            '        fnProbeThenCreate,\n'
+            '        fdictProbeThenCreate,\n'
             '    )\n'
             '    return dictOutcome["result"]\n'
         ),
-        new='    return fnProbeThenCreate()\n',
+        new='    return fdictProbeThenCreate()\n',
     ),
 
     # The separate guard inside that route: an expected 4xx must be
@@ -5520,7 +5582,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The sync-tracking change",\n'
             '        )\n'
@@ -5609,7 +5671,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
             '        dictRemotes["arxiv"] = dictConfig\n'
-            '    fnCommitWorkflowSave(\n'
+            '    fdictCommitWorkflowSave(\n'
             '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '        "The arXiv configuration",\n'
             '    )\n'
@@ -5633,7 +5695,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '        dictVerify = await _fobjRunArxivCacheWorkUnderTheDrain(\n'
+            '        dictVerify = await _fgenericRunArxivCacheWorkUnderTheDrain(\n'
             '            sContainerId, requestHttp, "arxiv-verify",\n'
             '            lambda: _fdictRunArxivVerifyAfterConfig(\n'
             '                dictWorkflow,\n'
@@ -5665,7 +5727,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/fileRoutes.py',
         old=(
             '    with open(sTargetPath, "wb") as fileTarget:\n'
-            '        for baChunk in connectionDocker.fnIterStreamFile(\n'
+            '        for baChunk in connectionDocker.fiterStreamFile(\n'
             '            sContainerId, sContainerPath,\n'
             '        ):\n'
             '            fileTarget.write(baChunk)\n'
@@ -5700,7 +5762,7 @@ def _fdictEntry(sRel):
 
     # --- The git panel's six mutating routes, carrier modes (a) and
     # (b) (2026-08-05). Every mutant is that ROUTE's own call of
-    # _fobjRunGitWorkerUnderTheDrain reverted to a direct call of its
+    # _fgenericRunGitWorkerUnderTheDrain reverted to a direct call of its
     # worker, so each kills exactly its own test. Mutating the shared
     # wrapper -- or the shared
     # routeContext.fdictCarryARefusalBackInsteadOfRaising it calls --
@@ -5714,7 +5776,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/gitRoutes.py',
         old=(
-            '        return await _fobjRunGitWorkerUnderTheDrain(\n'
+            '        return await _fgenericRunGitWorkerUnderTheDrain(\n'
             '            sContainerId,\n'
             '            lambda: _fdictFetchThenReadStatus(\n'
             '                dictCtx, sContainerId, sRepo, bCacheUsed,\n'
@@ -5735,7 +5797,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/gitRoutes.py',
         old=(
-            '        return await _fobjRunGitWorkerUnderTheDrain(\n'
+            '        return await _fgenericRunGitWorkerUnderTheDrain(\n'
             '            sContainerId,\n'
             '            lambda: _fdictCheckCleanThenFastForward(\n'
             '                dictCtx, sContainerId, sRepo,\n'
@@ -5756,7 +5818,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/gitRoutes.py',
         old=(
-            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
             '            sContainerId,\n'
             '            lambda: _fdictFetchThenCollectRemotes(\n'
             '                dictCtx["docker"], sContainerId, sRepo, '
@@ -5779,7 +5841,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/gitRoutes.py',
         old=(
-            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
             '            sContainerId,\n'
             '            lambda: _fdictScanThenCommitCanonical(\n'
             '                dictCtx["docker"], sContainerId, '
@@ -5804,7 +5866,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/gitRoutes.py',
         old=(
-            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
             '            sContainerId,\n'
             '            lambda: _fdictRemoveDeclarationFromTheIndex(\n'
             '                dictCtx["docker"], sContainerId, sRepo, '
@@ -5832,7 +5894,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/gitRoutes.py',
         old=(
-            '        dictResponse = await _fobjRunGitWorkerUnderTheDrain(\n'
+            '        dictResponse = await _fgenericRunGitWorkerUnderTheDrain(\n'
             '            sContainerId,\n'
             '            lambda: _fdictFetchThenCollectRemotes(\n'
             '                dictCtx["docker"], sContainerId, sRepo, '
@@ -5854,7 +5916,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/gitRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, '
             'requestHttp,\n'
             '            "The reconcile bookkeeping save",\n'
@@ -5899,8 +5961,8 @@ def _fdictEntry(sRel):
         # the guarantee -- so no mutation can change the cascade's
         # admission without changing the save's.
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnApplyTheRename, "rename-step", '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictApplyTheRename, "rename-step", '
             'requestHttp,\n'
             '    )\n'
         ),
@@ -5914,7 +5976,7 @@ def _fdictEntry(sRel):
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
             '\n'
             '        sContainerId, dictLaneTuple, "helper", "rename-step",\n'
-            '        fnApplyTheRename, {"sDockerContainerId": '
+            '        fdictApplyTheRename, {"sDockerContainerId": '
             'sContainerId},\n'
             '    )["result"]\n'
             '    if dictCarried["errorRefused"] is not None:\n'
@@ -5941,29 +6003,29 @@ def _fdictEntry(sRel):
             '        dictCtx["save"](sContainerId, dictWorkflow)\n'
             '        return dictReport\n'
             '\n'
-            '    def fnApplyTheRename(supervisor=None):\n'
+            '    def fdictApplyTheRename(supervisor=None):\n'
             '        del supervisor\n'
             '        return fdictCarryARefusalBackInsteadOfRaising('
-            'fnRenameThenSave)\n'
+            'fdictRenameThenSave)\n'
             '\n'
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnApplyTheRename, "rename-step", '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictApplyTheRename, "rename-step", '
             'requestHttp,\n'
             '    )\n'
         ),
         new=(
             '        return dictReport\n'
             '\n'
-            '    def fnApplyTheRename(supervisor=None):\n'
+            '    def fdictApplyTheRename(supervisor=None):\n'
             '        del supervisor\n'
             '        return fdictCarryARefusalBackInsteadOfRaising('
-            'fnRenameThenSave)\n'
+            'fdictRenameThenSave)\n'
             '\n'
-            '    dictReportDone = await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnApplyTheRename, "rename-step", '
+            '    dictReportDone = await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictApplyTheRename, "rename-step", '
             'requestHttp,\n'
             '    )\n'
-            '    fnCommitWorkflowSave(\n'
+            '    fdictCommitWorkflowSave(\n'
             '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '        "The rename save",\n'
             '    )\n'
@@ -5977,8 +6039,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/stepRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnScanTheScripts, '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictScanTheScripts, '
             '"rename-step-preview", requestHttp,\n'
             '    )\n'
         ),
@@ -6002,12 +6064,12 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper", '
             '"align-step-directories",\n'
-            '        fnAlignEveryStep,\n'
+            '        fdictAlignEveryStep,\n'
             '    )\n'
             '    return dictOutcome["result"]\n'
         ),
         new=(
-            '    return fnAlignEveryStep()\n'
+            '    return fdictAlignEveryStep()\n'
         ),
     ),
     Falsification(
@@ -6021,11 +6083,11 @@ def _fdictEntry(sRel):
         # container over a name that was already taken.
         old=(
             '        return fdictCarryARefusalBackInsteadOfRaising('
-            'fnRenameThenSave)\n'
+            'fdictRenameThenSave)\n'
         ),
         new=(
             '        return {"errorRefused": None, '
-            '"objResult": fnRenameThenSave()}\n'
+            '"objResult": fdictRenameThenSave()}\n'
         ),
     ),
     Falsification(
@@ -6061,7 +6123,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/stepRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The step update",\n'
             '        )\n'
@@ -6077,13 +6139,13 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/stepRoutes.py',
         old=(
-            '    await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnRunTheUpdate, "update-step", '
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictRunTheUpdate, "update-step", '
             'requestHttp,\n'
             '    )\n'
         ),
         new=(
-            '    dictCarried = fnRunTheUpdate()\n'
+            '    dictCarried = fdictRunTheUpdate()\n'
             '    if dictCarried["errorRefused"] is not None:\n'
             '        raise dictCarried["errorRefused"]\n'
         ),
@@ -6128,15 +6190,15 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
-            '    await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnWriteTheTemplate, '
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictWriteTheTemplate, '
             '"project-context-template",\n'
             '        requestHttp,\n'
             '    )\n'
         ),
         new=(
             '    del requestHttp\n'
-            '    dictCarried = fnWriteTheTemplate()\n'
+            '    dictCarried = fdictWriteTheTemplate()\n'
             '    if dictCarried["errorRefused"] is not None:\n'
             '        raise dictCarried["errorRefused"]\n'
         ),
@@ -6153,14 +6215,14 @@ def _fdictEntry(sRel):
         # commits under the drain, so the refusal test is untouched.
         old=(
             '        _fnReplaceRootWithSymlink(\n'
-            '            dictCtx, sContainerId, dictWorkflow, request,\n'
+            '            dictCtx, sContainerId, dictWorkflow, dictBody,\n'
             '        )\n'
             '\n'
-            '    def fnRunTheImport(supervisor=None):\n'
+            '    def fdictRunTheImport(supervisor=None):\n'
         ),
         new=(
             '\n'
-            '    def fnRunTheImport(supervisor=None):\n'
+            '    def fdictRunTheImport(supervisor=None):\n'
         ),
     ),
     Falsification(
@@ -6190,13 +6252,13 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper", '
             '"prompt-record-capture",\n'
-            '        fnRunTheCapturePass,\n'
+            '        fdictRunTheCapturePass,\n'
             '    )\n'
             '    return dictOutcome["result"]\n'
         ),
         new=(
             '    del dictLaneTuple\n'
-            '    return fnRunTheCapturePass()\n'
+            '    return fdictRunTheCapturePass()\n'
         ),
     ),
     # --- The batched existence probe (ruling 3, 2026-08-05) ---
@@ -6283,11 +6345,11 @@ def _fdictEntry(sRel):
             '\n'
             '        sContainerId, dictLaneTuple, "helper", '
             '"acknowledge-step",\n'
-            '        fnStatTheOutputs,\n'
+            '        fdictStatTheOutputs,\n'
             '    )\n'
             '    return dictOutcome["result"]\n'
         ),
-        new='    return await asyncio.to_thread(fnStatTheOutputs)\n',
+        new='    return await asyncio.to_thread(fdictStatTheOutputs)\n',
     ),
 
     Falsification(
@@ -6297,7 +6359,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/pipelineRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "Recording the acknowledged step",\n'
             '        )\n'
@@ -6316,13 +6378,13 @@ def _fdictEntry(sRel):
         # the kill sees an unlocked container and commits, while the
         # former owner's `kill -9` carries on into it.
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnCountThenKill, "kill-pipeline", '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictCountThenKill, "kill-pipeline", '
             'requestHttp,\n'
             '    )\n'
         ),
         new=(
-            '    dictCarried = await asyncio.to_thread(fnCountThenKill)\n'
+            '    dictCarried = await asyncio.to_thread(fdictCountThenKill)\n'
             '    return dictCarried["objResult"]\n'
         ),
     ),
@@ -6334,12 +6396,12 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/pipelineRoutes.py',
         old=(
-            '    await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnWriteTheStoppedState,\n'
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictWriteTheStoppedState,\n'
             '        "pipeline-state-kill", requestHttp,\n'
             '    )\n'
         ),
-        new='    await asyncio.to_thread(fnWriteTheStoppedState)\n',
+        new='    await asyncio.to_thread(fdictWriteTheStoppedState)\n',
     ),
 
     Falsification(
@@ -6410,7 +6472,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/testRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "Recording the deleted tests",\n'
             '        )\n'
@@ -6435,13 +6497,13 @@ def _fdictEntry(sRel):
         # an upstream refusal in a straight-line handler; the reverse
         # direction DOES isolate.
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnGenerateTheTests, "generate-tests", '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictGenerateTheTests, "generate-tests", '
             'requestHttp,\n'
             '    )\n'
         ),
         new=(
-            '    dictCarried = await asyncio.to_thread(fnGenerateTheTests)\n'
+            '    dictCarried = await asyncio.to_thread(fdictGenerateTheTests)\n'
             '    return dictCarried["objResult"]\n'
         ),
     ),
@@ -6453,7 +6515,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/testRoutes.py',
         old=(
-            '    fnCommitWorkflowSave(\n'
+            '    fdictCommitWorkflowSave(\n'
             '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '        "Recording the generated tests",\n'
             '    )\n'
@@ -6578,7 +6640,7 @@ def _fdictEntry(sRel):
     # ``asyncio.to_thread`` it used before migration, which is the
     # state the migration exists to leave behind: no mutation lock, no
     # journal record, so a transfer arriving mid-flight sees an idle
-    # container. Each mode-(a) mutant reverts a ``fnCommitWorkflowSave``
+    # container. Each mode-(a) mutant reverts a ``fdictCommitWorkflowSave``
     # to the raw ``dictCtx["save"]``.
     Falsification(
         nodeid=(
@@ -6677,7 +6739,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, '
             'requestHttp,\n'
             '            "The Zenodo metadata save",\n'
@@ -6712,7 +6774,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '            fnCommitWorkflowSave(\n'
+            '            fdictCommitWorkflowSave(\n'
             '                dictCtx, sContainerId, dictWorkflow, '
             'requestHttp,\n'
             '                "The Overleaf project binding",\n'
@@ -6740,8 +6802,8 @@ def _fdictEntry(sRel):
         # need the upload to have succeeded before their own carrier
         # runs at all.
         old=(
-            '    iExit, sOut = await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnArchiveToZenodo, "zenodo-archive", '
+            '    iExit, sOut = await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictArchiveToZenodo, "zenodo-archive", '
             'requestHttp,\n'
             '    )\n'
         ),
@@ -6765,8 +6827,8 @@ def _fdictEntry(sRel):
         # testTheZenodoArchiveRecordCommitsSynchronously -- the refused
         # digest exec 500s the handler before the save is reached.
         old=(
-            '    dictDigests = await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnComputeTheDigests, '
+            '    dictDigests = await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictComputeTheDigests, '
             '"zenodo-archive-digests",\n'
             '        requestHttp,\n'
             '    )\n'
@@ -6787,7 +6849,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '    fnCommitWorkflowSave(\n'
+            '    fdictCommitWorkflowSave(\n'
             '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '        "The Zenodo archive record",\n'
             '    )\n'
@@ -6804,14 +6866,10 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnPushToGithub, "github-push", '
-            'requestHttp,\n'
-            '    )\n'
+            '    return await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictHandlePushToGithub, "github-push", requestHttp,\n    )\n'
         ),
         new=(
-            '    return (await asyncio.to_thread(fnPushToGithub))'
-            '["objResult"]\n'
+            '    return (await asyncio.to_thread(fdictHandlePushToGithub))["objResult"]\n'
         ),
     ),
 
@@ -6822,7 +6880,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The GitHub push bookkeeping save",\n'
             '        )\n'
@@ -6864,14 +6922,10 @@ def _fdictEntry(sRel):
         # make the target container-derived, which is the defect.
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '        sContainerId, fnPushToGithub, "github-push", '
-            'requestHttp,\n'
+            '        sContainerId, fdictHandlePushToGithub, "github-push", requestHttp,\n'
         ),
         new=(
-            '        sContainerId, fnPushToGithub,\n'
-            '        containerGit.fsRemoteUrlInContainer(\n'
-            '            dictCtx["docker"], sContainerId, sWorkdir,\n'
-            '        ), requestHttp,\n'
+            '        sContainerId, fdictHandlePushToGithub,\n        containerGit.fsRemoteUrlInContainer(\n            dictCtx["docker"], sContainerId, sWorkdir,\n        ), requestHttp,\n'
         ),
     ),
 
@@ -6904,11 +6958,11 @@ def _fdictEntry(sRel):
             '        appState, dictLaneTuple["sContainerName"], '
             'sContainerId,\n'
             '        dictLaneTuple, "helper", "overleaf-push", '
-            'fnPushWorker,\n'
+            'ftPushWorker,\n'
             '    )\n'
             '    return dictCommit["result"]\n'
         ),
-        new='    return await asyncio.to_thread(fnPushWorker)\n',
+        new='    return await asyncio.to_thread(ftPushWorker)\n',
     ),
 
     Falsification(
@@ -6918,13 +6972,13 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '    await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnRecordTheBookkeeping, '
+            '    await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictRecordTheBookkeeping, '
             '"overleaf-push-provenance",\n'
             '        requestHttp,\n'
             '    )\n'
         ),
-        new='    await asyncio.to_thread(fnRecordTheBookkeeping, None)\n',
+        new='    await asyncio.to_thread(fdictRecordTheBookkeeping, None)\n',
     ),
 
     Falsification(
@@ -6934,7 +6988,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
-            '    fnCommitWorkflowSave(\n'
+            '    fdictCommitWorkflowSave(\n'
             '        dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '        "The Overleaf push bookkeeping save",\n'
             '    )\n'
@@ -6952,7 +7006,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
             '        dictWorkflow["dictDeterminism"] = {}\n'
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The determinism deletion",\n'
             '        )\n'
@@ -6970,7 +7024,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The determinism declaration",\n'
             '        )\n'
@@ -6985,7 +7039,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '        fnCommitWorkflowSave(\n'
+            '        fdictCommitWorkflowSave(\n'
             '            dictCtx, sContainerId, dictWorkflow, requestHttp,\n'
             '            "The standalone-binary declaration",\n'
             '        )\n'
@@ -7000,8 +7054,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnCaptureTheBinary, "binary-capture", '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictCaptureTheBinary, "binary-capture", '
             'requestHttp,\n'
             '    )\n'
         ),
@@ -7018,8 +7072,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnGenerateTheScript, "reproduce-script", '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictGenerateTheScript, "reproduce-script", '
             'requestHttp,\n'
             '    )\n'
         ),
@@ -7037,13 +7091,10 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '    except Exception as exc:\n'
-            '        fnReRaiseControlPlaneRefusal(exc)\n'
-            '        logging.getLogger("vaibify").warning(\n'
+            '    except Exception as errorCaught:\n        fnReRaiseControlPlaneRefusal(errorCaught)\n        logging.getLogger("vaibify").warning(\n'
         ),
         new=(
-            '    except Exception as exc:\n'
-            '        logging.getLogger("vaibify").warning(\n'
+            '    except Exception as errorCaught:\n        logging.getLogger("vaibify").warning(\n'
         ),
     ),
 
@@ -7054,8 +7105,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnRegenerateTheEnvelope, '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictRegenerateTheEnvelope, '
             '"level3-envelope",\n'
             '        requestHttp,\n'
             '    )\n'
@@ -7128,8 +7179,8 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/levelRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
-            '        sContainerId, fnGenerateTheTemplate, '
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
+            '        sContainerId, fdictGenerateTheTemplate, '
             '"ai-declaration-template",\n'
             '        requestHttp,\n'
             '    )\n'
@@ -7169,7 +7220,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/pipelineRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
             '        sContainerId, fdictVerifyTheManifest, '
             '"manifest-verify",\n'
             '        requestHttp,\n'
@@ -7215,7 +7266,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/falsificationRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
             '        sContainerId, ftClassifyThenProbe, '
             '"falsification-preflight",\n'
             '        requestHttp,\n'
@@ -7259,7 +7310,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '    return await fobjRunWorkerUnderTheDrain(\n'
+            '    return await fgenericRunWorkerUnderTheDrain(\n'
             '        sContainerId, fsGateThenSnapshot, '
             '"level3-verify-readiness",\n'
             '        requestHttp,\n'

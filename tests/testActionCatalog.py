@@ -2,7 +2,7 @@
 
 The architectural invariants in ``testArchitecturalInvariants.py``
 cover catalog-vs-router registration. This file exercises the three
-exported helpers (``fnAgentAction``, ``fdictLookupAction``,
+exported helpers (``ffnAgentAction``, ``fdictLookupAction``,
 ``fdictBuildCatalogJson``) plus the sPath placeholder hygiene that
 ``vaibify-do`` depends on.
 """
@@ -13,12 +13,12 @@ from vaibify.gui import actionCatalog
 
 
 # -----------------------------------------------------------------------
-# fnAgentAction decorator
+# ffnAgentAction decorator
 # -----------------------------------------------------------------------
 
 
 def test_fnAgentAction_attaches_name_attribute():
-    @actionCatalog.fnAgentAction("my-action")
+    @actionCatalog.ffnAgentAction("my-action")
     def fnHandler():
         return 42
 
@@ -30,13 +30,13 @@ def test_fnAgentAction_returns_original_function():
     def fnOriginal():
         return "sentinel"
 
-    fnDecorated = actionCatalog.fnAgentAction("x")(fnOriginal)
+    fnDecorated = actionCatalog.ffnAgentAction("x")(fnOriginal)
     assert fnDecorated is fnOriginal
     assert fnDecorated() == "sentinel"
 
 
 def test_fnAgentAction_preserves_call_behavior():
-    @actionCatalog.fnAgentAction("add")
+    @actionCatalog.ffnAgentAction("add")
     def fnAdd(a, b):
         return a + b
 

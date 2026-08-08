@@ -336,7 +336,7 @@ def test_fnSetServiceTracking_enables_and_disables_overleaf():
 
 
 def test_fnMigrateArchiveToTracking_seeds_flags_for_archive_files():
-    from vaibify.gui.workflowManager import fnMigrateArchiveToTracking
+    from vaibify.gui.workflowManager import fbMigrateArchiveToTracking
     dictWorkflow = {
         "sProjectRepoPath": "/workspace/Proj",
         "listSteps": [
@@ -349,7 +349,7 @@ def test_fnMigrateArchiveToTracking_seeds_flags_for_archive_files():
             },
         ],
     }
-    assert fnMigrateArchiveToTracking(dictWorkflow) is True
+    assert fbMigrateArchiveToTracking(dictWorkflow) is True
     dictSync = dictWorkflow["dictSyncStatus"]
     assert dictSync["StepA/a.pdf"]["bOverleaf"] is True
     assert dictSync["StepA/a.pdf"]["bZenodo"] is True
@@ -357,16 +357,16 @@ def test_fnMigrateArchiveToTracking_seeds_flags_for_archive_files():
 
 
 def test_fnMigrateArchiveToTracking_runs_only_once():
-    from vaibify.gui.workflowManager import fnMigrateArchiveToTracking
+    from vaibify.gui.workflowManager import fbMigrateArchiveToTracking
     dictWorkflow = {
         "sProjectRepoPath": "/workspace/Proj",
         "listSteps": [
             {"sDirectory": "X", "saPlotFiles": ["a.pdf"]},
         ],
     }
-    assert fnMigrateArchiveToTracking(dictWorkflow) is True
+    assert fbMigrateArchiveToTracking(dictWorkflow) is True
     dictWorkflow["dictSyncStatus"]["X/a.pdf"]["bOverleaf"] = False
-    assert fnMigrateArchiveToTracking(dictWorkflow) is False
+    assert fbMigrateArchiveToTracking(dictWorkflow) is False
     assert dictWorkflow["dictSyncStatus"]["X/a.pdf"][
         "bOverleaf"] is False
 

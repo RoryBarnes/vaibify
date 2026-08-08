@@ -140,7 +140,7 @@ def _fappBuildApplication(dictConfig):
     from . import routeScope
     app = FastAPI(
         title=dictConfig["sTitle"],
-        lifespan=serverLifespan._alifespanShared,
+        lifespan=serverLifespan._fcontextLifespanShared,
     )
     # Install the container-owner route class BEFORE any route registers:
     # route_class only governs routes added after the assignment, so an

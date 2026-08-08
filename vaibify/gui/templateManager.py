@@ -124,7 +124,7 @@ _STEP_DIRECTORY = str(pathlib.Path(__file__).parent.parent)
 )
 def test_quantitative_benchmark(dictStandard):
     """Compare output value against stored benchmark within tolerance."""
-    fActual = _fLoadValue(
+    fActual = _ffLoadValue(
         dictStandard["sDataFile"],
         dictStandard["sAccessPath"],
         _STEP_DIRECTORY,
@@ -241,8 +241,8 @@ def _fnCheckNpz(sFullPath, dictStandard):
 def _fnCheckCsv(sFullPath, dictStandard):
     """Validate a CSV file."""
     import csv
-    with open(sFullPath, newline="", encoding="utf-8") as fh:
-        listRows = list(csv.DictReader(fh))
+    with open(sFullPath, newline="", encoding="utf-8") as fileHandle:
+        listRows = list(csv.DictReader(fileHandle))
     tShape = dictStandard.get("tExpectedShape")
     if tShape is not None and len(tShape) >= 1:
         assert len(listRows) == tShape[0], (
@@ -266,15 +266,15 @@ def _fnCheckCsv(sFullPath, dictStandard):
 
 def _fnCheckJson(sFullPath, dictStandard):
     """Validate a JSON file."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        json.load(fh)
+    with open(sFullPath, encoding="utf-8") as fileHandle:
+        json.load(fileHandle)
 
 
 def _fnCheckHdf5(sFullPath, dictStandard):
     """Validate an HDF5 file."""
     assert h5py is not None, "h5py is not installed"
-    with h5py.File(sFullPath, "r") as fh:
-        assert len(fh.keys()) > 0, f"{sFullPath}: empty HDF5 file"
+    with h5py.File(sFullPath, "r") as fileHandle:
+        assert len(fileHandle.keys()) > 0, f"{sFullPath}: empty HDF5 file"
         if dictStandard.get("bCheckNaN", False):
             def fnCheckDataset(sName, obj):
                 if isinstance(obj, h5py.Dataset):
@@ -285,14 +285,14 @@ def _fnCheckHdf5(sFullPath, dictStandard):
                             dictStandard.get("bCheckInf", False),
                             sFullPath,
                         )
-            fh.visititems(fnCheckDataset)
+            fileHandle.visititems(fnCheckDataset)
 
 
 def _fnCheckWhitespace(sFullPath, dictStandard):
     """Validate a whitespace-delimited file."""
-    with open(sFullPath, encoding="utf-8") as fh:
+    with open(sFullPath, encoding="utf-8") as fileHandle:
         listRows = [
-            s for s in fh if s.strip()
+            s for s in fileHandle if s.strip()
             and not s.strip().startswith("#")
         ]
     tShape = dictStandard.get("tExpectedShape")
@@ -314,23 +314,23 @@ def _fnCheckWhitespace(sFullPath, dictStandard):
 
 def _fnCheckKeyvalue(sFullPath, dictStandard):
     """Validate a key=value text file."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        listLines = [s for s in fh if "=" in s]
+    with open(sFullPath, encoding="utf-8") as fileHandle:
+        listLines = [s for s in fileHandle if "=" in s]
     assert len(listLines) > 0, f"{sFullPath}: no key=value pairs"
 
 
 def _fnCheckJsonl(sFullPath, dictStandard):
     """Validate a JSON Lines file."""
     import json as jsonMod
-    with open(sFullPath, encoding="utf-8") as fh:
-        listRecords = [jsonMod.loads(s) for s in fh if s.strip()]
+    with open(sFullPath, encoding="utf-8") as fileHandle:
+        listRecords = [jsonMod.loads(s) for s in fileHandle if s.strip()]
     assert len(listRecords) > 0, f"{sFullPath}: empty JSONL"
 
 
 def _fnCheckGenericText(sFullPath, dictStandard):
     """Validate a generic text file by checking it is non-empty."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        sContent = fh.read()
+    with open(sFullPath, encoding="utf-8") as fileHandle:
+        sContent = fileHandle.read()
     assert len(sContent.strip()) > 0, f"{sFullPath}: empty file"
 
 
@@ -407,17 +407,17 @@ def _flistLoadColumns(sFullPath, sFormat):
         return []
     if sFormat == "csv":
         import csv
-        with open(sFullPath, newline="", encoding="utf-8") as fh:
-            reader = csv.DictReader(fh)
+        with open(sFullPath, newline="", encoding="utf-8") as fileHandle:
+            reader = csv.DictReader(fileHandle)
             return list(reader.fieldnames or [])
-    with open(sFullPath, encoding="utf-8") as fh:
-        return fh.readline().split()
+    with open(sFullPath, encoding="utf-8") as fileHandle:
+        return fileHandle.readline().split()
 
 
 def _flistLoadJsonKeys(sFullPath):
     """Load top-level keys from a JSON file."""
-    with open(sFullPath, encoding="utf-8") as fh:
-        dictData = json.load(fh)
+    with open(sFullPath, encoding="utf-8") as fileHandle:
+        dictData = json.load(fileHandle)
     if isinstance(dictData, dict):
         return list(dictData.keys())
     return []

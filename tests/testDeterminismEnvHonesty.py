@@ -112,7 +112,7 @@ def _ftRunStepWithVariables(dictVariables):
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {"sDirectory": "/ws/step"}
     with patch(
-        "vaibify.gui.pipelineRunner.fiRunStepCommands",
+        "vaibify.gui.pipelineRunner.ftRunStepCommands",
         new=AsyncMock(return_value=(0, 1.0)),
     ), patch(
         "vaibify.gui.pipelineRunner._fsetSnapshotDirectory",
@@ -124,7 +124,7 @@ def _ftRunStepWithVariables(dictVariables):
         "vaibify.gui.pipelineRunner._fnRecordRemoteDataProvenance",
         new=AsyncMock(),
     ), patch(
-        "vaibify.gui.workflowManager.fnCleanStepScratchDirs",
+        "vaibify.gui.workflowManager.flistCleanStepScratchDirs",
         new=MagicMock(),
     ):
         _fnRunAsync(_fiExecuteAndRecord(
@@ -187,7 +187,7 @@ def _ftPrepareWithGitExit(iGitExit):
     fnCallback, listCaptured = _fMockCallback()
     mockDocker = _fMockDocker(iGitExit, f"{I_EPOCH}\n" if not iGitExit else "")
     with patch(
-        "vaibify.gui.pipelineRunner._fnEnsureLogsDirectory",
+        "vaibify.gui.pipelineRunner._fsEnsureLogsDirectory",
         new=AsyncMock(return_value="/ws/.vaibify/logs"),
     ), patch(
         "vaibify.gui.pipelineLogger.fnPruneOldLogs",
@@ -321,7 +321,7 @@ def test_env_prefix_is_applied_outside_the_time_wrapper():
     """
     from vaibify.gui.pipelineRunner import _ftRunSingleCommand
     mockDocker = _fMockDocker()
-    mockDocker.texecRunInContainerStreamedWithChunks.return_value = (
+    mockDocker.ftRunInContainerStreamedWithChunks.return_value = (
         MagicMock(iExitCode=0, sStdout="", sStderr="")
     )
     fnCallback, _listCaptured = _fMockCallback()
@@ -330,7 +330,7 @@ def test_env_prefix_is_applied_outside_the_time_wrapper():
         "/work", fnCallback,
         sEnvPrefix=f"export SOURCE_DATE_EPOCH={I_EPOCH} && ",
     ))
-    sExecuted = mockDocker.texecRunInContainerStreamedWithChunks \
+    sExecuted = mockDocker.ftRunInContainerStreamedWithChunks \
         .call_args[0][1]
     assert sExecuted.index("export SOURCE_DATE_EPOCH") < (
         sExecuted.index("/usr/bin/time")

@@ -27,28 +27,28 @@ class TestTypedPropertyAccess:
 
     def test_docker(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.docker == "mockDockerConnection"
+        assert ctx.connectionDocker == "mockDockerConnection"
 
     def test_workflows(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        dictWorkflows = ctx.workflows
+        dictWorkflows = ctx.dictWorkflows
         assert "cid1" in dictWorkflows
 
     def test_paths(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.paths["cid1"] == "/workspace/wf.json"
+        assert ctx.dictPaths["cid1"] == "/workspace/wf.json"
 
     def test_terminals(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.terminals["sess1"] == "termObj"
+        assert ctx.dictTerminals["sess1"] == "termObj"
 
     def test_container_users(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.containerUsers["cid1"] == "rory"
+        assert ctx.dictContainerUsers["cid1"] == "rory"
 
     def test_pipeline_tasks(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.pipelineTasks["cid1"] == "taskObj"
+        assert ctx.dictPipelineTasks["cid1"] == "taskObj"
 
     def test_session_token(self):
         ctx = RouteContext(_fdictBuildRawContext())
@@ -59,22 +59,32 @@ class TestTypedPropertyAccess:
         assert ctx.sSessionToken == ""
 
     def test_require(self):
-        ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.require() is True
+        listCalls = []
+        dictRaw = _fdictBuildRawContext()
+        dictRaw["require"] = lambda: listCalls.append("required")
+        ctx = RouteContext(dictRaw)
+        assert ctx.fnRequireDocker() is None
+        assert listCalls == ["required"]
 
     def test_save(self):
-        ctx = RouteContext(_fdictBuildRawContext())
-        sResult = ctx.save("cid1", {"sName": "wf"})
-        assert sResult == "saved-cid1"
+        listCalls = []
+        dictRaw = _fdictBuildRawContext()
+        dictRaw["save"] = (
+            lambda sContainerId, dictWorkflow:
+            listCalls.append((sContainerId, dictWorkflow))
+        )
+        ctx = RouteContext(dictRaw)
+        assert ctx.fnSaveWorkflow("cid1", {"sName": "wf"}) is None
+        assert listCalls == [("cid1", {"sName": "wf"})]
 
     def test_variables(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        dictVars = ctx.variables("cid1")
+        dictVars = ctx.fdictGetVariables("cid1")
         assert dictVars["sUser"] == "rory"
 
     def test_workflow_dir(self):
         ctx = RouteContext(_fdictBuildRawContext())
-        assert ctx.workflowDir("cid1") == "/workspace/cid1"
+        assert ctx.fsGetWorkflowDirectory("cid1") == "/workspace/cid1"
 
 
 class TestDictCompatibleAccess:

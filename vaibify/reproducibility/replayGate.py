@@ -3,7 +3,7 @@
 The Replay axis measures the provenance of the development process —
 which AI models did the work, under what standing instructions, and
 whether the development dialogue is preserved — as distinct from the
-AICS ladder, which measures the state of the artifact. Axis states in
+PROOF ladder, which measures the state of the artifact. Axis states in
 ascending order: ``untracked`` (nothing declared), ``declared`` (every
 model used is declared), ``recorded`` (the Prompt Record is enabled and
 its first capture reviewed), ``supervised`` (the attribution watchdog
@@ -137,7 +137,7 @@ def fbSupervisionClean(dictWorkflow, dictEvidence=None):
     ``attributionLog.fdictSummarizeSupervisionEvidence`` — and never
     from the workflow's own ``iUnattributedFlagCount``. That integer
     lives in ``project.json``, which the supervised in-container agent
-    edits routinely, so grading on it made the AICS row gradeable on
+    edits routinely, so grading on it made the PROOF row gradeable on
     self-report: setting it to zero turned the row green while the
     flags file was full of permanent findings.
 

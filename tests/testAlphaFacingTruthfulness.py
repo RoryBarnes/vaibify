@@ -194,7 +194,7 @@ def test_the_directory_adapter_cannot_supply_a_command():
     from vaibify.docker.dockerConnection import DockerConnection
 
     sSource = inspect.getsource(DockerConnection.flistDirectoryEntries)
-    assert "_texecRunTypedRead(" in sSource
+    assert "_ftRunTypedRead(" in sSource
     assert "shlex.quote" not in sSource, (
         "the adapter is building a command again"
     )

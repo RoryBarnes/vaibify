@@ -16,7 +16,7 @@ from vaibify.gui.pipelineServer import (
     _fnHandleTerminalText,
     _fnSafeDispatch,
     _fconnectionCreateDocker,
-    _ftupleBuildHelpers,
+    _ftBuildHelpers,
     ffBuildResilientWsCallback,
     fnDispatchAction,
     fnHandlePipelineWs,
@@ -43,7 +43,7 @@ class TestDispatchRunFrom:
         fnCallback = AsyncMock()
         dictWorkflow = {"listSteps": []}
         with patch(
-            "vaibify.gui.pipelineServer.fnRunFromStep",
+            "vaibify.gui.pipelineServer.fiRunFromStep",
             new_callable=AsyncMock,
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
@@ -62,7 +62,7 @@ class TestDispatchRunFrom:
         fnCallback = AsyncMock()
         dictWorkflow = {"listSteps": []}
         with patch(
-            "vaibify.gui.pipelineServer.fnRunFromStep",
+            "vaibify.gui.pipelineServer.fiRunFromStep",
             new_callable=AsyncMock,
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
@@ -82,7 +82,7 @@ class TestDispatchRunFrom:
         ]}
         dictRequest = {"sStartStepLabel": "A01"}
         with patch(
-            "vaibify.gui.pipelineServer.fnRunFromStep",
+            "vaibify.gui.pipelineServer.fiRunFromStep",
             new_callable=AsyncMock,
         ) as mockRunFrom:
             await _fnDispatchRunFrom(
@@ -113,7 +113,7 @@ class TestDispatchAction:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunAllSteps",
+        "vaibify.gui.pipelineServer.fiRunAllSteps",
         new_callable=AsyncMock,
     )
     async def test_run_all(self, mockRun):
@@ -124,7 +124,7 @@ class TestDispatchAction:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunAllSteps",
+        "vaibify.gui.pipelineServer.fiRunAllSteps",
         new_callable=AsyncMock,
     )
     async def test_force_run_all(self, mockRun):
@@ -143,7 +143,7 @@ class TestDispatchAction:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnVerifyOnly",
+        "vaibify.gui.pipelineServer.fiVerifyOnly",
         new_callable=AsyncMock,
     )
     async def test_verify(self, mockVerify):
@@ -152,7 +152,7 @@ class TestDispatchAction:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunAllTests",
+        "vaibify.gui.pipelineServer.fiRunAllTests",
         new_callable=AsyncMock,
     )
     async def test_run_all_tests(self, mockTests):
@@ -170,7 +170,7 @@ class TestDispatchAction:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunAllSteps",
+        "vaibify.gui.pipelineServer.fiRunAllSteps",
         new_callable=AsyncMock,
     )
     async def test_run_all_threads_active_workflow_path(self, mockRun):
@@ -192,7 +192,7 @@ class TestDispatchAction:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnVerifyOnly",
+        "vaibify.gui.pipelineServer.fiVerifyOnly",
         new_callable=AsyncMock,
     )
     async def test_verify_threads_active_workflow_path(self, mockVerify):
@@ -215,7 +215,7 @@ class TestDispatchAction:
 class TestDispatchSelected:
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        "vaibify.gui.pipelineServer.fiRunSelectedSteps",
         new_callable=AsyncMock,
     )
     async def test_dispatches_selected_steps(self, mockRunSelected):
@@ -234,7 +234,7 @@ class TestDispatchSelected:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        "vaibify.gui.pipelineServer.fiRunSelectedSteps",
         new_callable=AsyncMock,
     )
     async def test_resolves_step_labels(self, mockRunSelected):
@@ -257,7 +257,7 @@ class TestDispatchSelected:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        "vaibify.gui.pipelineServer.fiRunSelectedSteps",
         new_callable=AsyncMock,
     )
     async def test_merges_indices_and_labels_deduplicated(
@@ -286,7 +286,7 @@ class TestDispatchSelected:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        "vaibify.gui.pipelineServer.fiRunSelectedSteps",
         new_callable=AsyncMock,
     )
     async def test_default_run_mode_is_full(self, mockRunSelected):
@@ -304,7 +304,7 @@ class TestDispatchSelected:
 
     @pytest.mark.asyncio
     @patch(
-        "vaibify.gui.pipelineServer.fnRunSelectedSteps",
+        "vaibify.gui.pipelineServer.fiRunSelectedSteps",
         new_callable=AsyncMock,
     )
     async def test_plotsOnly_threads_through(self, mockRunSelected):
@@ -864,12 +864,12 @@ class TestCreateDocker:
 
 
 # ---------------------------------------------------------------
-# _ftupleBuildHelpers — fnWorkflowDir (lines 978-986)
+# _ftBuildHelpers — fnWorkflowDir (lines 978-986)
 # ---------------------------------------------------------------
 
 class TestWorkflowDir:
     def test_returns_workspace_root_when_no_path(self):
-        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftBuildHelpers(
             MagicMock(), {}, {},
         )
         sResult = fnWorkflowDir("ctr1")
@@ -877,7 +877,7 @@ class TestWorkflowDir:
 
     def test_returns_parent_of_vaibify_dir(self):
         dictPaths = {"ctr1": "/workspace/project/.vaibify/w.yml"}
-        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftBuildHelpers(
             MagicMock(), {}, dictPaths,
         )
         sResult = fnWorkflowDir("ctr1")
@@ -885,7 +885,7 @@ class TestWorkflowDir:
 
     def test_returns_dirname_without_vaibify(self):
         dictPaths = {"ctr1": "/workspace/project/workflow.yml"}
-        _, _, _, fnWorkflowDir, _ = _ftupleBuildHelpers(
+        _, _, _, fnWorkflowDir, _ = _ftBuildHelpers(
             MagicMock(), {}, dictPaths,
         )
         sResult = fnWorkflowDir("ctr1")

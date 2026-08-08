@@ -114,7 +114,7 @@ def _recordOpenLiveSocket(stateApp, sSessionId):
         stateApp.dictContainerOwners, S_PROJECT_NAME, bPipelineLane=True,
     )
     recordConnection = containerOwnership.ConnectionRecord(
-        connection=_FakeWebSocketConnection(),
+        websocket=_FakeWebSocketConnection(),
         sBrowserSessionId=sSessionId,
         iOwnerGeneration=1,
         sLane=containerOwnership.S_LANE_PIPELINE,
@@ -169,7 +169,7 @@ async def testExpiredOwningSessionIsOrphanedNotBareRevoked():
     lease, agent token, generation, and cardinality entry are retained.
 
     Kills: committing an expired owning session with a bare
-    ``fnRevokeSessionById`` instead of ``fnOrphanSession`` in
+    ``fbRevokeSessionById`` instead of ``fnOrphanSession`` in
     ``sessionLifecycle._fnCommitSessionExpiry``.
     """
     stateApp = _fstateBuildAppState()
@@ -245,7 +245,7 @@ async def testLiveWebSocketVetoesSlidingIdle():
     assert browserSession.fbValidateCredential(
         stateApp.dictBrowserSessions, sCredential,
     ) is True
-    assert recordConnection.connection.listCloseCodes == []
+    assert recordConnection.websocket.listCloseCodes == []
     # fbValidateCredential above refreshed the stamp; age it again now
     # that the socket is gone.
     containerOwnership.fnDecrementLiveConnectionForRecord(
@@ -297,7 +297,7 @@ async def testAbsoluteCapFiresDespiteALiveWebSocket():
     assert browserSession.fbValidateCredential(
         stateApp.dictBrowserSessions, sCredential,
     ) is False
-    assert recordConnection.connection.listCloseCodes == [4401], (
+    assert recordConnection.websocket.listCloseCodes == [4401], (
         "the capped session's live socket must be actively closed"
     )
     assert stateApp.dictContainerOwners[S_PROJECT_NAME] is recordOwner, (
@@ -345,7 +345,7 @@ async def testCapDuringALiveRunOrphansAndNeverReleases():
     stateApp = _fstateBuildAppState()
     sSessionId, sCredential = _tMintBrowserSession(stateApp)
     recordOwner = _recordSeedOwnedContainer(stateApp, sSessionId)
-    fileHandleLock = containerLock.fnAcquireContainerLock(
+    fileHandleLock = containerLock.ffileAcquireContainerLock(
         S_PROJECT_NAME, 8137,
     )
     recordOwner.fileHandleLock = fileHandleLock
@@ -374,7 +374,7 @@ async def testCapDuringALiveRunOrphansAndNeverReleases():
         "orphaning ends the browser session, never the container's work"
     )
     with pytest.raises(containerLock.ContainerLockedError):
-        containerLock.fnAcquireContainerLock(S_PROJECT_NAME, 8138)
+        containerLock.ffileAcquireContainerLock(S_PROJECT_NAME, 8138)
     # And the safe reaper declines it while the run is live, however
     # long the orphan has stood.
     recordOwner.fOrphanedSinceMonotonic = time.monotonic() - 99999.0
@@ -475,7 +475,7 @@ def testRevokedCredentialLearnsNothingFromTheExpiryView():
     """A revoked session's credential reads as unknown."""
     stateApp = _fstateBuildAppState()
     sSessionId, sCredential = _tMintBrowserSession(stateApp)
-    browserSession.fnRevokeSessionById(
+    browserSession.fbRevokeSessionById(
         stateApp.dictBrowserSessions, sSessionId,
     )
     assert sessionLifecycle.fdictSessionExpiryView(

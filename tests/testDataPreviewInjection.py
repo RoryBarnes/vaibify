@@ -112,7 +112,7 @@ def test_file_fetch_does_not_execute_injected_payload(tmp_path):
         dictCaptured["sCommand"] = sCommand
         return ExecResult(iExitCode=0, sStdout="", sStderr="")
 
-    conn.texecRunInContainerStreamed = _fCapture
+    conn.ftRunInContainerStreamed = _fCapture
     conn.fbaFetchFile("cid", "/workspace/fig/a$(touch INJECTED)b.png")
     assert _fbSentinelSurvivesBash(dictCaptured["sCommand"], tmp_path), (
         "file fetch path broke out: INJECTED was created"

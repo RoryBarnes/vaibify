@@ -111,7 +111,7 @@ helper; removing it was a security fix. Don't repeat the mistake.
 ### Path validation (defense in depth)
 Validate at three layers, every time:
 1. **Route** (`syncRoutes.py`): pydantic types + explicit
-   `fnValidatePathWithinRoot` against `WORKSPACE_ROOT` for every
+   `fsValidatePathWithinRoot` against `WORKSPACE_ROOT` for every
    file path in the request. Also reject `\x00`, leading `/`, and
    `..` segments for target directories.
 2. **Dispatcher** (`syncDispatcher.py`): validate the projectId /
