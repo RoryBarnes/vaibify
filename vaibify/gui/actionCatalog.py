@@ -906,6 +906,10 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     ("POST", "/api/registry/{sName}/release"),
     ("POST", "/api/host-directories/create"),
     ("POST", "/api/projects/create"),
+    # Host-global browser preference (per-directory host-warning
+    # acknowledgement in ~/.vaibify/preferences.json) — host-side UI
+    # state the in-container agent has no business writing.
+    ("PUT", "/api/preferences/host-warning-acknowledged"),
 })
 
 

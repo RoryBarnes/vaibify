@@ -2385,6 +2385,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)
+    routes.preferencesRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 

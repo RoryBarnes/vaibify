@@ -4343,7 +4343,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # being refused. Splitting the three apart would put one refusal's
     # reasons a call hop away from its siblings while they still share
     # the event, the loop and the ordering between them.
-    "pipelineServer.py": 2489,
+    # +1 (2026-08-08): registration line for the preferencesRoutes
+    # module in _fnRegisterAllRoutes, like every other route module.
+    "pipelineServer.py": 2490,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4597,7 +4599,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +3 (2026-08-02): saQueryFields on the three actions whose routes
     # read a parameter from the query string, so a generated command
     # sends each field on the transport the route actually reads.
-    "actionCatalog.py": 964,
+    # +4 (2026-08-08): the host-warning acknowledgement preference PUT
+    # excluded from the agent lane. Same governance responsibility.
+    "actionCatalog.py": 968,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
