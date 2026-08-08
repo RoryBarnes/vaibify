@@ -32,6 +32,7 @@ T_PRE_MERGE_WORKFLOWS = (
     "falsification.yml",
     "security.yml",
     "agentDocsPathCheck.yml",
+    "styleContract.yml",
 )
 
 # Runs after a merge: these publish or package what `main` now is.

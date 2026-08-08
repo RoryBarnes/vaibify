@@ -51,6 +51,7 @@ T_GATE_WORKFLOWS = (
     "falsification.yml",
     "security.yml",
     "agentDocsPathCheck.yml",
+    "styleContract.yml",
 )
 
 T_MATRIX_TOKENS = (
