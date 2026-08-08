@@ -763,6 +763,7 @@ def test_fnBuildImage_full(mockRun):
     assert mockRun.call_count >= 3
 
 
+@pytest.mark.dockerProbeUnderTest
 @patch("subprocess.run")
 def test_fbImageExists_true(mockRun):
     from vaibify.docker.imageBuilder import fbImageExists
@@ -770,6 +771,7 @@ def test_fbImageExists_true(mockRun):
     assert fbImageExists("proj:latest") is True
 
 
+@pytest.mark.dockerProbeUnderTest
 @patch("subprocess.run")
 def test_fbImageExists_false(mockRun):
     from vaibify.docker.imageBuilder import fbImageExists
