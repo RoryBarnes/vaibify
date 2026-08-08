@@ -104,6 +104,22 @@ def _fdictAuthority(listLanes, sRationale):
 # unauthorised, and a line here the scan no longer finds is a review
 # aimed at code that moved.
 DICT_NAMED_AUTHORITIES = {
+    # -- the host-mode gateway -------------------------------------------
+    "host/hostConnection.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["http", "websocket", "background"],
+            "The host-mode execution gateway, hub-reachable since the "
+            "connection router wired it into dictCtx['docker'] (wave "
+            "2). The single permitted subprocess launcher under "
+            "vaibify/host/ (testHostSubprocessConfinement pins it); "
+            "every launch is admission-gated, spawned suspended behind "
+            "a stdin gate, and write-ahead journaled as host-exec with "
+            "its recycle-proof group identity before the gate opens. "
+            "It executes on the HOST with the user's authority by "
+            "design -- the host-mode warning modal owns that "
+            "disclosure, and the path guard bounds every direct path "
+            "argument to the project and scratch roots.",
+        ),
     # -- host CLI and configuration -------------------------------------
     "cli/commandBuild.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
