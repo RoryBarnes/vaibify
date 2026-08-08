@@ -52,9 +52,9 @@ paths today; if you add one, it takes `os.path` and shares only *pure*
 helpers with `workflowManager`.
 
 Enforced by `testWorkflowManagerUsesPosixPath`. (A second invariant,
-`testDirectorUsesOsPath`, guarded the withdrawn host-side `director.py`
-and was removed with it — a contract whose named test cannot be grepped
-reads as a contract that does not exist.)
+`testDirectorUsesOsPath`, guarded the withdrawn host-side director
+module and was removed with it — a contract whose named test cannot be
+grepped reads as a contract that does not exist.)
 
 ### Container-access gate
 

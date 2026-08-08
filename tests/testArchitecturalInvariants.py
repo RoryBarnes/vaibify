@@ -4658,7 +4658,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reuse fdictCommitWorkflowSave's record without handing the journal
     # probe a hash belonging to a different file. Same cohesive
     # responsibility: the Replay axis, in the module that owns it.
-    "routes/replayRoutes.py": 962,
+    # +1 (2026-08-08): the file-write payload's Docker-id stamp
+    # became mode-aware for host mode (one import line); the
+    # payload site itself swapped line for line.
+    "routes/replayRoutes.py": 963,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a
