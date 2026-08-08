@@ -14,7 +14,6 @@ __all__ = [
     "testAllRouteModulesRegisteredInInit",
     "testAllPackageModulesDefineDunderAll",
     "testWorkflowManagerUsesPosixPath",
-    "testDirectorUsesOsPath",
     "testNoScienceSpecificIdentifiersInSource",
     "testNoScienceSpecificIdentifiersInShippedTemplates",
     "testScienceTermScanMatchesSeparatedSpellings",
