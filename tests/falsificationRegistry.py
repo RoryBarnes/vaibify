@@ -306,11 +306,11 @@ LIST_FALSIFICATIONS = [
         source='tools/generateMutationInventory.py',
         old="""            "sScopeFingerprint": _fsFingerprintNode(
                 nodeScope if nodeScope is not None else nodeCall,
-                self.sModuleSource,
+                self.tupleSourceLines,
             ),""",
         new="""            "sScopeFingerprint": _fsFingerprintNode(
                 nodeCall,
-                self.sModuleSource,
+                self.tupleSourceLines,
             ),""",
     ),
 

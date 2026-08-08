@@ -85,12 +85,15 @@ def _fsReadSourceExpressionForFingerprint(sFingerprint):
     ever asking the matcher which row a frame belongs to.
     """
     sModuleSource = PATH_SHAPES.read_text(encoding="utf-8")
+    tupleSourceLines = mutationAttribution._moduleGenerator.ftupleSourceLines(
+        sModuleSource,
+    )
     treeModule = ast.parse(sModuleSource)
     for nodeReference in ast.walk(treeModule):
         if not isinstance(nodeReference, (ast.Call, ast.Attribute)):
             continue
         if mutationAttribution.fsFingerprintReferenceNode(
-            nodeReference, sModuleSource,
+            nodeReference, tupleSourceLines,
         ) == sFingerprint:
             return ast.unparse(nodeReference)
     return ""

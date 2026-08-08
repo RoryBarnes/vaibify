@@ -423,6 +423,7 @@ class _VisitorCallSites(ast.NodeVisitor):
         # The fingerprints are sliced from this, never regenerated
         # from the tree -- see _fsFingerprintNode.
         self.sModuleSource = sModuleSource
+        self.tupleSourceLines = ftupleSourceLines(sModuleSource)
         self.listRows = []
         self.listAcquisitions = []
         self.listUnresolvedSubprocessSites = []
@@ -614,11 +615,11 @@ class _VisitorCallSites(ast.NodeVisitor):
             "iOrdinal": 0,
             "iLine": nodeAcquisition.lineno,
             "sFingerprint": _fsFingerprintNode(
-                nodeAcquisition, self.sModuleSource,
+                nodeAcquisition, self.tupleSourceLines,
             ),
             "sScopeFingerprint": _fsFingerprintNode(
                 nodeScope if nodeScope is not None else nodeAcquisition,
-                self.sModuleSource,
+                self.tupleSourceLines,
             ),
         }
         for sField in TUPLE_ACQUISITION_REVIEWER_FIELDS:
@@ -745,11 +746,11 @@ class _VisitorCallSites(ast.NodeVisitor):
             "iLine": nodeCall.lineno,
             "iOrdinal": 0,
             "sFingerprint": _fsFingerprintNode(
-                nodeCall, self.sModuleSource,
+                nodeCall, self.tupleSourceLines,
             ),
             "sScopeFingerprint": _fsFingerprintNode(
                 nodeScope if nodeScope is not None else nodeCall,
-                self.sModuleSource,
+                self.tupleSourceLines,
             ),
         }
 
@@ -768,7 +769,7 @@ class _VisitorCallSites(ast.NodeVisitor):
             "sReferenceKind": sReferenceKind,
             "iOrdinal": 0,
             "sFingerprint": _fsFingerprintNode(
-                nodeReference, self.sModuleSource,
+                nodeReference, self.tupleSourceLines,
             ),
             "sAccess": sAccess,
             "bMutationCapable": (
@@ -1387,7 +1388,22 @@ def _fsCalledName(nodeCall):
     return ""
 
 
-def _fsFingerprintNode(nodeReference, sModuleSource):
+def ftupleSourceLines(sModuleSource):
+    """Split a module's source once, for repeated fingerprinting.
+
+    Called ONCE per module and threaded to every fingerprint in it.
+    ``ast.get_source_segment`` -- the obvious way to slice a node out of
+    a file -- re-splits the ENTIRE source on every call, which is
+    invisible on one node and quadratic over a module: measured at
+    15.9 ms per node against a large file, so the attribution index,
+    which fingerprints every Call/Attribute/Name, took minutes per
+    module and timed the CI suite out at fifteen. Splitting once is the
+    whole difference.
+    """
+    return tuple(sModuleSource.splitlines(keepends=True))
+
+
+def _fsFingerprintNode(nodeReference, tupleSourceLines):
     """Return a digest of a reference's own source, sliced from the file.
 
     **The digest must depend on the researcher's code and on nothing
@@ -1396,7 +1412,7 @@ def _fsFingerprintNode(nodeReference, sModuleSource):
     and was wrong in a way only a version matrix could show.
     ``ast.unparse`` REGENERATES source from the parse tree, and CPython
     changes its formatting between releases: on Python 3.14 the same
-    unchanged functions unparsed differently, and 46 fingerprints moved
+    unchanged functions unparsed differently and 46 fingerprints moved
     at once. A marker meant to answer "has the code this review depended
     on been edited?" was also answering "are you on a different Python?",
     which makes every manual disposition read as expired on one leg of
@@ -1415,21 +1431,58 @@ def _fsFingerprintNode(nodeReference, sModuleSource):
       not: 3.12 rewrote f-string tokenisation (PEP 701), so any function
       containing an f-string would differ across the supported range.
 
+    The slice is taken here rather than through ``ast.get_source_segment``
+    for speed (see :func:`ftupleSourceLines`) and for one property that
+    function cannot offer: its own behaviour is CPython's to change,
+    which is the exact dependence this fingerprint exists to escape.
+
+    ``col_offset`` is a UTF-8 BYTE offset, so the slicing encodes and
+    decodes rather than indexing characters; a module with a non-ASCII
+    identifier or docstring would otherwise fingerprint a shifted span.
+
     The cost is real and is the safe direction: reformatting a function
     or editing a comment inside it now moves its scope fingerprint and
     expires the disposition bound to it. That costs a re-read of code
     somebody already reviewed. The failure it replaces cost the check
     its meaning on an entire Python version.
     """
-    sSegment = ast.get_source_segment(sModuleSource, nodeReference,
-                                      padded=True)
-    if sSegment is None:  # pragma: no cover - node without position info
+    iFirstLine = getattr(nodeReference, "lineno", None)
+    iLastLine = getattr(nodeReference, "end_lineno", None)
+    if iFirstLine is None or iLastLine is None:
         # Never silently fall back to unparse: that would reintroduce
         # the version dependence for exactly the nodes nobody notices.
         raise RuntimeError(
             "Cannot fingerprint a node with no source position; the "
             "inventory's identity must come from the file, not from a "
             "regenerated approximation."
+        )
+    iStartByte = nodeReference.col_offset
+    iEndByte = nodeReference.end_col_offset
+    if iFirstLine == iLastLine:
+        sSegment = tupleSourceLines[iFirstLine - 1].encode("utf-8")[
+            iStartByte:iEndByte
+        ].decode("utf-8")
+    else:
+        # Pad the first line to its column, exactly as
+        # ``ast.get_source_segment(padded=True)`` does: a multi-line
+        # segment keeps its opening indentation so re-indenting the
+        # block still moves the digest. Tabs and form feeds are kept as
+        # themselves; every other character becomes a space.
+        sPrefix = tupleSourceLines[iFirstLine - 1].encode("utf-8")[
+            :iStartByte
+        ].decode("utf-8")
+        sPadding = "".join(
+            sCharacter if sCharacter in "\f\t" else " "
+            for sCharacter in sPrefix
+        )
+        sFirst = sPadding + tupleSourceLines[iFirstLine - 1].encode(
+            "utf-8",
+        )[iStartByte:].decode("utf-8")
+        sLast = tupleSourceLines[iLastLine - 1].encode("utf-8")[
+            :iEndByte
+        ].decode("utf-8")
+        sSegment = "".join(
+            (sFirst,) + tupleSourceLines[iFirstLine:iLastLine - 1] + (sLast,)
         )
     return hashlib.sha256(sSegment.encode("utf-8")).hexdigest()[:16]
 
