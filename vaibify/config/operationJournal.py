@@ -1064,6 +1064,16 @@ DICT_OPERATION_PROBE_CATALOG = {
         "fdictProbe": _fdictProbeHelperOperation,
         "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,
     },
+    # A host-mode project's subprocess launch. The identity and the
+    # prover are the helper record's — recycle-proof PID plus
+    # process-group emptiness, fully host-native — but the kind is
+    # distinct because host projects emit exactly two kinds
+    # (``host-exec`` and ``file-write``) and a reader of a journal
+    # should see which lane wrote a record without inferring it.
+    "host-exec": {
+        "fdictProbe": _fdictProbeHelperOperation,
+        "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,
+    },
     "file-write": {
         "fdictProbe": _fdictProbeFileWriteOperation,
         "fnCleanupAfterSettledProbe": _fnCleanupSettledOperationNoResidue,

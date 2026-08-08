@@ -30,6 +30,11 @@
       "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
       "sSupportingSymbols": "_fsetMissingPathsBatched, sPathfile"
     },
+    "3297f4a18b52eee58506f2993431a6450bf7a33d05156600bda923a6f40847fe": {
+      "sDisposition": "host-variant",
+      "sRationale": "The host gateway's own internal delegation -- this IS the host implementation, not a caller handing it a command.",
+      "sSupportingSymbols": "HostConnection.ftResultExecuteCommand, HostConnection.ftRunInContainerStreamed"
+    },
     "35061b2c8788208f487f7212949ac5ab9ce3333ffadf2d7849cb8ce99573357c": {
       "sDisposition": "host-variant",
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
@@ -336,7 +341,7 @@
       "sSupportingSymbols": "ftResultGenerateDagSvg, sConvert"
     }
   },
-  "iRowCount": 134,
+  "iRowCount": 135,
   "iUndisposedSiteBudget": 67,
   "listRows": [
     {
@@ -1248,6 +1253,13 @@
       "sFingerprint": "b049ebb379cc4048d2b23f03059e44b6af240b25c43620c3cc8f2cded4313d7e",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/workflowReloadDetector.py"
+    },
+    {
+      "sCommandExpression": "sCommand",
+      "sEnclosingFunction": "HostConnection.ftResultExecuteCommand",
+      "sFingerprint": "3297f4a18b52eee58506f2993431a6450bf7a33d05156600bda923a6f40847fe",
+      "sMethod": "ftRunInContainerStreamed",
+      "sModule": "vaibify/host/hostConnection.py"
     },
     {
       "sCommandExpression": "sCommand",

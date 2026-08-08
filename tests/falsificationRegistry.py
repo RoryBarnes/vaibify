@@ -7508,4 +7508,101 @@ def _fdictEntry(sRel):
             '            pass\n'
         ),
     ),
+
+    # --- Host-mode Phase B: the HostConnection's contract (2026-08-08).
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestHostPathGuard::'
+            'test_prefix_collision_is_refused'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Dropping the os.sep suffix admits any sibling directory whose
+        # name extends the root's (projectX vs projectXY).
+        old=(
+            '            if sRealPath == sAllowedRoot or '
+            'sRealPath.startswith(\n'
+            '                sAllowedRoot + os.sep,\n'
+            '            ):\n'
+        ),
+        new=(
+            '            if sRealPath == sAllowedRoot or '
+            'sRealPath.startswith(\n'
+            '                sAllowedRoot,\n'
+            '            ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestHostPathGuard::'
+            'test_symlink_escape_is_refused'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # abspath does not resolve symlinks, so a link inside the
+        # project pointing outside it would pass containment.
+        old='        sRealPath = os.path.realpath(sPath)\n',
+        new='        sRealPath = os.path.abspath(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_identity_is_journaled_before_the_gate_opens'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Releasing the gate before the promotion reopens the launch
+        # race the gate exists to close: the command's first
+        # instruction can run before any record names the process.
+        old=(
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"spawned")\n'
+            '        mutationAdmission.fnPromoteJournaledHostExec(\n'
+            '            dictHostExecHandle, processChild.pid, '
+            'processChild.pid,\n'
+            '        )\n'
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"promoted")\n'
+            '        processChild.stdin.write(b"GO\\n")\n'
+            '        processChild.stdin.flush()\n'
+            '        processChild.stdin.close()\n'
+        ),
+        new=(
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"spawned")\n'
+            '        processChild.stdin.write(b"GO\\n")\n'
+            '        processChild.stdin.flush()\n'
+            '        processChild.stdin.close()\n'
+            '        mutationAdmission.fnPromoteJournaledHostExec(\n'
+            '            dictHostExecHandle, processChild.pid, '
+            'processChild.pid,\n'
+            '        )\n'
+            '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
+            '"promoted")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestGatedExec::'
+            'test_timeout_terminates_the_whole_recorded_group'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Narrowing the group kill to a single PID leaves a backgrounded
+        # sibling alive -- the unrelated-process-safety cuts both ways.
+        old=(
+            '            os.killpg(iProcessGroup, iSignalNumber)\n'
+        ),
+        new=(
+            '            os.kill(iProcessGroup, iSignalNumber)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostConnection.py::TestAtomicWrites::'
+            'test_replaced_executable_keeps_its_bit'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # Without the pre-rename fchmod the temp file's 0600 lands as
+        # the target's mode and a replaced script loses its
+        # executable bit.
+        old='            os.fchmod(iDescriptor, iEffectiveMode)\n',
+        new='',
+    ),
 ]

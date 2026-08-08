@@ -45,6 +45,9 @@ __all__ = [
     "fnAssertDurableExecAdmitted",
     "fnAssertOperationAdmittedByIdentity",
     "fdictBeginJournaledExec",
+    "fdictBeginJournaledHostExec",
+    "fnPromoteJournaledHostExec",
+    "fnSettleJournaledHostExec",
     "fnPromoteJournaledExec",
     "fnSettleJournaledExec",
 ]
@@ -402,6 +405,75 @@ def fnAssertOperationAdmittedByIdentity(
 # ---------------------------------------------------------------------
 # Journaled Docker exec glue for the create -> journal -> start split.
 # ---------------------------------------------------------------------
+
+def fdictBeginJournaledHostExec(sResourceName, sOperationLabel):
+    """Prepare a ``host-exec`` journal record before any host launch.
+
+    Unlike the Docker exec trio below, this does NOT require a durable
+    admission: on the host there is no container to act as a backstop,
+    so EVERY launch gets a write-ahead record — the quiescence claim
+    ("every process vaibify started has exited") rests on the journal
+    alone. ``sOperationLabel`` is a bounded operation name
+    (``pipeline-step:A03``, ``git-status``), never command text; the
+    journal's schema allowlist would refuse a command anyway.
+
+    The ADMISSION gates (:func:`fnAssertContainerCommandAdmitted`,
+    :func:`fnAssertDurableExecAdmitted`) still run separately at the
+    primitive, so carrier enforcement is unchanged — this function is
+    about the record, not the permission.
+    """
+    sOperationId = operationJournal.fsPrepareOperation(
+        sResourceName, "host-exec", sOperationLabel,
+    )
+    return {
+        "sContainerName": sResourceName,
+        "sOperationId": sOperationId,
+    }
+
+
+def fnPromoteJournaledHostExec(dictHostExecHandle, iPid, iProcessGroup):
+    """Persist the holder identity, then identity-gate before release.
+
+    Called while the child is still suspended behind the launch gate,
+    so the PID and process group are on disk BEFORE the command's first
+    instruction runs — the host analogue of the Docker leg's
+    create -> journal -> start split.
+    """
+    dictIdentity = {
+        "iHolderPid": iPid,
+        "iHolderProcessGroup": iProcessGroup,
+    }
+    operationJournal.fnPromoteOperationToInFlight(
+        dictHostExecHandle["sContainerName"],
+        dictHostExecHandle["sOperationId"], dictIdentity,
+    )
+    fnAssertOperationAdmittedByIdentity(
+        dictHostExecHandle["sContainerName"],
+        dictHostExecHandle["sOperationId"], dictIdentity,
+    )
+
+
+def fnSettleJournaledHostExec(dictHostExecHandle):
+    """Settle the host-exec record once its process group proved empty.
+
+    The caller is responsible for only settling after the group is
+    proven quiet; an unsettleable record is left IN_FLIGHT so the
+    journal's probe tier — the same recycle-proof PID + group-emptiness
+    prover the helper kind uses — decides at the next resolution.
+    """
+    try:
+        operationJournal.fnSettleOperation(
+            dictHostExecHandle["sContainerName"],
+            dictHostExecHandle["sOperationId"],
+        )
+    except operationJournal.OperationJournalError as error:
+        logger.warning(
+            "Could not settle host-exec journal record %s for project "
+            "'%s': %s",
+            dictHostExecHandle["sOperationId"],
+            dictHostExecHandle["sContainerName"], error,
+        )
+
 
 def fdictBeginJournaledExec(sContainerId):
     """Prepare an exec journal record under the active durable guard.
