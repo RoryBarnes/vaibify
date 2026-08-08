@@ -674,12 +674,26 @@ class StyleViolationScanner(ast.NodeVisitor):
                           f"annotation disagrees with prefix {sPrefix}")
 
 
+# Build artifacts written INTO the package tree by the build backend.
+# setuptools-scm generates _version.py on every editable install (CI's
+# pip install -e .), and its binding names -- version, version_tuple,
+# commit_id -- are setuptools-scm's contract, not ours: the same
+# foreign-ownership rule as dispatch or emit, plus the file does not
+# even exist in a fresh checkout. Discovered when the style-contract
+# lane failed on CI while every local run was green: the scanner walks
+# the filesystem, not git, so an installed tree contains three bindings
+# a checkout does not.
+SET_GENERATED_SOURCE_FILES = {"vaibify/_version.py"}
+
+
 def flistScanPackage(pathPackage=PATH_PACKAGE):
     """Scan every module and return sorted, de-duplicated violation rows."""
     listViolations = []
     counterCensus = Counter()
     for pathModule in sorted(pathPackage.rglob("*.py")):
         sRelativePath = str(pathModule.relative_to(PATH_REPOSITORY))
+        if sRelativePath in SET_GENERATED_SOURCE_FILES:
+            continue
         try:
             treeModule = ast.parse(pathModule.read_text(errors="replace"))
         except SyntaxError:
