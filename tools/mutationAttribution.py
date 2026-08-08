@@ -170,9 +170,18 @@ def _fmoduleLoadInventoryGenerator():
 _moduleGenerator = _fmoduleLoadInventoryGenerator()
 
 
-def fsFingerprintReferenceNode(nodeReference):
-    """Return the SCANNER's fingerprint for one reference node."""
-    return _moduleGenerator._fsFingerprintNode(nodeReference)
+def fsFingerprintReferenceNode(nodeReference, tupleSourceLines):
+    """Return the SCANNER's fingerprint for one reference node.
+
+    Takes the module source because the scanner's fingerprint is SLICED
+    from the file rather than regenerated from the tree -- see
+    generateMutationInventory._fsFingerprintNode. Attribution must use
+    the identical construction or the index it builds cannot be matched
+    against the checked-in inventory at all.
+    """
+    return _moduleGenerator._fsFingerprintNode(
+        nodeReference, tupleSourceLines,
+    )
 
 
 def fsBuildInventoryRowKey(dictRow):
@@ -231,10 +240,11 @@ def fsDescribeCarrierInvocation(iSkipCount=0):
 
 def flistScanModuleForInventoryRows(pathModule, sRelativePath):
     """Return the scanner's own rows for one module, ordinal-numbered."""
-    visitorSites = _moduleGenerator._VisitorCallSites(sRelativePath)
-    visitorSites.fnCollect(ast.parse(
-        pathlib.Path(pathModule).read_text(encoding="utf-8"),
-    ))
+    sModuleSource = pathlib.Path(pathModule).read_text(encoding="utf-8")
+    visitorSites = _moduleGenerator._VisitorCallSites(
+        sRelativePath, sModuleSource,
+    )
+    visitorSites.fnCollect(ast.parse(sModuleSource))
     return _moduleGenerator._flistNumberOrdinals(visitorSites.listRows)
 
 
@@ -274,14 +284,16 @@ def _fdictBuildSourceModel(pathModule):
     fingerprints of the reference nodes SPANNING it, because a frame
     reports one line for an expression that may occupy several.
     """
-    treeModule = ast.parse(
-        pathlib.Path(pathModule).read_text(encoding="utf-8"),
-    )
+    sModuleSource = pathlib.Path(pathModule).read_text(encoding="utf-8")
+    tupleSourceLines = _moduleGenerator.ftupleSourceLines(sModuleSource)
+    treeModule = ast.parse(sModuleSource)
     dictFingerprintsByLine = {}
     for nodeReference in ast.walk(treeModule):
         if not isinstance(nodeReference, (ast.Call, ast.Attribute, ast.Name)):
             continue
-        sFingerprint = fsFingerprintReferenceNode(nodeReference)
+        sFingerprint = fsFingerprintReferenceNode(
+            nodeReference, tupleSourceLines,
+        )
         iEndLine = getattr(
             nodeReference, "end_lineno", None,
         ) or nodeReference.lineno
@@ -289,6 +301,9 @@ def _fdictBuildSourceModel(pathModule):
             dictFingerprintsByLine.setdefault(iLine, set()).add(sFingerprint)
     return {
         "treeModule": treeModule,
+        # Carried so the alias resolver fingerprints a binding the
+        # same way the scanner did -- from the file, not the tree.
+        "tupleSourceLines": tupleSourceLines,
         "dictFingerprintsByLine": dictFingerprintsByLine,
     }
 
@@ -370,6 +385,7 @@ def _fdictMatchThroughLocalAlias(dictFrame, listCandidates, dictSourceModel):
     )
     listMatched = _flistMatchAliasBindings(
         nodeFunction, setAliasNames, listCandidates,
+        dictSourceModel["tupleSourceLines"],
     )
     if len(listMatched) == 1:
         return _fdictAcceptAttribution(
@@ -414,7 +430,9 @@ def _fsetCollectCalledLocalNames(nodeFunction, iLine):
     return setNames
 
 
-def _flistMatchAliasBindings(nodeFunction, setAliasNames, listCandidates):
+def _flistMatchAliasBindings(
+    nodeFunction, setAliasNames, listCandidates, tupleSourceLines,
+):
     """Return candidate rows reached by a name bound exactly once here."""
     dictBindings = {}
     for nodeAssign in ast.walk(nodeFunction):
@@ -429,7 +447,9 @@ def _flistMatchAliasBindings(nodeFunction, setAliasNames, listCandidates):
         listBound = dictBindings.get(sAliasName, [])
         if len(listBound) != 1:
             continue
-        sFingerprint = fsFingerprintReferenceNode(listBound[0])
+        sFingerprint = fsFingerprintReferenceNode(
+            listBound[0], tupleSourceLines,
+        )
         listMatched.extend(
             dictRow for dictRow in listCandidates
             if dictRow["sFingerprint"] == sFingerprint

@@ -6,6 +6,13 @@ on:
   workflow_dispatch:
 
 permissions:
+  # `contents: read` is not optional: an explicit permissions block
+  # REPLACES the defaults, so omitting it left the token unable to check
+  # out a private repository. This lane could not run at all from the day
+  # the repo went private until 2026-08-07, and a red X reading "checkout
+  # failed" looks like infrastructure noise rather than absent coverage --
+  # two test files landed behind it and had never once run on Linux.
+  contents: read
   checks: write
   pull-requests: write
 

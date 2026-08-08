@@ -84,12 +84,16 @@ def _fsReadSourceExpressionForFingerprint(sFingerprint):
     assertion can name the literal it expects (``alpha.json``) without
     ever asking the matcher which row a frame belongs to.
     """
-    treeModule = ast.parse(PATH_SHAPES.read_text(encoding="utf-8"))
+    sModuleSource = PATH_SHAPES.read_text(encoding="utf-8")
+    tupleSourceLines = mutationAttribution._moduleGenerator.ftupleSourceLines(
+        sModuleSource,
+    )
+    treeModule = ast.parse(sModuleSource)
     for nodeReference in ast.walk(treeModule):
         if not isinstance(nodeReference, (ast.Call, ast.Attribute)):
             continue
         if mutationAttribution.fsFingerprintReferenceNode(
-            nodeReference,
+            nodeReference, tupleSourceLines,
         ) == sFingerprint:
             return ast.unparse(nodeReference)
     return ""

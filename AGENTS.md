@@ -1034,6 +1034,33 @@ correct approach.
   and no code ever compares `sVersion` to `sExpectedVersion`. Check
   each claim against the source before acting on it; manufacturing a
   change to match a confident report is worse than ignoring it.
+- **A falsification mutation detected through a SIDE EFFECT goes inert
+  the day that mechanism is deleted, and nothing fails.** Three
+  ownership-transfer guards are checked twice on purpose — once before
+  anything is minted, once at the commit point — so disabling one copy
+  changes nothing a caller can observe. They were killable anyway via
+  the DRAINING phase: a doomed transfer must not drain the sitting
+  owner's terminals. Deleting that phase (wave 2.4) silently made the
+  discriminator vacuous, and for a week the harness reported three
+  SURVIVED entries that read as three undefended ownership guards.
+  Registry entries now carry `iExpectedOccurrences` so a guard with
+  several copies has every one mutated. Two practices follow: when
+  deleting a mechanism, grep the falsification docstrings that lean on
+  it; and when an entry survives, first ask whether the mutation is
+  *observable*, because "the guard is undefended" and "the mutation
+  changes nothing" look identical in the report.
+- A test that asserts an outcome plus a shared word does not identify a
+  cause. The poison-transfer test asserted `S_TRANSFER_REFUSED` and
+  `"reconcile" in sMessage` — both equally true of the live-terminal
+  guard sitting below it, so the test was satisfied by a container
+  carrying no poison at all. Where two guards can produce the same
+  refusal, assert the text that names *this* cause.
+- A check that can be skipped must say what the skip reported, and a
+  check that is *timing out* is saying nothing at all. The macOS
+  falsification legs had exceeded their 25-minute ceiling for weeks;
+  raising it produced the first one that ever finished and immediately
+  exposed seven entries that no daemon-less host can evaluate. A red
+  lane nobody can read is indistinguishable from a lane that never ran.
 
 ## Pointers
 

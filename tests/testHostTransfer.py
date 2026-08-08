@@ -220,7 +220,7 @@ async def testCorrectGenerationActiveTransferSucceedsAndRevokes():
     REVOKED and the new session-bound lease authorizes release while
     the old one is refused.
 
-    Kills: dropping ``fbRevokeSessionById`` from ``_ftCommitTransfer``
+    Kills: dropping ``fnRevokeSessionById`` from ``_tCommitTransfer``
     (the old credential would keep authorizing after the transfer).
     """
     stateApp = _fstateBuildAppState()
@@ -249,13 +249,11 @@ async def testStaleGenerationTransferIsRefused():
     A capability minted for generation 1 presented after the record
     reached generation 2 must refuse without touching the owner — the
     ABA guard that keeps a stale host request from displacing the
-    successor — and it must refuse BEFORE the DRAINING phase, so a
-    doomed transfer never fences or kills the successor's terminals.
+    successor — and it must leave the successor's terminal records
+    alone.
 
     Kills: neutralizing the ``iOwnerGeneration != iExpectedGen``
-    refusal in ``_ftRefusalBeforePremint`` (the commit-point backstop
-    still refuses, but only after draining the successor's live
-    terminal, which this test detects).
+    refusal at BOTH the pre-mint layer and the commit point.
     """
     stateApp = _fstateBuildAppState()
     _tSeedOwnedContainer(stateApp)
@@ -333,7 +331,7 @@ async def testReapedRecordYieldsClaimNormally():
     released, must answer "container unowned — claim normally", never
     mint ownership out of thin air and never tell the client to retry.
 
-    Kills: rewording ``_ftRefusalBeforePremint``'s unowned outcome to
+    Kills: rewording ``_tRefusalBeforePremint``'s unowned outcome to
     ``S_TRANSFER_BUSY_RETRY``, which would send the client into a
     hopeless retry loop instead of the claim path.
     """
@@ -402,13 +400,17 @@ async def testPoisonedRecordRefusesTransfer():
 
     A force-abandoned owner record keeps its flock and refuses every
     transfer until the worker is proven dead — never a silent rebind
-    onto a container a zombie worker may still write — and it refuses
-    BEFORE the DRAINING phase, leaving the terminals untouched.
+    onto a container a zombie worker may still write — and it leaves
+    the terminal records untouched.
 
-    Kills: neutralizing the poison refusal in
-    ``_ftRefusalBeforePremint`` (the commit-point backstop still
-    refuses, but only after draining the live terminal, which this
-    test detects).
+    Kills: neutralizing the poison refusal at BOTH the pre-mint layer
+    and the commit point.
+
+    The refusal must be identified by the message that names the
+    force-abandonment, not by the outcome or by the word "reconcile":
+    the live-terminal guard below it refuses with the same outcome and
+    also says "reconcile", so a laxer assertion is satisfied by a
+    container with no poison at all.
     """
     stateApp = _fstateBuildAppState()
     _, _, sOldLease = _tSeedOwnedContainer(stateApp)
@@ -422,13 +424,19 @@ async def testPoisonedRecordRefusesTransfer():
     sCapability = _fsMintTransferCapability(stateApp)
     sOutcome, dictPayload = await _tTransfer(stateApp, sCapability)
     assert sOutcome == sessionLifecycle.S_TRANSFER_REFUSED
+    assert "force-abandoned" in dictPayload["sMessage"], (
+        "the refusal must name the poison as its cause; the "
+        "live-terminal guard refuses with the same outcome and also "
+        "says 'reconcile', so it would otherwise stand in for this one"
+    )
     assert "reconcile" in dictPayload["sMessage"]
     assert recordOwner.sLeaseId == sOldLease
     assert recordOwner.iOwnerGeneration == 1
     assert terminalContainment.fbContainerHasLiveTerminalRecords(
         stateApp, S_PROJECT_NAME,
     ) is True, (
-        "a poisoned record must refuse before touching its terminals"
+        "a refused transfer must leave the sitting owner's terminal "
+        "records alone"
     )
 
 
@@ -439,13 +447,11 @@ async def testCancelRequestedDurableTaskRefusesTransfer():
 
     Mode-(c) cancel and transfer compete for the brief mutation lock;
     when cancel wins it marks the task ``cancelRequested`` and a
-    subsequent transfer must refuse rather than adopt a dying task —
-    refusing BEFORE the DRAINING phase touches any terminal.
+    subsequent transfer must refuse rather than adopt a dying task,
+    leaving the terminal records alone.
 
-    Kills: weakening the live-task state refusal in
-    ``_ftRefusalBeforePremint`` to ignore ``sState`` (the commit-point
-    backstop still refuses, but only after draining the live
-    terminal, which this test detects).
+    Kills: weakening the live-task state refusal to ignore ``sState``
+    at BOTH the pre-mint layer and the commit point.
     """
     stateApp = _fstateBuildAppState()
     _tSeedOwnedContainer(stateApp)
@@ -686,7 +692,7 @@ async def testAgentAuthorizationSurvivesTransfer():
     untouched by a transfer (§6.2): the in-container agent keeps
     authorizing against the same container across the rotation.
 
-    Kills: making ``_ftCommitTransfer`` also rotate
+    Kills: making ``_tCommitTransfer`` also rotate
     ``recordOwner.sAgentToken``, which would cut off the working agent
     mid-session on every ``vaibify open``.
     """

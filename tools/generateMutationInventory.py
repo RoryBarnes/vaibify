@@ -418,8 +418,12 @@ class _VisitorCallSites(ast.NodeVisitor):
       primitive at all.
     """
 
-    def __init__(self, sRelativePath):
+    def __init__(self, sRelativePath, sModuleSource=""):
         self.sRelativePath = sRelativePath
+        # The fingerprints are sliced from this, never regenerated
+        # from the tree -- see _fsFingerprintNode.
+        self.sModuleSource = sModuleSource
+        self.tupleSourceLines = ftupleSourceLines(sModuleSource)
         self.listRows = []
         self.listAcquisitions = []
         self.listUnresolvedSubprocessSites = []
@@ -610,10 +614,12 @@ class _VisitorCallSites(ast.NodeVisitor):
             "sAcquisitionKind": sAcquisitionKind,
             "iOrdinal": 0,
             "iLine": nodeAcquisition.lineno,
-            "sFingerprint": _fsFingerprintNode(nodeAcquisition),
-            "sScopeFingerprint": (
-                _fsFingerprintNode(nodeScope) if nodeScope is not None
-                else _fsFingerprintNode(nodeAcquisition)
+            "sFingerprint": _fsFingerprintNode(
+                nodeAcquisition, self.tupleSourceLines,
+            ),
+            "sScopeFingerprint": _fsFingerprintNode(
+                nodeScope if nodeScope is not None else nodeAcquisition,
+                self.tupleSourceLines,
             ),
         }
         for sField in TUPLE_ACQUISITION_REVIEWER_FIELDS:
@@ -739,10 +745,12 @@ class _VisitorCallSites(ast.NodeVisitor):
             ),
             "iLine": nodeCall.lineno,
             "iOrdinal": 0,
-            "sFingerprint": _fsFingerprintNode(nodeCall),
-            "sScopeFingerprint": (
-                _fsFingerprintNode(nodeScope) if nodeScope is not None
-                else _fsFingerprintNode(nodeCall)
+            "sFingerprint": _fsFingerprintNode(
+                nodeCall, self.tupleSourceLines,
+            ),
+            "sScopeFingerprint": _fsFingerprintNode(
+                nodeScope if nodeScope is not None else nodeCall,
+                self.tupleSourceLines,
             ),
         }
 
@@ -760,7 +768,9 @@ class _VisitorCallSites(ast.NodeVisitor):
             "sPrimitive": sPrimitive,
             "sReferenceKind": sReferenceKind,
             "iOrdinal": 0,
-            "sFingerprint": _fsFingerprintNode(nodeReference),
+            "sFingerprint": _fsFingerprintNode(
+                nodeReference, self.tupleSourceLines,
+            ),
             "sAccess": sAccess,
             "bMutationCapable": (
                 sAccess in SET_MUTATION_CAPABLE_ACCESS
@@ -1378,20 +1388,103 @@ def _fsCalledName(nodeCall):
     return ""
 
 
-def _fsFingerprintNode(nodeReference):
-    """Return a stable digest of a reference's own source expression.
+def ftupleSourceLines(sModuleSource):
+    """Split a module's source once, for repeated fingerprinting.
 
-    Unparsed from the AST rather than sliced out of the file, so
-    reformatting and comment changes do not move it while a change to
-    the reference ITSELF -- a new argument, a different target -- does.
-    A row whose fingerprint moved has to be re-read; that is what the
-    fingerprint is for.
+    Called ONCE per module and threaded to every fingerprint in it.
+    ``ast.get_source_segment`` -- the obvious way to slice a node out of
+    a file -- re-splits the ENTIRE source on every call, which is
+    invisible on one node and quadratic over a module: measured at
+    15.9 ms per node against a large file, so the attribution index,
+    which fingerprints every Call/Attribute/Name, took minutes per
+    module and timed the CI suite out at fifteen. Splitting once is the
+    whole difference.
     """
-    try:
-        sSource = ast.unparse(nodeReference)
-    except AttributeError:  # pragma: no cover - Python < 3.9
-        sSource = ast.dump(nodeReference)
-    return hashlib.sha256(sSource.encode("utf-8")).hexdigest()[:16]
+    return tuple(sModuleSource.splitlines(keepends=True))
+
+
+def _fsFingerprintNode(nodeReference, tupleSourceLines):
+    """Return a digest of a reference's own source, sliced from the file.
+
+    **The digest must depend on the researcher's code and on nothing
+    else.** This used to hash ``ast.unparse(node)``, which reads well --
+    it made the fingerprint immune to reformatting and comment edits --
+    and was wrong in a way only a version matrix could show.
+    ``ast.unparse`` REGENERATES source from the parse tree, and CPython
+    changes its formatting between releases: on Python 3.14 the same
+    unchanged functions unparsed differently and 46 fingerprints moved
+    at once. A marker meant to answer "has the code this review depended
+    on been edited?" was also answering "are you on a different Python?",
+    which makes every manual disposition read as expired on one leg of
+    the matrix and teaches a reader to ignore it.
+
+    Slicing the file is the only construction whose stability does not
+    rest on CPython internals. The alternatives were considered and are
+    worse for this job:
+
+    * normalising the AST before hashing keeps format-independence, but
+      node FIELDS change between releases too (3.12 added
+      ``type_params``), so the projection needs updating every release
+      and fails silently -- drop a field and it stops noticing a real
+      change;
+    * tokenising and discarding comments looks version-stable and is
+      not: 3.12 rewrote f-string tokenisation (PEP 701), so any function
+      containing an f-string would differ across the supported range.
+
+    The slice is taken here rather than through ``ast.get_source_segment``
+    for speed (see :func:`ftupleSourceLines`) and for one property that
+    function cannot offer: its own behaviour is CPython's to change,
+    which is the exact dependence this fingerprint exists to escape.
+
+    ``col_offset`` is a UTF-8 BYTE offset, so the slicing encodes and
+    decodes rather than indexing characters; a module with a non-ASCII
+    identifier or docstring would otherwise fingerprint a shifted span.
+
+    The cost is real and is the safe direction: reformatting a function
+    or editing a comment inside it now moves its scope fingerprint and
+    expires the disposition bound to it. That costs a re-read of code
+    somebody already reviewed. The failure it replaces cost the check
+    its meaning on an entire Python version.
+    """
+    iFirstLine = getattr(nodeReference, "lineno", None)
+    iLastLine = getattr(nodeReference, "end_lineno", None)
+    if iFirstLine is None or iLastLine is None:
+        # Never silently fall back to unparse: that would reintroduce
+        # the version dependence for exactly the nodes nobody notices.
+        raise RuntimeError(
+            "Cannot fingerprint a node with no source position; the "
+            "inventory's identity must come from the file, not from a "
+            "regenerated approximation."
+        )
+    iStartByte = nodeReference.col_offset
+    iEndByte = nodeReference.end_col_offset
+    if iFirstLine == iLastLine:
+        sSegment = tupleSourceLines[iFirstLine - 1].encode("utf-8")[
+            iStartByte:iEndByte
+        ].decode("utf-8")
+    else:
+        # Pad the first line to its column, exactly as
+        # ``ast.get_source_segment(padded=True)`` does: a multi-line
+        # segment keeps its opening indentation so re-indenting the
+        # block still moves the digest. Tabs and form feeds are kept as
+        # themselves; every other character becomes a space.
+        sPrefix = tupleSourceLines[iFirstLine - 1].encode("utf-8")[
+            :iStartByte
+        ].decode("utf-8")
+        sPadding = "".join(
+            sCharacter if sCharacter in "\f\t" else " "
+            for sCharacter in sPrefix
+        )
+        sFirst = sPadding + tupleSourceLines[iFirstLine - 1].encode(
+            "utf-8",
+        )[iStartByte:].decode("utf-8")
+        sLast = tupleSourceLines[iLastLine - 1].encode("utf-8")[
+            :iEndByte
+        ].decode("utf-8")
+        sSegment = "".join(
+            (sFirst,) + tupleSourceLines[iFirstLine:iLastLine - 1] + (sLast,)
+        )
+    return hashlib.sha256(sSegment.encode("utf-8")).hexdigest()[:16]
 
 
 def flistScanPackage():
@@ -1528,8 +1621,9 @@ def _tScanPackage():
         if "__pycache__" in pathModule.parts:
             continue
         sRelativePath = str(pathModule.relative_to(PATH_PACKAGE))
-        visitor = _VisitorCallSites(sRelativePath)
-        visitor.fnCollect(ast.parse(pathModule.read_text(encoding="utf-8")))
+        sModuleSource = pathModule.read_text(encoding="utf-8")
+        visitor = _VisitorCallSites(sRelativePath, sModuleSource)
+        visitor.fnCollect(ast.parse(sModuleSource))
         listRows.extend(visitor.listRows)
         listUnresolved.extend(visitor.listUnresolvedSubprocessSites)
         listUnresolved.extend(visitor.listUnresolvedSdkSites)

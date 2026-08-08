@@ -20,6 +20,17 @@ It prints KILLED / SURVIVED / ERROR per entry, lists any
 ``falsification``-marked test that has no registry entry, and exits
 nonzero unless every entry is KILLED and every marked test is covered.
 
+A mutation guarded by a real-container (``docker_live``) test cannot be
+evaluated on a host with no Docker daemon, and there is no honest way to
+score it there: crediting it is a false kill, and the child-side daemon
+requirement -- which exists so a skip is never misread as a survivor --
+turns it into an ERROR indistinguishable from a broken guard. Such
+entries are therefore reported by name as NOT EVALUATED and left out of
+the denominator. That is safe only because they ARE evaluated on every
+lane that has a daemon; set ``VAIBIFY_REQUIRE_DOCKER_DAEMON`` on those
+lanes so losing Docker turns them red instead of silently shrinking the
+denominator.
+
 STRUCTURAL ISOLATION -- this harness never touches your files.
 Everything runs inside a disposable git worktree checked out from HEAD
 and removed on exit. The previous design mutated the real working tree
@@ -63,10 +74,20 @@ sys.path.insert(0, str(REPO))
 PATH_TREE = REPO
 
 from tests.falsificationRegistry import LIST_FALSIFICATIONS  # noqa: E402
+from tests.testDockerConnectionLive import (  # noqa: E402
+    S_OUTCOME_FAIL,
+    S_OUTCOME_PROCEED,
+    _fbDaemonReachable,
+    fsDaemonRequirementOutcome,
+)
 
 # The env var the Docker-live suites read to turn their convenience
 # skip into a failure. Named once here, matching the CI workflows.
 S_REQUIRE_DAEMON_ENV = "VAIBIFY_REQUIRE_DOCKER_DAEMON"
+
+# The marker that says a test drives a real container, so no host
+# without a daemon can evaluate the mutation guarding it.
+S_LIVE_DAEMON_MARKER = "docker_live"
 
 # A private exit code for "the test never ran". pytest has none: a
 # skipped test exits 0, which is indistinguishable from a passing one
@@ -158,7 +179,7 @@ def _fbMutationCompiles(sMutated, pathSource):
         return False
 
 
-def _fbAllPreconditionsPassInOneRun():
+def _fbAllPreconditionsPassInOneRun(listEntries):
     """Return True when every registered test passes on clean code.
 
     The precondition -- "this test passes before the mutation" -- is
@@ -170,7 +191,7 @@ def _fbAllPreconditionsPassInOneRun():
     when it fails, the caller falls back to checking each entry alone so
     the offender is still named precisely.
     """
-    listNodeIds = sorted({entry.nodeid for entry in LIST_FALSIFICATIONS})
+    listNodeIds = sorted({entry.nodeid for entry in listEntries})
     return _fiRunTests(listNodeIds) == 0
 
 
@@ -179,9 +200,15 @@ def _fsReconfirmOne(entry, sOriginal, bPreconditionKnownGood=False):
     pathSource = PATH_TREE / entry.source
     if entry.old not in sOriginal:
         return "ERROR: old-text absent"
-    if sOriginal.count(entry.old) != 1:
-        return "ERROR: old-text not unique"
-    sMutated = sOriginal.replace(entry.old, entry.new, 1)
+    iFound = sOriginal.count(entry.old)
+    if iFound != entry.iExpectedOccurrences:
+        # Drift in EITHER direction is a real signal: a copy deleted, or
+        # a fourth added that this mutation would now leave standing.
+        return (f"ERROR: old-text occurs {iFound}x, entry expects "
+                f"{entry.iExpectedOccurrences}x")
+    sMutated = sOriginal.replace(
+        entry.old, entry.new, entry.iExpectedOccurrences,
+    )
     if not _fbMutationCompiles(sMutated, pathSource):
         return "ERROR: mutation does not compile"
     if not bPreconditionKnownGood and _fiRunTest(entry.nodeid) != 0:
@@ -307,10 +334,77 @@ def fnRemoveDisposableWorktree(sWorktree):
     shutil.rmtree(pathlib.Path(sWorktree).parent, ignore_errors=True)
 
 
+def fsetSelectNodeIdsNeedingALiveDaemon():
+    """Return the node ids pytest reports as carrying the live-daemon marker.
+
+    Asked of pytest rather than matched against file or test names: the
+    marker is what makes a test need a daemon, and a hand-kept list goes
+    stale the first time a marked test is added, renamed, or moved --
+    silently, and in the direction that drops entries.
+    """
+    dictEnvironment = dict(os.environ)
+    # Same reason as the test runs below: an editable install resolves
+    # ``vaibify`` to the real checkout, and this must report on the tree
+    # the mutations are applied to.
+    dictEnvironment["PYTHONPATH"] = str(PATH_TREE)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q",
+         "-m", S_LIVE_DAEMON_MARKER, "-p", "no:cacheprovider"],
+        cwd=PATH_TREE, capture_output=True, text=True,
+        env=dictEnvironment,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Could not ask pytest which tests need a live Docker "
+            "daemon, so the registry cannot be partitioned honestly:\n"
+            + (result.stdout or "") + (result.stderr or "")
+        )
+    return {
+        sLine.strip() for sLine in result.stdout.splitlines()
+        if sLine.startswith("tests/") and "::" in sLine
+    }
+
+
+def _tPartitionRegistryForThisHost():
+    """Split the registry into what this host can evaluate and what it cannot.
+
+    A mutation guarded by a real-container test cannot be evaluated
+    without a daemon, and the harness must not pretend otherwise in
+    either direction: crediting it would be a false kill, and the
+    unconditional child-side daemon requirement turns it into an ERROR
+    that reads like a broken guard. Naming it as unevaluated is the only
+    honest third answer -- and the entries are still evaluated on every
+    lane that HAS a daemon, which is what makes the deferral safe rather
+    than a hole. Setting the requirement env var refuses the deferral
+    outright, so a lane that is supposed to have Docker goes red when it
+    loses it instead of quietly dropping to a smaller denominator.
+    """
+    sOutcome = fsDaemonRequirementOutcome(
+        _fbDaemonReachable(), bool(os.environ.get(S_REQUIRE_DAEMON_ENV)),
+    )
+    if sOutcome == S_OUTCOME_PROCEED:
+        return LIST_FALSIFICATIONS, []
+    if sOutcome == S_OUTCOME_FAIL:
+        print(
+            "Refusing to run: no Docker daemon is reachable but "
+            f"{S_REQUIRE_DAEMON_ENV} is set, so this run was required "
+            "to evaluate the real-container entries. Deferring them "
+            "here would report a smaller denominator as success.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    setNeedsDaemon = fsetSelectNodeIdsNeedingALiveDaemon()
+    return (
+        [e for e in LIST_FALSIFICATIONS if e.nodeid not in setNeedsDaemon],
+        [e for e in LIST_FALSIFICATIONS if e.nodeid in setNeedsDaemon],
+    )
+
+
 def fnReconfirmAll():
     """Re-confirm all entries; exit nonzero on any failure or coverage gap."""
+    listEvaluable, listDeferred = _tPartitionRegistryForThisHost()
     dictOriginal = _fdictCaptureOriginals()
-    bBatchClean = _fbAllPreconditionsPassInOneRun()
+    bBatchClean = _fbAllPreconditionsPassInOneRun(listEvaluable)
     if not bBatchClean:
         print(
             "batched precondition run failed; falling back to a "
@@ -322,16 +416,25 @@ def fnReconfirmAll():
                 entry, dictOriginal[entry.source],
                 bPreconditionKnownGood=bBatchClean,
             ))
-            for entry in LIST_FALSIFICATIONS
+            for entry in listEvaluable
         ]
     finally:
         _fnRestoreOriginals(dictOriginal)
     for sNodeId, sStatus in listResults:
         print(f"{sStatus:48}  {sNodeId}")
+    for entry in listDeferred:
+        print(f"{'NOT EVALUATED: needs a live Docker daemon':48}  "
+              f"{entry.nodeid}")
     listBad = [r for r in listResults if not r[1].startswith("KILLED")]
     listUncovered = _flistMarkedTestsWithoutEntry()
     print(f"\n{len(listResults) - len(listBad)}/{len(listResults)} "
           "kill-confirmed")
+    if listDeferred:
+        print(f"{len(listDeferred)} entr"
+              f"{'y' if len(listDeferred) == 1 else 'ies'} NOT evaluated "
+              "on this host: no Docker daemon. They are evaluated on "
+              f"every lane that has one; set {S_REQUIRE_DAEMON_ENV} to "
+              "refuse the deferral instead.")
     if listUncovered:
         print(f"\n{len(listUncovered)} falsification-marked test(s) with "
               "no registry entry:")

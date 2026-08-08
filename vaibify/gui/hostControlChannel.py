@@ -780,10 +780,24 @@ def fdictSendHostControlRequest(iPort, dictRequest, fTimeoutSeconds=30.0):
                 f"The host-control socket for hub port {iPort} is stale "
                 "or unreachable; is that hub still running?"
             )
-        socketClient.sendall(
-            json.dumps(dictRequest).encode("utf-8") + b"\n",
-        )
-        byteResponse = _fbaReadResponseLine(socketClient)
+        try:
+            socketClient.sendall(
+                json.dumps(dictRequest).encode("utf-8") + b"\n",
+            )
+            byteResponse = _fbaReadResponseLine(socketClient)
+        except (ConnectionResetError, BrokenPipeError):
+            # The hub closed on us without answering -- which is exactly
+            # what it does to a peer it will not serve. macOS reports
+            # that as EOF, so the reader below returns b"" and the
+            # unreadable-response branch handles it; Linux sends RST
+            # when a socket is closed with unread data still in its
+            # receive buffer, so the same refusal arrives here as an
+            # exception instead. Both are the same event and must give
+            # the researcher the same sentence, not a raw traceback on
+            # one platform and a clean message on the other.
+            raise HostControlError(
+                "The hub's host-control response was unreadable."
+            )
     finally:
         socketClient.close()
     try:
