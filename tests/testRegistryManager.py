@@ -135,6 +135,77 @@ def testAddProjectRejectsMissingConfig(tmp_path):
         registryManager.fnAddProject(sEmptyDir)
 
 
+def testAddProjectRejectsSameDirectoryUnderNewName(tmp_path):
+    """One physical directory must never carry two registry entries."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "first-name")
+    registryManager.fnAddProject(sProjectDir)
+    sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write("projectName: second-name\n")
+    with pytest.raises(ValueError, match="already registered"):
+        registryManager.fnAddProject(sProjectDir)
+    assert len(registryManager.flistGetAllProjects()) == 1
+
+
+def testAddProjectRejectsSameDirectoryViaSymlink(tmp_path):
+    """A symlink alias of a registered directory is the same directory."""
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "linked-project")
+    registryManager.fnAddProject(sProjectDir)
+    sLinkPath = str(tmp_path / "alias-link")
+    os.symlink(sProjectDir, sLinkPath)
+    sConfigPath = os.path.join(sProjectDir, "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write("projectName: alias-name\n")
+    with pytest.raises(ValueError, match="already registered"):
+        registryManager.fnAddProject(sLinkPath)
+    assert len(registryManager.flistGetAllProjects()) == 1
+
+
+def testSamePhysicalDirectoryFallsBackToRealpathWhenAbsent(tmp_path):
+    """Paths that cannot be stat'ed compare by normalized realpath."""
+    sGhostPath = str(tmp_path / "ghost")
+    assert registryManager._fbSamePhysicalDirectory(
+        sGhostPath, sGhostPath,
+    )
+    assert not registryManager._fbSamePhysicalDirectory(
+        sGhostPath, sGhostPath + "-other",
+    )
+
+
+def testMutateRegistryLockedReadsUnderTheLock(monkeypatch):
+    """An entry written just before the lock is taken must be seen.
+
+    The pre-fix ordering read the registry before acquiring the lock,
+    so two concurrent registrations could both pass their duplicate
+    checks against the same stale snapshot. Planting an entry at
+    lock-acquisition time and asserting the mutation callback sees it
+    fails against that ordering.
+    """
+    fnRealOpenLock = registryManager._ffileOpenRegistryLock
+
+    def ffilePlantEntryThenLock():
+        fileHandle = fnRealOpenLock()
+        registryManager._fnWriteRegistryAtomic(
+            {"listProjects": [{"sName": "planted"}]},
+        )
+        return fileHandle
+
+    monkeypatch.setattr(
+        registryManager, "_ffileOpenRegistryLock",
+        ffilePlantEntryThenLock,
+    )
+    listNamesSeen = []
+
+    def fnRecordNamesSeen(dictRegistry):
+        listNamesSeen.append([
+            dictProject["sName"]
+            for dictProject in dictRegistry["listProjects"]
+        ])
+
+    registryManager._fnMutateRegistryLocked(fnRecordNamesSeen)
+    assert listNamesSeen == [["planted"]]
+
+
 # --- fnRemoveProject ---
 
 def testRemoveProjectDeletesEntry(tmp_path):
