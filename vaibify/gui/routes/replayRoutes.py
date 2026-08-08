@@ -43,6 +43,7 @@ from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     fdictCommitWorkflowSave,
+    fdictStampDockerIdForJournal,
     fnRejectAgentTokenLane,
     fgenericRunWorkerUnderTheDrain,
     fsHashContainerFileOrEmpty,
@@ -248,7 +249,7 @@ def _fdictCommitContextWrite(
             dictCtx, sContainerId, sAbsPath, sContent,
         ),
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": hashlib.sha256(
                 sContent.encode("utf-8"),
             ).hexdigest(),

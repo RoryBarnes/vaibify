@@ -204,6 +204,22 @@ def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
     return hashlib.sha256(baCurrent).hexdigest()
 
 
+def fdictStampDockerIdForJournal(sContainerId):
+    """Return a file-write payload's Docker-id stamp, or {} for host.
+
+    The journal's file-write probe selects its in-container hash branch
+    exactly when ``sDockerContainerId`` is present on the record
+    (``operationJournal._fdictProbeFileWriteOperation``). A host
+    project's write must leave the key absent so the host sha256 branch
+    verifies it — a stamped host record would journal a probe that
+    tries ``docker exec`` against a container that does not exist.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sContainerId):
+        return {}
+    return {"sDockerContainerId": sContainerId}
+
+
 def fdictCommitWorkflowSave(
     dictCtx, sContainerId, dictWorkflow, requestHttp, sOperationName,
 ):
@@ -237,7 +253,7 @@ def fdictCommitWorkflowSave(
         sWorkflowPath or "project.json",
         lambda: dictCtx["save"](sContainerId, dictWorkflow),
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": (
                 workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),

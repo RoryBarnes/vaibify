@@ -25,6 +25,7 @@ from ..actionCatalog import ffnAgentAction
 from .. import draftManager
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
+    fdictStampDockerIdForJournal,
     fsHashContainerFileOrEmpty,
 )
 from ..routeScope import (
@@ -187,7 +188,7 @@ def _fnCommitDraftWrite(
         sContainerId, dictLaneTuple, "file-write", sDraftPath,
         fnWriteTheDraft,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": hashlib.sha256(baPayload).hexdigest(),
             "sPriorSha256": sPriorSha256,
         },
@@ -275,7 +276,7 @@ def _fnCommitDraftDelete(dictCtx, sContainerId, sDraftPath, requestHttp):
         sContainerId, dictLaneTuple, "file-write", sDraftPath,
         fnRemoveTheDraft,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": "",
             "sPriorSha256": sPriorSha256,
         },

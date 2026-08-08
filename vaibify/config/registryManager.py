@@ -264,6 +264,21 @@ def fsGetContainerUser(sContainerName):
         return "researcher"
 
 
+def fbIsHostProject(sResourceId):
+    """Return True when the resource id names a registered host project.
+
+    A host project's resource id is its registry name; a container's
+    resource id is a Docker container id, which is not a registry key,
+    so a missing entry reads as container mode. An entry without
+    ``sMode`` also reads as container mode — every entry written before
+    host mode existed is a container project.
+    """
+    dictProject = fdictGetProject(sResourceId)
+    if dictProject is None:
+        return False
+    return dictProject.get("sMode") == "host"
+
+
 def fdictGetProject(sName):
     """Return the registry entry for a project, or None.
 

@@ -1,8 +1,53 @@
 """Tests for uncovered lines in vaibify.gui.routeContext."""
 
+import os
+
 import pytest
 
-from vaibify.gui.routeContext import RouteContext
+from vaibify.config import registryManager
+from vaibify.gui.routeContext import (
+    RouteContext,
+    fdictStampDockerIdForJournal,
+)
+
+
+class TestStampDockerIdForJournal:
+    """The file-write payload stamp is mode-aware (host-mode plan §5)."""
+
+    @pytest.fixture(autouse=True)
+    def fixtureIsolateRegistry(self, tmp_path, monkeypatch):
+        sRegistryDir = str(tmp_path / ".vaibify")
+        monkeypatch.setattr(
+            registryManager, "_S_REGISTRY_DIRECTORY", sRegistryDir,
+        )
+        monkeypatch.setattr(
+            registryManager, "_S_REGISTRY_PATH",
+            os.path.join(sRegistryDir, "registry.json"),
+        )
+        monkeypatch.setattr(
+            registryManager, "_S_LOCK_PATH",
+            os.path.join(sRegistryDir, "registry.lock"),
+        )
+
+    def test_container_resource_keeps_the_docker_stamp(self):
+        assert fdictStampDockerIdForJournal("abc123def") == {
+            "sDockerContainerId": "abc123def",
+        }
+
+    def test_host_resource_omits_the_key_entirely(self):
+        registryManager.fnSaveRegistry({"listProjects": [{
+            "sName": "my-host-proj", "sDirectory": "/tmp/x",
+            "sMode": "host",
+        }]})
+        assert fdictStampDockerIdForJournal("my-host-proj") == {}
+
+    def test_registered_container_project_still_stamps(self):
+        registryManager.fnSaveRegistry({"listProjects": [{
+            "sName": "my-container-proj", "sDirectory": "/tmp/y",
+        }]})
+        assert fdictStampDockerIdForJournal("my-container-proj") == {
+            "sDockerContainerId": "my-container-proj",
+        }
 
 
 def _fdictBuildRawContext():

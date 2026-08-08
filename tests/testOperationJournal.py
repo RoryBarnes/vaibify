@@ -371,3 +371,63 @@ def test_busy_resolution_reaches_the_claim_as_locked_not_quarantined():
     finally:
         processLive.terminate()
         processLive.wait()
+
+
+# --- file-write probe branch selection (host-mode plan §5) ---
+
+class _PoisonDockerConnection:
+    """Raises on any use — proves a code path never consulted Docker."""
+
+    def __getattr__(self, sAttributeName):
+        raise AssertionError(
+            "the host file-write branch must never touch Docker "
+            f"(accessed .{sAttributeName})"
+        )
+
+
+def testFileWriteProbeWithoutDockerIdUsesTheHostHashBranch(tmp_path):
+    """No ``sDockerContainerId`` on the record selects the host probe.
+
+    The Docker connection is a poison object, so the test fails loudly
+    if the probe consults the container branch for a host record.
+    """
+    import hashlib
+    sTargetPath = str(tmp_path / "written.json")
+    baContent = b'{"sKey": "value"}\n'
+    with open(sTargetPath, "wb") as fileHandle:
+        fileHandle.write(baContent)
+    dictRecord = {
+        "sTarget": sTargetPath,
+        "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
+        "sPriorSha256": "",
+    }
+    dictOutcome = operationJournal._fdictProbeFileWriteOperation(
+        dictRecord, _PoisonDockerConnection(),
+    )
+    assert dictOutcome["bSettled"] is True
+    assert dictOutcome["bIndeterminate"] is False
+
+
+def testFileWriteProbeWithDockerIdRequiresTheConnection(tmp_path):
+    """A stamped record selects the container branch, which needs Docker.
+
+    This is the contrast case: the same record with the Docker id
+    present cannot settle host-side, proving the stamp is what selects
+    the branch.
+    """
+    import hashlib
+    sTargetPath = str(tmp_path / "written.json")
+    baContent = b'{"sKey": "value"}\n'
+    with open(sTargetPath, "wb") as fileHandle:
+        fileHandle.write(baContent)
+    dictRecord = {
+        "sTarget": sTargetPath,
+        "sDockerContainerId": "some-container-id",
+        "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
+        "sPriorSha256": "",
+    }
+    dictOutcome = operationJournal._fdictProbeFileWriteOperation(
+        dictRecord, None,
+    )
+    assert dictOutcome["bSettled"] is False
+    assert dictOutcome["bIndeterminate"] is True

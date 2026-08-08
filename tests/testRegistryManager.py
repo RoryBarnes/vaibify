@@ -172,6 +172,16 @@ def testSamePhysicalDirectoryFallsBackToRealpathWhenAbsent(tmp_path):
     )
 
 
+def testIsHostProjectReadsTheModeDiscriminator():
+    registryManager.fnSaveRegistry({"listProjects": [
+        {"sName": "host-proj", "sDirectory": "/x", "sMode": "host"},
+        {"sName": "container-proj", "sDirectory": "/y"},
+    ]})
+    assert registryManager.fbIsHostProject("host-proj")
+    assert not registryManager.fbIsHostProject("container-proj")
+    assert not registryManager.fbIsHostProject("unknown-docker-id")
+
+
 def testMutateRegistryLockedReadsUnderTheLock(monkeypatch):
     """An entry written just before the lock is taken must be seen.
 

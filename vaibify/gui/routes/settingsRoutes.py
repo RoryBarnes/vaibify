@@ -9,7 +9,10 @@ from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
 from .. import workflowManager
-from ..routeContext import fdictRequireLaneTupleForCommit
+from ..routeContext import (
+    fdictRequireLaneTupleForCommit,
+    fdictStampDockerIdForJournal,
+)
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     ffnDeclareCarrierMode,
@@ -85,7 +88,7 @@ def _fnCommitSettingsUpdate(
         dictCtx["paths"].get(sContainerId, "") or "project.json",
         lambda: dictCtx["save"](sContainerId, dictWorkflow),
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": (
                 workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),

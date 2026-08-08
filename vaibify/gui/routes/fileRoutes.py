@@ -16,6 +16,7 @@ from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
+    fdictStampDockerIdForJournal,
     fsHashContainerFileOrEmpty,
 )
 from ..routeScope import (
@@ -303,7 +304,7 @@ def _fnCommitUploadedFile(
         sContainerId, dictLaneTuple, "file-write", sNormalized,
         fnWriteTheUpload,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
             "sPriorSha256": sPriorSha256,
         },
@@ -610,7 +611,7 @@ def _fnCommitFileWrite(
         sContainerId, dictLaneTuple, "file-write", sNormalized,
         fnWriteTheFile,
         {
-            "sDockerContainerId": sContainerId,
+            **fdictStampDockerIdForJournal(sContainerId),
             "sExpectedSha256": hashlib.sha256(baContent).hexdigest(),
             "sPriorSha256": sPriorSha256,
         },
