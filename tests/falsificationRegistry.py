@@ -3067,8 +3067,14 @@ def _fdictEntry(sRel):
         # which is exactly what the harness reported the first time.
         nodeid='tests/testBuildInputHash.py::testGeneratedBuildContextCopiesAreNotKeyed',
         source='tools/computeBuildInputHash.py',
+        # Was director.py until 2026-08-08. That module was deleted in
+        # 6e55cbf, so the mutation added a path listGenerated does not
+        # contain and the assertion could not see it -- the entry named
+        # a file that no longer exists and scored SURVIVED for that
+        # reason alone. zenodoClient.py is what the test's own docstring
+        # names, and it is a real generated copy.
         old='    "vaibify/containerImage/vaibifyDo.py",',
-        new='    "vaibify/containerImage/vaibifyDo.py",\n    "vaibify/containerImage/director.py",',
+        new='    "vaibify/containerImage/vaibifyDo.py",\n    "vaibify/containerImage/zenodoClient.py",',
     ),
     Falsification(
         # Turns the browser lane's fail-closed adapter into the
@@ -5151,9 +5157,17 @@ def _fdictEntry(sRel):
             '        fnReRaiseControlPlaneRefusal(error)\n'
             '        return None\n'
         ),
+        # The mutation BROADENS the handler rather than deleting the
+        # re-raise. Deleting it stopped being a defect on 2026-08-07:
+        # reparenting ControlPlaneRefusalError off PermissionError means
+        # `except (OSError, ValueError)` can no longer see a refusal, so
+        # the twelve hand-guards became belt-and-braces and removing one
+        # changes nothing -- the type enforces the property now. What
+        # still swallows a refusal, and is the realistic future edit, is
+        # somebody widening a handler to catch Exception.
         new=(
             '        dictEntries = filesRepo.fdictHashFiles(listRelPaths)\n'
-            '    except (OSError, ValueError):\n'
+            '    except Exception:\n'
             '        return None\n'
         ),
     ),
