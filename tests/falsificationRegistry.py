@@ -7295,4 +7295,31 @@ def _fdictEntry(sRel):
         old='        except (ConnectionResetError, BrokenPipeError):',
         new='        except (BrokenPipeError,):',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerLiveDaemonRequirement.py::'
+            'testDemandingADaemonRefusesRatherThanQuietlyDeferring'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # The refusal branch becomes unreachable -- the PROCEED case is
+        # already returned above -- so a lane that demanded a daemon and
+        # has none quietly partitions instead, and reports a clean sweep
+        # of a denominator nobody was told had shrunk.
+        old='    if sOutcome == S_OUTCOME_FAIL:',
+        new='    if sOutcome == S_OUTCOME_PROCEED:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerLiveDaemonRequirement.py::'
+            'testDeferredEntriesAreNamedAndLeftOutOfTheDenominator'
+        ),
+        source='tools/reconfirmFalsification.py',
+        old=(
+            '    for entry in listDeferred:\n'
+            '        print(f"{\'NOT EVALUATED: needs a live Docker '
+            'daemon\':48}  "\n'
+            '              f"{entry.nodeid}")\n'
+        ),
+        new='',
+    ),
 ]

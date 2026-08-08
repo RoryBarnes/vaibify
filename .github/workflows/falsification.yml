@@ -82,5 +82,14 @@ jobs:
         # source-mutating tool shared a working tree -- failures in
         # tests nobody had touched, twice misdiagnosed as flakiness.
         timeout-minutes: 60
+        env:
+          # The Linux runners ship a Docker daemon, so they are where
+          # the real-container entries are actually judged. Demanding
+          # the daemon here means losing it turns this lane RED rather
+          # than silently shrinking the denominator it reports against.
+          # The macOS runners have no daemon and cannot get one, so
+          # they defer those entries by name instead.
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: >-
+            ${{ startsWith(matrix.os, 'ubuntu') && '1' || '' }}
         run: |
           python tools/reconfirmFalsification.py
