@@ -104,7 +104,7 @@ def _fnRunAddFileRoute(
     app.state.listLifespanShutdown = []
     syncRoutes.fnRegisterAll(app, dictCtx)
     with _fnPatchAddFileToGithub(fixtureCapturedAddFileArgs), patch(
-        "vaibify.gui.routes.syncRoutes.fnValidatePathWithinRoot",
+        "vaibify.gui.routes.syncRoutes.fsValidatePathWithinRoot",
     ):
         return TestClient(app).post(
             "/api/github/cid/add-file",

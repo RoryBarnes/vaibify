@@ -18,7 +18,7 @@ When a marker is stale, the corresponding category is reset to
 from vaibify.gui.routes.pipelineRoutes import (
     _fbMarkerStale,
     _fdictBuildTestMarkerStatus,
-    _fnApplyExternalTestResults,
+    _fbApplyExternalTestResults,
 )
 
 
@@ -164,7 +164,7 @@ def test_fdictBuildTestMarkerStatus_legacy_marker_stale_regardless_of_mtime():
 
 
 # -----------------------------------------------------------------------
-# _fnApplyExternalTestResults: stale-marker reset behaviour
+# _fbApplyExternalTestResults: stale-marker reset behaviour
 # -----------------------------------------------------------------------
 
 
@@ -189,7 +189,7 @@ def test_fnApplyExternalTestResults_stale_marker_resets_corrupted_passed():
             },
         },
     }
-    bChanged = _fnApplyExternalTestResults(
+    bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
     assert bChanged is True
@@ -218,7 +218,7 @@ def test_fnApplyExternalTestResults_stale_marker_resets_corrupted_failed():
             },
         },
     }
-    bChanged = _fnApplyExternalTestResults(
+    bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
     assert bChanged is True
@@ -247,7 +247,7 @@ def test_fnApplyExternalTestResults_stale_marker_skips_already_untested():
             },
         },
     }
-    bChanged = _fnApplyExternalTestResults(
+    bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
     assert bChanged is False
@@ -278,7 +278,7 @@ def test_fnApplyExternalTestResults_stale_marker_only_touches_named_categories()
             },
         },
     }
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sIntegrity"] == "passed"
     assert dictVerify["sQualitative"] == "passed"
@@ -302,7 +302,7 @@ def test_fnApplyExternalTestResults_fresh_marker_writes_passed():
             },
         },
     }
-    bChanged = _fnApplyExternalTestResults(
+    bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
     assert bChanged is True
@@ -331,7 +331,7 @@ def test_fnApplyExternalTestResults_returns_false_when_nothing_changed():
             },
         },
     }
-    bChanged = _fnApplyExternalTestResults(
+    bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
     )
     assert bChanged is False

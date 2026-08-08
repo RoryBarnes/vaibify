@@ -15,12 +15,12 @@ __all__ = [
     "fnEnsureTestsDirectory",
     "fnMigrateFlatMarkers",
     "fnWriteConftestMarker",
-    "fnWriteConftestMarkersBatch",
+    "fbWriteConftestMarkersBatch",
     "fsBuildIntegrityTestCode",
     "fsBuildPrompt",
     "fsBuildQualitativeTestCode",
     "fsBuildQuantitativeTestCode",
-    "fsBuildStepContext",
+    "ftBuildStepContext",
     "fsConftestContent",
     "fsBuildConftestSource",
     "fsConftestPath",
@@ -104,7 +104,7 @@ from .conftestManager import (  # noqa: F401
     fsReadInstalledConftestVersion,
     fdictReadInstalledConftestVersions,
     fnWriteConftestMarker,
-    fnWriteConftestMarkersBatch,
+    fbWriteConftestMarkersBatch,
     _CONFTEST_MARKER_TEMPLATE,
     fnEnsureTestsDirectory,
     fnEnsureConftestsCurrent,
@@ -201,7 +201,7 @@ def fsQualitativeStandardsPath(sStepDirectory):
 # ---------------------------------------------------------------------------
 
 
-def fsBuildStepContext(
+def ftBuildStepContext(
     connectionDocker, sContainerId, dictStep, dictVariables,
 ):
     """Gather script source code and data file previews for a step.
@@ -276,10 +276,10 @@ def _fdictWriteTestFile(connectionDocker, sContainerId, sCode, sFilePath):
         connectionDocker.fnWriteFile(
             sContainerId, sFilePath, sCode.encode("utf-8"),
         )
-    except Exception as exc:
+    except Exception as errorCaught:
         raise RuntimeError(
-            f"Failed to write test file {sFilePath}: {exc}"
-        ) from exc
+            f"Failed to write test file {sFilePath}: {errorCaught}"
+        ) from errorCaught
     sFilename = posixpath.basename(sFilePath)
     return {
         "sFilePath": sFilePath,
@@ -318,7 +318,7 @@ def fdictGenerateTest(
 ):
     """Orchestrate test generation: gather context, call LLM, save."""
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
-    sScripts, sPreviews = fsBuildStepContext(
+    sScripts, sPreviews = ftBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables
     )
     sPrompt = fsBuildPrompt(
@@ -441,7 +441,7 @@ def _fsClassifyStochasticity(
     return "stochastic"
 
 
-def _ftolMeanFromCv(fObservedCv, iSampleSize):
+def _ffMeanToleranceFromCv(fObservedCv, iSampleSize):
     """Return rtol for a sample mean given coefficient of variation and N.
 
     Uses the within-sample standard error ``CV / sqrt(N)`` scaled by
@@ -459,12 +459,12 @@ def _ftolMeanFromCv(fObservedCv, iSampleSize):
     return max(fSe, _F_FLOOR_RTOL)
 
 
-def _ftolStdFromN(iSampleSize):
+def _ffStdToleranceFromN(iSampleSize):
     """Return rtol for the sample standard deviation given N.
 
     Uses the asymptotic Gaussian standard error ``sqrt(2/(N-1))`` for
     the sample standard deviation, scaled by ``_F_SIGMA_MULT`` (k=3).
-    Same single-chain dispersion rationale as ``_ftolMeanFromCv``;
+    Same single-chain dispersion rationale as ``_ffMeanToleranceFromCv``;
     see Vehtari et al. (2021).
     """
     if iSampleSize < 2:
@@ -473,7 +473,7 @@ def _ftolStdFromN(iSampleSize):
     return max(fSe, _F_FLOOR_RTOL)
 
 
-def _ftolPercentileFromN(fProbability, iSampleSize, fObservedCv, fValue):
+def _ffPercentileToleranceFromN(fProbability, iSampleSize, fObservedCv, fValue):
     """Return rtol for an empirical percentile via asymptotic SE.
 
     Reference: Oberkampf & Roy (2010), *Verification and Validation in
@@ -494,17 +494,17 @@ _T_PERCENTILE_KIND_TO_PROB = {
 }
 
 
-def _ftolForStochasticKind(dictStandard, fDefaultRtol):
+def _ffToleranceForStochasticKind(dictStandard, fDefaultRtol):
     """Return the SE-derived rtol for one stochastic-classified entry."""
     sKind = dictStandard.get("sMetricKind", "single")
     iN = int(dictStandard.get("iSampleSize", 0) or 0)
     fObservedCv = dictStandard.get("fObservedCv") or 0.0
     if sKind == "mean":
-        return _ftolMeanFromCv(fObservedCv, iN)
+        return _ffMeanToleranceFromCv(fObservedCv, iN)
     if sKind == "std":
-        return _ftolStdFromN(iN)
+        return _ffStdToleranceFromN(iN)
     if sKind in _T_PERCENTILE_KIND_TO_PROB:
-        return _ftolPercentileFromN(
+        return _ffPercentileToleranceFromN(
             _T_PERCENTILE_KIND_TO_PROB[sKind], iN, fObservedCv,
             dictStandard.get("fValue", 0.0),
         )
@@ -522,7 +522,7 @@ def _fdictAssignTolerance(dictStandard, sClassification, fDefaultRtol):
         )
         return dictResult
     if sClassification == "stochastic":
-        dictResult["fRtol"] = _ftolForStochasticKind(
+        dictResult["fRtol"] = _ffToleranceForStochasticKind(
             dictResult, fDefaultRtol,
         )
         return dictResult
@@ -692,7 +692,7 @@ def fdictGenerateAllTestsDeterministic(
             iStepIndex,
         )
     fnEnsureTestsDirectory(connectionDocker, sContainerId, sDirectory)
-    sScripts, _sPreviews = fsBuildStepContext(
+    sScripts, _sPreviews = ftBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
     bScriptStochastic = fbStepProducesStochasticOutputs(
@@ -935,7 +935,7 @@ def _fdictGenerateAllTestsViaLlm(
     dictStep, sDirectory = _ftExtractStepInfo(dictWorkflow, iStepIndex)
     fTolerance = dictWorkflow.get("fTolerance", 1e-6)
     sDataFiles = ", ".join(dictStep.get("saOutputDataFiles", []))
-    sScripts, sPreviews = fsBuildStepContext(
+    sScripts, sPreviews = ftBuildStepContext(
         connectionDocker, sContainerId, dictStep, dictVariables,
     )
     if not bUseApi:

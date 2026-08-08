@@ -441,7 +441,7 @@ def test_npz_scalar_nan_is_skipped(tmp_path):
     assert dictResult["listStandards"] == []
 
 
-def test_listColumnStats_drops_nonfinite_entries(tmp_path):
+def test_flistColumnStats_drops_nonfinite_entries(tmp_path):
     """First/last NaN values are filtered out of column stats."""
     daData = np.array([[float("nan"), 1.0], [2.0, 2.0], [3.0, 3.0]])
     np.save(os.path.join(str(tmp_path), "withnan.npy"), daData)

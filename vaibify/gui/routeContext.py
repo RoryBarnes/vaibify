@@ -19,10 +19,10 @@ __all__ = [
     "fdictRequireLaneTupleForCommit",
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
-    "fnCommitWorkflowSave",
+    "fdictCommitWorkflowSave",
     "fnRecordAttributionEvent",
     "fnRejectAgentTokenLane",
-    "fobjRunWorkerUnderTheDrain",
+    "fgenericRunWorkerUnderTheDrain",
     "fsHashContainerFileOrEmpty",
     "fsRefreshVerifyCacheAfterPush",
 ]
@@ -128,7 +128,7 @@ def fdictCarryARefusalBackInsteadOfRaising(
         return {"errorRefused": errorHttp, "objResult": None}
 
 
-async def fobjRunWorkerUnderTheDrain(
+async def fgenericRunWorkerUnderTheDrain(
     sContainerId, fnCarryingWorker, sOperationTarget, requestHttp,
 ):
     """Run a carrying worker under the drain; re-raise its refusal here.
@@ -204,7 +204,7 @@ def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
     return hashlib.sha256(baCurrent).hexdigest()
 
 
-def fnCommitWorkflowSave(
+def fdictCommitWorkflowSave(
     dictCtx, sContainerId, dictWorkflow, requestHttp, sOperationName,
 ):
     """Commit a ``project.json`` save through carrier mode (a) (design §8).
@@ -283,8 +283,8 @@ def fnRecordAttributionEvent(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             dictWorkflow, sChannel, "hub", sDetail,
         )
-    except Exception as exc:  # noqa: BLE001 — never break the route
-        logger.warning("Attribution event append failed: %s", exc)
+    except Exception as errorCaught:  # noqa: BLE001 — never break the route
+        logger.warning("Attribution event append failed: %s", errorCaught)
 
 
 def fdictRunRemoteVerifyBlocking(dictWorkflow, sService, filesRepo):
@@ -317,14 +317,14 @@ async def _fnRunPostPushVerifyBlocking(
     tidy away: this helper is shared by three push routes that migrate
     one at a time.
     """
-    def fnVerifyWorker(supervisor=None):
+    def fdictVerifyWorker(supervisor=None):
         del supervisor
         return fdictRunRemoteVerifyBlocking(
             dictWorkflow, sService, filesRepo,
         )
 
     if requestHttp is None:
-        await asyncio.to_thread(fnVerifyWorker)
+        await asyncio.to_thread(fdictVerifyWorker)
         return
     from . import commitCarrier
     dictLaneTuple = fdictRequireLaneTupleForCommit(
@@ -333,7 +333,7 @@ async def _fnRunPostPushVerifyBlocking(
     await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper",
-        "post-push-verify " + sService, fnVerifyWorker,
+        "post-push-verify " + sService, fdictVerifyWorker,
     )
 
 
@@ -409,32 +409,32 @@ class RouteContext:
     # --- typed attribute access ---
 
     @property
-    def docker(self):
+    def connectionDocker(self):
         """Docker connection for executing container commands."""
         return self._dictRaw["docker"]
 
     @property
-    def workflows(self):
+    def dictWorkflows(self):
         """Dict of {sContainerId: dictWorkflow} cache."""
         return self._dictRaw["workflows"]
 
     @property
-    def paths(self):
+    def dictPaths(self):
         """Dict of {sContainerId: sWorkflowPath} cache."""
         return self._dictRaw["paths"]
 
     @property
-    def terminals(self):
+    def dictTerminals(self):
         """Dict of {sSessionId: TerminalSession} cache."""
         return self._dictRaw["terminals"]
 
     @property
-    def containerUsers(self):
+    def dictContainerUsers(self):
         """Dict of {sContainerId: sUsername} cache."""
         return self._dictRaw["containerUsers"]
 
     @property
-    def pipelineTasks(self):
+    def dictPipelineTasks(self):
         """Dict of {sContainerId: asyncio.Task} for running pipelines."""
         return self._dictRaw["pipelineTasks"]
 
@@ -443,23 +443,23 @@ class RouteContext:
         """Session token for WebSocket origin validation."""
         return self._dictRaw.get("sSessionToken", "")
 
-    def require(self):
+    def fnRequireDocker(self):
         """Raise if Docker is not available."""
-        return self._dictRaw["require"]()
+        self._dictRaw["require"]()
 
-    def save(self, sContainerId, dictWorkflow):
+    def fnSaveWorkflow(self, sContainerId, dictWorkflow):
         """Persist workflow to container."""
-        return self._dictRaw["save"](sContainerId, dictWorkflow)
+        self._dictRaw["save"](sContainerId, dictWorkflow)
 
-    def variables(self, sContainerId):
+    def fdictGetVariables(self, sContainerId):
         """Build variable substitution dict for a container."""
         return self._dictRaw["variables"](sContainerId)
 
-    def workflowDir(self, sContainerId):
+    def fsGetWorkflowDirectory(self, sContainerId):
         """Return the workflow directory path for a container."""
         return self._dictRaw["workflowDir"](sContainerId)
 
-    def files(self, sContainerId):
+    def ffilesGetRepoFiles(self, sContainerId):
         """Return a ContainerRepoFiles rooted at the workflow's project repo."""
         return self._dictRaw["files"](sContainerId)
 

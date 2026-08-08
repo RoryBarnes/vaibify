@@ -115,7 +115,7 @@ def _flistResolveStepIndices(iStep, listSteps):
     "--json", "bJson", is_flag=True, default=False,
     help="Output in JSON format.",
 )
-def test(sProjectName, iStep, bJson):
+def fnTestCommand(sProjectName, iStep, bJson):
     """Run tests for pipeline steps."""
     configProject = fconfigResolveProject(sProjectName)
     connectionDocker = fconnectionRequireDocker()

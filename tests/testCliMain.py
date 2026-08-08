@@ -339,7 +339,7 @@ def _fnPatchSessionSlot():
     """Return (acquirePatch, releasePatch) that no-op the session registry."""
     return (
         patch(
-            "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+            "vaibify.config.sessionRegistry.ffileAcquireSessionSlot",
             return_value=MagicMock(),
         ),
         patch(
@@ -456,7 +456,7 @@ def test_fnLaunchHub_exits_when_session_limit_reached():
             patch.dict(
                 os.environ, {"VAIBIFY_SUPPRESS_BROWSER": "1"},
             ), patch(
-                "vaibify.config.sessionRegistry.fnAcquireSessionSlot",
+                "vaibify.config.sessionRegistry.ffileAcquireSessionSlot",
                 side_effect=SessionLimitExceededError(99, 99),
             ):
         import pytest

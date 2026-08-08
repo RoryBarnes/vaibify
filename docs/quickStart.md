@@ -60,9 +60,9 @@ starts the container and opens its dashboard.
 
 You are now inside the container's dashboard. The toolbar shows the
 container name, the active project (for workflow projects) with its
-AICS level badges, and the **?** Help button. The left panel is
+PROOF level badges, and the **?** Help button. The left panel is
 tabbed: workflow projects get **Main** (the project's steps and
-project-wide requirements), **AICS** (the reproducibility-ladder
+project-wide requirements), **PROOF** (the reproducibility-ladder
 requirements ledger), **Files**, and **Logs**; sandbox and toolkit
 projects get **Files**, **Repos**, and **Logs**. Above the terminal,
 two Viewing Windows display figures and files.
@@ -88,7 +88,7 @@ deeper.
   is for reproducible multi-step analyses where each step's output gets
   inspected and signed off.
 - **[The dashboard tour](dashboard.md)** — every panel in the running
-  container's UI: the Main tab's Steps and Project blocks, the AICS
+  container's UI: the Main tab's Steps and Project blocks, the PROOF
   requirements ledger, the status lights and warning colours, the
   embedded terminal, the figure viewer, and the verification state
   machine that records which step outputs you have looked at.

@@ -17,11 +17,11 @@ _I_BUILD_STDERR_TAIL_LINES = 50
 def fbBuildxAvailable():
     """Return True if `docker buildx` is installed and functional."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "buildx", "version"],
             capture_output=True,
         )
-        return resultProcess.returncode == 0
+        return processResult.returncode == 0
     except FileNotFoundError:
         return False
 
@@ -289,11 +289,11 @@ def fbImageExists(sImageName):
     bool
         True if the image exists locally.
     """
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["docker", "image", "inspect", sImageName],
         capture_output=True,
     )
-    return resultProcess.returncode == 0
+    return processResult.returncode == 0
 
 
 def _fnRunDockerBuildCapturing(saCommand):

@@ -38,20 +38,20 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
-    fnCommitWorkflowSave,
+    fdictCommitWorkflowSave,
     fnRejectAgentTokenLane,
-    fobjRunWorkerUnderTheDrain,
+    fgenericRunWorkerUnderTheDrain,
     fsHashContainerFileOrEmpty,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_SEPARATE_AUTHORITY,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ..personalLayerManager import (
     fdictComputeHashCommitment,
@@ -90,14 +90,14 @@ def _fbDateIsIsoFormat(sDate):
     return True
 
 
-def _fdictValidateModelBody(request):
+def _fdictValidateModelBody(dictBody):
     """Return the sanitized model declaration or raise HTTP 400."""
-    if not isinstance(request, dict):
+    if not isinstance(dictBody, dict):
         raise HTTPException(400, "Model declaration must be an object.")
     dictModel = {
-        sField: request[sField]
+        sField: dictBody[sField]
         for sField in _LIST_MODEL_FIELDS
-        if sField in request
+        if sField in dictBody
     }
     listGaps = flistDescribeModelDeclarationGaps(dictModel)
     if listGaps:
@@ -134,23 +134,23 @@ def _fdictProvenanceOf(dictWorkflow):
 def _fnRegisterDeclareAiModel(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/ai-models/declare."""
 
-    @fnAgentAction("declare-ai-model")
+    @ffnAgentAction("declare-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/declare")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeclareAiModel(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclareAiModel(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        dictModel = _fdictValidateModelBody(request)
+        dictModel = _fdictValidateModelBody(dictBody)
         dictProvenance = _fdictProvenanceOf(dictWorkflow)
         dictProvenance[S_DECLARED_MODELS_KEY] = _flistUpsertModel(
             list(dictProvenance.get(S_DECLARED_MODELS_KEY) or []),
             dictModel,
         )
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The AI-model declaration",
         )
@@ -162,17 +162,17 @@ def _fnRegisterDeclareAiModel(app, dictCtx):
 def _fnRegisterRemoveAiModel(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/ai-models/remove."""
 
-    @fnAgentAction("remove-ai-model")
+    @ffnAgentAction("remove-ai-model")
     @app.post("/api/workflow/{sContainerId}/ai-models/remove")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnRemoveAiModel(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictRemoveAiModel(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        tKey = (request.get("sVendor"), request.get("sModelId"))
+        tKey = (dictBody.get("sVendor"), dictBody.get("sModelId"))
         dictProvenance = _fdictProvenanceOf(dictWorkflow)
         listModels = list(dictProvenance.get(S_DECLARED_MODELS_KEY) or [])
         listRemaining = [
@@ -183,7 +183,7 @@ def _fnRegisterRemoveAiModel(app, dictCtx):
         if len(listRemaining) == len(listModels):
             raise HTTPException(404, "No such declared model.")
         dictProvenance[S_DECLARED_MODELS_KEY] = listRemaining
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The AI-model removal",
         )
@@ -220,7 +220,7 @@ def _fnWriteContextFile(dictCtx, sContainerId, sAbsPath, sContent):
     )
 
 
-def _fnCommitContextWrite(
+def _fdictCommitContextWrite(
     dictCtx, sContainerId, sAbsPath, sContent, requestHttp,
     sOperationName,
 ):
@@ -231,7 +231,7 @@ def _fnCommitContextWrite(
     bytes about to be written, so a crash inside the commit window
     resolves to "landed" or "did not" rather than to a quarantine.
 
-    Deliberately NOT routed through ``fnCommitWorkflowSave``: that
+    Deliberately NOT routed through ``fdictCommitWorkflowSave``: that
     helper's target is project.json and its expected hash is the
     workflow's fingerprint, so reusing it would hand the probe a hash
     belonging to a different file.
@@ -270,9 +270,9 @@ def _fnRequireContentWithinCap(sContent):
 def _fnRegisterReadProjectContext(app, dictCtx):
     """Register GET /api/workflow/{sContainerId}/project-context."""
 
-    @fnAgentAction("read-project-context")
+    @ffnAgentAction("read-project-context")
     @app.get("/api/workflow/{sContainerId}/project-context")
-    async def fnReadProjectContext(sContainerId: str):
+    async def fdictReadProjectContext(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -289,20 +289,20 @@ def _fnRegisterReadProjectContext(app, dictCtx):
 def _fnRegisterUpdateProjectContext(app, dictCtx):
     """Register PUT /api/workflow/{sContainerId}/project-context."""
 
-    @fnAgentAction("update-project-context")
+    @ffnAgentAction("update-project-context")
     @app.put("/api/workflow/{sContainerId}/project-context")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnUpdateProjectContext(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictUpdateProjectContext(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sContent = str(request.get("sContent") or "")
+        sContent = str(dictBody.get("sContent") or "")
         _fnRequireContentWithinCap(sContent)
         sAbsPath = _fsContextAbsolutePath(dictWorkflow)
-        _fnCommitContextWrite(
+        _fdictCommitContextWrite(
             dictCtx, sContainerId, sAbsPath, sContent, requestHttp,
             "The project-context update",
         )
@@ -317,10 +317,10 @@ def _fnRegisterUpdateProjectContext(app, dictCtx):
 def _fnRegisterContextTemplate(app, dictCtx):
     """Register POST .../project-context/template (409 if it exists)."""
 
-    @fnAgentAction("generate-project-context-template")
+    @ffnAgentAction("generate-project-context-template")
     @app.post("/api/workflow/{sContainerId}/project-context/template")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnGenerateContextTemplate(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictGenerateContextTemplate(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -363,12 +363,12 @@ async def _fnWriteTheTemplateUnderTheDrain(
             dictCtx, sContainerId, sAbsPath, S_CONTEXT_TEMPLATE,
         )
 
-    def fnWriteTheTemplate(supervisor=None):
+    def fdictWriteTheTemplate(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(fnProbeThenWrite)
 
-    await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnWriteTheTemplate, "project-context-template",
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictWriteTheTemplate, "project-context-template",
         requestHttp,
     )
 
@@ -376,10 +376,10 @@ async def _fnWriteTheTemplateUnderTheDrain(
 _SET_ADOPTABLE_ROOT_BASENAMES = frozenset({"CLAUDE.md", "AGENTS.md"})
 
 
-def _fsResolveImportContent(dictCtx, sContainerId, dictWorkflow, request):
+def _fsResolveImportContent(dictCtx, sContainerId, dictWorkflow, dictBody):
     """Return the imported content from the host or the repo root."""
-    if request.get("bAdoptRepoRoot") is True:
-        sBasename = str(request.get("sRootBasename") or "")
+    if dictBody.get("bAdoptRepoRoot") is True:
+        sBasename = str(dictBody.get("sRootBasename") or "")
         if sBasename not in _SET_ADOPTABLE_ROOT_BASENAMES:
             raise HTTPException(
                 400, "sRootBasename must be CLAUDE.md or AGENTS.md.",
@@ -394,23 +394,23 @@ def _fsResolveImportContent(dictCtx, sContainerId, dictWorkflow, request):
             raise HTTPException(404, f"No {sBasename} at the repo root.")
         return sContent
     try:
-        return fsReadHostImportFile(str(request.get("sHostPath") or ""))
+        return fsReadHostImportFile(str(dictBody.get("sHostPath") or ""))
     except ValueError as error:
         raise HTTPException(400, str(error))
 
 
-def _fnReplaceRootWithSymlink(dictCtx, sContainerId, dictWorkflow, request):
+def _fnReplaceRootWithSymlink(dictCtx, sContainerId, dictWorkflow, dictBody):
     """After adopting a root file, point it at the canonical context.
 
     One source of truth: the adopted root file becomes a symlink to
     ``.vaibify/AGENTS.md`` so future edits cannot diverge. A failed
     replacement is surfaced, never silently ignored.
     """
-    if request.get("bAdoptRepoRoot") is not True:
+    if dictBody.get("bAdoptRepoRoot") is not True:
         return
     from ..pipelineRunner import fsShellQuote
     sRepo = dictWorkflow.get("sProjectRepoPath") or ""
-    sBasename = str(request.get("sRootBasename") or "")
+    sBasename = str(dictBody.get("sRootBasename") or "")
     sCommand = (
         "cd " + fsShellQuote(sRepo)
         + " && rm -f " + fsShellQuote(sBasename)
@@ -418,13 +418,13 @@ def _fnReplaceRootWithSymlink(dictCtx, sContainerId, dictWorkflow, request):
         + fsShellQuote(S_PROJECT_CONTEXT_RELATIVE_PATH)
         + " " + fsShellQuote(sBasename)
     )
-    resultExec = dictCtx["docker"].texecRunInContainerStreamed(
+    tExecResult = dictCtx["docker"].ftRunInContainerStreamed(
         sContainerId, sCommand,
     )
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         raise HTTPException(
             500, "Adopted the content, but replacing the root file "
-            "with a symlink failed: " + resultExec.sStderr,
+            "with a symlink failed: " + tExecResult.sStderr,
         )
 
 
@@ -446,9 +446,9 @@ def _fnRegisterContextImport(app, dictCtx):
     """
 
     @app.post("/api/workflow/{sContainerId}/project-context/import")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnImportProjectContext(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictImportProjectContext(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
@@ -456,13 +456,13 @@ def _fnRegisterContextImport(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         await _fnImportTheContextUnderTheDrain(
-            dictCtx, sContainerId, dictWorkflow, request, requestHttp,
+            dictCtx, sContainerId, dictWorkflow, dictBody, requestHttp,
         )
         return {"bOk": True}
 
 
 async def _fnImportTheContextUnderTheDrain(
-    dictCtx, sContainerId, dictWorkflow, request, requestHttp,
+    dictCtx, sContainerId, dictWorkflow, dictBody, requestHttp,
 ):
     """Probe, read the source, write, and re-point the root as one.
 
@@ -489,26 +489,26 @@ async def _fnImportTheContextUnderTheDrain(
         sExisting = _fsFetchContextOrNone(
             dictCtx, sContainerId, sAbsPath,
         )
-        if sExisting and request.get("bOverwrite") is not True:
+        if sExisting and dictBody.get("bOverwrite") is not True:
             raise HTTPException(
                 409, "A project context file already exists; pass "
                 "bOverwrite to replace it.",
             )
         sContent = _fsResolveImportContent(
-            dictCtx, sContainerId, dictWorkflow, request,
+            dictCtx, sContainerId, dictWorkflow, dictBody,
         )
         _fnRequireContentWithinCap(sContent)
         _fnWriteContextFile(dictCtx, sContainerId, sAbsPath, sContent)
         _fnReplaceRootWithSymlink(
-            dictCtx, sContainerId, dictWorkflow, request,
+            dictCtx, sContainerId, dictWorkflow, dictBody,
         )
 
-    def fnRunTheImport(supervisor=None):
+    def fdictRunTheImport(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(fnImportTheContent)
 
-    await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnRunTheImport, "project-context-import",
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictRunTheImport, "project-context-import",
         requestHttp,
     )
 
@@ -568,11 +568,11 @@ def _fnRequireSupervisionOffBeforeDisabling(dictWorkflow, bEnabled):
 def _fnRegisterPromptRecordConfigure(app, dictCtx):
     """Register POST .../prompt-record/configure."""
 
-    @fnAgentAction("configure-prompt-record")
+    @ffnAgentAction("configure-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/configure")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnConfigurePromptRecord(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictConfigurePromptRecord(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         # Late-bound so an install of vaibify[replay] (or a test
         # patch) takes effect without restarting the hub.
@@ -581,7 +581,7 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        bEnabled = request.get("bEnabled") is True
+        bEnabled = dictBody.get("bEnabled") is True
         _fnRequireSupervisionOffBeforeDisabling(dictWorkflow, bEnabled)
         if bEnabled and not transcriptSanitizer.fbSanitizerAvailable():
             raise HTTPException(
@@ -596,7 +596,7 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
                 timezone.utc,
             ).isoformat()
         dictRecord.setdefault("bFirstCaptureReviewed", False)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The Prompt Record setting",
         )
@@ -608,10 +608,10 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
     from .. import promptRecordManager
     from ..routeContext import ffilesForWorkflow
 
-    @fnAgentAction("capture-prompt-record")
+    @ffnAgentAction("capture-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/capture")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnCapturePromptRecord(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictCapturePromptRecord(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -624,7 +624,7 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
         _fsContextAbsolutePath(dictWorkflow)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
 
-        def fnRunTheCapturePass(supervisor=None):
+        def fdictRunTheCapturePass(supervisor=None):
             del supervisor
             return promptRecordManager.fdictRunCapturePass(
                 dictCtx["docker"], sContainerId, filesRepo,
@@ -637,7 +637,7 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
         # secrets, and the journal is an on-disk record with a
         # different lifetime from the sanitized transcript.
         dictSummary = await _fdictRunTheCaptureUnderTheDrain(
-            sContainerId, fnRunTheCapturePass, requestHttp,
+            sContainerId, fdictRunTheCapturePass, requestHttp,
         )
         dictSummary["bPendingReview"] = (
             dictRecord.get("bFirstCaptureReviewed") is not True
@@ -646,7 +646,7 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
 
 
 async def _fdictRunTheCaptureUnderTheDrain(
-    sContainerId, fnRunTheCapturePass, requestHttp,
+    sContainerId, fdictRunTheCapturePass, requestHttp,
 ):
     """Run one Prompt Record capture pass under the drain.
 
@@ -668,7 +668,7 @@ async def _fdictRunTheCaptureUnderTheDrain(
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", "prompt-record-capture",
-        fnRunTheCapturePass,
+        fdictRunTheCapturePass,
     )
     return dictOutcome["result"]
 
@@ -686,8 +686,8 @@ def _fnRegisterPromptRecordApprove(app, dictCtx):
         "/api/workflow/{sContainerId}/prompt-record/"
         "approve-first-capture"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnApproveFirstCapture(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictApproveFirstCapture(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -698,7 +698,7 @@ def _fnRegisterPromptRecordApprove(app, dictCtx):
         if dictRecord.get("bEnabled") is not True:
             raise HTTPException(409, "The Prompt Record is not enabled.")
         dictRecord["bFirstCaptureReviewed"] = True
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The first-capture approval",
         )
@@ -710,9 +710,9 @@ def _fnRegisterPromptRecordStatus(app, dictCtx):
     from .. import promptRecordManager
     from ..routeContext import ffilesForWorkflow
 
-    @fnAgentAction("view-prompt-record-status")
+    @ffnAgentAction("view-prompt-record-status")
     @app.get("/api/workflow/{sContainerId}/prompt-record/status")
-    async def fnPromptRecordStatus(sContainerId: str):
+    async def fdictPromptRecordStatus(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -775,15 +775,15 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
     """
 
     @app.post("/api/workflow/{sContainerId}/supervision/configure")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnConfigureSupervision(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictConfigureSupervision(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        bEnabled = request.get("bEnabled") is True
+        bEnabled = dictBody.get("bEnabled") is True
         dictRecord = _fdictPromptRecordOf(dictWorkflow)
         if bEnabled and not (
             dictRecord.get("bEnabled") is True
@@ -803,20 +803,20 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
                 timezone.utc,
             ).isoformat()
         dictProvenance["dictSupervision"] = dictSupervision
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The Supervised-mode setting",
         )
         return {"dictSupervision": dictSupervision}
 
 
-def _fsValidatePersonalLayerStatus(request):
+def _fsValidatePersonalLayerStatus(dictBody):
     """Return the declared status string or raise HTTP 400."""
-    if not isinstance(request, dict):
+    if not isinstance(dictBody, dict):
         raise HTTPException(
             400, "Personal-layer declaration must be an object.",
         )
-    sStatus = str(request.get("sStatus") or "")
+    sStatus = str(dictBody.get("sStatus") or "")
     if sStatus not in SET_PERSONAL_LAYER_STATUSES:
         raise HTTPException(
             400, "sStatus must be one of: "
@@ -836,17 +836,17 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
     configuration must come from the researcher.
     """
 
-    @fnAgentAction("declare-personal-layer")
+    @ffnAgentAction("declare-personal-layer")
     @app.post("/api/workflow/{sContainerId}/personal-layer/declare")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeclarePersonalLayer(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclarePersonalLayer(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
-        sStatus = _fsValidatePersonalLayerStatus(request)
+        sStatus = _fsValidatePersonalLayerStatus(dictBody)
         dictProvenance = _fdictProvenanceOf(dictWorkflow)
         dictLayer = dict(
             dictProvenance.get(S_PERSONAL_LAYER_KEY) or {},
@@ -855,7 +855,7 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
         dictLayer["sDeclaredIso"] = datetime.now(
             timezone.utc,
         ).isoformat()
-        if "dictHashCommitment" in request:
+        if "dictHashCommitment" in dictBody:
             if sStatus != "declared-private":
                 raise HTTPException(
                     400, "Hash commitments only accompany the "
@@ -867,13 +867,13 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
             try:
                 listCommitments.append(
                     fdictValidateHashCommitment(
-                        request["dictHashCommitment"],
+                        dictBody["dictHashCommitment"],
                     ),
                 )
             except ValueError as error:
                 raise HTTPException(400, str(error))
             dictLayer["listHashCommitments"] = listCommitments
-        if "listIncludedPaths" in request:
+        if "listIncludedPaths" in dictBody:
             if sStatus != "included":
                 raise HTTPException(
                     400, "listIncludedPaths only accompanies the "
@@ -882,13 +882,13 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
             try:
                 dictLayer["listIncludedPaths"] = (
                     flistValidateIncludedPaths(
-                        request["listIncludedPaths"],
+                        dictBody["listIncludedPaths"],
                     )
                 )
             except ValueError as error:
                 raise HTTPException(400, str(error))
         dictProvenance[S_PERSONAL_LAYER_KEY] = dictLayer
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The personal-layer declaration",
         )
@@ -898,7 +898,7 @@ def _fnRegisterDeclarePersonalLayer(app, dictCtx):
 def _fnRegisterHashPersonalLayerFile(app, dictCtx):
     """Register POST .../personal-layer/hash (researcher-only).
 
-    Reads a HOST file at the researcher's request and returns its
+    Reads a HOST file at the researcher's dictBody and returns its
     SHA-256 commitment; nothing is persisted. Excluded from the
     agent-action catalog AND guarded against the agent token lane at
     the route itself: an agent-reachable variant would hand a
@@ -919,14 +919,14 @@ def _fnRegisterHashPersonalLayerFile(app, dictCtx):
     # host-path handling. Ruling 2026-08-05, same reasoning as
     # fileRoutes' pull route.
     @app.post("/api/workflow/{sContainerId}/personal-layer/hash")
-    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fnHashPersonalLayerFile(
-        sContainerId: str, request: dict, requestHttp: Request,
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictHashPersonalLayerFile(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         fnRejectAgentTokenLane(requestHttp)
         dictCtx["require"]()
         fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
-        sLabel = str(request.get("sLabel") or "").strip()
+        sLabel = str(dictBody.get("sLabel") or "").strip()
         if not sLabel:
             raise HTTPException(
                 400, "A hash commitment needs a non-empty sLabel.",
@@ -934,7 +934,7 @@ def _fnRegisterHashPersonalLayerFile(app, dictCtx):
         try:
             dictCommitment = await asyncio.to_thread(
                 fdictComputeHashCommitment,
-                str(request.get("sHostPath") or ""), sLabel,
+                str(dictBody.get("sHostPath") or ""), sLabel,
             )
         except ValueError as error:
             raise HTTPException(400, str(error))

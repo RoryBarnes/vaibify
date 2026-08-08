@@ -15,7 +15,7 @@ from vaibify.gui.pipelineServer import (
     _fdictBuildTestMarkerStatus,
     _flistBuildCleanCommands,
     _flistFindCustomTestFiles,
-    _fnApplyAllMarkerCategories,
+    _fbApplyAllMarkerCategories,
     _fnHandleInteractiveComplete,
     _fnHandleInteractiveResponse,
     _fsResolveLanguage,
@@ -129,14 +129,14 @@ class TestFnApplyAllMarkerCategories:
             "qualitative": {"iPassed": 0, "iFailed": 1},
             "quantitative": {"iPassed": 5, "iFailed": 0},
         }
-        _fnApplyAllMarkerCategories(dictVerify, dictCategories)
+        _fbApplyAllMarkerCategories(dictVerify, dictCategories)
         assert dictVerify["sIntegrity"] == "passed"
         assert dictVerify["sQualitative"] == "failed"
         assert dictVerify["sQuantitative"] == "passed"
 
     def test_missing_categories_unchanged(self):
         dictVerify = {"sIntegrity": "untested"}
-        _fnApplyAllMarkerCategories(dictVerify, {})
+        _fbApplyAllMarkerCategories(dictVerify, {})
         assert dictVerify["sIntegrity"] == "untested"
 
     def test_partial_categories(self):
@@ -144,7 +144,7 @@ class TestFnApplyAllMarkerCategories:
         dictCategories = {
             "integrity": {"iPassed": 1, "iFailed": 0},
         }
-        _fnApplyAllMarkerCategories(dictVerify, dictCategories)
+        _fbApplyAllMarkerCategories(dictVerify, dictCategories)
         assert dictVerify["sIntegrity"] == "passed"
         assert "sQualitative" not in dictVerify
 

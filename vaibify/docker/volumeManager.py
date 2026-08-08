@@ -44,11 +44,11 @@ def fbVolumeExists(sVolumeName):
     bool
         True if the volume exists.
     """
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["docker", "volume", "inspect", sVolumeName],
         capture_output=True,
     )
-    return resultProcess.returncode == 0
+    return processResult.returncode == 0
 
 
 def fsGetVolumeName(config):

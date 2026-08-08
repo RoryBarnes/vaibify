@@ -118,7 +118,7 @@ S_SETSID_ESCAPE_LINE = (
 def _fbEscapedMarkerExists(tLiveContainer):
     """Independently check the setsid descendant's marker file."""
     _sName, sContainerId, connectionDocker = tLiveContainer
-    iExitCode, _ = connectionDocker.ftupleRunRootShellProbe(
+    iExitCode, _ = connectionDocker.ftRunRootShellProbe(
         sContainerId, f"test -e {S_ESCAPED_MARKER_PATH}",
     )
     return iExitCode == 0
@@ -127,7 +127,7 @@ def _fbEscapedMarkerExists(tLiveContainer):
 def _fbEscapedProcessIsAlive(tLiveContainer):
     """Return True while the setsid descendant is still running."""
     _sName, sContainerId, connectionDocker = tLiveContainer
-    iExitCode, _sOutput = connectionDocker.ftupleRunRootShellProbe(
+    iExitCode, _sOutput = connectionDocker.ftRunRootShellProbe(
         sContainerId,
         f"grep -l {S_ESCAPED_MARKER_PATH} /proc/*/cmdline 2>/dev/null "
         "| head -n 1",
@@ -139,7 +139,7 @@ def _fbEscapedProcessIsAlive(tLiveContainer):
 def _fbLeakedMarkerExists(tLiveContainer):
     """Independently check the descendant's marker file, root exec."""
     sName, sContainerId, connectionDocker = tLiveContainer
-    iExitCode, _ = connectionDocker.ftupleRunRootShellProbe(
+    iExitCode, _ = connectionDocker.ftRunRootShellProbe(
         sContainerId, f"test -e {S_LEAKED_MARKER_PATH}",
     )
     return iExitCode == 0
@@ -235,7 +235,7 @@ def test_prover_reports_survivors_after_exec_inspect_says_dead(
     )
     assert dictResolution["sResolution"] == "QUARANTINED"
     from vaibify.gui import terminalContainment
-    terminalContainment.fnDrainSessionRecord(session)
+    terminalContainment.fdictDrainSessionRecord(session)
 
 
 # ---------------------------------------------------------------------
@@ -401,7 +401,7 @@ def test_two_real_terminals_and_a_pipeline_record_settle_independently(
         sName, sPipelineOperationId, {"sDockerExecId": sPipelineExecId},
     )
     assert len(_fdictJournalOperations(sName)) == 3
-    dictOutcome = terminalContainment.fnDrainSessionRecord(sessionFirst)
+    dictOutcome = terminalContainment.fdictDrainSessionRecord(sessionFirst)
     assert dictOutcome["bProvenEmpty"] is True, dictOutcome
     dictRemaining = _fdictJournalOperations(sName)
     assert len(dictRemaining) == 2
@@ -413,7 +413,7 @@ def test_two_real_terminals_and_a_pipeline_record_settle_independently(
     ).get("Running") is True, (
         "settling the first terminal must not have touched the second"
     )
-    terminalContainment.fnDrainSessionRecord(sessionSecond)
+    terminalContainment.fdictDrainSessionRecord(sessionSecond)
 
 
 # ---------------------------------------------------------------------

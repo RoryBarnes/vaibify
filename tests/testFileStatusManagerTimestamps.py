@@ -1,7 +1,7 @@
 """Tests for timestamp-based pencil staleness in fileStatusManager."""
 
 from vaibify.gui.fileStatusManager import (
-    _fbStepIsPencilStale,
+    _ftStepIsPencilStale,
     _fdictBuildScriptStatus,
     _fdictComputeMarkerMtimeByStep,
     _fdictComputeMaxDataMtimeByStep,
@@ -9,8 +9,8 @@ from vaibify.gui.fileStatusManager import (
     _fdictComputeTestCategoryMtimes,
     _flistResolveTestSourcePaths,
     fbReconcileUserVerificationTimestamps,
-    fnCollectMarkerPathsByStep,
-    fnCollectScriptPathsByStep,
+    fdictHandleCollectMarkerPathsByStep,
+    fdictHandleCollectScriptPathsByStep,
     fsMarkerNameFromStepDirectory,
 )
 
@@ -39,13 +39,13 @@ def _fdictBuildStep(dictOverrides=None):
 
 def _tBuildScriptPaths(dictStep):
     dictWorkflow = {"listSteps": [dictStep]}
-    return fnCollectScriptPathsByStep(dictWorkflow)[0]
+    return fdictHandleCollectScriptPathsByStep(dictWorkflow)[0]
 
 
 def test_unset_validators_never_stale():
     dictStep = _fdictBuildStep()
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {"/ws/stepA/data.py": _I_NEWER},
@@ -59,7 +59,7 @@ def test_marker_newer_than_artifacts_not_stale():
         "dictVerification": {"sLastUserUpdate": _S_FRESH},
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {
@@ -79,7 +79,7 @@ def test_marker_older_than_data_script_is_stale():
         "dictVerification": {"sLastUserUpdate": _S_FRESH},
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {
@@ -104,7 +104,7 @@ def test_marker_older_than_data_file_is_stale():
         "dictVerification": {"sLastUserUpdate": _S_FRESH},
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {
@@ -129,7 +129,7 @@ def test_marker_none_short_circuits_test_branch():
         "dictVerification": {"sLastUserUpdate": _S_FRESH},
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {
@@ -152,7 +152,7 @@ def test_marker_none_but_user_stale_still_fires():
         },
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {
@@ -178,7 +178,7 @@ def test_stale_user_vs_plot_file_reports_plotfile():
         },
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {
@@ -209,7 +209,7 @@ def test_user_stale_check_skipped_when_sUser_untested():
         },
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/data.out", "/ws/stepA/figure.pdf"],
         {
@@ -230,7 +230,7 @@ def test_plot_only_step_not_stale_by_test_branch():
         "saOutputDataFiles": [],
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, _listStale = _fbStepIsPencilStale(
+    bStale, _listStale = _ftStepIsPencilStale(
         dictStep, dictScripts,
         ["/ws/stepA/figure.pdf"],
         {
@@ -248,7 +248,7 @@ def test_plot_only_step_unset_user_not_stale():
         "saOutputDataFiles": [],
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, _listStale = _fbStepIsPencilStale(
+    bStale, _listStale = _ftStepIsPencilStale(
         dictStep, dictScripts, ["/ws/stepA/figure.pdf"],
         {"/ws/stepA/figure.pdf": _I_NEWER},
     )
@@ -265,7 +265,7 @@ def test_setup_and_generic_commands_counted_as_data_scripts():
         "saPlotFiles": [],
     })
     dictScripts = _tBuildScriptPaths(dictStep)
-    bStale, listStale = _fbStepIsPencilStale(
+    bStale, listStale = _ftStepIsPencilStale(
         dictStep, dictScripts, [],
         {
             "/ws/stepA/setup.py": _I_NEWER,
@@ -403,7 +403,7 @@ def test_collect_marker_paths_uses_helper():
             {"sDirectory": "stepB"},
         ],
     }
-    dictResult = fnCollectMarkerPathsByStep(
+    dictResult = fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/DemoRepo",
         "/workspace/DemoRepo/.vaibify/workflows/demo.json",
     )
@@ -418,7 +418,7 @@ def test_collect_marker_paths_uses_helper():
 
 def test_collect_marker_paths_empty_repo_returns_empty():
     dictWorkflow = {"listSteps": [{"sDirectory": "stepA"}]}
-    assert fnCollectMarkerPathsByStep(
+    assert fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "",
         "/workspace/Repo/.vaibify/workflows/demo.json",
     ) == {}
@@ -426,18 +426,18 @@ def test_collect_marker_paths_empty_repo_returns_empty():
 
 def test_collect_marker_paths_empty_workflow_path_returns_empty():
     dictWorkflow = {"listSteps": [{"sDirectory": "stepA"}]}
-    assert fnCollectMarkerPathsByStep(
+    assert fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/Repo", "",
     ) == {}
 
 
 def test_collect_marker_paths_namespace_separates_workflows():
     dictWorkflow = {"listSteps": [{"sDirectory": "shared"}]}
-    dictResultA = fnCollectMarkerPathsByStep(
+    dictResultA = fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/Repo",
         "/workspace/Repo/.vaibify/workflows/wfa.json",
     )
-    dictResultB = fnCollectMarkerPathsByStep(
+    dictResultB = fdictHandleCollectMarkerPathsByStep(
         dictWorkflow, "/workspace/Repo",
         "/workspace/Repo/.vaibify/workflows/wfb.json",
     )

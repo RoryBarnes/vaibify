@@ -193,7 +193,7 @@ def _fMockContainerWithUser(sUser):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_texecRunInContainerStreamed_defaults_to_image_user(mockGetDocker):
+def test_ftRunInContainerStreamed_defaults_to_image_user(mockGetDocker):
     """``docker exec`` defaults to the image's unprivileged user."""
     from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
     _CACHED_CONTAINER_USER.clear()
@@ -203,13 +203,13 @@ def test_texecRunInContainerStreamed_defaults_to_image_user(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id")
+    conn.ftRunInContainerStreamed("abc123", "id")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "researcher"
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_texecRunInContainerStreamed_explicit_root_overrides(mockGetDocker):
+def test_ftRunInContainerStreamed_explicit_root_overrides(mockGetDocker):
     """Callers that genuinely need root can opt in via ``sUser="root"``."""
     from vaibify.docker.dockerConnection import _CACHED_CONTAINER_USER
     _CACHED_CONTAINER_USER.clear()
@@ -219,7 +219,7 @@ def test_texecRunInContainerStreamed_explicit_root_overrides(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id", sUser="root")
+    conn.ftRunInContainerStreamed("abc123", "id", sUser="root")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "root"
 
@@ -253,7 +253,7 @@ def test_resolve_user_falls_back_to_researcher_when_attrs_missing(
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id")
+    conn.ftRunInContainerStreamed("abc123", "id")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "researcher"
 
@@ -277,7 +277,7 @@ def test_resolve_user_ignores_run_user_zero_override(mockGetDocker):
     mockContainer.exec_run.return_value = (0, (b"ok", b""))
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
-    conn.texecRunInContainerStreamed("abc123", "id")
+    conn.ftRunInContainerStreamed("abc123", "id")
     dictKwargs = mockContainer.exec_run.call_args[1]
     assert dictKwargs["user"] == "researcher"
 
@@ -406,7 +406,7 @@ def test_fnWriteFileViaTar_sets_mtime_to_current_time(mockGetDocker):
 
 
 # -----------------------------------------------------------------------
-# texecRunInContainerStreamedWithChunks
+# ftRunInContainerStreamedWithChunks
 # -----------------------------------------------------------------------
 
 
@@ -435,7 +435,7 @@ def test_streamed_with_chunks_emits_per_line(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamedWithChunks(
+    resultExec = conn.ftRunInContainerStreamedWithChunks(
         "abc123", "do-it",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )
@@ -461,7 +461,7 @@ def test_streamed_with_chunks_buffers_partial_lines(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    conn.texecRunInContainerStreamedWithChunks(
+    conn.ftRunInContainerStreamedWithChunks(
         "abc123", "cmd",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )
@@ -480,7 +480,7 @@ def test_streamed_with_chunks_flushes_trailing_partial(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    conn.texecRunInContainerStreamedWithChunks(
+    conn.ftRunInContainerStreamedWithChunks(
         "abc123", "cmd",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )
@@ -496,7 +496,7 @@ def test_streamed_with_chunks_propagates_exit_code(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     _fMockExecForStream(mockClient, [(b"hi\n", None)], iExitCode=7)
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamedWithChunks(
+    resultExec = conn.ftRunInContainerStreamedWithChunks(
         "abc123", "cmd", lambda sStream, sLine: None,
     )
     assert resultExec.iExitCode == 7
@@ -511,7 +511,7 @@ def test_streamed_with_chunks_passes_workdir_and_user(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     _fMockExecForStream(mockClient, [])
     conn = DockerConnection()
-    conn.texecRunInContainerStreamedWithChunks(
+    conn.ftRunInContainerStreamedWithChunks(
         "abc123", "pwd", lambda sStream, sLine: None,
         sWorkdir="/workspace", sUser="root",
     )
@@ -581,7 +581,7 @@ def test_streaming_path_does_not_accumulate_lines(mockGetDocker):
     ])
     listEmits = []
     conn = DockerConnection()
-    resultExec = conn.texecRunInContainerStreamedWithChunks(
+    resultExec = conn.ftRunInContainerStreamedWithChunks(
         "abc123", "spew",
         lambda sStream, sLine: listEmits.append((sStream, sLine)),
     )
@@ -630,7 +630,7 @@ def _fnBuildTarStream(sFilename, baContent, iChunkSizeBytes=512):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnIterStreamFile_yields_identical_bytes(mockGetDocker):
+def test_fiterStreamFile_yields_identical_bytes(mockGetDocker):
     """Streaming fetch reconstructs the same bytes the small path returns."""
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
@@ -642,7 +642,7 @@ def test_fnIterStreamFile_yields_identical_bytes(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
     baReceived = b"".join(
-        conn.fnIterStreamFile(
+        conn.fiterStreamFile(
             "abc123", "/workspace/payload.bin", iChunkSizeBytes=1024,
         )
     )
@@ -650,7 +650,7 @@ def test_fnIterStreamFile_yields_identical_bytes(mockGetDocker):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnIterStreamFile_emits_bounded_chunks(mockGetDocker):
+def test_fiterStreamFile_emits_bounded_chunks(mockGetDocker):
     """No yielded chunk exceeds the caller's requested chunk size."""
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
@@ -663,7 +663,7 @@ def test_fnIterStreamFile_emits_bounded_chunks(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
     listChunks = list(
-        conn.fnIterStreamFile(
+        conn.fiterStreamFile(
             "abc123", "/workspace/payload.bin", iChunkSizeBytes=1024,
         )
     )
@@ -672,7 +672,7 @@ def test_fnIterStreamFile_emits_bounded_chunks(mockGetDocker):
 
 
 @patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnIterStreamFile_raises_filenotfound_on_missing(mockGetDocker):
+def test_fiterStreamFile_raises_filenotfound_on_missing(mockGetDocker):
     """A missing path surfaces as FileNotFoundError, not a docker exception."""
     mockDocker, mockClient = _fMockDockerModule()
     mockGetDocker.return_value = mockDocker
@@ -681,7 +681,7 @@ def test_fnIterStreamFile_raises_filenotfound_on_missing(mockGetDocker):
     mockClient.containers.get.return_value = mockContainer
     conn = DockerConnection()
     with pytest.raises(FileNotFoundError):
-        next(conn.fnIterStreamFile("abc123", "/nope"))
+        next(conn.fiterStreamFile("abc123", "/nope"))
 
 
 # -----------------------------------------------------------------------
@@ -724,10 +724,10 @@ def test_fbaFetchFile_under_cap_returns_bytes(mockGetDocker):
 
 
 def test_module_init_filters_deprecation_warning():
-    """A subprocess import shows the heartbeat-flood filter installed.
+    """A subprocess import shows the heartbeat-flood fnFilterCommand installed.
 
     pytest's per-test ``catch_warnings`` context saves and restores the
-    filter list, so the filter installed at module-import is invisible
+    fnFilterCommand list, so the fnFilterCommand installed at module-import is invisible
     inside an active pytest session. Verifying via subprocess sidesteps
     that without weakening the assertion.
     """

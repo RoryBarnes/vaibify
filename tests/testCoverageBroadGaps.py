@@ -611,9 +611,9 @@ class TestCommandWorkflowCli:
             },
             "sWorkflowPath": "/w.yaml",
         }
-        from vaibify.cli.commandWorkflow import workflow
+        from vaibify.cli.commandWorkflow import fnWorkflowCommand
         runner = CliRunner()
-        result = runner.invoke(workflow, [])
+        result = runner.invoke(fnWorkflowCommand, [])
         assert result.exit_code == 0
         assert "TestFlow" in result.output
 
@@ -641,9 +641,9 @@ class TestCommandWorkflowCli:
             },
             "sWorkflowPath": "/w.yaml",
         }
-        from vaibify.cli.commandWorkflow import workflow
+        from vaibify.cli.commandWorkflow import fnWorkflowCommand
         runner = CliRunner()
-        result = runner.invoke(workflow, ["--json"])
+        result = runner.invoke(fnWorkflowCommand, ["--json"])
         assert result.exit_code == 0
         dictOut = json.loads(result.output)
         assert dictOut["iStepCount"] == 1
@@ -673,9 +673,9 @@ class TestCommandWorkflowCli:
             },
             "sWorkflowPath": "/w.yaml",
         }
-        from vaibify.cli.commandWorkflow import workflow
+        from vaibify.cli.commandWorkflow import fnWorkflowCommand
         runner = CliRunner()
-        result = runner.invoke(workflow, ["--step", "1"])
+        result = runner.invoke(fnWorkflowCommand, ["--step", "1"])
         assert result.exit_code == 0
         assert "Build" in result.output
 
@@ -696,9 +696,9 @@ class TestCommandWorkflowCli:
             },
             "sWorkflowPath": "/w.yaml",
         }
-        from vaibify.cli.commandWorkflow import workflow
+        from vaibify.cli.commandWorkflow import fnWorkflowCommand
         runner = CliRunner()
-        result = runner.invoke(workflow, ["--step", "5"])
+        result = runner.invoke(fnWorkflowCommand, ["--step", "5"])
         assert result.exit_code != 0
 
     @patch("vaibify.cli.commandWorkflow.fconfigResolveProject")
@@ -725,9 +725,9 @@ class TestCommandWorkflowCli:
             },
             "sWorkflowPath": "/w.yaml",
         }
-        from vaibify.cli.commandWorkflow import workflow
+        from vaibify.cli.commandWorkflow import fnWorkflowCommand
         runner = CliRunner()
-        result = runner.invoke(workflow, ["--step", "1", "--json"])
+        result = runner.invoke(fnWorkflowCommand, ["--step", "1", "--json"])
         assert result.exit_code == 0
         dictOut = json.loads(result.output)
         assert dictOut["sName"] == "Build"
@@ -761,8 +761,8 @@ class TestCommandLsCli:
             "vaibify.cli.commandLs.fsRequireRunningContainer",
             return_value="ctn1",
         ):
-            from vaibify.cli.commandLs import ls
-            result = CliRunner().invoke(ls, ["/tmp; touch /tmp/pwned"])
+            from vaibify.cli.commandLs import fnListCommand
+            result = CliRunner().invoke(fnListCommand, ["/tmp; touch /tmp/pwned"])
         assert result.exit_code == 0
         mockDockerConn.ftResultExecuteCommand.assert_not_called()
         mockDockerConn.flistDirectoryEntries.assert_called_once_with(
@@ -777,9 +777,9 @@ class TestCommandLsCli:
         mockDockerConn = _fMockDocker(sOutput="file1\nfile2\n")
         mockDocker.return_value = mockDockerConn
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandLs import ls
+        from vaibify.cli.commandLs import fnListCommand
         runner = CliRunner()
-        result = runner.invoke(ls, [])
+        result = runner.invoke(fnListCommand, [])
         assert result.exit_code == 0
         assert "file1" in result.output
 
@@ -791,9 +791,9 @@ class TestCommandLsCli:
         mockDockerConn = _fMockDocker(sOutput="file1\nfile2\n")
         mockDocker.return_value = mockDockerConn
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandLs import ls
+        from vaibify.cli.commandLs import fnListCommand
         runner = CliRunner()
-        result = runner.invoke(ls, ["--json"])
+        result = runner.invoke(fnListCommand, ["--json"])
         assert result.exit_code == 0
         dictOut = json.loads(result.output)
         assert "listFiles" in dictOut
@@ -808,9 +808,9 @@ class TestCommandLsCli:
         )
         mockDocker.return_value = mockDockerConn
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandLs import ls
+        from vaibify.cli.commandLs import fnListCommand
         runner = CliRunner()
-        result = runner.invoke(ls, ["/nonexistent"])
+        result = runner.invoke(fnListCommand, ["/nonexistent"])
         assert result.exit_code != 0
 
     @patch("vaibify.cli.commandLs.fconfigResolveProject")
@@ -821,9 +821,9 @@ class TestCommandLsCli:
         mockDockerConn = _fMockDocker(sOutput="data.csv\n")
         mockDocker.return_value = mockDockerConn
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandLs import ls
+        from vaibify.cli.commandLs import fnListCommand
         runner = CliRunner()
-        result = runner.invoke(ls, ["src/data"])
+        result = runner.invoke(fnListCommand, ["src/data"])
         assert result.exit_code == 0
 
 
@@ -843,9 +843,9 @@ class TestCommandCatCli:
         mockDockerConn = _fMockDocker(sOutput="line1\nline2\n")
         mockDocker.return_value = mockDockerConn
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandCat import cat
+        from vaibify.cli.commandCat import fnCatCommand
         runner = CliRunner()
-        result = runner.invoke(cat, ["README.md"])
+        result = runner.invoke(fnCatCommand, ["README.md"])
         assert result.exit_code == 0
         assert "line1" in result.output
 
@@ -857,9 +857,9 @@ class TestCommandCatCli:
         mockDockerConn = _fMockDocker(iExitCode=1, sOutput="No such file")
         mockDocker.return_value = mockDockerConn
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandCat import cat
+        from vaibify.cli.commandCat import fnCatCommand
         runner = CliRunner()
-        result = runner.invoke(cat, ["missing.txt"])
+        result = runner.invoke(fnCatCommand, ["missing.txt"])
         assert result.exit_code != 0
         assert "Error" in result.output
 
@@ -871,9 +871,9 @@ class TestCommandCatCli:
         mockDockerConn = _fMockDocker(sOutput="content\n")
         mockDocker.return_value = mockDockerConn
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandCat import cat
+        from vaibify.cli.commandCat import fnCatCommand
         runner = CliRunner()
-        result = runner.invoke(cat, ["/etc/hosts"])
+        result = runner.invoke(fnCatCommand, ["/etc/hosts"])
         assert result.exit_code == 0
 
 
@@ -912,9 +912,9 @@ class TestCommandRunHelpers:
         mockConfig.return_value = _fMockConfig()
         mockDocker.return_value = _fMockDocker()
         mockContainer.return_value = "ctn1"
-        from vaibify.cli.commandRun import run
+        from vaibify.cli.commandRun import fnRunCommand
         runner = CliRunner()
-        result = runner.invoke(run, ["--step", "1", "--from", "2"])
+        result = runner.invoke(fnRunCommand, ["--step", "1", "--from", "2"])
         assert result.exit_code != 0
 
 
@@ -945,10 +945,10 @@ class TestCommandVerifyStepCli:
             },
             "sWorkflowPath": "/w.yaml",
         }
-        from vaibify.cli.commandVerifyStep import verify_step
+        from vaibify.cli.commandVerifyStep import fnVerifyStepCommand
         runner = CliRunner()
         result = runner.invoke(
-            verify_step, ["--step", "1", "--status", "passed"]
+            fnVerifyStepCommand, ["--step", "1", "--status", "passed"]
         )
         assert result.exit_code == 0
         assert "passed" in result.output
@@ -970,10 +970,10 @@ class TestCommandVerifyStepCli:
             },
             "sWorkflowPath": "/w.yaml",
         }
-        from vaibify.cli.commandVerifyStep import verify_step
+        from vaibify.cli.commandVerifyStep import fnVerifyStepCommand
         runner = CliRunner()
         result = runner.invoke(
-            verify_step, ["--step", "5", "--status", "passed"]
+            fnVerifyStepCommand, ["--step", "5", "--status", "passed"]
         )
         assert result.exit_code != 0
 

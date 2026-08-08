@@ -127,7 +127,7 @@ var VaibifySetup = (function () {
             }
         );
         document.getElementById("btnSaveConfig").addEventListener(
-            "click", fnSaveConfig
+            "click", fdictSaveConfig
         );
     }
 
@@ -336,7 +336,7 @@ var VaibifySetup = (function () {
 
     /* --- Save --- */
 
-    async function fnSaveConfig() {
+    async function fdictSaveConfig() {
         if (!fbValidateForm()) return;
 
         var dictConfig = fdictBuildConfigFromForm();

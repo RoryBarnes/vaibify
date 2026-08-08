@@ -6,7 +6,7 @@ even when docker-py is not installed.
 Stream separation
 -----------------
 
-``texecRunInContainerStreamed`` is the canonical execution entry
+``ftRunInContainerStreamed`` is the canonical execution entry
 point. It captures stdout and stderr separately and returns an
 ``ExecResult`` dataclass so callers can render real container output
 distinctly from container-side error noise. The legacy
@@ -47,7 +47,7 @@ I_DOCKER_POOL_MAX_SIZE = 32
 # stdout, which peaks at roughly 3x the file size in RAM (raw +
 # base64-encoded + decoded). Cap the small-file path at 64 MB so a
 # caller cannot accidentally pull a multi-GB output file through it;
-# large files must go through :meth:`DockerConnection.fnIterStreamFile`
+# large files must go through :meth:`DockerConnection.fiterStreamFile`
 # instead, which streams via ``container.get_archive``.
 I_MAX_FETCH_FILE_BYTES = 64 * 1024 * 1024
 
@@ -225,12 +225,12 @@ def _fnEnsureDockerHost():
     if os.environ.get("DOCKER_HOST"):
         return
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "context", "inspect", "--format",
              "{{.Endpoints.docker.Host}}"],
             capture_output=True, text=True,
         )
-        sHost = resultProcess.stdout.strip()
+        sHost = processResult.stdout.strip()
         if sHost:
             os.environ["DOCKER_HOST"] = sHost
     except Exception:
@@ -346,7 +346,7 @@ def _fsTypedReadPathLiteral(objPaths):
     )
 
 
-def _fbInterpretPathProbe(resultExec, sPath):
+def _fbInterpretPathProbe(tExecResult, sPath):
     """Return the yes/no answer a declared path probe printed.
 
     Shared by the two existence adapters, and deliberately takes the
@@ -356,12 +356,12 @@ def _fbInterpretPathProbe(resultExec, sPath):
     computed name would put the choice of program back in a caller's
     hands, which is the property that makes the exemption enumerable.
     """
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         raise OSError(
             f"Cannot probe path in container: {sPath} "
-            f"({resultExec.sStderr.strip()})"
+            f"({tExecResult.sStderr.strip()})"
         )
-    return resultExec.sStdout.strip() == "1"
+    return tExecResult.sStdout.strip() == "1"
 
 
 class DockerConnection:
@@ -431,7 +431,7 @@ class DockerConnection:
         container = self._clientDocker.containers.get(sContainerId)
         return self._dictContainers.setdefault(sContainerId, container)
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None
     ):
         """Run a command, capturing stdout and stderr separately.
@@ -450,7 +450,7 @@ class DockerConnection:
             output, surface stderr as a distinct error region).
         """
         mutationAdmission.fnAssertContainerCommandAdmitted(
-            sContainerId, "texecRunInContainerStreamed",
+            sContainerId, "ftRunInContainerStreamed",
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
@@ -494,7 +494,7 @@ class DockerConnection:
             baStdout, baStderr = tOutput, None
         return baStdout or b"", baStderr or b""
 
-    def texecRunInContainerStreamedWithChunks(
+    def ftRunInContainerStreamedWithChunks(
         self, sContainerId, sCommand, fnEmitChunk,
         sWorkdir=None, sUser=None,
     ):
@@ -504,7 +504,7 @@ class DockerConnection:
         decoded text with the trailing newline stripped. Partial
         trailing data is buffered across docker-py chunks and flushed
         on process exit. Returns an :class:`ExecResult` with the same
-        contract as :meth:`texecRunInContainerStreamed` so callers can
+        contract as :meth:`ftRunInContainerStreamed` so callers can
         keep their post-exec bookkeeping unchanged.
 
         This is the durable-task exec primitive the carrier guards
@@ -516,7 +516,7 @@ class DockerConnection:
         never a writer nobody can name (the hazard ``exec_run`` hides).
         """
         mutationAdmission.fnAssertDurableExecAdmitted(
-            sContainerId, "texecRunInContainerStreamedWithChunks",
+            sContainerId, "ftRunInContainerStreamedWithChunks",
         )
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
@@ -553,7 +553,7 @@ class DockerConnection:
         """Stream demuxed exec output, emitting one line at a time.
 
         ``dictAccum`` mirrors the streamed text for the legacy contract
-        in ``texecRunInContainerStreamedWithChunks``; the only in-tree
+        in ``ftRunInContainerStreamedWithChunks``; the only in-tree
         caller (the runner's chunk emitter) never reads ``sStdout`` /
         ``sStderr``. Multi-day runs accumulating every line in memory
         leak proportional to throughput, so when ``fnEmitChunk`` is
@@ -626,22 +626,22 @@ class DockerConnection:
 
         Merges stdout and stderr, matching the historical contract.
         Emits a ``DeprecationWarning`` so existing call sites surface
-        in audits while migrating to ``texecRunInContainerStreamed``.
+        in audits while migrating to ``ftRunInContainerStreamed``.
         """
         warnings.warn(
             "ftResultExecuteCommand merges stdout and stderr; "
-            "migrate to texecRunInContainerStreamed for split "
+            "migrate to ftRunInContainerStreamed for split "
             "streams.",
             DeprecationWarning,
             stacklevel=2,
         )
-        resultExec = self.texecRunInContainerStreamed(
+        tExecResult = self.ftRunInContainerStreamed(
             sContainerId, sCommand, sWorkdir=sWorkdir, sUser=sUser,
         )
-        sOutput = resultExec.sStdout + resultExec.sStderr
-        return (resultExec.iExitCode, sOutput)
+        sOutput = tExecResult.sStdout + tExecResult.sStderr
+        return (tExecResult.iExitCode, sOutput)
 
-    def _texecRunTypedRead(self, sContainerId, sOperation, objPaths):
+    def _ftRunTypedRead(self, sContainerId, sOperation, objPaths):
         """Run one NAMED read operation against a path or paths, as a read.
 
         The single place the audited-read exemption is granted, and it
@@ -685,7 +685,7 @@ class DockerConnection:
         )
         tokenRead = mutationAdmission.ftokenEnterAuditedRead()
         try:
-            return self.texecRunInContainerStreamed(sContainerId, sCommand)
+            return self.ftRunInContainerStreamed(sContainerId, sCommand)
         finally:
             mutationAdmission.fnExitAuditedRead(tokenRead)
 
@@ -696,7 +696,7 @@ class DockerConnection:
 
         Use this for state JSON, markers, configs, and anything else that
         is bounded in size by design. Large files (HDF5, NetCDF, plot
-        bundles) must go through :meth:`fnIterStreamFile` instead — this
+        bundles) must go through :meth:`fiterStreamFile` instead — this
         path round-trips through base64 over exec stdout which inflates
         memory by ~3x.
 
@@ -706,22 +706,22 @@ class DockerConnection:
         path.
 
         The command is not built here: this names a declared read
-        operation and :meth:`_texecRunTypedRead` builds it, so a path
+        operation and :meth:`_ftRunTypedRead` builds it, so a path
         cannot become program or shell syntax.
         """
-        resultExec = self._texecRunTypedRead(
+        tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath,
         )
-        if resultExec.iExitCode != 0:
+        if tExecResult.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot read file from container: {sFilePath}"
             )
-        baContent = base64.b64decode(resultExec.sStdout.strip())
+        baContent = base64.b64decode(tExecResult.sStdout.strip())
         if iMaxBytes is not None and len(baContent) > iMaxBytes:
             raise ValueError(
                 f"File exceeds fbaFetchFile cap "
                 f"({len(baContent)} > {iMaxBytes} bytes): "
-                f"{sFilePath}; use fnIterStreamFile for large files"
+                f"{sFilePath}; use fiterStreamFile for large files"
             )
         return baContent
 
@@ -732,7 +732,7 @@ class DockerConnection:
         the caller supplies a PATH and never a command, and this method
         supplies only the NAME of a declared read operation. The program
         is fixed source text in :data:`_DICT_TYPED_READ_PROGRAMS`, and
-        :meth:`_texecRunTypedRead` does the substitution and the
+        :meth:`_ftRunTypedRead` does the substitution and the
         quoting -- so an adapter cannot pass a command even by mistake.
 
         Callers used to assemble ``f"ls -1 {sPath}"`` themselves and
@@ -744,15 +744,15 @@ class DockerConnection:
         an empty directory returns an empty list, which is a different
         answer and must stay one.
         """
-        resultExec = self._texecRunTypedRead(
+        tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_DIRECTORY, sDirectoryPath,
         )
-        if resultExec.iExitCode != 0:
+        if tExecResult.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot list directory in container: {sDirectoryPath}"
             )
         return [
-            sEntry for sEntry in resultExec.sStdout.split("\n") if sEntry
+            sEntry for sEntry in tExecResult.sStdout.split("\n") if sEntry
         ]
 
     def fbContainerPathIsFile(self, sContainerId, sPath):
@@ -773,7 +773,7 @@ class DockerConnection:
         Collapsing the two would put the old bug back one layer down.
         """
         return _fbInterpretPathProbe(
-            self._texecRunTypedRead(
+            self._ftRunTypedRead(
                 sContainerId, S_TYPED_READ_FILE_EXISTS, sPath,
             ),
             sPath,
@@ -786,7 +786,7 @@ class DockerConnection:
         for why these are typed reads rather than execs.
         """
         return _fbInterpretPathProbe(
-            self._texecRunTypedRead(
+            self._ftRunTypedRead(
                 sContainerId, S_TYPED_READ_DIRECTORY_EXISTS, sPath,
             ),
             sPath,
@@ -814,15 +814,15 @@ class DockerConnection:
         """
         if not listPaths:
             return []
-        resultExec = self._texecRunTypedRead(
+        tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_PATHS_EXIST, list(listPaths),
         )
-        if resultExec.iExitCode != 0:
+        if tExecResult.iExitCode != 0:
             raise OSError(
                 "Cannot probe paths in container "
-                f"({resultExec.sStderr.strip()})"
+                f"({tExecResult.sStderr.strip()})"
             )
-        listAnswers = json.loads(resultExec.sStdout.strip() or "[]")
+        listAnswers = json.loads(tExecResult.sStdout.strip() or "[]")
         if len(listAnswers) != len(listPaths):
             raise OSError(
                 f"The batched existence probe answered {len(listAnswers)} "
@@ -846,16 +846,16 @@ class DockerConnection:
         command execution as mutating and why a read has to be typed
         rather than trusted.
         """
-        resultExec = self._texecRunTypedRead(
+        tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_FILESYSTEM_USAGE, sPath,
         )
-        if resultExec.iExitCode != 0:
+        if tExecResult.iExitCode != 0:
             raise FileNotFoundError(
                 f"Cannot stat filesystem in container: {sPath}"
             )
-        return json.loads(resultExec.sStdout.strip())
+        return json.loads(tExecResult.sStdout.strip())
 
-    def fnIterStreamFile(
+    def fiterStreamFile(
         self, sContainerId, sFilePath, iChunkSizeBytes=1048576,
     ):
         """Yield the container file's bytes in chunks via get_archive.
@@ -1022,7 +1022,7 @@ class DockerConnection:
         """
         return self._clientDocker.api.exec_inspect(sExecId)
 
-    def ftupleRunRootShellProbe(self, sContainerId, sScript):
+    def ftRunRootShellProbe(self, sContainerId, sScript):
         """Run a ``/bin/sh`` script as root; return (iExitCode, sOutput).
 
         The containment-probe primitive (design v13 §6.1): group
@@ -1055,7 +1055,7 @@ class DockerConnection:
         """
         sScript = _fsBuildProcessGroupScript(iProcessGroup, ":")
         try:
-            iExitCode, sOutput = self.ftupleRunRootShellProbe(
+            iExitCode, sOutput = self.ftRunRootShellProbe(
                 sContainerId, sScript,
             )
         except Exception as error:
@@ -1102,7 +1102,7 @@ class DockerConnection:
             iProcessGroup, f'kill -{sSignalName} "$iMemberPid" 2>/dev/null',
         )
         try:
-            self.ftupleRunRootShellProbe(sContainerId, sScript)
+            self.ftRunRootShellProbe(sContainerId, sScript)
         except Exception:
             pass
 
@@ -1237,7 +1237,7 @@ class _BytesGeneratorPipe:
 
     def read(self, iSize=-1):
         if iSize is None or iSize < 0:
-            return self._baDrainAll()
+            return self._fbaDrainAll()
         while len(self._baBuffer) < iSize and not self._bExhausted:
             self._fnPullOneChunk()
         baOut = self._baBuffer[:iSize]
@@ -1250,7 +1250,7 @@ class _BytesGeneratorPipe:
         except StopIteration:
             self._bExhausted = True
 
-    def _baDrainAll(self):
+    def _fbaDrainAll(self):
         while not self._bExhausted:
             self._fnPullOneChunk()
         baOut = self._baBuffer

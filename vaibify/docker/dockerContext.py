@@ -22,7 +22,7 @@ __all__ = [
 def fsActiveDockerContext():
     """Return the active Docker context name, or '' on any error."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["docker", "context", "show"],
             capture_output=True,
             text=True,
@@ -30,9 +30,9 @@ def fsActiveDockerContext():
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return ""
-    return (resultProcess.stdout or "").strip()
+    return (processResult.stdout or "").strip()
 
 
 def fbColimaActive():
@@ -58,15 +58,15 @@ def ftColimaVersion():
 def _fsRunColimaVersion():
     """Run ``colima version`` and return its stdout, '' on failure."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["colima", "version"],
             capture_output=True, text=True, timeout=5,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return ""
-    return resultProcess.stdout or ""
+    return processResult.stdout or ""
 
 
 def _ftParseColimaVersion(sOutput):

@@ -39,9 +39,9 @@ def _fnPatchEnumerators(monkeypatch, listSlots, listHolders):
 
 
 def test_sessions_list_joins_containers_by_port(monkeypatch):
-    from vaibify.cli.commandSessions import sessions
+    from vaibify.cli.commandSessions import fnListSessionsCommand
     _fnPatchEnumerators(monkeypatch, _flistFakeSlots(), _flistFakeHolders())
-    resultRun = CliRunner().invoke(sessions, [])
+    resultRun = CliRunner().invoke(fnListSessionsCommand, [])
     assert resultRun.exit_code == 0
     assert "pid=4001" in resultRun.output
     assert "containers=[alpha]" in resultRun.output
@@ -50,48 +50,48 @@ def test_sessions_list_joins_containers_by_port(monkeypatch):
 
 
 def test_sessions_list_reports_none_when_empty(monkeypatch):
-    from vaibify.cli.commandSessions import sessions
+    from vaibify.cli.commandSessions import fnListSessionsCommand
     _fnPatchEnumerators(monkeypatch, [], [])
-    resultRun = CliRunner().invoke(sessions, [])
+    resultRun = CliRunner().invoke(fnListSessionsCommand, [])
     assert resultRun.exit_code == 0
     assert "No live Vaibify sessions." in resultRun.output
 
 
 def test_sessions_stop_sends_sigterm_to_known_pid(monkeypatch):
-    from vaibify.cli.commandSessions import sessions
+    from vaibify.cli.commandSessions import fnListSessionsCommand
     _fnPatchEnumerators(monkeypatch, _flistFakeSlots(), _flistFakeHolders())
     listKilled = []
     monkeypatch.setattr(
         os, "kill", lambda iPid, iSignal: listKilled.append((iPid, iSignal)),
     )
-    resultRun = CliRunner().invoke(sessions, ["stop", "4001"])
+    resultRun = CliRunner().invoke(fnListSessionsCommand, ["stop", "4001"])
     assert resultRun.exit_code == 0
     assert listKilled == [(4001, signal.SIGTERM)]
 
 
 def test_sessions_stop_refuses_non_session_pid(monkeypatch):
-    from vaibify.cli.commandSessions import sessions
+    from vaibify.cli.commandSessions import fnListSessionsCommand
     _fnPatchEnumerators(monkeypatch, _flistFakeSlots(), _flistFakeHolders())
     listKilled = []
     monkeypatch.setattr(
         os, "kill", lambda iPid, iSignal: listKilled.append((iPid, iSignal)),
     )
-    resultRun = CliRunner().invoke(sessions, ["stop", "999999"])
+    resultRun = CliRunner().invoke(fnListSessionsCommand, ["stop", "999999"])
     assert resultRun.exit_code != 0
     assert listKilled == []
     assert "not a Vaibify session" in resultRun.output
 
 
 def test_sessions_stop_requires_pid_or_all(monkeypatch):
-    from vaibify.cli.commandSessions import sessions
+    from vaibify.cli.commandSessions import fnListSessionsCommand
     _fnPatchEnumerators(monkeypatch, _flistFakeSlots(), _flistFakeHolders())
-    resultRun = CliRunner().invoke(sessions, ["stop"])
+    resultRun = CliRunner().invoke(fnListSessionsCommand, ["stop"])
     assert resultRun.exit_code != 0
     assert "provide a PID or use --all" in resultRun.output
 
 
 def test_sessions_stop_all_excludes_self(monkeypatch):
-    from vaibify.cli.commandSessions import sessions
+    from vaibify.cli.commandSessions import fnListSessionsCommand
     listSlots = _flistFakeSlots() + [
         {"iPid": os.getpid(), "sRole": "hub", "iPort": 8070,
          "sStartedIso": "2026-06-25T11:00:00", "bAlive": True},
@@ -101,7 +101,7 @@ def test_sessions_stop_all_excludes_self(monkeypatch):
     monkeypatch.setattr(
         os, "kill", lambda iPid, iSignal: listKilled.append((iPid, iSignal)),
     )
-    resultRun = CliRunner().invoke(sessions, ["stop", "--all"])
+    resultRun = CliRunner().invoke(fnListSessionsCommand, ["stop", "--all"])
     assert resultRun.exit_code == 0
     setKilledPids = {iPid for iPid, _ in listKilled}
     assert setKilledPids == {4001, 4002}
@@ -109,7 +109,7 @@ def test_sessions_stop_all_excludes_self(monkeypatch):
 
 
 def test_sessions_stop_all_reports_when_no_others(monkeypatch):
-    from vaibify.cli.commandSessions import sessions
+    from vaibify.cli.commandSessions import fnListSessionsCommand
     listSlots = [
         {"iPid": os.getpid(), "sRole": "hub", "iPort": 8050,
          "sStartedIso": "2026-06-25T09:00:00", "bAlive": True},
@@ -119,7 +119,7 @@ def test_sessions_stop_all_reports_when_no_others(monkeypatch):
     monkeypatch.setattr(
         os, "kill", lambda iPid, iSignal: listKilled.append((iPid, iSignal)),
     )
-    resultRun = CliRunner().invoke(sessions, ["stop", "--all"])
+    resultRun = CliRunner().invoke(fnListSessionsCommand, ["stop", "--all"])
     assert resultRun.exit_code == 0
     assert listKilled == []
     assert "No other Vaibify sessions to stop." in resultRun.output

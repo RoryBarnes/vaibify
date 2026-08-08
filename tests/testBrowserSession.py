@@ -121,7 +121,7 @@ def test_the_sweep_removes_only_records_that_authorize_nothing():
             browserSession.fsMintBootstrapCapability(dictStore),
         )
     )
-    browserSession.fnRevokeSessionById(dictStore, sSessionIdRevoked)
+    browserSession.fbRevokeSessionById(dictStore, sSessionIdRevoked)
 
     # Age the stale capability and the revoked session past their
     # windows by moving their stamps, not by sleeping.
@@ -151,7 +151,7 @@ def test_a_recently_revoked_session_is_kept_as_its_own_audit_trail():
     sSessionId, sCredential = browserSession.ftRedeemCapability(
         dictStore, browserSession.fsMintBootstrapCapability(dictStore),
     )
-    browserSession.fnRevokeSessionById(dictStore, sSessionId)
+    browserSession.fbRevokeSessionById(dictStore, sSessionId)
     browserSession._fnSweepDeadRecordsLocked(dictStore)
     assert sCredential in dictStore["dictSessionsByCredential"]
     assert not browserSession.fbValidateCredential(dictStore, sCredential)

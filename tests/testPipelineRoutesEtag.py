@@ -118,7 +118,7 @@ def test_file_status_sync_epoch_change_changes_etag():
     dictResponse = {
         "dictModTimes": {"a/b": "1"},
         "dictMaxMtimeByStep": {"0": 1},
-        "iAICSLevel": 0,
+        "iProofLevel": 0,
         "iL1BlockerCount": 0,
         "iL2BlockerCount": 0,
         "iL3BlockerCount": 0,
@@ -216,7 +216,7 @@ def test_file_status_blocker_count_change_changes_etag():
     dictBase = {
         "dictModTimes": {"a/b": "1"},
         "dictMaxMtimeByStep": {"0": 1},
-        "iAICSLevel": 1,
+        "iProofLevel": 1,
         "iL1BlockerCount": 0,
         "iL2BlockerCount": 0,
         "iL3BlockerCount": 0,

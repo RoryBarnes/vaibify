@@ -133,7 +133,7 @@ def test_fsRetrieveSecret_rejects_unknown_method():
 def test_fnStoreSecret_keyring_calls_set_password():
     mockKeyring = MagicMock()
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         return_value=mockKeyring,
     ):
         fnStoreSecret("mytoken", "s3cret", "keyring")
@@ -165,7 +165,7 @@ def test_fnStoreSecret_rejects_unknown_method():
 def test_fnDeleteSecret_keyring_calls_delete_password():
     mockKeyring = MagicMock()
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         return_value=mockKeyring,
     ):
         fnDeleteSecret("mytoken", "keyring")
@@ -179,7 +179,7 @@ def test_fnDeleteSecret_suppresses_password_delete_error():
     mockKeyring = MagicMock()
     mockKeyring.delete_password.side_effect = PasswordDeleteError("gone")
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         return_value=mockKeyring,
     ):
         fnDeleteSecret("mytoken", "keyring")
@@ -189,7 +189,7 @@ def test_fnDeleteSecret_reraises_other_exceptions():
     mockKeyring = MagicMock()
     mockKeyring.delete_password.side_effect = RuntimeError("kaboom")
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         return_value=mockKeyring,
     ):
         with pytest.raises(RuntimeError):
@@ -210,7 +210,7 @@ def test_fbSecretExists_keyring_true_when_present():
     mockKeyring = MagicMock()
     mockKeyring.get_password.return_value = "a_real_token"
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         return_value=mockKeyring,
     ):
         assert fbSecretExists("mytoken", "keyring") is True
@@ -220,7 +220,7 @@ def test_fbSecretExists_keyring_false_when_absent():
     mockKeyring = MagicMock()
     mockKeyring.get_password.return_value = None
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         return_value=mockKeyring,
     ):
         assert fbSecretExists("mytoken", "keyring") is False
@@ -228,7 +228,7 @@ def test_fbSecretExists_keyring_false_when_absent():
 
 def test_fbSecretExists_keyring_false_when_backend_raises():
     with patch(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         side_effect=ImportError("no keyring"),
     ):
         assert fbSecretExists("mytoken", "keyring") is False

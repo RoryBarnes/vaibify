@@ -2,7 +2,7 @@
 
 These cover both endpoints registered by ``levelRoutes.fnRegisterAll``:
 
-* ``GET /api/workflow/{id}/level2/readiness`` returns iAICSLevel and
+* ``GET /api/workflow/{id}/level2/readiness`` returns iProofLevel and
   the per-criterion gap dict.
 * ``POST /api/workflow/{id}/ai-declaration/generate-template`` writes
   the starter template under the project repo with strict path
@@ -93,14 +93,14 @@ def fixtureClient(fixtureWorkflow):
 # ============================================================================
 
 
-def test_level2_readiness_returns_iaics_level_and_gaps(fixtureClient):
-    """A bare workflow returns iAICSLevel=0 and a fully-False gaps dict."""
+def test_level2_readiness_returns_iproof_level_and_gaps(fixtureClient):
+    """A bare workflow returns iProofLevel=0 and a fully-False gaps dict."""
     response = fixtureClient.get(
         f"/api/workflow/{S_CONTAINER_ID}/level2/readiness",
     )
     assert response.status_code == 200
     dictBody = response.json()
-    assert dictBody["iAICSLevel"] == 0
+    assert dictBody["iProofLevel"] == 0
     dictGaps = dictBody["dictLevel2Gaps"]
     for sKey in (
         "bAtLeastLevel1", "bGithubFullySynced",
@@ -214,7 +214,7 @@ def test_generate_template_handles_oserror_during_write(
 ):
     """An OSError surface as 500 with sanitized message."""
     with patch(
-        "vaibify.gui.routes.levelRoutes.fnWriteDeclarationTemplate",
+        "vaibify.gui.routes.levelRoutes.fsWriteDeclarationTemplate",
         side_effect=OSError("disk full"),
     ):
         response = fixtureClient.post(

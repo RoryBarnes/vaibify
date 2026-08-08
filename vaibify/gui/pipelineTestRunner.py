@@ -1,7 +1,7 @@
 """Test execution within pipeline steps."""
 
 __all__ = [
-    "fnRunAllTests",
+    "fiRunAllTests",
 ]
 
 import posixpath
@@ -146,7 +146,7 @@ async def _fnWriteTestLog(
     )
 
 
-async def fnRunAllTests(
+async def fiRunAllTests(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback,
 ):

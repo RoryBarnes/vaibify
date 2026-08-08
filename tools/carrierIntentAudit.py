@@ -116,7 +116,7 @@ def fdictBuildRouteDeclarationIndex(app):
             routeScope._SET_AUTHORIZED_CONTAINER_SCOPES
         ):
             continue
-        tupleDeclarations = routeScope.ftupleResolveCarrierDeclaration(
+        tupleDeclarations = routeScope.ftResolveCarrierDeclaration(
             route.endpoint,
         )
         if not tupleDeclarations:
@@ -145,7 +145,7 @@ def fdictCompareIntentToExecution(listObservations):
 
 def _ftJudgeOneObservation(dictObservation):
     """Return ``(sBucketName, dictJudgement)`` for one observed effect."""
-    tupleDeclared = routeScope.ftupleParseCarrierDeclaration(
+    tupleDeclared = routeScope.ftParseCarrierDeclaration(
         dictObservation["sEntryPointDeclaration"],
     )
     if not tupleDeclared:

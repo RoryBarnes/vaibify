@@ -1,11 +1,11 @@
-"""Tier 3 environment manifest capture for the AICS L3 envelope.
+"""Tier 3 environment manifest capture for the PROOF L3 envelope.
 
 Captures the container image digest, host-binary hashes, and system
 tool versions whose output bytes can affect bit-level reproducibility.
 The resulting JSON document is written to
 ``<sProjectRepo>/.vaibify/environment.json`` and joins
 ``MANIFEST.sha256`` (Tier 1) and ``requirements.lock`` (Tier 2) to
-form the AICS L3 verification envelope.
+form the PROOF L3 verification envelope.
 """
 
 import json
@@ -125,17 +125,17 @@ def _fsRunCheckedCommand(saCommand):
     ultimately the user) sees a clear actionable error rather than a
     silent hang.
     """
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         saCommand, capture_output=True, text=True, timeout=30.0,
     )
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         raise subprocess.CalledProcessError(
-            resultProcess.returncode,
+            processResult.returncode,
             saCommand,
-            output=resultProcess.stdout,
-            stderr=resultProcess.stderr,
+            output=processResult.stdout,
+            stderr=processResult.stderr,
         )
-    return resultProcess.stdout.strip()
+    return processResult.stdout.strip()
 
 
 def _fsParseRepoDigests(sRawOutput):
@@ -382,15 +382,15 @@ def _fsCaptureGccVersion():
     if shutil.which("gcc") is None:
         return None
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["gcc", "--version"], capture_output=True, text=True,
             timeout=5.0,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return None
-    return _fsFirstLine(resultProcess.stdout)
+    return _fsFirstLine(processResult.stdout)
 
 
 def _fsCaptureLibcVersion():
@@ -454,7 +454,7 @@ def _fsCurrentTimestamp():
 
 
 # ------------------------------------------------------------------
-# Digest-form validation (consumed by AICS L3 readiness gate)
+# Digest-form validation (consumed by PROOF L3 readiness gate)
 # ------------------------------------------------------------------
 
 
@@ -485,7 +485,7 @@ def fbEnvironmentDigestPinned(filesRepo):
 
     The schema places the digest at either the top-level
     ``sImageDigest`` (legacy layout) or at
-    ``dictContainer.sImageDigest`` (the layout the AICS L3 envelope
+    ``dictContainer.sImageDigest`` (the layout the PROOF L3 envelope
     writes). Two forms pin honestly: a registry digest
     (``image@sha256:<hex>``) or a locally built image's ID
     (``sha256:<64 hex>``), which is itself a content digest. A

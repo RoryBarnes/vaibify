@@ -1,6 +1,6 @@
 """Tests for the AI Declaration add-step and determinism declare routes.
 
-Covers the two POST endpoints added for the AICS ladder:
+Covers the two POST endpoints added for the PROOF ladder:
 
 * ``POST /api/workflow/{id}/ai-declaration/add-step`` (levelRoutes)
   appends ``fdictBuildAiDeclarationStep(...)`` to the end of

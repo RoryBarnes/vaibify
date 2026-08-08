@@ -29,19 +29,19 @@ import time
 from fastapi import HTTPException, Request
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
-    fobjRunWorkerUnderTheDrain,
+    fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_MODE_C_DURABLE,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ...reproducibility.falsificationAttestation import (
     S_SESSION_SUMMARY_SCRIPT,
@@ -109,11 +109,11 @@ def _fdictInFlightStatus(sContainerId, iStepIndex):
 def _fnRegisterView(app, dictCtx):
     """Register GET /api/steps/{id}/{step}/falsification."""
 
-    @fnAgentAction("view-falsification-attestation")
+    @ffnAgentAction("view-falsification-attestation")
     @app.get(
         "/api/steps/{sContainerId}/{iStepIndex}/falsification"
     )
-    async def fnFalsificationGet(sContainerId: str, iStepIndex: int):
+    async def fdictFalsificationGet(sContainerId: str, iStepIndex: int):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
@@ -130,14 +130,14 @@ def _fnRegisterView(app, dictCtx):
 def _fnRegisterRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-falsification."""
 
-    @fnAgentAction("run-falsification")
+    @ffnAgentAction("run-falsification")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-falsification"
     )
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_C_DURABLE,
     )
-    async def fnRunFalsification(
+    async def fdictHandleRunFalsification(
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -183,7 +183,7 @@ async def _ftClassifyAndProbeCosmicRay(
             ),
         )
 
-    return await fobjRunWorkerUnderTheDrain(
+    return await fgenericRunWorkerUnderTheDrain(
         sContainerId, ftClassifyThenProbe, "falsification-preflight",
         requestHttp,
     )
@@ -222,17 +222,17 @@ def _fnRefuseIfRunInFlight(sContainerId, iStepIndex):
 
 def _fsRequireCosmicRay(connectionDocker, sContainerId):
     """Return the container's cosmic-ray version or raise HTTP 409."""
-    resultExec = connectionDocker.texecRunInContainerStreamed(
+    tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, "cosmic-ray --version",
     )
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         raise HTTPException(
             409,
             "cosmic-ray is not installed in this container image; "
             "rebuild the image (vaib build) to enable falsification "
             "checks.",
         )
-    return resultExec.sStdout.strip()
+    return tExecResult.sStdout.strip()
 
 
 async def _fdictLaunchFalsificationDurably(
@@ -328,28 +328,28 @@ async def _fnRunFalsificationWorker(
             dictCtx, sContainerId, dictWorkflow, dictStep,
             dictApplicability, filesRepo, sCosmicRayVersion,
         )
-    except Exception as exc:  # noqa: BLE001 — surface as error record
+    except Exception as errorCaught:  # noqa: BLE001 — surface as error record
         # A carrier REFUSAL is the exception to that exception. It
         # means the durable admission was not opened, and writing it
         # here would persist a programming error as a digest-keyed
         # falsification record — a measured kill-rate the dashboard
         # renders beside real ones. A stuck phase is recoverable; a
         # fabricated attestation on disk is not.
-        fnReRaiseControlPlaneRefusal(exc)
-        logger.exception("Falsification run crashed: %s", exc)
+        fnReRaiseControlPlaneRefusal(errorCaught)
+        logger.exception("Falsification run crashed: %s", errorCaught)
         dictRecord = fdictBuildFalsificationRecord(
             S_STATUS_ERROR, "", dictApplicability["sClassification"],
             0, 0, 0, sCosmicRayVersion=sCosmicRayVersion,
             fDurationSeconds=time.monotonic() - fStarted,
-            sReason=f"falsification run crashed: {exc}",
+            sReason=f"falsification run crashed: {errorCaught}",
         )
     try:
         await asyncio.to_thread(
             fnWriteFalsificationRecord,
             filesRepo, dictStep.get("sDirectory", ""), dictRecord,
         )
-    except OSError as exc:
-        logger.error("Could not persist falsification record: %s", exc)
+    except OSError as errorCaught:
+        logger.error("Could not persist falsification record: %s", errorCaught)
     dictStatus["sPhase"] = dictRecord.get("sStatus", S_STATUS_ERROR)
 
 
@@ -376,21 +376,21 @@ def _fdictRunMutationSync(
     )
     sWorkDirectory = posixpath.dirname(sSessionPath)
     sConfigPath = posixpath.join(sWorkDirectory, "cosmic-ray.toml")
-    resultExec = connectionDocker.texecRunInContainerStreamed(
+    tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId,
         f"cosmic-ray init {fsShellQuote(sConfigPath)} "
         f"{fsShellQuote(sSessionPath)} && "
         f"cosmic-ray exec {fsShellQuote(sConfigPath)} "
         f"{fsShellQuote(sSessionPath)}",
     )
-    if resultExec.iExitCode != 0:
+    if tExecResult.iExitCode != 0:
         return fdictBuildFalsificationRecord(
             S_STATUS_ERROR, sDigest, sClassification, 0, 0, 0,
             sCosmicRayVersion=sCosmicRayVersion,
             fDurationSeconds=time.monotonic() - fStarted,
             sReason="cosmic-ray exited "
-            f"{resultExec.iExitCode}: "
-            + _fsTailOfOutput(resultExec),
+            f"{tExecResult.iExitCode}: "
+            + _fsTailOfOutput(tExecResult),
         )
     return _fdictSummarizeMutationSession(
         connectionDocker, sContainerId, sSessionPath,
@@ -412,7 +412,7 @@ def _fsPrepareMutationSession(
         fsFalsificationStepSlug(dictStep.get("sDirectory", "")),
     )
     connectionDocker = dictCtx["docker"]
-    connectionDocker.texecRunInContainerStreamed(
+    connectionDocker.ftRunInContainerStreamed(
         sContainerId,
         f"rm -rf {fsShellQuote(sWorkDirectory)} && "
         f"mkdir -p {fsShellQuote(sWorkDirectory)}",
@@ -479,7 +479,7 @@ def _fdictSummarizeMutationSession(
     sSummaryPath = posixpath.join(
         posixpath.dirname(sSessionPath), "summarizeSession.py",
     )
-    resultSummary = connectionDocker.texecRunInContainerStreamed(
+    resultSummary = connectionDocker.ftRunInContainerStreamed(
         sContainerId,
         f"python {fsShellQuote(sSummaryPath)} "
         f"{fsShellQuote(sSessionPath)}",
@@ -524,9 +524,9 @@ def _fdictParseSummaryOutput(resultSummary):
     return None
 
 
-def _fsTailOfOutput(resultExec, iMaxCharacters=600):
+def _fsTailOfOutput(tExecResult, iMaxCharacters=600):
     """Return the tail of an exec result's combined output for a reason."""
-    sCombined = (resultExec.sStdout + resultExec.sStderr).strip()
+    sCombined = (tExecResult.sStdout + tExecResult.sStderr).strip()
     return sCombined[-iMaxCharacters:]
 
 

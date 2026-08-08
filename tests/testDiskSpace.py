@@ -38,33 +38,33 @@ _S_DF_OUTPUT_TIGHT = (
 )
 
 
-def test_fnCheckWorkspaceFreeBytes_returns_available_column():
+def test_fiCheckWorkspaceFreeBytes_returns_available_column():
     """The probe parses the Available column of df -B1 output."""
     connectionFake = _FakeDfDocker(0, _S_DF_OUTPUT_GENEROUS)
-    iFree = diskSpace.fnCheckWorkspaceFreeBytes(connectionFake, "cid")
+    iFree = diskSpace.fiCheckWorkspaceFreeBytes(connectionFake, "cid")
     assert iFree == 42949672960
 
 
-def test_fnCheckWorkspaceFreeBytes_returns_negative_on_exec_failure():
+def test_fiCheckWorkspaceFreeBytes_returns_negative_on_exec_failure():
     """A non-zero exit code degrades to -1 (unknown), never raises."""
     connectionFake = _FakeDfDocker(1, "")
-    assert diskSpace.fnCheckWorkspaceFreeBytes(connectionFake, "cid") == -1
+    assert diskSpace.fiCheckWorkspaceFreeBytes(connectionFake, "cid") == -1
 
 
-def test_fnCheckWorkspaceFreeBytes_returns_negative_on_garbage():
+def test_fiCheckWorkspaceFreeBytes_returns_negative_on_garbage():
     """Malformed df output degrades to -1 instead of guessing."""
     connectionFake = _FakeDfDocker(0, "not a df listing")
-    assert diskSpace.fnCheckWorkspaceFreeBytes(connectionFake, "cid") == -1
+    assert diskSpace.fiCheckWorkspaceFreeBytes(connectionFake, "cid") == -1
 
 
-def test_fnCheckWorkspaceFreeBytes_swallows_raised_exception():
+def test_fiCheckWorkspaceFreeBytes_swallows_raised_exception():
     """An unexpected docker error never escapes the probe."""
 
     class _RaisingDocker:
         def ftResultExecuteCommand(self, *args, **kwargs):
             raise RuntimeError("docker died")
 
-    assert diskSpace.fnCheckWorkspaceFreeBytes(
+    assert diskSpace.fiCheckWorkspaceFreeBytes(
         _RaisingDocker(), "cid",
     ) == -1
 

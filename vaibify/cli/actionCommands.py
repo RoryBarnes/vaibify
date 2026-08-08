@@ -102,7 +102,7 @@ def fsMetavarForPlaceholder(sPlaceholder):
     return sPlaceholder.upper()
 
 
-def fnCoerceFieldValue(sValue):
+def fjsonCoerceFieldValue(sValue):
     """Coerce a ``key=value`` string to bool, int, float, or JSON."""
     if sValue.lower() in ("true", "false"):
         return sValue.lower() == "true"
@@ -132,7 +132,7 @@ def ftSplitFieldArguments(tFields):
             dictFields.update(json.loads(sArgument))
         elif "=" in sArgument:
             sKey, sValue = sArgument.split("=", 1)
-            dictFields[sKey.lstrip("-")] = fnCoerceFieldValue(sValue)
+            dictFields[sKey.lstrip("-")] = fjsonCoerceFieldValue(sValue)
         else:
             listPositional.append(sArgument)
     return listPositional, dictFields
@@ -461,7 +461,7 @@ def fnPrintActionCatalog():
 
 @click.group("do", invoke_without_command=True)
 @click.pass_context
-def do(ctx):
+def fnDoCommand(ctx):
     """Run a dashboard action from the host, as the researcher.
 
     Every subcommand is generated from the agent-action catalog, so the
@@ -481,4 +481,4 @@ def fnRegisterGeneratedActions(groupParent):
             groupParent.add_command(command)
 
 
-fnRegisterGeneratedActions(do)
+fnRegisterGeneratedActions(fnDoCommand)

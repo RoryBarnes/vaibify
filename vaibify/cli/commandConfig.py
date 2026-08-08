@@ -36,19 +36,19 @@ def fdictLoadYamlFile(sPath):
 
 
 @click.group("config")
-def config():
+def fnConfigCommand():
     """View and manage Vaibify configuration."""
     pass
 
 
-@config.command("export")
+@fnConfigCommand.command("export")
 @click.option(
     "--project", "-p", "sProjectName", default=None,
     help="Project name (omit if in a project directory "
     "or only one project exists).",
 )
 @click.argument("sfilepath", metavar="FILE")
-def configExport(sProjectName, sfilepath):
+def fnConfigExportCommand(sProjectName, sfilepath):
     """Export the current configuration to a YAML file."""
     from vaibify.config.projectConfig import fnSaveToFile
     configProject = fconfigResolveProject(sProjectName)
@@ -56,9 +56,9 @@ def configExport(sProjectName, sfilepath):
     click.echo(f"Configuration exported to {sfilepath}")
 
 
-@config.command("import")
+@fnConfigCommand.command("import")
 @click.argument("sfilepath", metavar="FILE")
-def configImport(sfilepath):
+def fnConfigImportCommand(sfilepath):
     """Import configuration from a YAML file and overwrite the current config."""
     dictNewConfig = fdictLoadYamlFile(sfilepath)
     sConfigPath = fsConfigPath()
@@ -72,8 +72,8 @@ def configImport(sfilepath):
     click.echo(f"Configuration imported from {sfilepath}")
 
 
-@config.command("edit")
-def configEdit():
+@fnConfigCommand.command("edit")
+def fnConfigEditCommand():
     """Open vaibify.yml in the default editor."""
     sConfigPath = fsConfigPath()
     if not pathlib.Path(sConfigPath).is_file():

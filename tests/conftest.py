@@ -73,7 +73,7 @@ def fixtureHermeticKeyring(monkeypatch):
     """
     keyringFake = _FakeInMemoryKeyring()
     monkeypatch.setattr(
-        "vaibify.config.secretManager._fnLoadKeyringModule",
+        "vaibify.config.secretManager._fmoduleLoadKeyring",
         lambda: keyringFake,
     )
     yield keyringFake

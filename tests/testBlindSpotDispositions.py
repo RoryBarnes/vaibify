@@ -101,7 +101,7 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
             "reproducibility/gitHardening.py::LIST_GIT_HARDENING_CONFIG",
         ],
     },
-    "gui/routes/sessionRoutes.py|_fnLaunchDetachedHub|"
+    "gui/routes/sessionRoutes.py|_fprocessLaunchDetachedHub|"
     "opaque-subprocess-command|0": {
         "sDisposition": S_DISPOSITION_DETERMINED_IN_SOURCE,
         "sRationale": (
@@ -112,7 +112,7 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
             "the agent lane is refused at the route."
         ),
         "listSupportingSymbols": [
-            "gui/routes/sessionRoutes.py::_fnLaunchDetachedHub",
+            "gui/routes/sessionRoutes.py::_fprocessLaunchDetachedHub",
             "gui/routes/sessionRoutes.py::S_SUPPRESS_BROWSER_ENV",
             "gui/routes/sessionRoutes.py::_fnRejectContainerAgentCallers",
         ],
@@ -168,13 +168,13 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "gui/gitStatus.py::fsRunGit": "fde0aaa94089d1cc",
     "gui/routes/sessionRoutes.py::S_SUPPRESS_BROWSER_ENV":
         "b0122d40b40d22c0",
-    "gui/routes/sessionRoutes.py::_fnLaunchDetachedHub":
-        "3a7b1ee2a7bf4eec",
+    "gui/routes/sessionRoutes.py::_fprocessLaunchDetachedHub":
+        "e02a6840322d9b13",
     "gui/routes/sessionRoutes.py::_fnRejectContainerAgentCallers":
         "7c0e85b8e21ddc5e",
-    "gui/setupServer.py::ftResultRunBuild": "a800be49bf2826a8",
+    "gui/setupServer.py::ftResultRunBuild": "4820c8f27ce656a2",
     "gui/syncDispatcher.py::_S_OVERLEAF_HOST": "65054ecdea58cd8f",
-    "gui/syncDispatcher.py::_ftRunHostLsRemote": "8d2e498e92cd5b5b",
+    "gui/syncDispatcher.py::_ftRunHostLsRemote": "1416c2b66127daa3",
     "reproducibility/gitHardening.py::LIST_GIT_CREDENTIAL_ISOLATION_CONFIG":
         "f11e8b4053702d61",
     "reproducibility/gitHardening.py::LIST_GIT_HARDENING_CONFIG":

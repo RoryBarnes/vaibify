@@ -1,4 +1,4 @@
-"""Tests for the catalog-generated host CLI (vaibify do).
+"""Tests for the catalog-generated host CLI (vaibify fnDoCommand).
 
 Covers the mechanical translation from a catalog entry to a request:
 placeholder extraction, field parsing, WebSocket payload shape, and the
@@ -17,11 +17,11 @@ from vaibify.cli.actionCommands import (
     fdictBuildWebSocketPayload,
     flistArgumentPlaceholders,
     flistPathPlaceholders,
-    fnCoerceFieldValue,
+    fjsonCoerceFieldValue,
     fsBuildRequestPath,
     fsMetavarForPlaceholder,
     ftSplitFieldArguments,
-    do,
+    fnDoCommand,
 )
 
 
@@ -100,7 +100,7 @@ def test_request_path_percent_encodes_a_value():
     ("[not json", "[not json"),
 ])
 def test_field_values_coerce_by_shape(sValue, objExpected):
-    assert fnCoerceFieldValue(sValue) == objExpected
+    assert fjsonCoerceFieldValue(sValue) == objExpected
 
 
 def test_field_arguments_split_into_positionals_and_body():
@@ -179,15 +179,15 @@ def test_body_fields_reach_the_websocket_payload():
 
 def test_researcher_only_actions_are_generated_like_any_other():
     """bAgentSafe restrains the in-container agent, not the researcher."""
-    assert "clean-outputs" in do.commands
-    assert "publish-to-zenodo" in do.commands
+    assert "clean-outputs" in fnDoCommand.commands
+    assert "publish-to-zenodo" in fnDoCommand.commands
     assert "Withheld from the in-container agent" in (
-        do.commands["clean-outputs"].help
+        fnDoCommand.commands["clean-outputs"].help
     )
 
 
 def test_every_generated_command_offers_the_session_options():
-    commandAction = do.commands["run-unit-tests"]
+    commandAction = fnDoCommand.commands["run-unit-tests"]
     setNames = {parameter.name for parameter in commandAction.params}
     assert {"sProjectName", "iPort", "bJson", "bDryRun"} <= setNames
 

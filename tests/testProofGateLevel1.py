@@ -1,6 +1,6 @@
-"""Unit tests for the AICS Level 1 (Self-Consistent) gate.
+"""Unit tests for the PROOF Level 1 (Self-Consistent) gate.
 
-Phase 1 ships ``fiAICSLevel``, ``fbAtLeastLevel1``, and three orthogonal
+Phase 1 ships ``fiProofLevel``, ``fbAtLeastLevel1``, and three orthogonal
 per-step predicates lifted out of the old monolithic
 ``fbIsStepFullyVerified``. This module exercises each predicate
 individually and then the composed gate, plus the L0 short-circuit
@@ -13,7 +13,7 @@ from vaibify.reproducibility.levelGates import (
     fbAtLeastLevel3,
     fbStepIsAtLeastLevel1,
     fbWorkflowHasProjectRepo,
-    fiAICSLevel,
+    fiProofLevel,
 )
 from vaibify.gui.fileStatusManager import (
     fbStepTestsPassing,
@@ -198,23 +198,23 @@ def test_fbAtLeastLevel1_one_step_blocks_workflow():
 
 
 # ------------------------------------------------------------------------
-# fiAICSLevel — short-circuit ladder
+# fiProofLevel — short-circuit ladder
 # ------------------------------------------------------------------------
 
 
-def test_fiAICSLevel_returns_zero_when_repo_missing():
-    assert fiAICSLevel(_fdictAllGreenWorkflow(), "") == 0
+def test_fiProofLevel_returns_zero_when_repo_missing():
+    assert fiProofLevel(_fdictAllGreenWorkflow(), "") == 0
 
 
-def test_fiAICSLevel_returns_one_when_at_L1_only():
+def test_fiProofLevel_returns_one_when_at_L1_only():
     """L2 and L3 are stub-False in Phase 1 → L1 ceiling."""
-    assert fiAICSLevel(_fdictAllGreenWorkflow(), "/repo") == 1
+    assert fiProofLevel(_fdictAllGreenWorkflow(), "/repo") == 1
 
 
-def test_fiAICSLevel_returns_zero_when_step_blocks():
+def test_fiProofLevel_returns_zero_when_step_blocks():
     dictWorkflow = _fdictAllGreenWorkflow()
     dictWorkflow["listSteps"][0]["dictVerification"]["sUser"] = "failed"
-    assert fiAICSLevel(dictWorkflow, "/repo") == 0
+    assert fiProofLevel(dictWorkflow, "/repo") == 0
 
 
 def test_fbAtLeastLevel2_returns_false_without_sync_state():

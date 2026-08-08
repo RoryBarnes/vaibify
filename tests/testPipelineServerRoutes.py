@@ -105,7 +105,7 @@ class MockDockerConnection:
     ):
         self._dictFiles[sPath] = baContent
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         from types import SimpleNamespace
@@ -1041,7 +1041,7 @@ def test_sync_scripts(clientHttp):
 
 
 def test_validate_path_within_root_passes():
-    sResult = pipelineServer.fnValidatePathWithinRoot(
+    sResult = pipelineServer.fsValidatePathWithinRoot(
         "/workspace/dir/file.txt", "/workspace"
     )
     assert sResult == "/workspace/dir/file.txt"
@@ -1049,7 +1049,7 @@ def test_validate_path_within_root_passes():
 
 def test_validate_path_within_root_blocks_traversal():
     with pytest.raises(Exception):
-        pipelineServer.fnValidatePathWithinRoot(
+        pipelineServer.fsValidatePathWithinRoot(
             "/workspace/../etc/passwd", "/workspace"
         )
 

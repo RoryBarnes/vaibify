@@ -42,10 +42,10 @@ __all__ = [
     "fbAgentTokenAuthorizesContainerId",
     "frecordOwnerAuthorizedByAgentToken",
     "fsConflictingHeldContainer",
-    "ftdictClaim",
+    "ftClaim",
     "fbBrowserSessionOwnsLease",
     "fbReleaseWouldBePermitted",
-    "fnReleaseOwnership",
+    "fbReleaseOwnership",
     "fbSessionOwnsContainer",
     "fiOwnerGenerationForName",
     "fnIncrementLiveConnection",
@@ -64,13 +64,14 @@ import logging
 import os
 import secrets
 import time
+from typing import IO, Optional
 from dataclasses import dataclass, field
 
 from vaibify.config import pidFileRegistry
 from vaibify.config.containerLock import (
     ContainerLockedError,
     ContainerQuarantinedError,
-    fnAcquireContainerLock,
+    ffileAcquireContainerLock,
     fnReleaseContainerLock,
 )
 from vaibify.config.keepAliveManager import fnStopKeepAlive
@@ -233,7 +234,7 @@ class OwnerRecord:
     """
 
     sLeaseId: str
-    fileHandleLock: object
+    fileHandleLock: Optional[IO]
     sAgentToken: str = ""
     sContainerId: str = ""
     sBrowserSessionId: str = ""
@@ -256,7 +257,7 @@ class OwnerRecord:
     # compound state could express neither. The reservation holds only
     # live execution state; the outcome lives in the bounded
     # ``dictStartResults``, which is its sole delivery authority.
-    reservation: object = None
+    reservation: Optional["StartReservation"] = None
 
 
 @dataclass(eq=False)
@@ -271,7 +272,7 @@ class ConnectionRecord:
     per accepted socket.
     """
 
-    connection: object
+    websocket: "WebSocket"
     sBrowserSessionId: str
     iOwnerGeneration: int
     sLane: str
@@ -369,7 +370,7 @@ def fsConflictingHeldContainer(dictSessionOwner, sBrowserSessionId, sName):
     return ""
 
 
-def ftdictClaim(
+def ftClaim(
     dictContainerOwners, sName, sLeaseId, iPort, sContainerId="",
     fbPipelineRunning=None, fGraceSeconds=_F_GRACE_SECONDS,
     sBrowserSessionId="", dictSessionOwner=None, connectionDocker=None,
@@ -386,7 +387,7 @@ def ftdictClaim(
     Cardinality (design §9) is checked first: a bound session that
     already holds a different container is refused 409 before any
     arbitration, naming the held container. Routes reach this primitive
-    through :func:`sessionLifecycle.ftdictClaimWithCardinality`, whose
+    through :func:`sessionLifecycle.ftClaimWithCardinality`, whose
     hub-wide cardinality lock makes this read-check-write atomic across
     concurrent claims on different containers.
     """
@@ -397,7 +398,7 @@ def ftdictClaim(
         return (409, _fdictCardinalityRefused(sName, sHeldElsewhereName))
     recordOwner = dictContainerOwners.get(sName)
     if recordOwner is None:
-        return _ftdictClaimUnowned(
+        return _ftClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
             sBrowserSessionId, dictSessionOwner, connectionDocker,
         )
@@ -425,14 +426,14 @@ def ftdictClaim(
         _fnForceReleaseOwnership(
             dictContainerOwners, sName, dictSessionOwner,
         )
-        return _ftdictClaimUnowned(
+        return _ftClaimUnowned(
             dictContainerOwners, sName, iPort, sContainerId,
             sBrowserSessionId, dictSessionOwner, connectionDocker,
         )
     return (409, _fdictClaimRefused(sName, recordOwner))
 
 
-def _ftdictClaimUnowned(
+def _ftClaimUnowned(
     dictContainerOwners, sName, iPort, sContainerId, sBrowserSessionId="",
     dictSessionOwner=None, connectionDocker=None,
 ):
@@ -443,19 +444,19 @@ def _ftdictClaimUnowned(
     past operation outlives the process that held the flock.
     """
     try:
-        fileHandleLock = fnAcquireContainerLock(sName, iPort, connectionDocker)
+        fileHandleLock = ffileAcquireContainerLock(sName, iPort, connectionDocker)
     except ContainerQuarantinedError as error:
         return (409, _fdictQuarantineRefused(sName, error))
     except ContainerLockedError as error:
         return (409, _fdictCrossHubRefused(sName, error))
-    sLeaseId = _fnRecordNewOwner(
+    sLeaseId = _fsRecordNewOwner(
         dictContainerOwners, sName, fileHandleLock, sContainerId,
         sBrowserSessionId, dictSessionOwner,
     )
     return (200, _fdictClaimGranted(sName, sLeaseId))
 
 
-def _fnRecordNewOwner(
+def _fsRecordNewOwner(
     dictContainerOwners, sName, fileHandleLock, sContainerId="",
     sBrowserSessionId="", dictSessionOwner=None,
 ):
@@ -585,7 +586,7 @@ def fbReleaseWouldBePermitted(
 ):
     """Return True when a release by this caller would be committed.
 
-    The arbitration half of :func:`fnReleaseOwnership`, exposed so the
+    The arbitration half of :func:`fbReleaseOwnership`, exposed so the
     release authority can run its terminal drain (design §10) only for
     a caller that will actually be permitted — an unauthorized release
     attempt must never terminate the true owner's terminals.
@@ -610,7 +611,7 @@ def fbReleaseWouldBePermitted(
     return bBoundOwner or bUnboundOwner
 
 
-def fnReleaseOwnership(
+def fbReleaseOwnership(
     dictContainerOwners, sName, sLeaseId, sBrowserSessionId="",
     dictSessionOwner=None,
 ):

@@ -181,7 +181,7 @@ var VaibifyWorkflowManager = (function () {
         }
     }
 
-    async function fnPullProjectRepo() {
+    async function fdictPullProjectRepo() {
         var sId = VaibifyApp.fsGetContainerId();
         if (!sId) return;
         try {
@@ -225,7 +225,7 @@ var VaibifyWorkflowManager = (function () {
         elBanner.hidden = false;
         var elPull = elBanner.querySelector(".drift-banner-pull");
         if (elPull) {
-            elPull.addEventListener("click", fnPullProjectRepo);
+            elPull.addEventListener("click", fdictPullProjectRepo);
         }
         _fnAttachDriftBannerDismiss(elBanner);
     }
@@ -256,7 +256,7 @@ var VaibifyWorkflowManager = (function () {
                 "Committed " + (dictCommit.iFilesCommitted || 0) +
                 " state files — pulling…",
                 "info");
-            await fnPullProjectRepo();
+            await fdictPullProjectRepo();
         } catch (error) {
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
@@ -1349,7 +1349,7 @@ var VaibifyWorkflowManager = (function () {
         fnSelectWorkflow: fnSelectWorkflow,
         fnRefreshWorkflow: fnRefreshWorkflow,
         fnCheckOriginDrift: fnCheckOriginDrift,
-        fnPullProjectRepo: fnPullProjectRepo,
+        fdictPullProjectRepo: fdictPullProjectRepo,
         fnToggleWorkflowDropdown: fnToggleWorkflowDropdown,
         fnHideWorkflowDropdown: fnHideWorkflowDropdown,
         fnSaveCurrentWorkflow: fnSaveCurrentWorkflow,

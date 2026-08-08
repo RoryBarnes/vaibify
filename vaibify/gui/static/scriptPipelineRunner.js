@@ -999,7 +999,7 @@ var VaibifyPipelineRunner = (function () {
         fnSendPipelineAction({ sAction: "verify" });
     }
 
-    function fnRunAllTests() {
+    function fiRunAllTests() {
         console.log("[RUN-ALL-TESTS] sending action, wsState:",
             VaibifyWebSocket.fiGetReadyState());
         fnSendPipelineAction({ sAction: "runAllTests" });
@@ -1093,7 +1093,7 @@ var VaibifyPipelineRunner = (function () {
         fsEstimateRunTime: fsEstimateRunTime,
         fsFormatDurationLong: fsFormatDurationLong,
         fnVerify: fnVerify,
-        fnRunAllTests: fnRunAllTests,
+        fiRunAllTests: fiRunAllTests,
         fnVerifyDependencies: fnVerifyDependencies,
         fnDisplayLogInViewer: fnDisplayLogInViewer,
         fnResetState: fnResetState,

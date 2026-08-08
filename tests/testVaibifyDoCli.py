@@ -244,34 +244,34 @@ def test_fnPrintDescribe_emits_pretty_json(
 
 
 # -----------------------------------------------------------------------
-# _fnCoerceScalar + ftParsePositionalArgs
+# _fjsonCoerceScalar + ftParsePositionalArgs
 # -----------------------------------------------------------------------
 
 
 def test_coerce_scalar_booleans(modCli):
-    assert modCli._fnCoerceScalar("true") is True
-    assert modCli._fnCoerceScalar("FALSE") is False
+    assert modCli._fjsonCoerceScalar("true") is True
+    assert modCli._fjsonCoerceScalar("FALSE") is False
 
 
 def test_coerce_scalar_int_and_float(modCli):
-    assert modCli._fnCoerceScalar("7") == 7
-    assert modCli._fnCoerceScalar("3.14") == 3.14
+    assert modCli._fjsonCoerceScalar("7") == 7
+    assert modCli._fjsonCoerceScalar("3.14") == 3.14
 
 
 def test_coerce_scalar_json_list(modCli):
-    assert modCli._fnCoerceScalar("[1,2,3]") == [1, 2, 3]
+    assert modCli._fjsonCoerceScalar("[1,2,3]") == [1, 2, 3]
 
 
 def test_coerce_scalar_json_object(modCli):
-    assert modCli._fnCoerceScalar("{\"a\":1}") == {"a": 1}
+    assert modCli._fjsonCoerceScalar("{\"a\":1}") == {"a": 1}
 
 
 def test_coerce_scalar_bad_json_falls_back_to_string(modCli):
-    assert modCli._fnCoerceScalar("[nope") == "[nope"
+    assert modCli._fjsonCoerceScalar("[nope") == "[nope"
 
 
 def test_coerce_scalar_plain_string(modCli):
-    assert modCli._fnCoerceScalar("hello") == "hello"
+    assert modCli._fjsonCoerceScalar("hello") == "hello"
 
 
 def test_parse_positional_args_splits(modCli):
@@ -309,7 +309,7 @@ def test_parse_positional_args_unknown_long_flag_kept_as_camelcase(modCli):
     assert listPos == []
 
 
-def test_fnSendHttp_get_method_promotes_body_to_query_string(modCli):
+def test_fiSendHttpRequest_get_method_promotes_body_to_query_string(modCli):
     """GET requests put dictBody contents into the URL query string."""
     dictTarget = {
         "sUrl": "http://x/api/pipeline/c-1/host-log-tail",
@@ -325,13 +325,13 @@ def test_fnSendHttp_get_method_promotes_body_to_query_string(modCli):
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=fnFakeUrlopen,
     ):
-        iCode = modCli.fnSendHttp(dictTarget, "tok", "GET", False)
+        iCode = modCli.fiSendHttpRequest(dictTarget, "tok", "GET", False)
     assert iCode == 0
     assert "iLines=200" in dictCapturedRequests["sUrl"]
     assert dictCapturedRequests["dataBody"] is None
 
 
-def test_fnSendHttp_post_method_still_uses_json_body(modCli):
+def test_fiSendHttpRequest_post_method_still_uses_json_body(modCli):
     """POST keeps the JSON body path; GET behavior must be isolated."""
     dictTarget = {
         "sUrl": "http://x/api/anything",
@@ -347,7 +347,7 @@ def test_fnSendHttp_post_method_still_uses_json_body(modCli):
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=fnFakeUrlopen,
     ):
-        modCli.fnSendHttp(dictTarget, "tok", "POST", False)
+        modCli.fiSendHttpRequest(dictTarget, "tok", "POST", False)
     assert "sFoo" not in dictCaptured["sUrl"]
     assert dictCaptured["dataBody"] is not None
     import json as jsonModule
@@ -621,7 +621,7 @@ def test_fnDryRun_ws(
 
 
 # -----------------------------------------------------------------------
-# fnSendHttp + _fnHandleHttpError + _fnPrintHttpBody
+# fiSendHttpRequest + _fiHandleHttpError + _fnPrintHttpBody
 # -----------------------------------------------------------------------
 
 
@@ -639,47 +639,47 @@ class _MockResponse:
         return False
 
 
-def test_fnSendHttp_success_prints_body(modCli, capsys):
+def test_fiSendHttpRequest_success_prints_body(modCli, capsys):
     dictTarget = {"sUrl": "http://x/api", "dictBody": {"a": 1}}
     with patch.object(
         modCli.urllib.request, "urlopen",
         return_value=_MockResponse(b'{"ok":true}'),
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             dictTarget, "tok", "POST", False,
         )
     assert iCode == 0
     assert "ok" in capsys.readouterr().out
 
 
-def test_fnSendHttp_4xx_returns_one(modCli, capsys):
+def test_fiSendHttpRequest_4xx_returns_one(modCli, capsys):
     err = urllib.error.HTTPError(
         "http://x", 404, "Not Found", {}, io.BytesIO(b'{"detail":"nope"}'),
     )
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             {"sUrl": "http://x", "dictBody": {}}, "tok", "GET", False,
         )
     assert iCode == 1
     assert "nope" in capsys.readouterr().out
 
 
-def test_fnSendHttp_5xx_returns_two(modCli, capsys):
+def test_fiSendHttpRequest_5xx_returns_two(modCli, capsys):
     err = urllib.error.HTTPError(
         "http://x", 503, "down", {}, io.BytesIO(b""),
     )
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             {"sUrl": "http://x", "dictBody": {}}, "tok", "POST", False,
         )
     assert iCode == 2
 
 
-def test_fnSendHttp_http_error_with_broken_body_swallowed(modCli, capsys):
+def test_fiSendHttpRequest_http_error_with_broken_body_swallowed(modCli, capsys):
     """A broken ``errHttp.read()`` must not propagate; body becomes empty."""
     err = urllib.error.HTTPError(
         "http://x", 500, "down", {}, None,
@@ -692,13 +692,13 @@ def test_fnSendHttp_http_error_with_broken_body_swallowed(modCli, capsys):
     with patch.object(
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
-        iCode = modCli.fnSendHttp(
+        iCode = modCli.fiSendHttpRequest(
             {"sUrl": "http://x", "dictBody": {}}, "tok", "POST", False,
         )
     assert iCode == 2
 
 
-def test_fnSendHttp_401_exits_with_auth_message(modCli, capsys):
+def test_fiSendHttpRequest_401_exits_with_auth_message(modCli, capsys):
     err = urllib.error.HTTPError(
         "http://x", 401, "no", {}, io.BytesIO(b""),
     )
@@ -706,7 +706,7 @@ def test_fnSendHttp_401_exits_with_auth_message(modCli, capsys):
         modCli.urllib.request, "urlopen", side_effect=err,
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnSendHttp(
+            modCli.fiSendHttpRequest(
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
@@ -714,13 +714,13 @@ def test_fnSendHttp_401_exits_with_auth_message(modCli, capsys):
     assert "token rejected" in capsys.readouterr().err.lower()
 
 
-def test_fnSendHttp_connection_timeout_exits(modCli, capsys):
+def test_fiSendHttpRequest_connection_timeout_exits(modCli, capsys):
     with patch.object(
         modCli.urllib.request, "urlopen",
         side_effect=socket.timeout("slow"),
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnSendHttp(
+            modCli.fiSendHttpRequest(
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
@@ -728,13 +728,13 @@ def test_fnSendHttp_connection_timeout_exits(modCli, capsys):
     assert "unreachable" in capsys.readouterr().err.lower()
 
 
-def test_fnSendHttp_urlerror_exits(modCli, capsys):
+def test_fiSendHttpRequest_urlerror_exits(modCli, capsys):
     with patch.object(
         modCli.urllib.request, "urlopen",
         side_effect=urllib.error.URLError("boom"),
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnSendHttp(
+            modCli.fiSendHttpRequest(
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
@@ -903,7 +903,7 @@ def test_fnSendWsPong_echoes_payload_with_pong_opcode(modCli):
 
 def test_recv_exact_returns_empty_on_short_read(modCli):
     sock = _MockSocket([b"ab", b""])
-    assert modCli._fnRecvExact(sock, 4) == b""
+    assert modCli._fbaRecvExact(sock, 4) == b""
 
 
 def test_ws_handshake_happy_path(modCli):
@@ -937,7 +937,7 @@ def test_ws_handshake_empty_response_exits(modCli, capsys):
 
 
 # -----------------------------------------------------------------------
-# ftWsEndpoint + fnRunWebsocket
+# ftWsEndpoint + fiRunWebsocket
 # -----------------------------------------------------------------------
 
 
@@ -961,30 +961,30 @@ def test_ftWsEndpoint_https_defaults_443(modCli):
     assert bTls is True
 
 
-def test_fnRunWebsocket_refuses_tls(modCli, capsys):
+def test_fiRunWebsocket_refuses_tls(modCli, capsys):
     dictEnv = {
         "VAIBIFY_HOST_URL": "https://example.com",
         "VAIBIFY_SESSION_TOKEN": "t",
         "VAIBIFY_CONTAINER_ID": "c",
     }
     with pytest.raises(SystemExit) as excInfo:
-        modCli.fnRunWebsocket(dictEnv, {"sAction": "runAll"}, False)
+        modCli.fiRunWebsocket(dictEnv, {"sAction": "runAll"}, False)
     assert excInfo.value.code == 4
 
 
-def test_fnRunWebsocket_connect_error_exits(modCli, dictValidEnv):
+def test_fiRunWebsocket_connect_error_exits(modCli, dictValidEnv):
     with patch.object(
         modCli.socket, "create_connection",
         side_effect=OSError("refused"),
     ):
         with pytest.raises(SystemExit) as excInfo:
-            modCli.fnRunWebsocket(
+            modCli.fiRunWebsocket(
                 dictValidEnv, {"sAction": "runAll"}, False,
             )
     assert excInfo.value.code == 4
 
 
-def test_fnRunWebsocket_full_flow_completed(
+def test_fiRunWebsocket_full_flow_completed(
     modCli, dictValidEnv,
 ):
     """End-to-end: connect, handshake, send, stream, completed."""
@@ -1009,13 +1009,13 @@ def test_fnRunWebsocket_full_flow_completed(
     with patch.object(
         modCli.socket, "create_connection", return_value=sockMock,
     ):
-        iCode = modCli.fnRunWebsocket(
+        iCode = modCli.fiRunWebsocket(
             dictValidEnv, {"sAction": "runAll"}, False,
         )
     assert iCode == 0
 
 
-def test_fnRunWebsocket_enables_tcp_keepalive(modCli, dictValidEnv):
+def test_fiRunWebsocket_enables_tcp_keepalive(modCli, dictValidEnv):
     """Connecting must turn on SO_KEEPALIVE plus the Linux tuning knobs."""
     dataDone = b'{"sType":"completed","iExitCode":0}'
     sockMock = _MockSocket([
@@ -1025,7 +1025,7 @@ def test_fnRunWebsocket_enables_tcp_keepalive(modCli, dictValidEnv):
     with patch.object(
         modCli.socket, "create_connection", return_value=sockMock,
     ):
-        modCli.fnRunWebsocket(
+        modCli.fiRunWebsocket(
             dictValidEnv, {"sAction": "runAll"}, False,
         )
     setOptions = {(iLevel, iOpt) for iLevel, iOpt, _ in sockMock.listSockOpts}
@@ -1056,7 +1056,7 @@ def test_f_read_timeout_below_graceful_ceiling(modCli):
     assert modCli.F_READ_TIMEOUT <= 120.0
 
 
-def test_fnRunWebsocket_error_event_returns_one(modCli, dictValidEnv):
+def test_fiRunWebsocket_error_event_returns_one(modCli, dictValidEnv):
     dataError = b'{"sType":"error","sMessage":"boom"}'
     sock = _MockSocket([
         b"HTTP/1.1 101 Switching Protocols\r\n\r\n",
@@ -1065,7 +1065,7 @@ def test_fnRunWebsocket_error_event_returns_one(modCli, dictValidEnv):
     with patch.object(
         modCli.socket, "create_connection", return_value=sock,
     ):
-        iCode = modCli.fnRunWebsocket(
+        iCode = modCli.fiRunWebsocket(
             dictValidEnv, {"sAction": "runAll"}, False,
         )
     assert iCode == 1
@@ -1075,7 +1075,7 @@ def test_stream_ws_events_closed_connection_returns_one(
     modCli, capsys,
 ):
     sock = _MockSocket([b""])  # immediate close
-    assert modCli._fnStreamWsEvents(sock, False) == 1
+    assert modCli._fiStreamWsEvents(sock, False) == 1
 
 
 def test_stream_ws_events_skips_non_json(modCli):
@@ -1085,13 +1085,13 @@ def test_stream_ws_events_skips_non_json(modCli):
         bytes([0x81, len(dataBad)]) + dataBad,
         bytes([0x81, len(dataDone)]) + dataDone,
     ])
-    assert modCli._fnStreamWsEvents(sock, False) == 7
+    assert modCli._fiStreamWsEvents(sock, False) == 7
 
 
 def test_stream_ws_events_pipeline_error_returns_one(modCli):
     data = b'{"sType":"pipelineError"}'
     sock = _MockSocket([bytes([0x81, len(data)]) + data])
-    assert modCli._fnStreamWsEvents(sock, False) == 1
+    assert modCli._fiStreamWsEvents(sock, False) == 1
 
 
 def test_stream_ws_events_pongs_ping_and_skips_binary(modCli):
@@ -1103,7 +1103,7 @@ def test_stream_ws_events_pongs_ping_and_skips_binary(modCli):
         bytes([0x82, 0x00]),  # binary -> skip
         bytes([0x81, len(dataDone)]) + dataDone,
     ])
-    assert modCli._fnStreamWsEvents(sock, False) == 0
+    assert modCli._fiStreamWsEvents(sock, False) == 0
     # Exactly one frame was sent in reply: the PONG echoing dataPing.
     assert len(sock.listSent) == 1
     dataFrame = sock.listSent[0]
@@ -1124,7 +1124,7 @@ def test_stream_ws_events_drops_ws_heartbeat_silently(modCli, capsys):
         bytes([0x81, len(dataBeat)]) + dataBeat,
         bytes([0x81, len(dataDone)]) + dataDone,
     ])
-    assert modCli._fnStreamWsEvents(sock, False) == 0
+    assert modCli._fiStreamWsEvents(sock, False) == 0
     sOut = capsys.readouterr().out
     assert "wsHeartbeat" not in sOut
 

@@ -12,7 +12,7 @@ Three researcher-reported usability defects drove this layout
    is workflow-scope requirements only, so it is now labeled
    "Project" (2026-07-08; briefly "Workflow-wide", which the
    researcher found clunky) and its tooltip says so without jargon.
-3. The AICS and Repos tabs were only handed the container id on the
+3. The PROOF and Repos tabs were only handed the container id on the
    no-workflow connect path (``fnEnterNoWorkflow``); opening an
    existing workflow (``_fnActivateWorkflow``) — the path every
    researcher actually takes — left both tabs in their "connect
@@ -158,13 +158,13 @@ def test_project_block_is_labeled_project():
 
 def test_project_scope_tooltip_is_plain_english():
     """The Project cell tooltip must explain the scoping without
-    internal jargon (no "AICS chip", no "wire", no "scope")."""
+    internal jargon (no "PROOF chip", no "wire", no "scope")."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     assert "These requirements apply to the project" in sSource, (
         "workflow-scope tooltip must state the scoping plainly"
     )
-    assert "AICS chip" not in sSource, (
-        "user-visible text must not reference the 'AICS chip' — "
+    assert "PROOF chip" not in sSource, (
+        "user-visible text must not reference the 'PROOF chip' — "
         "researchers do not know what a chip is"
     )
 
@@ -248,29 +248,29 @@ def test_verification_dot_machinery_is_retired():
 
 
 # -----------------------------------------------------------------------
-# AICS tab: level wording and the header progression links
+# PROOF tab: level wording and the header progression links
 # -----------------------------------------------------------------------
 
 
-def test_aics_tab_prefers_level_wording_in_visible_text():
-    """User-visible AICS strings say "Level N", not the "L?"
+def test_proof_tab_prefers_level_wording_in_visible_text():
+    """User-visible PROOF strings say "Level N", not the "L?"
     shorthand."""
-    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    sSource = _fsReadStaticFile("scriptProofTab.js")
     for sJargon in (
         "L3 Attestation", "verifiers green", "Verify L3 ",
         '"L3 verification',
     ):
         assert sJargon not in sSource, (
-            "AICS tab shows the retired shorthand: " + sJargon
+            "PROOF tab shows the retired shorthand: " + sJargon
         )
     assert "Level 3 Attestation" in sSource
 
 
-def test_aics_tab_renders_three_requirement_sections():
-    """The AICS tab is a requirements ledger: one expandable section
+def test_proof_tab_renders_three_requirement_sections():
+    """The PROOF tab is a requirements ledger: one expandable section
     per level, each drawn from the single requirement catalog with a
     live state light, a description, and a how-to deep link."""
-    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    sSource = _fsReadStaticFile("scriptProofTab.js")
     iCatalog = sSource.find("_DICT_REQUIREMENT_CATALOG")
     assert iCatalog != -1, "requirement catalog missing"
     sPaint = _fsExtractFunctionBlock(sSource, "_fnPaintFromCache")
@@ -280,17 +280,17 @@ def test_aics_tab_renders_three_requirement_sections():
         assert sCall in sPaint, "missing level section " + sCall
     sEntry = _fsExtractFunctionBlock(
         sSource, "_fsRenderRequirementEntry")
-    assert "aics-req-what" in sEntry and "aics-req-how" in sEntry, (
+    assert "proof-req-what" in sEntry and "proof-req-how" in sEntry, (
         "each requirement must carry its description and how-to"
     )
 
 
-def test_aics_level2_section_includes_arxiv():
+def test_proof_level2_section_includes_arxiv():
     """FALSIFICATION TARGET: the old Level 2 card omitted the arXiv
     criterion, so it read '3 / 3 criteria met' while the workflow was
     still not at Level 2 — arXiv could silently block. The Level 2
     requirement list must carry bArxivFullySynced."""
-    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    sSource = _fsReadStaticFile("scriptProofTab.js")
     iStart = sSource.find("_DICT_REQUIREMENT_CATALOG")
     sCatalog = sSource[iStart:sSource.find("function ", iStart)]
     for sKey in ("bGithubFullySynced", "bZenodoFullySynced",
@@ -307,7 +307,7 @@ def test_aics_level2_section_includes_arxiv():
 def test_help_panel_carries_essentials_without_live_counts():
     """The ? button opens the Help menu. Its legend explains symbols
     only: no live blocker counts (a help panel must not become a
-    second, staler status page), it points at the AICS tab for the
+    second, staler status page), it points at the PROOF tab for the
     requirements themselves, and it carries the first-time-user
     essentials — the documentation link and the Using AI section
     with the permission-skip reminder."""
@@ -315,8 +315,8 @@ def test_help_panel_carries_essentials_without_live_counts():
     assert "fdictBlockerCountsByLevel" not in sLegend, (
         "help panel must not render live blocker counts"
     )
-    assert "AICS tab" in sLegend, (
-        "help footer must direct to the AICS tab for requirements"
+    assert "PROOF tab" in sLegend, (
+        "help footer must direct to the PROOF tab for requirements"
     )
     assert "RoryBarnes.github.io/vaibify" in sLegend, (
         "help panel must link to the online documentation"
@@ -354,11 +354,11 @@ def test_help_panel_pins_title_divisions_and_docs_link():
     )
 
 
-def test_aics_level1_segment_navigates_to_the_step_list():
+def test_proof_level1_segment_navigates_to_the_step_list():
     """The "Self-Consistent (N steps blocking)" segment used to
     scroll to the card it sits in — a dead click. It must switch to
     the Steps tab, where the blocked steps live."""
-    sSource = _fsReadStaticFile("scriptAicsTab.js")
+    sSource = _fsReadStaticFile("scriptProofTab.js")
     sScroll = _fsExtractFunctionBlock(sSource, "_fnScrollToReadiness")
     assert '"L1"' in sScroll and 'data-panel="steps"' in sScroll, (
         "the Level 1 progression segment must navigate to the step "
@@ -1042,17 +1042,17 @@ def test_repo_gear_menu_survives_its_opening_click():
 # -----------------------------------------------------------------------
 
 
-def test_activate_workflow_wires_aics_and_repos_tabs():
+def test_activate_workflow_wires_proof_and_repos_tabs():
     """FALSIFICATION TARGET: ``_fnActivateWorkflow`` must hand the
-    container id to the AICS tab and initialize the Repos panel.
+    container id to the PROOF tab and initialize the Repos panel.
     Before 2026-07-02 only ``fnEnterNoWorkflow`` did, so both tabs
     showed their "connect first" empty states during every actual
     workflow session."""
     sSource = _fsReadStaticFile("scriptApplication.js")
     sActivate = _fsExtractFunctionBlock(sSource, "_fnActivateWorkflow")
-    assert "VaibifyAicsTab.fnSetContainerId(sId)" in sActivate, (
-        "workflow activation must wire the AICS tab or it renders "
-        "'Connect to a workflow to see AICS status' while connected"
+    assert "VaibifyProofTab.fnSetContainerId(sId)" in sActivate, (
+        "workflow activation must wire the PROOF tab or it renders "
+        "'Connect to a workflow to see PROOF status' while connected"
     )
     assert "VaibifyReposPanel.fnInit(sId)" in sActivate, (
         "workflow activation must initialize the Repos panel or the "
@@ -1066,8 +1066,8 @@ def test_activate_workflow_wires_aics_and_repos_tabs():
 
 
 def test_poll_updates_workflow_level_integer_for_the_theme():
-    """The file-status poll must copy ``iAICSLevel`` onto the client's
-    workflow dict — the theme (``fiClientAICSLevel``) reads exactly
+    """The file-status poll must copy ``iProofLevel`` onto the client's
+    workflow dict — the theme (``fiClientProofLevel``) reads exactly
     that integer. Before this contract, the poll updated every level
     CELL but never the workflow-level integer, so a promotion earned
     mid-session showed every step's L1 check while the theme stayed
@@ -1075,14 +1075,14 @@ def test_poll_updates_workflow_level_integer_for_the_theme():
     sSource = _fsReadStaticFile("scriptApplication.js")
     sApply = _fsExtractFunctionBlock(
         sSource, "_fnApplyLevelStatesFromPoll")
-    assert "dictWorkflow.iAICSLevel =" in sApply.replace(
+    assert "dictWorkflow.iProofLevel =" in sApply.replace(
         "\n", "").replace("    ", " ").replace("  ", " "), (
         "_fnApplyLevelStatesFromPoll must assign the poll's "
-        "iAICSLevel onto the workflow dict the theme reads"
+        "iProofLevel onto the workflow dict the theme reads"
     )
     sSnapshot = _fsExtractFunctionBlock(
         sSource, "_fsBlockerAndLevelSnapshot")
-    assert "iAICSLevel" in sSnapshot, (
+    assert "iProofLevel" in sSnapshot, (
         "the blocker/level snapshot must include the workflow-level "
         "integer so a promotion alone triggers the re-render that "
         "calls fnUpdateHighlightState (the theme flip)"
@@ -1318,7 +1318,7 @@ def test_attestation_status_is_escaped_in_class_attributes():
     """sStatus comes from .vaibify/l3_attestation.json — an
     agent-writable file — and must be escaped in the class-attribute
     interpolation, not only in the adjacent text rendering."""
-    sFlat = " ".join(_fsReadStaticFile("scriptAicsTab.js").split())
+    sFlat = " ".join(_fsReadStaticFile("scriptProofTab.js").split())
     assert "status-' + fnEscapeHtml(sStatus)" in sFlat, (
         "attestation card class attribute must escape sStatus"
     )

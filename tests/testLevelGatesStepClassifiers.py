@@ -1,4 +1,4 @@
-"""Behaviour tests for the per-step AICS classification helpers.
+"""Behaviour tests for the per-step PROOF classification helpers.
 
 These pure helpers decide, for one step, whether it has started, how
 many of its present verification axes are green, what its Level-1

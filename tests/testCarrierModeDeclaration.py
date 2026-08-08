@@ -307,7 +307,7 @@ def _fdictDriveOneRoute(sPath, tupleDeclarations, sMethod="POST"):
     """Call one freshly built owned route; return its response body."""
     fnHandler = _fnBuildLaneReporter()
     if tupleDeclarations:
-        routeScope.fnDeclareCarrierMode(*tupleDeclarations)(fnHandler)
+        routeScope.ffnDeclareCarrierMode(*tupleDeclarations)(fnHandler)
     app = fappBuildOwnedApplication([(sPath, fnHandler)], sMethod)
     client = TestClient(app)
     response = client.request(
@@ -416,7 +416,7 @@ def testEveryContainerScopedRouteEitherDeclaresOrIsRecordedAsAwaiting():
     ):
         if not isinstance(route, APIRoute):
             continue
-        if routeScope.ftupleResolveCarrierDeclaration(route.endpoint):
+        if routeScope.ftResolveCarrierDeclaration(route.endpoint):
             continue
         if routeScope.fbRouteAwaitsCarrierMode(route.methods, route.path):
             continue
@@ -424,7 +424,7 @@ def testEveryContainerScopedRouteEitherDeclaresOrIsRecordedAsAwaiting():
     assert listUnaccounted == [], (
         f"container-scoped routes with no carrier declaration and no "
         f"entry in SET_ROUTES_AWAITING_CARRIER_MODE: {listUnaccounted}. "
-        "Declare the route with @fnDeclareCarrierMode and write the "
+        "Declare the route with @ffnDeclareCarrierMode and write the "
         "carrier calls its declaration names; do not add it to the "
         "allow-list, which may only shrink."
     )
@@ -467,7 +467,7 @@ def testNoRouteBothDeclaresAndIsRecordedAsAwaiting():
     for route, _ in _flistResolveContainerScopedRoutes(
         fappCreateHubApplication(),
     ):
-        if not routeScope.ftupleResolveCarrierDeclaration(route.endpoint):
+        if not routeScope.ftResolveCarrierDeclaration(route.endpoint):
             continue
         setOverlap = _fsetRouteKeys(route) & (
             routeScope.SET_ROUTES_AWAITING_CARRIER_MODE
@@ -512,7 +512,7 @@ def testTheDeclaringPopulationPartitionsWithNothingLeftOver():
         if not isinstance(route, APIRoute):
             continue
         setServedKeys |= _fsetRouteKeys(route)
-        if routeScope.ftupleResolveCarrierDeclaration(route.endpoint):
+        if routeScope.ftResolveCarrierDeclaration(route.endpoint):
             setDeclaredKeys |= _fsetRouteKeys(route)
     setStale = routeScope.SET_ROUTES_AWAITING_CARRIER_MODE - setServedKeys
     assert setStale == set(), (
@@ -545,15 +545,15 @@ def testTheDeclarationVocabularyIsClosedAndTypedReadIsExclusive():
     typed-read violation, which is a guard that cannot fire.
     """
     with pytest.raises(ValueError, match="Unknown carrier declaration"):
-        routeScope.fnDeclareCarrierMode("mode-z-improvised")
+        routeScope.ffnDeclareCarrierMode("mode-z-improvised")
     with pytest.raises(ValueError, match="at least one member"):
-        routeScope.fnDeclareCarrierMode()
+        routeScope.ffnDeclareCarrierMode()
     with pytest.raises(ValueError, match="cannot be combined"):
-        routeScope.fnDeclareCarrierMode(
+        routeScope.ffnDeclareCarrierMode(
             routeScope.S_CARRIER_TYPED_READ,
             routeScope.S_CARRIER_MODE_A_SYNCHRONOUS,
         )
-    routeScope.fnDeclareCarrierMode(
+    routeScope.ffnDeclareCarrierMode(
         routeScope.S_CARRIER_MODE_A_SYNCHRONOUS,
         routeScope.S_CARRIER_MODE_C_DURABLE,
     )  # several modes are a real shape and must be accepted
@@ -561,7 +561,7 @@ def testTheDeclarationVocabularyIsClosedAndTypedReadIsExclusive():
 
 def testTheDeclarationStampMustLandOnAnEndpointFunction():
     """A stamp on an already-built route would silently do nothing."""
-    fnDecorator = routeScope.fnDeclareCarrierMode(
+    fnDecorator = routeScope.ffnDeclareCarrierMode(
         routeScope.S_CARRIER_TYPED_READ,
     )
     with pytest.raises(TypeError, match="endpoint function"):
@@ -578,6 +578,6 @@ def testTheArtifactEncodingRoundTripsEveryDeclaration():
     )
     sFormatted = routeScope.fsFormatCarrierDeclaration(tupleDeclared)
     assert set(
-        routeScope.ftupleParseCarrierDeclaration(sFormatted),
+        routeScope.ftParseCarrierDeclaration(sFormatted),
     ) == set(tupleDeclared)
-    assert routeScope.ftupleParseCarrierDeclaration("UNDECLARED") == ()
+    assert routeScope.ftParseCarrierDeclaration("UNDECLARED") == ()

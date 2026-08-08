@@ -298,8 +298,8 @@ def test_all_green_refresh_writes_environment_json(tmp_path):
         "fdictCaptureHostBinaryHashes",
         return_value={"/usr/bin/git": "abc"},
     ):
-        fileStatusManager.fnMaybeAutoArchive(
+        fileStatusManager.fbMaybeAutoArchive(
             None, "container-id-123",
-            dictWorkflow, 0, iAICSLevelBefore=0,
+            dictWorkflow, 0, iProofLevelBefore=0,
         )
     assert (tmp_path / _ENVIRONMENT_RELPATH).is_file()

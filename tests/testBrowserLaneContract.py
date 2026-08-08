@@ -144,7 +144,7 @@ def testTheStreamedExecAlsoRaisesRatherThanInventingAnAnswer():
 
     THE GENERAL RULE. The fake models two container-exec surfaces:
     ``ftResultExecuteCommand`` (blocking) and
-    ``texecRunInContainerStreamed`` (streamed, used by the pipeline
+    ``ftRunInContainerStreamed`` (streamed, used by the pipeline
     runner). ``testTheFakeRaisesRatherThanInventingAnAnswer`` proves the
     blocking one fails closed, but the streamed one currently accepts ANY
     command and returns ``iExitCode=0`` — a catch-all return, precisely
@@ -158,13 +158,13 @@ def testTheStreamedExecAlsoRaisesRatherThanInventingAnAnswer():
     the streamed method returns 0 instead of raising; it passes once the
     streamed path is routed through the same modelled-command contract.
 
-    Kills: in fakeDockerAdapter.texecRunInContainerStreamed, replace
+    Kills: in fakeDockerAdapter.ftRunInContainerStreamed, replace
     ``iExitCode, sStdout = self._ftAnswerModelledCommand(sCommand)`` with
     a constant ``(0, "ok")``, restoring the catch-all that answers any
     streamed command with a green exit.
     """
     adapter = fakeDockerAdapter.FailClosedDockerAdapter()
     with pytest.raises(fakeDockerAdapter.UnmodelledContainerCall):
-        adapter.texecRunInContainerStreamed(
+        adapter.ftRunInContainerStreamed(
             "cid", "some unmodelled streamed command",
         )

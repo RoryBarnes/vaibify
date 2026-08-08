@@ -172,7 +172,7 @@ def test_batching_emitter_coalesces_lines_within_window():
 
 
 def test_batching_emitter_drain_emits_partial_buffer():
-    """faDrainPending must ship a sub-threshold buffer on teardown."""
+    """fnDrainPending must ship a sub-threshold buffer on teardown."""
     from vaibify.gui.pipelineRunner import _ftBuildBatchingEmitter
 
     listEvents = []

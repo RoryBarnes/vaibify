@@ -11,9 +11,9 @@ never the per-container owning lease.
 
 The mechanism is a scope marker plus a route class:
 
-* :func:`fnRouteScope` (and the :func:`fnContainerOwner` specialization)
+* :func:`ffnRouteScope` (and the :func:`ffnContainerOwner` specialization)
   stamps a scope declaration onto an endpoint, exactly as
-  ``actionCatalog.fnAgentAction`` stamps an agent-action name. A
+  ``actionCatalog.ffnAgentAction`` stamps an agent-action name. A
   ``container-owner`` declaration names its target path parameter and the
   identity kind (``"id"`` resolves via ``OwnerRecord.sContainerId``;
   ``"name"`` is the owner-map key directly).
@@ -21,7 +21,7 @@ The mechanism is a scope marker plus a route class:
   before any route registers, calls :func:`fiAuthorizeContainerHttp` before
   the endpoint body for every ``container-owner`` and ``container-read``
   route.
-* :func:`fnDeclareCarrierMode` stamps a second, ORTHOGONAL declaration:
+* :func:`ffnDeclareCarrierMode` stamps a second, ORTHOGONAL declaration:
   what the route DOES to its container, from the closed set the
   migration plan's R2 defines. It authorizes nothing — the route class
   reads it only to decide that the route no longer wants the legacy
@@ -70,13 +70,13 @@ __all__ = [
     "SET_CONTAINER_READ_ROUTES",
     "SET_ROUTES_AWAITING_CARRIER_MODE",
     "ContainerAwareRoute",
-    "fnRouteScope",
-    "fnContainerOwner",
-    "fnDeclareCarrierMode",
+    "ffnRouteScope",
+    "ffnContainerOwner",
+    "ffnDeclareCarrierMode",
     "fdictResolveRouteScope",
-    "ftupleResolveCarrierDeclaration",
+    "ftResolveCarrierDeclaration",
     "fsFormatCarrierDeclaration",
-    "ftupleParseCarrierDeclaration",
+    "ftParseCarrierDeclaration",
     "fbRouteAwaitsCarrierMode",
     "fiAuthorizeContainerHttp",
     "fiAuthorizeContainerLifecycleHttp",
@@ -375,10 +375,10 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
 })
 
 
-def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
+def ffnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
     """Stamp an authorization scope onto an HTTP route endpoint.
 
-    Metadata only, exactly like ``actionCatalog.fnAgentAction``: the
+    Metadata only, exactly like ``actionCatalog.ffnAgentAction``: the
     behaviour lives in :class:`ContainerAwareRoute`, which reads this stamp
     when it builds the route handler. A ``container-owner`` (or
     ``owner-establishing``) declaration must also name its ``sTargetParam``
@@ -394,10 +394,10 @@ def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
     if sScope not in _SET_VALID_SCOPES:
         raise ValueError(f"Unknown route scope: {sScope!r}")
 
-    def _fnDecorator(fnEndpoint):
+    def _ffnDecorator(fnEndpoint):
         if isinstance(fnEndpoint, APIRoute) or not callable(fnEndpoint):
             raise TypeError(
-                "fnRouteScope must decorate an endpoint function, below the "
+                "ffnRouteScope must decorate an endpoint function, below the "
                 "@app.<verb> line; it received a "
                 f"{type(fnEndpoint).__name__}."
             )
@@ -407,28 +407,28 @@ def fnRouteScope(sScope, sTargetParam=None, sIdentityKind=None):
             "sIdentityKind": sIdentityKind,
         }
         return fnEndpoint
-    return _fnDecorator
+    return _ffnDecorator
 
 
-def fnContainerOwner(sTargetParam="sContainerId", sIdentityKind="id"):
+def ffnContainerOwner(sTargetParam="sContainerId", sIdentityKind="id"):
     """Declare a route as container-owner scoped (the common specialization).
 
-    A thin wrapper over :func:`fnRouteScope`; use it to gate a mutating
+    A thin wrapper over :func:`ffnRouteScope`; use it to gate a mutating
     route whose owner is keyed by ``sIdentityKind`` on ``sTargetParam``.
     Most container routes need no decoration — the ``{sContainerId}``
     segment implies this scope — so this exists for the routes whose target
     parameter or identity kind departs from that default.
     """
-    return fnRouteScope(
+    return ffnRouteScope(
         S_SCOPE_CONTAINER_OWNER, sTargetParam, sIdentityKind,
     )
 
 
-def fnDeclareCarrierMode(*saDeclarations):
+def ffnDeclareCarrierMode(*saDeclarations):
     """Stamp what a container-scoped route DOES, from R2's closed set.
 
-    Metadata only, exactly like :func:`fnRouteScope` and
-    ``actionCatalog.fnAgentAction``. **A declaration authorizes
+    Metadata only, exactly like :func:`ffnRouteScope` and
+    ``actionCatalog.ffnAgentAction``. **A declaration authorizes
     nothing.** It mints no admission and no authority reads it;
     :class:`ContainerAwareRoute` consults it for one purpose only — to
     learn that the route no longer wants the legacy ambient mint. The
@@ -442,16 +442,16 @@ def fnDeclareCarrierMode(*saDeclarations):
     """
     _fnValidateCarrierDeclarations(saDeclarations)
 
-    def _fnDecorator(fnEndpoint):
+    def _ffnDecorator(fnEndpoint):
         if isinstance(fnEndpoint, APIRoute) or not callable(fnEndpoint):
             raise TypeError(
-                "fnDeclareCarrierMode must decorate an endpoint function, "
+                "ffnDeclareCarrierMode must decorate an endpoint function, "
                 "below the @app.<verb> line; it received a "
                 f"{type(fnEndpoint).__name__}."
             )
         fnEndpoint._tupleCarrierDeclaration = tuple(saDeclarations)
         return fnEndpoint
-    return _fnDecorator
+    return _ffnDecorator
 
 
 def _fnValidateCarrierDeclarations(saDeclarations):
@@ -484,17 +484,17 @@ def _fnValidateCarrierDeclarations(saDeclarations):
         )
 
 
-def ftupleResolveCarrierDeclaration(fnEndpoint):
+def ftResolveCarrierDeclaration(fnEndpoint):
     """Return an endpoint's declarations, or ``()`` when it has none."""
     return tuple(getattr(fnEndpoint, "_tupleCarrierDeclaration", ()) or ())
 
 
-def fsFormatCarrierDeclaration(tupleDeclarations):
+def fsFormatCarrierDeclaration(tDeclarations):
     """Return the single-string form an observation artifact records."""
-    return S_CARRIER_DECLARATION_SEPARATOR.join(sorted(tupleDeclarations))
+    return S_CARRIER_DECLARATION_SEPARATOR.join(sorted(tDeclarations))
 
 
-def ftupleParseCarrierDeclaration(sDeclaration):
+def ftParseCarrierDeclaration(sDeclaration):
     """Return the declarations encoded in one artifact string.
 
     Anything outside the closed set is dropped rather than returned, so
@@ -527,7 +527,7 @@ def fbRouteAwaitsCarrierMode(setMethods, sPath):
 def fdictResolveRouteScope(setMethods, sPath, fnEndpoint):
     """Return the scope declaration for a route, or ``None`` when unscoped.
 
-    Resolution order: an explicit :func:`fnRouteScope` stamp wins; else a
+    Resolution order: an explicit :func:`ffnRouteScope` stamp wins; else a
     mutating ``{sContainerId}`` path is container-owner by convention, and a
     non-mutating (GET/HEAD) ``{sContainerId}`` path is container-read by the
     mirror convention (both enforced by ``ContainerAwareRoute`` with the
@@ -725,7 +725,7 @@ class ContainerAwareRoute(APIRoute):
     def get_route_handler(self):
         fnOriginalHandler = super().get_route_handler()
 
-        async def fnAuthorizedHandler(request):
+        async def fresponseHandleAuthorized(request):
             from . import commitCarrier
             dictScope = fdictResolveRouteScope(
                 self.methods, self.path, self.endpoint,
@@ -741,7 +741,7 @@ class ContainerAwareRoute(APIRoute):
                 if iCode:
                     return _fresponseRefused(iCode)
             if bContainerScoped and _fbServeOnAmbientAdmission(self):
-                tAdmissionTokens = commitCarrier.ftupleOpenRequestAdmission(
+                tAdmissionTokens = commitCarrier.ftOpenRequestAdmission(
                     request.app.state, dictScope, request,
                 )
                 try:
@@ -754,7 +754,7 @@ class ContainerAwareRoute(APIRoute):
             finally:
                 commitCarrier.fnResetEnforcedRequestLane(tokenLane)
 
-        return fnAuthorizedHandler
+        return fresponseHandleAuthorized
 
 
 def _fbServeOnAmbientAdmission(route):
@@ -771,7 +771,7 @@ def _fbServeOnAmbientAdmission(route):
     absence of a declaration, so a route added after this list was
     seeded cannot inherit the ambient admission by being forgotten.
     """
-    if ftupleResolveCarrierDeclaration(route.endpoint):
+    if ftResolveCarrierDeclaration(route.endpoint):
         return False
     return fbRouteAwaitsCarrierMode(route.methods, route.path)
 
@@ -854,7 +854,7 @@ def fnValidateRouteScopesOrRaise(app):
         raise RuntimeError(
             "Mutating routes with no declared authorization scope "
             "(default-deny — add a {sContainerId} segment, an explicit "
-            "@fnRouteScope, or a DICT_CONTROL_PLANE_SCOPES entry):\n  "
+            "@ffnRouteScope, or a DICT_CONTROL_PLANE_SCOPES entry):\n  "
             + "\n  ".join(
                 f"{listMethods} {sPath}"
                 for listMethods, sPath in sorted(listUnscoped)

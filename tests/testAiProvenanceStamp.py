@@ -140,7 +140,7 @@ class _StubDockerConnection:
     def fbaFetchFile(self, sContainerId, sFilePath):
         return self._baPrompt
 
-    def texecRunInContainerStreamed(self, sContainerId, sCommand):
+    def ftRunInContainerStreamed(self, sContainerId, sCommand):
         return SimpleNamespace(iExitCode=0, sStdout="codex\tcodex-cli 1.0\n")
 
 

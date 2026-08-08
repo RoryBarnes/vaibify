@@ -302,7 +302,7 @@ def test_fnWriteConftestMarkersBatch_writes_all_paths_in_one_exec():
         "/repo/step03/tests/conftest.py",
     ]
     sContent = "# vaibify-conftest-version: 2\n# body\n"
-    bWritten = conftestManager.fnWriteConftestMarkersBatch(
+    bWritten = conftestManager.fbWriteConftestMarkersBatch(
         fakeDocker, _S_CONTAINER_ID, listPaths, sContent,
     )
     assert bWritten is True
@@ -411,7 +411,7 @@ def test_migrate_flat_markers_no_ops_when_slug_empty():
 def test_fnWriteConftestMarkersBatch_short_circuits_on_empty_list():
     """Empty path list returns True and does zero docker work."""
     fakeDocker = _FakeDocker()
-    bWritten = conftestManager.fnWriteConftestMarkersBatch(
+    bWritten = conftestManager.fbWriteConftestMarkersBatch(
         fakeDocker, _S_CONTAINER_ID, [], "# vaibify-conftest-version: 2\n",
     )
     assert bWritten is True

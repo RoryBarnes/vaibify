@@ -9,7 +9,7 @@ import pytest
 
 from vaibify.testing.standards import (
     fdictParseAccessPath,
-    fLoadValue,
+    ffLoadValue,
 )
 
 
@@ -80,24 +80,24 @@ def fixtureNumpyArray(tmp_path):
     return str(sStepDir)
 
 
-def test_fLoadValue_numpy_index(fixtureNumpyArray):
-    fValue = fLoadValue("array.npy", "index:0,0", fixtureNumpyArray)
+def test_ffLoadValue_numpy_index(fixtureNumpyArray):
+    fValue = ffLoadValue("array.npy", "index:0,0", fixtureNumpyArray)
     assert fValue == 1.0
 
 
-def test_fLoadValue_numpy_negative_index(fixtureNumpyArray):
-    fValue = fLoadValue("array.npy", "index:-1,1", fixtureNumpyArray)
+def test_ffLoadValue_numpy_negative_index(fixtureNumpyArray):
+    fValue = ffLoadValue("array.npy", "index:-1,1", fixtureNumpyArray)
     assert fValue == 6.0
 
 
-def test_fLoadValue_numpy_mean(fixtureNumpyArray):
-    fValue = fLoadValue("array.npy", "index:mean", fixtureNumpyArray)
+def test_ffLoadValue_numpy_mean(fixtureNumpyArray):
+    fValue = ffLoadValue("array.npy", "index:mean", fixtureNumpyArray)
     assert fValue == pytest.approx(3.5)
 
 
-def test_fLoadValue_numpy_min_max(fixtureNumpyArray):
-    assert fLoadValue("array.npy", "index:min", fixtureNumpyArray) == 1.0
-    assert fLoadValue("array.npy", "index:max", fixtureNumpyArray) == 6.0
+def test_ffLoadValue_numpy_min_max(fixtureNumpyArray):
+    assert ffLoadValue("array.npy", "index:min", fixtureNumpyArray) == 1.0
+    assert ffLoadValue("array.npy", "index:max", fixtureNumpyArray) == 6.0
 
 
 # ---------------------------------------------------------------------------
@@ -119,37 +119,37 @@ def fixtureJsonScalar(tmp_path):
     return str(tmp_path)
 
 
-def test_fLoadValue_json_scalar_key(fixtureJsonScalar):
-    fValue = fLoadValue("data.json", "key:fScalar", fixtureJsonScalar)
+def test_ffLoadValue_json_scalar_key(fixtureJsonScalar):
+    fValue = ffLoadValue("data.json", "key:fScalar", fixtureJsonScalar)
     assert fValue == 42.5
 
 
-def test_fLoadValue_json_list_index(fixtureJsonScalar):
-    fValue = fLoadValue("data.json", "key:listShort,index:1",
+def test_ffLoadValue_json_list_index(fixtureJsonScalar):
+    fValue = ffLoadValue("data.json", "key:listShort,index:1",
                         fixtureJsonScalar)
     assert fValue == 2.0
 
 
-def test_fLoadValue_json_compound_key(fixtureJsonScalar):
+def test_ffLoadValue_json_compound_key(fixtureJsonScalar):
     """Compound keys with embedded commas are common in vconverge output."""
-    fValue = fLoadValue("data.json", "key:compound,key,name,index:0",
+    fValue = ffLoadValue("data.json", "key:compound,key,name,index:0",
                         fixtureJsonScalar)
     assert fValue == 10.0
 
 
-def test_fLoadValue_json_aggregate_mean(fixtureJsonScalar):
-    fValue = fLoadValue("data.json", "key:listShort,index:mean",
+def test_ffLoadValue_json_aggregate_mean(fixtureJsonScalar):
+    fValue = ffLoadValue("data.json", "key:listShort,index:mean",
                         fixtureJsonScalar)
     assert fValue == pytest.approx(2.0)
 
 
-def test_fLoadValue_json_doubly_serialised(tmp_path):
+def test_ffLoadValue_json_doubly_serialised(tmp_path):
     """Vconverge's Converged_Param_Dictionary.json wraps an inner JSON."""
     sInner = json.dumps({"fA": 7.0})
     sPath = os.path.join(tmp_path, "wrapped.json")
     with open(sPath, "w") as fileHandle:
         json.dump(sInner, fileHandle)
-    fValue = fLoadValue("wrapped.json", "key:fA", str(tmp_path))
+    fValue = ffLoadValue("wrapped.json", "key:fA", str(tmp_path))
     assert fValue == 7.0
 
 
@@ -158,22 +158,22 @@ def test_fLoadValue_json_doubly_serialised(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_fLoadValue_keyvalue_text(tmp_path):
+def test_ffLoadValue_keyvalue_text(tmp_path):
     """Maximum-likelihood-style ``key = value`` text reports."""
     sPath = os.path.join(tmp_path, "report.txt")
     with open(sPath, "w") as fileHandle:
         fileHandle.write("star.dMass = 0.1945\n")
         fileHandle.write("star.dAge = 5.0e9\n")
         fileHandle.write("# comment line that should be ignored\n")
-    assert fLoadValue("report.txt", "key:star.dMass",
+    assert ffLoadValue("report.txt", "key:star.dMass",
                       str(tmp_path)) == 0.1945
-    assert fLoadValue("report.txt", "key:star.dAge",
+    assert ffLoadValue("report.txt", "key:star.dAge",
                       str(tmp_path)) == 5.0e9
 
 
-def test_fLoadValue_keyvalue_text_missing_key(tmp_path):
+def test_ffLoadValue_keyvalue_text_missing_key(tmp_path):
     sPath = os.path.join(tmp_path, "report.txt")
     with open(sPath, "w") as fileHandle:
         fileHandle.write("foo = 1.0\n")
     with pytest.raises(KeyError, match="not found"):
-        fLoadValue("report.txt", "key:absent", str(tmp_path))
+        ffLoadValue("report.txt", "key:absent", str(tmp_path))

@@ -45,13 +45,13 @@ def fnStartKeepAlive(sContainerName):
 def _fiSpawnCaffeinate():
     """Launch 'caffeinate -s' in the background and return its pid."""
     try:
-        resultProcess = subprocess.Popen(
+        processResult = subprocess.Popen(
             ["caffeinate", "-s"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        return resultProcess.pid
+        return processResult.pid
     except FileNotFoundError:
         return 0
 

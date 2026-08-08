@@ -99,18 +99,18 @@ class TestFdictRunTestsByCategory:
 
 
 # ---------------------------------------------------------------------------
-# fnRunAllTests — lines 179-196
+# fiRunAllTests — lines 179-196
 # ---------------------------------------------------------------------------
 
 class TestFnRunAllTests:
-    """Cover the public fnRunAllTests entry point."""
+    """Cover the public fiRunAllTests entry point."""
 
     @patch("vaibify.gui.pipelineTestRunner._fnEmitCompletion", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fiRunTestsForAllSteps", new_callable=AsyncMock)
     @patch("vaibify.gui.pipelineTestRunner._fdictBuildWorkflowVars")
     def test_with_provided_workflow(self, mockBuildVars, mockRunAll, mockEmit):
         """The caller-provided workflow is the one tested."""
-        from vaibify.gui.pipelineTestRunner import fnRunAllTests
+        from vaibify.gui.pipelineTestRunner import fiRunAllTests
 
         mockBuildVars.return_value = {"sVar": "val"}
         mockRunAll.return_value = 0
@@ -118,7 +118,7 @@ class TestFnRunAllTests:
         fnCallback = AsyncMock()
 
         iResult = _fnRunAsync(
-            fnRunAllTests(
+            fiRunAllTests(
                 MagicMock(), "ctr1", dictWorkflow, "/ws", fnCallback,
             )
         )
@@ -133,14 +133,14 @@ class TestFnRunAllTests:
     @patch("vaibify.gui.pipelineTestRunner._fdictBuildWorkflowVars")
     def test_returns_nonzero_on_failure(self, mockBuildVars, mockRunAll, mockEmit):
         """When tests fail, the exit code propagates."""
-        from vaibify.gui.pipelineTestRunner import fnRunAllTests
+        from vaibify.gui.pipelineTestRunner import fiRunAllTests
 
         mockBuildVars.return_value = {}
         mockRunAll.return_value = 1
         fnCallback = AsyncMock()
 
         iResult = _fnRunAsync(
-            fnRunAllTests(
+            fiRunAllTests(
                 MagicMock(), "ctr1", {"listSteps": []}, "/ws", fnCallback,
             )
         )

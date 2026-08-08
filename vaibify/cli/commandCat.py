@@ -24,7 +24,7 @@ def _fsNormalizePath(sPath):
     help="Project name.",
 )
 @click.argument("path")
-def cat(sProjectName, path):
+def fnCatCommand(sProjectName, path):
     """Print file contents from the container."""
     configProject = fconfigResolveProject(sProjectName)
     connectionDocker = fconnectionRequireDocker()

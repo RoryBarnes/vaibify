@@ -119,7 +119,7 @@ def fiResolvePort(iExplicitPort, iPreferred=_I_DEFAULT_PREFERRED_PORT):
 
 def fiResolveProjectPort(
     config, iExplicitPort, sConfigPath,
-    fnSaveConfig=None,
+    fdictSaveConfig=None,
 ):
     """Return the dashboard port for a project, persisting on first use.
 
@@ -136,7 +136,7 @@ def fiResolveProjectPort(
        free one via the existing scan and write the result back to
        ``vaibify.yml`` so step 2 applies on every subsequent run.
 
-    ``fnSaveConfig`` is injected so this helper has no hard dependency
+    ``fdictSaveConfig`` is injected so this helper has no hard dependency
     on the YAML writer (kept testable). Callers pass
     ``projectConfig.fnSaveToFile`` in normal use.
     """
@@ -145,7 +145,7 @@ def fiResolveProjectPort(
     if config.iDashboardPort > 0:
         return _fiAcquirePersistedPort(config)
     return _fiAssignAndPersistPort(
-        config, sConfigPath, fnSaveConfig,
+        config, sConfigPath, fdictSaveConfig,
     )
 
 
@@ -160,20 +160,20 @@ def _fiAcquirePersistedPort(config):
     raise PortInUseError(iPort, config.sProjectName, dictHolder)
 
 
-def _fiAssignAndPersistPort(config, sConfigPath, fnSaveConfig):
+def _fiAssignAndPersistPort(config, sConfigPath, fdictSaveConfig):
     """Pick a free port, persist it to vaibify.yml, return it."""
     iPort = fiPickFreePort()
     config.iDashboardPort = iPort
-    if fnSaveConfig and sConfigPath:
-        _fnPersistDashboardPort(config, sConfigPath, fnSaveConfig)
+    if fdictSaveConfig and sConfigPath:
+        _fnPersistDashboardPort(config, sConfigPath, fdictSaveConfig)
     return iPort
 
 
-def _fnPersistDashboardPort(config, sConfigPath, fnSaveConfig):
+def _fnPersistDashboardPort(config, sConfigPath, fdictSaveConfig):
     """Write the auto-assigned port back to disk; warn on failure."""
     iPort = config.iDashboardPort
     try:
-        fnSaveConfig(config, sConfigPath)
+        fdictSaveConfig(config, sConfigPath)
     except OSError as errorWrite:
         print(
             f"Warning: could not persist dashboardPort={iPort} "

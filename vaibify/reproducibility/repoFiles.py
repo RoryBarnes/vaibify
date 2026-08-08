@@ -297,19 +297,19 @@ class HostRepoFiles:
         uniformly.
         """
         try:
-            resultProcess = subprocess.run(
+            processResult = subprocess.run(
                 saCommand, capture_output=True, text=True,
                 timeout=fTimeoutSeconds,
             )
         except (OSError, subprocess.SubprocessError):
             return (127, "", "")
         return (
-            resultProcess.returncode,
-            resultProcess.stdout or "",
-            resultProcess.stderr or "",
+            processResult.returncode,
+            processResult.stdout or "",
+            processResult.stderr or "",
         )
 
-    def fnWithLock(self, sRelPath):
+    def flockAcquireForFile(self, sRelPath):
         """Return a context manager holding an exclusive flock.
 
         Locks a sibling ``<file>.lock`` with the bounded non-blocking
@@ -320,10 +320,10 @@ class HostRepoFiles:
         _fnRequireWritableRelativePath(self.sRootPath, sRelPath)
         sAbsolute = self._fsAbsolute(sRelPath)
         os.makedirs(os.path.dirname(sAbsolute) or ".", exist_ok=True)
-        return _fnAcquireHostLock(sAbsolute + ".lock")
+        return _flockAcquireHost(sAbsolute + ".lock")
 
 
-def _fnAcquireHostLock(sLockPath):
+def _flockAcquireHost(sLockPath):
     """Acquire an exclusive flock on sLockPath with bounded retries."""
     iFileDescriptor = os.open(sLockPath, os.O_WRONLY | os.O_CREAT, 0o600)
     for _iAttempt in range(_I_LOCK_RETRY_MAX):
@@ -489,7 +489,7 @@ class ContainerRepoFiles:
     """Repo-file adapter that routes every operation through docker exec.
 
     ``connectionDocker`` is duck-typed: it must provide
-    ``texecRunInContainerStreamed``, ``fbaFetchFile``, ``fnWriteFile``,
+    ``ftRunInContainerStreamed``, ``fbaFetchFile``, ``fnWriteFile``,
     ``fbContainerPathIsFile`` and ``fbContainerPathIsDirectory`` (the
     ``DockerConnection`` contract). All repo paths are container-side
     POSIX paths rooted at ``sRootPath``.
@@ -516,10 +516,10 @@ class ContainerRepoFiles:
 
     def _ftExec(self, sCommand):
         """Run one container command; return ``(iExitCode, sStdout)``."""
-        resultExec = self.connectionDocker.texecRunInContainerStreamed(
+        tExecResult = self.connectionDocker.ftRunInContainerStreamed(
             self.sContainerId, sCommand,
         )
-        return (resultExec.iExitCode, resultExec.sStdout)
+        return (tExecResult.iExitCode, tExecResult.sStdout)
 
     def fbIsFile(self, sRelPath):
         """Return True iff the repo-relative path is a container file.
@@ -686,14 +686,14 @@ class ContainerRepoFiles:
         """
         sJoined = " ".join(fsShellQuotePosix(s) for s in saCommand)
         sCommand = f"timeout {int(max(fTimeoutSeconds, 1))} {sJoined}"
-        resultExec = self.connectionDocker.texecRunInContainerStreamed(
+        tExecResult = self.connectionDocker.ftRunInContainerStreamed(
             self.sContainerId, sCommand,
         )
         return (
-            resultExec.iExitCode, resultExec.sStdout, resultExec.sStderr,
+            tExecResult.iExitCode, tExecResult.sStdout, tExecResult.sStderr,
         )
 
-    def fnWithLock(self, sRelPath):
+    def flockAcquireForFile(self, sRelPath):
         """Return a process-local lock for a container-side file.
 
         A ``threading.Lock`` keyed by ``(sContainerId, sRelPath)`` is
@@ -926,10 +926,10 @@ class SnapshotRepoFiles:
             sRootPath, listScriptRelPaths, listHashRelPaths,
             listAbsHashPaths=listAbsHashPaths,
         )
-        resultExec = connectionDocker.texecRunInContainerStreamed(
+        tExecResult = connectionDocker.ftRunInContainerStreamed(
             sContainerId, sCommand,
         )
-        dictParsed = _fdictParseEmbeddedScriptOutput(resultExec.sStdout)
+        dictParsed = _fdictParseEmbeddedScriptOutput(tExecResult.sStdout)
         dictHashes = dict(dictSeedHashes or {})
         dictHashes.update(dictParsed.get("dictHashes") or {})
         return cls(
@@ -1046,6 +1046,6 @@ class SnapshotRepoFiles:
         """Snapshots are read-only; writes must use a live adapter."""
         raise NotImplementedError("SnapshotRepoFiles is read-only")
 
-    def fnWithLock(self, sRelPath):
+    def flockAcquireForFile(self, sRelPath):
         """Snapshots are read-only; locking implies an intent to write."""
         raise NotImplementedError("SnapshotRepoFiles is read-only")

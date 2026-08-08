@@ -1,6 +1,6 @@
-"""Persist and validate AICS L3 reproduction attestations.
+"""Persist and validate PROOF L3 reproduction attestations.
 
-The L3 gate is the only AICS rung gated on a *recorded* outcome of
+The L3 gate is the only PROOF rung gated on a *recorded* outcome of
 an expensive operation (rebuild + hash compare). The persisted
 record lives at ``<projectRepo>/.vaibify/l3_attestation.json``; every
 attempt is also archived to
@@ -19,7 +19,7 @@ Schema versioning
 always see the current shape. The list is empty at v1 because no
 migration is needed yet. Two extension points are anticipated:
 
-* **L4 ("Archived")** will add input-provenance keys
+* **L4 ("Traceable")** will add input-provenance keys
   (e.g. ``listInputDigests``, ``sCommitSha``) that pin not just
   outputs but also the inputs that produced them. An L4 record bumps
   ``iSchemaVersion`` to 2; the migrator at index 0 fills the new
@@ -53,7 +53,7 @@ __all__ = [
     "fdictBuildAttestation",
     "fdictReadAttestation",
     "flistReadAttestationHistory",
-    "fnInvalidateAttestation",
+    "fbInvalidateAttestation",
     "fnWriteAttestation",
     "fsCurrentManifestDigest",
 ]
@@ -174,7 +174,7 @@ def fdictBuildAttestation(
 ):
     """Return a fully-populated attestation dict (no file IO).
 
-    The shape is fixed by the schema documented in the AICS plan;
+    The shape is fixed by the schema documented in the PROOF plan;
     extracting it as a pure builder keeps the writer thin and lets
     tests assert payload contents without round-tripping through
     disk. ``dictAiProvenance`` is the machine-captured Replay-axis
@@ -219,7 +219,7 @@ def fnWriteAttestation(filesRepo, dictAttestation):
     )
 
 
-def fnInvalidateAttestation(filesRepo):
+def fbInvalidateAttestation(filesRepo):
     """Remove the top-level attestation file (history is preserved).
 
     Used by the dashboard when a researcher explicitly clears an

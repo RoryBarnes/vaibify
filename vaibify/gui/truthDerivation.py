@@ -13,7 +13,7 @@ leaf module — same pattern as ``stepPredicates.py`` and
 ``pipelineUtils.py`` — so anywhere in the package can call it without
 introducing a cycle.
 
-The canonical-truth pattern is what AICS Levels 2 and 3 will follow
+The canonical-truth pattern is what PROOF Levels 2 and 3 will follow
 for every new truth they monitor. Today only the Level 1 four-axis
 test-state computation is implemented (``fdictComputeTestAxes``);
 the reserved namespace below names the functions Levels 2 and 3 will

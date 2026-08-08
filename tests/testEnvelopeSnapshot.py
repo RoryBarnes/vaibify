@@ -28,7 +28,7 @@ class FakeExecDockerConnection:
     def __init__(self):
         self.listCommands = []
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         self.listCommands.append((sContainerId, sCommand))
@@ -48,7 +48,7 @@ class FailingExecConnection:
     def __init__(self):
         self.listCommands = []
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         self.listCommands.append((sContainerId, sCommand))
@@ -166,7 +166,7 @@ def test_every_write_method_raises(filesSnapshot):
     with pytest.raises(NotImplementedError):
         filesSnapshot.fbRemoveFile("a.txt")
     with pytest.raises(NotImplementedError):
-        filesSnapshot.fnWithLock("a.txt")
+        filesSnapshot.flockAcquireForFile("a.txt")
     with pytest.raises(NotImplementedError):
         filesSnapshot.ftRunCommand(["true"], 1.0)
     with pytest.raises(NotImplementedError):
@@ -245,8 +245,8 @@ def test_empty_root_snapshot_probes_false():
 
 
 def test_gates_compute_same_level_from_snapshot_and_live(tmp_path):
-    """fiAICSLevel agrees between the poll snapshot and a live adapter."""
-    from vaibify.reproducibility.levelGates import fiAICSLevel
+    """fiProofLevel agrees between the poll snapshot and a live adapter."""
+    from vaibify.reproducibility.levelGates import fiProofLevel
     _fnSeedEnvelopeTree(tmp_path)
     dictWorkflow = {
         "sProjectRepoPath": str(tmp_path),
@@ -261,6 +261,6 @@ def test_gates_compute_same_level_from_snapshot_and_live(tmp_path):
         listScriptRelPaths=["analyze.py"],
         listHashRelPaths=["out.csv"],
     )
-    iLevelSnapshot = fiAICSLevel(dictWorkflow, filesFetched)
-    iLevelLive = fiAICSLevel(dictWorkflow, HostRepoFiles(str(tmp_path)))
+    iLevelSnapshot = fiProofLevel(dictWorkflow, filesFetched)
+    iLevelLive = fiProofLevel(dictWorkflow, HostRepoFiles(str(tmp_path)))
     assert iLevelSnapshot == iLevelLive

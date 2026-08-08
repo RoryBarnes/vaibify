@@ -17,11 +17,11 @@ from unittest.mock import MagicMock, patch, AsyncMock
 pytestmark = pytest.mark.falsification
 
 from vaibify.gui.pipelineRunner import (
-    fiRunStepCommands,
-    fnVerifyOnly,
+    ftRunStepCommands,
+    fiVerifyOnly,
     _fiExecuteAndRecord,
     _fsetSnapshotDirectory,
-    _flistAppendAndMaybeDrainBatch,
+    _ftAppendAndMaybeDrainBatch,
     I_BATCH_MAX_LINES,
 )
 
@@ -60,7 +60,7 @@ def _fnConfigureStreamingMock(mockDocker, listResults):
             iExitCode=iExitCode, sStdout=sOutput, sStderr="",
         )
 
-    mockDocker.texecRunInContainerStreamedWithChunks.side_effect = (
+    mockDocker.ftRunInContainerStreamedWithChunks.side_effect = (
         fnStreamingSideEffect
     )
 
@@ -83,7 +83,7 @@ def _fMockCallback():
 
 
 def _ftRunExecuteAndRecordWithFailure(iFailureExit):
-    """Drive _fiExecuteAndRecord with fiRunStepCommands -> (iFailureExit, 1.0).
+    """Drive _fiExecuteAndRecord with ftRunStepCommands -> (iFailureExit, 1.0).
 
     Returns ``(iReturned, listCaptured)``. All neighbouring container
     side effects are mocked so only the exit-code wiring is exercised.
@@ -91,7 +91,7 @@ def _ftRunExecuteAndRecordWithFailure(iFailureExit):
     fnCallback, listCaptured = _fMockCallback()
     dictStep = {"sDirectory": "/ws/step"}
     with patch(
-        "vaibify.gui.pipelineRunner.fiRunStepCommands",
+        "vaibify.gui.pipelineRunner.ftRunStepCommands",
         new=AsyncMock(return_value=(iFailureExit, 1.0)),
     ), patch(
         "vaibify.gui.pipelineRunner._fsetSnapshotDirectory",
@@ -100,7 +100,7 @@ def _ftRunExecuteAndRecordWithFailure(iFailureExit):
         "vaibify.gui.pipelineRunner._fnEmitDiscoveredOutputs",
         new=AsyncMock(),
     ), patch(
-        "vaibify.gui.workflowManager.fnCleanStepScratchDirs",
+        "vaibify.gui.workflowManager.flistCleanStepScratchDirs",
         new=MagicMock(),
     ):
         iReturned = _fnRunAsync(_fiExecuteAndRecord(
@@ -137,16 +137,16 @@ def test_fiExecuteAndRecord_returns_real_exit_code():
 
 
 # -----------------------------------------------------------------------
-# fiRunStepCommands: the plot section's exit code must survive a
+# ftRunStepCommands: the plot section's exit code must survive a
 # successful data section (full mode). Hole: line 648 returns the data
 # exit instead of the plot exit.
 # -----------------------------------------------------------------------
 
 
-def test_fiRunStepCommands_full_returns_plot_exit_code():
+def test_ftRunStepCommands_full_returns_plot_exit_code():
     """Data succeeds (0) but the plot command fails (7): result is 7.
 
-    Kills: fiRunStepCommands returns (iExitCode, ...) instead of
+    Kills: ftRunStepCommands returns (iExitCode, ...) instead of
     (iPlotExit, ...) (line ~648).
     """
     mockDocker = MagicMock()
@@ -161,7 +161,7 @@ def test_fiRunStepCommands_full_returns_plot_exit_code():
         "saPlotCommands": ["python plot.py"],
         "bPlotOnly": False,
     }
-    iExitCode, _fCpu = _fnRunAsync(fiRunStepCommands(
+    iExitCode, _fCpu = _fnRunAsync(ftRunStepCommands(
         mockDocker, "cid", dictStep, "/ws", {}, fnCallback,
         sRunMode="full",
     ))
@@ -189,7 +189,7 @@ def test_fnVerifyOnly_missing_output_emits_stepFail_badge():
     }
     mockDocker = _fMockDocker(1, "")
     fnCallback, listCaptured = _fMockCallback()
-    iResult = _fnRunAsync(fnVerifyOnly(
+    iResult = _fnRunAsync(fiVerifyOnly(
         mockDocker, "cid", dictWorkflow, "/w/test.json",
         "/work", fnCallback,
     ))
@@ -205,7 +205,7 @@ def test_fnVerifyOnly_missing_output_emits_stepFail_badge():
 
 
 # -----------------------------------------------------------------------
-# _flistAppendAndMaybeDrainBatch: the buffer must flush on size when it
+# _ftAppendAndMaybeDrainBatch: the buffer must flush on size when it
 # reaches exactly I_BATCH_MAX_LINES. Hole: line 441 weakens >= to >, so
 # a buffer of exactly 50 lines never flushes on size.
 # -----------------------------------------------------------------------
@@ -222,7 +222,7 @@ def test_appendAndMaybeDrainBatch_flushes_at_exactly_fifty():
     lockBuffer = threading.Lock()
     listDrainedFinal = []
     for iLine in range(I_BATCH_MAX_LINES):
-        listDrained, _bFirst = _flistAppendAndMaybeDrainBatch(
+        listDrained, _bFirst = _ftAppendAndMaybeDrainBatch(
             dictBatch, lockBuffer, f"line {iLine}",
         )
         if iLine < I_BATCH_MAX_LINES - 1:

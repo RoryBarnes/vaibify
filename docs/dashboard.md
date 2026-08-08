@@ -3,7 +3,7 @@
 The dashboard is what you arrive at after the [QuickStart](quickStart.md):
 the running container's control surface, in your browser. It is where
 you run pipeline steps, inspect outputs, attest that you have looked at
-them, climb the AICS reproducibility ladder, push results to GitHub or
+them, climb the PROOF reproducibility ladder, push results to GitHub or
 Overleaf, and (optionally) let an AI coding agent work alongside you.
 
 This page is a tour of every panel.
@@ -12,7 +12,7 @@ This page is a tour of every panel.
 
 The dashboard has a fixed layout:
 
-- **Top toolbar** — container name, active project, the three AICS
+- **Top toolbar** — container name, active project, the three PROOF
   level badges, the **?** Help button, and the Run, Sync, View, and
   Admin menus. **View → Resource Monitor** opens a small on-demand
   panel with live CPU and memory sparklines and the container's disk
@@ -20,14 +20,14 @@ The dashboard has a fixed layout:
   reading is unavailable — Docker unreachable, container stopped —
   the panel says so rather than showing a stale number.
 - **Left panel** — a tabbed panel. For projects with a `project.json`
-  the tabs are **Main**, **AICS**, **Files**, and **Logs**; for sandbox
+  the tabs are **Main**, **PROOF**, **Files**, and **Logs**; for sandbox
   and toolkit projects (no `project.json`) they are **Files**, **Repos**,
   and **Logs**.
 - **Top panels** — Two "Viewing Windows" to display plots and files.
 - **Bottom panel(s)** — Terminal window(s)/tab(s) for work inside the
   container.
 
-Beside the project name, three copies of the vaibify badge mark AICS
+Beside the project name, three copies of the vaibify badge mark PROOF
 Levels 1–3 (Self-Consistent, Published, Reproducible). Each lights up
 when the project attains that level, and the whole dashboard theme
 shifts colour with the highest level attained: pale blue before Level
@@ -92,7 +92,7 @@ The Viewing Windows above the terminal strip display plots and ASCII text files 
 The Repos panel is the home tab for sandbox and toolkit projects (the
 templates without a `project.json`). In a project the tab is
 hidden, but the panel is one click away: every "Open the Repos panel"
-link in the Main tab's Project block and on the AICS tab lands there.
+link in the Main tab's Project block and on the PROOF tab lands there.
 It lists the git repositories inside the container with their branch,
 dirty status, and push controls.
 
@@ -531,9 +531,9 @@ Overleaf, Zenodo, arXiv), tinted by that remote's state:
 Only figure formats travel to a manuscript, so the Overleaf and arXiv
 rows list figure files only.
 
-## The AICS tab
+## The PROOF tab
 
-The AICS tab is the requirements ledger for the reproducibility
+The PROOF tab is the requirements ledger for the reproducibility
 ladder. A header card names the project's current level (for
 example, "Level 1: Self-Consistent") with a clickable progression
 strip, followed by three expandable sections — **Level 1 —
@@ -588,7 +588,7 @@ contains:
   why skipping per-command permission prompts is the intended, safe
   mode inside the sandbox: the container isolates the agent from
   your host, every edit is tracked in git and hash-pinned, and a
-  full rebuild ultimately checks the analysis — the AICS Level 3
+  full rebuild ultimately checks the analysis — the PROOF Level 3
   posture.
 - The **Legend** — the symbol key, in four divisions matching the
   dashboard's surfaces: **Steps** (run checkbox, run light, warning
@@ -600,7 +600,7 @@ contains:
 The legend is generated from the same catalog the dashboard renders
 from, so it cannot drift from the glyphs you actually see. Status
 itself is deliberately *not* in the panel — status lives on the
-banners and the AICS tab.
+banners and the PROOF tab.
 
 ## Verification
 
@@ -761,9 +761,9 @@ image rebuild refreshes them):
   e-print TeX source instead of the PDF (far fewer tokens, and figure
   captions arrive as searchable text), read selectively, record the
   version read, and fall back to the PDF only when no source exists.
-- **aics-ladder** — the ordered L1→L2→L3 walkthrough for raising or
+- **proof-ladder** — the ordered L1→L2→L3 walkthrough for raising or
   auditing a project's reproducibility level, with the known audit
-  traps codified (`iAICSLevel` is the only authoritative signal;
+  traps codified (`iProofLevel` is the only authoritative signal;
   marker hashes are git blob SHA-1s; publication is user-only).
 - **create-pipeline-step** — the five-phase protocol for authoring a
   fully wired step, centred on the `{StepNN.varname}` cross-step

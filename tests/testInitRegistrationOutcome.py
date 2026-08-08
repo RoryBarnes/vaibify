@@ -16,7 +16,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from vaibify.cli.commandInit import init
+from vaibify.cli.commandInit import fnInitCommand
 from vaibify.config import registryManager
 
 
@@ -57,7 +57,7 @@ def test_name_conflict_with_a_different_dir_fails_loudly(tmp_path):
     runner = CliRunner()
     with runner.isolated_filesystem():
         result = runner.invoke(
-            init, ["--name", "shared"], catch_exceptions=False,
+            fnInitCommand, ["--name", "shared"], catch_exceptions=False,
         )
     assert result.exit_code == 1, result.output
     assert "already registered to a different directory" in result.output
@@ -68,7 +68,7 @@ def test_fresh_name_registers_and_succeeds(tmp_path):
     runner = CliRunner()
     with runner.isolated_filesystem():
         result = runner.invoke(
-            init, ["--name", "brandnew"], catch_exceptions=False,
+            fnInitCommand, ["--name", "brandnew"], catch_exceptions=False,
         )
         assert result.exit_code == 0, result.output
         assert "Initialized Vaibify project 'brandnew'" in result.output
@@ -83,11 +83,11 @@ def test_reinit_same_directory_is_idempotent_success(tmp_path):
     runner = CliRunner()
     with runner.isolated_filesystem():
         first = runner.invoke(
-            init, ["--name", "again"], catch_exceptions=False,
+            fnInitCommand, ["--name", "again"], catch_exceptions=False,
         )
         assert first.exit_code == 0, first.output
         second = runner.invoke(
-            init, ["--name", "again", "--force"],
+            fnInitCommand, ["--name", "again", "--force"],
             catch_exceptions=False,
         )
         assert second.exit_code == 0, second.output

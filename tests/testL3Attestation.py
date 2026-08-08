@@ -22,7 +22,7 @@ from vaibify.reproducibility.l3Attestation import (
     fdictBuildAttestation,
     fdictReadAttestation,
     flistReadAttestationHistory,
-    fnInvalidateAttestation,
+    fbInvalidateAttestation,
     fnWriteAttestation,
     fsCurrentManifestDigest,
 )
@@ -111,7 +111,7 @@ def test_invalidate_removes_top_but_keeps_history(tmp_path):
         S_STATUS_PASSED, "sha256:abc", "", 1.0, 1, 1, [], "",
     )
     fnWriteAttestation(str(tmp_path), dictAtt)
-    assert fnInvalidateAttestation(str(tmp_path))
+    assert fbInvalidateAttestation(str(tmp_path))
     pathHistory = tmp_path / ".vaibify" / S_ATTESTATION_HISTORY_DIR
     assert len(list(pathHistory.glob("*.json"))) == 1
     assert not (

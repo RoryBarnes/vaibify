@@ -8,14 +8,14 @@ from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 from vaibify.cli.commandStatus import (
-    status,
+    fnStatusCommand,
     fnShowDaemonStatus,
     fnShowImageStatus,
     fnShowVolumeStatus,
     fnShowContainerStatus,
 )
 from vaibify.cli.commandDestroy import (
-    destroy,
+    fnDestroyCommand,
     fnRemoveVolume,
     fnRemoveImage,
 )
@@ -144,7 +144,7 @@ def test_fnShowContainerStatus_error(capsys):
 
 
 # -----------------------------------------------------------------------
-# status CLI — full invocation
+# fnStatusCommand CLI — full invocation
 # -----------------------------------------------------------------------
 
 
@@ -152,7 +152,7 @@ def test_fnShowContainerStatus_error(capsys):
        return_value=False)
 def test_status_no_docker(mockAvail):
     runner = CliRunner()
-    result = runner.invoke(status, [])
+    result = runner.invoke(fnStatusCommand, [])
     assert result.exit_code != 0
     assert "docker Python package is missing" in result.output
     assert "pip install --force-reinstall vaibify" in result.output
@@ -174,7 +174,7 @@ def test_status_full_run(
         sProjectName="proj"
     )
     runner = CliRunner()
-    result = runner.invoke(status, [])
+    result = runner.invoke(fnStatusCommand, [])
     assert result.exit_code == 0
     mockDaemon.assert_called_once()
     mockImage.assert_called_once()
@@ -253,7 +253,7 @@ def test_fnRemoveImage_api_error():
 
 
 # -----------------------------------------------------------------------
-# destroy CLI — full invocation
+# fnDestroyCommand CLI — full invocation
 # -----------------------------------------------------------------------
 
 
@@ -268,7 +268,7 @@ def test_destroy_confirm_yes(
         sProjectName="proj"
     )
     runner = CliRunner()
-    result = runner.invoke(destroy, [], input="y\nn\n")
+    result = runner.invoke(fnDestroyCommand, [], input="y\nn\n")
     assert result.exit_code == 0
     mockRemove.assert_called_once()
     assert "Destroy complete" in result.output
@@ -282,7 +282,7 @@ def test_destroy_confirm_no(mockLoad, mockAvail):
         sProjectName="proj"
     )
     runner = CliRunner()
-    result = runner.invoke(destroy, [], input="n\n")
+    result = runner.invoke(fnDestroyCommand, [], input="n\n")
     assert "Aborted" in result.output
 
 
@@ -298,13 +298,13 @@ def test_destroy_also_image(
         sProjectName="proj"
     )
     runner = CliRunner()
-    result = runner.invoke(destroy, [], input="y\ny\n")
+    result = runner.invoke(fnDestroyCommand, [], input="y\ny\n")
     assert result.exit_code == 0
     mockRemoveVol.assert_called_once()
     mockRemoveImg.assert_called_once()
 
 
-# --- AICS level section (fdictBuildLevelSection / _fnEmitAicsSection) ---
+# --- PROOF level section (fdictBuildLevelSection / _fnEmitProofSection) ---
 
 def _fconfig(sName="proj"):
     return SimpleNamespace(sProjectName=sName)
@@ -351,14 +351,14 @@ def test_level_section_available_marks_the_report():
         return_value=({"listSteps": []}, MagicMock()),
     ), patch(
         "vaibify.cli.levelReport.fdictBuildLevelReport",
-        return_value={"iAICSLevel": 1, "sAICSLevelName": "x"},
+        return_value={"iProofLevel": 1, "sProofLevelName": "x"},
     ):
         dictSection = commandStatus.fdictBuildLevelSection(_fconfig())
     assert dictSection["bAvailable"] is True
-    assert dictSection["iAICSLevel"] == 1
+    assert dictSection["iProofLevel"] == 1
 
 
-def test_status_aics_flag_emits_level_or_reason(capsys):
+def test_status_proof_flag_emits_level_or_reason(capsys):
     from vaibify.cli import commandStatus
     with patch("vaibify.cli.commandStatus.fbDockerAvailable",
                return_value=True), \
@@ -374,9 +374,9 @@ def test_status_aics_flag_emits_level_or_reason(capsys):
          patch("vaibify.cli.commandStatus.fdictBuildLevelSection",
                return_value={"bAvailable": False,
                              "sReason": "no project"}):
-        result = CliRunner().invoke(status, ["--aics"])
+        result = CliRunner().invoke(fnStatusCommand, ["--proof"])
     assert result.exit_code == 0, result.output
-    assert "AICS level: unavailable (no project)" in result.output
+    assert "PROOF level: unavailable (no project)" in result.output
 
 
 def test_status_json_flag_emits_one_object():
@@ -391,9 +391,9 @@ def test_status_json_flag_emits_one_object():
          patch("vaibify.cli.commandStatus.fdictBuildEnvironmentStatus",
                return_value={"sProjectName": "proj"}), \
          patch("vaibify.cli.commandStatus.fdictBuildLevelSection",
-               return_value={"bAvailable": True, "iAICSLevel": 2}):
-        result = CliRunner().invoke(status, ["--json"])
+               return_value={"bAvailable": True, "iProofLevel": 2}):
+        result = CliRunner().invoke(fnStatusCommand, ["--json"])
     assert result.exit_code == 0, result.output
     dictOut = jsonlib.loads(result.output)
     assert dictOut["dictEnvironment"]["sProjectName"] == "proj"
-    assert dictOut["dictAics"]["iAICSLevel"] == 2
+    assert dictOut["dictProof"]["iProofLevel"] == 2

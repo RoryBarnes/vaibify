@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 
-# Schema v2 adds the add-only AICS level high-water fields
+# Schema v2 adds the add-only PROOF level high-water fields
 # (``dictLevelHighWater`` per step, ``dictWorkflowLevelHighWater`` at
 # the top level). Version 1 files load unchanged: the tuple-generic
 # merge/split copies only keys that are present, so an absent
@@ -76,7 +76,7 @@ T_STATEFUL_STEP_FIELDS = (
     "dictVerification", "dictRunStats", "dictLevelHighWater",
 )
 T_STATEFUL_TOP_FIELDS = (
-    "bArchiveTrackingMigrated", "iAICSLevel",
+    "bArchiveTrackingMigrated", "iProofLevel",
     "dictWorkflowLevelHighWater", "bWarnedHundredSteps",
 )
 
@@ -159,7 +159,7 @@ def ftLoadStateWithStatus(
     """
     if not sStatePath:
         return fdictBuildEmptyState(), "loaded"
-    sPrimaryStatus, dictPrimary = _ftupleTryLoadStateFile(
+    sPrimaryStatus, dictPrimary = _ftTryLoadStateFile(
         connectionDocker, sContainerId, sStatePath,
     )
     if sPrimaryStatus == "parsed":
@@ -168,7 +168,7 @@ def ftLoadStateWithStatus(
         sPrimaryStatus, connectionDocker, sContainerId, sStatePath,
     )
     sBakPath = _fsBakPathFor(sStatePath)
-    sBakStatus, dictBak = _ftupleTryLoadStateFile(
+    sBakStatus, dictBak = _ftTryLoadStateFile(
         connectionDocker, sContainerId, sBakPath,
     )
     if sBakStatus == "parsed":
@@ -186,7 +186,7 @@ def ftLoadStateWithStatus(
     return None, "missing"
 
 
-def _ftupleTryLoadStateFile(connectionDocker, sContainerId, sPath):
+def _ftTryLoadStateFile(connectionDocker, sContainerId, sPath):
     """Return ``(sStatus, dictParsedOrNone)`` for a single file.
 
     ``sStatus`` is ``"missing"``, ``"corrupt"``, or ``"parsed"``.
@@ -397,7 +397,7 @@ def ftSplitMergedDict(dictWorkflow):
 def fbRatchetLevelHighWater(
     dictWorkflow, dictStepLevelStates, dictWorkflowScopeStates,
 ):
-    """Stamp first-attainment timestamps for newly attained AICS levels.
+    """Stamp first-attainment timestamps for newly attained PROOF levels.
 
     ``dictStepLevelStates`` maps ``iStepIndex`` to
     ``{"s1": dictCell, "s2": dictCell, "s3": dictCell}`` where each

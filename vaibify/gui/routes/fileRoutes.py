@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
@@ -22,7 +22,7 @@ from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_SEPARATE_AUTHORITY,
     S_CARRIER_TYPED_READ,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
@@ -32,7 +32,7 @@ from ..pipelineServer import (
     WORKSPACE_ROOT,
     flistQueryDirectory,
     fnRejectWriteDenylistedPath,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     fsResolveFigurePath,
     _fsSanitizeServerError,
 )
@@ -90,7 +90,7 @@ def _fsPullContainerFileToHost(
             sTargetPath, posixpath.basename(sContainerPath),
         )
     with open(sTargetPath, "wb") as fileTarget:
-        for baChunk in connectionDocker.fnIterStreamFile(
+        for baChunk in connectionDocker.fiterStreamFile(
             sContainerId, sContainerPath,
         ):
             fileTarget.write(baChunk)
@@ -133,7 +133,7 @@ def _fsResolveExistencePath(sRawPath, sProjectRepoPath, sWorkspaceRoot):
     else:
         sBase = sProjectRepoPath or sWorkspaceRoot
         sAbs = posixpath.join(sBase, sRawPath)
-    return fnValidatePathWithinRoot(sAbs, sWorkspaceRoot)
+    return fsValidatePathWithinRoot(sAbs, sWorkspaceRoot)
 
 
 def _fdictTestExistenceBatch(
@@ -172,10 +172,10 @@ def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
     # it was given. It reaches no mutation-capable primitive, so it
     # needs no carrier -- and unlike a `separate-authority` route it
     # writes nothing anywhere, which is what `typed-read` claims.
-    @fnAgentAction("check-files-exist")
+    @ffnAgentAction("check-files-exist")
     @app.post("/api/files/{sContainerId}/exist")
-    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
-    async def fnCheckFilesExist(
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictCheckFilesExist(
         sContainerId: str, request: FileExistenceRequest,
     ):
         import asyncio
@@ -209,7 +209,7 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
     """Register GET /api/files route."""
 
     @app.get("/api/files/{sContainerId}/{sDirectoryPath:path}")
-    async def fnListDirectory(
+    async def flistListDirectory(
         sContainerId: str, sDirectoryPath: str
     ):
         import asyncio
@@ -219,7 +219,7 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
             if not sDirectoryPath.startswith("/")
             else sDirectoryPath
         )
-        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        fsValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
         return await asyncio.to_thread(
             flistQueryDirectory,
             dictCtx["docker"], sContainerId, sAbsPath,
@@ -230,10 +230,10 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/upload."""
     import base64
 
-    @fnAgentAction("upload-file")
+    @ffnAgentAction("upload-file")
     @app.post("/api/files/{sContainerId}/upload")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnUploadFile(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictUploadFile(
         sContainerId: str, request: FileUploadRequest,
         requestHttp: Request,
     ):
@@ -243,7 +243,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         sSafeFilename = posixpath.basename(request.sFilename)
         sDestPath = posixpath.join(
             request.sDestination, sSafeFilename)
-        sNormalized = fnValidatePathWithinRoot(
+        sNormalized = fsValidatePathWithinRoot(
             sDestPath, sProjectRepoPath)
         fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         # Decoded on the request coroutine, before the carrier, so a
@@ -310,7 +310,7 @@ def _fnCommitUploadedFile(
     )
 
 
-def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
+def _ftProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
     """Open the streaming iterator and pull the first chunk eagerly.
 
     docker-py raises ``NotFound`` / ``APIError`` from
@@ -320,7 +320,7 @@ def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
     truncated body instead of an error. Pulling one chunk here forces
     the iterator to materialise the get_archive call.
     """
-    iterChunks = connectionDocker.fnIterStreamFile(
+    iterChunks = connectionDocker.fiterStreamFile(
         sContainerId, sAbsPath,
     )
     try:
@@ -330,14 +330,14 @@ def _fnProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
     return baFirst, iterChunks
 
 
-async def _ttIterStreamOrRaiseHttp(
+async def _ftIterStreamOrRaiseHttp(
     connectionDocker, sContainerId, sAbsPath,
 ):
     """Begin streaming the file via a worker thread; map errors to HTTP 500."""
     import asyncio
     try:
         return await asyncio.to_thread(
-            _fnProbeFirstChunk,
+            _ftProbeFirstChunk,
             connectionDocker, sContainerId, sAbsPath,
         )
     except Exception as error:
@@ -369,15 +369,15 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
     @app.get(
         "/api/files/{sContainerId}/download/{sFilePath:path}"
     )
-    async def fnDownloadFile(
+    async def fresponseDownloadFile(
         sContainerId: str, sFilePath: str
     ):
         dictCtx["require"]()
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath,
         )
-        fnValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
-        baFirst, iterChunks = await _ttIterStreamOrRaiseHttp(
+        fsValidatePathWithinRoot(sAbsPath, sWorkspaceRoot)
+        baFirst, iterChunks = await _ftIterStreamOrRaiseHttp(
             dictCtx["docker"], sContainerId, sAbsPath,
         )
         return _fresponseStreamDownload(
@@ -424,7 +424,7 @@ def _fnValidateAgentPullDestination(sResolvedPath, sContainerId):
 def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     """Register POST /api/files/{id}/pull."""
 
-    @fnAgentAction("pull-file")
+    @ffnAgentAction("pull-file")
     # separate-authority, not typed-read. Nothing this route does to
     # the CONTAINER is a mutation -- the stream is a read and the
     # directory probe is a typed read -- so `typed-read` would be
@@ -432,19 +432,19 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
     # any reader would take it to mean the route writes nothing. It
     # writes to the researcher's own machine. What governs it is
     # therefore not the commit carrier but the host-side authorities:
-    # ``fnValidatePathWithinRoot`` on the container side,
+    # ``fsValidatePathWithinRoot`` on the container side,
     # ``_fnValidateHostDestination`` on the host side, and for the agent
     # lane the narrower export root ``_fnValidateAgentPullDestination``
     # enforces. Ruling 2026-08-05.
     @app.post("/api/files/{sContainerId}/pull")
-    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fnPullFile(
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictHandlePullFile(
         requestHttp: Request,
         sContainerId: str, request: FilePullRequest,
     ):
         import asyncio
         dictCtx["require"]()
-        fnValidatePathWithinRoot(
+        fsValidatePathWithinRoot(
             request.sContainerPath, sWorkspaceRoot)
         sHostDest = os.path.realpath(
             os.path.expanduser(request.sHostDestination))
@@ -534,10 +534,10 @@ def _fnRaiseConflictIfBaseHashMismatch(
 def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
     """Register PUT /api/file route for saving edited text files."""
 
-    @fnAgentAction("write-file")
+    @ffnAgentAction("write-file")
     @app.put("/api/file/{sContainerId}/{sFilePath:path}")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnWriteFile(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictWriteFile(
         sContainerId: str, sFilePath: str,
         request: FileWriteRequest, requestHttp: Request,
         sWorkdir: str = "",
@@ -548,7 +548,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath
         )
-        sNormalized = fnValidatePathWithinRoot(
+        sNormalized = fsValidatePathWithinRoot(
             sAbsPath, sProjectRepoPath)
         fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath)
         _fnRaiseConflictIfBaseHashMismatch(

@@ -241,7 +241,7 @@ def fsRegisterProject(sName):
     default=False,
     help="Overwrite existing vaibify.yml.",
 )
-def init(sTemplateName, sProjectName, bMinimal, bForce):
+def fnInitCommand(sTemplateName, sProjectName, bMinimal, bForce):
     """Initialize a new Vaibify project in the current directory."""
     if sTemplateName is None and sProjectName is None:
         fnPrintAvailableTemplates()

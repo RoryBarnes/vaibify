@@ -92,7 +92,7 @@ class MockDockerConnection:
     ):
         self._dictFiles[sPath] = baContent
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         from types import SimpleNamespace
@@ -434,7 +434,7 @@ def testAgentPullMustLandInTheExportDirectory(
     shell profile or an authorized-keys file -- host code execution out
     of the sandbox.
 
-    Kills: fileRoutes.fnPullFile: the agent-lane branch
+    Kills: fileRoutes.fdictPullFile: the agent-lane branch
     `if fbRequestRidesAgentLane(requestHttp):` neutralized to
     `if False:`.
     """
@@ -511,7 +511,7 @@ def testSaveAndRunTestRefusesDenylistedPaths(clientBrowser):
 
     Writing ``.git/hooks/pre-commit`` is code execution on the next
     commit; writing under ``.vaibify/`` defeats the metadata-integrity
-    contract the AICS truth system rests on. The generic write route has
+    contract the PROOF truth system rests on. The generic write route has
     carried both guards for months; this one had neither.
 
     The owning lease is held so the 403 comes from the path denylist, not
@@ -569,7 +569,7 @@ def testFigureProbeValidatesTheWorkdirFallback(clientBrowser):
     lesson in its own docstring; it was not applied here.
 
     Kills: figureRoutes._flistBuildFigureCheckPaths: the fallback
-    validation `fnValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))`
+    validation `fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))`
     replaced by the bare `sFallback)`.
     """
     _fnConnectAsOwner(clientBrowser)
@@ -593,7 +593,7 @@ def test_host_log_tail_agent_lane_is_sanitized(clientAgent, tmp_path):
     which may hold a secret, a host path, or ANOTHER container's id. This
     plants all three and asserts none reaches the agent.
 
-    Kills: in pipelineRoutes.fnGetHostLogTail, neutralize the
+    Kills: in pipelineRoutes.fdictGetHostLogTail, neutralize the
     ``if serverMiddleware.fbRequestRidesAgentLane(request):`` branch so
     the agent lane falls through to the raw-log response.
     """
@@ -702,7 +702,7 @@ def test_has_credential_refuses_the_agent_lane(clientAgent):
     can only come from the handler's own refusal.
 
     Kills: Remove the ``fnRejectAgentTokenLane(requestHttp)`` call from
-    ``fnHasCredential`` in ``syncRoutes.py`` -- the request then answers
+    ``fdictHasCredential`` in ``syncRoutes.py`` -- the request then answers
     200 with ``bHasCredential`` true, which is the leak.
     """
     responseHttp = _fresponseHasCredential(clientAgent)

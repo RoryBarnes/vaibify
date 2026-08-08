@@ -1,7 +1,7 @@
-"""Contract tests for ``iAICSLevel`` in the file-status poll response.
+"""Contract tests for ``iProofLevel`` in the file-status poll response.
 
 Every poll-tick response carries the integer level so the frontend
-can apply ``body.aics-level-N`` without an extra round-trip. The
+can apply ``body.proof-level-N`` without an extra round-trip. The
 dashboard cannot honor "show me the current verification state"
 without this key, so it is a wire-contract concern, not an
 implementation detail.
@@ -20,9 +20,9 @@ def _fdictCommonPatches(dictCommon=None):
         "_flistCollectOutputPaths",
         "ftGetModTimesAndFingerprint",
         "fdictCollectOutputPathsByStep",
-        "fnCollectMarkerPathsByStep",
+        "fdictHandleCollectMarkerPathsByStep",
         "_fbCheckStaleUserVerification",
-        "_flistDetectAndInvalidate",
+        "_fdictDetectAndInvalidate",
         "_fdictComputeMaxMtimeByStep",
         "_fdictComputeMaxPlotMtimeByStep",
         "_fdictComputeMaxDataMtimeByStep",
@@ -42,7 +42,7 @@ def _fdictCommonPatches(dictCommon=None):
 
 
 @pytest.mark.asyncio
-async def test_poll_response_carries_iAICSLevel_zero_when_no_repo():
+async def test_poll_response_carries_iProofLevel_zero_when_no_repo():
     """Workflow without sProjectRepoPath reads as L0 in the response."""
     dictWorkflow = {"listSteps": [], "sProjectRepoPath": ""}
     dictCtx = {
@@ -63,12 +63,12 @@ async def test_poll_response_carries_iAICSLevel_zero_when_no_repo():
     finally:
         for mgr in listManagers:
             mgr.stop()
-    assert "iAICSLevel" in dictResult
-    assert dictResult["iAICSLevel"] == 0
+    assert "iProofLevel" in dictResult
+    assert dictResult["iProofLevel"] == 0
 
 
 @pytest.mark.asyncio
-async def test_poll_response_carries_iAICSLevel_one_when_all_green():
+async def test_poll_response_carries_iProofLevel_one_when_all_green():
     """All-green workflow with a repo reads as L1 in the response."""
     dictWorkflow = {
         "sProjectRepoPath": "/workspace/repo",
@@ -104,4 +104,4 @@ async def test_poll_response_carries_iAICSLevel_one_when_all_green():
     finally:
         for mgr in listManagers:
             mgr.stop()
-    assert dictResult["iAICSLevel"] == 1
+    assert dictResult["iProofLevel"] == 1

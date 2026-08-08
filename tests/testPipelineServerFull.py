@@ -126,7 +126,7 @@ class MockDockerFull:
     ):
         self._dictFiles[sPath] = baContent
 
-    def texecRunInContainerStreamed(
+    def ftRunInContainerStreamed(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
         from types import SimpleNamespace
@@ -448,28 +448,28 @@ def test_fnRemoveTestFiles():
     mockDocker.ftResultExecuteCommand.assert_called_once()
 
 
-def test_fsDetectDockerRuntime_unknown():
+def test_fdictDetectDockerRuntime_unknown():
     with patch("subprocess.run") as mockRun:
         mockRun.side_effect = Exception("no docker")
-        dictResult = pipelineServer.fsDetectDockerRuntime()
+        dictResult = pipelineServer.fdictDetectDockerRuntime()
     assert dictResult["sRuntime"] == "unknown"
 
 
-def test_fsDetectDockerRuntime_colima():
+def test_fdictDetectDockerRuntime_colima():
     with patch("subprocess.run") as mockRun:
         mockResult = MagicMock()
         mockResult.stdout = "colima:true\ndefault:false\n"
         mockRun.return_value = mockResult
-        dictResult = pipelineServer.fsDetectDockerRuntime()
+        dictResult = pipelineServer.fdictDetectDockerRuntime()
     assert dictResult["sRuntime"] == "colima"
 
 
-def test_fsDetectDockerRuntime_orbstack():
+def test_fdictDetectDockerRuntime_orbstack():
     with patch("subprocess.run") as mockRun:
         mockResult = MagicMock()
         mockResult.stdout = "orbstack:true\n"
         mockRun.return_value = mockResult
-        dictResult = pipelineServer.fsDetectDockerRuntime()
+        dictResult = pipelineServer.fdictDetectDockerRuntime()
     assert dictResult["sRuntime"] == "orbstack"
 
 

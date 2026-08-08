@@ -1340,7 +1340,7 @@ var VaibifyStepRenderer = (function () {
        repo root, never the step directory. The section renders even
        when empty so the + button and the explicit "No input data
        needed" declaration are always reachable — an undeclared step
-       (no files listed, box unchecked) cannot reach AICS Level 1. */
+       (no files listed, box unchecked) cannot reach PROOF Level 1. */
     function fsRenderInputDataSection(
         step, iIndex, dictVars, dictContext
     ) {

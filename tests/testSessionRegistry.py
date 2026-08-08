@@ -21,9 +21,9 @@ def tmp_session_dir(tmp_path, monkeypatch):
 
 def test_fnAcquireSessionSlot_writes_payload(tmp_session_dir):
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot,
     )
-    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    fileHandleSlot = ffileAcquireSessionSlot("hub", 8050)
     try:
         sPath = str(tmp_session_dir / f"{os.getpid()}.slot")
         with open(sPath) as fileHandleRead:
@@ -38,9 +38,9 @@ def test_fnAcquireSessionSlot_writes_payload(tmp_session_dir):
 
 def test_fnReleaseSessionSlot_removes_file(tmp_session_dir):
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot,
     )
-    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    fileHandleSlot = ffileAcquireSessionSlot("hub", 8050)
     fnReleaseSessionSlot(fileHandleSlot)
     assert list(tmp_session_dir.glob("*.slot")) == []
 
@@ -75,8 +75,8 @@ def _fnHoldSessionSlotInChild(sTempDir, eventReady):
     """Child: acquire a session slot and block until parent signals."""
     import vaibify.config.sessionRegistry as childSessionModule
     childSessionModule._S_SESSION_DIRECTORY = sTempDir
-    from vaibify.config.sessionRegistry import fnAcquireSessionSlot
-    fileHandleChildSlot = fnAcquireSessionSlot("hub", 9001)
+    from vaibify.config.sessionRegistry import ffileAcquireSessionSlot
+    fileHandleChildSlot = ffileAcquireSessionSlot("hub", 9001)
     eventReady.wait(timeout=10)
     fileHandleChildSlot.close()
 
@@ -106,13 +106,13 @@ def test_fnAcquireSessionSlot_raises_when_limit_reached(
 ):
     import vaibify.config.sessionRegistry as sessionRegistryModule
     from vaibify.config.sessionRegistry import (
-        SessionLimitExceededError, fnAcquireSessionSlot,
+        SessionLimitExceededError, ffileAcquireSessionSlot,
     )
     monkeypatch.setattr(
         sessionRegistryModule, "fiCountActiveSessions", lambda: 99,
     )
     with pytest.raises(SessionLimitExceededError) as excInfo:
-        fnAcquireSessionSlot("hub", 8050)
+        ffileAcquireSessionSlot("hub", 8050)
     assert excInfo.value.iActive == 99
     assert excInfo.value.iLimit == 99
 
@@ -127,11 +127,11 @@ def test_fnAcquireSessionSlot_second_acquire_from_same_process_is_idempotent(
 ):
     """flock is per-open-fd; same-pid reacquire creates a new slot file."""
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot,
     )
-    fileHandleFirst = fnAcquireSessionSlot("hub", 8050)
+    fileHandleFirst = ffileAcquireSessionSlot("hub", 8050)
     fnReleaseSessionSlot(fileHandleFirst)
-    fileHandleSecond = fnAcquireSessionSlot("hub", 8051)
+    fileHandleSecond = ffileAcquireSessionSlot("hub", 8051)
     fnReleaseSessionSlot(fileHandleSecond)
 
 
@@ -246,11 +246,11 @@ def test_fnReapStaleSessionSlots_handles_missing_directory(
 def test_fnAcquireSessionSlot_reaps_dead_slots_first(tmp_session_dir):
     """Acquiring a slot cleans out files left by killed processes."""
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot,
     )
     sDeadSlot = f"{_fiSpawnDeadPid()}.slot"
     (tmp_session_dir / sDeadSlot).write_text("{}")
-    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    fileHandleSlot = ffileAcquireSessionSlot("hub", 8050)
     try:
         assert not (tmp_session_dir / sDeadSlot).exists()
     finally:
@@ -276,9 +276,9 @@ def test_flistReadAllSlots_returns_empty_when_directory_missing(
 
 def test_flistReadAllSlots_lists_live_slot(tmp_session_dir):
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot, flistReadAllSlots,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot, flistReadAllSlots,
     )
-    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    fileHandleSlot = ffileAcquireSessionSlot("hub", 8050)
     try:
         listSlots = flistReadAllSlots()
         assert len(listSlots) == 1
@@ -320,10 +320,10 @@ def test_fdictReadHubSlotByPort_finds_live_hub_on_matching_port(
     tmp_session_dir,
 ):
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot,
         fdictReadHubSlotByPort,
     )
-    fileHandleSlot = fnAcquireSessionSlot("hub", 8077)
+    fileHandleSlot = ffileAcquireSessionSlot("hub", 8077)
     try:
         dictHolder = fdictReadHubSlotByPort(8077)
         assert dictHolder.get("sRole") == "hub"
@@ -335,10 +335,10 @@ def test_fdictReadHubSlotByPort_finds_live_hub_on_matching_port(
 
 def test_fdictReadHubSlotByPort_ignores_other_port(tmp_session_dir):
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot,
         fdictReadHubSlotByPort,
     )
-    fileHandleSlot = fnAcquireSessionSlot("hub", 8050)
+    fileHandleSlot = ffileAcquireSessionSlot("hub", 8050)
     try:
         assert fdictReadHubSlotByPort(9999) == {}
     finally:
@@ -347,10 +347,10 @@ def test_fdictReadHubSlotByPort_ignores_other_port(tmp_session_dir):
 
 def test_fdictReadHubSlotByPort_ignores_non_hub_roles(tmp_session_dir):
     from vaibify.config.sessionRegistry import (
-        fnAcquireSessionSlot, fnReleaseSessionSlot,
+        ffileAcquireSessionSlot, fnReleaseSessionSlot,
         fdictReadHubSlotByPort,
     )
-    fileHandleSlot = fnAcquireSessionSlot("viewer", 8050)
+    fileHandleSlot = ffileAcquireSessionSlot("viewer", 8050)
     try:
         assert fdictReadHubSlotByPort(8050) == {}
     finally:

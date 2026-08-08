@@ -176,7 +176,7 @@ def test_release_refuses_second_session_presenting_a_copied_lease(
     to a tab that never claimed the container. As a positive control, the true
     owner releases successfully.
 
-    Kills: in containerOwnership.fnReleaseOwnership, the session-bound guard
+    Kills: in containerOwnership.fbReleaseOwnership, the session-bound guard
     ``if not (bBoundOwner or bUnboundOwner): return False`` reverted to the
     value-only ``if recordOwner.sLeaseId != sLeaseId: return False``, so a
     copied lease value alone releases another session's container.

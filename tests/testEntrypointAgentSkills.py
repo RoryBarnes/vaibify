@@ -145,7 +145,7 @@ def test_all_expected_skills_are_shipped():
     """The five round-2 skills plus the original two are present."""
     listSkillNames = set(os.listdir(_S_SKILLS_DIR))
     for sExpected in (
-        "session-budget", "read-arxiv", "aics-ladder",
+        "session-budget", "read-arxiv", "proof-ladder",
         "create-pipeline-step", "vaibify-doc-map",
         "diagnose-failed-run", "read-manuscript", "running-steps",
         "reproducible-analysis",
@@ -203,15 +203,15 @@ def test_claude_md_carries_the_run_guardrail_and_points_to_skill():
     assert "explorations/" in sBody
 
 
-def test_aics_ladder_codifies_the_known_audit_traps():
+def test_proof_ladder_codifies_the_known_audit_traps():
     """The traps that produced false level reports must be stated.
 
     A green audit that used the wrong hash algorithm or read the
     wrong ledger is exactly the dashboard-honesty failure this skill
     exists to prevent.
     """
-    sSkill = _fsReadSkill("aics-ladder")
-    assert "iAICSLevel" in sSkill
+    sSkill = _fsReadSkill("proof-ladder")
+    assert "iProofLevel" in sSkill
     assert "blob SHA-1" in sSkill or "blob sha-1" in sSkill.lower()
     assert "state.json" in sSkill
     assert "user-only" in sSkill.lower()
@@ -256,19 +256,19 @@ def test_doc_map_points_into_the_container_docs_dir():
 def test_claude_md_delegates_ladder_and_step_authoring_to_skills():
     """The two heavy sections must point at skills, not re-inline them.
 
-    The AICS-ladder walkthrough and the step-authoring protocol were
+    The PROOF-ladder walkthrough and the step-authoring protocol were
     ~325 always-on lines; they now live in on-demand skills. The
-    safety-critical one-liners (authoritative iAICSLevel, user-only
+    safety-critical one-liners (authoritative iProofLevel, user-only
     publication, the token contract) stay inline.
     """
     sEntrypoint = _fsReadDockerFile("entrypoint.sh")
     iStart = sEntrypoint.index("<< 'CLAUDEMD'\n")
     iEnd = sEntrypoint.index("\nCLAUDEMD\n", iStart)
     sBody = sEntrypoint[iStart:iEnd]
-    assert "aics-ladder** skill" in sBody
+    assert "proof-ladder** skill" in sBody
     assert "create-pipeline-step** skill" in sBody
     # Safety one-liners survive inline.
-    assert "iAICSLevel" in sBody
+    assert "iProofLevel" in sBody
     assert "{StepNN.varname}" in sBody
     # The verbose walkthrough is gone (a body this size proves it).
     assert sBody.count("\n") < 220, (

@@ -1085,8 +1085,8 @@ def testNoUnscopedDockerExecOutsideConnection():
 
 
 _SET_DISPATCHER_METHOD_NAMES = frozenset({
-    "texecRunInContainerStreamed",
-    "texecRunInContainerStreamedWithChunks",
+    "ftRunInContainerStreamed",
+    "ftRunInContainerStreamedWithChunks",
     "ftResultExecuteCommand",
     "fsExecCreate",
 })
@@ -1290,7 +1290,7 @@ def testAgentActionRegistered():
     The in-container ``vaibify-do`` CLI reads
     ``vaibify.gui.actionCatalog.LIST_AGENT_ACTIONS`` to translate
     researcher intent into backend calls. A state-mutating HTTP route
-    that is neither decorated with ``@fnAgentAction`` nor declared in
+    that is neither decorated with ``@ffnAgentAction`` nor declared in
     ``SET_INTENTIONALLY_EXCLUDED_PATHS`` is invisible to the agent —
     and the dashboard silently drifts when the agent improvises.
     """
@@ -1395,7 +1395,7 @@ def testEveryCatalogActionHasCliCommand():
     thing comes from driving it against a live hub, not from here.
     """
     from vaibify.cli.actionCommands import (
-        SET_ACTIONS_WITHOUT_CLI, do, flistArgumentPlaceholders,
+        SET_ACTIONS_WITHOUT_CLI, fnDoCommand, flistArgumentPlaceholders,
     )
     from vaibify.gui import actionCatalog
     listViolations = []
@@ -1405,7 +1405,7 @@ def testEveryCatalogActionHasCliCommand():
         setCatalogNames.add(sName)
         if sName in SET_ACTIONS_WITHOUT_CLI:
             continue
-        commandAction = do.commands.get(sName)
+        commandAction = fnDoCommand.commands.get(sName)
         if commandAction is None:
             listViolations.append(
                 f"{sName} ({dictEntry['sMethod']} {dictEntry['sPath']}) "
@@ -1537,7 +1537,7 @@ def testGeneratedActionsNeverShadowTopLevelCommands():
     generator that registered flat would replace a hand-written command
     with no error at all.
     """
-    from vaibify.cli.actionCommands import do
+    from vaibify.cli.actionCommands import fnDoCommand
     from vaibify.cli.main import main
     from vaibify.gui import actionCatalog
     setCatalogNames = {
@@ -1549,7 +1549,7 @@ def testGeneratedActionsNeverShadowTopLevelCommands():
         "Catalog actions registered as top-level commands: "
         + ", ".join(sorted(setShadowed))
     )
-    assert main.commands.get("do") is do, (
+    assert main.commands.get("do") is fnDoCommand, (
         "The generated action group must be registered as 'vaibify do'"
     )
 
@@ -1563,7 +1563,7 @@ def testHostHashRouteIsNeverAgentInvokable():
     about credentials or dotfiles byte-for-byte). The route must stay
     in ``SET_INTENTIONALLY_EXCLUDED_PATHS``, must never gain a
     ``LIST_AGENT_ACTIONS`` entry, and its live handler must carry no
-    ``@fnAgentAction`` marker.
+    ``@ffnAgentAction`` marker.
     """
     from vaibify.gui import actionCatalog
     sHashPath = "/api/workflow/{sContainerId}/personal-layer/hash"
@@ -1588,7 +1588,7 @@ def testHostHashRouteIsNeverAgentInvokable():
                 fnEndpoint, "_sAgentActionName", None,
             ) is None, (
                 "The host-file hash handler must not carry an "
-                "@fnAgentAction marker"
+                "@ffnAgentAction marker"
             )
 
 
@@ -1878,7 +1878,7 @@ def testPipelineStateCarriesLivenessFields():
         ROUTES_DIR / "pipelineRoutes.py",
     )
     assert "fdictReadReconciledState" in sPipelineRoutesSource, (
-        "pipelineRoutes.fnGetPipelineState must delegate to "
+        "pipelineRoutes.fdictGetPipelineState must delegate to "
         "pipelineState.fdictReadReconciledState so the /state endpoint "
         "and every other state reader share one reconciliation path."
     )
@@ -2475,7 +2475,7 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
     from the marker's recorded blob SHA. After one poll cycle, all four
     test axes must drop to ``untested``.
     """
-    from vaibify.gui.fileStatusManager import _flistDetectAndInvalidate
+    from vaibify.gui.fileStatusManager import _fdictDetectAndInvalidate
 
     class _FakeDocker:
         def ftResultExecuteCommand(self, sId, sCmd):
@@ -2500,7 +2500,7 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         "save": _fnSave,
         "dictPreviousModTimes": {"cid": {sLivePath: sMtime}},
     }
-    _flistDetectAndInvalidate(
+    _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
         dictMarkersByStep={0: dictMarker},
@@ -2782,7 +2782,7 @@ def testTemplateCommandsUseSymbolicNotPositionalTokens():
 # ---------------------------------------------------------------------------
 
 SET_REPRO_FILES_ENTRY_POINTS = frozenset({
-    "fiAICSLevel", "fbAtLeastLevel1", "fbAtLeastLevel2",
+    "fiProofLevel", "fbAtLeastLevel1", "fbAtLeastLevel2",
     "fbAtLeastLevel3", "fbL3ReadinessOK", "fdictL3ReadinessGaps",
     "fdictLevel2Gaps", "flistLevel1Blockers", "flistLevel2Blockers",
     "flistLevel3Blockers",
@@ -2912,7 +2912,7 @@ def _fsExtractFunctionBody(sSource, sFunctionName):
 
 
 def testStepCountCapEnforcedOnAddRoutes():
-    """Both fnCreateStep and fnInsertStep must reference _I_STEP_COUNT_MAX.
+    """Both fdictHandleCreateStep and fdictInsertStep must reference _I_STEP_COUNT_MAX.
 
     The 500-step hard cap is server-authoritative: the client UX
     check can be bypassed by a direct API call, so the routes that
@@ -2921,7 +2921,7 @@ def testStepCountCapEnforcedOnAddRoutes():
     """
     sPath = GUI_DIR / "routes" / "stepRoutes.py"
     sSource = Path(sPath).read_text(encoding="utf-8")
-    for sFunctionName in ("fnCreateStep", "fnInsertStep"):
+    for sFunctionName in ("fdictHandleCreateStep", "fdictInsertStep"):
         sBody = _fsExtractFunctionBody(sSource, sFunctionName)
         assert sBody, (
             f"{sFunctionName} not found in stepRoutes.py — cannot "
@@ -3019,7 +3019,7 @@ def testClaimRejectsForeignLease():
 
     The old registry route returned ``{bClaimed: True}`` unconditionally
     once the container was in the in-process lock dict, so a second
-    same-hub tab silently succeeded. ``ftdictClaim`` must instead refuse a
+    same-hub tab silently succeeded. ``ftClaim`` must instead refuse a
     non-owner with 409 -- without leaking the owner's lease -- while
     keeping a same-lease re-claim idempotent for the reload path.
     """
@@ -3027,7 +3027,7 @@ def testClaimRejectsForeignLease():
     dictOwners = {
         "Proj": _frecordSeedOwner("LEASE-A", "2026-01-02T03:04:05"),
     }
-    iCodeForeign, dictForeign = containerOwnership.ftdictClaim(
+    iCodeForeign, dictForeign = containerOwnership.ftClaim(
         dictOwners, "Proj", "LEASE-B", iPort=8000,
     )
     assert iCodeForeign == 409, (
@@ -3038,16 +3038,16 @@ def testClaimRejectsForeignLease():
     assert "sLeaseId" not in dictForeign, (
         "the 409 body must never echo the current owner's lease"
     )
-    iCodeSame, dictSame = containerOwnership.ftdictClaim(
+    iCodeSame, dictSame = containerOwnership.ftClaim(
         dictOwners, "Proj", "LEASE-A", iPort=8000,
     )
     assert iCodeSame == 200 and dictSame["sLeaseId"] == "LEASE-A", (
         "a same-lease re-claim (the reload path) must be idempotent success"
     )
     sSource = fsReadSource(GUI_DIR / "registryRoutes.py")
-    assert "ftdictClaim" in sSource and "bClaimed" not in sSource, (
+    assert "ftClaim" in sSource and "bClaimed" not in sSource, (
         "the claim route must delegate arbitration to "
-        "containerOwnership.ftdictClaim and hold no inline bClaimed "
+        "containerOwnership.ftClaim and hold no inline bClaimed "
         "short-circuit"
     )
 
@@ -3055,7 +3055,7 @@ def testClaimRejectsForeignLease():
 def testReleaseRejectsNonOwner():
     """Release verifies the lease, closing the append-only authz leak.
 
-    ``fnReleaseOwnership`` must return False and retain the record when
+    ``fbReleaseOwnership`` must return False and retain the record when
     the caller does not present the owning lease, so a non-owner can
     never drop another session's authorization. The old model left
     ``setAllowedContainers`` populated for the whole process lifetime;
@@ -3063,13 +3063,13 @@ def testReleaseRejectsNonOwner():
     """
     from vaibify.gui import containerOwnership
     dictOwners = {"Proj": _frecordSeedOwner("LEASE-A")}
-    bForeign = containerOwnership.fnReleaseOwnership(
+    bForeign = containerOwnership.fbReleaseOwnership(
         dictOwners, "Proj", "LEASE-B",
     )
     assert bForeign is False and "Proj" in dictOwners, (
         "a non-owner release must be rejected and must not drop the record"
     )
-    bMissing = containerOwnership.fnReleaseOwnership(
+    bMissing = containerOwnership.fbReleaseOwnership(
         dictOwners, "Absent", "LEASE-A",
     )
     assert bMissing is False
@@ -3081,14 +3081,14 @@ def testReleaseRejectsNonOwner():
         "the release route must commit through the sessionLifecycle "
         "authority (fb/ftReleaseExplicit), never an inline drop"
     )
-    assert "fnReleaseOwnership" not in sSource, (
+    assert "fbReleaseOwnership" not in sSource, (
         "no route may call the containerOwnership release primitives "
         "directly; sessionLifecycle is the single transition authority"
     )
     sLifecycleSource = fsReadSource(GUI_DIR / "sessionLifecycle.py")
-    assert "fnReleaseOwnership" in sLifecycleSource, (
+    assert "fbReleaseOwnership" in sLifecycleSource, (
         "sessionLifecycle.fbReleaseExplicit must delegate the lease "
-        "arbitration to containerOwnership.fnReleaseOwnership"
+        "arbitration to containerOwnership.fbReleaseOwnership"
     )
 
 
@@ -3321,7 +3321,7 @@ def testThePipelineSocketIsFencedByPoison():
         "at accept, or a transfer cannot fence a socket mid-frame"
     )
     sGuardSource = fsReadSource(GUI_DIR / "webSocketAuthorization.py")
-    iPerFrame = sGuardSource.find("def ffbBuildPerFrameCredentialCheck")
+    iPerFrame = sGuardSource.find("def ffnBuildPerFrameCredentialCheck")
     assert "fbContainerIsPoisoned(" in sGuardSource[iPerFrame:], (
         "the per-frame backstop must re-read the poison state, not "
         "capture it at accept"
@@ -3779,21 +3779,21 @@ def testConnectHandlerGatesOnTheOwningLease():
         node.name: node for node in ast.walk(treeAst)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    nodeConnect = dictFunctionByName.get("fnConnect")
+    nodeConnect = dictFunctionByName.get("fdictHandleConnectRequest")
     assert nodeConnect is not None, (
         "workflowRoutes must still register a connect handler named "
-        "fnConnect"
+        "fdictHandleConnectRequest"
     )
     sConnectBody = ast.unparse(nodeConnect)
     assert "_fnRequireOwningLeaseForConnect" in sConnectBody, (
-        "fnConnect must call _fnRequireOwningLeaseForConnect; without "
+        "fdictHandleConnectRequest must call _fnRequireOwningLeaseForConnect; without "
         "it a second browser tab connects to a container another "
         "session owns and the claim route's 409 means nothing"
     )
     assert "requestHttp" in {
         arg.arg for arg in nodeConnect.args.args
     }, (
-        "fnConnect must accept the Request so the presented lease is "
+        "fdictHandleConnectRequest must accept the Request so the presented lease is "
         "visible to the gate"
     )
     nodeGate = dictFunctionByName.get("_fnRequireOwningLeaseForConnect")
@@ -3932,7 +3932,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # single clearer. Poison and fencing are one act, and the fence
     # needs the lane on ConnectionRecord, so both live beside the
     # record they act on.
-    "containerOwnership.py": 897,
+    "containerOwnership.py": 898,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4025,7 +4025,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +18 (2026-08-02): the pipeline WebSocket refuses a poisoned
     # container at the gate and hands the per-frame backstop the
     # generation admitted at accept, so a transfer fences a live socket.
-    # +58 (2026-08-04): _fnDeleteOutputsUnderTheDrain, the mode-(b)
+    # +58 (2026-08-04): _fdictDeleteOutputsUnderTheDrain, the mode-(b)
     # carrier call that closes the migration plan's named live exploit —
     # the clean route's `rm` used to run on a bare asyncio.to_thread,
     # holding no lock, so a transfer arriving mid-delete saw an idle
@@ -4286,7 +4286,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and the reconnect interval check (manifest-digest compare →
     # unsupervised-gap flag) inside the connect flow.
     # +61 (2026-07-25): three path-safety guards hoisted to sit beside
-    # fnValidatePathWithinRoot — the control-character rejection behind
+    # fsValidatePathWithinRoot — the control-character rejection behind
     # the heredoc-injection fix, the write denylist (moved out of
     # fileRoutes so testRoutes can share it without a route-to-route
     # import), and the parsed loopback-origin predicate replacing a
@@ -4369,7 +4369,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # moved in or out -- the module is still the §8 commit boundary --
     # and the rationale lives once, on the base class, rather than
     # being restated here.
-    "commitCarrier.py": 1065,
+    "commitCarrier.py": 1066,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -4473,7 +4473,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # re-derive the reservation's state to act.
     # +13 (2026-08-02): the quarantine path poisons through the single
     # writer and fences the container's pipeline socket.
-    "startReservation.py": 972,
+    "startReservation.py": 973,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -4617,7 +4617,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # docstring saying which commands share its held drain and why. The
     # module's responsibility is unchanged; only the call shape is.
     # −7 (2026-08-05): the settle-then-raise ordering lifted into
-    # routeContext.fobjRunWorkerUnderTheDrain on its fourth caller. Both
+    # routeContext.fgenericRunWorkerUnderTheDrain on its fourth caller. Both
     # this module and repoRoutes are now fully migrated, so their
     # entries are ratcheted back down to what they actually measure
     # rather than left holding the migration's headroom.
@@ -4656,7 +4656,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the docstring recording which refusals are carried and which
     # poison. The context write also needed its own mode-(a) commit:
     # it writes .vaibify/AGENTS.md, not project.json, so it could not
-    # reuse fnCommitWorkflowSave's record without handing the journal
+    # reuse fdictCommitWorkflowSave's record without handing the journal
     # probe a hash belonging to a different file. Same cohesive
     # responsibility: the Replay axis, in the module that owns it.
     "routes/replayRoutes.py": 962,
@@ -4664,7 +4664,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a
     # first entry). Three of the eight are one-line saves that gained
-    # only a requestHttp and a fnCommitWorkflowSave; the +182 is almost
+    # only a requestHttp and a fdictCommitWorkflowSave; the +182 is almost
     # entirely the other four, each of which needed a SYNCHRONOUS twin
     # because a mode-(b) worker runs in a thread and cannot await the
     # to_thread hop these chains used to make -- and, for the envelope

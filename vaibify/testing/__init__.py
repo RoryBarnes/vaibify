@@ -2,7 +2,7 @@
 
 The submodule exposes:
 
-* ``fLoadValue`` and ``fdictParseAccessPath`` — the canonical access-path
+* ``ffLoadValue`` and ``fdictParseAccessPath`` — the canonical access-path
   parser and value loader (re-exported from :mod:`vaibify.gui.dataLoaders`
   so write-side and read-side cannot drift).
 * A symmetric write side that produces / regenerates standards JSON files
@@ -13,7 +13,7 @@ The submodule exposes:
 
 from vaibify.testing.standards import (
     fdictParseAccessPath,
-    fLoadValue,
+    ffLoadValue,
     fdictGenerateQuantitativeStandards,
     fnWriteStandards,
     fnGenerateFromWorkflow,
@@ -27,7 +27,7 @@ from vaibify.testing.stochasticDetector import (
 
 __all__ = [
     "fdictParseAccessPath",
-    "fLoadValue",
+    "ffLoadValue",
     "fdictGenerateQuantitativeStandards",
     "fnWriteStandards",
     "fnGenerateFromWorkflow",

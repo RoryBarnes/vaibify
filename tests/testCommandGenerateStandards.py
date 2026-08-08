@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("click")
 from click.testing import CliRunner  # noqa: E402
 
-from vaibify.cli.commandGenerateStandards import generate_standards
+from vaibify.cli.commandGenerateStandards import fnGenerateStandardsCommand
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def test_generate_standards_refresh_existing(fixtureStepDirWithStandards):
     """--step-dir refreshes fValue when a standards file already exists."""
     sStepDir, sStandardsPath = fixtureStepDirWithStandards
     runner = CliRunner()
-    result = runner.invoke(generate_standards, ["--step-dir", sStepDir])
+    result = runner.invoke(fnGenerateStandardsCommand, ["--step-dir", sStepDir])
     assert result.exit_code == 0, result.output
     with open(sStandardsPath) as fileHandle:
         dictAfter = json.load(fileHandle)
@@ -47,7 +47,7 @@ def test_generate_standards_refresh_existing(fixtureStepDirWithStandards):
 def test_generate_standards_no_args_exits_nonzero():
     """Missing --step-dir AND --workflow combination is an error."""
     runner = CliRunner()
-    result = runner.invoke(generate_standards, [])
+    result = runner.invoke(fnGenerateStandardsCommand, [])
     assert result.exit_code == 2
 
 
@@ -58,7 +58,7 @@ def test_generate_standards_generate_fresh(tmp_path):
     np.save(os.path.join(sStepDir, "out.npy"),
             np.array([[1.0, 2.0], [3.0, 4.0]]))
     runner = CliRunner()
-    result = runner.invoke(generate_standards,
+    result = runner.invoke(fnGenerateStandardsCommand,
                            ["--step-dir", sStepDir, "--rtol", "1e-9"])
     assert result.exit_code == 0, result.output
     sStandardsPath = os.path.join(

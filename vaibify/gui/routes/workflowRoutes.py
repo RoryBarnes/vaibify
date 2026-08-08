@@ -12,7 +12,7 @@ from typing import Optional
 from .. import browserSession
 from .. import containerOwnership
 from .. import workflowManager
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
@@ -21,8 +21,8 @@ from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_SEPARATE_AUTHORITY,
     S_SCOPE_OWNER_ESTABLISHING,
-    fnDeclareCarrierMode,
-    fnRouteScope,
+    ffnDeclareCarrierMode,
+    ffnRouteScope,
     fsLeaseFromRequest,
 )
 from ..pipelineRunner import fsShellQuote
@@ -130,7 +130,7 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
     """Register GET /api/workflows route."""
 
     @app.get("/api/workflows/{sContainerId}")
-    async def fnFindWorkflows(sContainerId: str):
+    async def flistHandleFindWorkflows(sContainerId: str):
         dictCtx["require"]()
         try:
             return workflowManager.flistFindWorkflowsInContainer(
@@ -205,8 +205,8 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
     """Register POST /api/workflows/{id}/create route."""
 
     @app.post("/api/workflows/{sContainerId}/create")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnCreateWorkflow(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleCreateWorkflow(
         sContainerId: str, request: CreateWorkflowRequest,
         requestHttp: Request,
     ):
@@ -253,7 +253,7 @@ async def _fdictCreateWorkflowUnderTheDrain(
         requestHttp, sContainerId, "Creating the project",
     )
 
-    def fnProbeThenCreate(supervisor=None):
+    def fdictProbeThenCreate(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fsProbeThenWriteNewWorkflow(
@@ -264,7 +264,7 @@ async def _fdictCreateWorkflowUnderTheDrain(
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", "create-project",
-        fnProbeThenCreate,
+        fdictProbeThenCreate,
     )
     return dictOutcome["result"]
 
@@ -314,10 +314,10 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
     # complete the action, only ask for it. Declaring the literally-true
     # thing here would have made the record misleading (ruling
     # 2026-08-05).
-    @fnAgentAction("create-project")
+    @ffnAgentAction("create-project")
     @app.post("/api/workflows/{sContainerId}/request-creation")
-    @fnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
-    async def fnRequestProjectCreation(
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
     ):
         dictCtx["require"]()
@@ -420,8 +420,8 @@ def _fnRegisterConnect(app, dictCtx):
     """Register POST /api/connect route."""
 
     @app.post("/api/connect/{sContainerId}")
-    @fnRouteScope(S_SCOPE_OWNER_ESTABLISHING, "sContainerId", "id")
-    async def fnConnect(
+    @ffnRouteScope(S_SCOPE_OWNER_ESTABLISHING, "sContainerId", "id")
+    async def fdictHandleConnectRequest(
         requestHttp: Request,
         sContainerId: str,
         sWorkflowPath: Optional[str] = None,
@@ -436,7 +436,7 @@ def _fnRegisterConnect(app, dictCtx):
         # duration (design §8) — the one lane where the owner record
         # may be created DURING the handler (viewer first connect).
         from .. import commitCarrier
-        tAdmissionTokens = commitCarrier.ftupleOpenEstablishingAdmission(
+        tAdmissionTokens = commitCarrier.ftOpenEstablishingAdmission(
             _fsResolveOwnedNameForContainerId(dictCtx, sContainerId),
             sContainerId,
         )

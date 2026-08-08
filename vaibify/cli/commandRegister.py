@@ -16,7 +16,7 @@ from vaibify.config.registryManager import fnAddProject
     default=".",
     type=click.Path(exists=True, file_okay=False),
 )
-def register(sdirectory):
+def fnRegisterCommand(sdirectory):
     """Register an existing project directory.
 
     Adds the project to the global registry so it can be

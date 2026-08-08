@@ -6,7 +6,7 @@ from vaibify.gui.pipelineServer import (
     _fbAnyDataFileChanged,
     _fbAnyMtimeNewerThan,
     _fbAnyPlotFileChanged,
-    _fbStepIsPencilStale,
+    _ftStepIsPencilStale,
     _fdictBuildScriptStatus,
     _fdictFindChangedFiles,
     _fiParseUtcTimestamp,
@@ -28,7 +28,7 @@ from vaibify.gui.pipelineServer import (
     fdictExtractSettings,
     fdictFilterNonNone,
     fdictRequireWorkflow,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     fsResolveFigurePath,
     fsSanitizeExceptionForClient,
 )
@@ -100,7 +100,7 @@ class TestFnUpdateAggregateTestState:
         }
         _fnUpdateAggregateTestState(dictStep)
         # No categories carry commands → aggregate is "unnecessary",
-        # treated as green by fbStepTestsPassing (AICS L1 gate).
+        # treated as green by fbStepTestsPassing (PROOF L1 gate).
         assert dictStep["dictVerification"]["sUnitTest"] == "unnecessary"
 
     def test_partial_untested(self):
@@ -250,18 +250,18 @@ class TestFdictFilterNonNone:
 
 class TestFnValidatePathWithinRoot:
     def test_valid_path(self):
-        sResult = fnValidatePathWithinRoot(
+        sResult = fsValidatePathWithinRoot(
             "/workspace/project/file.py", "/workspace")
         assert sResult == "/workspace/project/file.py"
 
     def test_traversal_rejected(self):
         from fastapi import HTTPException
         with pytest.raises(HTTPException):
-            fnValidatePathWithinRoot(
+            fsValidatePathWithinRoot(
                 "/workspace/../etc/passwd", "/workspace")
 
     def test_root_itself_allowed(self):
-        sResult = fnValidatePathWithinRoot(
+        sResult = fsValidatePathWithinRoot(
             "/workspace", "/workspace")
         assert sResult == "/workspace"
 

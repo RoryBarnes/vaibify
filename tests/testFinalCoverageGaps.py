@@ -35,7 +35,7 @@ def test_fdictLoadYamlFile_invalid_yaml(tmp_path):
 
 def test_config_import_aborted(tmp_path):
     from click.testing import CliRunner
-    from vaibify.cli.commandConfig import config, fnWriteYaml
+    from vaibify.cli.commandConfig import fnConfigCommand, fnWriteYaml
     sInputPath = str(tmp_path / "input.yml")
     fnWriteYaml({"key": "val"}, sInputPath)
     sConfigPath = str(tmp_path / "vaibify.yml")
@@ -45,7 +45,7 @@ def test_config_import_aborted(tmp_path):
         return_value=sConfigPath,
     ):
         runner = CliRunner()
-        result = runner.invoke(config, ["import", sInputPath], input="n\n")
+        result = runner.invoke(fnConfigCommand, ["import", sInputPath], input="n\n")
         assert "aborted" in result.output.lower()
 
 
@@ -58,7 +58,7 @@ def test_fnPrintAvailableTemplates_no_templates():
     Every vaibify distribution ships templates, so finding none means
     the package was built without its data files. Reporting that on
     stdout and returning 0 is how the missing package data survived a
-    release workflow that only ran ``import vaibify``.
+    release fnWorkflowCommand that only ran ``import vaibify``.
     """
     from vaibify.cli.commandInit import fnPrintAvailableTemplates
     with patch(

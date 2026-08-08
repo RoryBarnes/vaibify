@@ -7,7 +7,7 @@ import posixpath
 
 from fastapi import HTTPException, Request
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     fdictRequireWorkflow,
@@ -17,13 +17,13 @@ from ..pipelineServer import (
 from ..fileStatusManager import _flistResolvePlotPaths
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
-    fnCommitWorkflowSave,
+    fdictCommitWorkflowSave,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_TYPED_READ,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 
 
@@ -154,7 +154,7 @@ async def _flistConvertPlotsUnderTheDrain(
         requestHttp, sContainerId, "Standardizing the step's plots",
     )
 
-    def fnConvertThePlots(supervisor=None):
+    def flistConvertThePlots(supervisor=None):
         del supervisor
         return _flistConvertToStandards(
             dictCtx, sContainerId, listPlots, sTargetFile,
@@ -163,7 +163,7 @@ async def _flistConvertPlotsUnderTheDrain(
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", "standardize-plots",
-        fnConvertThePlots,
+        flistConvertThePlots,
     )
     return dictOutcome["result"]
 
@@ -208,15 +208,15 @@ async def _fdictCheckStandardsExist(
 def _fnRegisterStandardizePlots(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/standardize-plots."""
 
-    @fnAgentAction("accept-plots-as-standard")
+    @ffnAgentAction("accept-plots-as-standard")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/standardize-plots"
     )
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
-    async def fnStandardizePlots(
+    async def fdictStandardizePlots(
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
@@ -246,7 +246,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         sTimestamp = datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M UTC")
         dictVerification["sLastStandardized"] = sTimestamp
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, request,
             "Recording the standardized plots",
         )
@@ -257,7 +257,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
             "sTimestamp": sTimestamp,
         }
 
-    @fnAgentAction("compare-plot")
+    @ffnAgentAction("compare-plot")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/compare-plot"
     )
@@ -269,8 +269,8 @@ def _fnRegisterStandardizePlots(app, dictCtx):
     # declaration asserts. The viewer fetches the two files afterwards
     # through the ``container-read`` figure route, under that route's
     # own authority.
-    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
-    async def fnComparePlot(
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictComparePlot(
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
@@ -299,8 +299,8 @@ def _fnRegisterStandardizePlots(app, dictCtx):
     @app.get(
         "/api/steps/{sContainerId}/{iStepIndex}/plot-standards"
     )
-    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
-    async def fnCheckPlotStandards(
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictCheckPlotStandards(
         sContainerId: str, iStepIndex: int,
     ):
         dictCtx["require"]()

@@ -19,7 +19,7 @@ logger = logging.getLogger("vaibify")
 __all__ = [
     "fdictGetDockerStatus",
     "fdictRetryDockerConnection",
-    "fsDetectDockerRuntime",
+    "fdictDetectDockerRuntime",
 ]
 
 
@@ -27,11 +27,11 @@ def _fbCaffeinateRunning():
     """Return True if a caffeinate process is active for this user."""
     import subprocess
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             ["pgrep", "-u", str(os.getuid()), "-x", "caffeinate"],
             capture_output=True, timeout=2,
         )
-        return resultProcess.returncode == 0
+        return processResult.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
@@ -61,7 +61,7 @@ def _fdictSleepWarningForContext(sContext):
     return {"sRuntime": sContext, "sSleepWarning": sSleepDefault}
 
 
-def fsDetectDockerRuntime():
+def fdictDetectDockerRuntime():
     """Detect the Docker runtime (colima, desktop, orbstack, etc.)."""
     import subprocess
     try:
@@ -162,7 +162,7 @@ def fdictRetryDockerConnection(dictCtx):
 
     Mutating ``dictCtx['docker']`` lets every route closure pick up
     the new connection without a vaibify restart, because
-    ``_ftupleBuildHelpers`` reads the connection from the shared
+    ``_ftBuildHelpers`` reads the connection from the shared
     raw-dict at call time rather than capturing it at build time.
     """
     from . import pipelineServer

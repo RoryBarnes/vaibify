@@ -18,7 +18,7 @@
 
    Exposes:
      - VaibifyProjectContext.fsRenderMissingContextRow(dictDetail)
-     - VaibifyProjectContext.fnGenerateTemplate()
+     - VaibifyProjectContext.fdictGenerateTemplate()
      - VaibifyProjectContext.fnAdoptRepoRoot()
      - VaibifyProjectContext.fnOpenImportPicker()
      - VaibifyProjectContext.fnCloseImportPicker()
@@ -54,7 +54,7 @@ var VaibifyProjectContext = (function () {
             'update-project-context action.</div>';
     }
 
-    async function fnGenerateTemplate() {
+    async function fdictGenerateTemplate() {
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         try {
@@ -196,7 +196,7 @@ var VaibifyProjectContext = (function () {
 
     return {
         fsRenderMissingContextRow: fsRenderMissingContextRow,
-        fnGenerateTemplate: fnGenerateTemplate,
+        fdictGenerateTemplate: fdictGenerateTemplate,
         fnAdoptRepoRoot: fnAdoptRepoRoot,
         fnOpenImportPicker: fnOpenImportPicker,
         fnCloseImportPicker: fnCloseImportPicker,

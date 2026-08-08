@@ -1,4 +1,4 @@
-"""Behaviour tests for the host-side AICS level report.
+"""Behaviour tests for the host-side PROOF level report.
 
 vaibify/cli/levelReport.py answers "what level is this project, and what
 blocks the next one?" from the same gates the dashboard poll uses, so
@@ -38,14 +38,14 @@ def test_build_level_report_assembles_gate_outputs():
                return_value=[]), \
          patch("vaibify.reproducibility.levelGates.flistLevel3Blockers",
                return_value=[]), \
-         patch("vaibify.reproducibility.levelGates.fiAICSLevel",
+         patch("vaibify.reproducibility.levelGates.fiProofLevel",
                return_value=1), \
          patch("vaibify.reproducibility.levelGates."
                "fdictComputeStepLevelStates", return_value={}):
         dictReport = levelReport.fdictBuildLevelReport(
             dictWorkflow, MagicMock())
-    assert dictReport["iAICSLevel"] == 1
-    assert dictReport["sAICSLevelName"] == "Self-Consistent"
+    assert dictReport["iProofLevel"] == 1
+    assert dictReport["sProofLevelName"] == "Self-Consistent"
     assert dictReport["sWorkflowName"] == "demo"
     assert dictReport["listLevel1Blockers"] == listL1
     assert dictReport["listLevel2Blockers"] == []
@@ -100,8 +100,8 @@ def test_level_names_cover_every_tier(iLevel, sName):
 
 def test_print_level_report_emits_level_and_blocker_groups(capsys):
     dictReport = {
-        "iAICSLevel": 2,
-        "sAICSLevelName": "Published",
+        "iProofLevel": 2,
+        "sProofLevelName": "Published",
         "sWorkflowName": "demo",
         "listLevel1Blockers": [],
         "listLevel2Blockers": [
@@ -113,7 +113,7 @@ def test_print_level_report_emits_level_and_blocker_groups(capsys):
     }
     levelReport.fnPrintLevelReport(dictReport)
     sOut = capsys.readouterr().out
-    assert "AICS level: 2 (Published) - demo" in sOut
+    assert "PROOF level: 2 (Published) - demo" in sOut
     assert "Level 2 blockers: 1" in sOut
     assert "no-arxiv" in sOut
     assert "script-stale" in sOut
@@ -121,7 +121,7 @@ def test_print_level_report_emits_level_and_blocker_groups(capsys):
 
 def test_print_level_report_names_unnamed_project(capsys):
     levelReport.fnPrintLevelReport({
-        "iAICSLevel": 0, "sAICSLevelName": "Sandbox",
+        "iProofLevel": 0, "sProofLevelName": "Sandbox",
         "sWorkflowName": "",
         "listLevel1Blockers": [], "listLevel2Blockers": [],
         "listLevel3Blockers": [], "listUnevaluatedCriteria": [],

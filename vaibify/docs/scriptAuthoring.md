@@ -14,7 +14,7 @@ JSON to:
 
 1. Build the dependency graph between steps.
 2. Decide when a step is stale because an upstream changed.
-3. Decide when the project has reached AICS Level 1, 2, or 3.
+3. Decide when the project has reached PROOF Level 1, 2, or 3.
 
 The parser at
 `vaibify/gui/workflowManager.py::fdictBuildDirectDependencies` uses one
@@ -237,7 +237,7 @@ before the pipeline runs are **input data**, declared per step in
   (and, through the ordinary machinery, everything downstream of
   them); no ordering edge is created between sibling consumers.
 
-Every step must state its input contract to reach AICS Level 1:
+Every step must state its input contract to reach PROOF Level 1:
 either list the raw files it reads, or set the explicit
 `bNoInputData` declaration ("this step consumes no raw data"). Both
 absent means *undeclared*, which blocks Level 1 — nothing

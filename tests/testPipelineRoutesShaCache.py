@@ -147,7 +147,7 @@ def test_persist_only_runs_on_update():
             }
 
     dictMtimesRel = {"out/a.dat": "1700"}
-    bChanged = pipelineRoutes._fnUpdateShaCache(
+    bChanged = pipelineRoutes._fbUpdateShaCache(
         dictCache, _FakeFilesNoChange(),
         ["out/a.dat"], dictMtimesRel,
     )
@@ -170,7 +170,7 @@ def test_persist_runs_when_sha_changes():
             }
 
     dictMtimesRel = {"out/a.dat": "1800"}
-    bChanged = pipelineRoutes._fnUpdateShaCache(
+    bChanged = pipelineRoutes._fbUpdateShaCache(
         dictCache, _FakeFilesChanged(),
         ["out/a.dat"], dictMtimesRel,
     )

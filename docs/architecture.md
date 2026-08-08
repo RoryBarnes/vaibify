@@ -118,7 +118,7 @@ when a researcher clicks **Run All** in the browser.
    backend. The payload is `{sAction: "runAll"}`.
 
 3. On the backend, the WebSocket handler in `pipelineServer.py`
-   dispatches actions to `pipelineRunner.fnRunAllSteps()`. The runner
+   dispatches actions to `pipelineRunner.fiRunAllSteps()`. The runner
    validates the project (via `pipelineValidator`), opens a log file
    (via `pipelineLogger`), and walks the step list.
 
@@ -148,7 +148,7 @@ User clicks "Run All"
   -> VaibifyPipelineRunner.fnRunAll()
   -> VaibifyWebSocket.fnSend({sAction: "runAll"})
   -> Backend: pipelineServer WebSocket handler
-  -> pipelineRunner.fnRunAllSteps()
+  -> pipelineRunner.fiRunAllSteps()
   -> For each step: backend emits stepStarted, output, stepPass or
      stepFail via WebSocket
   -> Frontend: VaibifyWebSocket dispatches to registered handlers
@@ -300,7 +300,7 @@ files to host, browse host directories, and sync to GitHub possible at
 all. The cost is that path traversal is a live concern: any path that
 originates from an HTTP request body, a `project.json` field, or a
 config file must be validated against its intended root before the
-backend opens it. `fnValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)`
+backend opens it. `fsValidatePathWithinRoot(sAbsPath, WORKSPACE_ROOT)`
 in `pipelineServer.py` is the canonical guard; the trap list in
 [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) flags this explicitly.
 
@@ -510,7 +510,7 @@ replaying a *copied lease value* is refused, because connect would take
 over the workflow and the container's agent session, and release would
 drop the owner record. Connect enforces this in
 `workflowRoutes._fnRequireOwningLeaseForConnect`; release enforces it in
-`containerOwnership.fnReleaseOwnership`.
+`containerOwnership.fbReleaseOwnership`.
 
 The name-keyed container-lifecycle routes — `start`, `stop`, `build`,
 `settings`, and the ownership-*establishing* `claim` — are classified
@@ -558,7 +558,7 @@ see "PID-reuse-proof staleness" below;
 
 ### Claim arbitration
 
-`containerOwnership.ftdictClaim` replaces the old short-circuit (the
+`containerOwnership.ftClaim` replaces the old short-circuit (the
 pre-refactor claim returned `bClaimed: True` whenever the container was
 already locked, silently admitting a second same-hub tab). The arbiter
 now has three outcomes:
@@ -688,7 +688,7 @@ in the request path; a request that names no container fails closed.
 
 Authorizing the agent lane answers *which container* an agent may act
 on. It does not answer *what it may do there*, and for a long time
-nothing did. `fnAgentAction` attaches a name to a handler and changes
+nothing did. `ffnAgentAction` attaches a name to a handler and changes
 no behaviour; `bAgentSafe` was consumed only by `vaibify/containerImage/vaibifyDo.py`
 **inside** the container, which an agent bypasses with `curl`. Every
 route the catalog marked researcher-only — `clean-outputs`,
@@ -855,7 +855,7 @@ holds it, rather than queued behind it -- and that refusal deliberately
 does not offer the Kill button, because Kill stops a pipeline action
 and does nothing to a carrier worker.
 
-**A declaration authorizes nothing.** `routeScope.fnDeclareCarrierMode`
+**A declaration authorizes nothing.** `routeScope.ffnDeclareCarrierMode`
 stamps intent from a closed set (`typed-read`, `mode-a-synchronous`,
 `mode-b-lock-held`, `mode-c-durable`, `lifecycle-transaction`,
 `separate-authority`); a route may carry several, because a handler
@@ -889,7 +889,7 @@ it left behind. Deciding which is which is done by reading the
 failure paths, never by inferring from the shape.
 
 **A typed read is exempt only inside its adapter.**
-`DockerConnection._texecRunTypedRead` is the single grant point. It
+`DockerConnection._ftRunTypedRead` is the single grant point. It
 takes an operation name from a fixed table plus a path or a flat
 sequence of paths, and BUILDS the command; it never accepts one. That
 distinction is what keeps the carve-out from becoming a general bypass.
@@ -960,8 +960,8 @@ list and each module's public API.
 These carry the core execution logic:
 
 - `pipelineRunner.py` — pipeline step execution orchestrator. Public
-  API: `fnRunAllSteps`, `fnRunFromStep`, `fnRunSelectedSteps`,
-  `fnVerifyOnly`, `fnRunAllTests`.
+  API: `fiRunAllSteps`, `fiRunFromStep`, `fiRunSelectedSteps`,
+  `fiVerifyOnly`, `fiRunAllTests`.
 - `pipelineUtils.py` — deliberate leaf module with zero intra-package
   imports. Contains `fsShellQuote` and all `_fnEmit*` event helpers.
   Exists to break circular import cycles. Do not add imports from
@@ -1102,19 +1102,19 @@ This state machine is load-bearing for the dashboard's honesty
 guarantee: the GUI must always reflect the true state of the project.
 See the relevant trap in [../AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md).
 
-## Two AICS-level truth systems
+## Two PROOF-level truth systems
 
-The backend computes the reproducibility ladder (AICS L1–L3) in two
+The backend computes the reproducibility ladder (PROOF L1–L3) in two
 deliberately different shapes, and misreading one as the other is the
 most likely way to misjudge the dashboard:
 
-1. **The scalar aggregate** — `levelGates.fiAICSLevel` /
+1. **The scalar aggregate** — `levelGates.fiProofLevel` /
    `fbAtLeastLevelN`. Strictly additive over the whole project: L1
    requires every step's L1 blockers clear, L2 requires L1, L3
    requires L2. This is "what level is this project at," and it is
-   what the AICS chip in the dashboard header renders. (Historical
+   what the PROOF chip in the dashboard header renders. (Historical
    note: an early boolean `bVaibified` predated the ladder and meant
-   what `fiAICSLevel >= 1` means now; the v4 project migration drops
+   what `fiProofLevel >= 1` means now; the v4 project migration drops
    the key on load, which is the excision mechanism — do not remove
    the migration.)
 
@@ -1159,7 +1159,7 @@ below "none" on the ladder and never stamps a high-water mark.
 
 ## The Replay axis (AI provenance)
 
-The AICS ladder measures the state of the artifact; the Replay axis
+The PROOF ladder measures the state of the artifact; the Replay axis
 measures the provenance of the process — which AI models did the
 work, under what standing instructions, and whether the development
 dialogue is preserved. States, each requiring the ones below it:

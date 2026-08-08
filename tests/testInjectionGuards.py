@@ -16,7 +16,7 @@ from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.gui import testStatusManager
 from vaibify.gui.pipelineServer import (
     fbOriginIsLoopback,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
 )
 
 
@@ -33,7 +33,7 @@ def testPathValidationRejectsControlCharacters():
     remainder under ``/bin/bash -c``. Rejecting the class at the shared
     validator protects every interpolating caller at once.
 
-    Kills: pipelineServer.fnValidatePathWithinRoot: the guard call
+    Kills: pipelineServer.fsValidatePathWithinRoot: the guard call
     `_fnRejectControlCharactersInPath(sResolvedPath)` removed.
     """
     sPayload = (
@@ -41,20 +41,20 @@ def testPathValidationRejectsControlCharacters():
         "cat <<'__VAIBIFY_EOF__'"
     )
     with pytest.raises(HTTPException) as excInfo:
-        fnValidatePathWithinRoot(sPayload, "/workspace")
+        fsValidatePathWithinRoot(sPayload, "/workspace")
     assert excInfo.value.status_code == 403
 
 
 def testPathValidationRejectsNulByte():
     """A NUL byte truncates paths in C APIs; refuse it too."""
     with pytest.raises(HTTPException) as excInfo:
-        fnValidatePathWithinRoot("/workspace/ok\x00.png", "/workspace")
+        fsValidatePathWithinRoot("/workspace/ok\x00.png", "/workspace")
     assert excInfo.value.status_code == 403
 
 
 def testPathValidationStillAcceptsOrdinaryPaths():
     """Ordinary workflow paths, including spaces, remain valid."""
-    assert fnValidatePathWithinRoot(
+    assert fsValidatePathWithinRoot(
         "/workspace/My Step/output 1.csv", "/workspace",
     ) == "/workspace/My Step/output 1.csv"
 
@@ -68,7 +68,7 @@ def testLoopbackOriginRejectsASuffixDomain():
 
     The check compared prefixes, so an attacker-registered domain
     beginning with a loopback name passed -- the same prefix-attack
-    class ``fnValidatePathWithinRoot`` explicitly defends against.
+    class ``fsValidatePathWithinRoot`` explicitly defends against.
 
     Kills: pipelineServer.fbOriginIsLoopback: the parsed host equality
     `return (tParsed.hostname or "") in _SET_LOOPBACK_ORIGIN_HOSTS`

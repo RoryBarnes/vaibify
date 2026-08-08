@@ -25,7 +25,7 @@ def _fsRunInstallerFunction(tmp_path, sFunctionCall):
 def test_agent_argument_accepts_case_insensitive_opencode(tmp_path):
     sOutput = _fsRunInstallerFunction(
         tmp_path,
-        "fnParseArguments --agent=OpenCode; "
+        "fnamespaceParseArguments --agent=OpenCode; "
         'printf "%s,%s" "${bInstallOpenCode}" "${bInstallCline}"',
     )
     assert sOutput == "true,false"
@@ -34,7 +34,7 @@ def test_agent_argument_accepts_case_insensitive_opencode(tmp_path):
 def test_install_flags_persist_all_selected_init_defaults(tmp_path):
     _fsRunInstallerFunction(
         tmp_path,
-        "fnParseArguments --install-claude --install-codex --install-gemini "
+        "fnamespaceParseArguments --install-claude --install-codex --install-gemini "
         "--install-opencode --install-cline --install-openhands --install-pi; "
         "fnEnableAgentDefaults",
     )

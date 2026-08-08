@@ -101,7 +101,7 @@ def _recordRegisterLiveSocket(stateApp, sSessionId, bPipelineLane=True):
         bPipelineLane=bPipelineLane,
     )
     recordConnection = containerOwnership.ConnectionRecord(
-        connection=_FakeWebSocketConnection(),
+        websocket=_FakeWebSocketConnection(),
         sBrowserSessionId=sSessionId,
         iOwnerGeneration=1,
         sLane=(
@@ -156,7 +156,7 @@ async def testOrphanSessionRevokesStampsClosesAndRetainsTheRecord():
     ) == (None, None), (
         "the bootstrap capability's bounded replay must be cancelled"
     )
-    assert recordConnection.connection.listCloseCodes == [4401], (
+    assert recordConnection.websocket.listCloseCodes == [4401], (
         "the session's live socket must be actively closed"
     )
     assert stateApp.dictContainerOwners[S_PROJECT_NAME] is recordOwner
@@ -517,18 +517,18 @@ def testPerFrameCheckTracksTheCredentialAndExemptsTheAgentLane():
     sSessionId, sCredential = browserSession.ftRedeemCapability(
         dictStore, sCapability,
     )
-    fbCheck = webSocketAuthorization.ffbBuildPerFrameCredentialCheck(
+    fbCheck = webSocketAuthorization.ffnBuildPerFrameCredentialCheck(
         _connectionBuildBrowserConnection(sCredential), dictStore,
     )
     assert fbCheck() is True
-    browserSession.fnRevokeSessionById(dictStore, sSessionId)
+    browserSession.fbRevokeSessionById(dictStore, sSessionId)
     assert fbCheck() is False, (
         "a revoked session's frames must stop authorizing"
     )
     connectionAgent = SimpleNamespace(
         headers={}, query_params={"sToken": "agent-token-value"},
     )
-    fbAgentCheck = webSocketAuthorization.ffbBuildPerFrameCredentialCheck(
+    fbAgentCheck = webSocketAuthorization.ffnBuildPerFrameCredentialCheck(
         connectionAgent, dictStore,
     )
     assert fbAgentCheck() is True, (

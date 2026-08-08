@@ -11,9 +11,9 @@ downgrading the derived state and re-locking the all-green gate.
 import logging
 
 from vaibify.gui.routes.pipelineRoutes import (
-    _fnApplyExternalTestResults,
-    _fnApplyMarkerCategory,
-    _fnClearStaleMarkerCategories,
+    _fbApplyExternalTestResults,
+    _fbApplyMarkerCategory,
+    _fbClearStaleMarkerCategories,
 )
 
 
@@ -22,7 +22,7 @@ def test_marker_pass_does_not_downgrade_unnecessary(caplog):
     dictVerify = {"sIntegrity": "unnecessary"}
     dictCategories = {"integrity": {"iPassed": 1, "iFailed": 0}}
     with caplog.at_level(logging.WARNING, logger="vaibify"):
-        bChanged = _fnApplyMarkerCategory(
+        bChanged = _fbApplyMarkerCategory(
             dictVerify, dictCategories, "integrity", "sIntegrity",
         )
     assert bChanged is False
@@ -43,7 +43,7 @@ def test_marker_fail_does_not_downgrade_unnecessary(caplog):
     dictVerify = {"sIntegrity": "unnecessary"}
     dictCategories = {"integrity": {"iPassed": 0, "iFailed": 3}}
     with caplog.at_level(logging.WARNING, logger="vaibify"):
-        bChanged = _fnApplyMarkerCategory(
+        bChanged = _fbApplyMarkerCategory(
             dictVerify, dictCategories, "integrity", "sIntegrity",
         )
     assert bChanged is False
@@ -65,7 +65,7 @@ def test_stale_marker_skips_unnecessary_category():
         "integrity": {"iPassed": 1, "iFailed": 0},
         "qualitative": {"iPassed": 1, "iFailed": 0},
     }
-    bChanged = _fnClearStaleMarkerCategories(
+    bChanged = _fbClearStaleMarkerCategories(
         dictVerify, dictCategories,
     )
     assert bChanged is True
@@ -92,6 +92,6 @@ def test_apply_external_results_leaves_unnecessary_step_alone():
             }},
         },
     }
-    _fnApplyExternalTestResults(dictWorkflow, dictTestMarkers)
+    _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictV = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictV["sIntegrity"] == "unnecessary"

@@ -46,7 +46,7 @@ from vaibify.docker.dockerConnection import DockerConnection
 PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 
 # The single method that grants the audited-read exemption.
-S_EXEMPTION_METHOD = "_texecRunTypedRead"
+S_EXEMPTION_METHOD = "_ftRunTypedRead"
 
 
 class _StubContainer:
@@ -86,12 +86,12 @@ def testAnUnadmittedExecIsRefusedBeforeItRuns(fnEnforcedLane):
     prevented.
 
     Kills: removing the fnAssertContainerCommandAdmitted call from
-    DockerConnection.texecRunInContainerStreamed.
+    DockerConnection.ftRunInContainerStreamed.
     """
     stubContainer = _StubContainer()
     connection = _fconnectionWithStubContainer(stubContainer)
     with pytest.raises(mutationAdmission.MutationNotAdmittedError):
-        connection.texecRunInContainerStreamed("cid-1", "rm -rf /workspace")
+        connection.ftRunInContainerStreamed("cid-1", "rm -rf /workspace")
     assert stubContainer.listExecuted == [], (
         "the command ran and THEN the gate complained"
     )
@@ -107,7 +107,7 @@ def testAnUnadmittedExecIsPermittedOutsideAnEnforcedLane():
     """
     stubContainer = _StubContainer()
     connection = _fconnectionWithStubContainer(stubContainer)
-    connection.texecRunInContainerStreamed("cid-1", "echo hello")
+    connection.ftRunInContainerStreamed("cid-1", "echo hello")
     assert len(stubContainer.listExecuted) == 1
 
 
@@ -116,13 +116,13 @@ def testAnAuditedReadIsExemptButOnlyInsideItsAdapter(fnEnforcedLane):
     stubContainer = _StubContainer()
     connection = _fconnectionWithStubContainer(stubContainer)
 
-    connection._texecRunTypedRead(
+    connection._ftRunTypedRead(
         "cid-1", dockerConnectionModule.S_TYPED_READ_DIRECTORY, "/tmp",
     )
     assert len(stubContainer.listExecuted) == 1
 
     with pytest.raises(mutationAdmission.MutationNotAdmittedError):
-        connection.texecRunInContainerStreamed("cid-1", "rm -rf /workspace")
+        connection.ftRunInContainerStreamed("cid-1", "rm -rf /workspace")
     assert len(stubContainer.listExecuted) == 1, (
         "the audited-read exemption leaked past the adapter's own exec"
     )
@@ -163,7 +163,7 @@ def testAnExistenceProbeSurvivesAnEnforcedLane(fnEnforcedLane):
     )
 
     with pytest.raises(mutationAdmission.MutationNotAdmittedError):
-        connection.texecRunInContainerStreamed("cid-1", "rm -rf /workspace")
+        connection.ftRunInContainerStreamed("cid-1", "rm -rf /workspace")
     assert len(stubContainer.listExecuted) == 2, (
         "the exemption leaked past the probes into general execution"
     )
@@ -335,7 +335,7 @@ def testAnUndeclaredOperationRefusesInsteadOfRunning():
     stubContainer = _StubContainer()
     connection = _fconnectionWithStubContainer(stubContainer)
     with pytest.raises(ValueError):
-        connection._texecRunTypedRead("cid-1", "rmDashRf", "/workspace")
+        connection._ftRunTypedRead("cid-1", "rmDashRf", "/workspace")
     assert stubContainer.listExecuted == []
 
 
@@ -407,7 +407,7 @@ def testTheCommandGateCoversTheDelegatingPrimitives():
     same holds for ``fnWriteFile`` over ``fnWriteFileViaTar``.
     """
     for sWrapper, sBase in (
-        ("ftResultExecuteCommand", "texecRunInContainerStreamed"),
+        ("ftResultExecuteCommand", "ftRunInContainerStreamed"),
         ("fnWriteFile", "fnWriteFileViaTar"),
     ):
         sSource = inspect.getsource(getattr(DockerConnection, sWrapper))

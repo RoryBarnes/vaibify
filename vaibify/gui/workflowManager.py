@@ -12,7 +12,7 @@ from . import stateManager, workflowMigrations
 from .workflowMigrations import (
     fbMigrateModifiedFilesToRepoRelative,
     fdictMigrateTestFormat,
-    fnMigrateArchiveToTracking,
+    fbMigrateArchiveToTracking,
     fnMigrateRunEnabledKey,
     fnNormalizeSceneReferences,
 )
@@ -90,13 +90,13 @@ __all__ = [
     "flistResolveTestCommands",
     "flistResolveStepScratchDirs",
     "flistValidateOutputFilePaths",
-    "fnCleanStepScratchDirs",
+    "flistCleanStepScratchDirs",
     "flistValidateReferences",
     "flistDirectoryContractWarnings",
     "flistValidateStepDirectories",
     "fnDeleteStep",
     "fnInsertStep",
-    "fnMigrateArchiveToTracking",
+    "fbMigrateArchiveToTracking",
     "fbMigrateModifiedFilesToRepoRelative",
     "fnRenumberAllReferences",
     "fnReorderStep",
@@ -311,7 +311,7 @@ def fdictLoadWorkflowFromContainer(
         baContent,
     ).hexdigest()
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
-    workflowMigrations.fnApplyMigrations(
+    workflowMigrations.fiApplyMigrations(
         dictWorkflow, sProjectRepoPath=sRepoPath,
     )
     fnMigrateLegacyRemotes(dictWorkflow)
@@ -327,7 +327,7 @@ def fdictLoadWorkflowFromContainer(
     workflowMigrations.fnEnsureStepIds(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
-    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+    _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
         connectionDocker, sContainerId, sRepoPath,
     ))
     return dictWorkflow
@@ -766,13 +766,13 @@ def _fsCheckOutputPathBoundary(sPath, sDirectory, sLabel, sKey):
 def fsResolveVariables(sTemplate, dictVariables):
     """Replace {name} tokens in sTemplate with values from dictVariables."""
 
-    def fnReplace(resultMatch):
+    def fsReplaceMatch(resultMatch):
         sToken = resultMatch.group(1)
         if sToken in dictVariables:
             return str(dictVariables[sToken])
         return resultMatch.group(0)
 
-    return re.sub(r"\{([^}]+)\}", fnReplace, sTemplate)
+    return re.sub(r"\{([^}]+)\}", fsReplaceMatch, sTemplate)
 
 
 def fdictBuildGlobalVariables(dictWorkflow, sWorkflowPath):
@@ -895,10 +895,10 @@ def fbDeriveUnnecessaryVerification(dictWorkflow):
     return bAnyChanged
 
 
-def _fnDeriveAICSLevel(dictWorkflow, filesRepo):
-    """Compute and persist the workflow's current AICS level.
+def _fnDeriveProofLevel(dictWorkflow, filesRepo):
+    """Compute and persist the workflow's current PROOF level.
 
-    Writes ``iAICSLevel`` on the dict. Called from the load-after-merge
+    Writes ``iProofLevel`` on the dict. Called from the load-after-merge
     path and from ``fnSaveWorkflowToContainer`` so the integer is
     always current with the per-step verification state. The level
     is not authoritative — the derivation is; treat the persisted
@@ -907,8 +907,8 @@ def _fnDeriveAICSLevel(dictWorkflow, filesRepo):
     conjuncts read container truth; a raw path string keeps host-clone
     semantics for legacy callers.
     """
-    from vaibify.reproducibility.levelGates import fiAICSLevel
-    dictWorkflow["iAICSLevel"] = fiAICSLevel(
+    from vaibify.reproducibility.levelGates import fiProofLevel
+    dictWorkflow["iProofLevel"] = fiProofLevel(
         dictWorkflow, filesRepo,
     )
 
@@ -978,22 +978,22 @@ def fdictGetStep(dictWorkflow, iStepIndex):
     return dict(dictWorkflow["listSteps"][iStepIndex])
 
 
-def fsRemapStepReferences(sText, fnRemap):
-    """Apply fnRemap to all {StepNN.variable} tokens in sText."""
+def fsRemapStepReferences(sText, fiRemapStepNumber):
+    """Apply fiRemapStepNumber to all {StepNN.variable} tokens in sText."""
 
-    def fnReplace(resultMatch):
+    def fsReplaceMatch(resultMatch):
         iOldNumber = int(resultMatch.group(1))
         sVariable = resultMatch.group(2)
-        iNewNumber = fnRemap(iOldNumber)
+        iNewNumber = fiRemapStepNumber(iOldNumber)
         if iNewNumber == iOldNumber:
             return resultMatch.group(0)
         return "{" + f"Step{iNewNumber:02d}" + "." + sVariable + "}"
 
-    return re.sub(S_STEP_REF_PATTERN, fnReplace, sText)
+    return re.sub(S_STEP_REF_PATTERN, fsReplaceMatch, sText)
 
 
-def fnRenumberAllReferences(dictWorkflow, fnRemap):
-    """Update all {StepNN.*} references in every step per fnRemap."""
+def fnRenumberAllReferences(dictWorkflow, fiRemapStepNumber):
+    """Update all {StepNN.*} references in every step per fiRemapStepNumber."""
     for dictStep in dictWorkflow["listSteps"]:
         for sKey in ("saDataCommands", "saTestCommands",
                      "saPlotCommands", "saPlotFiles",
@@ -1001,7 +1001,7 @@ def fnRenumberAllReferences(dictWorkflow, fnRemap):
                      "saCommands"):
             if sKey in dictStep and dictStep[sKey]:
                 dictStep[sKey] = [
-                    fsRemapStepReferences(sItem, fnRemap)
+                    fsRemapStepReferences(sItem, fiRemapStepNumber)
                     for sItem in dictStep[sKey]
                 ]
 
@@ -1009,12 +1009,12 @@ def fnRenumberAllReferences(dictWorkflow, fnRemap):
 def fnInsertStep(dictWorkflow, iPosition, dictStep):
     """Insert a step at iPosition, renumbering downstream references."""
 
-    def fnRemap(iStepNumber):
+    def fiRemapStepNumber(iStepNumber):
         if iStepNumber >= iPosition + 1:
             return iStepNumber + 1
         return iStepNumber
 
-    fnRenumberAllReferences(dictWorkflow, fnRemap)
+    fnRenumberAllReferences(dictWorkflow, fiRemapStepNumber)
     dictWorkflow["listSteps"].insert(iPosition, dictStep)
 
 
@@ -1033,13 +1033,13 @@ def fnDeleteStep(dictWorkflow, iStepIndex):
         raise IndexError(f"Step index {iStepIndex} out of range")
     iDeletedNumber = iStepIndex + 1
 
-    def fnRemap(iStepNumber):
+    def fiRemapStepNumber(iStepNumber):
         if iStepNumber > iDeletedNumber:
             return iStepNumber - 1
         return iStepNumber
 
     dictWorkflow["listSteps"].pop(iStepIndex)
-    fnRenumberAllReferences(dictWorkflow, fnRemap)
+    fnRenumberAllReferences(dictWorkflow, fiRemapStepNumber)
 
 
 def _fnValidateReorderIndices(iFromIndex, iToIndex, iMaxIndex):
@@ -1069,14 +1069,14 @@ def fnReorderStep(dictWorkflow, iFromIndex, iToIndex):
     _fnValidateReorderIndices(iFromIndex, iToIndex, len(listSteps) - 1)
     iFromNumber = iFromIndex + 1
 
-    def fnRemap(iStepNumber):
+    def fiRemapStepNumber(iStepNumber):
         return _fiRemapReorder(
             iStepNumber, iFromNumber, iFromIndex, iToIndex
         )
 
     dictStep = listSteps.pop(iFromIndex)
     listSteps.insert(iToIndex, dictStep)
-    fnRenumberAllReferences(dictWorkflow, fnRemap)
+    fnRenumberAllReferences(dictWorkflow, fiRemapStepNumber)
 
 
 def fnAttachComputedTrackedPaths(dictWorkflow):
@@ -1165,7 +1165,7 @@ def fnSaveWorkflowToContainer(
     fnMigrateLegacyRemotes(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
-    _fnDeriveAICSLevel(dictWorkflow, _ffilesContainerRepo(
+    _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
         connectionDocker, sContainerId, sRepoPath,
     ))
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
@@ -1564,7 +1564,7 @@ def flistResolveStepScratchDirs(dictStep, dictVariables):
     return listResolved
 
 
-def _fnRmRfDirectory(connectionDocker, sContainerId, sAbsPath):
+def _fiRmRfDirectory(connectionDocker, sContainerId, sAbsPath):
     """rm -rf one absolute path inside the container; return exit code."""
     sShellSafe = sAbsPath.replace("'", "'\"'\"'")
     sCommand = f"rm -rf -- '{sShellSafe}'"
@@ -1574,7 +1574,7 @@ def _fnRmRfDirectory(connectionDocker, sContainerId, sAbsPath):
     return iExitCode
 
 
-def fnCleanStepScratchDirs(
+def flistCleanStepScratchDirs(
     connectionDocker, sContainerId, dictStep, dictVariables,
 ):
     """Recursively delete a step's saScratchDirs in the container.
@@ -1589,7 +1589,7 @@ def fnCleanStepScratchDirs(
     """
     listAbsPaths = flistResolveStepScratchDirs(dictStep, dictVariables)
     return [
-        (sAbsPath, _fnRmRfDirectory(
+        (sAbsPath, _fiRmRfDirectory(
             connectionDocker, sContainerId, sAbsPath,
         ))
         for sAbsPath in listAbsPaths
@@ -2071,7 +2071,7 @@ def _fsWorkflowDepCacheKey(dictWorkflow):
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
-def _fdepCacheGet(sKey, sField):
+def _fdictDepCacheGet(sKey, sField):
     """Return the cached field value for sKey, or None on miss."""
     dictEntry = _DICT_DEP_CACHE.get(sKey)
     if dictEntry is None:
@@ -2181,7 +2181,7 @@ def fdictBuildDirectDependencies(dictWorkflow):
     ``_I_DEP_CACHE_MAX_ENTRIES`` entries.
     """
     sKey = _fsWorkflowDepCacheKey(dictWorkflow)
-    dictCached = _fdepCacheGet(sKey, "dictDirect")
+    dictCached = _fdictDepCacheGet(sKey, "dictDirect")
     if dictCached is not None:
         return dictCached
     dictDirect = _fdictComputeDirectDependencies(dictWorkflow)
@@ -2244,7 +2244,7 @@ def fdictBuildDownstreamMap(dictWorkflow):
     and the closure are cached under the same workflow-hash key.
     """
     sKey = _fsWorkflowDepCacheKey(dictWorkflow)
-    dictCached = _fdepCacheGet(sKey, "dictDownstream")
+    dictCached = _fdictDepCacheGet(sKey, "dictDownstream")
     if dictCached is not None:
         return dictCached
     dictDownstream = _fdictComputeDownstreamMap(dictWorkflow)

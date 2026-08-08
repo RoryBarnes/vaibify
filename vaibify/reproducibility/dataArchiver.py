@@ -72,7 +72,7 @@ def fnArchiveOutputs(config, dictWorkflow, sWorkdir):
 def fnGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
                                       sContainerName=None,
                                       listHostBinaries=None):
-    """Write the three-tier AICS Level 3 reproducibility envelope.
+    """Write the three-tier PROOF Level 3 reproducibility envelope.
 
     ``filesRepo`` is a project-repo path string (host clone) or a
     repo-file adapter (container). Tier 1 writes ``MANIFEST.sha256``

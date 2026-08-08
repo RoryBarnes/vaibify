@@ -117,7 +117,7 @@ def _fnEmitStepDetail(iStep, listSteps, bJson):
     "--json", "bJson", is_flag=True, default=False,
     help="Output in JSON format.",
 )
-def workflow(sProjectName, iStep, bJson):
+def fnWorkflowCommand(sProjectName, iStep, bJson):
     """Print workflow summary or step details."""
     configProject = fconfigResolveProject(sProjectName)
     connectionDocker = fconnectionRequireDocker()

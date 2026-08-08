@@ -96,7 +96,7 @@ def testMatchedGenerationRecordDecrementsCounters():
         iLiveConnectionCount=2, iLivePipelineConnectionCount=1,
     )}
     recordConnection = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     containerOwnership.fnDecrementLiveConnectionForRecord(
@@ -115,7 +115,7 @@ def testStaleGenerationRecordDecrementsNothing():
     )
     dictOwners = {S_PROJECT_NAME: recordOwner}
     recordStale = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     containerOwnership.fnDecrementLiveConnectionForRecord(
@@ -137,7 +137,7 @@ def testUnownedGenerationZeroNeverMatchesARealOwner():
     ) == 0
     dictOwners = {S_PROJECT_NAME: _frecordOwner(iLiveConnectionCount=1)}
     recordPreClaim = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=0, sLane=containerOwnership.S_LANE_TERMINAL,
     )
     containerOwnership.fnDecrementLiveConnectionForRecord(
@@ -153,11 +153,11 @@ def testSessionSocketIndexRegistersAndDrainsPerSession():
     """Records accumulate per session; the emptied set drops its key."""
     dictSockets = containerOwnership.fdictCreateSessionSocketIndex()
     recordFirst = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     recordSecond = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="session-a",
+        websocket=object(), sBrowserSessionId="session-a",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_TERMINAL,
     )
     containerOwnership.fnRegisterSessionSocket(dictSockets, recordFirst)
@@ -173,7 +173,7 @@ def testSessionSocketIndexIgnoresAnonymousAndAbsentRecords():
     """No session id, no index entry; None inputs are tolerated."""
     dictSockets = containerOwnership.fdictCreateSessionSocketIndex()
     recordAnonymous = containerOwnership.ConnectionRecord(
-        connection=object(), sBrowserSessionId="",
+        websocket=object(), sBrowserSessionId="",
         iOwnerGeneration=1, sLane=containerOwnership.S_LANE_PIPELINE,
     )
     containerOwnership.fnRegisterSessionSocket(dictSockets, recordAnonymous)
@@ -225,14 +225,14 @@ def testSessionOwnerIndexTracksClaimAndRelease():
     """Claim writes the reverse index; a lease-proven release drops it."""
     dictOwners = {}
     dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
-    iStatusCode, dictPayload = containerOwnership.ftdictClaim(
+    iStatusCode, dictPayload = containerOwnership.ftClaim(
         dictOwners, S_PROJECT_NAME, "", iPort=8050,
         sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         dictSessionOwner=dictSessionOwner,
     )
     assert iStatusCode == 200
     assert dictSessionOwner == {"session-a": S_PROJECT_NAME}
-    bReleased = containerOwnership.fnReleaseOwnership(
+    bReleased = containerOwnership.fbReleaseOwnership(
         dictOwners, S_PROJECT_NAME, dictPayload["sLeaseId"],
         sBrowserSessionId="session-a", dictSessionOwner=dictSessionOwner,
     )
@@ -244,12 +244,12 @@ def testSessionOwnerIndexSurvivesAForeignReleaseAttempt():
     """A refused release must leave the reverse index untouched."""
     dictOwners = {}
     dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
-    containerOwnership.ftdictClaim(
+    containerOwnership.ftClaim(
         dictOwners, S_PROJECT_NAME, "", iPort=8050,
         sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         dictSessionOwner=dictSessionOwner,
     )
-    bReleased = containerOwnership.fnReleaseOwnership(
+    bReleased = containerOwnership.fbReleaseOwnership(
         dictOwners, S_PROJECT_NAME, "not-the-lease",
         sBrowserSessionId="session-b", dictSessionOwner=dictSessionOwner,
     )
@@ -261,7 +261,7 @@ def testReaperDropsTheSessionOwnerIndexEntry():
     """A reaped ownership also clears its cardinality index entry."""
     dictOwners = {}
     dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
-    containerOwnership.ftdictClaim(
+    containerOwnership.ftClaim(
         dictOwners, S_PROJECT_NAME, "", iPort=8050,
         sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         dictSessionOwner=dictSessionOwner,
@@ -293,7 +293,7 @@ async def testReleaseExplicitPreservesThePrimitiveVerdicts():
     foreign lease False with the record retained, unknown name False."""
     dictOwners = {}
     dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
-    _, dictPayload = containerOwnership.ftdictClaim(
+    _, dictPayload = containerOwnership.ftClaim(
         dictOwners, S_PROJECT_NAME, "", iPort=8050,
         sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         dictSessionOwner=dictSessionOwner,
@@ -360,7 +360,7 @@ def testNoRouteModuleCallsTheReleasePrimitivesDirectly():
             continue
         sSource = pathFile.read_text(encoding="utf-8")
         if (
-            "fnReleaseOwnership(" in sSource
+            "fbReleaseOwnership(" in sSource
             or "_fnForceReleaseOwnership(" in sSource
         ):
             listOffenders.append(pathFile.name)
@@ -394,13 +394,13 @@ def testClaimPrimitiveRefusesASecondContainerForABoundSession():
     """One session, two containers: the second claim is a named 409."""
     dictOwners = {}
     dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
-    iFirstStatus, _ = containerOwnership.ftdictClaim(
+    iFirstStatus, _ = containerOwnership.ftClaim(
         dictOwners, S_PROJECT_NAME, "", iPort=8050,
         sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         dictSessionOwner=dictSessionOwner,
     )
     assert iFirstStatus == 200
-    iSecondStatus, dictRefusal = containerOwnership.ftdictClaim(
+    iSecondStatus, dictRefusal = containerOwnership.ftClaim(
         dictOwners, "SecondProject", "", iPort=8050,
         sContainerId="cid-fedcba987654", sBrowserSessionId="session-a",
         dictSessionOwner=dictSessionOwner,
@@ -419,7 +419,7 @@ def testUnboundTransitionalClaimsBypassTheCardinalityCheck():
     dictOwners = {}
     dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
     for sName, iPort in ((S_PROJECT_NAME, 8050), ("SecondProject", 8051)):
-        iStatusCode, _ = containerOwnership.ftdictClaim(
+        iStatusCode, _ = containerOwnership.ftClaim(
             dictOwners, sName, "", iPort=iPort,
             sBrowserSessionId="", dictSessionOwner=dictSessionOwner,
         )
@@ -437,14 +437,14 @@ async def testClaimWithCardinalityAuthorityPreservesTheVerdicts():
     dictSessionOwner = containerOwnership.fdictCreateSessionOwnerIndex()
     stateStub = _StateStub(dictOwners, dictSessionOwner)
     iStatusCode, dictPayload = (
-        await sessionLifecycle.ftdictClaimWithCardinality(
+        await sessionLifecycle.ftClaimWithCardinality(
             stateStub, S_PROJECT_NAME, "", 8050,
             sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         )
     )
     assert iStatusCode == 200
     iReclaimStatus, dictReclaim = (
-        await sessionLifecycle.ftdictClaimWithCardinality(
+        await sessionLifecycle.ftClaimWithCardinality(
             stateStub, S_PROJECT_NAME, dictPayload["sLeaseId"], 8050,
             sContainerId=S_CONTAINER_ID, sBrowserSessionId="session-a",
         )
@@ -452,7 +452,7 @@ async def testClaimWithCardinalityAuthorityPreservesTheVerdicts():
     assert iReclaimStatus == 200
     assert dictReclaim["sLeaseId"] == dictPayload["sLeaseId"]
     iRefusedStatus, dictRefusal = (
-        await sessionLifecycle.ftdictClaimWithCardinality(
+        await sessionLifecycle.ftClaimWithCardinality(
             stateStub, "SecondProject", "", 8050,
             sBrowserSessionId="session-a",
         )
@@ -467,7 +467,7 @@ def testNoRouteModuleCallsTheClaimPrimitiveDirectly():
 
     The claim commit must acquire container-mutation → cardinality in
     canonical order, so a route calling
-    ``containerOwnership.ftdictClaim(`` directly would bypass the lock
+    ``containerOwnership.ftClaim(`` directly would bypass the lock
     that makes the cardinality read-check-write atomic. Mirrors
     ``testNoRouteModuleCallsTheReleasePrimitivesDirectly``.
     """
@@ -478,7 +478,7 @@ def testNoRouteModuleCallsTheClaimPrimitiveDirectly():
         pathFile.name
         for pathFile in sorted(pathGui.rglob("*.py"))
         if pathFile.name not in setAllowedFiles
-        and "ftdictClaim(" in pathFile.read_text(encoding="utf-8")
+        and "ftClaim(" in pathFile.read_text(encoding="utf-8")
     ]
     assert listOffenders == [], (
         "the claim primitive is called outside the sessionLifecycle "

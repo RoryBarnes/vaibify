@@ -95,7 +95,7 @@ def test_second_claim_by_the_same_session_is_refused(appHub):
     cardinality authority refuses with 409, the refusal names A so the
     message is actionable, A stays owned by S, and B stays unowned.
 
-    Kills: In containerOwnership.ftdictClaim, replace
+    Kills: In containerOwnership.ftClaim, replace
     ``if sHeldElsewhereName:`` with ``if False:`` so the cardinality
     read-check never refuses and one browser session accumulates two
     owner records.
@@ -137,7 +137,7 @@ async def test_concurrent_claims_on_two_containers_resolve_to_one_record(
     ``dictSessionOwner`` ends with exactly one entry for S — the case-19
     race can never leave one session holding two records.
 
-    Kills: In containerOwnership.ftdictClaim, replace
+    Kills: In containerOwnership.ftClaim, replace
     ``if sHeldElsewhereName:`` with ``if False:`` so the cardinality
     read-check never refuses and both racing claims are granted.
     """

@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from vaibify.cli.commandRevoke import revoke
+from vaibify.cli.commandRevoke import fnRevokeCommand
 from vaibify.reproducibility.githubAuth import fdictRevokeGitHubToken
 from vaibify.reproducibility.overleafAuth import fdictRevokeOverleafToken
 from vaibify.reproducibility.zenodoClient import fdictRevokeZenodoToken
@@ -137,7 +137,7 @@ def test_cli_revoke_github_succeeds_when_keyring_cleared():
         "vaibify.config.secretManager.fnDeleteSecret",
     ):
         result = runner.invoke(
-            revoke,
+            fnRevokeCommand,
             ["github", "--keyring-slot", "github_token:owner/repo"],
         )
     assert result.exit_code == 0
@@ -150,7 +150,7 @@ def test_cli_revoke_overleaf_exits_zero_on_success():
     with patch(
         "vaibify.config.secretManager.fnDeleteSecret",
     ):
-        result = runner.invoke(revoke, ["overleaf"])
+        result = runner.invoke(fnRevokeCommand, ["overleaf"])
     assert result.exit_code == 0
     assert "overleaf" in result.output
 
@@ -160,7 +160,7 @@ def test_cli_revoke_zenodo_targets_sandbox_by_default():
     with patch(
         "vaibify.config.secretManager.fnDeleteSecret",
     ) as mockDelete:
-        result = runner.invoke(revoke, ["zenodo"])
+        result = runner.invoke(fnRevokeCommand, ["zenodo"])
     assert result.exit_code == 0
     mockDelete.assert_called_once_with(
         "zenodo_token_sandbox", "keyring",
@@ -173,7 +173,7 @@ def test_cli_revoke_zenodo_targets_production_when_asked():
         "vaibify.config.secretManager.fnDeleteSecret",
     ) as mockDelete:
         result = runner.invoke(
-            revoke, ["zenodo", "--instance", "production"],
+            fnRevokeCommand, ["zenodo", "--instance", "production"],
         )
     assert result.exit_code == 0
     mockDelete.assert_called_once_with(
@@ -187,11 +187,11 @@ def test_cli_revoke_exits_nonzero_when_keyring_delete_fails():
         "vaibify.config.secretManager.fnDeleteSecret",
         side_effect=RuntimeError("keyring locked"),
     ):
-        result = runner.invoke(revoke, ["overleaf"])
+        result = runner.invoke(fnRevokeCommand, ["overleaf"])
     assert result.exit_code != 0
 
 
 def test_cli_revoke_rejects_unknown_service():
     runner = CliRunner()
-    result = runner.invoke(revoke, ["dropbox"])
+    result = runner.invoke(fnRevokeCommand, ["dropbox"])
     assert result.exit_code != 0

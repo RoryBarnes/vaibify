@@ -142,7 +142,7 @@ def ftParsePositionalArgs(listArgs):
             sKey, sValue = sArg.split("=", 1)
             if sKey.startswith("--"):
                 sKey = _fsResolveLongFlagAlias(sKey)
-            dictBody[sKey] = _fnCoerceScalar(sValue)
+            dictBody[sKey] = _fjsonCoerceScalar(sValue)
         elif sArg.startswith("{"):
             dictBody.update(json.loads(sArg))
         elif (
@@ -186,7 +186,7 @@ def _flistMergeSpaceSeparatedFlags(listArgs):
     return listMerged
 
 
-def _fnCoerceScalar(sValue):
+def _fjsonCoerceScalar(sValue):
     """Coerce CLI string to int/float/bool/JSON where obvious."""
     if sValue.lower() in ("true", "false"):
         return sValue.lower() == "true"
@@ -363,7 +363,7 @@ def _fsAppendQueryString(sUrl, dictParams):
     return sUrl + sJoiner + sQuery
 
 
-def fnSendHttp(dictTarget, sToken, sMethod, bJsonMode):
+def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
     """Perform the HTTP call and print the response.
 
     For GET requests, fields parsed from key=value CLI args become
@@ -388,13 +388,13 @@ def fnSendHttp(dictTarget, sToken, sMethod, bJsonMode):
             _fnPrintHttpBody(resp.read(), bJsonMode)
             return 0
     except urllib.error.HTTPError as errHttp:
-        return _fnHandleHttpError(errHttp, bJsonMode)
+        return _fiHandleHttpError(errHttp, bJsonMode)
     except (urllib.error.URLError, socket.timeout, OSError):
         fnFail("vaibify host unreachable at " + dictTarget["sUrl"]
                + "; reconnect the container from the dashboard", iCode=4)
 
 
-def _fnHandleHttpError(errHttp, bJsonMode):
+def _fiHandleHttpError(errHttp, bJsonMode):
     if errHttp.code == 401:
         fnFail("vaibify session token rejected; reconnect the "
                "container from the dashboard", iCode=4)
@@ -434,7 +434,7 @@ def ftWsEndpoint(dictEnv):
     return tParsed.hostname, iPort, sPath, bTls
 
 
-def fnWebsocketHandshake(sockConn, sHost, iPort, sPath):
+def fnWebsocketHandshake(socketConnection, sHost, iPort, sPath):
     """Perform an RFC 6455 client handshake over an open socket."""
     sKey = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
     sRequest = (
@@ -443,10 +443,10 @@ def fnWebsocketHandshake(sockConn, sHost, iPort, sPath):
         "Upgrade: websocket\r\nConnection: Upgrade\r\n"
         "Sec-WebSocket-Key: " + sKey + "\r\n"
         "Sec-WebSocket-Version: 13\r\n\r\n")
-    sockConn.sendall(sRequest.encode("ascii"))
+    socketConnection.sendall(sRequest.encode("ascii"))
     dataResponse = b""
     while b"\r\n\r\n" not in dataResponse:
-        dataChunk = sockConn.recv(4096)
+        dataChunk = socketConnection.recv(4096)
         if not dataChunk:
             fnFail("websocket handshake failed (empty response)", iCode=4)
         dataResponse += dataChunk
@@ -459,17 +459,17 @@ def fnWebsocketHandshake(sockConn, sHost, iPort, sPath):
                    "ascii", errors="replace"), iCode=4)
 
 
-def fnSendWsText(sockConn, sPayload):
+def fnSendWsText(socketConnection, sPayload):
     """Write one masked text frame to the open WebSocket."""
-    _fnSendWsFrame(sockConn, 0x81, sPayload.encode("utf-8"))
+    _fnSendWsFrame(socketConnection, 0x81, sPayload.encode("utf-8"))
 
 
-def fnSendWsPong(sockConn, dataPayload):
+def fnSendWsPong(socketConnection, dataPayload):
     """Reply to a server PING with a masked PONG echoing its payload."""
-    _fnSendWsFrame(sockConn, 0x8A, dataPayload)
+    _fnSendWsFrame(socketConnection, 0x8A, dataPayload)
 
 
-def _fnSendWsFrame(sockConn, iOpcodeByte, dataPayload):
+def _fnSendWsFrame(socketConnection, iOpcodeByte, dataPayload):
     """Write one masked client frame with the given opcode and payload."""
     dataMask = secrets.token_bytes(4)
     dataMasked = bytes(b ^ dataMask[i % 4]
@@ -482,20 +482,20 @@ def _fnSendWsFrame(sockConn, iOpcodeByte, dataPayload):
         dataHeader += bytes([0x80 | 126]) + iLength.to_bytes(2, "big")
     else:
         dataHeader += bytes([0x80 | 127]) + iLength.to_bytes(8, "big")
-    sockConn.sendall(dataHeader + dataMask + dataMasked)
+    socketConnection.sendall(dataHeader + dataMask + dataMasked)
 
 
-def _fnRecvExact(sockConn, iCount):
+def _fbaRecvExact(socketConnection, iCount):
     dataBuffer = b""
     while len(dataBuffer) < iCount:
-        dataChunk = sockConn.recv(iCount - len(dataBuffer))
+        dataChunk = socketConnection.recv(iCount - len(dataBuffer))
         if not dataChunk:
             return b""
         dataBuffer += dataChunk
     return dataBuffer
 
 
-def ftRecvWsFrame(sockConn):
+def ftRecvWsFrame(socketConnection):
     """Read one unmasked server frame.
 
     Returns a ``(sKind, dataPayload)`` tuple where ``sKind`` is one of
@@ -504,16 +504,16 @@ def ftRecvWsFrame(sockConn):
     frames it is the raw ``bytes`` that must be echoed back in the PONG
     per RFC 6455 §5.5.3.
     """
-    dataHeader = _fnRecvExact(sockConn, 2)
+    dataHeader = _fbaRecvExact(socketConnection, 2)
     if len(dataHeader) < 2:
         return ("close", b"")
     iOpcode = dataHeader[0] & 0x0F
     iLength = dataHeader[1] & 0x7F
     if iLength == 126:
-        iLength = int.from_bytes(_fnRecvExact(sockConn, 2), "big")
+        iLength = int.from_bytes(_fbaRecvExact(socketConnection, 2), "big")
     elif iLength == 127:
-        iLength = int.from_bytes(_fnRecvExact(sockConn, 8), "big")
-    dataPayload = _fnRecvExact(sockConn, iLength) if iLength else b""
+        iLength = int.from_bytes(_fbaRecvExact(socketConnection, 8), "big")
+    dataPayload = _fbaRecvExact(socketConnection, iLength) if iLength else b""
     if iOpcode == 0x8:
         return ("close", b"")
     if iOpcode == 0x9:
@@ -523,26 +523,26 @@ def ftRecvWsFrame(sockConn):
     return ("text", dataPayload.decode("utf-8", errors="replace"))
 
 
-def fnRunWebsocket(dictEnv, dictPayload, bJsonMode):
+def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
     """Open the pipeline socket, send one action, stream events."""
     sHost, iPort, sPath, bTls = ftWsEndpoint(dictEnv)
     if bTls:
         fnFail("vaibify-do does not support TLS in the in-container "
                "WebSocket path; use plain http host-bridge url", iCode=4)
     try:
-        sockConn = socket.create_connection(
+        socketConnection = socket.create_connection(
             (sHost, iPort), timeout=F_CONNECT_TIMEOUT)
     except (OSError, socket.timeout):
         fnFail("vaibify host unreachable at " + dictEnv["VAIBIFY_HOST_URL"]
                + "; reconnect the container from the dashboard", iCode=4)
-    sockConn.settimeout(F_READ_TIMEOUT)
-    fnEnableTcpKeepalive(sockConn)
-    fnWebsocketHandshake(sockConn, sHost, iPort, sPath)
-    fnSendWsText(sockConn, json.dumps(dictPayload))
-    return _fnStreamWsEvents(sockConn, bJsonMode)
+    socketConnection.settimeout(F_READ_TIMEOUT)
+    fnEnableTcpKeepalive(socketConnection)
+    fnWebsocketHandshake(socketConnection, sHost, iPort, sPath)
+    fnSendWsText(socketConnection, json.dumps(dictPayload))
+    return _fiStreamWsEvents(socketConnection, bJsonMode)
 
 
-def fnEnableTcpKeepalive(sockConn):
+def fnEnableTcpKeepalive(socketConnection):
     """Enable TCP keepalives so the Docker NAT can't silently drop us.
 
     The container runs Linux, so the per-connection knobs
@@ -550,23 +550,23 @@ def fnEnableTcpKeepalive(sockConn):
     available; each is guarded so this module still imports on macOS
     for unit tests.
     """
-    sockConn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    socketConnection.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
     for sName, iValue in (
         ("TCP_KEEPIDLE", 60), ("TCP_KEEPINTVL", 15), ("TCP_KEEPCNT", 4),
     ):
         iOpt = getattr(socket, sName, None)
         if iOpt is not None:
-            sockConn.setsockopt(socket.IPPROTO_TCP, iOpt, iValue)
+            socketConnection.setsockopt(socket.IPPROTO_TCP, iOpt, iValue)
 
 
-def _fnStreamWsEvents(sockConn, bJsonMode):
+def _fiStreamWsEvents(socketConnection, bJsonMode):
     """Read events until 'completed' or error; return exit code."""
     while True:
-        sKind, dataFrame = ftRecvWsFrame(sockConn)
+        sKind, dataFrame = ftRecvWsFrame(socketConnection)
         if sKind == "close":
             return 1
         if sKind == "ping":
-            fnSendWsPong(sockConn, dataFrame)
+            fnSendWsPong(socketConnection, dataFrame)
             continue
         if sKind == "skip":
             continue
@@ -638,13 +638,13 @@ def fnDispatch(dictEntry, listArgs, dictEnv, bJsonMode):
     """Send the action and exit with the appropriate code."""
     if dictEntry["sMethod"] == "WS":
         dictPayload = fdictResolveWsPayload(dictEntry, listArgs)
-        sys.exit(fnRunWebsocket(dictEnv, dictPayload, bJsonMode))
+        sys.exit(fiRunWebsocket(dictEnv, dictPayload, bJsonMode))
     dictTarget = fdictResolveHttpTarget(dictEntry, listArgs, dictEnv)
-    sys.exit(fnSendHttp(dictTarget, dictEnv["VAIBIFY_SESSION_TOKEN"],
+    sys.exit(fiSendHttpRequest(dictTarget, dictEnv["VAIBIFY_SESSION_TOKEN"],
                         dictEntry["sMethod"], bJsonMode))
 
 
-def fnParseArguments():
+def fnamespaceParseArguments():
     """Build the argparse parser for vaibify-do."""
     parser = argparse.ArgumentParser(
         prog="vaibify-do",
@@ -687,7 +687,7 @@ def fnRejectGlobalFlagsInRemainder(listArgs):
 
 
 def main():
-    args = fnParseArguments()
+    args = fnamespaceParseArguments()
     fnRejectGlobalFlagsInRemainder(args.listArgs)
     dictCatalog = fdictReadCatalog()
     if args.list:

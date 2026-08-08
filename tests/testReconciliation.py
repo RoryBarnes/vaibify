@@ -309,7 +309,7 @@ def _fnCrashMidExecOperationInChildProcess(
     import vaibify.config.operationJournal as childJournalModule
     childLockModule._S_LOCK_DIRECTORY = sLockDirectory
     childJournalModule._S_JOURNAL_DIRECTORY = sJournalDirectory
-    childLockModule.fnAcquireContainerLock(sProjectName, 8123)
+    childLockModule.ffileAcquireContainerLock(sProjectName, 8123)
     sOperationId = childJournalModule.fsPrepareOperation(
         sProjectName, "exec", "container-side command",
     )
@@ -339,7 +339,7 @@ def test_crash_time_transaction_clears_the_quarantine_and_restores_claim():
     """A SIGKILLed hub's quarantine is cleared by the real transaction."""
     _fnCrashChildMidOperation()
     with pytest.raises(containerLock.ContainerQuarantinedError):
-        containerLock.fnAcquireContainerLock(S_PROJECT, 8200)
+        containerLock.ffileAcquireContainerLock(S_PROJECT, 8200)
     setExpectedIds = set(
         fdictReadJournalOutcome(S_PROJECT)["dictOperations"]
     )
@@ -348,7 +348,7 @@ def test_crash_time_transaction_clears_the_quarantine_and_restores_claim():
     )
     assert dictProven["bProven"] is True
     assert not os.path.exists(fsJournalPathFor(S_PROJECT))
-    fileHandle = containerLock.fnAcquireContainerLock(S_PROJECT, 8200)
+    fileHandle = containerLock.ffileAcquireContainerLock(S_PROJECT, 8200)
     containerLock.fnReleaseContainerLock(fileHandle)
 
 
@@ -366,7 +366,7 @@ def test_crash_time_transaction_refuses_and_keeps_the_marker_on_no_proof():
 
 def test_crash_time_transaction_routes_to_the_live_holder_instead():
     """While a live process holds the flock the crash path refuses."""
-    fileHandleHolder = containerLock.fnAcquireContainerLock(S_PROJECT, 8300)
+    fileHandleHolder = containerLock.ffileAcquireContainerLock(S_PROJECT, 8300)
     try:
         with pytest.raises(ReconciliationRefusedError) as excInfo:
             fdictReconcileCrashTimeJournal(S_PROJECT, None, set())
@@ -448,7 +448,7 @@ def test_break_glass_refuses_a_hash_mismatch_and_clears_on_the_match():
 
 
 def test_break_glass_refuses_while_a_live_process_holds_the_flock():
-    fileHandleHolder = containerLock.fnAcquireContainerLock(S_PROJECT, 8300)
+    fileHandleHolder = containerLock.ffileAcquireContainerLock(S_PROJECT, 8300)
     _fnWriteRawJournalBytes(S_PROJECT, b"\x00the malformed marker")
     try:
         with pytest.raises(ReconciliationRefusedError):

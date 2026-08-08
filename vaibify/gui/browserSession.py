@@ -40,7 +40,7 @@ __all__ = [
     "fnExpireCapabilitiesForSession",
     "ftMintDetachedSessionRecord",
     "fnDiscardSessionRecord",
-    "fnRevokeSessionById",
+    "fbRevokeSessionById",
     "fnStoreTransferResult",
     "fbValidateCredential",
     "fsSessionIdForCredential",
@@ -231,17 +231,17 @@ def ftRedeemCapability(dictStore, sCapability):
             return (recordCap.sIssuedSessionId, recordCap.sIssuedCredential)
         if recordCap.sState != "ARMED":
             return (None, None)
-        return _tMintSessionForCapability(dictStore, recordCap, fNow)
+        return _ftMintSessionForCapability(dictStore, recordCap, fNow)
 
 
-def _tMintSessionForCapability(dictStore, recordCap, fNow):
+def _ftMintSessionForCapability(dictStore, recordCap, fNow):
     """Mint the session for a first redemption. Caller holds the lock.
 
     A refused mint leaves the capability ARMED: the researcher can
     redeem it once a session frees up, which is the whole point of
     refusing rather than evicting.
     """
-    sSessionId, sCredential = _tCreateSessionRecordLocked(dictStore, fNow)
+    sSessionId, sCredential = _ftCreateSessionRecordLocked(dictStore, fNow)
     if sSessionId is None:
         return (None, None)
     recordCap.sState = "REDEEMED"
@@ -250,7 +250,7 @@ def _tMintSessionForCapability(dictStore, recordCap, fNow):
     return (sSessionId, sCredential)
 
 
-def _tCreateSessionRecordLocked(dictStore, fNow):
+def _ftCreateSessionRecordLocked(dictStore, fNow):
     """Create and store a fresh session record, or refuse at the cap.
 
     Returns ``(None, None)`` when the hub already holds
@@ -382,7 +382,7 @@ def ftMintDetachedSessionRecord(dictStore):
     on any pre-commit refusal.
     """
     with _lockBrowserSessions:
-        return _tCreateSessionRecordLocked(dictStore, time.monotonic())
+        return _ftCreateSessionRecordLocked(dictStore, time.monotonic())
 
 
 def fnDiscardSessionRecord(dictStore, sCredential):
@@ -391,7 +391,7 @@ def fnDiscardSessionRecord(dictStore, sCredential):
         dictStore.get("dictSessionsByCredential", {}).pop(sCredential, None)
 
 
-def fnRevokeSessionById(dictStore, sSessionId):
+def fbRevokeSessionById(dictStore, sSessionId):
     """Revoke every ACTIVE record of a session id; return True if any."""
     if not sSessionId:
         return False

@@ -13,7 +13,7 @@ from vaibify.gui.fileStatusManager import (
     _fdictParseStatLines,
     _fdictStatViaPathfile,
     _fiMarkerMtime,
-    _flistDetectAndInvalidate,
+    _fdictDetectAndInvalidate,
     _flistNewerPaths,
     _fnInvalidateStepFiles,
 )
@@ -283,11 +283,11 @@ def test_fdictDetectChangedFiles_returns_empty_on_first_poll():
 
 
 # ---------------------------------------------------------------
-# _flistDetectAndInvalidate: saves after invalidation (lines 698-701)
+# _fdictDetectAndInvalidate: saves after invalidation (lines 698-701)
 # ---------------------------------------------------------------
 
 
-def test_flistDetectAndInvalidate_saves_when_changes_found():
+def test_fdictDetectAndInvalidate_saves_when_changes_found():
     # Prime with an old snapshot so the next poll sees a change.
     mockSave = MagicMock()
     dictCtx = {
@@ -309,7 +309,7 @@ def test_flistDetectAndInvalidate_saves_when_changes_found():
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
         return_value=False,
     ):
-        dictResult = _flistDetectAndInvalidate(
+        dictResult = _fdictDetectAndInvalidate(
             dictCtx, "cid", dictWorkflow,
             {"/ws/step0/out.dat": "200"},
             dictVars={"sPlotDirectory": "Plot", "sFigureType": "pdf"},
@@ -319,7 +319,7 @@ def test_flistDetectAndInvalidate_saves_when_changes_found():
     mockSave.assert_called_once_with("cid", dictWorkflow)
 
 
-def test_flistDetectAndInvalidate_no_save_when_no_changes():
+def test_fdictDetectAndInvalidate_no_save_when_no_changes():
     mockSave = MagicMock()
     dictCtx = {
         "save": mockSave,
@@ -339,7 +339,7 @@ def test_flistDetectAndInvalidate_no_save_when_no_changes():
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
         return_value=False,
     ):
-        dictResult = _flistDetectAndInvalidate(
+        dictResult = _fdictDetectAndInvalidate(
             dictCtx, "cid",
             {"listSteps": [dictStep]},
             {"/ws/step0/out.dat": "100"},  # Same mtime.
@@ -493,7 +493,7 @@ def test_fnInvalidateStepFiles_no_repo_root_keeps_paths():
     ]
 
 
-def test_flistDetectAndInvalidate_threads_repo_root_into_persisted_list():
+def test_fdictDetectAndInvalidate_threads_repo_root_into_persisted_list():
     """End-to-end: detect a change and persist a repo-relative entry."""
     mockSave = MagicMock()
     dictCtx = {
@@ -518,7 +518,7 @@ def test_flistDetectAndInvalidate_threads_repo_root_into_persisted_list():
         "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
         return_value=False,
     ):
-        _flistDetectAndInvalidate(
+        _fdictDetectAndInvalidate(
             dictCtx, "cid", dictWorkflow,
             {"/workspace/proj/step0/out.dat": "200"},
             dictVars={

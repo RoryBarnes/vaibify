@@ -1,4 +1,4 @@
-"""Targeted unit tests for AICS-ladder lines uncovered by Phase 1-3 tests.
+"""Targeted unit tests for PROOF-ladder lines uncovered by Phase 1-3 tests.
 
 Each test exercises one or more lines flagged as missing by the
 coverage run on commits 6f91f9c (Phase 1), eec96c4 (Phase 2),
@@ -18,7 +18,7 @@ from vaibify.reproducibility import scheduledReverify
 from vaibify.reproducibility.aiDeclarationStep import (
     S_DEFAULT_DECLARATION_FILENAME,
     fbDeclarationFileExists,
-    fnWriteDeclarationTemplate,
+    fsWriteDeclarationTemplate,
 )
 from vaibify.reproducibility.determinismGate import (
     flistAuditScriptAntiPatterns,
@@ -37,7 +37,7 @@ from vaibify.reproducibility.l3Attestation import (
     fdictBuildAttestation,
     fdictReadAttestation,
     flistReadAttestationHistory,
-    fnInvalidateAttestation,
+    fbInvalidateAttestation,
     fnWriteAttestation,
 )
 from vaibify.reproducibility.levelGates import (
@@ -81,13 +81,13 @@ def test_fbDeclarationFileExists_empty_relative_path_returns_false():
 def test_fnWriteDeclarationTemplate_rejects_empty_project_repo():
     """Validation: empty project repo raises ValueError before any IO."""
     with pytest.raises(ValueError, match="project repo path or adapter"):
-        fnWriteDeclarationTemplate("", "AI_USAGE.md")
+        fsWriteDeclarationTemplate("", "AI_USAGE.md")
 
 
 def test_fnWriteDeclarationTemplate_rejects_empty_relative_path(tmp_path):
     """Validation: empty relative path raises ValueError before any IO."""
     with pytest.raises(ValueError, match="sRelativePath"):
-        fnWriteDeclarationTemplate(str(tmp_path), "")
+        fsWriteDeclarationTemplate(str(tmp_path), "")
 
 
 def test_fnWriteDeclarationTemplate_refuses_to_overwrite(tmp_path):
@@ -95,7 +95,7 @@ def test_fnWriteDeclarationTemplate_refuses_to_overwrite(tmp_path):
     pathTarget = tmp_path / S_DEFAULT_DECLARATION_FILENAME
     pathTarget.write_text("# pre-existing content\n")
     with pytest.raises(FileExistsError):
-        fnWriteDeclarationTemplate(
+        fsWriteDeclarationTemplate(
             str(tmp_path), S_DEFAULT_DECLARATION_FILENAME,
         )
     assert pathTarget.read_text() == "# pre-existing content\n"
@@ -299,7 +299,7 @@ def test_fbL3AttestationCurrent_missing_recorded_digest_is_false(tmp_path):
 
 def test_fnInvalidateAttestation_returns_false_when_missing(tmp_path):
     """Line 158: an absent attestation file makes invalidate a no-op (False)."""
-    assert fnInvalidateAttestation(str(tmp_path)) is False
+    assert fbInvalidateAttestation(str(tmp_path)) is False
 
 
 def test_fnInvalidateAttestation_returns_false_when_os_remove_fails(tmp_path):
@@ -311,7 +311,7 @@ def test_fnInvalidateAttestation_returns_false_when_os_remove_fails(tmp_path):
         "vaibify.reproducibility.repoFiles.os.remove",
         side_effect=OSError("permission denied"),
     ):
-        assert fnInvalidateAttestation(str(tmp_path)) is False
+        assert fbInvalidateAttestation(str(tmp_path)) is False
 
 
 def test_flistReadAttestationHistory_missing_directory_is_empty(tmp_path):

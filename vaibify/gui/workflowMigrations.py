@@ -1,7 +1,7 @@
 """Schema versioning and migrations for project.json.
 
 Each persisted workflow file carries an integer version under the
-``iWorkflowSchemaVersion`` top-level key. ``fnApplyMigrations`` runs
+``iWorkflowSchemaVersion`` top-level key. ``fiApplyMigrations`` runs
 the registered migrators in order until the dict is at
 ``I_CURRENT_WORKFLOW_VERSION``. Migrations are pure transformations of
 the in-memory dict and need not be idempotent — the version field
@@ -32,12 +32,12 @@ __all__ = [
     "fbWorkflowNeedsMigration",
     "fdictMigrateTestFormat",
     "fiGetSchemaVersion",
-    "fnApplyMigrations",
+    "fiApplyMigrations",
     "fnEnsureStepIds",
     "fnRewritePositionalToSymbolic",
     "fnMigrateAbsoluteContainerPaths",
     "fnMigrateAbsoluteTestPaths",
-    "fnMigrateArchiveToTracking",
+    "fbMigrateArchiveToTracking",
     "fnMigrateRunEnabledKey",
     "fnNormalizeInteractiveFlags",
     "fnNormalizeSceneReferences",
@@ -46,7 +46,7 @@ __all__ = [
 ]
 
 
-I_CURRENT_WORKFLOW_VERSION = 10
+I_CURRENT_WORKFLOW_VERSION = 11
 S_VERSION_KEY = "iWorkflowSchemaVersion"
 
 
@@ -69,7 +69,7 @@ def fnStampCurrentVersion(dictWorkflow):
     dictWorkflow[S_VERSION_KEY] = I_CURRENT_WORKFLOW_VERSION
 
 
-def fnApplyMigrations(dictWorkflow, sProjectRepoPath=""):
+def fiApplyMigrations(dictWorkflow, sProjectRepoPath=""):
     """Run every needed migration in order; stamp the new version.
 
     ``sProjectRepoPath`` provides container-side context for path
@@ -197,7 +197,7 @@ def fnNormalizeSceneReferences(dictStep):
         ]
 
 
-def fnMigrateArchiveToTracking(dictWorkflow):
+def fbMigrateArchiveToTracking(dictWorkflow):
     """One-shot: promote legacy 'archive' categories to tracking flags.
 
     Before the badge rework, each output file carried an "archive"
@@ -437,7 +437,7 @@ def _fsJoinRepoRelPath(sStepDir, sFile):
 
 
 @contextlib.contextmanager
-def _fnTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
+def _fcontextTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
     """Inject ``sProjectRepoPath`` into the dict for the duration of a block.
 
     Restores the prior key state on exit. A no-op when the caller did
@@ -463,16 +463,16 @@ def _fnMigrateV0ToV1(dictWorkflow, sProjectRepoPath):
     """Apply the legacy unconditional migrations.
 
     The two legacy helpers that use the project repo root
-    (``fnMigrateArchiveToTracking``, ``fbMigrateModifiedFilesToRepoRelative``)
+    (``fbMigrateArchiveToTracking``, ``fbMigrateModifiedFilesToRepoRelative``)
     historically read it from ``dictWorkflow["sProjectRepoPath"]``.
-    During load that key is not yet populated; ``fnApplyMigrations``
+    During load that key is not yet populated; ``fiApplyMigrations``
     threads the root in via ``sProjectRepoPath`` instead, so this stage
     sets it on the dict for the duration of the legacy calls and
     restores the prior value afterwards.
     """
     fnMigrateRunEnabledKey(dictWorkflow)
-    with _fnTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
-        fnMigrateArchiveToTracking(dictWorkflow)
+    with _fcontextTemporaryProjectRepoPath(dictWorkflow, sProjectRepoPath):
+        fbMigrateArchiveToTracking(dictWorkflow)
         fbMigrateModifiedFilesToRepoRelative(dictWorkflow)
     for dictStep in dictWorkflow.get("listSteps", []):
         fdictMigrateTestFormat(dictStep)
@@ -499,12 +499,15 @@ def _fnMigrateV2ToV3(dictWorkflow, sProjectRepoPath):
 
 
 def _fnMigrateV3ToV4(dictWorkflow, sProjectRepoPath):
-    """Replace the legacy ``bVaibified`` flag with the AICS ladder.
+    """Replace the legacy ``bVaibified`` flag with the level ladder.
 
     Drops any persisted ``bVaibified`` key (it was historically derived
     on the frontend and never authoritative; forked or hand-edited
     workflows occasionally carry the field anyway). Drops any
-    pre-existing ``iAICSLevel`` so the post-load derivation hook in
+    pre-existing ``iAICSLevel`` — the spelling this key carried in the
+    v3 era, before the ladder was renamed to PROOF; it is deliberately
+    NOT updated here because this migrator reads documents written on
+    disk under the old name — so the post-load derivation hook in
     ``workflowManager.fdictLoadWorkflowFromContainer`` recomputes the
     integer against the current per-step verification state rather
     than trusting a stale value. The derivation itself runs after
@@ -554,7 +557,7 @@ def fnRewritePositionalToSymbolic(dictWorkflow):
     """
     listSteps = dictWorkflow.get("listSteps", []) or []
 
-    def fnReplace(resultMatch):
+    def fsReplaceMatch(resultMatch):
         iIndex = int(resultMatch.group(1)) - 1
         sVariable = resultMatch.group(2)
         if 0 <= iIndex < len(listSteps):
@@ -575,7 +578,7 @@ def fnRewritePositionalToSymbolic(dictWorkflow):
             if not listValues:
                 continue
             dictStep[sKey] = [
-                re.sub(r"\{Step(\d+)\.([^}]+)\}", fnReplace, s)
+                re.sub(r"\{Step(\d+)\.([^}]+)\}", fsReplaceMatch, s)
                 if isinstance(s, str) else s
                 for s in listValues
             ]
@@ -621,7 +624,7 @@ def _fnMigrateV8ToV9(dictWorkflow, sProjectRepoPath):
     ``saInputDataFiles`` lists repo-relative raw-data files the step
     consumes; ``bNoInputData`` is the explicit "no inputs needed"
     declaration (both empty/False means the step is *undeclared*,
-    which blocks AICS Level 1); ``listRemoteData`` carries per-file
+    which blocks PROOF Level 1); ``listRemoteData`` carries per-file
     provenance records for remote-pulled data.
     """
     for dictStep in dictWorkflow.get("listSteps", []):
@@ -658,6 +661,24 @@ def _fnMigrateV9ToV10(dictWorkflow, sProjectRepoPath):
     fnNormalizeInteractiveFlags(dictWorkflow)
 
 
+def _fnMigrateV10ToV11(dictWorkflow, sProjectRepoPath):
+    """Drop the pre-rename ``iAICSLevel`` spelling of the level key.
+
+    The ladder was renamed from the AI Containment Scale to PROOF, and
+    the derived integer with it. A modern save never writes the level
+    into project.json — ``stateManager.ftSplitMergedDict`` moves it to
+    state.json, and rebuilds that file from an empty dict on every
+    write, so a stale key there is ignored on read and dropped on the
+    next save. A hand-edited or forked project.json is the case this
+    migrator exists for: one that carries the old key at a version the
+    v3→v4 migrator no longer runs on would keep it indefinitely, where
+    it reads as authoritative and is not. The level is recomputed under
+    the new name by the post-load derivation hook, so dropping the old
+    spelling loses nothing.
+    """
+    dictWorkflow.pop("iAICSLevel", None)
+
+
 T_MIGRATORS = (
     (0, _fnMigrateV0ToV1),
     (1, _fnMigrateV1ToV2),
@@ -669,4 +690,5 @@ T_MIGRATORS = (
     (7, _fnMigrateV7ToV8),
     (8, _fnMigrateV8ToV9),
     (9, _fnMigrateV9ToV10),
+    (10, _fnMigrateV10ToV11),
 )

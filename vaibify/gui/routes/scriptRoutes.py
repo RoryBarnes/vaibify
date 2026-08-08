@@ -13,14 +13,14 @@ from ..pipelineServer import (
     DependencyScanRequest,
     fdictRequireWorkflow,
 )
-from ..routeScope import S_CARRIER_TYPED_READ, fnDeclareCarrierMode
+from ..routeScope import S_CARRIER_TYPED_READ, ffnDeclareCarrierMode
 
 
 def _fnRegisterScriptRoutes(app, dictCtx):
     """Register script listing and scanning routes."""
 
     @app.get("/api/sync/{sContainerId}/scripts")
-    async def fnGetScripts(sContainerId: str):
+    async def flistGetScripts(sContainerId: str):
         dictCtx["require"]()
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -45,8 +45,8 @@ def _fnRegisterScriptRoutes(app, dictCtx):
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/scan-scripts"
     )
-    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
-    async def fnScanScripts(
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictScanScripts(
         sContainerId: str, iStepIndex: int
     ):
         dictCtx["require"]()
@@ -67,8 +67,8 @@ def _fnRegisterScriptRoutes(app, dictCtx):
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/scan-dependencies"
     )
-    @fnDeclareCarrierMode(S_CARRIER_TYPED_READ)
-    async def fnScanDependencies(
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictHandleScanDependencies(
         sContainerId: str,
         iStepIndex: int,
         request: DependencyScanRequest,

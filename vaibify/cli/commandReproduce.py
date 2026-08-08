@@ -1,6 +1,6 @@
 """CLI subcommand: vaibify reproduce.
 
-Read-only verification of the AICS Level 3 reproducibility envelope
+Read-only verification of the PROOF Level 3 reproducibility envelope
 inside a project repository. Walks five tiers in sequence:
 
 * Tier 1 — byte-exact artefact integrity via ``MANIFEST.sha256``.
@@ -273,7 +273,7 @@ def fbVerifyTier2(sProjectRepo):
         f"2/{_S_TIER_DENOMINATOR}",
         "Reproducing Python env (requirements.lock)",
     )
-    iReturnCode, sStderr = _fiRunPipInstall(pathLock)
+    iReturnCode, sStderr = _ftRunPipInstall(pathLock)
     if iReturnCode == 0:
         _fnPrintPass("hashes verified")
         return True
@@ -284,15 +284,15 @@ def fbVerifyTier2(sProjectRepo):
     return False
 
 
-def _fiRunPipInstall(pathLock):
+def _ftRunPipInstall(pathLock):
     """Invoke ``pip install --require-hashes`` and return (returncode, stderr)."""
     saCommand = [
         sys.executable, "-m", "pip", "install",
         "--require-hashes", "-r", str(pathLock),
     ]
-    completed = subprocess.run(saCommand, capture_output=True, text=True)
-    sys.stdout.write(completed.stdout)
-    return completed.returncode, completed.stderr
+    processCompleted = subprocess.run(saCommand, capture_output=True, text=True)
+    sys.stdout.write(processCompleted.stdout)
+    return processCompleted.returncode, processCompleted.stderr
 
 
 def _fbShouldFallbackToUv(sStderr):
@@ -309,13 +309,13 @@ def _fbRunUvFallback(pathLock):
         "uv", "pip", "install",
         "--require-hashes", "-r", str(pathLock),
     ]
-    completed = subprocess.run(saCommand, capture_output=True, text=True)
-    sys.stdout.write(completed.stdout)
-    if completed.returncode == 0:
+    processCompleted = subprocess.run(saCommand, capture_output=True, text=True)
+    sys.stdout.write(processCompleted.stdout)
+    if processCompleted.returncode == 0:
         _fnPrintPass("hashes verified (uv)")
         return True
     _fnPrintFail("uv install failed")
-    click.echo(completed.stderr.rstrip())
+    click.echo(processCompleted.stderr.rstrip())
     return False
 
 
@@ -339,16 +339,16 @@ def fbVerifyTier3(sProjectRepo):
         "Pulling pinned container image",
     )
     sImageDigest = _fsLoadImageDigest(pathEnvironment, sProjectRepo)
-    completed = subprocess.run(
+    processCompleted = subprocess.run(
         ["docker", "pull", sImageDigest],
         capture_output=True, text=True,
     )
-    sys.stdout.write(completed.stdout)
-    if completed.returncode == 0:
+    sys.stdout.write(processCompleted.stdout)
+    if processCompleted.returncode == 0:
         _fnPrintPass(sImageDigest)
         return True
     _fnPrintFail("docker pull failed")
-    click.echo(completed.stderr.rstrip())
+    click.echo(processCompleted.stderr.rstrip())
     return False
 
 
@@ -383,7 +383,7 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 
 
 def fbVerifyTier4(sProjectRepo):
-    """Verify all seven AICS L3 readiness checks.
+    """Verify all seven PROOF L3 readiness checks.
 
     Reuses the host-side ``levelGates`` verifiers so the CLI and the
     dashboard apply the same rule to every check, and now cover the
@@ -841,8 +841,8 @@ def _ftRunRerunTier(sProjectRepo, sWorkflowName):
     type=click.Choice(_T_TIER_CHOICES),
     help="Skip the given tier (1, 2, 3, or 4). May be repeated.",
 )
-def reproduce(sRepo, bRerun, sWorkflowName, saSkipTier):
-    """Verify a project's AICS L3 reproducibility envelope."""
+def fnReproduceCommand(sRepo, bRerun, sWorkflowName, saSkipTier):
+    """Verify a project's PROOF L3 reproducibility envelope."""
     sProjectRepo = sRepo or str(Path.cwd())
     setSkipTiers = set(saSkipTier)
     bAllPassed = True

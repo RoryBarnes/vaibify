@@ -8,24 +8,24 @@ import posixpath
 
 from fastapi import HTTPException, Request
 
-from ..actionCatalog import fnAgentAction
+from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import (
-    fnMaybeAutoArchive,
+    fbMaybeAutoArchive,
     fsWorkflowSlugFromPath,
 )
-from vaibify.reproducibility.levelGates import fiAICSLevel
+from vaibify.reproducibility.levelGates import fiProofLevel
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
-    fnCommitWorkflowSave,
-    fobjRunWorkerUnderTheDrain,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ..pipelineRunner import fsShellQuote
 from ..workflowManager import (
@@ -40,7 +40,7 @@ from ..pipelineServer import (
     WORKSPACE_ROOT,
     fdictRequireWorkflow,
     fnRejectWriteDenylistedPath,
-    fnValidatePathWithinRoot,
+    fsValidatePathWithinRoot,
     _fsSanitizeServerError,
 )
 from ..testStatusManager import (
@@ -98,7 +98,7 @@ async def _fdictRunTestGeneration(
         sContainerId, dictCtx.get("sTerminalUser")
     )
 
-    def fnGenerateTheTests(supervisor=None):
+    def fdictGenerateTheTests(supervisor=None):
         del supervisor
         try:
             return fdictCarryARefusalBackInsteadOfRaising(
@@ -117,8 +117,8 @@ async def _fdictRunTestGeneration(
                 500, f"Generation failed: "
                 f"{_fsSanitizeServerError(str(error))}")
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnGenerateTheTests, "generate-tests", requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictGenerateTheTests, "generate-tests", requestHttp,
     )
 
 
@@ -155,7 +155,7 @@ def _fnApplyGeneratedTests(
         dictWorkflow, dictWorkflow.get("sProjectRepoPath", ""),
     )
     dictStep["saTestCommands"] = flistBuildTestCommands(dictStep)
-    fnCommitWorkflowSave(
+    fdictCommitWorkflowSave(
         dictCtx, sContainerId, dictWorkflow, requestHttp,
         "Recording the generated tests",
     )
@@ -242,15 +242,15 @@ def _fdictRunOneTestCategory(
     sCatCmd = " && ".join(
         [f"cd {fsShellQuote(sDirectory)}"] + list(listCommands))
     sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
-    resultExec = dictCtx["docker"].texecRunInContainerStreamed(
+    tExecResult = dictCtx["docker"].ftRunInContainerStreamed(
         sContainerId, sCatCmd,
     )
     return {
-        "bPassed": resultExec.iExitCode == 0,
-        "sOutput": resultExec.sStdout + resultExec.sStderr,
-        "sStdout": resultExec.sStdout,
-        "sStderr": resultExec.sStderr,
-        "iExitCode": resultExec.iExitCode,
+        "bPassed": tExecResult.iExitCode == 0,
+        "sOutput": tExecResult.sStdout + tExecResult.sStderr,
+        "sStdout": tExecResult.sStdout,
+        "sStderr": tExecResult.sStderr,
+        "iExitCode": tExecResult.iExitCode,
     }
 
 
@@ -263,7 +263,7 @@ async def _ftProbeLevelThenRunUnderTheDrain(
     The AICS level probe runs INSIDE the worker, beside the run it
     brackets, rather than on the request coroutine before it — and that
     placement is the point of this helper rather than tidiness.
-    ``fiAICSLevel`` reaches the general exec primitive as soon as a
+    ``fiProofLevel`` reaches the general exec primitive as soon as a
     workflow is L2: ``fbWorkflowFullySyncedWithArxiv`` hashes every
     Overleaf-pushed figure through ``filesRepo.fdictHashFiles``, which
     the container adapter answers with one ``python3 -c`` exec, and
@@ -283,9 +283,9 @@ async def _ftProbeLevelThenRunUnderTheDrain(
         requestHttp, sContainerId, sTarget,
     )
 
-    def fnProbeThenRun(supervisor=None):
+    def ftProbeThenRun(supervisor=None):
         del supervisor
-        iLevelBefore = fiAICSLevel(
+        iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
@@ -293,7 +293,7 @@ async def _ftProbeLevelThenRunUnderTheDrain(
 
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
-        sContainerId, dictLaneTuple, "helper", sTarget, fnProbeThenRun,
+        sContainerId, dictLaneTuple, "helper", sTarget, ftProbeThenRun,
     )
     return dictOutcome["result"]
 
@@ -310,7 +310,7 @@ async def _fnAutoArchiveUnderTheDrain(
     would put a remote push inside the same drain as the pytest that
     justified it.
 
-    Mode (b) rather than mode (c): ``fnMaybeAutoArchive`` re-reads the
+    Mode (b) rather than mode (c): ``fbMaybeAutoArchive`` re-reads the
     AICS level (the same general exec as the pre-run probe) and then
     writes the L3 envelope and pushes to Overleaf and Zenodo, so it
     mutates and can run long — but it is awaited in the handler today,
@@ -322,20 +322,20 @@ async def _fnAutoArchiveUnderTheDrain(
         requestHttp, sContainerId, "Archiving the step's verified files",
     )
 
-    def fnArchive(supervisor=None):
+    def fbArchive(supervisor=None):
         del supervisor
-        return fnMaybeAutoArchive(
+        return fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
 
     await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
-        sContainerId, dictLaneTuple, "helper", "auto-archive", fnArchive,
+        sContainerId, dictLaneTuple, "helper", "auto-archive", fbArchive,
     )
 
 
-def _fnCommitTestDirectoryRemoval(
+def _fdictCommitTestDirectoryRemoval(
     dictCtx, sContainerId, dictWorkflow, dictStep, requestHttp,
 ):
     """Delete the step's ``tests`` directory through carrier mode (a).
@@ -376,14 +376,14 @@ def _fnCommitTestDirectoryRemoval(
 def _fnRegisterTestGenerate(app, dictCtx):
     """Register test generation and deletion routes."""
 
-    @fnAgentAction("generate-tests")
+    @ffnAgentAction("generate-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/generate-test"
     )
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
-    async def fnGenerateTest(
+    async def fdictHandleGenerateTest(
         sContainerId: str, iStepIndex: int,
         request: TestGenerateRequest, requestHttp: Request,
     ):
@@ -414,12 +414,12 @@ def _fnRegisterTestGenerate(app, dictCtx):
         )
         return _fdictBuildGenerateResponse(dictResult)
 
-    @fnAgentAction("delete-generated-tests")
+    @ffnAgentAction("delete-generated-tests")
     @app.delete(
         "/api/steps/{sContainerId}/{iStepIndex}/generated-test"
     )
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeleteGeneratedTest(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeleteGeneratedTest(
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -427,7 +427,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
             dictCtx["workflows"], sContainerId
         )
         dictStep = dictWorkflow["listSteps"][iStepIndex]
-        _fnCommitTestDirectoryRemoval(
+        _fdictCommitTestDirectoryRemoval(
             dictCtx, sContainerId, dictWorkflow, dictStep, requestHttp,
         )
         dictStep["dictTests"] = {
@@ -452,7 +452,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         dictVerification["sQuantitative"] = "untested"
         dictVerification["sIntegrity"] = "untested"
         fbDeriveUnnecessaryVerification(dictWorkflow)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the deleted tests",
         )
@@ -479,7 +479,7 @@ def _fsResolveTestFilePath(sFilePath, sProjectRepoPath):
         sFilePath if sFilePath.startswith("/")
         else posixpath.join(sRoot, sFilePath)
     )
-    sNormalized = fnValidatePathWithinRoot(sCandidate, sRoot)
+    sNormalized = fsValidatePathWithinRoot(sCandidate, sRoot)
     fnRejectWriteDenylistedPath(sNormalized, sRoot)
     return sNormalized
 
@@ -491,7 +491,7 @@ def _fnPersistTestEdit(connectionDocker, sContainerId, sFilePath, sContent):
     )
 
 
-def _fresultRunSaveAndRunTest(
+def _ftRunSaveAndRunTest(
     connectionDocker, sContainerId, dictStep, dictWorkflow, sFilePath,
 ):
     """Write the edited test file, then run it; return the exec result.
@@ -512,19 +512,19 @@ def _fresultRunSaveAndRunTest(
         sTestCmd,
         fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
     )
-    return connectionDocker.texecRunInContainerStreamed(
+    return connectionDocker.ftRunInContainerStreamed(
         sContainerId, sTestCmd,
     )
 
 
-def _fdictBuildSaveRunResponse(bPassed, resultExec):
+def _fdictBuildSaveRunResponse(bPassed, tExecResult):
     """Return the JSON response body for save-and-run-test."""
     return {
         "bPassed": bPassed,
-        "sOutput": resultExec.sStdout + resultExec.sStderr,
-        "sStdout": resultExec.sStdout,
-        "sStderr": resultExec.sStderr,
-        "iExitCode": resultExec.iExitCode,
+        "sOutput": tExecResult.sStdout + tExecResult.sStderr,
+        "sStdout": tExecResult.sStdout,
+        "sStderr": tExecResult.sStderr,
+        "iExitCode": tExecResult.iExitCode,
     }
 
 
@@ -596,18 +596,18 @@ def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds):
 def _ftRunCategoryCommands(
     connectionDocker, sContainerId, dictStep, dictWorkflow, listCmds,
 ):
-    """Run the category commands; return (resultExec, bPassed, sOutput).
+    """Run the category commands; return (tExecResult, bPassed, sOutput).
 
     Synchronous: it runs inside a mode-(b) carrier worker, which the
     carrier already calls in a thread.
     """
     sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds)
-    resultExec = connectionDocker.texecRunInContainerStreamed(
+    tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, sFullCmd,
     )
-    bPassed = resultExec.iExitCode == 0
-    sOutput = resultExec.sStdout + resultExec.sStderr
-    return resultExec, bPassed, sOutput
+    bPassed = tExecResult.iExitCode == 0
+    sOutput = tExecResult.sStdout + tExecResult.sStderr
+    return tExecResult, bPassed, sOutput
 
 
 def _fnRecordCategoryOutcome(
@@ -626,29 +626,29 @@ def _fnRecordCategoryOutcome(
     _fnUpdateAggregateTestState(dictStep)
 
 
-def _fdictBuildRunCategoryResponse(bPassed, resultExec):
+def _fdictBuildRunCategoryResponse(bPassed, tExecResult):
     """Return the JSON response body for run-test-category."""
     return {
         "bPassed": bPassed,
-        "sOutput": resultExec.sStdout + resultExec.sStderr,
-        "sStdout": resultExec.sStdout,
-        "sStderr": resultExec.sStderr,
-        "iExitCode": resultExec.iExitCode,
+        "sOutput": tExecResult.sStdout + tExecResult.sStderr,
+        "sStdout": tExecResult.sStdout,
+        "sStderr": tExecResult.sStderr,
+        "iExitCode": tExecResult.iExitCode,
     }
 
 
 def _fnRegisterTestSaveAndRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/save-and-run-test."""
 
-    @fnAgentAction("save-and-run-test")
+    @ffnAgentAction("save-and-run-test")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/save-and-run-test"
     )
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
-    async def fnSaveAndRunTest(
+    async def fdictSaveAndRunTest(
         sContainerId: str, iStepIndex: int,
         request: SaveAndRunTestRequest,
         requestHttp: Request,
@@ -662,24 +662,24 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             dictWorkflow.get("sProjectRepoPath", ""),
         )
 
-        def fnWriteThenRunTheTest():
+        def ftWriteThenRunTheTest():
             _fnPersistTestEdit(
                 dictCtx["docker"], sContainerId,
                 sFilePath, request.sContent,
             )
-            return _fresultRunSaveAndRunTest(
+            return _ftRunSaveAndRunTest(
                 dictCtx["docker"], sContainerId, dictStep,
                 dictWorkflow, sFilePath,
             )
 
-        iLevelBefore, resultExec = await _ftProbeLevelThenRunUnderTheDrain(
+        iLevelBefore, tExecResult = await _ftProbeLevelThenRunUnderTheDrain(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
-            "save-and-run-test", fnWriteThenRunTheTest,
+            "save-and-run-test", ftWriteThenRunTheTest,
         )
-        bPassed = resultExec.iExitCode == 0
+        bPassed = tExecResult.iExitCode == 0
         _fnRecordTestResult(dictStep, bPassed, dictWorkflow, iStepIndex)
         _fnRegisterTestCommand(dictStep, bPassed, sFilePath)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the test result",
         )
@@ -687,20 +687,20 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, iStepIndex,
             iLevelBefore, requestHttp,
         )
-        return _fdictBuildSaveRunResponse(bPassed, resultExec)
+        return _fdictBuildSaveRunResponse(bPassed, tExecResult)
 
 
 def _fnRegisterTestRun(app, dictCtx):
     """Register POST /api/steps/{id}/{step}/run-tests."""
 
-    @fnAgentAction("run-unit-tests")
+    @ffnAgentAction("run-unit-tests")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}/run-tests"
     )
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
-    async def fnRunTests(
+    async def fdictHandleRunTests(
         sContainerId: str, iStepIndex: int,
         requestHttp: Request,
     ):
@@ -713,7 +713,7 @@ def _fnRegisterTestRun(app, dictCtx):
         if not listCmds:
             raise HTTPException(400, "No test commands")
 
-        def fnRunEveryCategory():
+        def fdictRunEveryCategory():
             return _fdictRunAllTestCategories(
                 dictCtx, sContainerId, dictStep,
                 sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
@@ -724,7 +724,7 @@ def _fnRegisterTestRun(app, dictCtx):
         (iLevelBefore, dictCategoryResults) = (
             await _ftProbeLevelThenRunUnderTheDrain(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
-                "run-tests", fnRunEveryCategory,
+                "run-tests", fdictRunEveryCategory,
             )
         )
         if not dictCategoryResults:
@@ -740,7 +740,7 @@ def _fnRegisterTestRun(app, dictCtx):
         )
         _fnRecordTestResult(
             dictStep, bAllPassed, dictWorkflow, iStepIndex)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the test results",
         )
@@ -751,15 +751,15 @@ def _fnRegisterTestRun(app, dictCtx):
         return _fdictBuildTestResponse(
             bAllPassed, dictCategoryResults)
 
-    @fnAgentAction("run-test-category")
+    @ffnAgentAction("run-test-category")
     @app.post(
         "/api/steps/{sContainerId}/{iStepIndex}"
         "/run-test-category"
     )
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
-    async def fnRunTestCategory(
+    async def fdictRunTestCategory(
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
@@ -770,7 +770,7 @@ def _fnRegisterTestRun(app, dictCtx):
             dictCtx, sContainerId, iStepIndex, sCategory,
         )
 
-        def fnRunTheCategory():
+        def ftRunTheCategory():
             return _ftRunCategoryCommands(
                 dictCtx["docker"], sContainerId, dictStep,
                 dictWorkflow, listCmds,
@@ -778,13 +778,13 @@ def _fnRegisterTestRun(app, dictCtx):
 
         iLevelBefore, tRun = await _ftProbeLevelThenRunUnderTheDrain(
             dictCtx, sContainerId, dictWorkflow, request,
-            "run-test-category", fnRunTheCategory,
+            "run-test-category", ftRunTheCategory,
         )
-        resultExec, bPassed, sOutput = tRun
+        tExecResult, bPassed, sOutput = tRun
         _fnRecordCategoryOutcome(
             dictStep, dictCat, sVerifKey, bPassed, sOutput,
         )
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, request,
             "Recording the category test result",
         )
@@ -792,7 +792,7 @@ def _fnRegisterTestRun(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, iStepIndex,
             iLevelBefore, request,
         )
-        return _fdictBuildRunCategoryResponse(bPassed, resultExec)
+        return _fdictBuildRunCategoryResponse(bPassed, tExecResult)
 
 
 def fnRegisterAll(app, dictCtx):

@@ -4,7 +4,7 @@ This module owns the *write side* of the standards contract — the bulk
 generators that ``vaibify generate-standards`` calls to seed or refresh
 the ``fValue`` column from live data after a deliberate, seeded rerun.
 
-The matching *read side* (``fLoadValue`` + access-path parser) is the
+The matching *read side* (``ffLoadValue`` + access-path parser) is the
 canonical loader in :mod:`vaibify.gui.dataLoaders`; this module
 re-exports the two read-side entry points so callers and the CLI can
 import everything they need from one place. Sharing one loader keeps
@@ -20,7 +20,7 @@ import numpy as np
 
 from vaibify.gui.dataLoaders import (
     _fdictParseAccessPath as _fdictParseAccessPathDataLoaders,
-    fLoadValue as _fLoadValueDataLoaders,
+    ffLoadValue as _ffLoadValueDataLoaders,
 )
 
 
@@ -38,14 +38,14 @@ def fdictParseAccessPath(sAccessPath):
     return _fdictParseAccessPathDataLoaders(sAccessPath)
 
 
-def fLoadValue(sDataFile, sAccessPath, sStepDirectory):
+def ffLoadValue(sDataFile, sAccessPath, sStepDirectory):
     """Load a single numeric value from a data file using an access path.
 
-    Thin re-export of :func:`vaibify.gui.dataLoaders.fLoadValue` so the
+    Thin re-export of :func:`vaibify.gui.dataLoaders.ffLoadValue` so the
     write-side bulk generator and the read-side regression tests load
     values through identical code.
     """
-    return _fLoadValueDataLoaders(sDataFile, sAccessPath, sStepDirectory)
+    return _ffLoadValueDataLoaders(sDataFile, sAccessPath, sStepDirectory)
 
 
 # ===========================================================================
@@ -70,7 +70,7 @@ def _fsInferFormat(sFilePath):
     return _DICT_FORMAT_MAP.get(sExt, "whitespace")
 
 
-def _daLoadNpy(sFilePath):
+def _fdaLoadNpy(sFilePath):
     """Load .npy as a 2D array (1D shapes are reshaped to (N, 1))."""
     daData = np.load(sFilePath, allow_pickle=False)
     if daData.ndim == 1:
@@ -78,7 +78,7 @@ def _daLoadNpy(sFilePath):
     return daData
 
 
-def _dictLoadNpz(sFilePath):
+def _fdictLoadNpz(sFilePath):
     """Load .npz archive into a dict of 2D arrays keyed by archive name."""
     archiveNpz = np.load(sFilePath, allow_pickle=False)
     dictArrays = {}
@@ -90,7 +90,7 @@ def _dictLoadNpz(sFilePath):
     return dictArrays
 
 
-def _dictLoadJson(sFilePath):
+def _fdictLoadJson(sFilePath):
     """Load a JSON file (handles doubly-serialised payloads)."""
     with open(sFilePath, "r", encoding="utf-8") as fileHandle:
         dictData = json.load(fileHandle)
@@ -99,17 +99,17 @@ def _dictLoadJson(sFilePath):
     return dictData
 
 
-def _daLoadWhitespace(sFilePath):
+def _fdaLoadWhitespace(sFilePath):
     """Load whitespace-delimited text into a 2D array."""
     return np.loadtxt(sFilePath, ndmin=2)
 
 
-def _daLoadCsv(sFilePath):
+def _fdaLoadCsv(sFilePath):
     """Load a CSV with one header row into a 2D array."""
     return np.loadtxt(sFilePath, delimiter=",", skiprows=1, ndmin=2)
 
 
-def _dictLoadKeyValueText(sFilePath):
+def _fdictLoadKeyValueText(sFilePath):
     """Parse a structured ``key = value`` text report into a flat dict."""
     dictData = {}
     with open(sFilePath, "r", encoding="utf-8") as fileHandle:
@@ -140,7 +140,7 @@ def _fdictMakeStandard(sName, sDataFile, sAccessPath, fValue):
     }
 
 
-def _listColumnStats(daCol, sBase, sDataFile, sColumnPrefix):
+def _flistColumnStats(daCol, sBase, sDataFile, sColumnPrefix):
     """Build first/last/mean/min/max standards for one 1D column."""
     listStats = [
         ("First", f"{sColumnPrefix}index:0", float(daCol[0])),
@@ -157,7 +157,7 @@ def _listColumnStats(daCol, sBase, sDataFile, sColumnPrefix):
     return listOut
 
 
-def _listGlobalAggregates(daArray, sDataFile, sBase):
+def _flistGlobalAggregates(daArray, sDataFile, sBase):
     """Build mean/min/max standards over the whole array (binary formats)."""
     listOut = []
     for sStat, sAccess, fValue in [
@@ -171,7 +171,7 @@ def _listGlobalAggregates(daArray, sDataFile, sBase):
     return listOut
 
 
-def _listPerColumnFirstLast(daArray, sDataFile, sPrefix, iNumCols):
+def _flistPerColumnFirstLast(daArray, sDataFile, sPrefix, iNumCols):
     """Build first/last per-column standards (binary multi-column arrays)."""
     listOut = []
     for iCol in range(iNumCols):
@@ -187,32 +187,32 @@ def _listPerColumnFirstLast(daArray, sDataFile, sPrefix, iNumCols):
     return listOut
 
 
-def _listStandardsFromArray(daArray, sDataFile, sPrefix="", sFormat="npy"):
+def _flistStandardsFromArray(daArray, sDataFile, sPrefix="", sFormat="npy"):
     """Top-level array-to-standards extractor (dispatches binary vs text)."""
     iNumCols = daArray.shape[1] if daArray.ndim > 1 else 1
     bTextFormat = sFormat in ("whitespace", "csv")
     sBase = sPrefix if sPrefix else sDataFile.split(".")[0]
     if not bTextFormat and iNumCols > 1:
-        return (_listGlobalAggregates(daArray, sDataFile, sBase)
-                + _listPerColumnFirstLast(daArray, sDataFile, sPrefix, iNumCols))
+        return (_flistGlobalAggregates(daArray, sDataFile, sBase)
+                + _flistPerColumnFirstLast(daArray, sDataFile, sPrefix, iNumCols))
     listOut = []
     for iCol in range(iNumCols):
         daCol = daArray[:, iCol] if daArray.ndim > 1 else daArray
         sSuffix = str(iCol) if iNumCols > 1 else ""
         sColBase = f"{sPrefix}{sSuffix}" if sPrefix else f"col{iCol}"
         sColumnPrefix = f"column:col{iCol}," if bTextFormat else ""
-        listOut.extend(_listColumnStats(daCol, sColBase, sDataFile, sColumnPrefix))
+        listOut.extend(_flistColumnStats(daCol, sColBase, sDataFile, sColumnPrefix))
     return listOut
 
 
-def _listStandardsFromScalarJson(sName, sDataFile, sKey, value):
+def _flistStandardsFromScalarJson(sName, sDataFile, sKey, value):
     """Emit a single scalar JSON entry if finite."""
     if not (isinstance(value, (int, float)) and np.isfinite(value)):
         return []
     return [_fdictMakeStandard(sName, sDataFile, f"key:{sKey}", value)]
 
 
-def _listStandardsFromJsonList(sName, sDataFile, sKey, listValues):
+def _flistStandardsFromJsonList(sName, sDataFile, sKey, listValues):
     """Emit standards for a JSON list — aggregates if long, per-index if short."""
     listNumeric = [v for v in listValues
                    if isinstance(v, (int, float)) and np.isfinite(v)]
@@ -237,21 +237,21 @@ def _listStandardsFromJsonList(sName, sDataFile, sKey, listValues):
     return listOut
 
 
-def _listStandardsFromJson(dictData, sDataFile, sPrefix=""):
+def _flistStandardsFromJson(dictData, sDataFile, sPrefix=""):
     """Generate standards from JSON scalar and array values."""
     listOut = []
     for sKey, value in dictData.items():
         sName = f"f{sPrefix}{sKey}"
         if isinstance(value, (int, float)):
-            listOut.extend(_listStandardsFromScalarJson(
+            listOut.extend(_flistStandardsFromScalarJson(
                 sName, sDataFile, sKey, value))
         elif isinstance(value, list):
-            listOut.extend(_listStandardsFromJsonList(
+            listOut.extend(_flistStandardsFromJsonList(
                 sName, sDataFile, sKey, value))
     return listOut
 
 
-def _listStandardsFromNpzScalar(daArray, sDataFile, sKey):
+def _flistStandardsFromNpzScalar(daArray, sDataFile, sKey):
     """Emit standard for a 0-d (scalar) array stored in an npz."""
     fValue = float(daArray)
     if not np.isfinite(fValue):
@@ -260,7 +260,7 @@ def _listStandardsFromNpzScalar(daArray, sDataFile, sKey):
         f"f{sKey}", sDataFile, f"key:{sKey}", fValue)]
 
 
-def _listStandardsFromNpz1d(daArray, sDataFile, sKey):
+def _flistStandardsFromNpz1d(daArray, sDataFile, sKey):
     """Emit standards for a 1-D array stored in an npz."""
     daFlat = daArray.ravel()
     listSpec = [
@@ -274,7 +274,7 @@ def _listStandardsFromNpz1d(daArray, sDataFile, sKey):
             for sStat, sAcc, fVal in listSpec if np.isfinite(fVal)]
 
 
-def _listStandardsFromNpz2d(daArray, sDataFile, sKey, iNumCols):
+def _flistStandardsFromNpz2d(daArray, sDataFile, sKey, iNumCols):
     """Emit standards for a 2-D array stored in an npz."""
     listOut = []
     for sStat, sAgg, fValue in [
@@ -299,16 +299,16 @@ def _listStandardsFromNpz2d(daArray, sDataFile, sKey, iNumCols):
     return listOut
 
 
-def _listStandardsFromNpz(dictArrays, sDataFile):
+def _flistStandardsFromNpz(dictArrays, sDataFile):
     """Generate standards from each array in an npz archive."""
     listOut = []
     for sKey, daArray in dictArrays.items():
         if daArray.ndim == 0:
-            listOut.extend(_listStandardsFromNpzScalar(daArray, sDataFile, sKey))
+            listOut.extend(_flistStandardsFromNpzScalar(daArray, sDataFile, sKey))
         elif daArray.ndim == 1 or daArray.shape[1] <= 1:
-            listOut.extend(_listStandardsFromNpz1d(daArray, sDataFile, sKey))
+            listOut.extend(_flistStandardsFromNpz1d(daArray, sDataFile, sKey))
         else:
-            listOut.extend(_listStandardsFromNpz2d(
+            listOut.extend(_flistStandardsFromNpz2d(
                 daArray, sDataFile, sKey, daArray.shape[1]))
     return listOut
 
@@ -318,7 +318,7 @@ def _listStandardsFromNpz(dictArrays, sDataFile):
 # ---------------------------------------------------------------------------
 
 
-def _listStandardsFromFile(sStepDirectory, sDataFile):
+def _flistStandardsFromFile(sStepDirectory, sDataFile):
     """Build standards for one data file by sniffing format and dispatching."""
     sFullPath = os.path.join(sStepDirectory, sDataFile)
     if not os.path.isfile(sFullPath):
@@ -327,29 +327,29 @@ def _listStandardsFromFile(sStepDirectory, sDataFile):
     sFormat = _fsInferFormat(sFullPath)
     print(f"  Processing {sDataFile} (format: {sFormat})")
     if sFormat == "npy":
-        return _listStandardsFromArray(_daLoadNpy(sFullPath), sDataFile,
+        return _flistStandardsFromArray(_fdaLoadNpy(sFullPath), sDataFile,
                                        sFormat="npy")
     if sFormat == "npz":
-        return _listStandardsFromNpz(_dictLoadNpz(sFullPath), sDataFile)
+        return _flistStandardsFromNpz(_fdictLoadNpz(sFullPath), sDataFile)
     if sFormat == "json":
-        return _listStandardsFromJson(_dictLoadJson(sFullPath), sDataFile)
+        return _flistStandardsFromJson(_fdictLoadJson(sFullPath), sDataFile)
     if sFormat in ("whitespace", "csv"):
-        return _listStandardsFromTextOrKv(sFullPath, sDataFile, sFormat)
+        return _flistStandardsFromTextOrKv(sFullPath, sDataFile, sFormat)
     print(f"  WARNING: unsupported format {sFormat} for {sDataFile}")
     return []
 
 
-def _listStandardsFromTextOrKv(sFullPath, sDataFile, sFormat):
+def _flistStandardsFromTextOrKv(sFullPath, sDataFile, sFormat):
     """Try numeric text load first; fall back to key=value parsing."""
-    fnLoader = _daLoadCsv if sFormat == "csv" else _daLoadWhitespace
+    fnLoader = _fdaLoadCsv if sFormat == "csv" else _fdaLoadWhitespace
     try:
-        return _listStandardsFromArray(fnLoader(sFullPath), sDataFile,
+        return _flistStandardsFromArray(fnLoader(sFullPath), sDataFile,
                                        sFormat=sFormat)
     except ValueError:
-        dictData = _dictLoadKeyValueText(sFullPath)
+        dictData = _fdictLoadKeyValueText(sFullPath)
         if dictData:
             print(f"    Parsed as key-value text ({len(dictData)} entries)")
-            return _listStandardsFromJson(dictData, sDataFile)
+            return _flistStandardsFromJson(dictData, sDataFile)
         print(f"  WARNING: could not parse {sDataFile}")
         return []
 
@@ -360,7 +360,7 @@ def fdictGenerateQuantitativeStandards(sStepDirectory, listDataFiles,
     listAllStandards = []
     for sDataFile in listDataFiles:
         listAllStandards.extend(
-            _listStandardsFromFile(sStepDirectory, sDataFile))
+            _flistStandardsFromFile(sStepDirectory, sDataFile))
     return {
         "fDefaultRtol": fDefaultRtol,
         "listStandards": listAllStandards,
@@ -450,7 +450,7 @@ def fnRegenerateStandardsFile(sStandardsPath, sStepDirectory):
     """Refresh ``fValue`` of every entry in an existing standards JSON.
 
     The schema (sName, sDataFile, sAccessPath, fRtol, …) is preserved in
-    place; only fValue is recomputed from live data using ``fLoadValue``.
+    place; only fValue is recomputed from live data using ``ffLoadValue``.
     Use this after a deliberate, seeded rerun produces new bit-exact
     baselines for a step that already has a curated standards list.
     """
@@ -458,7 +458,7 @@ def fnRegenerateStandardsFile(sStandardsPath, sStepDirectory):
         dictStandards = json.load(fileHandle)
     listStandards = dictStandards.get("listStandards", [])
     for dictStandard in listStandards:
-        dictStandard["fValue"] = fLoadValue(
+        dictStandard["fValue"] = ffLoadValue(
             dictStandard["sDataFile"],
             dictStandard["sAccessPath"],
             sStepDirectory,

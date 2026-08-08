@@ -1,4 +1,4 @@
-"""Tests for the AICS Level 3 (Reproducibility) gate.
+"""Tests for the PROOF Level 3 (Reproducibility) gate.
 
 The L3 gate is the conjunction of L2 + ``fbL3ReadinessOK`` +
 ``fbL3AttestationCurrent``. Tests cover each of the six readiness

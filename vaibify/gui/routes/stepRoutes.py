@@ -7,20 +7,20 @@ import posixpath
 from fastapi import HTTPException, Request
 
 from .. import stepRename, workflowManager
-from ..actionCatalog import fnAgentAction
-from ..fileStatusManager import fnMaybeAutoArchive
-from vaibify.reproducibility.levelGates import fiAICSLevel
+from ..actionCatalog import ffnAgentAction
+from ..fileStatusManager import fbMaybeAutoArchive
+from vaibify.reproducibility.levelGates import fiProofLevel
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
-    fnCommitWorkflowSave,
-    fobjRunWorkerUnderTheDrain,
+    fdictCommitWorkflowSave,
+    fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
-    fnDeclareCarrierMode,
+    ffnDeclareCarrierMode,
 )
 from ..pipelineServer import (
     InputDataAddRequest,
@@ -67,14 +67,14 @@ def _fnRegisterStepsList(app, dictCtx):
     """Register GET /api/steps and validate routes."""
 
     @app.get("/api/steps/{sContainerId}")
-    async def fnGetSteps(sContainerId: str):
+    async def flistGetSteps(sContainerId: str):
         return workflowManager.flistExtractStepNames(
             fdictRequireWorkflow(
                 dictCtx["workflows"], sContainerId)
         )
 
     @app.get("/api/steps/{sContainerId}/validate")
-    async def fnValidateReferences(sContainerId: str):
+    async def fdictValidateReferences(sContainerId: str):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         return {
@@ -86,8 +86,8 @@ def _fnRegisterStepsList(app, dictCtx):
         }
 
     @app.get("/api/steps/{sContainerId}/resolve-commands")
-    @fnAgentAction("resolve-commands")
-    async def fnResolveCommands(sContainerId: str):
+    @ffnAgentAction("resolve-commands")
+    async def fdictResolveCommands(sContainerId: str):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         return workflowManager.fdictResolveWorkflowCommands(
@@ -95,7 +95,7 @@ def _fnRegisterStepsList(app, dictCtx):
         )
 
     @app.get("/api/steps/{sContainerId}/by-label/{sLabel}")
-    async def fnResolveStepLabel(sContainerId: str, sLabel: str):
+    async def fdictResolveStepLabel(sContainerId: str, sLabel: str):
         from ..pipelineUtils import fiStepIndexFromLabel
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
@@ -110,7 +110,7 @@ def _fnRegisterStepGet(app, dictCtx):
     """Register GET /api/steps/{id}/{index} route."""
 
     @app.get("/api/steps/{sContainerId}/{iStepIndex}")
-    async def fnGetStep(sContainerId: str, iStepIndex: int):
+    async def fdictHandleGetStep(sContainerId: str, iStepIndex: int):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         try:
@@ -149,10 +149,10 @@ def _fdictStepFromRequestChecked(dictWorkflow, request):
 def _fnRegisterStepCreate(app, dictCtx):
     """Register POST /api/steps/{id}/create route."""
 
-    @fnAgentAction("create-step")
+    @ffnAgentAction("create-step")
     @app.post("/api/steps/{sContainerId}/create")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnCreateStep(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictHandleCreateStep(
         sContainerId: str, request: StepCreateRequest,
         requestHttp: Request,
     ):
@@ -162,7 +162,7 @@ def _fnRegisterStepCreate(app, dictCtx):
         _fnRaiseIfAtStepCap(dictWorkflow)
         dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         dictWorkflow["listSteps"].append(dictStep)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The step creation",
         )
@@ -171,7 +171,7 @@ def _fnRegisterStepCreate(app, dictCtx):
         bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
         if bShouldWarn:
             dictWorkflow["bWarnedHundredSteps"] = True
-            fnCommitWorkflowSave(
+            fdictCommitWorkflowSave(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
                 "The hundred-step warning flag",
             )
@@ -185,10 +185,10 @@ def _fnRegisterStepCreate(app, dictCtx):
 def _fnRegisterStepInsert(app, dictCtx):
     """Register POST /api/steps/{id}/insert route."""
 
-    @fnAgentAction("insert-step")
+    @ffnAgentAction("insert-step")
     @app.post("/api/steps/{sContainerId}/insert/{iPosition}")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnInsertStep(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictInsertStep(
         sContainerId: str, iPosition: int,
         request: StepCreateRequest, requestHttp: Request,
     ):
@@ -199,7 +199,7 @@ def _fnRegisterStepInsert(app, dictCtx):
         dictStep = _fdictStepFromRequestChecked(dictWorkflow, request)
         workflowManager.fnInsertStep(
             dictWorkflow, iPosition, dictStep)
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The step insertion",
         )
@@ -207,7 +207,7 @@ def _fnRegisterStepInsert(app, dictCtx):
         bShouldWarn = _fbShouldWarnHundred(dictWorkflow, iCount)
         if bShouldWarn:
             dictWorkflow["bWarnedHundredSteps"] = True
-            fnCommitWorkflowSave(
+            fdictCommitWorkflowSave(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
                 "The hundred-step warning flag",
             )
@@ -222,12 +222,12 @@ def _fnRegisterStepInsert(app, dictCtx):
 def _fnRegisterStepUpdate(app, dictCtx):
     """Register PUT /api/steps/{id}/{index} route."""
 
-    @fnAgentAction("update-step")
+    @ffnAgentAction("update-step")
     @app.put("/api/steps/{sContainerId}/{iStepIndex}")
-    @fnDeclareCarrierMode(
+    @ffnDeclareCarrierMode(
         S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
     )
-    async def fnUpdateStep(
+    async def fdictUpdateStep(
         sContainerId: str, iStepIndex: int,
         request: StepUpdateRequest, requestHttp: Request,
     ):
@@ -261,10 +261,10 @@ async def _fnUpdateThenArchiveUnderTheDrain(
     """Read the level, apply the edit, save, and auto-archive as one.
 
     Three container-reaching operations that only mean anything
-    together. ``fiAICSLevel`` runs the L1/L2/L3 gates, which hash the
+    together. ``fiProofLevel`` runs the L1/L2/L3 gates, which hash the
     repo through the container once a workflow is L2, so the
     level-BEFORE read is itself a guarded operation and not a free
-    lookup. ``fnMaybeAutoArchive`` then reads the level AGAIN and
+    lookup. ``fbMaybeAutoArchive`` then reads the level AGAIN and
     archives only on the before/after transition across 1 — so the two
     readings must see the same world apart from this edit. Dropping the
     drain between them lets another session's write move the level in
@@ -272,7 +272,7 @@ async def _fnUpdateThenArchiveUnderTheDrain(
     the researcher never made.
 
     So the whole sequence is one mode-(b) worker. The SAVE inside it
-    still goes through ``fnCommitWorkflowSave`` rather than a bare
+    still goes through ``fdictCommitWorkflowSave`` rather than a bare
     write: that is what records the ``file-write`` journal entry whose
     expected and prior hashes let the probe prove afterwards whether the
     bytes landed, and losing it would leave a crash mid-save
@@ -281,7 +281,7 @@ async def _fnUpdateThenArchiveUnderTheDrain(
     """
     def fnUpdateSaveAndArchive(supervisor=None):
         del supervisor
-        iLevelBefore = fiAICSLevel(
+        iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
         )
@@ -291,23 +291,23 @@ async def _fnUpdateThenArchiveUnderTheDrain(
             )
         except IndexError as error:
             raise HTTPException(404, str(error)) from error
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The step update",
         )
-        fnMaybeAutoArchive(
+        fbMaybeAutoArchive(
             dictCtx["docker"], sContainerId, dictWorkflow,
             iStepIndex, iLevelBefore,
         )
 
-    def fnRunTheUpdate(supervisor=None):
+    def fdictRunTheUpdate(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             fnUpdateSaveAndArchive,
         )
 
-    await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnRunTheUpdate, "update-step", requestHttp,
+    await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictRunTheUpdate, "update-step", requestHttp,
     )
 
 
@@ -406,10 +406,10 @@ def _fnRequireDestructiveConfirm(
 def _fnRegisterStepDelete(app, dictCtx):
     """Register DELETE /api/steps/{id}/{index} route."""
 
-    @fnAgentAction("delete-step")
+    @ffnAgentAction("delete-step")
     @app.delete("/api/steps/{sContainerId}/{iStepIndex}")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeleteStep(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeleteStep(
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -420,7 +420,7 @@ def _fnRegisterStepDelete(app, dictCtx):
                 dictWorkflow, iStepIndex)
         except IndexError as error:
             raise HTTPException(404, str(error))
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The step deletion",
         )
@@ -433,10 +433,10 @@ def _fnRegisterStepDelete(app, dictCtx):
 def _fnRegisterStepReorder(app, dictCtx):
     """Register POST /api/steps/{id}/reorder route."""
 
-    @fnAgentAction("reorder-steps")
+    @ffnAgentAction("reorder-steps")
     @app.post("/api/steps/{sContainerId}/reorder")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnReorderSteps(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictReorderSteps(
         sContainerId: str, request: ReorderRequest,
         requestHttp: Request,
     ):
@@ -450,7 +450,7 @@ def _fnRegisterStepReorder(app, dictCtx):
             )
         except IndexError as error:
             raise HTTPException(400, str(error))
-        fnCommitWorkflowSave(
+        fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The step reorder",
         )
@@ -460,10 +460,10 @@ def _fnRegisterStepReorder(app, dictCtx):
 def _fnRegisterInputDataAdd(app, dictCtx):
     """Register POST /api/steps/{id}/{index}/input-data route."""
 
-    @fnAgentAction("add-input-data-file")
+    @ffnAgentAction("add-input-data-file")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/input-data")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnAddInputDataFile(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictAddInputDataFile(
         sContainerId: str, iStepIndex: int,
         request: InputDataAddRequest, requestHttp: Request,
     ):
@@ -484,7 +484,7 @@ def _fnRegisterInputDataAdd(app, dictCtx):
         bAdded = sPath not in listInputs
         if bAdded:
             listInputs.append(sPath)
-            fnCommitWorkflowSave(
+            fdictCommitWorkflowSave(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
                 "The input-data declaration",
             )
@@ -497,10 +497,10 @@ def _fnRegisterInputDataAdd(app, dictCtx):
 def _fnRegisterStepRename(app, dictCtx):
     """Register POST /api/steps/{id}/{index}/rename route."""
 
-    @fnAgentAction("rename-step")
+    @ffnAgentAction("rename-step")
     @app.post("/api/steps/{sContainerId}/{iStepIndex}/rename")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnRenameStep(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictRenameStep(
         sContainerId: str, iStepIndex: int,
         request: StepRenameRequest, requestHttp: Request,
     ):
@@ -556,7 +556,7 @@ async def _flistScanScriptsUnderTheDrain(
     unable to look before leaping. Mode (b) rather than (a) because the
     loop is one container round-trip per declared script.
     """
-    def fnScanTheScripts(supervisor=None):
+    def fdictScanTheScripts(supervisor=None):
         del supervisor
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: stepRename.flistScanScriptsForOldName(
@@ -564,8 +564,8 @@ async def _flistScanScriptsUnderTheDrain(
             ),
         )
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnScanTheScripts, "rename-step-preview", requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictScanTheScripts, "rename-step-preview", requestHttp,
     )
 
 
@@ -610,7 +610,7 @@ async def _fdictApplyRenameUnderTheDrain(
     """
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
 
-    def fnRenameThenSave():
+    def fdictRenameThenSave():
         try:
             dictReport = stepRename.fdictApplyStepRename(
                 dictCtx["docker"], sContainerId, filesRepo,
@@ -627,22 +627,22 @@ async def _fdictApplyRenameUnderTheDrain(
         dictCtx["save"](sContainerId, dictWorkflow)
         return dictReport
 
-    def fnApplyTheRename(supervisor=None):
+    def fdictApplyTheRename(supervisor=None):
         del supervisor
-        return fdictCarryARefusalBackInsteadOfRaising(fnRenameThenSave)
+        return fdictCarryARefusalBackInsteadOfRaising(fdictRenameThenSave)
 
-    return await fobjRunWorkerUnderTheDrain(
-        sContainerId, fnApplyTheRename, "rename-step", requestHttp,
+    return await fgenericRunWorkerUnderTheDrain(
+        sContainerId, fdictApplyTheRename, "rename-step", requestHttp,
     )
 
 
 def _fnRegisterAlignDirectories(app, dictCtx):
     """Register POST /api/steps/{id}/align-directories route."""
 
-    @fnAgentAction("align-step-directories")
+    @ffnAgentAction("align-step-directories")
     @app.post("/api/steps/{sContainerId}/align-directories")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
-    async def fnAlignStepDirectories(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleAlignStepDirectories(
         sContainerId: str, requestHttp: Request,
     ):
         """Migrate every nonconforming step to the slug contract.
@@ -708,7 +708,7 @@ async def _fdictAlignDirectoriesUnderTheDrain(
         requestHttp, sContainerId, "Aligning the step directories",
     )
 
-    def fnAlignEveryStep(supervisor=None):
+    def fdictAlignEveryStep(supervisor=None):
         del supervisor
         return _fdictAlignEveryNonconformingStep(
             dictCtx, sContainerId, dictWorkflow,
@@ -717,7 +717,7 @@ async def _fdictAlignDirectoriesUnderTheDrain(
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", "align-step-directories",
-        fnAlignEveryStep,
+        fdictAlignEveryStep,
     )
     return dictOutcome["result"]
 
@@ -766,10 +766,10 @@ def _fdictAlignEveryNonconformingStep(dictCtx, sContainerId, dictWorkflow):
 def _fnRegisterDeclareNoInputData(app, dictCtx):
     """Register POST /api/steps/{id}/declare-no-input-data route."""
 
-    @fnAgentAction("declare-no-input-data")
+    @ffnAgentAction("declare-no-input-data")
     @app.post("/api/steps/{sContainerId}/declare-no-input-data")
-    @fnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
-    async def fnDeclareNoInputData(
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictDeclareNoInputData(
         sContainerId: str, requestHttp: Request,
     ):
         dictCtx["require"]()
@@ -786,7 +786,7 @@ def _fnRegisterDeclareNoInputData(app, dictCtx):
             dictStep["bNoInputData"] = True
             listDeclared.append(iIndex)
         if listDeclared:
-            fnCommitWorkflowSave(
+            fdictCommitWorkflowSave(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
                 "The no-input-data declaration",
             )

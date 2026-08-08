@@ -212,15 +212,15 @@ def fdictFindContainersForReservation(sReservationId):
 def _ftRunProbeCommand(saCommand):
     """Run a bounded read-only docker command; return ``(bAnswered, sOut)``."""
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             saCommand, capture_output=True, text=True,
             timeout=_F_DOCKER_PROBE_TIMEOUT_SECONDS,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return (False, "")
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return (False, "")
-    return (True, resultProcess.stdout)
+    return (True, processResult.stdout)
 
 
 def fdictSettleReservationContainers(sReservationId, bLaunchWasKilled):
@@ -299,13 +299,13 @@ def _fdictSettlement(bConclusive, listRemovedIds, sDetail):
 
 def _fsRunDetachedCommand(saCommand):
     """Run a docker command and return stdout (container ID)."""
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         saCommand, capture_output=True, text=True,
     )
-    if resultProcess.returncode != 0:
-        sError = resultProcess.stderr.strip()
+    if processResult.returncode != 0:
+        sError = processResult.stderr.strip()
         raise RuntimeError(f"Docker run failed: {sError}")
-    return resultProcess.stdout.strip()
+    return processResult.stdout.strip()
 
 
 def _flistAssembleRunCommand(config, saRunArgs, saCommand):
@@ -596,14 +596,14 @@ def fnStopContainer(sProjectName):
     sProjectName : str
         Name of the container to stop.
     """
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["docker", "stop", sProjectName],
         capture_output=True, text=True,
     )
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         raise RuntimeError(
             f"docker stop failed: "
-            f"{resultProcess.stderr.strip()}"
+            f"{processResult.stderr.strip()}"
         )
     fnRemoveStopped(sProjectName)
 
@@ -666,12 +666,12 @@ def fbContainerIsRunning(sProjectName):
     bool
         True if the container is running.
     """
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Running}}", sProjectName],
         capture_output=True,
         text=True,
     )
-    return resultProcess.stdout.strip() == "true"
+    return processResult.stdout.strip() == "true"
 
 
 def fdictGetContainerStatus(sProjectName):
@@ -682,14 +682,14 @@ def fdictGetContainerStatus(sProjectName):
 
 def _fsInspectContainerState(sProjectName):
     """Query docker inspect for the container state, or empty string."""
-    resultProcess = subprocess.run(
+    processResult = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Status}}", sProjectName],
         capture_output=True,
         text=True,
     )
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return ""
-    return resultProcess.stdout.strip()
+    return processResult.stdout.strip()
 
 
 def _fdictParseContainerState(sRawStatus):
@@ -713,7 +713,7 @@ def ftProbeNetworkIsolation(sContainerIdentifier):
     into an asserted fact inside an attestation.
     """
     try:
-        resultProcess = subprocess.run(
+        processResult = subprocess.run(
             [
                 "docker", "inspect", "-f",
                 "{{.HostConfig.NetworkMode}}", sContainerIdentifier,
@@ -722,9 +722,9 @@ def ftProbeNetworkIsolation(sContainerIdentifier):
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return (False, False)
-    if resultProcess.returncode != 0:
+    if processResult.returncode != 0:
         return (False, False)
-    return (True, resultProcess.stdout.strip() == "none")
+    return (True, processResult.stdout.strip() == "none")
 
 
 def fbContainerIsNetworkIsolated(sContainerIdentifier):

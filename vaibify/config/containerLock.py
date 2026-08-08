@@ -135,7 +135,7 @@ def _ffileOpenLockFileNoFollow(sPath):
     return pidFileRegistry.ffileOpenNoFollow(sPath)
 
 
-def fnAcquireContainerLock(sProjectName, iPort, connectionDocker=None):
+def ffileAcquireContainerLock(sProjectName, iPort, connectionDocker=None):
     """Acquire an exclusive lock on the container and return the fd.
 
     Raises ``InvalidProjectNameError`` if ``sProjectName`` is unsafe,
@@ -207,7 +207,7 @@ def ffileAcquireReconciliationLock(sProjectName, iPort):
     ``ContainerLockedError`` and the caller must route the
     reconciliation to that hub over its host control socket instead.
 
-    Unlike :func:`fnAcquireContainerLock`, the journal gate is NOT
+    Unlike :func:`ffileAcquireContainerLock`, the journal gate is NOT
     applied — refusing a quarantined container here would make every
     quarantine permanently unclearable.
     """
@@ -365,7 +365,7 @@ def _fbLockFileIsStale(sPath):
 
 
 def fnReleaseContainerLock(fileHandle):
-    """Release a lock previously acquired via fnAcquireContainerLock."""
+    """Release a lock previously acquired via ffileAcquireContainerLock."""
     try:
         fcntl.flock(fileHandle, fcntl.LOCK_UN)
     finally:

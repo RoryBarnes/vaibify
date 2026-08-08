@@ -52,12 +52,12 @@ def _fdictWorkflow(iSteps=2):
 # ---------------------------------------------------------------
 
 
-def test_fiRunPipeline_calls_fnRunAllSteps_when_neither_step_nor_from():
+def test_fiRunPipeline_calls_fiRunAllSteps_when_neither_step_nor_from():
     from vaibify.cli import commandRun
     mockRunAll = AsyncMock(return_value=0)
     dictWorkflow = _fdictWorkflow(2)
     with patch(
-        "vaibify.gui.pipelineRunner.fnRunAllSteps", mockRunAll,
+        "vaibify.gui.pipelineRunner.fiRunAllSteps", mockRunAll,
     ), patch.object(
         commandRun, "_ftLoadFirstContainerWorkflow",
         return_value=("/workspace/wf.json", dictWorkflow),
@@ -76,7 +76,7 @@ def test_fiRunPipeline_calls_fnRunFromStep_when_iFrom():
     mockFromStep = AsyncMock(return_value=0)
     dictWorkflow = _fdictWorkflow(2)
     with patch(
-        "vaibify.gui.pipelineRunner.fnRunFromStep", mockFromStep,
+        "vaibify.gui.pipelineRunner.fiRunFromStep", mockFromStep,
     ), patch.object(
         commandRun, "_ftLoadFirstContainerWorkflow",
         return_value=("/workspace/wf.json", dictWorkflow),
@@ -178,7 +178,7 @@ def test_fiRunSingleStep_valid_step_runs_selected():
         ".fdictLoadWorkflowFromContainer",
         return_value=_fdictWorkflow(2),
     ), patch(
-        "vaibify.gui.pipelineRunner.fnRunSelectedSteps", mockSelected,
+        "vaibify.gui.pipelineRunner.fiRunSelectedSteps", mockSelected,
     ):
         iResult = commandRun._fiRunSingleStep(
             _fMockDocker(), "ctn", 2, "/workspace",
@@ -189,7 +189,7 @@ def test_fiRunSingleStep_valid_step_runs_selected():
 
 
 # ---------------------------------------------------------------
-# commandRun.run CLI entry: non-zero exit propagation
+# commandRun.fnRunCommand CLI entry: non-zero exit propagation
 # ---------------------------------------------------------------
 
 
@@ -202,9 +202,9 @@ def test_fiRunSingleStep_valid_step_runs_selected():
 def test_run_exits_one_on_pipeline_failure(
     mockPipeline, mockConfig, mockDocker, mockContainer,
 ):
-    from vaibify.cli.commandRun import run
+    from vaibify.cli.commandRun import fnRunCommand
     runner = CliRunner()
-    result = runner.invoke(run, [])
+    result = runner.invoke(fnRunCommand, [])
     assert result.exit_code == 1
 
 
@@ -217,9 +217,9 @@ def test_run_exits_one_on_pipeline_failure(
 def test_run_exits_two_on_out_of_range(
     mockPipeline, mockConfig, mockDocker, mockContainer,
 ):
-    from vaibify.cli.commandRun import run
+    from vaibify.cli.commandRun import fnRunCommand
     runner = CliRunner()
-    result = runner.invoke(run, [])
+    result = runner.invoke(fnRunCommand, [])
     assert result.exit_code == 2
 
 
@@ -232,9 +232,9 @@ def test_run_exits_two_on_out_of_range(
 def test_run_exits_zero_on_success(
     mockPipeline, mockConfig, mockDocker, mockContainer,
 ):
-    from vaibify.cli.commandRun import run
+    from vaibify.cli.commandRun import fnRunCommand
     runner = CliRunner()
-    result = runner.invoke(run, [])
+    result = runner.invoke(fnRunCommand, [])
     assert result.exit_code == 0
 
 
@@ -304,7 +304,7 @@ def _fConfigMinimal():
 
 
 def test_test_cli_step_out_of_range_exits_two():
-    from vaibify.cli.commandTest import test as testCmd
+    from vaibify.cli.commandTest import fnTestCommand as testCmd
     runner = CliRunner()
     with patch(
         "vaibify.cli.commandTest.fconfigResolveProject",
@@ -325,7 +325,7 @@ def test_test_cli_step_out_of_range_exits_two():
 
 
 def test_test_cli_all_steps_human_format():
-    from vaibify.cli.commandTest import test as testCmd
+    from vaibify.cli.commandTest import fnTestCommand as testCmd
     runner = CliRunner()
     with patch(
         "vaibify.cli.commandTest.fconfigResolveProject",
@@ -355,7 +355,7 @@ def test_test_cli_all_steps_human_format():
 
 
 def test_test_cli_failing_step_exits_one():
-    from vaibify.cli.commandTest import test as testCmd
+    from vaibify.cli.commandTest import fnTestCommand as testCmd
     runner = CliRunner()
     with patch(
         "vaibify.cli.commandTest.fconfigResolveProject",
@@ -381,7 +381,7 @@ def test_test_cli_failing_step_exits_one():
 
 
 def test_test_cli_json_output():
-    from vaibify.cli.commandTest import test as testCmd
+    from vaibify.cli.commandTest import fnTestCommand as testCmd
     import json
     runner = CliRunner()
     with patch(
@@ -412,7 +412,7 @@ def test_test_cli_json_output():
 def test_register_missing_yml_exits_one(tmp_path, capsys):
     from vaibify.cli import commandRegister
     with pytest.raises(SystemExit) as exc:
-        commandRegister.register.callback(sdirectory=str(tmp_path))
+        commandRegister.fnRegisterCommand.callback(sdirectory=str(tmp_path))
     assert exc.value.code == 1
     assert "No vaibify.yml found" in capsys.readouterr().out
 
@@ -423,7 +423,7 @@ def test_register_success(tmp_path, capsys):
     with patch(
         "vaibify.cli.commandRegister.fnAddProject"
     ) as mockAdd:
-        commandRegister.register.callback(sdirectory=str(tmp_path))
+        commandRegister.fnRegisterCommand.callback(sdirectory=str(tmp_path))
     mockAdd.assert_called_once()
     assert "Registered project at" in capsys.readouterr().out
 
@@ -435,7 +435,7 @@ def test_register_already_registered_returns_cleanly(tmp_path, capsys):
         "vaibify.cli.commandRegister.fnAddProject",
         side_effect=ValueError("already registered"),
     ):
-        commandRegister.register.callback(sdirectory=str(tmp_path))
+        commandRegister.fnRegisterCommand.callback(sdirectory=str(tmp_path))
     assert "Already registered" in capsys.readouterr().out
 
 

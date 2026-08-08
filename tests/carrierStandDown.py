@@ -109,14 +109,14 @@ def fnStandCarrierDown(monkeypatch, *listRouteModules):
     """Patch out the four carrier entry points for one test module.
 
     Both bindings of the lane-tuple resolver are patched: the definition
-    on ``routeContext`` (which ``fnCommitWorkflowSave`` calls through its
+    on ``routeContext`` (which ``fdictCommitWorkflowSave`` calls through its
     own module globals) and the copy any named route module imported into
     its namespace. Patching only one leaves the other live, which is a
     403 arriving from a carrier the test believes it stood down.
 
     Pass the route modules under test; passing none patches only the
     shared definitions, which is right for a module that reaches the
-    carrier solely through ``fnCommitWorkflowSave``.
+    carrier solely through ``fdictCommitWorkflowSave``.
     """
     from vaibify.gui import commitCarrier, routeContext
 

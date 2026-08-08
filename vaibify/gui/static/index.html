@@ -254,21 +254,21 @@
             <div id="workflowSwitcher" class="workflow-switcher">
                 <span id="activeWorkflowName" class="toolbar-workflow"
                       title="Click to switch project"></span>
-                <span class="vaibify-checkmark" data-aics-level="1"
-                      title="AICS L1: Self-Consistent"><img
+                <span class="vaibify-checkmark" data-proof-level="1"
+                      title="PROOF L1: Self-Consistent"><img
                       src="/static/favicon.png" alt="L1"></span>
-                <span class="vaibify-checkmark" data-aics-level="2"
-                      title="AICS L2: Published"><img
+                <span class="vaibify-checkmark" data-proof-level="2"
+                      title="PROOF L2: Published"><img
                       src="/static/favicon.png" alt="L2"></span>
-                <span class="vaibify-checkmark" data-aics-level="3"
-                      title="AICS L3: Reproducible"><img
+                <span class="vaibify-checkmark" data-proof-level="3"
+                      title="PROOF L3: Reproducible"><img
                       src="/static/favicon.png" alt="L3"></span>
-                <button id="aicsLegendButton" type="button"
-                        class="aics-help-button"
+                <button id="proofLegendButton" type="button"
+                        class="proof-help-button"
                         title="Help">?</button>
                 <div id="workflowDropdown" class="workflow-dropdown"></div>
             </div>
-            <div id="aicsLegendPanel" class="aics-legend-panel"
+            <div id="proofLegendPanel" class="proof-legend-panel"
                  aria-hidden="true" role="dialog"
                  aria-label="Help"></div>
         </div>
@@ -358,7 +358,7 @@
     <div id="panelLeft">
         <div id="leftPanelTabs">
             <div class="left-tab active" data-panel="steps">Main</div>
-            <div class="left-tab" data-panel="aics">AICS</div>
+            <div class="left-tab" data-panel="proof">PROOF</div>
             <div class="left-tab" data-panel="files">Files</div>
             <div class="left-tab" data-panel="repos">Repos</div>
             <div class="left-tab" data-panel="logs">Logs</div>
@@ -369,7 +369,7 @@
         <div id="driftBanner" class="drift-banner" hidden></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"
              style="display: none;"></div>
-        <div id="aicsAttestationBanner" class="aics-attestation-banner"
+        <div id="proofAttestationBanner" class="proof-attestation-banner"
              hidden></div>
 
         <!-- Steps sub-panel -->
@@ -398,9 +398,9 @@
             </div>
         </div>
 
-        <!-- AICS sub-panel (level rollup + L2 readiness card) -->
-        <div id="panelAics">
-            <div id="aicsTabContent" class="tab-content"></div>
+        <!-- PROOF sub-panel (level rollup + L2 readiness card) -->
+        <div id="panelProof">
+            <div id="proofTabContent" class="tab-content"></div>
         </div>
 
         <!-- Files sub-panel -->
@@ -1051,7 +1051,7 @@
 <script src="/static/scriptFileOperations.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptEventBindings.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptReposPanel.js?v=__CACHE_VERSION__"></script>
-<script src="/static/scriptAicsTab.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptProofTab.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptApplication.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptLegendPanel.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptTestManager.js?v=__CACHE_VERSION__"></script>

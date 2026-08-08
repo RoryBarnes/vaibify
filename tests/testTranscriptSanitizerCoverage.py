@@ -70,11 +70,11 @@ def test_already_redacted_token_is_left_alone():
 
 
 def test_entropy_of_uniform_string_is_zero():
-    assert ts._fFractionalShannonEntropy("aaaa") == 0.0
+    assert ts._ffFractionalShannonEntropy("aaaa") == 0.0
 
 
 def test_entropy_of_mixed_string_is_positive():
-    assert ts._fFractionalShannonEntropy("abcd") > 0.0
+    assert ts._ffFractionalShannonEntropy("abcd") > 0.0
 
 
 def test_vendor_prefixed_token_is_redacted():

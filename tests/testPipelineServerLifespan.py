@@ -1,4 +1,4 @@
-"""Tests for pipelineServer._alifespanShared startup/shutdown safety."""
+"""Tests for pipelineServer._fcontextLifespanShared startup/shutdown safety."""
 
 import asyncio
 import logging
@@ -19,7 +19,7 @@ def _fappBuildFakeApp():
 
 async def _fnDriveLifespanToCompletion(appFake):
     """Enter and exit the lifespan context, returning when shutdown finishes."""
-    contextLifespan = pipelineServer._alifespanShared(appFake)
+    contextLifespan = pipelineServer._fcontextLifespanShared(appFake)
     await contextLifespan.__aenter__()
     await contextLifespan.__aexit__(None, None, None)
 
@@ -171,7 +171,7 @@ def test_periodic_sweep_fires_repeatedly_and_evicts_caches():
     )
 
     async def fnDrive():
-        contextLifespan = pipelineServer._alifespanShared(appFake)
+        contextLifespan = pipelineServer._fcontextLifespanShared(appFake)
         await contextLifespan.__aenter__()
         # Let the loop tick at least twice before shutdown.
         await asyncio.sleep(0.08)
@@ -193,7 +193,7 @@ def test_periodic_sweep_cancellable_at_shutdown():
     )
 
     async def fnDrive():
-        contextLifespan = pipelineServer._alifespanShared(appFake)
+        contextLifespan = pipelineServer._fcontextLifespanShared(appFake)
         await contextLifespan.__aenter__()
         await asyncio.sleep(0.02)
         await contextLifespan.__aexit__(None, None, None)
@@ -208,7 +208,7 @@ def test_default_executor_installed_with_io_floor_workers():
     pipelineServer._fnRegisterDefaultThreadPoolExecutor(appFake)
 
     async def fnDrive():
-        contextLifespan = pipelineServer._alifespanShared(appFake)
+        contextLifespan = pipelineServer._fcontextLifespanShared(appFake)
         await contextLifespan.__aenter__()
         executorIo = appFake.state.executorIoThreadPool
         iWorkers = executorIo._max_workers
@@ -224,7 +224,7 @@ def test_default_executor_shutdown_clears_handle():
     pipelineServer._fnRegisterDefaultThreadPoolExecutor(appFake)
 
     async def fnDrive():
-        contextLifespan = pipelineServer._alifespanShared(appFake)
+        contextLifespan = pipelineServer._fcontextLifespanShared(appFake)
         await contextLifespan.__aenter__()
         await contextLifespan.__aexit__(None, None, None)
     asyncio.run(fnDrive())

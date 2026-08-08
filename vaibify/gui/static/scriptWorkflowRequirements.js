@@ -51,7 +51,7 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fsBuildEnvelopeMark(sState, sTooltip) {
         // Pass renders the theme-tinted vaibify check (its color
-        // follows --highlight-color, which climbs with the AICS
+        // follows --highlight-color, which climbs with the PROOF
         // ladder); failures render warning glyphs; only "unknown"
         // keeps the hollow never-verified circle.
         if (sState === "green") {
@@ -447,7 +447,7 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fsRenderActionButton(sAction, sArg, sLabel) {
         // A button that runs a project action in place (the
-        // functionality that used to live only on the AICS card).
+        // functionality that used to live only on the PROOF card).
         return '<div class="requirement-row-actions">' +
             '<button type="button" class="btn wf-action-btn" ' +
             'data-wf-action="' + fnEscapeHtml(sAction) + '" ' +

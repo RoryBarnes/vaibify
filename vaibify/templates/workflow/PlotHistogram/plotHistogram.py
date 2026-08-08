@@ -37,26 +37,26 @@ def fdaReadSamples(sSamplesPath):
     return daSamples
 
 
-def fliaCountPerBin(daSamples, iBinCount):
+def fiaCountPerBin(daSamples, iBinCount):
     """Return per-bin counts spanning the sample range."""
     dMinimum = min(daSamples)
     dMaximum = max(daSamples)
     dSpan = (dMaximum - dMinimum) or 1.0
-    liaCounts = [0] * iBinCount
+    iaCounts = [0] * iBinCount
     for dValue in daSamples:
         iIndex = int((dValue - dMinimum) / dSpan * iBinCount)
-        liaCounts[min(iIndex, iBinCount - 1)] += 1
-    return liaCounts
+        iaCounts[min(iIndex, iBinCount - 1)] += 1
+    return iaCounts
 
 
-def flistBuildBarElements(liaCounts):
+def flistBuildBarElements(iaCounts):
     """Return one SVG rect element per bin, scaled to the chart area."""
     iPlotWidth = _I_CHART_WIDTH - 2 * _I_CHART_MARGIN
     iPlotHeight = _I_CHART_HEIGHT - 2 * _I_CHART_MARGIN
-    iTallest = max(liaCounts) or 1
-    dBarWidth = iPlotWidth / len(liaCounts)
+    iTallest = max(iaCounts) or 1
+    dBarWidth = iPlotWidth / len(iaCounts)
     listElements = []
-    for iIndex, iCount in enumerate(liaCounts):
+    for iIndex, iCount in enumerate(iaCounts):
         dBarHeight = iCount / iTallest * iPlotHeight
         dLeft = _I_CHART_MARGIN + iIndex * dBarWidth
         dTop = _I_CHART_HEIGHT - _I_CHART_MARGIN - dBarHeight
@@ -68,9 +68,9 @@ def flistBuildBarElements(liaCounts):
     return listElements
 
 
-def fsRenderSvg(liaCounts, iSampleCount):
+def fsRenderSvg(iaCounts, iSampleCount):
     """Return the complete SVG document for the histogram."""
-    listElements = flistBuildBarElements(liaCounts)
+    listElements = flistBuildBarElements(iaCounts)
     iBaseline = _I_CHART_HEIGHT - _I_CHART_MARGIN
     return "\n".join([
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -115,9 +115,9 @@ def fnParseArgumentsAndRun():
     )
     arguments = parser.parse_args()
     daSamples = fdaReadSamples(arguments.sSamplesPath)
-    liaCounts = fliaCountPerBin(daSamples, arguments.iBinCount)
+    iaCounts = fiaCountPerBin(daSamples, arguments.iBinCount)
     fnWriteFigure(
-        fsRenderSvg(liaCounts, len(daSamples)), arguments.sOutputPath,
+        fsRenderSvg(iaCounts, len(daSamples)), arguments.sOutputPath,
     )
     print(f"Wrote histogram to {arguments.sOutputPath}")
 
