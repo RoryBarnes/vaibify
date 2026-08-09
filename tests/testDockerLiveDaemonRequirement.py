@@ -198,21 +198,32 @@ def testADriftedOccurrenceCountErrorsRatherThanUnderMutating():
 
 
 def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
-    """No daemon and no demand: partition, do not pretend to judge."""
+    """No daemon and no demand: partition, do not pretend to judge.
+
+    The browser facility is forced AVAILABLE here so this asserts
+    about the daemon tier alone; the deferral machinery is shared, and
+    a test that let both tiers fire at once could not tell which one
+    had put an entry in the deferred list.
+    """
     moduleTool = _fmoduleReconfirmationHarness()
     monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: False)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: True,
+    )
     monkeypatch.delenv(moduleTool.S_REQUIRE_DAEMON_ENV, raising=False)
 
     listEvaluable, listDeferred = moduleTool._tPartitionRegistryForThisHost()
 
-    setMarked = moduleTool.fsetSelectNodeIdsNeedingALiveDaemon()
+    setMarked = moduleTool.fsetSelectNodeIdsCarryingMarker(
+        moduleTool.S_LIVE_DAEMON_MARKER,
+    )
     assert listDeferred, (
         "the registry has real-container entries, so a host with no "
         "daemon must defer some of them"
     )
-    assert all(entry.nodeid in setMarked for entry in listDeferred), (
-        "an entry was deferred without carrying the live-daemon marker"
-    )
+    assert all(
+        entry.nodeid in setMarked for entry, _sPhrase in listDeferred
+    ), "an entry was deferred without carrying the live-daemon marker"
     assert not any(entry.nodeid in setMarked for entry in listEvaluable), (
         "a marked entry stayed in the evaluable set, so it will be "
         "judged by a run that cannot execute it"
@@ -220,6 +231,56 @@ def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
     assert len(listEvaluable) + len(listDeferred) == len(
         moduleTool.LIST_FALSIFICATIONS
     ), "the partition dropped or duplicated an entry"
+
+
+def testFrontendEntriesAreDeferredWhenNoBrowserIsInstalled(monkeypatch):
+    """A JavaScript mutant is only observable to a test that loads a page.
+
+    Without this tier the frontend entries would be run anyway,
+    Playwright would be missing, the browser lane would SKIP -- and a
+    skip exits 0, which this harness reads as a surviving mutant. The
+    one surface this repository has already shipped un-executed would
+    then also be the one reporting phantom survivors.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: True)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: False,
+    )
+    monkeypatch.delenv(moduleTool.S_REQUIRE_BROWSER_ENV, raising=False)
+
+    listEvaluable, listDeferred = moduleTool._tPartitionRegistryForThisHost()
+
+    setMarked = moduleTool.fsetSelectNodeIdsCarryingMarker(
+        moduleTool.S_BROWSER_MARKER,
+    )
+    assert listDeferred, (
+        "the registry has frontend entries, so a host with no browser "
+        "must defer some of them"
+    )
+    assert all(
+        entry.nodeid in setMarked for entry, _sPhrase in listDeferred
+    ), "an entry was deferred without carrying the browser marker"
+    assert all(
+        sPhrase == "a browser" for _entry, sPhrase in listDeferred
+    ), "the deferral did not name the facility it was waiting on"
+    assert len(listEvaluable) + len(listDeferred) == len(
+        moduleTool.LIST_FALSIFICATIONS
+    ), "the partition dropped or duplicated an entry"
+
+
+def testDemandingABrowserRefusesRatherThanQuietlyDeferring(monkeypatch):
+    """The browser tier refuses the deferral exactly as the daemon does."""
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: True)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: False,
+    )
+    monkeypatch.setenv(moduleTool.S_REQUIRE_BROWSER_ENV, "1")
+
+    with pytest.raises(SystemExit) as excinfo:
+        moduleTool._tPartitionRegistryForThisHost()
+    assert excinfo.value.code != 0
 
 
 @pytest.mark.falsification
@@ -261,7 +322,7 @@ def testDeferredEntriesAreNamedAndLeftOutOfTheDenominator(monkeypatch, capsys):
     )
     monkeypatch.setattr(
         moduleTool, "_tPartitionRegistryForThisHost",
-        lambda: ([entryJudged], [entryDeferred]),
+        lambda: ([entryJudged], [(entryDeferred, "a live Docker daemon")]),
     )
     monkeypatch.setattr(
         moduleTool, "_fdictCaptureOriginals", lambda: {"sourceUnderTest": "alpha"},

@@ -37,6 +37,12 @@ from tests.browser.fakeDockerAdapter import (
 
 S_REQUIRE_BROWSER_ENV = "VAIBIFY_REQUIRE_BROWSER"
 
+# The two host projects the lane's registry carries beside the one
+# container. Named here so a journey can address them without
+# re-deriving the seed.
+S_HOST_PROJECT_READY = "hostLaneReady"
+S_HOST_PROJECT_MISSING = "hostLaneMissing"
+
 pytestmark = pytest.mark.browser
 
 
@@ -98,7 +104,13 @@ def _fnIsolateProjectRegistry():
     researcher's real project list, so a CI-shaped test would behave
     differently on a developer machine and could damage live state.
     Seeded with the one container the fake Docker adapter reports, so
-    what the browser renders is fully determined by this file.
+    what the browser renders is fully determined by this file, plus
+    two host projects. The host entries are here rather than in a
+    fixture of their own because the picker renders one list: a host
+    tile that behaved correctly in isolation but broke the container
+    tile beside it would pass a separate fixture and fail a user.
+    One is READY (its directory and config exist) and one is MISSING
+    (nothing on disk), which are the two host states the picker has.
     """
     from vaibify.config import registryManager
     # Project creation correctly permits directories beneath the user's
@@ -106,6 +118,12 @@ def _fnIsolateProjectRegistry():
     # is beneath that home, so the wizard exercises the real path guard.
     with tempfile.TemporaryDirectory(dir=os.getcwd()) as sHome:
         sRegistry = os.path.join(sHome, "registry.json")
+        sReadyDirectory = os.path.join(sHome, S_HOST_PROJECT_READY)
+        os.makedirs(sReadyDirectory, exist_ok=True)
+        with open(
+            os.path.join(sReadyDirectory, "vaibify.yml"), "w",
+        ) as fileConfig:
+            fileConfig.write(f"projectName: {S_HOST_PROJECT_READY}\n")
         with open(sRegistry, "w") as fileHandle:
             json.dump({"listProjects": [{
                 "sName": S_CONTAINER_NAME,
@@ -113,6 +131,24 @@ def _fnIsolateProjectRegistry():
                 "sDirectory": os.path.join(sHome, "browserLaneProject"),
                 "sConfigPath": os.path.join(
                     sHome, "browserLaneProject", "vaibify.yml",
+                ),
+            }, {
+                "sName": S_HOST_PROJECT_READY,
+                "sContainerName": S_HOST_PROJECT_READY,
+                "sMode": "host",
+                "sDirectory": sReadyDirectory,
+                "sConfigPath": os.path.join(
+                    sReadyDirectory, "vaibify.yml",
+                ),
+            }, {
+                "sName": S_HOST_PROJECT_MISSING,
+                "sContainerName": S_HOST_PROJECT_MISSING,
+                "sMode": "host",
+                "sDirectory": os.path.join(
+                    sHome, S_HOST_PROJECT_MISSING,
+                ),
+                "sConfigPath": os.path.join(
+                    sHome, S_HOST_PROJECT_MISSING, "vaibify.yml",
                 ),
             }]}, fileHandle)
         with patch.object(

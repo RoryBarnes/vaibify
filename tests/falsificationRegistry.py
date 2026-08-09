@@ -7747,10 +7747,12 @@ def _fdictEntry(sRel):
             'testDeferredEntriesAreNamedAndLeftOutOfTheDenominator'
         ),
         source='tools/reconfirmFalsification.py',
+        # Re-pinned 2026-08-09: the deferral now names WHICH facility
+        # was missing, so the printed line is composed. The kill was
+        # hand-replayed against the new spelling.
         old=(
-            '    for entry in listDeferred:\n'
-            '        print(f"{\'NOT EVALUATED: needs a live Docker '
-            'daemon\':48}  "\n'
+            '    for entry, sPhrase in listDeferred:\n'
+            "        print(f\"{'NOT EVALUATED: needs ' + sPhrase:48}  \"\n"
             '              f"{entry.nodeid}")\n'
         ),
         new='',
@@ -8656,5 +8658,67 @@ def _fdictEntry(sRel):
             '        return\n'
         ),
         new='    if True:\n        return\n',
+    ),
+    # --- The picker's host tile (host mode wave 4) ---
+    #
+    # Frontend mutations, observable only to a test that loads the
+    # page; the harness defers them by the `browser` marker on a host
+    # with no Playwright rather than scoring them blind.
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testAHostTileCarriesItsNameAsTheResourceId'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # A host registry entry has no sContainerId, so this renders an
+        # empty resource id: the click path resolves nothing and
+        # returns in silence -- no error, no toast, no diagnosis.
+        old=(
+            '        var sId = bHost\n'
+            '            ? (dictContainer.sName || "")\n'
+            '            : (dictContainer.sContainerId || "");\n'
+        ),
+        new='        var sId = dictContainer.sContainerId || "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testAHostTileOffersNoContainerLifecycleAction'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '           researcher from being offered them. */\n'
+            '        if (bHost) return "";\n'
+        ),
+        new=(
+            '           researcher from being offered them. */\n'
+            '        if (false) return "";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheContainerTileKeepsEveryLifecycleAction'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '           researcher from being offered them. */\n'
+            '        if (bHost) return "";\n'
+        ),
+        new=(
+            '           researcher from being offered them. */\n'
+            '        if (true) return "";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testClickingAMissingHostProjectRefusesAndClaimsNothing'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Without the branch a host tile falls through to the container
+        # click path, which tries to START a container it has none of.
+        old='        if (elTile && elTile.dataset.mode === "host") {\n',
+        new='        if (false) {\n',
     ),
 ]

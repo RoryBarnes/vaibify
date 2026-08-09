@@ -163,9 +163,23 @@ var VaibifyContainerManager = (function () {
         fnConnectToContainer(sId);
     }
 
+    function _fbHostProject(dictContainer) {
+        /* Absent sMode means container: that is what every registry
+           entry written before host mode existed meant. */
+        return dictContainer.sMode === "host";
+    }
+
     function fsRenderContainerTile(dictContainer) {
         var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
-        var sId = dictContainer.sContainerId || "";
+        var bHost = _fbHostProject(dictContainer);
+        /* A host project has no container, so the registry sends no
+           sContainerId. Its resource id IS its registry name -- the
+           same substitution the backend claim path makes -- and the
+           tile has to carry it, or the click path resolves nothing
+           and returns silently. */
+        var sId = bHost
+            ? (dictContainer.sName || "")
+            : (dictContainer.sContainerId || "");
         var bUnavailable = _fbContainerUnavailable(dictContainer);
         var sLockedClass = bUnavailable ? " container-tile--locked" : "";
         var sLockedMessage = _fsUnavailableMessage(dictContainer);
@@ -180,17 +194,44 @@ var VaibifyContainerManager = (function () {
             '" data-name="' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
             '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
+            '" data-mode="' + (bHost ? "host" : "container") +
             '"' + sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
+            _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
             'title="Actions">&#8942;</button>' +
-            '<button class="btn-icon container-tile-gear" ' +
-            'title="Settings">&#9881;</button>' +
+            _fsRenderTileGear(bHost) +
             '<div class="container-tile-menu" style="display:none;">' +
+            _fsRenderContainerOnlyMenuItems(bHost) +
+            '<div class="container-menu-item danger" ' +
+            'data-action="remove">Remove from list</div>' +
+            "</div></div>"
+        );
+    }
+
+    function _fsRenderTileGear(bHost) {
+        /* The settings modal is entirely container fields -- keep the
+           host awake while the CONTAINER runs, CPU and memory limits
+           on a container that does not exist. Hiding it is courtesy;
+           the routes refuse a host project on their own. */
+        if (bHost) return "";
+        return (
+            '<button class="btn-icon container-tile-gear" ' +
+            'title="Settings">&#9881;</button>'
+        );
+    }
+
+    function _fsRenderContainerOnlyMenuItems(bHost) {
+        /* Start, stop, restart and the two rebuilds all drive Docker
+           machinery a host project has none of. The server refuses
+           them with a 409 naming host mode; this only keeps the
+           researcher from being offered them. */
+        if (bHost) return "";
+        return (
             '<div class="container-menu-item" data-action="start">' +
             "Start</div>" +
             '<div class="container-menu-item" data-action="cancel-start">' +
@@ -203,10 +244,21 @@ var VaibifyContainerManager = (function () {
             "Rebuild</div>" +
             '<div class="container-menu-item" data-action="force-rebuild">' +
             "Force Rebuild</div>" +
-            '<div class="container-menu-separator"></div>' +
-            '<div class="container-menu-item danger" ' +
-            'data-action="remove">Remove from list</div>' +
-            "</div></div>"
+            '<div class="container-menu-separator"></div>'
+        );
+    }
+
+    function _fsRenderHostTileNote(dictContainer, bHost) {
+        /* A missing host project is a directory that moved or a
+           config that was deleted. Naming the path is the whole
+           remedy: the researcher can see at a glance whether they
+           renamed a folder or are looking at a stale entry. */
+        if (!bHost || dictContainer.sStatus !== "missing") return "";
+        return (
+            '<span class="container-tile-note">' +
+            VaibifyUtilities.fnEscapeHtml(
+                dictContainer.sDirectory || "directory unknown") +
+            "</span>"
         );
     }
 
@@ -234,6 +286,11 @@ var VaibifyContainerManager = (function () {
     function _fsStatusDotClass(sStatus) {
         if (sStatus === "running") return "status-running";
         if (sStatus === "stopped") return "status-stopped";
+        /* Host vocabulary. A host project is ready or its directory is
+           gone; it is never built, started or stopped, and reusing
+           "not built" for it would offer a build that cannot happen. */
+        if (sStatus === "ready") return "status-host-ready";
+        if (sStatus === "missing") return "status-missing";
         return "status-not-built";
     }
 
@@ -257,11 +314,15 @@ var VaibifyContainerManager = (function () {
             event.stopPropagation();
             _fnToggleActionsMenu(elMenu);
         });
-        elGear.addEventListener("click", function (event) {
-            event.stopPropagation();
-            _fnCloseAllActionsMenus();
-            fnShowContainerSettings(sName);
-        });
+        /* A host tile renders no gear -- its settings are all
+           container settings -- so binding one is conditional. */
+        if (elGear) {
+            elGear.addEventListener("click", function (event) {
+                event.stopPropagation();
+                _fnCloseAllActionsMenus();
+                fnShowContainerSettings(sName);
+            });
+        }
         elMenu.querySelectorAll(".container-menu-item").forEach(
             function (elItem) {
                 elItem.addEventListener("click", function (event) {
@@ -294,6 +355,10 @@ var VaibifyContainerManager = (function () {
                 "Container '" + sName + "': " +
                 (elTile.dataset.lockedMessage ||
                  _fsLockedMessage(0)), "warning");
+            return;
+        }
+        if (elTile && elTile.dataset.mode === "host") {
+            await _fnOpenHostProject(sName, elTile);
             return;
         }
         var elDot = elTile ? elTile.querySelector(".status-dot") : null;
@@ -330,6 +395,33 @@ var VaibifyContainerManager = (function () {
             }
         }
         fnConnectToContainer(sTargetId);
+    }
+
+    async function _fnOpenHostProject(sName, elTile) {
+        /* A host project skips every step the container path takes
+           before connecting: there is no image to build, nothing to
+           start, and no entrypoint to become ready. It is ready when
+           the directory and its config are there, and the claim is
+           the only arbitration left. Falling into the container path
+           would offer a build for a project that can never have one
+           -- the `not built -> click -> build` trap. */
+        var elDot = elTile.querySelector(".status-dot");
+        if (elDot && elDot.classList.contains("status-missing")) {
+            var elNote = elTile.querySelector(".container-tile-note");
+            VaibifyApp.fnShowToast(
+                "Project '" + sName + "' is not on disk any more" +
+                (elNote ? ": " + elNote.textContent : "") +
+                ". Restore the directory and its vaibify.yml, or " +
+                "remove the project from the list.", "error");
+            return;
+        }
+        var bClaimed = await _fbClaimContainer(sName);
+        if (!bClaimed) {
+            await fnLoadContainers();
+            return;
+        }
+        /* The resource id of a host project is its registry name. */
+        fnConnectToContainer(elTile.dataset.containerId || sName);
     }
 
     async function _fbClaimContainer(sName) {
