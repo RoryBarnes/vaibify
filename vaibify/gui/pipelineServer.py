@@ -75,6 +75,7 @@ from . import agentSessionBridge
 from . import browserSession
 from . import conftestManager
 from . import containerOwnership
+from . import projectRoots
 from . import sessionLifecycle
 from . import workflowManager
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
@@ -1689,10 +1690,17 @@ def _fdictInvertDeps(dictUpToDown, iStepCount):
     return dictResult
 
 
-def _fsValidateConnectWorkflowPath(sWorkflowPath):
-    """Normalize and validate a connect-supplied workflow path."""
+def _fsValidateConnectWorkflowPath(sWorkflowPath, sProjectRoot):
+    """Normalize and validate a connect-supplied workflow path.
+
+    ``sProjectRoot`` is the boundary the path must fall inside: the
+    container workspace volume for a container project, the registered
+    directory for a host one. It is passed rather than assumed so a
+    host path can never be measured against a container root, which
+    would refuse every legitimate host project.
+    """
     sNormalized = posixpath.normpath(sWorkflowPath)
-    fsValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)
+    fsValidatePathWithinRoot(sNormalized, sProjectRoot)
     if not sNormalized.endswith(".json"):
         raise HTTPException(
             400, "sWorkflowPath must point at a .json file")
@@ -1767,7 +1775,10 @@ async def fdictHandleConnect(
         return _fdictConnectNoWorkflow(
             dictCtx, sContainerId, sBrowserSessionId,
         )
-    sWorkflowPath = _fsValidateConnectWorkflowPath(sWorkflowPath)
+    sWorkflowPath = _fsValidateConnectWorkflowPath(
+        sWorkflowPath,
+        projectRoots.fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT),
+    )
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
             dictCtx["docker"], sContainerId, sWorkflowPath
@@ -2300,7 +2311,9 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
     def fsBuildWorkflowDirectory(sContainerId):
         sPath = dictPaths.get(sContainerId)
         if not sPath:
-            return WORKSPACE_ROOT
+            return projectRoots.fsResolveProjectRoot(
+                sContainerId, WORKSPACE_ROOT,
+            )
         sWorkflowDirectory = posixpath.dirname(sPath)
         if "/.vaibify" in sWorkflowDirectory:
             return sWorkflowDirectory[

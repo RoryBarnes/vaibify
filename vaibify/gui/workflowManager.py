@@ -154,9 +154,15 @@ def _flistDiscoverCandidatePaths(
     Scans both the canonical ``.vaibify/projects`` directory and the
     legacy ``.vaibify/workflows`` directory so existing repos keep
     loading after the rename.
+
+    The search root is QUOTED. It was a module constant until host
+    mode, and a host project's root is the directory the researcher
+    registered — a user-facing value carrying whatever characters
+    their filesystem allows, spaces and shell metacharacters
+    included, on its way into ``bash -c`` text.
     """
     sCommand = (
-        f"find {sSearchRoot} -maxdepth 4"
+        f"find {shlex.quote(sSearchRoot)} -maxdepth 4"
         f" \\( -path '*/.vaibify/projects/*.json'"
         f" -o -path '*/.vaibify/workflows/*.json' \\)"
         f" -type f 2>/dev/null"

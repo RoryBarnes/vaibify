@@ -4315,7 +4315,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # The dashboard's "add test command" and save-and-run-test both
     # write there, so the fallback reading dropped hand-added tests from
     # green runs. Still one function answering one question.
-    "workflowManager.py": 2347,
+    # +6 (2026-08-08): the discovery search root is quoted into the
+    # find command, with the paragraph explaining why a constant that
+    # never needed quoting does now — a host project's root is the
+    # directory the researcher registered, and it reaches ``bash -c``.
+    "workflowManager.py": 2353,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -4440,7 +4444,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # session is pushed, because no host container exists to receive
     # one; the viewer's token mint names its resource for the same
     # mode-aware mint the claim path uses.
-    "pipelineServer.py": 2520,
+    # +13 (2026-08-08): the connect path guard and the workflow-
+    # directory fallback ask which root this resource's files live
+    # under instead of naming the container volume (host-mode wave 4).
+    # The answering is a new module; what lands here is the question
+    # and the paragraph saying why measuring a host path against
+    # ``/workspace`` refuses every legitimate one.
+    "pipelineServer.py": 2533,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

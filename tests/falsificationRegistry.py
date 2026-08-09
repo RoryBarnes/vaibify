@@ -8462,4 +8462,89 @@ def _fdictEntry(sRel):
             '    return True\n'
         ),
     ),
+    # --- The root a project's files live under (host mode wave 4) ---
+    #
+    # One resolver, two directions. Stuck on the container volume, a
+    # host project finds no Projects (an empty list, not an error) and
+    # every connect is refused 403 "path traversal". Stuck on the
+    # registry directory, every containerized project searches the
+    # researcher's config folder from INSIDE the container, where it
+    # does not exist. The two read identically in a report.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectResolvesToItsRegisteredDirectory'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerRoot\n'
+        ),
+        new='    if True:\n        return sContainerRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAContainerProjectResolvesToTheContainerRoot'
+        ),
+        source='vaibify/gui/projectRoots.py',
+        old=(
+            '    if not registryManager.fbIsHostProject(sResourceId):\n'
+            '        return sContainerRoot\n'
+        ),
+        new='    if False:\n        return sContainerRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testWorkflowDiscoverySearchesTheHostProjectDirectory'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        # The route stops asking and takes the module default back.
+        old=(
+            '                dictCtx["docker"], sContainerId, '
+            'sSearchRoot,\n'
+        ),
+        new='                dictCtx["docker"], sContainerId,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testWorkflowDiscoveryStillSearchesTheVolumeForAContainer'
+        ),
+        source='vaibify/gui/routes/workflowRoutes.py',
+        # The route reads the directory out of the registry itself
+        # instead of going through the resolver -- the plausible
+        # shortcut, and wrong because it never consults the MODE. Every
+        # container project would search its own config folder.
+        old=(
+            '        sSearchRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, '
+            'workflowManager.DEFAULT_SEARCH_ROOT,\n'
+            '        )\n'
+        ),
+        new=(
+            '        from vaibify.config import registryManager\n'
+            '        sSearchRoot = (registryManager.fdictGetProject('
+            'sContainerId) or {}).get(\n'
+            '            "sDirectory", '
+            'workflowManager.DEFAULT_SEARCH_ROOT)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostWorkflowPathIsMeasuredAgainstItsProjectDirectory'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The connect guard takes the container volume back as its
+        # boundary, refusing every legitimate host workflow path with
+        # the code that means "you tried to escape".
+        old=(
+            '    fsValidatePathWithinRoot(sNormalized, sProjectRoot)\n'
+        ),
+        new=(
+            '    fsValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)\n'
+        ),
+    ),
 ]

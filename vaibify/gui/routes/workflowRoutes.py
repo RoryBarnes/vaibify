@@ -11,6 +11,7 @@ from typing import Optional
 
 from .. import browserSession
 from .. import containerOwnership
+from .. import projectRoots
 from .. import workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..routeContext import (
@@ -131,10 +132,16 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
 
     @app.get("/api/workflows/{sContainerId}")
     async def flistHandleFindWorkflows(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
+        # A host project's projects live under the directory the
+        # researcher registered, not under the container volume the
+        # module default names.
+        sSearchRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, workflowManager.DEFAULT_SEARCH_ROOT,
+        )
         try:
             return workflowManager.flistFindWorkflowsInContainer(
-                dictCtx["docker"], sContainerId
+                dictCtx["docker"], sContainerId, sSearchRoot,
             )
         except Exception as error:
             if _fbIsContainerStopped(error):
