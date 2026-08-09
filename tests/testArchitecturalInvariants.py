@@ -4137,7 +4137,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # why a route polled every ten seconds may declare mode (b)
     # without holding a drain on a timer — its carrier opens only on
     # the reconcile branch.
-    "routes/pipelineRoutes.py": 3089,
+    # +5 (2026-08-08): the poll threads the project's MODE into the
+    # level gates, because Level 3 is defined by a pinned image and a
+    # host project must be told that once rather than handed seven
+    # container criteria it can never satisfy.
+    "routes/pipelineRoutes.py": 3094,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4718,7 +4722,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sends each field on the transport the route actually reads.
     # +4 (2026-08-08): the host-warning acknowledgement preference PUT
     # excluded from the agent lane. Same governance responsibility.
-    "actionCatalog.py": 968,
+    # +4 (2026-08-08): the host exit from Supervised mode joins its
+    # sibling in the exclusion list, with the reason they share.
+    "actionCatalog.py": 972,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -4788,7 +4794,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-08-08): the file-write payload's Docker-id stamp
     # became mode-aware for host mode (one import line); the
     # payload site itself swapped line for line.
-    "routes/replayRoutes.py": 963,
+    # +86 (2026-08-08): the two halves of the Supervised honesty gate
+    # (host mode decision 3). Entering Supervised mode is refused for a
+    # host project, and the ONE mutation such a workflow is permitted
+    # -- the recorded exit -- lives here beside the setting it undoes.
+    # The flag is permanent and the event log hash-chained, so both
+    # halves have to exist together: a refusal with no way out would
+    # strand a workflow, and a way out with no refusal would let the
+    # log keep claiming attribution it cannot support.
+    "routes/replayRoutes.py": 1049,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a

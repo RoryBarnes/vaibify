@@ -842,8 +842,12 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
      "/api/workflow/{sContainerId}/prompt-record/"
      "approve-first-capture"),
     # The supervised party must never switch its own supervision on
-    # or off; Supervised mode is toggled by the researcher only.
+    # or off; Supervised mode is toggled by the researcher only. The
+    # host exit is the same decision under a different name -- an agent
+    # that could end supervision could end the record of itself -- so
+    # it is excluded on identical terms.
     ("POST", "/api/workflow/{sContainerId}/supervision/configure"),
+    ("POST", "/api/workflow/{sContainerId}/supervision/end-on-host"),
     # The capability-bootstrap exchange: mints a per-browser session
     # credential from a launch capability the container never holds. The
     # endpoint itself 403s the agent lane; it is control-plane, never

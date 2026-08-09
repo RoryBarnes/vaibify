@@ -120,7 +120,7 @@ def testMissingFromManifestCriterionFires(fixtureL3Repo):
         "saPlotCommands": [],
     }]
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listMissing = _flistFindByCriterion(
         listBlockers, "missing-from-manifest",
@@ -146,7 +146,7 @@ def testDominantEntryCarriesEveryFailingCriterion(fixtureL3Repo):
         "bUnseededRandomnessWarning": True,
     }]
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listStepEntries = [
         d for d in listBlockers if d.get("iStepIndex") == 0
@@ -187,7 +187,7 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
         "saPlotCommands": [],
     }]
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listUndeclared = _flistFindByCriterion(
         listBlockers, "binary-not-declared",
@@ -243,7 +243,7 @@ def testFalseWaiverCheatingDefeatedByAllowlist(
     _fnSeedStepDataFile(fixtureL3Repo, sRel)
     dictWorkflow = _fdictWaivedWorkflowWithCommand(sCommand, sRel)
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listUndeclared = _flistFindByCriterion(
         listBlockers, "binary-not-declared",
@@ -277,7 +277,7 @@ def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
         "saPlotCommands": [],
     }]
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listNotCaptured = _flistFindByCriterion(
         listBlockers, "binary-not-captured",
@@ -300,7 +300,7 @@ def testDockerfileNotPinnedFiresAsWorkflowScope(fixtureL3Repo):
     )
     dictWorkflow = _fdictWaivedWorkflow()
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listPinned = _flistFindByCriterion(
         listBlockers, "dockerfile-not-pinned",
@@ -324,7 +324,7 @@ def testImageNotPublishedFiresForLocalOnlyEnvelope(fixtureL3Repo):
         fixtureL3Repo, sDigest="sha256:" + "c" * 64, bLocalImageOnly=True,
     )
     listBlockers = flistLevel3Blockers(
-        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+        _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
     )
     listImage = _flistFindByCriterion(listBlockers, "image-not-published")
     assert len(listImage) == 1
@@ -345,7 +345,7 @@ def testImageNotPublishedFiresOnBareImageIdWithoutFlag(fixtureL3Repo):
     """
     _fnWriteEnvironment(fixtureL3Repo, sDigest="sha256:" + "c" * 64)
     listBlockers = flistLevel3Blockers(
-        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+        _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
     )
     assert len(_flistFindByCriterion(
         listBlockers, "image-not-published",
@@ -355,7 +355,7 @@ def testImageNotPublishedFiresOnBareImageIdWithoutFlag(fixtureL3Repo):
 def testRegistryDigestDoesNotFireImageNotPublished(fixtureL3Repo):
     """The fixture's ``repo@sha256:`` digest is pullable: no blocker."""
     listBlockers = flistLevel3Blockers(
-        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+        _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
     )
     assert _flistFindByCriterion(
         listBlockers, "image-not-published",
@@ -370,7 +370,7 @@ def testMissingEnvelopeIsOwnedBySnapshotCriterionAlone(fixtureL3Repo):
     """
     (fixtureL3Repo / ".vaibify" / "environment.json").unlink()
     listBlockers = flistLevel3Blockers(
-        _fdictWaivedWorkflow(), str(fixtureL3Repo),
+        _fdictWaivedWorkflow(), str(fixtureL3Repo), False,
     )
     assert len(_flistFindByCriterion(
         listBlockers, "environment-snapshot-missing",
@@ -390,7 +390,7 @@ def testDependencyLockMissingHintNamesInstallableTools(fixtureL3Repo):
     (fixtureL3Repo / "requirements.lock").unlink()
     dictWorkflow = _fdictWaivedWorkflow()
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listLockBlockers = _flistFindByCriterion(
         listBlockers, "dependency-lock-missing",
@@ -429,7 +429,7 @@ def testL3BlockerListIncludesBinariesNotDeclaredOrWaived(fixtureL3Repo):
         "dictDeterminism": {"bAcceptBlasVariance": True},
     }
     listBlockers = flistLevel3Blockers(
-        dictWorkflow, str(fixtureL3Repo),
+        dictWorkflow, str(fixtureL3Repo), False,
     )
     listFound = _flistFindByCriterion(
         listBlockers, "binaries-not-declared-or-waived",

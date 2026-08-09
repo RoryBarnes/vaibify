@@ -89,6 +89,13 @@ def _fdictBuildApplicationContext(app, dictConfig, sSessionToken):
     dictCtx["dictSessionSockets"] = app.state.dictSessionSockets
     if dictConfig["bIsHub"]:
         dictCtx["bIsHub"] = True
+    # Published on app.state so ``routeScope.ContainerAwareRoute`` can
+    # reach the workflow cache. It runs before every container-scoped
+    # handler and is the one place that already classifies a request as
+    # mutating, which is what the Supervised-on-host refusal needs; the
+    # alternative was a second classifier in middleware that would drift
+    # from this one.
+    app.state.dictRouteContext = dictCtx
     return dictCtx
 
 

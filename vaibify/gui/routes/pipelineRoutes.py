@@ -11,6 +11,7 @@ import re
 
 from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
+from ...config.registryManager import fbIsHostProject
 from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
 
 from .. import containerOwnership
@@ -974,6 +975,7 @@ async def _fdictFetchOutputStatus(
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
+        fbIsHostProject(sContainerId),
     )
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
@@ -1767,6 +1769,7 @@ def _fsFetchManifestTextFromContainer(
 def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
+    bHostProject=False,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -1786,6 +1789,7 @@ def _fdictBuildPollResponseRest(
     )
     dictGates = _fdictComputePollLevelGates(
         dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
+        bHostProject,
     )
     return _fdictAssemblePollResponse(
         dictWorkflow, dictModTimes, dictReload, listInvalidated,
@@ -1814,6 +1818,7 @@ def _ftComputePollScriptContext(
 
 def _fdictComputePollLevelGates(
     dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
+    bHostProject,
 ):
     """Evaluate the AICS level and the three blocker lists for one poll."""
     from vaibify.reproducibility.levelGates import (
@@ -1832,7 +1837,7 @@ def _fdictComputePollLevelGates(
             dictWorkflow, filesPoll,
         ),
         "listLevel3Blockers": flistLevel3Blockers(
-            dictWorkflow, filesPoll,
+            dictWorkflow, filesPoll, bHostProject,
         ),
     }
 

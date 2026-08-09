@@ -64,7 +64,7 @@ def _fdictWorkflow(sRepo, sBinaryPath, listSteps):
 
 def _flistDriftBlockers(sRepo, dictWorkflow):
     return [
-        d for d in flistLevel3Blockers(dictWorkflow, sRepo)
+        d for d in flistLevel3Blockers(dictWorkflow, sRepo, False)
         if d["sCriterion"] == "binary-drifted"
     ]
 

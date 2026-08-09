@@ -135,6 +135,24 @@ _SET_AUTHORIZED_CONTAINER_SCOPES = (
 
 I_AUTHORIZED = 0
 I_REJECT_FORBIDDEN = 403
+# A mutation aimed at a Supervised workflow opened in HOST mode.
+# Supervised mode's claim is that every change to the repository has a
+# recorded cause; vaibify can only make it while it mediates every path
+# to the files, and on the host the researcher's own editor, git and
+# IDE bypass the hub entirely. The flags are permanent and
+# hash-chained, so there is no accumulate-then-clean: the only honest
+# move is to stop mutating until supervision is deliberately ended.
+#
+# NOT 403, for the reason the withdrawn terminal recorded: a refusal a
+# client reads as "your credential was rejected" sends the researcher
+# to re-claim a project that is already theirs.
+I_REJECT_SUPERVISED_ON_HOST = 409
+# The one mutation that IS permitted, because it is how the refusal
+# ends. It records the transition in the append-only attribution log
+# before anything else may write.
+S_END_SUPERVISION_ON_HOST_PATH = (
+    "/api/workflow/{sContainerId}/supervision/end-on-host"
+)
 # A lifecycle mutation arriving while the container's start reservation
 # is live: refused as a CONFLICT, not a forbidden — the caller may well
 # be the owner, and the honest answer is "not yet", not "not you".
@@ -739,6 +757,10 @@ class ContainerAwareRoute(APIRoute):
                 )
                 if iCode:
                     return _fresponseRefused(iCode)
+            if _fbRefuseSupervisedHostMutation(
+                self.methods, self.path, request,
+            ):
+                return _fresponseSupervisedHostRefusal()
             if bContainerScoped and _fbServeOnAmbientAdmission(self):
                 tAdmissionTokens = commitCarrier.ftOpenRequestAdmission(
                     request.app.state, dictScope, request,
@@ -754,6 +776,59 @@ class ContainerAwareRoute(APIRoute):
                 commitCarrier.fnResetEnforcedRequestLane(tokenLane)
 
         return fresponseHandleAuthorized
+
+
+def _fbRefuseSupervisedHostMutation(setMethods, sPath, request):
+    """Return True for a mutation aimed at a Supervised HOST workflow.
+
+    Checked HERE because this class is the only thing that runs before
+    every container-scoped handler and already knows whether a request
+    mutates; a second classifier in middleware would drift from this
+    one, and per-route guards would be a rule that a new route can
+    forget.
+
+    Four conditions, all necessary. The route MUTATES — reading and
+    browsing a Supervised host workflow stays available, because
+    nothing about a read makes the attribution log lie. It is not the
+    end-supervision route, which is the transition out. The resource is
+    a registered HOST project. And supervision is actually on: an
+    ordinary host workflow is refused nothing by this.
+
+    Fails OPEN when the workflow cannot be read, and that is
+    deliberate: this guard exists to keep a claim honest, not to
+    protect anything, and a hub whose context is missing (a bare
+    ``FastAPI()`` in a test, a route registered outside the factory)
+    must not have every mutation refused by a guard that cannot tell
+    what it is guarding.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if not (_SET_STATE_MUTATING_METHODS & set(setMethods or ())):
+        return False
+    if sPath == S_END_SUPERVISION_ON_HOST_PATH:
+        return False
+    sResourceId = request.path_params.get("sContainerId", "")
+    if not sResourceId or not fbIsHostProject(sResourceId):
+        return False
+    dictContext = getattr(request.app.state, "dictRouteContext", None)
+    if dictContext is None:
+        return False
+    dictWorkflow = (dictContext.get("workflows") or {}).get(sResourceId)
+    if dictWorkflow is None:
+        return False
+    from . import attributionLog
+    return attributionLog.fbSupervisionEnabled(dictWorkflow)
+
+
+def _fresponseSupervisedHostRefusal():
+    """Return the refusal a Supervised host workflow answers mutations with."""
+    return _fresponseJson(I_REJECT_SUPERVISED_ON_HOST, (
+        "This workflow is in Supervised mode, which vaibify can only "
+        "vouch for inside a container: on this machine your editor, "
+        "git and IDE change the files without the hub seeing it, so "
+        "every recorded cause would be a guess. Reads stay available. "
+        "End Supervised mode to continue working here — the change is "
+        "recorded permanently in the attribution log."
+    ))
 
 
 def _fbServeOnAmbientAdmission(route):

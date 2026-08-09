@@ -135,15 +135,15 @@ class TestLevelBlockerCacheLevel3:
 
     def test_second_call_returns_cached_object(self):
         dictWorkflow = _fdictWorkflow(2)
-        listFirst = flistLevel3Blockers(dictWorkflow, "/repo")
-        listSecond = flistLevel3Blockers(dictWorkflow, "/repo")
+        listFirst = flistLevel3Blockers(dictWorkflow, "/repo", False)
+        listSecond = flistLevel3Blockers(dictWorkflow, "/repo", False)
         assert listFirst is listSecond
 
     def test_second_call_does_not_re_walk(self):
         dictWorkflow = _fdictWorkflow(2)
-        flistLevel3Blockers(dictWorkflow, "/repo")
+        flistLevel3Blockers(dictWorkflow, "/repo", False)
         with _ComputeCounter("_flistComputeLevel3Blockers") as counter:
-            flistLevel3Blockers(dictWorkflow, "/repo")
+            flistLevel3Blockers(dictWorkflow, "/repo", False)
             assert counter.iCalls == 0
 
 

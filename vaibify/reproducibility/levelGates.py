@@ -95,6 +95,7 @@ __all__ = [
     "fiStepProofLevel",
     "flistLevel1Blockers",
     "flistLevel2Blockers",
+    "S_L3_HOST_MODE_CRITERION",
     "flistLevel3Blockers",
     "fnClearLevelBlockerCache",
     "fcontextLevelComputation",
@@ -2130,7 +2131,7 @@ TUPLE_COMMON_SCIENTIFIC_BINARIES = (
 )
 
 
-def flistLevel3Blockers(dictWorkflow, filesRepo):
+def flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject):
     """Return per-step + workflow-scope L3 blockers with the unified schema.
 
     Each entry has ``iLevel=3``, ``iStepIndex`` (-1 for workflow scope),
@@ -2139,8 +2140,21 @@ def flistLevel3Blockers(dictWorkflow, filesRepo):
     and ``sRemediationHint``. Returns an empty list when the workflow
     has no project repo so the caller treats missing repo the same as
     L1 does.
+
+    ``bHostProject`` has NO DEFAULT, deliberately. Level 3 is defined by
+    a pinned container image — a digest, a linted Dockerfile, a
+    docker-based reproduce.sh, an in-container rerun attestation — so a
+    project that runs on the host cannot reach it by any amount of
+    work, and the honest answer is one blocker saying so. A default
+    would let a caller that forgot to ask hand a host project the seven
+    container criteria instead, each with a remediation hint telling
+    the researcher to do something that cannot help. A missing argument
+    is a TypeError; a wrong answer is a researcher chasing a Dockerfile
+    their project does not have.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if bHostProject:
+        return [_fdictBuildL3WorkflowBlocker(S_L3_HOST_MODE_CRITERION)]
     tCacheKey = (
         "L3",
         _fsWorkflowBlockerFingerprint(dictWorkflow),
@@ -2229,7 +2243,18 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
     }
 
 
+# The single criterion a host project reports, in place of the seven
+# container ones. Level 3 is DEFINED by a pinned image; there is no
+# host equivalent, and emitting `dockerfile-not-pinned` for a project
+# with no Dockerfile would be a lie the researcher could act on.
+S_L3_HOST_MODE_CRITERION = "host-mode"
+
 _DICT_L3_REMEDIATION_HINTS = {
+    S_L3_HOST_MODE_CRITERION:
+        "Level 3 requires a containerized project: it is defined by a "
+        "pinned image digest and an in-container rerun. This project "
+        "runs directly on this machine. Create a containerized "
+        "project to reach Level 3.",
     "dockerfile-not-pinned":
         "Pin every FROM line to '@sha256:...' in the Dockerfile.",
     "dependency-lock-missing":

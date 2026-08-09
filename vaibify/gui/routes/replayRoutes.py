@@ -785,6 +785,7 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         bEnabled = dictBody.get("bEnabled") is True
+        _fnRefuseSupervisionOnHost(sContainerId, bEnabled)
         dictRecord = _fdictPromptRecordOf(dictWorkflow)
         if bEnabled and not (
             dictRecord.get("bEnabled") is True
@@ -807,6 +808,90 @@ def _fnRegisterSupervisionConfigure(app, dictCtx):
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "The Supervised-mode setting",
+        )
+        return {"dictSupervision": dictSupervision}
+
+
+def _fnRefuseSupervisionOnHost(sContainerId, bEnabled):
+    """Refuse to ENTER Supervised mode on a host project.
+
+    The flag is permanent and the event log is hash-chained, so a
+    workflow that entered Supervised mode wrongly cannot be cleaned up
+    afterwards -- which is exactly why this refuses at the door rather
+    than tidying later. Supervision claims every change has a recorded
+    cause, and on the host the researcher's own editor, git and IDE
+    change files without the hub ever seeing them.
+
+    Turning supervision OFF is always allowed: an unsupervised project
+    claims nothing, so there is nothing to protect.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if not bEnabled or not fbIsHostProject(sContainerId):
+        return
+    raise HTTPException(
+        409, "Supervised mode is unavailable for a project that runs "
+        "on this machine. Its claim is that every change has a "
+        "recorded cause, and vaibify can only make that claim where it "
+        "mediates every path to the files. Create a containerized "
+        "project to use Supervised mode.",
+    )
+
+
+def _fnRegisterEndSupervisionOnHost(app, dictCtx):
+    """Register POST .../supervision/end-on-host.
+
+    The ONE mutation a Supervised host workflow is permitted, and the
+    reason ``routeScope`` refuses the others: it is the way out. The
+    transition is recorded in the append-only attribution log BEFORE
+    the flag is cleared, so the record survives even if the save that
+    follows fails -- an event saying supervision ended is honest about
+    a workflow whose flag is still set; a cleared flag with no event
+    would be a supervised period that quietly stopped being recorded.
+
+    Excluded from the agent catalog with its siblings: the supervised
+    party must never end its own supervision.
+    """
+    from ..routeContext import ffilesForWorkflow
+
+    @app.post("/api/workflow/{sContainerId}/supervision/end-on-host")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictEndSupervisionOnHost(
+        sContainerId: str, requestHttp: Request,
+    ):
+        from vaibify.config.registryManager import fbIsHostProject
+        from .. import attributionLog
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        if not fbIsHostProject(sContainerId):
+            raise HTTPException(
+                409, "This project runs in a container, where "
+                "Supervised mode is honest. Use the ordinary "
+                "supervision setting to turn it off.",
+            )
+        if not attributionLog.fbSupervisionEnabled(dictWorkflow):
+            raise HTTPException(
+                409, "Supervised mode is not on for this workflow.",
+            )
+        attributionLog.fnAppendAttributionEvent(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            dictWorkflow, attributionLog.S_SUPERVISION_ENDED_CHANNEL,
+            "hub",
+            "Supervised mode ended: the workflow was opened as a host "
+            "project, where vaibify cannot attribute every change.",
+        )
+        dictProvenance = _fdictProvenanceOf(dictWorkflow)
+        dictSupervision = dict(
+            dictProvenance.get("dictSupervision") or {},
+        )
+        dictSupervision["bEnabled"] = False
+        dictSupervision["sEndedOnHostAtUtc"] = datetime.now(
+            timezone.utc,
+        ).isoformat()
+        dictProvenance["dictSupervision"] = dictSupervision
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Ending Supervised mode on the host",
         )
         return {"dictSupervision": dictSupervision}
 
@@ -961,3 +1046,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterPromptRecordApprove(app, dictCtx)
     _fnRegisterPromptRecordStatus(app, dictCtx)
     _fnRegisterSupervisionConfigure(app, dictCtx)
+    _fnRegisterEndSupervisionOnHost(app, dictCtx)

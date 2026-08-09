@@ -6055,6 +6055,67 @@ def _fdictEntry(sRel):
             'k+chr(32)+v for k,v in dictMtimes.items()))\\n"\n'
         ),
     ),
+    # --- The two claims host mode gives up (host mode wave 3) ---
+    #
+    # Level 3 is DEFINED by a pinned container image, and Supervised
+    # mode's claim holds only while vaibify mediates every path to the
+    # files. Neither survives on the host, and both fail SILENTLY if
+    # the gate is lost: the researcher is handed a to-do list that
+    # cannot be completed, or an attribution log that goes on claiming
+    # a supervised period while their editor rewrites the files beside
+    # it. Each lever is one gate; each has a container-direction test
+    # beside it that the lever must NOT kill.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testAHostProjectGetsOneL3BlockerNamingTheReason'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if bHostProject:\n'
+            '        return [_fdictBuildL3WorkflowBlocker('
+            'S_L3_HOST_MODE_CRITERION)]\n'
+        ),
+        new='    if False:\n        return []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testEnteringSupervisedModeIsRefusedForAHostProject'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    if not bEnabled or not fbIsHostProject(sContainerId):\n'
+            '        return\n'
+        ),
+        new='    if True:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testASupervisedHostWorkflowRefusesAnOrdinaryMutation'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '            if _fbRefuseSupervisedHostMutation(\n'
+            '                self.methods, self.path, request,\n'
+            '            ):\n'
+            '                return _fresponseSupervisedHostRefusal()\n'
+        ),
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeHonestyGates.py::'
+            'testTheRecordedExitIsTheOneMutationPermitted'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    if sPath == S_END_SUPERVISION_ON_HOST_PATH:\n'
+            '        return False\n'
+        ),
+        new='    if False:\n        return False\n',
+    ),
     # --- The Repos panel's write, deleted (host mode wave 3) ---
     #
     # Both directions of one change. Auto-tracking every discovered

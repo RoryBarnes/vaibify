@@ -95,7 +95,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 29,
+      "iLine": 30,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "docker-client",
@@ -9416,7 +9416,7 @@
       "sScopeFingerprint": "9517d8fd2efbecaa"
     },
     {
-      "iLine": 98,
+      "iLine": 99,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
@@ -9425,7 +9425,7 @@
       "sScopeFingerprint": "e3f5d3d6b8e57447"
     },
     {
-      "iLine": 67,
+      "iLine": 68,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
@@ -9434,7 +9434,7 @@
       "sScopeFingerprint": "7e6d4c5cf760dcb3"
     },
     {
-      "iLine": 83,
+      "iLine": 84,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "cli/commandStatus.py",
