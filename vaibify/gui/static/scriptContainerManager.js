@@ -195,7 +195,8 @@ var VaibifyContainerManager = (function () {
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
             '" data-container-id="' + VaibifyUtilities.fnEscapeHtml(sId) +
             '" data-mode="' + (bHost ? "host" : "container") +
-            '"' + sLockedAttr + sLockedTitle + '>' +
+            '"' + _fsRenderHostTileData(dictContainer, bHost) +
+            sLockedAttr + sLockedTitle + '>' +
             '<div class="container-tile-main">' +
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
@@ -210,6 +211,21 @@ var VaibifyContainerManager = (function () {
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
+        );
+    }
+
+    function _fsRenderHostTileData(dictContainer, bHost) {
+        /* The directory is what the acknowledgement is keyed by, and
+           whether it HAS been acknowledged is the backend's answer --
+           it canonicalises the path, so a symlinked alias of an
+           accepted project is not warned about a second time. */
+        if (!bHost) return "";
+        return (
+            ' data-directory="' +
+            VaibifyUtilities.fnEscapeHtml(dictContainer.sDirectory || "") +
+            '" data-warning-acknowledged="' +
+            (dictContainer.bHostWarningAcknowledged ? "true" : "false") +
+            '"'
         );
     }
 
@@ -420,8 +436,80 @@ var VaibifyContainerManager = (function () {
             await fnLoadContainers();
             return;
         }
+        /* The warning comes AFTER the claim: arbitration has to run
+           first, or a researcher reads and accepts a disclosure about
+           a project another session is already holding. */
+        if (elTile.dataset.warningAcknowledged !== "true") {
+            _fnWarnBeforeEnteringHostProject(sName, elTile);
+            return;
+        }
         /* The resource id of a host project is its registry name. */
         fnConnectToContainer(elTile.dataset.containerId || sName);
+    }
+
+    var _S_HOST_WARNING_TITLE =
+        "⚠ You are working directly on your host machine.";
+
+    var _S_HOST_WARNING_BODY =
+        "Changes are not contained in a Docker environment. Pipeline " +
+        "commands and any AI agent you run here execute with your " +
+        "full user authority: your files, your network, your stored " +
+        "credentials, and vaibify's own state on this machine.\n\n" +
+        "Vaibify cannot prove that finished runs left nothing behind, " +
+        "cannot reach reproducibility Level 3, and cannot provide " +
+        "Supervised attribution for this project.\n\n" +
+        "For contained, attestable work, create a containerized " +
+        "project.";
+
+    function _fnWarnBeforeEnteringHostProject(sName, elTile) {
+        VaibifyModals.fnShowConfirmModal(
+            _S_HOST_WARNING_TITLE, _S_HOST_WARNING_BODY,
+            function (bDoNotWarnAgain) {
+                _fnEnterHostProject(sName, elTile, bDoNotWarnAgain);
+            },
+            {
+                sCheckboxLabel:
+                    "Don't warn me again for this project",
+                sCancelLabel: "Go back",
+                sConfirmLabel: "I understand, continue",
+                /* Going back must give the project up. The claim
+                   already succeeded, so without this the project
+                   stays held by a tab that never opened it and the
+                   picker renders it as somebody else's. */
+                fnOnCancel: async function () {
+                    await fnReleaseClaim(sName);
+                    await fnLoadContainers();
+                },
+            }
+        );
+    }
+
+    async function _fnEnterHostProject(sName, elTile, bDoNotWarnAgain) {
+        if (bDoNotWarnAgain) {
+            await _fnRecordHostWarningAcknowledged(elTile);
+        }
+        fnConnectToContainer(elTile.dataset.containerId || sName);
+    }
+
+    async function _fnRecordHostWarningAcknowledged(elTile) {
+        /* Keyed by the project DIRECTORY, never the display name: a
+           reused name must not suppress the warning for a different
+           directory. The backend canonicalises it. */
+        var sDirectory = elTile.dataset.directory || "";
+        if (!sDirectory) return;
+        try {
+            await VaibifyApi.fdictPut(
+                "/api/preferences/host-warning-acknowledged",
+                { sProjectDirectory: sDirectory }
+            );
+        } catch (error) {
+            /* A preference that failed to save is a nuisance, not a
+               reason to refuse entry -- the warning simply shows
+               again next time, which is the safe direction. */
+            VaibifyApp.fnShowToast(
+                "Could not save the preference; the warning will " +
+                "show again next time.", "warning");
+        }
     }
 
     async function _fbClaimContainer(sName) {
@@ -1255,12 +1343,24 @@ var VaibifyContainerManager = (function () {
         return el ? el.textContent : sId.substring(0, 12);
     }
 
+    function _fsContainerModeById(sId) {
+        /* Read back off the tile the registry listing rendered, so the
+           project-list screen shows the mode the SERVER reported.
+           Unknown ids (an unrecognized container) read as container,
+           which is what they are. */
+        var el = document.querySelector(
+            '.container-tile[data-container-id="' + sId + '"]'
+        );
+        return (el && el.dataset.mode) || "container";
+    }
+
     async function fnConnectToContainer(sId) {
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
                 "/api/workflows/" + sId);
             _sSelectedContainerId = sId;
             _sSelectedContainerName = _fsContainerNameById(sId);
+            VaibifyApp.fnApplyProjectMode(_fsContainerModeById(sId));
             VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {

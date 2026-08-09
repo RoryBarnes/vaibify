@@ -151,6 +151,12 @@ def _fnIsolateProjectRegistry():
                     sHome, S_HOST_PROJECT_MISSING, "vaibify.yml",
                 ),
             }]}, fileHandle)
+        # Preferences are host-global at ~/.vaibify/preferences.json,
+        # and the host-warning acknowledgement is a real write to it.
+        # Without this the lane records acknowledgements against the
+        # researcher's own preferences file, for temp directories that
+        # stop existing the moment the run ends.
+        from vaibify.config import preferencesStore
         with patch.object(
             registryManager, "_S_REGISTRY_DIRECTORY", sHome,
         ), patch.object(
@@ -158,6 +164,14 @@ def _fnIsolateProjectRegistry():
         ), patch.object(
             registryManager, "_S_LOCK_PATH",
             os.path.join(sHome, "registry.lock"),
+        ), patch.object(
+            preferencesStore, "_S_PREFERENCES_DIRECTORY", sHome,
+        ), patch.object(
+            preferencesStore, "_S_PREFERENCES_PATH",
+            os.path.join(sHome, "preferences.json"),
+        ), patch.object(
+            preferencesStore, "_S_LOCK_PATH",
+            os.path.join(sHome, "preferences.lock"),
         ):
             yield sHome
 

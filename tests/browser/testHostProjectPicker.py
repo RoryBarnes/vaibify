@@ -35,6 +35,33 @@ from tests.browser.fakeDockerAdapter import S_CONTAINER_NAME
 pytestmark = pytest.mark.browser
 
 
+@pytest.fixture(autouse=True)
+def fixtureDropClaimsBetweenJourneys(serverHub):
+    """Give every claim back after each journey.
+
+    The hub is module-scoped and the browser page is not, so each test
+    arrives with a fresh session and a fresh lease. A journey that
+    claims a project and stops -- which several here do deliberately,
+    because the WARNING is what they are testing -- would otherwise
+    leave that project owned by a lease nobody holds any more, and the
+    next journey's claim is refused 409 by a session that no longer
+    exists. Released the way the hub's own shutdown hook does: drop
+    the flock, then the owner record.
+    """
+    yield
+    from vaibify.config.containerLock import fnReleaseContainerLock
+    dictContainerOwners = serverHub.app.state.dictContainerOwners
+    for _sName, recordOwner in list(dictContainerOwners.items()):
+        fileHandle = getattr(recordOwner, "fileHandleLock", None)
+        if fileHandle is not None:
+            try:
+                fnReleaseContainerLock(fileHandle)
+            except OSError:
+                pass
+    dictContainerOwners.clear()
+    serverHub.app.state.dictSessionOwner.clear()
+
+
 def _fnWaitForPicker(page, serverHub):
     """Load the dashboard and wait for the container list to render."""
     page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
@@ -195,3 +222,182 @@ def testClickingAMissingHostProjectRefusesAndClaimsNothing(
         ) is None
     ), "a project that is not on disk was claimed anyway"
     assert pageDashboard.listPageErrors == []
+
+
+# ---------------------------------------------------------------------
+# The warning, and the badge that outlives it
+# ---------------------------------------------------------------------
+#
+# The disclosure is the whole product stance in one dialog: host mode
+# runs your pipeline, and the container is what lets vaibify vouch for
+# it. Three things about it are load-bearing rather than cosmetic.
+#
+# It comes AFTER the claim, because arbitration must run first -- a
+# researcher who reads and accepts a disclosure about a project another
+# session is holding has accepted nothing. "Go back" therefore has to
+# RELEASE what the claim just took, or declining leaves the project
+# held by a tab that never opened it. And the badge is permanent: the
+# warning is dismissible and the mode is not.
+
+
+def _fnOpenTheReadyHostProject(page, serverHub):
+    """Click the ready host tile and wait for the warning."""
+    _fnWaitForPicker(page, serverHub)
+    page.click(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
+        '.container-tile-main',
+    )
+    page.wait_for_selector("#modalConfirm", timeout=5000)
+
+
+@pytest.mark.falsification
+def testEnteringAHostProjectWarnsBeforeTheProjectOpens(
+    pageDashboard, serverHub,
+):
+    """The disclosure names what is given up, by name.
+
+    Kills: entering a host project without the warning, which ships
+    uncontained execution with no disclosure at all.
+    """
+    _fnOpenTheReadyHostProject(pageDashboard, serverHub)
+    sBody = pageDashboard.text_content("#modalConfirm")
+    assert "not contained" in sBody
+    assert "Level 3" in sBody
+    assert "Supervised" in sBody
+    assert "full user authority" in sBody
+    assert pageDashboard.query_selector(
+        "#checkboxConfirmModal",
+    ) is not None, "the don't-warn-again choice is missing"
+
+
+@pytest.mark.falsification
+def testGoingBackReleasesTheProjectItJustClaimed(
+    pageDashboard, serverHub,
+):
+    """Declining must not leave the project held by nobody.
+
+    Kills: dropping the cancel callback, so "Go back" closes the
+    dialog and the claim stands -- the project renders as in use by a
+    session that never opened it, until the grace reaper notices.
+    """
+    _fnOpenTheReadyHostProject(pageDashboard, serverHub)
+    assert serverHub.app.state.dictContainerOwners.get(
+        S_HOST_PROJECT_READY,
+    ) is not None, "the claim did not happen, so this proves nothing"
+    pageDashboard.click("#btnConfirmCancel")
+    pageDashboard.wait_for_function(
+        """() => document.getElementById('modalConfirm') === null""",
+        timeout=5000,
+    )
+    pageDashboard.wait_for_timeout(500)
+    assert serverHub.app.state.dictContainerOwners.get(
+        S_HOST_PROJECT_READY,
+    ) is None, "going back left the project claimed"
+    assert pageDashboard.listPageErrors == []
+
+
+def testTheWarningNamesItsTwoChoicesInTheResearchersWords(
+    pageDashboard, serverHub,
+):
+    """Not "Cancel"/"Confirm": the buttons say what they do."""
+    _fnOpenTheReadyHostProject(pageDashboard, serverHub)
+    assert pageDashboard.text_content(
+        "#btnConfirmCancel",
+    ).strip() == "Go back"
+    assert pageDashboard.text_content(
+        "#btnConfirmOk",
+    ).strip() == "I understand, continue"
+
+
+@pytest.mark.falsification
+def testContinuingShowsThePermanentUncontainedBadge(
+    pageDashboard, serverHub,
+):
+    """The warning is dismissible; the mode is not.
+
+    Kills: never showing the badge, which leaves a researcher with no
+    standing indication that their commands are running with their own
+    authority rather than inside a container.
+    """
+    _fnOpenTheReadyHostProject(pageDashboard, serverHub)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(
+        "#hostModeBadgePicker:visible", timeout=10000,
+    )
+    sBadge = pageDashboard.text_content("#hostModeBadgePicker")
+    assert "HOST MODE" in sBadge
+    assert "uncontained" in sBadge
+    assert pageDashboard.text_content(
+        "#activeResourceLabel",
+    ).strip() == "Directory:"
+
+
+@pytest.mark.falsification
+def testAContainerProjectShowsNoUncontainedBadge(
+    pageDashboard, serverHub,
+):
+    """The other direction: the badge is a claim, not decoration.
+
+    Kills: showing the badge for every project, which would tell a
+    researcher inside a container that their work is uncontained --
+    a false alarm that trains them to ignore the real one.
+    """
+    _fnWaitForPicker(pageDashboard, serverHub)
+    # Driven with the mode the container TILE declares -- the value the
+    # registry listing put there, read back through the real renderer
+    # and the real applier. Honest about its limit: it stops one step
+    # short of the click path, which in this lane would trigger a
+    # BUILD (the fake adapter reports the container as not built) and
+    # test a different journey entirely. The host direction above IS
+    # driven end to end, so what is unproven here is only that the
+    # container path calls the applier -- which the same call site
+    # serves for both modes.
+    pageDashboard.evaluate(
+        """(sName) => VaibifyApp.fnApplyProjectMode(
+            document.querySelector(
+                '.container-tile[data-name="' + sName + '"]'
+            ).dataset.mode
+        )""",
+        S_CONTAINER_NAME,
+    )
+    assert pageDashboard.is_hidden("#hostModeBadgePicker"), (
+        "a containerized project was labelled uncontained"
+    )
+    assert pageDashboard.is_hidden("#hostModeBadge")
+    assert pageDashboard.text_content(
+        "#activeResourceLabel",
+    ).strip() == "Container:"
+
+
+def testAcknowledgingSuppressesTheWarningOnTheNextEntry(
+    pageDashboard, serverHub,
+):
+    """The preference is per project directory and it is honoured.
+
+    Driven through the real preferences route and a real reload, not
+    by inspecting a variable: the suppression has to survive the page,
+    which is the whole reason it is not in localStorage.
+    """
+    _fnOpenTheReadyHostProject(pageDashboard, serverHub)
+    pageDashboard.check("#checkboxConfirmModal")
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(
+        "#hostModeBadgePicker:visible", timeout=10000,
+    )
+    # Leave the project the way a researcher does, then come back.
+    pageDashboard.click("#btnWorkflowBack")
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]'
+        '[data-warning-acknowledged="true"]',
+        timeout=10000,
+    )
+    pageDashboard.click(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
+        '.container-tile-main',
+    )
+    pageDashboard.wait_for_selector(
+        "#hostModeBadgePicker:visible", timeout=10000,
+    )
+    assert pageDashboard.query_selector("#modalConfirm") is None, (
+        "the warning showed again for an acknowledged project"
+    )

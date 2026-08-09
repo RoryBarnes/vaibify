@@ -4454,7 +4454,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # The answering is a new module; what lands here is the question
     # and the paragraph saying why measuring a host path against
     # ``/workspace`` refuses every legitimate one.
-    "pipelineServer.py": 2534,
+    # +16 (2026-08-09): the connect handshake answers which MODE the
+    # resource is, so the uncontained badge is the server's claim on
+    # every entry path rather than something the dashboard infers.
+    "pipelineServer.py": 2550,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

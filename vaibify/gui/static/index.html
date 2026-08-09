@@ -211,6 +211,14 @@
     <div class="picker-content">
         <div class="picker-section-header">
             <h3 class="picker-section-label">Available Projects:</h3>
+            <!-- The same badge, on the screen the researcher reaches
+                 first. One element per screen, one rule driving both:
+                 the mode must not be invisible anywhere inside a host
+                 project, and the project-list screen is inside it. -->
+            <span id="hostModeBadgePicker" class="host-mode-badge"
+                  style="display: none;"
+                  title="Commands run directly on this machine, with your full user authority. Not contained; PROOF Level 3 and Supervised attribution are unavailable."
+                  >HOST MODE &mdash; uncontained</span>
             <div style="display: flex; gap: 6px;">
                 <button class="btn-icon picker-refresh"
                         id="btnRefreshWorkflows"
@@ -248,7 +256,15 @@
         <img src="/static/vaibify_logo_paleblue.png" alt="Vaibify"
              class="toolbar-logo">
         <div class="toolbar-title-group">
-            <span class="toolbar-label">Container:</span>
+            <!-- Permanent and non-dismissible on a host project: the
+                 mode decides whether commands are contained at all,
+                 so it is never allowed to be invisible. -->
+            <span id="hostModeBadge" class="host-mode-badge"
+                  style="display: none;"
+                  title="Commands run directly on this machine, with your full user authority. Not contained; PROOF Level 3 and Supervised attribution are unavailable."
+                  >HOST MODE &mdash; uncontained</span>
+            <span class="toolbar-label" id="activeResourceLabel"
+                  >Container:</span>
             <span id="activeContainerName" class="toolbar-value"></span>
             <span class="toolbar-label">Project:</span>
             <div id="workflowSwitcher" class="workflow-switcher">

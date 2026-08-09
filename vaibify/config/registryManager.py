@@ -375,14 +375,25 @@ def _fdictEnrichHostProjectStatus(dictProject):
     lock annotation, which works unchanged for host names. There is
     no image and no container, so those fields are honestly False.
     """
+    from vaibify.config import preferencesStore
     dictEnriched = dict(dictProject)
     dictEnriched["bImageExists"] = False
     dictEnriched["bRunning"] = False
+    sDirectory = dictProject.get("sDirectory", "")
     bProjectPresent = (
-        os.path.isdir(dictProject.get("sDirectory", ""))
+        os.path.isdir(sDirectory)
         and os.path.isfile(dictProject.get("sConfigPath", ""))
     )
     dictEnriched["sStatus"] = "ready" if bProjectPresent else "missing"
+    # Whether the uncontained-execution warning was acknowledged is
+    # answered HERE rather than by the dashboard comparing paths: the
+    # acknowledgement is keyed by canonical directory, and a frontend
+    # doing its own realpath would key a symlinked alias differently
+    # and warn again for a project the researcher already accepted.
+    dictEnriched["bHostWarningAcknowledged"] = (
+        bool(sDirectory)
+        and preferencesStore.fbHostWarningAcknowledged(sDirectory)
+    )
     return dictEnriched
 
 

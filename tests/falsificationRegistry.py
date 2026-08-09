@@ -8721,4 +8721,58 @@ def _fdictEntry(sRel):
         old='        if (elTile && elTile.dataset.mode === "host") {\n',
         new='        if (false) {\n',
     ),
+    # --- The uncontained-execution disclosure (host mode wave 4) ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testEnteringAHostProjectWarnsBeforeTheProjectOpens'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Uncontained execution shipped with no disclosure at all.
+        old=(
+            '        if (elTile.dataset.warningAcknowledged !== "true") '
+            '{\n'
+            '            _fnWarnBeforeEnteringHostProject(sName, '
+            'elTile);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testGoingBackReleasesTheProjectItJustClaimed'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Declining closes the dialog and the claim stands: the project
+        # reads as in use by a session that never opened it.
+        old=(
+            '                fnOnCancel: async function () {\n'
+            '                    await fnReleaseClaim(sName);\n'
+            '                    await fnLoadContainers();\n'
+            '                },\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testContinuingShowsThePermanentUncontainedBadge'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        var bHost = sProjectMode === "host";\n',
+        new='        var bHost = false;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testAContainerProjectShowsNoUncontainedBadge'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The other direction: a false alarm on every project trains
+        # the researcher to ignore the real one.
+        old='        var bHost = sProjectMode === "host";\n',
+        new='        var bHost = true;\n',
+    ),
 ]

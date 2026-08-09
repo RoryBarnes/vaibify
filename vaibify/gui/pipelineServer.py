@@ -1653,7 +1653,22 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
         "sWorkflowPath": None,
         "dictWorkflow": None,
         "sLeaseId": dictCtx.get("sViewerLease", ""),
+        "sProjectMode": fsProjectModeOfResource(sContainerId),
     }
+
+
+def fsProjectModeOfResource(sResourceId):
+    """Return ``"host"`` or ``"container"`` for a resource id.
+
+    Answered by the server on the connect handshake, so the dashboard
+    learns the mode on EVERY entry path -- a tile click, a reload, a
+    direct link -- rather than only on the one that happened to know
+    it. The uncontained badge is a permanent claim about where the
+    researcher's commands will run; a claim the dashboard derives for
+    itself is one it can be wrong about.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    return "host" if fbIsHostProject(sResourceId) else "container"
 
 
 async def _fnScanDependenciesBackground(
@@ -1836,6 +1851,7 @@ async def fdictHandleConnect(
             "sWorkflowFingerprint": (
                 workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),
+            "sProjectMode": fsProjectModeOfResource(sContainerId),
         }
     except HTTPException:
         raise

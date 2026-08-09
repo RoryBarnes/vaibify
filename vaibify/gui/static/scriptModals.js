@@ -21,13 +21,29 @@ var VaibifyModals = (function () {
             _fsBuildConfirmDetails(dictDetails) +
             _fsBuildConfirmCheckbox(dictDetails) +
             '<div class="modal-actions">' +
-            '<button class="btn" id="btnConfirmCancel">Cancel</button>' +
+            '<button class="btn" id="btnConfirmCancel">' +
+            fnEscapeHtml(
+                (dictDetails && dictDetails.sCancelLabel) || "Cancel") +
+            '</button>' +
             '<button class="btn btn-primary" ' +
-            'id="btnConfirmOk">Confirm</button>' +
+            'id="btnConfirmOk">' +
+            fnEscapeHtml(
+                (dictDetails && dictDetails.sConfirmLabel) || "Confirm") +
+            '</button>' +
             '</div></div>';
         document.body.appendChild(elModal);
         document.getElementById("btnConfirmCancel").addEventListener(
-            "click", function () { elModal.remove(); }
+            "click", function () {
+                // Declining can have consequences of its own -- the
+                // host warning's "Go back" must release the lease the
+                // claim just took, or the project stays held by a tab
+                // that never opened it. Callers without an
+                // fnOnCancel are unaffected.
+                elModal.remove();
+                if (dictDetails && dictDetails.fnOnCancel) {
+                    dictDetails.fnOnCancel();
+                }
+            }
         );
         document.getElementById("btnConfirmOk").addEventListener(
             "click", function () {

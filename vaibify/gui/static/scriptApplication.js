@@ -507,6 +507,32 @@ const VaibifyApp = (function () {
         _dictUiState.bBinaryAddFormOpen = false;
     }
 
+    function fnApplyProjectMode(sProjectMode) {
+        /* The mode is always the SERVER's answer -- the registry
+           listing that rendered the tile on the project-list screen,
+           the connect handshake once a project is open -- never
+           something the dashboard infers for itself. A permanent
+           claim about whether commands are contained is not one to be
+           wrong about. Anything other than "host" hides the badge, so
+           an older server that sends no mode renders exactly the
+           container toolbar it always did.
+
+           Every ``.host-mode-badge`` is driven, not one by id: the
+           badge appears on both the project-list screen and the
+           workflow toolbar, and two elements with one rule cannot
+           disagree the way two rules would. */
+        var bHost = sProjectMode === "host";
+        document.querySelectorAll(".host-mode-badge").forEach(
+            function (elBadge) {
+                elBadge.style.display = bHost ? "" : "none";
+            }
+        );
+        var elLabel = document.getElementById("activeResourceLabel");
+        if (elLabel) {
+            elLabel.textContent = bHost ? "Directory:" : "Container:";
+        }
+    }
+
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
         _fnResetWorkflowState();
         VaibifyPolling.fnStopDiscoveryPolling();
@@ -536,6 +562,7 @@ const VaibifyApp = (function () {
         }
         document.getElementById("activeContainerName").textContent =
             VaibifyContainerManager.fsGetSelectedContainerName() || "";
+        fnApplyProjectMode(data.sProjectMode);
         document.getElementById("activeWorkflowName").textContent =
             sWorkflowName || "";
         document.title = (VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify") +
@@ -709,6 +736,7 @@ const VaibifyApp = (function () {
             _dictSessionState.dictDashboardMode = DICT_MODE_NO_WORKFLOW;
             document.getElementById("activeContainerName").textContent =
                 VaibifyContainerManager.fsGetSelectedContainerName() || "";
+            fnApplyProjectMode(dictConnect.sProjectMode);
             _fnRenderToolkitBanner(0);
             document.title = VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
@@ -859,6 +887,7 @@ const VaibifyApp = (function () {
         document.getElementById("mainLayout").classList.remove("active");
         _dictSessionState.dictDashboardMode = null;
         document.getElementById("activeContainerName").textContent = "";
+        fnApplyProjectMode("");
         document.getElementById("activeWorkflowName").textContent = "";
         document.title = "Vaibify";
         _fnStopWorkflowHubPolling();
@@ -4830,6 +4859,7 @@ const VaibifyApp = (function () {
         fnEnterNoWorkflow: fnEnterNoWorkflow,
         fnSaveStepUpdate: fnSaveStepUpdate,
         fnShowWorkflowPicker: fnShowWorkflowPicker,
+        fnApplyProjectMode: fnApplyProjectMode,
         fnSetPlotStandardExists: function (sKey, bValue) {
             _dictWorkflowState.dictPlotStandardExists[sKey] =
                 bValue;
