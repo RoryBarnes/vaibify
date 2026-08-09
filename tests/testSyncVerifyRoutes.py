@@ -85,7 +85,7 @@ def fixtureCtxAndApp(fixtureProjectRepo, fixtureCarrierStoodDown):
     dictCtx = {
         "docker": None,
         "workflows": dictWorkflows,
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
     }
     _fnRegisterRemoteVerify(app, dictCtx)
     _fnRegisterRemoteVerifyStatus(app, dictCtx)

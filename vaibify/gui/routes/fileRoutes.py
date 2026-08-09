@@ -185,7 +185,7 @@ def _fnRegisterFileExistenceBatch(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, request: FileExistenceRequest,
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         listInput = request.saRelativePaths or []
         if len(listInput) > I_MAX_EXISTENCE_BATCH:
             raise HTTPException(
@@ -222,7 +222,7 @@ def _fnRegisterFiles(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, sDirectoryPath: str
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sAbsPath = (
             f"/{sDirectoryPath}"
             if not sDirectoryPath.startswith("/")
@@ -251,7 +251,7 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, request: FileUploadRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
             dictCtx, sContainerId)
         sSafeFilename = posixpath.basename(request.sFilename)
@@ -386,7 +386,7 @@ def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
     async def fresponseDownloadFile(
         sContainerId: str, sFilePath: str
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sAbsPath = fsResolveFigurePath(
             dictCtx["workflowDir"](sContainerId), sFilePath,
         )
@@ -462,7 +462,7 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         sContainerId: str, request: FilePullRequest,
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         fsValidatePathWithinRoot(
             request.sContainerPath,
             projectRoots.fsResolveProjectRoot(
@@ -565,7 +565,7 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         request: FileWriteRequest, requestHttp: Request,
         sWorkdir: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectRepoPath = _fsRequireProjectRepoForWrite(
             dictCtx, sContainerId)
         sAbsPath = fsResolveFigurePath(

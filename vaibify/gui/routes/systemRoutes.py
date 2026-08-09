@@ -350,7 +350,7 @@ def _fnRegisterContainerIsolation(app, dictCtx):
 
     @app.get("/api/containers/{sContainerId}/isolation")
     async def fdictContainerIsolation(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         return await asyncio.to_thread(
             _fdictReadIsolationFlag, sContainerId,
         )

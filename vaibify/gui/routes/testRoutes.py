@@ -388,7 +388,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: TestGenerateRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         from ..testGenerator import fdictGenerateAllTests
         if _fbNeedsClaudeFallback(
             dictCtx, sContainerId, request
@@ -423,7 +423,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
     async def fdictDeleteGeneratedTest(
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
@@ -656,7 +656,7 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         request: SaveAndRunTestRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
@@ -711,7 +711,7 @@ def _fnRegisterTestRun(app, dictCtx):
         requestHttp: Request,
     ):
         from ..workflowManager import flistBuildTestCommands
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
@@ -769,7 +769,7 @@ def _fnRegisterTestRun(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sCategory = (await request.json()).get("sCategory", "")
         (dictWorkflow, dictStep, dictCat, listCmds,
          sVerifKey) = _ftResolveCategoryContext(

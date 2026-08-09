@@ -60,7 +60,7 @@ def _fdictBuildRawContext():
         "containerUsers": {"cid1": "rory"},
         "pipelineTasks": {"cid1": "taskObj"},
         "sSessionToken": "tok123",
-        "require": lambda: True,
+        "require": lambda *aArgs: True,
         "save": lambda sCid, dictWf: f"saved-{sCid}",
         "variables": lambda sCid: {"sUser": "rory"},
         "workflowDir": lambda sCid: f"/workspace/{sCid}",
@@ -106,7 +106,7 @@ class TestTypedPropertyAccess:
     def test_require(self):
         listCalls = []
         dictRaw = _fdictBuildRawContext()
-        dictRaw["require"] = lambda: listCalls.append("required")
+        dictRaw["require"] = lambda *aArgs: listCalls.append("required")
         ctx = RouteContext(dictRaw)
         assert ctx.fnRequireDocker() is None
         assert listCalls == ["required"]

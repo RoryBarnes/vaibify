@@ -127,7 +127,7 @@ def _fnRegisterDraftWrite(app, dictCtx):
         sContainerId: str, sFilePath: str,
         request: DraftWriteRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRejectOversize(request.sContent)
         sDraftDir, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, request.sWorkdir,
@@ -203,7 +203,7 @@ def _fnRegisterDraftRead(app, dictCtx):
         sContainerId: str, sFilePath: str,
         sWorkdir: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
@@ -233,7 +233,7 @@ def _fnRegisterDraftDelete(app, dictCtx):
         sContainerId: str, sFilePath: str, requestHttp: Request,
         sWorkdir: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _, sDraftPath = _ftResolveDraftFile(
             dictCtx, sContainerId, sFilePath, sWorkdir,
         )
@@ -288,7 +288,7 @@ def _fnRegisterDraftList(app, dictCtx):
 
     @app.get("/api/drafts/{sContainerId}")
     async def fdictHandleListDrafts(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sProjectRepoPath, sWorkflowPath = (
             _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId)
         )

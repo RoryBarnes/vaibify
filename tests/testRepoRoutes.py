@@ -213,7 +213,7 @@ def fixtureClient(fixtureDocker, fixtureCarrierStoodDown):
     app = FastAPI()
     dictCtx = {
         "docker": fixtureDocker,
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
     }
     fnRegisterAll(app, dictCtx)
     return TestClient(app)
@@ -734,7 +734,7 @@ def _fdictBuildWorkflowCtx(fixtureDocker, sProjectRepoName):
     """Context with an active workflow whose project repo is set."""
     return {
         "docker": fixtureDocker,
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "workflows": {
             "cid1": {
                 "sProjectRepoPath": "/workspace/" + sProjectRepoName,

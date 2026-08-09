@@ -221,7 +221,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         request: Request,
     ):
         from datetime import datetime, timezone
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
@@ -274,7 +274,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
@@ -303,7 +303,7 @@ def _fnRegisterStandardizePlots(app, dictCtx):
     async def fdictCheckPlotStandards(
         sContainerId: str, iStepIndex: int,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]

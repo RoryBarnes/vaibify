@@ -244,7 +244,7 @@ def _fnRegisterStatus(app, dictCtx):
 
     @app.get("/api/repos/{sContainerId}/status")
     async def fdictHandleRepoStatus(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         return await asyncio.to_thread(
             _fdictBuildStatusResponse,
             dictCtx["docker"], sContainerId,
@@ -420,7 +420,7 @@ def _fnRegisterInit(app, dictCtx):
         sContainerId: str, request: InitRepoRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         return await _fgenericRunRepoWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictDoInitProjectRepo(
@@ -439,7 +439,7 @@ def _fnRegisterTrack(app, dictCtx):
     async def fdictHandleTrackRepo(
         sContainerId: str, sRepoName: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         return await _fgenericRunRepoWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictDoTrackRepo(dictCtx, sContainerId, sRepoName),
@@ -524,7 +524,7 @@ def _fnRegisterIgnore(app, dictCtx):
     async def fdictIgnoreRepo(
         sContainerId: str, sRepoName: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireValidRepoName(sRepoName)
         await _fdictRewriteTheSidecarUnderTheDrain(
             dictCtx, sContainerId, sRepoName,
@@ -542,7 +542,7 @@ def _fnRegisterUntrack(app, dictCtx):
     async def fdictUntrackRepo(
         sContainerId: str, sRepoName: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireValidRepoName(sRepoName)
         await _fdictRewriteTheSidecarUnderTheDrain(
             dictCtx, sContainerId, sRepoName,
@@ -713,7 +713,7 @@ def _fnRegisterPushStaged(app, dictCtx):
         sContainerId: str, sRepoName: str,
         request: PushStagedRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireValidRepoName(sRepoName)
         dictResult = await _fdictPushRepositoryUnderTheDrain(
             dictCtx, sContainerId, sRepoName,
@@ -739,7 +739,7 @@ def _fnRegisterPushFiles(app, dictCtx):
         sContainerId: str, sRepoName: str,
         request: PushFilesRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireValidRepoName(sRepoName)
         dictResult = await _fdictPushRepositoryUnderTheDrain(
             dictCtx, sContainerId, sRepoName,
@@ -762,7 +762,7 @@ def _fnRegisterDirtyFiles(app, dictCtx):
 
     @app.get("/api/repos/{sContainerId}/{sRepoName}/dirty-files")
     async def fdictDirtyFiles(sContainerId: str, sRepoName: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireValidRepoName(sRepoName)
         _fnRequireTracked(
             dictCtx["docker"], sContainerId, sRepoName

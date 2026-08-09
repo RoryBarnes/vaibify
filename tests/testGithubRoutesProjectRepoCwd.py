@@ -87,7 +87,7 @@ def _fdictBuildContextWithRepoAt(sProjectRepoPath, sWorkflowPath):
     return {
         "workflows": {"cid": dictWorkflow},
         "paths": {"cid": sWorkflowPath},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
         "docker": object(),
     }

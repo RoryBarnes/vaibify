@@ -54,7 +54,7 @@ def fixtureApp():
     app = FastAPI()
     app.state.dictContainerOwners = {}
     app.state.iHubPort = 8050
-    dictCtx = {"require": lambda: None, "docker": None}
+    dictCtx = {"require": lambda *aArgs: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)
     return app
 
@@ -212,7 +212,7 @@ def _fClientWithDocker(mockDocker):
     app = FastAPI()
     app.state.dictContainerOwners = {}
     app.state.iHubPort = 8050
-    dictCtx = {"require": lambda: None, "docker": mockDocker}
+    dictCtx = {"require": lambda *aArgs: None, "docker": mockDocker}
     fnRegisterRegistryRoutes(app, dictCtx)
     return TestClient(app)
 

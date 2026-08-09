@@ -129,7 +129,7 @@ def test_dialling_the_withdrawn_route_does_not_settle_the_record():
             ),
         },
         "dictBrowserSessions": {},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
     }
     app = FastAPI()
     _fnRegisterTerminalWs(app, dictCtx)

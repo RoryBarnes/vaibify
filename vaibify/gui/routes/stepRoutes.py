@@ -156,7 +156,7 @@ def _fnRegisterStepCreate(app, dictCtx):
         sContainerId: str, request: StepCreateRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnRaiseIfAtStepCap(dictWorkflow)
@@ -192,7 +192,7 @@ def _fnRegisterStepInsert(app, dictCtx):
         sContainerId: str, iPosition: int,
         request: StepCreateRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnRaiseIfAtStepCap(dictWorkflow)
@@ -231,7 +231,7 @@ def _fnRegisterStepUpdate(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: StepUpdateRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnRequireFingerprintMatch(dictWorkflow, request.sBaseFingerprint)
@@ -412,7 +412,7 @@ def _fnRegisterStepDelete(app, dictCtx):
     async def fdictDeleteStep(
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         try:
@@ -440,7 +440,7 @@ def _fnRegisterStepReorder(app, dictCtx):
         sContainerId: str, request: ReorderRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         try:
@@ -467,7 +467,7 @@ def _fnRegisterInputDataAdd(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: InputDataAddRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listSteps = dictWorkflow.get("listSteps", [])
@@ -504,7 +504,7 @@ def _fnRegisterStepRename(app, dictCtx):
         sContainerId: str, iStepIndex: int,
         request: StepRenameRequest, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         if _fbRefuseWhilePipelineTaskLive(
@@ -652,7 +652,7 @@ def _fnRegisterAlignDirectories(app, dictCtx):
         names violate the contract's alphabet are reported skipped —
         they need a rename first — rather than failing the batch.
         """
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         if _fbRefuseWhilePipelineTaskLive(
@@ -772,7 +772,7 @@ def _fnRegisterDeclareNoInputData(app, dictCtx):
     async def fdictDeclareNoInputData(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listDeclared = []

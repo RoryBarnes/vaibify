@@ -173,7 +173,7 @@ def test_hub_startup_registers_the_credential_sweep():
         app,
         {
             "workflows": {}, "paths": {},
-            "require": lambda: None,
+            "require": lambda *aArgs: None,
             "save": lambda sId, dictWf: None,
             "docker": object(),
         },

@@ -51,7 +51,7 @@ def fixtureClient(fixtureDocker, monkeypatch):
     dictCtx = {
         "docker": fixtureDocker,
         "workflows": {S_CONTAINER_ID: _fdictBuildWorkflow()},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
     }
     _fnRegisterPullManuscript(app, dictCtx)
     with patch(

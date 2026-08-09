@@ -79,7 +79,7 @@ def fixtureClient(fixtureProjectRepo):
         "sourceCodeDeps": {},
         "setAllowedContainers": {S_CONTAINER_ID},
         "sSessionToken": "tok",
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
         "variables": lambda sId: {},
         "workflowDir": lambda sId: fixtureProjectRepo,

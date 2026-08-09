@@ -113,7 +113,7 @@ def _fnRegisterReadiness(app, dictCtx):
     @ffnAgentAction("check-l3-readiness")
     @app.get("/api/workflow/{sContainerId}/level3/readiness")
     async def fdictHandleL3Readiness(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -131,7 +131,7 @@ def _fnRegisterAttestation(app, dictCtx):
     @ffnAgentAction("view-l3-attestation")
     @app.get("/api/workflow/{sContainerId}/level3/attestation")
     async def fdictL3AttestationGet(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -173,7 +173,7 @@ def _fnRegisterVerify(app, dictCtx):
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_C_DURABLE,
     )
     async def fdictL3Verify(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -494,7 +494,7 @@ def _fnRegisterGenerateScript(app, dictCtx):
     async def fdictL3GenerateReproduceScript(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -599,7 +599,7 @@ def _fnRegisterDeclareBinaries(app, dictCtx):
     async def fdictDeclareBinaries(
         sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -673,7 +673,7 @@ def _fnRegisterCaptureBinary(app, dictCtx):
     async def fdictHandleCaptureBinary(
         sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -819,7 +819,7 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
     async def fdictDeclareDeterminism(
         sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -859,7 +859,7 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
     async def fdictHandleRegenerateEnvelope(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -941,7 +941,7 @@ def _fnRegisterDeleteDeterminism(app, dictCtx):
     async def fdictDeleteDeterminism(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -976,7 +976,7 @@ def _fnRegisterVerifyDependencyLock(app, dictCtx):
     )
     @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fdictVerifyDependencyLock(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )

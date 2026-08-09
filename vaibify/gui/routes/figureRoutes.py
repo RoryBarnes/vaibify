@@ -55,7 +55,7 @@ def _fnRegisterFigure(app, dictCtx):
         sWorkdir: str = "",
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
         sProjectRoot = projectRoots.fsResolveProjectRoot(
@@ -85,7 +85,7 @@ def _fnRegisterFigure(app, dictCtx):
         sWorkdir: str = "",
     ):
         import asyncio
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sDir = dictCtx["workflowDir"](sContainerId)
         sAbsPath = fsResolveFigurePath(sDir, sFilePath)
         sProjectRoot = projectRoots.fsResolveProjectRoot(

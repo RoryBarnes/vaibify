@@ -1096,7 +1096,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestKillRouteAuthGate::test_unauthorized_kill_rejected_before_count_exec',
         source='vaibify/gui/routes/pipelineRoutes.py',
         old="""    async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()""",
+        dictCtx["require"](sContainerId)""",
         new=(
             '    async def fdictHandleKillRunningTasks('
             'sContainerId: str, requestHttp: Request):'
@@ -2257,11 +2257,11 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
             '        fnRejectAgentTokenLane(requestHttp)\n'
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
         ),
         new=(
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        fdictRequireWorkflow(dictCtx["workflows"], sContainerId)'
         ),
     ),
@@ -2567,11 +2567,11 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
             '        fnRejectAgentTokenLane(requestHttp)\n'
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow('
         ),
         new=(
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        dictWorkflow = fdictRequireWorkflow('
         ),
     ),
@@ -5396,14 +5396,14 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
             '        fnRejectAgentTokenLane(requestHttp)\n'
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
             '        return {\n'
             '            "bHasCredential": '
             '_fbServiceHasStoredCredential(sService),\n'
         ),
         new=(
-            '        dictCtx["require"]()\n'
+            '        dictCtx["require"](sContainerId)\n'
             '        syncDispatcher.fnValidateServiceName(sService)\n'
             '        return {\n'
             '            "bHasCredential": '
@@ -8619,5 +8619,42 @@ def _fdictEntry(sRel):
             '"sDirectory", WORKSPACE_ROOT)\n'
         ),
         iExpectedOccurrences=2,
+    ),
+    # --- The daemon gate names its resource (host mode wave 4) ---
+    #
+    # Host mode exists for the researcher who has no Docker, so a hub
+    # serving a host project must never answer "install Docker". The
+    # inverse is just as bad: a gate that stops asking lets a
+    # container request reach code holding None for a connection.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeDaemonGate.py::'
+            'testAHostProjectIsServedWhenNoDaemonIsReachable'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # The bare call every one of these sites had before the sweep.
+        old=(
+            '        import asyncio\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        listInput = request.saRelativePaths or []\n'
+        ),
+        new=(
+            '        import asyncio\n'
+            '        dictCtx["require"]()\n'
+            '        listInput = request.saRelativePaths or []\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeDaemonGate.py::'
+            'testAContainerProjectStillGetsTheDaemonDiagnosis'
+        ),
+        source='vaibify/gui/dockerStatus.py',
+        old=(
+            '    if sResourceId is not None and '
+            'fbIsHostProject(sResourceId):\n'
+            '        return\n'
+        ),
+        new='    if True:\n        return\n',
     ),
 ]

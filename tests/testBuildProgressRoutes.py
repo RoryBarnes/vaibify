@@ -32,7 +32,7 @@ def fixtureClearProgressRecords():
 def fixtureClient():
     app = FastAPI()
     buildRoutes.fnRegisterAll(
-        app, {"require": lambda: None, "docker": None},
+        app, {"require": lambda *aArgs: None, "docker": None},
     )
     return TestClient(app)
 

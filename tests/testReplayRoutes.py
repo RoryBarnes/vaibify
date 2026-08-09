@@ -85,7 +85,7 @@ def fixtureHarness(fixtureCarrierStoodDown):
     dictCtx = {
         "docker": None,
         "workflows": {S_CONTAINER_ID: dictWorkflow},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": _fnSave,
     }
     fnRegisterAll(app, dictCtx)

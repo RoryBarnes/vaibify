@@ -39,7 +39,7 @@ def fixtureSettingsClient(tmp_path):
     from fastapi import FastAPI
     sConfigPath = _fsWriteLoadableConfig(tmp_path / S_PROJECT_NAME)
     app = FastAPI()
-    fnRegisterRegistryRoutes(app, {"require": lambda: None, "docker": None})
+    fnRegisterRegistryRoutes(app, {"require": lambda *aArgs: None, "docker": None})
     with patch(
         "vaibify.config.registryManager.fdictGetProject",
         return_value={

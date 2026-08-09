@@ -464,7 +464,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
     @app.post("/api/pipeline/{sContainerId}/kill")
     @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictHandleKillRunningTasks(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         bTaskCancelled = _fbCancelPipelineTask(
@@ -498,7 +498,7 @@ def _fnRegisterPipelineClean(app, dictCtx):
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_A_SYNCHRONOUS,
     )
     async def fdictHandleCleanOutputs(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         listCleanCommands = _flistBuildCleanCommands(
@@ -583,7 +583,7 @@ def _fnRegisterPipelineWs(app, dictCtx):
         if fbContainerIsPoisoned(dictContainerOwners, sName):
             await fnCloseWithCode(websocket, I_REJECT_POISONED)
             return
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         iAcceptedGeneration = containerOwnership.fiOwnerGenerationForName(
             dictContainerOwners, sName,
         )
@@ -663,7 +663,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         sContainerId: str, iStepIndex: int, requestHttp: Request,
     ):
         from .. import syncDispatcher as _syncDispatcher  # noqa: F401
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnClearStepModificationState(
@@ -808,7 +808,7 @@ def _fnRegisterFileStatus(app, dictCtx):
         sContainerId: str, request: Request, response: Response,
         iWorkflowEpoch: int = -1,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictVars = dictCtx["variables"](sContainerId)
@@ -870,7 +870,7 @@ def _fnRegisterWorkflowDiscovery(app, dictCtx):
 
     @app.get("/api/pipeline/{sContainerId}/workflow-discovery")
     async def fdictGetWorkflowDiscovery(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictResult = await asyncio.to_thread(
             fdictDetectNewlyAvailableWorkflows,
             dictCtx, sContainerId,
@@ -2881,7 +2881,7 @@ def _fnRegisterManifestVerify(app, dictCtx):
     async def fdictVerifyManifest(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         return await _fdictVerifyManifestUnderTheDrain(
@@ -3023,7 +3023,7 @@ def _fnRegisterManifestText(app, dictCtx):
     async def fdictGetManifestText(
         sContainerId: str, iMaxBytes: int = _I_MANIFEST_TEXT_DEFAULT_MAX_BYTES,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )

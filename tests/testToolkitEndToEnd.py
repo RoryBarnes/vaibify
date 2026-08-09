@@ -114,7 +114,7 @@ def _fnSeedToolkitTemplate(tmp_path, monkeypatch):
 def _fclientBuildRegistry():
     """Build a hub-mode FastAPI TestClient."""
     app = FastAPI()
-    dictCtx = {"require": lambda: None, "docker": None}
+    dictCtx = {"require": lambda *aArgs: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)
     return TestClient(app)
 
@@ -122,7 +122,7 @@ def _fclientBuildRegistry():
 def _fclientBuildRepos(fakeDocker):
     """Build a FastAPI TestClient with repoRoutes wired up."""
     app = FastAPI()
-    dictCtx = {"require": lambda: None, "docker": fakeDocker}
+    dictCtx = {"require": lambda *aArgs: None, "docker": fakeDocker}
     fnRegisterAll(app, dictCtx)
     return TestClient(app)
 

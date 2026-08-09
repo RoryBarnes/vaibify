@@ -147,7 +147,7 @@ def fixtureSettingsApp():
     from fastapi import FastAPI
     from vaibify.gui.registryRoutes import fnRegisterRegistryRoutes
     app = FastAPI()
-    dictCtx = {"require": lambda: None, "docker": None}
+    dictCtx = {"require": lambda *aArgs: None, "docker": None}
     fnRegisterRegistryRoutes(app, dictCtx)
     return app
 

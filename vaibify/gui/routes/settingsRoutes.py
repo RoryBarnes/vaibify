@@ -59,7 +59,7 @@ def _fnRegisterSettingsPut(app, dictCtx):
         request: WorkflowSettingsRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         _fnCommitSettingsUpdate(
@@ -111,7 +111,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
 
     @app.get("/api/logs/{sContainerId}")
     async def flistLogs(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sLogsDir = posixpath.join(
             WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
         )
@@ -128,7 +128,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
     async def fresponseGetLogContent(
         sContainerId: str, sLogFilename: str
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         sLogsDir = posixpath.join(
             WORKSPACE_ROOT, workflowManager.VAIBIFY_LOGS_DIR
         )

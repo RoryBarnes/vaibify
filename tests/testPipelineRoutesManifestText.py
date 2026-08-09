@@ -31,7 +31,7 @@ def _fdictBuildCtxWithWorkflow():
     return {
         "workflows": {_S_CONTAINER_ID: dictWorkflow},
         "paths": {_S_CONTAINER_ID: _S_REPO + "/.vaibify/d.json"},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
         "variables": lambda sId: {},
         "docker": object(),

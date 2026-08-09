@@ -217,7 +217,7 @@ def _fnRegisterWorkflowCreate(app, dictCtx):
         sContainerId: str, request: CreateWorkflowRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         # Validated out here because it reaches no container at all: a
         # bad filename is a 400 without a journal record ever existing.
         sFileName = _fsValidateAndNormalizeFileName(request.sFileName)
@@ -327,7 +327,7 @@ def _fnRegisterWorkflowCreationRequest(app, dictCtx):
     async def fdictRequestProjectCreation(
         sContainerId: str, request: RequestProjectCreationRequest
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictCtx["dictProjectCreationRequests"][sContainerId] = {
             "sSuggestedName":
                 (request.sWorkflowName or "").strip()[:200],
@@ -433,7 +433,7 @@ def _fnRegisterConnect(app, dictCtx):
         sContainerId: str,
         sWorkflowPath: Optional[str] = None,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         _fnRequireOwningLeaseForConnect(
             dictCtx, sContainerId, requestHttp)
         sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)

@@ -110,7 +110,7 @@ def fixtureClient(fixtureWorkflow, fixtureSaves, fixtureCarrierStoodDown):
         "docker": None,
         "workflows": {S_CONTAINER_ID: fixtureWorkflow},
         "paths": {},
-        "require": lambda: None,
+        "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: fixtureSaves.append((sId, dictWf)),
         "variables": lambda sId: {},
         "workflowDir": lambda sId: fixtureWorkflow["sProjectRepoPath"],

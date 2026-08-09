@@ -225,7 +225,7 @@ def _fnRegisterGitStatus(app, dictCtx):
 
     @app.get("/api/git/{sContainerId}/status")
     async def fdictHandleGitStatus(sContainerId: str):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -360,7 +360,7 @@ def _fnRegisterManifestCheck(app, dictCtx):
     async def fdictManifestCheck(
         sContainerId: str, sService: str = "",
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -439,7 +439,7 @@ def _fnRegisterCommitCanonical(app, dictCtx):
         sContainerId: str, request: CommitCanonicalRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -581,7 +581,7 @@ def _fnRegisterUntrackAiDeclaration(app, dictCtx):
         sContainerId: str, request: UntrackAiDeclarationRequest,
         requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -745,7 +745,7 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
         sContainerId: str, requestHttp: Request,
         request: FetchProjectRepoRequest = FetchProjectRepoRequest(),
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -814,7 +814,7 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
         sContainerId: str, requestHttp: Request,
         request: RefreshRemotesRequest = RefreshRemotesRequest(),
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -882,7 +882,7 @@ def _fnRegisterPullProjectRepo(app, dictCtx):
     @app.post("/api/git/{sContainerId}/pull-project-repo")
     @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictHandlePullProjectRepo(sContainerId: str, requestHttp: Request):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
@@ -1023,7 +1023,7 @@ def _fnRegisterReconcileRemoteState(app, dictCtx):
     async def fdictReconcileRemoteState(
         sContainerId: str, requestHttp: Request,
     ):
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
