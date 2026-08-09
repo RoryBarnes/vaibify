@@ -93,7 +93,7 @@
                     title="What's the difference?"
                     aria-label="Show help for add container choice">?</button>
         </div>
-        <div class="add-choice-cards">
+        <div class="add-choice-cards" id="addChoiceCards">
             <div class="add-choice-card" id="btnChoiceAddExisting">
                 <div class="add-choice-icon">&#128193;</div>
                 <div class="add-choice-title">Add Existing</div>
@@ -108,7 +108,43 @@
                     Set up a new project from a template
                 </div>
             </div>
+            <!-- The third tier. It is a MODE, not a third way of
+                 adding, so choosing it re-offers the same two paths
+                 rather than replacing them: a researcher can add an
+                 existing host project or create one. -->
+            <div class="add-choice-card" id="btnChoiceHostMode">
+                <div class="add-choice-icon">&#128187;</div>
+                <div class="add-choice-title">
+                    Work directly on this machine</div>
+                <div class="add-choice-description">
+                    No container. For experimentation
+                </div>
+            </div>
         </div>
+        <div class="add-choice-cards" id="addChoiceHostStage"
+             style="display: none;">
+            <div class="add-choice-card" id="btnChoiceHostExisting">
+                <div class="add-choice-icon">&#128193;</div>
+                <div class="add-choice-title">Add Existing</div>
+                <div class="add-choice-description">
+                    Browse for a directory with vaibify.yml
+                </div>
+            </div>
+            <div class="add-choice-card" id="btnChoiceHostCreateNew">
+                <div class="add-choice-icon">&#43;</div>
+                <div class="add-choice-title">Create New</div>
+                <div class="add-choice-description">
+                    Set up a new project from a template
+                </div>
+            </div>
+        </div>
+        <p class="add-choice-host-note" id="addChoiceHostNote"
+           style="display: none;">
+            Commands will run with your full user authority, not
+            inside a container. Vaibify cannot reach reproducibility
+            Level 3 or provide Supervised attribution for a project
+            in this mode.
+        </p>
         <div class="modal-actions">
             <button class="btn" id="btnAddChoiceCancel">Cancel</button>
         </div>

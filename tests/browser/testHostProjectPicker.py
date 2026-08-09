@@ -401,3 +401,149 @@ def testAcknowledgingSuppressesTheWarningOnTheNextEntry(
     assert pageDashboard.query_selector("#modalConfirm") is None, (
         "the warning showed again for an acknowledged project"
     )
+
+
+# ---------------------------------------------------------------------
+# Adding a host project at all
+# ---------------------------------------------------------------------
+#
+# Until the Add dialog offered the tier, a host project could be made
+# only by calling the API -- which is not a feature, it is a test
+# fixture. The tier is a MODE rather than a third way of adding, so
+# choosing it re-offers the same two paths (an existing directory, or
+# create from a template) instead of forcing one of them.
+
+
+def _fnOpenTheAddDialog(page, serverHub):
+    """Load the dashboard and open the Add dialog."""
+    _fnWaitForPicker(page, serverHub)
+    page.click("#btnAddContainer")
+    page.wait_for_selector("#modalAddChoice", timeout=5000)
+
+
+def testTheAddDialogOffersTheHostTier(pageDashboard, serverHub):
+    """The first stage names the tier and what it is for."""
+    _fnOpenTheAddDialog(pageDashboard, serverHub)
+    sCard = pageDashboard.text_content("#btnChoiceHostMode")
+    assert "directly on this machine" in sCard
+    assert "experimentation" in sCard
+    assert pageDashboard.is_hidden("#addChoiceHostStage")
+
+
+@pytest.mark.falsification
+def testChoosingTheHostTierReOffersBothPathsWithTheDisclosure(
+    pageDashboard, serverHub,
+):
+    """The mode is a stage, not a third path, and it says what it costs.
+
+    Kills: the host card being wired to one path only, which silently
+    removes the other -- a researcher who already has a vaibify.yml
+    directory could then only register it as a container.
+    """
+    _fnOpenTheAddDialog(pageDashboard, serverHub)
+    pageDashboard.click("#btnChoiceHostMode")
+    pageDashboard.wait_for_selector(
+        "#addChoiceHostStage", state="visible", timeout=5000,
+    )
+    assert pageDashboard.is_hidden("#addChoiceCards")
+    assert pageDashboard.is_visible("#btnChoiceHostExisting")
+    assert pageDashboard.is_visible("#btnChoiceHostCreateNew")
+    sNote = pageDashboard.text_content("#addChoiceHostNote")
+    assert "full user authority" in sNote
+    assert "Level 3" in sNote
+
+
+@pytest.mark.falsification
+def testTheHostCreateWizardSkipsEveryContainerPage(
+    pageDashboard, serverHub,
+):
+    """Directory, template, name, summary -- and nothing about an image.
+
+    Walked end to end through the real wizard, choosing a real
+    directory and a real template, because the page list is only
+    observable by advancing: a researcher discovers the Python-version
+    page by arriving at it.
+
+    Kills: the host wizard walking the container page list, which asks
+    for a Python version, repositories to clone, image features and
+    package lists for a container that will never exist, then records
+    the answers where nothing reads them.
+    """
+    _fnOpenTheAddDialog(pageDashboard, serverHub)
+    pageDashboard.click("#btnChoiceHostMode")
+    pageDashboard.click("#btnChoiceHostCreateNew")
+    pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
+    listTitles = [pageDashboard.text_content("#wizardStepTitle").strip()]
+
+    pageDashboard.click("#btnWizardChooseDirectory")
+    pageDashboard.wait_for_selector(
+        "#modalAddContainer", state="visible", timeout=5000,
+    )
+    pageDashboard.click("#btnAddContainerConfirm")
+    pageDashboard.wait_for_selector(
+        "#modalAddContainer", state="hidden", timeout=5000,
+    )
+    pageDashboard.click("#btnWizardNext")
+    pageDashboard.wait_for_timeout(300)
+    listTitles.append(pageDashboard.text_content("#wizardStepTitle").strip())
+
+    pageDashboard.wait_for_selector(
+        "#wizardStepContent .add-choice-card[data-template]",
+        timeout=10000,
+    )
+    pageDashboard.click(
+        "#wizardStepContent .add-choice-card[data-template]",
+    )
+    pageDashboard.click("#btnWizardNext")
+    pageDashboard.wait_for_timeout(300)
+    listTitles.append(pageDashboard.text_content("#wizardStepTitle").strip())
+
+    pageDashboard.fill("#inputWizardProjectName", "hostWizardProject")
+    pageDashboard.click("#btnWizardNext")
+    pageDashboard.wait_for_timeout(300)
+    listTitles.append(pageDashboard.text_content("#wizardStepTitle").strip())
+
+    assert listTitles == [
+        "Project Directory", "Template", "Project Name", "Summary",
+    ], listTitles
+    assert pageDashboard.text_content(
+        "#btnWizardNext",
+    ).strip() == "Create"
+    sSummary = pageDashboard.text_content("#wizardStepContent")
+    assert "Host" in sSummary
+    assert "Python" not in sSummary, (
+        "the host summary states a setting nothing reads: " + sSummary
+    )
+
+
+def testTheContainerCreateWizardStillWalksEveryPage(
+    pageDashboard, serverHub,
+):
+    """The other direction: the container wizard is unchanged."""
+    _fnOpenTheAddDialog(pageDashboard, serverHub)
+    pageDashboard.click("#btnChoiceCreateNew")
+    pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
+    iVisibleDots = pageDashboard.evaluate(
+        """() => Array.from(
+            document.querySelectorAll('.wizard-progress-step')
+        ).filter((el) => el.style.display !== 'none').length"""
+    )
+    assert iVisibleDots == 8, (
+        f"the container wizard lost pages: {iVisibleDots} shown"
+    )
+
+
+def testTheHostWizardShowsOnlyItsOwnProgressDots(
+    pageDashboard, serverHub,
+):
+    """Four pages, four dots -- not four of eight that never arrive."""
+    _fnOpenTheAddDialog(pageDashboard, serverHub)
+    pageDashboard.click("#btnChoiceHostMode")
+    pageDashboard.click("#btnChoiceHostCreateNew")
+    pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
+    iVisibleDots = pageDashboard.evaluate(
+        """() => Array.from(
+            document.querySelectorAll('.wizard-progress-step')
+        ).filter((el) => el.style.display !== 'none').length"""
+    )
+    assert iVisibleDots == 4

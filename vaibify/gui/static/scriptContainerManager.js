@@ -1437,34 +1437,58 @@ var VaibifyContainerManager = (function () {
     }
 
     function fnOpenAddChoice() {
+        _fnShowAddChoiceStage(false);
         document.getElementById("modalAddChoice").style.display = "flex";
+    }
+
+    function _fnShowAddChoiceStage(bHostStage) {
+        /* One dialog, two stages. The host tier is a MODE, so picking
+           it re-offers the same two ways of adding a project rather
+           than becoming a third one -- and the disclosure appears
+           with it, before any directory is chosen. */
+        document.getElementById("addChoiceCards").style.display =
+            bHostStage ? "none" : "";
+        document.getElementById("addChoiceHostStage").style.display =
+            bHostStage ? "" : "none";
+        document.getElementById("addChoiceHostNote").style.display =
+            bHostStage ? "" : "none";
+    }
+
+    function _fnCloseAddChoice() {
+        document.getElementById("modalAddChoice").style.display = "none";
+        _fnShowAddChoiceStage(false);
     }
 
     function fnBindAddChoiceModal() {
         document.getElementById("btnAddChoiceCancel").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-            }
+            "click", _fnCloseAddChoice
         );
-        document.getElementById("btnChoiceAddExisting").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-                VaibifyDirectoryBrowser.fnOpenDirectoryBrowser();
-            }
-        );
-        document.getElementById("btnChoiceCreateNew").addEventListener(
-            "click", function () {
-                document.getElementById("modalAddChoice")
-                    .style.display = "none";
-                VaibifyWorkflowManager.fnOpenCreateWizard();
-            }
+        _fnBindAddChoiceCard(
+            "btnChoiceAddExisting", "container", "existing");
+        _fnBindAddChoiceCard(
+            "btnChoiceCreateNew", "container", "create");
+        _fnBindAddChoiceCard("btnChoiceHostExisting", "host", "existing");
+        _fnBindAddChoiceCard("btnChoiceHostCreateNew", "host", "create");
+        document.getElementById("btnChoiceHostMode").addEventListener(
+            "click", function () { _fnShowAddChoiceStage(true); }
         );
         var elHelp = document.getElementById("btnAddChoiceHelp");
         if (elHelp) {
             elHelp.addEventListener("click", _fnShowAddChoiceHelp);
         }
+    }
+
+    function _fnBindAddChoiceCard(sElementId, sMode, sPath) {
+        document.getElementById(sElementId).addEventListener(
+            "click", function () {
+                _fnCloseAddChoice();
+                if (sPath === "existing") {
+                    VaibifyDirectoryBrowser.fnOpenDirectoryBrowser(sMode);
+                    return;
+                }
+                VaibifyWorkflowManager.fnOpenCreateWizard(sMode);
+            }
+        );
     }
 
     function _fnShowAddChoiceHelp() {

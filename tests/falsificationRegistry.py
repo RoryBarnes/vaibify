@@ -8775,4 +8775,45 @@ def _fdictEntry(sRel):
         old='        var bHost = sProjectMode === "host";\n',
         new='        var bHost = true;\n',
     ),
+    # --- Adding a host project from the dialog (host mode wave 4) ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testChoosingTheHostTierReOffersBothPathsWithTheDisclosure'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Wired to one path instead of the stage: the other silently
+        # disappears, and an existing host directory can then only be
+        # registered as a container.
+        old=(
+            '        document.getElementById("btnChoiceHostMode")'
+            '.addEventListener(\n'
+            '            "click", function () { '
+            '_fnShowAddChoiceStage(true); }\n'
+            '        );\n'
+        ),
+        new=(
+            '        document.getElementById("btnChoiceHostMode")'
+            '.addEventListener(\n'
+            '            "click", function () { '
+            'VaibifyWorkflowManager.fnOpenCreateWizard("host"); }\n'
+            '        );\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheHostCreateWizardSkipsEveryContainerPage'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # The host wizard walks the container page list, asking for a
+        # Python version, repositories, features and packages that
+        # govern an image the project will never have.
+        old=(
+            '        return _dictWizardData.sMode === "host"\n'
+            '            ? _T_HOST_WIZARD_PAGES : '
+            '_T_CONTAINER_WIZARD_PAGES;\n'
+        ),
+        new='        return _T_CONTAINER_WIZARD_PAGES;\n',
+    ),
 ]

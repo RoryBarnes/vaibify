@@ -10,10 +10,18 @@ var VaibifyDirectoryBrowser = (function () {
     var I_MAX_BROWSER_HISTORY = 100;
     var _bDirectoryEntryDelegationBound = false;
     var _sBrowserMode = "existing";
+    /* Which TIER the project being added belongs to -- distinct from
+       _sBrowserMode, which is whether the browser is picking an
+       existing project or a place to create one. */
+    var _sProjectMode = "container";
     var _fnOnSelectCallback = null;
 
-    async function fnOpenDirectoryBrowser() {
+    async function fnOpenDirectoryBrowser(sProjectMode) {
         _sBrowserMode = "existing";
+        /* The mode the researcher chose in the Add dialog rides
+           through to the registration: absent means container, which
+           is what every project registered before host mode was. */
+        _sProjectMode = sProjectMode === "host" ? "host" : "container";
         _fnOnSelectCallback = null;
         _fnHideNewFolderButton();
         _fnSetSubtitleForExisting();
@@ -75,6 +83,7 @@ var VaibifyDirectoryBrowser = (function () {
         }
         _fnHideNewFolderButton();
         _sBrowserMode = "existing";
+        _sProjectMode = "container";
         _fnOnSelectCallback = null;
     }
 
@@ -267,11 +276,16 @@ var VaibifyDirectoryBrowser = (function () {
     }
 
     async function _fnSelectForExisting() {
+        var sProjectMode = _sProjectMode;
         try {
             await VaibifyApi.fdictPost("/api/registry", {
                 sDirectory: _sBrowserCurrentPath,
+                sMode: sProjectMode,
             });
-            VaibifyApp.fnShowToast("Container added", "success");
+            VaibifyApp.fnShowToast(
+                sProjectMode === "host"
+                    ? "Host project added" : "Container added",
+                "success");
             fnHandleModalClose();
         } catch (error) {
             VaibifyApp.fnShowToast(
