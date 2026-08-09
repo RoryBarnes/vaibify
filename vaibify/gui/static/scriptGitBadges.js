@@ -182,6 +182,12 @@ var VaibifyGitBadges = (function () {
 
     function _fnApplyBadgeRefresh(dictResult) {
         if (!dictResult || typeof dictResult !== "object") return;
+        /* A paused refresh carries no badge map, because the server
+           was too busy to read one — not because the repository has
+           no remote state. Applying it would replace every badge with
+           "none" and report that as fact. The last known map stands
+           until a refresh actually completes. */
+        if (dictResult.bRefreshPaused) return;
         var dictDiff = _fbBadgeMapChanged(
             _dictState.dictBadges, dictResult.dictBadges || {});
         _dictState.dictBadges = dictResult.dictBadges || {};

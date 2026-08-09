@@ -334,7 +334,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("GET", "/api/figure/{sContainerId}/{sFilePath:path}"),
     ("GET", "/api/files/{sContainerId}/download/{sFilePath:path}"),
     ("GET", "/api/files/{sContainerId}/{sDirectoryPath:path}"),
-    ("GET", "/api/git/{sContainerId}/badges"),
     ("GET", "/api/git/{sContainerId}/manifest-check"),
     ("GET", "/api/git/{sContainerId}/status"),
     ("GET", "/api/logs/{sContainerId}"),

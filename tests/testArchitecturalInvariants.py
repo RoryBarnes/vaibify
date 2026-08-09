@@ -4454,7 +4454,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # moved in or out -- the module is still the §8 commit boundary --
     # and the rationale lives once, on the base class, rather than
     # being restated here.
-    "commitCarrier.py": 1066,
+    # +80 (2026-08-08): the automatic-read pause (host mode wave 3).
+    # An automatic read -- one the dashboard issues on its own -- must
+    # never QUEUE behind live work, so mode (b) grew a "report what is
+    # busy instead of acquiring" path. The decision has to be taken
+    # inside the supervisor, immediately before the acquire and with no
+    # await in between, or it can go stale between deciding not to wait
+    # and the wait it decided against; that is why it lands here rather
+    # than in the caller. The three busy states it reads (a live
+    # supervisor, a drain held by a non-carrier such as reconcile, a
+    # live durable task) are the three this module already tracks, so
+    # no responsibility moved in.
+    "commitCarrier.py": 1146,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -4718,7 +4729,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module and repoRoutes are now fully migrated, so their
     # entries are ratcheted back down to what they actually measure
     # rather than left holding the migration's headroom.
-    "routes/gitRoutes.py": 1037,
+    # +31 (2026-08-08): the badge refresh migrated too (host mode wave
+    # 3), and it is this panel's first AUTOMATIC read. The lines are
+    # the serialized collector that replaced the `asyncio.gather`, the
+    # typed paused payload, and the two docstrings stating why the
+    # probes are no longer concurrent and why a paused answer carries
+    # no badge map. Same responsibility, same panel.
+    "routes/gitRoutes.py": 1068,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one

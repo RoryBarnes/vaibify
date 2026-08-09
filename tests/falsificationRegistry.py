@@ -5937,6 +5937,114 @@ def _fdictEntry(sRel):
         old='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset({502})\n',
         new='_SET_GIT_REMOTE_REFUSAL_STATUSES = frozenset()\n',
     ),
+    # --- The badge refresh: the first AUTOMATIC read to migrate ---
+    #
+    # (host mode wave 3, 2026-08-08). An automatic read must do two
+    # things a clicked mutation need not: run under a carrier like any
+    # exec, and never QUEUE behind live work. The five levers below are
+    # one per branch that can be lost on its own -- the carrier itself,
+    # then each of the three states that make a container busy, then
+    # the self-exclusion that keeps an idle container from reporting
+    # itself busy forever.
+    #
+    # Measured isolation, not assumed. The first mutant fails all six
+    # badge tests: with the carrier gone the exec is refused at the
+    # primitive and the handler 500s before any of them can assert.
+    # The three BRANCH levers each fail only their own test. The
+    # self-exclusion lever fails four -- its own, the payload shape,
+    # the drain-read, and the durable one, whose reason then names the
+    # asking read instead of the run -- which is the same statement as
+    # "an always-busy container stops answering", seen four ways.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheBadgeRefreshReadsUnderOneHeldDrain'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old=(
+            '        dictRead = await fdictRunAutomaticReadUnderTheDrain(\n'
+            '            sContainerId,\n'
+            '            lambda supervisor=None: _ftCollectGitBadgeInputs(\n'
+            '                docker, sContainerId, dictWorkflow, sRepo, '
+            'filesRepo,\n'
+            '            ),\n'
+            '            "git-badges", requestHttp,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictRead = {\n'
+            '            "bPaused": False,\n'
+            '            "objResult": _ftCollectGitBadgeInputs(\n'
+            '                docker, sContainerId, dictWorkflow, sRepo, '
+            'filesRepo,\n'
+            '            ),\n'
+            '        }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testABadgeRefreshOverALiveDeleteIsPausedRatherThanQueued'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    for supervisor in _fdictSupervisorRegistry('
+            'appState).values():\n'
+            '        if supervisor is supervisorSelf:\n'
+            '            continue\n'
+        ),
+        new=(
+            '    for supervisor in []:\n'
+            '        if supervisor is supervisorSelf:\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testABadgeRefreshUnderAHeldDrainIsPausedRatherThanQueued'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    if lockMutation.locked():\n'
+            '        return S_DESCRIBED_GUARDED_OPERATION\n'
+            '    return ""\n'
+        ),
+        new='    return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testABadgeRefreshOverALiveDurableRunIsPaused'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    recordTask = _fdictDurableTaskRegistry(appState).get(\n'
+            '        supervisorSelf.sName,\n'
+            '    )\n'
+            '    if recordTask is not None and (\n'
+            '        recordTask.taskAsync is None or not '
+            'recordTask.taskAsync.done()\n'
+            '    ):\n'
+            '        return S_DESCRIBED_DURABLE_TASK\n'
+        ),
+        new='    recordTask = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAQuietContainerIsNeverReportedAsBusy'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '        if supervisor is supervisorSelf:\n'
+            '            continue\n'
+            '        if supervisor.sName != supervisorSelf.sName:\n'
+        ),
+        new=(
+            '        if supervisor.sName != supervisorSelf.sName:\n'
+        ),
+    ),
     # --- Step routes that are not a plain save (phase 2, 2026-08-05) ---
     #
     # Each entry mutates the route's OWN call site. The rename has three

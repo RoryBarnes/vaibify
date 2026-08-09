@@ -3467,6 +3467,190 @@ def testAnUnreachableRemoteLeavesTheContainerUsable(tclientGated):
 
 
 # ---------------------------------------------------------------------
+# Group 7b -- the badge refresh, the first AUTOMATIC read to migrate.
+#
+# Everything migrated before this group was something a researcher
+# CLICKED. The badge refresh is issued by the dashboard itself when a
+# workflow opens and whenever the sync epoch bumps, which changes what
+# a correct migration looks like in one way: it must never queue. Mode
+# (b) waits for the drain, and waiting spends an unpredictable amount
+# of a request nobody made -- a fetch or a step run can hold it for
+# minutes, and the researcher sees a panel that has stopped answering.
+#
+# So the route asks for the drain and takes "" for an answer: a paused
+# refresh is a 200 with a typed paused payload and NO badge map. Both
+# directions are proven here, because they fail identically in the
+# report and oppositely in the product -- a route that never pauses
+# hangs, and a route that always pauses never shows a badge again.
+#
+# A container is busy in three states, and each has its own test
+# because each is a separate branch that can be lost on its own: a live
+# SUPERVISOR (below), a drain held by a NON-carrier such as reconcile
+# (``testABadgeRefreshUnderAHeldDrainIsPausedRatherThanQueued``), and a
+# live DURABLE run holding no drain at all
+# (``testABadgeRefreshOverALiveDurableRunIsPaused``). The last two live
+# beside the in-loop ASGI harness they need.
+# ---------------------------------------------------------------------
+
+S_MARKER_BADGE_STATUS = "status --porcelain=v2 --branch"
+
+
+@pytest.mark.falsification
+def testTheBadgeRefreshReadsUnderOneHeldDrain(tclientGated):
+    """GET /api/git/{id}/badges reads under mode (b), not the ambient mint.
+
+    The route's probes ran concurrently through ``asyncio.gather``
+    before the migration; they are serialized into one worker now, so
+    the coherent refresh is ONE carrier rather than three that would
+    queue behind each other on the same container's drain.
+
+    Kills: deleting the ``fdictRunAutomaticReadUnderTheDrain`` call and
+    reading the badge inputs directly, which reaches the exec primitive
+    with no admission at all.
+    """
+    client, connectionDocker = tclientGated
+    response = client.get(f"/api/git/{S_CONTAINER_ID}/badges")
+    assert response.status_code == 200, response.text
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, S_MARKER_BADGE_STATUS,
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "git remote get-url origin",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+def testTheBadgeRefreshStillAnswersItsWholePayload(tclientGated):
+    """The container-mode regression the migration owes.
+
+    This route changed for BOTH modes: host mode is why it migrated,
+    and the container leg now runs the same probes serially inside a
+    carrier's worker. A regression here would be silent -- the badge
+    row renders from whatever the payload holds, so a missing key
+    paints "no remote state" rather than failing.
+    """
+    client, _ = tclientGated
+    response = client.get(f"/api/git/{S_CONTAINER_ID}/badges")
+    assert response.status_code == 200, response.text
+    dictBody = response.json()
+    assert set(dictBody) == {"dictGit", "dictBadges", "listTracked"}, (
+        f"the badge payload changed shape: {sorted(dictBody)}"
+    )
+    assert "sRemoteUrl" in dictBody["dictGit"]
+    assert dictBody.get("bRefreshPaused") is None
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testABadgeRefreshOverALiveDeleteIsPausedRatherThanQueued():
+    """A refresh arriving while the drain is HELD answers paused at once.
+
+    Driven against the blocked-clean hub because that is the only
+    machinery here that puts a REAL mode-(b) supervisor in the registry
+    and holds the drain open while a second request arrives; a test
+    that registered a supervisor of its own would be asserting against
+    its own fixture.
+
+    Four assertions, each a separate guarantee:
+
+    1. the refresh ANSWERS while the delete is still blocked -- had it
+       queued, the response would not exist until the clean released;
+    2. it answers IMMEDIATELY, measured, because "did not deadlock" is
+       also true of a read that waited nine seconds;
+    3. it names the live operation, so the paused state is actionable
+       rather than a bare "busy";
+    4. it reached NO container primitive, which is what makes the pause
+       a pause rather than a label on a read that happened anyway.
+
+    Kills: passing ``bPauseWhenBusy=False`` from
+    ``fdictRunAutomaticReadUnderTheDrain``, which returns the route to
+    queueing behind the live delete.
+    """
+    app, connectionDocker = _tBuildAsgiHubWithBlockedClean()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=app, raise_app_exceptions=False,
+        ),
+        base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    ) as clientAsync:
+        sLease = await _tConnectOverAsgi(clientAsync)
+        clientAsync.headers["X-Vaibify-Lease"] = sLease
+
+        taskClean = asyncio.ensure_future(
+            clientAsync.post(f"/api/pipeline/{S_CONTAINER_ID}/clean"),
+        )
+        await asyncio.to_thread(
+            connectionDocker.eventCleanStarted.wait, 10,
+        )
+        connectionDocker.listAdmittedPrimitives.clear()
+
+        fBefore = time.monotonic()
+        response = await clientAsync.get(
+            f"/api/git/{S_CONTAINER_ID}/badges",
+        )
+        fElapsed = time.monotonic() - fBefore
+
+        assert connectionDocker.listCleanCommandsRun == [], (
+            "the delete finished before the refresh was answered, so "
+            "the container was not busy when it mattered and this test "
+            "would prove nothing"
+        )
+        assert response.status_code == 200, response.text
+        dictBody = response.json()
+        assert dictBody.get("bRefreshPaused") is True, dictBody
+        assert fElapsed < 2.0, (
+            f"the refresh waited {fElapsed:.1f}s on the busy container "
+            "instead of pausing at once"
+        )
+        assert "clean-outputs" in dictBody["sPausedBy"], (
+            "the paused payload must NAME what holds the container, "
+            f"from what the lock holder registered: {dictBody}"
+        )
+        assert "dictBadges" not in dictBody, (
+            f"a paused refresh answered with a badge map: {dictBody}. "
+            "An empty one renders as a claim about the repository."
+        )
+        assert connectionDocker.listAdmittedPrimitives == [], (
+            "a paused refresh still reached a container primitive: "
+            f"{connectionDocker.listAdmittedPrimitives}. Pausing is "
+            "only worth anything if the read did not happen."
+        )
+
+        connectionDocker.eventCleanMayFinish.set()
+        await taskClean
+
+
+@pytest.mark.falsification
+def testAQuietContainerIsNeverReportedAsBusy(tclientGated):
+    """The other direction: an idle container must not pause the refresh.
+
+    The pause's failure modes are symmetric and only one of them is
+    loud. A read that never pauses hangs a request behind live work; a
+    read that ALWAYS pauses answers instantly forever, and the badges
+    simply stop changing -- a dashboard that has quietly stopped
+    reporting, which is the failure this repository's rules single out
+    as the worst kind.
+
+    Kills: making the busy probe unconditional -- e.g. reporting the
+    asking supervisor itself as the live work, which
+    ``_fsDescribeWorkBesidesThisSupervisor`` excludes for exactly this
+    reason.
+    """
+    client, _ = tclientGated
+    response = client.get(f"/api/git/{S_CONTAINER_ID}/badges")
+    assert response.status_code == 200, response.text
+    dictBody = response.json()
+    assert "bRefreshPaused" not in dictBody, (
+        f"an idle container reported itself busy: {dictBody}. Every "
+        "badge refresh from now on would answer paused and the panel "
+        "would never update again."
+    )
+    assert "dictBadges" in dictBody
+
+
+# ---------------------------------------------------------------------
 # Group 8 -- the three step routes that are not a plain save, mode (b).
 #
 # Every OTHER step route persists project.json and nothing else, which
@@ -6649,6 +6833,113 @@ async def testTheLaunchedFalsificationRunIsVisibleAsLiveWork():
                     "reading idle; a hand-over or the idle watchdog "
                     "would act on a repository whose sources cosmic-ray "
                     "is rewriting in place"
+                )
+            await asyncio.sleep(0.05)
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testABadgeRefreshUnderAHeldDrainIsPausedRatherThanQueued():
+    """Group 7b's second busy state: the drain held by a NON-carrier.
+
+    ``hostControlChannel``'s reconcile and break-glass, and the start
+    reservation, all take the container's mutation drain without
+    registering a supervisor — so the supervisor registry alone cannot
+    see them, and a read that consulted only the registry would sit on
+    ``acquire()`` for as long as a reconcile takes. The lock is held
+    here the same way those hold it: directly, registering nothing.
+
+    The GET is bounded by ``wait_for`` because the failure being
+    excluded is a WAIT: without the lock check this request never
+    returns while this block holds the lock, and an unbounded await
+    would hang the suite instead of failing it.
+
+    The reason is not asserted, deliberately. With no supervisor and no
+    durable record for this container, the lock branch is the only one
+    that can answer paused at all, so the flag identifies the branch by
+    itself — and pinning the generic wording here would make this test
+    fail for the self-exclusion mutant that
+    ``testAQuietContainerIsNeverReportedAsBusy`` owns.
+
+    Kills: deleting the ``lockMutation.locked()`` branch from
+    ``_fsDescribeWorkBesidesThisSupervisor``, which returns this read
+    to queueing behind a holder that registers nothing.
+    """
+    with _tclientAsgiOverALevelThreeWorkflow() as (app, clientAsync):
+        async with clientAsync:
+            sLease = await _tConnectOverAsgi(clientAsync)
+            clientAsync.headers["X-Vaibify-Lease"] = sLease
+            sName = _fsContainerNameFor(app)
+            lockMutation = (
+                sessionLifecycle.flockContainerMutationForAppState(
+                    app.state, sName,
+                )
+            )
+            async with lockMutation:
+                response = await asyncio.wait_for(
+                    clientAsync.get(
+                        f"/api/git/{S_CONTAINER_ID}/badges",
+                    ),
+                    2.0,
+                )
+            assert response.status_code == 200, response.text
+            dictBody = response.json()
+            assert dictBody.get("bRefreshPaused") is True, dictBody
+            assert "dictBadges" not in dictBody, dictBody
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testABadgeRefreshOverALiveDurableRunIsPaused():
+    """Group 7b's third busy state, driven where the machinery for it is.
+
+    A durable task holds NO drain: it takes the lock to register and
+    releases it before the work runs. So the lock alone cannot answer
+    whether a run is live, and an automatic read consulting only the
+    lock would read a repository the run is rewriting and publish that
+    torn snapshot as settled state. This is the host-mode case in
+    miniature -- on the host a step's files ARE the repository's files.
+
+    Asserted on the paused REASON, not merely on the flag: the drain
+    and supervisor branches would both answer paused here too if they
+    were reached, and the generic durable wording is what identifies
+    which branch answered.
+
+    Kills: deleting the durable-registry branch from
+    ``_fsDescribeWorkBesidesThisSupervisor``, which leaves a live run
+    invisible to the pause and lets the refresh read straight through
+    it.
+    """
+    with _tclientAsgiOverALevelThreeWorkflow() as (app, clientAsync):
+        del app
+        async with clientAsync:
+            sLease = await _tConnectOverAsgi(clientAsync)
+            clientAsync.headers["X-Vaibify-Lease"] = sLease
+            with _fnFalsificationApplicable(), (
+                _teventHoldTheDurableWorkerOpen(
+                    falsificationRoutes, "_fnRunFalsificationWorker",
+                )
+            ):
+                response = await clientAsync.post(
+                    f"/api/steps/{S_CONTAINER_ID}/0/run-falsification",
+                )
+                assert response.status_code == 200, (
+                    "the run was refused before it could be launched, "
+                    f"so nothing is live to pause behind: {response.text}"
+                )
+                responseBadges = await clientAsync.get(
+                    f"/api/git/{S_CONTAINER_ID}/badges",
+                )
+                assert responseBadges.status_code == 200, (
+                    responseBadges.text
+                )
+                dictBody = responseBadges.json()
+                assert dictBody.get("bRefreshPaused") is True, dictBody
+                assert dictBody["sPausedBy"] == (
+                    commitCarrier.S_DESCRIBED_DURABLE_TASK
+                ), (
+                    "the pause fired, but not from the durable branch: "
+                    f"{dictBody}"
                 )
             await asyncio.sleep(0.05)
 

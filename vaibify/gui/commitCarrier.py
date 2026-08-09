@@ -52,6 +52,8 @@ still commit must never lose its exclusivity underneath it.
 
 __all__ = [
     "F_SHUTDOWN_DRAIN_TIMEOUT_SECONDS",
+    "S_DESCRIBED_DURABLE_TASK",
+    "S_DESCRIBED_GUARDED_OPERATION",
     "CommitRefusedError",
     "MutationSupervisor",
     "DurableTaskRecord",
@@ -116,6 +118,13 @@ F_SHUTDOWN_DRAIN_TIMEOUT_SECONDS = (
 
 S_LANE_BROWSER = "browser"
 S_LANE_AGENT = "agent"
+
+# What a busy refusal calls work it can see but cannot name. Both are
+# read by a researcher, and both are produced from two places (the
+# public describer and the automatic-read pause), so they are stated
+# once: two spellings of the same state read as two different states.
+S_DESCRIBED_GUARDED_OPERATION = "a guarded operation"
+S_DESCRIBED_DURABLE_TASK = "a long-running task"
 
 
 class CommitRefusedError(ControlPlaneRefusalError):
@@ -461,6 +470,7 @@ class MutationSupervisor:
 async def fdictRunLockHeldMutation(
     appState, sName, sContainerId, dictLaneTuple, sOperationKind,
     sTarget, fnWorker, dictHolderIdentity=None, fnTerminateWorker=None,
+    bPauseWhenBusy=False,
 ):
     """Run a worker under the drain, surviving requester cancellation.
 
@@ -485,6 +495,15 @@ async def fdictRunLockHeldMutation(
     NEEDING RECONCILIATION for work whose body never executed. A
     researcher would be told to run 'vaibify reconcile' because someone
     wrote ``async def``.
+
+    ``bPauseWhenBusy`` is for an AUTOMATIC read -- one the dashboard
+    issues on its own, not one a researcher asked for. Such a caller
+    must never queue behind live work: waiting on a ``git fetch`` or a
+    step run hangs a request the user did not make, for a length nobody
+    can predict. With it set, the supervisor reports the live work back
+    instead of acquiring the drain, and the caller renders a paused
+    state. See :func:`_fsDescribeWorkBesidesThisSupervisor` for why the
+    decision is taken there rather than here.
     """
     _fnAssertWorkerIsNotACoroutineFunction(fnWorker)
     _fnAssertAdmissionsOpen(appState)
@@ -498,7 +517,7 @@ async def fdictRunLockHeldMutation(
     taskSupervisor = asyncio.get_running_loop().create_task(
         _fdictSuperviseLockHeldWorker(
             appState, supervisor, sOperationKind, sTarget, fnWorker,
-            dictHolderIdentity,
+            dictHolderIdentity, bPauseWhenBusy,
         ),
     )
     supervisor.taskSupervisor = taskSupervisor
@@ -532,12 +551,24 @@ def _ffnBuildSupervisorEviction(dictRegistry, supervisor):
 
 async def _fdictSuperviseLockHeldWorker(
     appState, supervisor, sOperationKind, sTarget, fnWorker,
-    dictHolderIdentity,
+    dictHolderIdentity, bPauseWhenBusy=False,
 ):
     """Hold the drain for the worker's whole life; settle; publish."""
     lockMutation = sessionLifecycle.flockContainerMutationForAppState(
         appState, supervisor.sName,
     )
+    if bPauseWhenBusy:
+        sLiveWork = _fsDescribeWorkBesidesThisSupervisor(
+            appState, supervisor, lockMutation,
+        )
+        if sLiveWork:
+            supervisor.dictOutcome = {
+                "bCommitted": False,
+                "bPausedByLiveWork": True,
+                "sLiveWork": sLiveWork,
+                "result": None,
+            }
+            return supervisor.dictOutcome
     async with lockMutation:
         if not fbLaneTupleStillCurrent(appState, supervisor.dictLaneTuple):
             raise CommitRefusedError(
@@ -1041,18 +1072,67 @@ def fsDescribeLiveMutationWork(appState, sName):
             supervisor.taskSupervisor.done()
         ):
             continue
-        if supervisor.sOperationKind:
-            return (
-                f"{supervisor.sOperationKind} on "
-                f"{supervisor.sTarget or sName}"
-                if supervisor.sTarget else supervisor.sOperationKind
-            )
-        return "a guarded operation"
+        return _fsDescribeSupervisorWork(supervisor)
     recordTask = _fdictDurableTaskRegistry(appState).get(sName)
     if recordTask is not None and (
         recordTask.taskAsync is None or not recordTask.taskAsync.done()
     ):
-        return "a long-running task"
+        return S_DESCRIBED_DURABLE_TASK
+    return ""
+
+
+def _fsDescribeSupervisorWork(supervisor):
+    """Return what one live supervisor is doing, in a refusal's words."""
+    if not supervisor.sOperationKind:
+        return S_DESCRIBED_GUARDED_OPERATION
+    if supervisor.sTarget:
+        return f"{supervisor.sOperationKind} on {supervisor.sTarget}"
+    return supervisor.sOperationKind
+
+
+def _fsDescribeWorkBesidesThisSupervisor(
+    appState, supervisorSelf, lockMutation,
+):
+    """Return the live work an automatic read must not wait for, or ``""``.
+
+    Read from INSIDE the supervisor task, immediately before the
+    acquire and with no ``await`` in between, so the answer cannot go
+    stale between deciding not to wait and the wait it decided
+    against: acquiring a free ``asyncio.Lock`` never suspends, so no
+    other task can take it in the gap.
+
+    The supervisor asking is excluded. :func:`fdictRunLockHeldMutation`
+    registers it before the task body runs, so the shared
+    :func:`fsDescribeLiveMutationWork` would name this very read as the
+    reason to pause itself, and an automatic read would never once run.
+
+    Three states count as busy, and the durable one is the reason this
+    consults more than the lock. A HELD drain is direct -- taking it
+    would wait. A live supervisor is that same fact a moment earlier,
+    before it reached its own acquire. A live DURABLE task holds no
+    drain at all and still counts: a running step rewrites the very
+    files a repository read reports on, so a read that interleaved with
+    it would publish a torn snapshot as settled fact.
+    """
+    for supervisor in _fdictSupervisorRegistry(appState).values():
+        if supervisor is supervisorSelf:
+            continue
+        if supervisor.sName != supervisorSelf.sName:
+            continue
+        if supervisor.taskSupervisor is not None and (
+            supervisor.taskSupervisor.done()
+        ):
+            continue
+        return _fsDescribeSupervisorWork(supervisor)
+    recordTask = _fdictDurableTaskRegistry(appState).get(
+        supervisorSelf.sName,
+    )
+    if recordTask is not None and (
+        recordTask.taskAsync is None or not recordTask.taskAsync.done()
+    ):
+        return S_DESCRIBED_DURABLE_TASK
+    if lockMutation.locked():
+        return S_DESCRIBED_GUARDED_OPERATION
     return ""
 
 

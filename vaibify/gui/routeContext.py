@@ -17,6 +17,7 @@ __all__ = [
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
     "fdictRequireLaneTupleForCommit",
+    "fdictRunAutomaticReadUnderTheDrain",
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
     "fdictCommitWorkflowSave",
@@ -176,6 +177,53 @@ async def fgenericRunWorkerUnderTheDrain(
     if dictCarried["errorRefused"] is not None:
         raise dictCarried["errorRefused"]
     return dictCarried["objResult"]
+
+
+async def fdictRunAutomaticReadUnderTheDrain(
+    sContainerId, fnWorker, sOperationTarget, requestHttp,
+):
+    """Run an automatic read's worker under the drain, or report paused.
+
+    An AUTOMATIC read is one the dashboard issues on its own — the
+    badge refresh a workflow fires on open, the repository panel's
+    poll — as opposed to one a researcher asked for by clicking.
+
+    Its commands reach the general exec primitive, which the gate must
+    treat as mutating (command text cannot be told apart from a
+    delete), so on the enforced branch it needs a carrier like any
+    mutation. What it must NOT do is queue: mode (b) waits for the
+    drain, and waiting spends an unpredictable amount of a request
+    nobody made — a ``git fetch`` or a step run can hold it for
+    minutes. So this asks for the drain and takes ``""`` for an
+    answer, returning ``{"bPaused", "sPausedBy", "objResult"}``.
+
+    Paused is a RESULT, not an error. The caller answers 200 with a
+    typed paused payload and the panel renders a paused state until the
+    next refresh finds the container quiet: a failed request would
+    teach the researcher to distrust a panel that is working
+    correctly, and a silent empty answer would report "no remotes" as
+    a fact about their repository.
+    """
+    from . import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, sOperationTarget,
+    )
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper", sOperationTarget,
+        fnWorker, bPauseWhenBusy=True,
+    )
+    if dictOutcome.get("bPausedByLiveWork"):
+        return {
+            "bPaused": True,
+            "sPausedBy": dictOutcome.get("sLiveWork", ""),
+            "objResult": None,
+        }
+    return {
+        "bPaused": False,
+        "sPausedBy": "",
+        "objResult": dictOutcome["result"],
+    }
 
 
 def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
