@@ -275,8 +275,15 @@ def _flistHeldContainerIds(app, dictCtx):
     running-container list maps each name to its id. A Docker failure
     propagates so the caller can fail safe (treat as busy).
     """
+    from vaibify.config.registryManager import fbIsHostProject
     dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
-    setHeldNames = set(dictContainerOwners.keys())
+    # Host projects are answered by the host busy oracle, never by
+    # Docker; leaving them in the held set would force a daemon query
+    # (fail-safe busy on error) for a hub that holds no container.
+    setHeldNames = {
+        sName for sName in dictContainerOwners
+        if not fbIsHostProject(sName)
+    }
     if not setHeldNames:
         return []
     connectionDocker = dictCtx.get("docker")
@@ -316,15 +323,35 @@ def _flistBusyCandidateIds(app, dictCtx):
     return list(dictContainerOwners.keys())
 
 
-def _fbAnyHeldContainerBusy(app, dictCtx):
-    """Return True if any held or served container has a pipeline mid-run.
+def _fbAnyHeldHostProjectBusy(app):
+    """Return True while any held HOST project has a live run.
 
-    Covers the hub (containers it locks) and the viewer (containers it
-    serves). Fail-safe: any Docker error while listing or probing is
-    treated as busy so the watchdog never retires a session whose
-    container is only briefly unreachable.
+    Host names never appear in Docker's running-container list, so the
+    id-resolving candidate walk below is structurally blind to them; a
+    watchdog reading only that walk would self-SIGTERM a hub mid
+    host-run. Host truth comes from the host busy oracle instead.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    from .hostBusyOracle import fbHostProjectHasLiveRun
+    dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
+    return any(
+        fbIsHostProject(sName)
+        and fbHostProjectHasLiveRun(app.state, sName)
+        for sName in dictContainerOwners
+    )
+
+
+def _fbAnyHeldContainerBusy(app, dictCtx):
+    """Return True if any held or served resource has a pipeline mid-run.
+
+    Covers the hub (containers it locks, host projects it holds) and
+    the viewer (containers it serves). Fail-safe: any Docker error
+    while listing or probing is treated as busy so the watchdog never
+    retires a session whose container is only briefly unreachable.
     """
     try:
+        if _fbAnyHeldHostProjectBusy(app):
+            return True
         listIds = _flistBusyCandidateIds(app, dictCtx)
         if not listIds:
             return False
@@ -356,14 +383,20 @@ def _fnPruneSpawnedChildrenForApp(app):
 
 
 def _fbOwnedNamePipelineRunning(app, dictCtx, sName):
-    """Return True when an owned container's pipeline is mid-run.
+    """Return True when an owned resource's pipeline is mid-run.
 
     Used by the ownership reaper's busy veto so a claimed-but-disconnected
-    owner is never released while its container is still running. A Docker
-    failure fails safe to busy (``True``) so a transient outage never
-    evicts an owner whose pipeline cannot be confirmed idle.
+    owner is never released while its run is still live. A host project
+    is asked through the host busy oracle — its truth is never in
+    Docker. A Docker failure fails safe to busy (``True``) so a
+    transient outage never evicts an owner whose pipeline cannot be
+    confirmed idle.
     """
     try:
+        from vaibify.config.registryManager import fbIsHostProject
+        if fbIsHostProject(sName):
+            from .hostBusyOracle import fbHostProjectHasLiveRun
+            return fbHostProjectHasLiveRun(app.state, sName)
         return _fbAnyContainerRunning(
             dictCtx, _flistRunningIdsForName(dictCtx, sName),
         )

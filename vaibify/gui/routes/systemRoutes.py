@@ -296,12 +296,32 @@ def _fdictProbeContainerReadiness(connectionDocker, sContainerId):
         }
 
 
+def _fdictHostReadyResponse():
+    """Return the immediate ready payload for a host project.
+
+    A host project has no entrypoint to wait for — it is ready the
+    moment it is claimed (host-mode plan §9) — so the frontend's
+    post-claim readiness poll gets an instant, honest yes instead of
+    a probe against a container that does not exist.
+    """
+    return {
+        "bReady": True,
+        "sStatus": "ok",
+        "sReason": "",
+        "saWarnings": [],
+        "iWarningCount": 0,
+    }
+
+
 def _fnRegisterContainerReady(app, dictCtx):
     """Register GET /api/containers/{id}/ready readiness probe."""
 
     @app.get("/api/containers/{sContainerId}/ready")
     async def fdictContainerReady(sContainerId: str):
-        dictCtx["require"]()
+        from vaibify.config.registryManager import fbIsHostProject
+        dictCtx["require"](sContainerId)
+        if fbIsHostProject(sContainerId):
+            return _fdictHostReadyResponse()
         return await asyncio.to_thread(
             _fdictProbeContainerReadiness,
             dictCtx["docker"], sContainerId,

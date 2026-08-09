@@ -269,7 +269,7 @@ def _fnRegisterClaimContainer(app, dictCtx):
                 app.state, sName, sLeaseId, iPort,
                 sContainerId=sContainerId,
                 fbPipelineRunning=lambda sOwned: _fbNameHasRunningPipeline(
-                    dictCtx, sOwned,
+                    dictCtx, app.state, sOwned,
                 ),
                 sBrowserSessionId=sBrowserSessionId,
                 connectionDocker=dictCtx.get("docker"),
@@ -285,8 +285,13 @@ def _fsResolveContainerId(dictCtx, sName):
 
     Stored on the owner record at claim time so the per-container agent
     token can be scoped to this exact container without a Docker call on
-    every request.
+    every request. A host project's resource id IS its registry name
+    (host-mode plan §9), so the Docker query is skipped entirely — a
+    claim on a host project must succeed with no daemon at all.
     """
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sName):
+        return sName
     connectionDocker = dictCtx.get("docker")
     from vaibify.config.connectionAvailability import (
         fbDockerReachable,
@@ -302,13 +307,19 @@ def _fsResolveContainerId(dictCtx, sName):
     return ""
 
 
-def _fbNameHasRunningPipeline(dictCtx, sName):
-    """Return True when an owned container's pipeline is mid-run.
+def _fbNameHasRunningPipeline(dictCtx, appState, sName):
+    """Return True when an owned resource's pipeline is mid-run.
 
     Used by the claim arbiter's take-over veto so a foreign claim never
-    evicts an owner whose container is still running. A Docker outage
-    fails safe to busy (``True``), keeping the existing owner in place.
+    evicts an owner whose run is still live. A host project is asked
+    through the host busy oracle (durable task + journaled process
+    group) — its truth is never in Docker. A Docker outage fails safe
+    to busy (``True``), keeping the existing owner in place.
     """
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sName):
+        from .hostBusyOracle import fbHostProjectHasLiveRun
+        return fbHostProjectHasLiveRun(appState, sName)
     connectionDocker = dictCtx.get("docker")
     from vaibify.config.connectionAvailability import (
         fbDockerReachable,

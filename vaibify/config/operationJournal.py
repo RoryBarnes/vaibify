@@ -66,6 +66,7 @@ __all__ = [
     "fsJournalPathFor",
     "flistJournaledContainerNames",
     "fdictReadJournalOutcome",
+    "fbAnyHostExecHolderLive",
     "fsPrepareOperation",
     "fnPromoteOperationToInFlight",
     "fnAmendInFlightHolderIdentity",
@@ -763,6 +764,32 @@ def _fdictProbeHelperOperation(dictRecord, connectionDocker):
         False, False, False,
         f"process group {iHolderProcessGroup} still has live members",
     )
+
+
+def fbAnyHostExecHolderLive(sContainerName):
+    """Return True while any journaled host-exec process may survive.
+
+    The journal half of the host busy oracle (host-mode plan §4): a
+    host pipeline counts as running while a ``host-exec`` record's
+    holder PID is alive or its recorded process group still has
+    members — the same recycle-proof prover the record's own probe
+    uses. Fail-safe by construction: an unreadable journal, or a
+    record whose identity cannot be probed, reads as LIVE, because
+    every caller is a veto (claim take-over, ownership reaper, idle
+    self-shutdown) and evicting an owner over an unprovable run is
+    exactly the harm this predicate exists to prevent. Read-only:
+    nothing is settled or persisted here.
+    """
+    dictOutcomeRead = fdictReadJournalOutcome(sContainerName)
+    if dictOutcomeRead["sReadState"] not in ("absent", "valid"):
+        return True
+    for dictRecord in dictOutcomeRead["dictOperations"].values():
+        if dictRecord.get("sKind") != "host-exec":
+            continue
+        dictProbe = _fdictProbeHelperOperation(dictRecord, None)
+        if dictProbe["bHolderAlive"] or not dictProbe["bSettled"]:
+            return True
+    return False
 
 
 def _fdictProbeExecOperation(dictRecord, connectionDocker):

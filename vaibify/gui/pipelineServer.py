@@ -1,6 +1,7 @@
 """FastAPI application with REST and WebSocket routes for workflow viewing."""
 
 import asyncio
+import getpass
 import json
 import logging
 import os
@@ -1521,10 +1522,20 @@ def _fnAuthorizeContainer(dictCtx, sContainerId, sBrowserSessionId=""):
     here purely to keep the idle busy-veto honest about a mid-run viewer.
     The browser session id is threaded through so the viewer's
     first-connect ownership is bound to the connecting session.
+
+    A host project takes neither container touch (host-mode decision
+    6): the executing user IS the host user — resolved in-process, no
+    subprocess — and no agent session is pushed, because no agent
+    token exists to deliver and there is no container to write
+    ``/tmp/vaibify-session.env`` into.
     """
     _fnRegisterViewerServedContainer(
         dictCtx, sContainerId, sBrowserSessionId,
     )
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sContainerId):
+        dictCtx["containerUsers"][sContainerId] = getpass.getuser()
+        return
     dictCtx["containerUsers"][sContainerId] = (
         _fsResolveContainerUser(dictCtx, sContainerId)
     )
@@ -1580,7 +1591,7 @@ def _fnRegisterViewerServedContainer(
     sLeaseId = containerOwnership.fsMintLease()
     dictContainerOwners[sName] = containerOwnership.OwnerRecord(
         sLeaseId=sLeaseId, fileHandleLock=None,
-        sAgentToken=containerOwnership.fsMintAgentToken(),
+        sAgentToken=containerOwnership.fsMintAgentToken(sName),
         sContainerId=sContainerId,
         sBrowserSessionId=sBrowserSessionId,
     )

@@ -3988,7 +3988,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # single clearer. Poison and fencing are one act, and the fence
     # needs the lane on ConnectionRecord, so both live beside the
     # record they act on.
-    "containerOwnership.py": 898,
+    # +9 (2026-08-08): the agent-token mint is mode-aware (host-mode
+    # decision 6) — a host project's credential is UNMINTED, not
+    # undelivered, and the branch lives inside the mint so no caller
+    # can forget it.
+    "containerOwnership.py": 907,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -4420,7 +4424,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # pass-through, and the name resolver's designed host branch
     # (host-mode wave 2) -- context plumbing, the module's own
     # responsibility.
-    "pipelineServer.py": 2509,
+    # +11 (2026-08-08): the connect authorization's host branch (wave
+    # 2 chunk B) — the host user is resolved in-process and no agent
+    # session is pushed, because no host container exists to receive
+    # one; the viewer's token mint names its resource for the same
+    # mode-aware mint the claim path uses.
+    "pipelineServer.py": 2520,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -4643,7 +4652,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-08-08): three daemon-down guards ask
     # fbDockerReachable instead of `is None` (host-mode wave 2's
     # connection router made bare None checks meaningless).
-    "registryRoutes.py": 1297,
+    # +11 (2026-08-08): the claim path's host branches (wave 2 chunk
+    # B) — a host project's resource id is its registry name (no
+    # Docker query), and the take-over veto asks the host busy oracle
+    # instead of walking the container list for a name Docker has
+    # never heard of.
+    "registryRoutes.py": 1308,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
