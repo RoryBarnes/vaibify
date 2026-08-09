@@ -7703,4 +7703,389 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+
+    # --- Host-mode wave 2 chunk B: registry status, claim path, busy
+    # oracle (2026-08-08). Symmetric pairs throughout: for every
+    # mode-aware branch, one mutant proves the host direction works and
+    # its twin proves the container direction still does.
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testHostEntryStatusIsReadyWithoutConsultingDocker'
+        ),
+        source='vaibify/config/registryManager.py',
+        # Enrichment stuck at container: a host entry's status walks
+        # the Docker probes (patched to raise in the test), for a
+        # project no daemon knows.
+        old=(
+            '    if dictProject.get("sMode") == "host":\n'
+            '        return _fdictEnrichHostProjectStatus(dictProject)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryManager.py::'
+            'testContainerEntryStatusStillConsultsDocker'
+        ),
+        source='vaibify/config/registryManager.py',
+        # The symmetric twin, stuck at host: a running container reads
+        # as a red host tile and its Docker truth is never asked.
+        old=(
+            '    if dictProject.get("sMode") == "host":\n'
+        ),
+        new=(
+            '    if True:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestResolveContainerId::'
+            'test_host_name_is_its_own_resource_id_without_docker'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Dropping the host branch stores '' as the resource id, so
+        # every downstream lookup keyed by the id goes blind for host
+        # projects (the poison leg in the test raises on any touch).
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sName):\n'
+            '        return sName\n'
+            '    connectionDocker = dictCtx.get("docker")\n'
+        ),
+        new=(
+            '    connectionDocker = dictCtx.get("docker")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestResolveContainerId::'
+            'test_container_name_still_resolves_to_its_docker_id'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # The symmetric twin, stuck at host: a container claim stores
+        # the NAME where its Docker id belongs, and the per-container
+        # agent token is scoped to a container that never presents it.
+        old=(
+            '    if fbIsHostProject(sName):\n'
+            '        return sName\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return sName\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAgentTokenMint::'
+            'test_host_claim_mints_no_agent_token'
+        ),
+        source='vaibify/gui/containerOwnership.py',
+        # Dropping the mode branch mints a live agent credential for a
+        # project whose agent lane must not exist (decision 6): the
+        # credential is supposed to be UNMINTED, not undelivered.
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if sResourceName and fbIsHostProject(sResourceName):\n'
+            '        return ""\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAgentTokenMint::'
+            'test_container_claim_still_mints_a_real_token'
+        ),
+        source='vaibify/gui/containerOwnership.py',
+        # The symmetric twin, stuck at unminted: every container claim
+        # would carry an empty agent token and the in-container agent
+        # lane dies hub-wide.
+        old=(
+            '    if sResourceName and fbIsHostProject(sResourceName):\n'
+        ),
+        new=(
+            '    if sResourceName:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAuthorizeContainerHostBranch::'
+            'test_host_connect_probes_nothing_and_pushes_nothing'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # Dropping the host branch execs a user probe against the host
+        # leg and pushes a session file no container exists to receive;
+        # both container touches swallow their own errors, so the test
+        # asserts the recorded push and the resolved user instead.
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sContainerId):\n'
+            '        dictCtx["containerUsers"][sContainerId] = '
+            'getpass.getuser()\n'
+            '        return\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestAuthorizeContainerHostBranch::'
+            'test_container_connect_still_probes_and_pushes'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The symmetric twin, stuck at host: no container ever receives
+        # its agent session again, and every container's user reads as
+        # the HOST user.
+        old=(
+            '    if fbIsHostProject(sContainerId):\n'
+            '        dictCtx["containerUsers"][sContainerId] = '
+            'getpass.getuser()\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        dictCtx["containerUsers"][sContainerId] = '
+            'getpass.getuser()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestReadinessRoute::'
+            'test_host_project_is_ready_at_once_with_no_daemon'
+        ),
+        source='vaibify/gui/routes/systemRoutes.py',
+        # Dropping the route's host branch probes an entrypoint marker
+        # in a container that does not exist, so the post-claim
+        # readiness poll answers an error shape instead of ready.
+        old=(
+            '        from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '        dictCtx["require"](sContainerId)\n'
+            '        if fbIsHostProject(sContainerId):\n'
+            '            return _fdictHostReadyResponse()\n'
+        ),
+        new=(
+            '        dictCtx["require"](sContainerId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostClaimPath.py::TestReadinessRoute::'
+            'test_container_readiness_still_waits_for_the_entrypoint'
+        ),
+        source='vaibify/gui/routes/systemRoutes.py',
+        # The symmetric twin, stuck at host: every container's boot
+        # poll gets an instant false yes and the dashboard connects to
+        # a container whose entrypoint has not finished.
+        old=(
+            '        if fbIsHostProject(sContainerId):\n'
+            '            return _fdictHostReadyResponse()\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            return _fdictHostReadyResponse()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestClaimTakeOverVeto::'
+            'test_host_run_vetoes_a_take_over_without_docker'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Dropping the host branch sends a host name down the Docker
+        # walk (the poison leg raises on the reachability probe), so a
+        # live host run reads as idle and a foreign claim evicts the
+        # owner mid-run.
+        old=(
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sName):\n'
+            '        from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '        return fbHostProjectHasLiveRun(appState, sName)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestClaimTakeOverVeto::'
+            'test_container_run_still_vetoes_through_docker'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # The symmetric twin, stuck at host: a container name is asked
+        # for a journal it never writes, reads idle, and the take-over
+        # veto stops protecting every container run.
+        old=(
+            '    if fbIsHostProject(sName):\n'
+            '        from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '        return fbHostProjectHasLiveRun(appState, sName)\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '        return fbHostProjectHasLiveRun(appState, sName)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestReaperVeto::'
+            'test_idle_host_project_permits_the_reap'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # Dropping the reaper's host branch routes host names to the
+        # Docker walk, whose fail-safe reads every error as busy — an
+        # idle host owner then can never be reaped. The IDLE-direction
+        # test is the killer here precisely because the fail-safe
+        # swallows the live-direction difference.
+        old=(
+            '        from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '        if fbIsHostProject(sName):\n'
+            '            from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '            return fbHostProjectHasLiveRun(app.state, '
+            'sName)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestReaperVeto::'
+            'test_container_run_still_vetoes_through_docker'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # The symmetric twin, stuck at host: a container mid-run reads
+        # idle to the reaper, which then frees a flock over live work.
+        old=(
+            '        if fbIsHostProject(sName):\n'
+            '            from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '            return fbHostProjectHasLiveRun(app.state, '
+            'sName)\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            from .hostBusyOracle import '
+            'fbHostProjectHasLiveRun\n'
+            '            return fbHostProjectHasLiveRun(app.state, '
+            'sName)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestIdleWatchdogVeto::'
+            'test_host_run_vetoes_self_exit_without_docker'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # Dropping the watchdog's host check makes a hub whose only
+        # live work is a host run read as idle — it would self-SIGTERM
+        # mid-run, which is the exact hazard the busy veto exists for.
+        old=(
+            '        if _fbAnyHeldHostProjectBusy(app):\n'
+            '            return True\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestIdleWatchdogVeto::'
+            'test_idle_host_only_hub_may_exit_with_no_daemon_at_all'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # The symmetric twin: leaving host names in the Docker
+        # id-resolution walk turns every daemon error into the
+        # fail-safe busy verdict, so a daemon-less host-only hub can
+        # never retire itself.
+        old=(
+            '    setHeldNames = {\n'
+            '        sName for sName in dictContainerOwners\n'
+            '        if not fbIsHostProject(sName)\n'
+            '    }\n'
+        ),
+        new=(
+            '    setHeldNames = set(dictContainerOwners.keys())\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestComposedOracle::'
+            'test_a_live_durable_task_reads_as_running'
+        ),
+        source='vaibify/gui/hostBusyOracle.py',
+        # Dropping the in-process half blinds the oracle to a run whose
+        # journal record has not landed yet or whose work is a guarded
+        # mutation rather than a subprocess.
+        old=(
+            '    if commitCarrier.fbContainerHasLiveMutationWork('
+            'appState, sName):\n'
+            '        return True\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestReaperVeto::'
+            'test_host_run_vetoes_the_reap_without_docker'
+        ),
+        source='vaibify/gui/hostBusyOracle.py',
+        # Dropping the journal half blinds the oracle to a run that
+        # outlived its hub (the crash-recovery case the write-ahead
+        # journal exists for); the reaper's live-direction test is the
+        # observation point because it feeds the oracle a real
+        # journaled identity and no in-process durable task.
+        old=(
+            '    return operationJournal.fbAnyHostExecHolderLive'
+            '(sName)\n'
+        ),
+        new=(
+            '    return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestJournalHalf::'
+            'test_a_live_recorded_group_reads_as_running'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # A kind filter that skips every record makes the journal half
+        # vacuously idle — indistinguishable, to every veto, from a
+        # project that has never run anything.
+        old=(
+            '        if dictRecord.get("sKind") != "host-exec":\n'
+            '            continue\n'
+        ),
+        new=(
+            '        if True:\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostBusyOracle.py::TestJournalHalf::'
+            'test_a_dead_holder_with_an_empty_group_reads_as_idle'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # The inverted twin, stuck at busy: a run that provably ended
+        # (dead holder, empty group) keeps its project vetoed forever —
+        # no reap, no take-over, no idle shutdown.
+        old=(
+            '        dictProbe = _fdictProbeHelperOperation(dictRecord, '
+            'None)\n'
+            '        if dictProbe["bHolderAlive"] or not '
+            'dictProbe["bSettled"]:\n'
+            '            return True\n'
+            '    return False\n'
+        ),
+        new=(
+            '        dictProbe = _fdictProbeHelperOperation(dictRecord, '
+            'None)\n'
+            '        if dictProbe["bHolderAlive"] or not '
+            'dictProbe["bSettled"]:\n'
+            '            return True\n'
+            '    return True\n'
+        ),
+    ),
 ]
