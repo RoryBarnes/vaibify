@@ -14,8 +14,11 @@ lives here, beneath them.
 """
 
 __all__ = [
+    "I_REJECT_CONTAINER_ONLY",
+    "S_UNAVAILABLE_IN_HOST_MODE",
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
+    "fnRefuseContainerOnlyForHostProject",
     "fdictRequireLaneTupleForCommit",
     "fdictRunAutomaticReadUnderTheDrain",
     "fdictRunRemoteVerifyBlocking",
@@ -59,6 +62,49 @@ def fnRejectAgentTokenLane(requestHttp):
         raise HTTPException(
             403, "The in-container agent must not read host state.",
         )
+
+
+# A container-only capability aimed at a host project. NOT 403: this
+# is the terminal's close-code lesson on the HTTP boundary. A caller
+# that cannot tell "this feature does not exist for this project" from
+# "your credential was rejected" tells the researcher to re-claim a
+# project that is already theirs, and they re-claim it forever. 409
+# says the request conflicts with the resource's state, which is
+# exactly true -- the project runs on the host, so there is no
+# container for the capability to act on.
+I_REJECT_CONTAINER_ONLY = 409
+# The machine-readable half. The prose is what a researcher reads; a
+# panel deciding whether to hide a control must not have to parse it.
+S_UNAVAILABLE_IN_HOST_MODE = "host-mode"
+
+
+def fnRefuseContainerOnlyForHostProject(sName, sCapability):
+    """Raise 409 when a container-only capability names a host project.
+
+    Server-side is where this has to live. The dashboard hides
+    start/stop/build from a host tile, but hiding is courtesy: the
+    routes are reachable by ``curl``, by the CLI, and by any panel that
+    forgets, and every one of them would otherwise drive Docker
+    machinery at a project that has no container.
+
+    ``sCapability`` names the capability in the researcher's words
+    ("Starting a container"), because the refusal is read by a person
+    who is trying to do something, not by whoever wrote the route.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if not fbIsHostProject(sName):
+        return
+    raise HTTPException(
+        I_REJECT_CONTAINER_ONLY,
+        detail={
+            "sMessage": (
+                f"{sCapability} applies only to containerized "
+                f"projects. '{sName}' runs directly on this machine "
+                "and has no container."
+            ),
+            "sUnavailableIn": S_UNAVAILABLE_IN_HOST_MODE,
+        },
+    )
 
 
 def fdictRequireLaneTupleForCommit(

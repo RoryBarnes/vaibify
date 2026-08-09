@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
+from vaibify.gui.routeContext import fnRefuseContainerOnlyForHostProject
 from vaibify.gui.routeScope import (
     S_CARRIER_LIFECYCLE_TRANSACTION,
     S_CARRIER_SEPARATE_AUTHORITY,
@@ -472,6 +473,10 @@ def _fnRegisterStartContainer(app, dictCtx):
     ):
         from fastapi.responses import JSONResponse
         from vaibify.gui import startReservation
+        # Ahead of the daemon check: a host-only hub has no daemon, and
+        # "Docker is unavailable" is the wrong answer to give about a
+        # project that has no container by design.
+        fnRefuseContainerOnlyForHostProject(sName, "Starting a container")
         dictCtx["require"]()
         _fnRejectInvalidProjectName(sName)
         dictProject = _fdictRequireProject(sName)
@@ -507,6 +512,9 @@ def _fnRegisterStartContainer(app, dictCtx):
     ):
         from fastapi.responses import JSONResponse
         from vaibify.gui import startReservation
+        fnRefuseContainerOnlyForHostProject(
+            sName, "Cancelling a container start",
+        )
         _fnRejectInvalidProjectName(sName)
         iStatusCode, dictBody = await startReservation.ftCancelStart(
             app.state, sName, _fsBrowserSessionFor(app, request),
@@ -583,6 +591,7 @@ def _fnRegisterStopContainer(app, dictCtx):
     @app.post("/api/containers/{sName}/stop")
     @ffnDeclareCarrierMode(S_CARRIER_LIFECYCLE_TRANSACTION)
     async def fdictStopContainer(sName: str):
+        fnRefuseContainerOnlyForHostProject(sName, "Stopping a container")
         dictCtx["require"]()
         dictProject = _fdictRequireProject(sName)
         sContainerName = dictProject["sContainerName"]

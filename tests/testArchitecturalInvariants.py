@@ -4668,7 +4668,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Docker query), and the take-over veto asks the host busy oracle
     # instead of walking the container list for a name Docker has
     # never heard of.
-    "registryRoutes.py": 1308,
+    # +9 (2026-08-08): start, cancel-a-start and stop refuse a host
+    # project before asking the daemon (wave 3). One shared call and
+    # its ordering comment per route — the refusal itself lives once,
+    # in routeContext, because a second copy is how one of them would
+    # come to answer differently from the others.
+    "registryRoutes.py": 1317,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

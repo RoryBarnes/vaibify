@@ -6045,6 +6045,64 @@ def _fdictEntry(sRel):
             '        if supervisor.sName != supervisorSelf.sName:\n'
         ),
     ),
+    # --- Container-only capabilities, refused for host projects ---
+    #
+    # (host mode wave 3, 2026-08-08). Both directions of one branch,
+    # plus its position. The two levers share the same `old` text and
+    # differ only in what they replace it with, because "never refuses"
+    # and "always refuses" ARE the two ways one predicate can be wrong,
+    # and they are indistinguishable in a report while being opposite
+    # in the product: one drives Docker at a project with no container,
+    # the other makes every containerized project unstartable.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testEveryContainerOnlyLifecycleRouteRefusesAHostProject'
+        ),
+        source='vaibify/gui/routeContext.py',
+        old=(
+            '    if not fbIsHostProject(sName):\n'
+            '        return\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testTheSameRoutesNeverRefuseAContainerProject'
+        ),
+        source='vaibify/gui/routeContext.py',
+        old=(
+            '    if not fbIsHostProject(sName):\n'
+            '        return\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return\n'
+        ),
+    ),
+    # Position, not presence: the refusal above the daemon check is
+    # what keeps a host-only hub from being told to install Docker.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testAHostProjectIsRefusedEvenWhenDockerIsUnreachable'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '        fnRefuseContainerOnlyForHostProject(sName, '
+            '"Stopping a container")\n'
+            '        dictCtx["require"]()\n'
+        ),
+        new=(
+            '        dictCtx["require"]()\n'
+            '        fnRefuseContainerOnlyForHostProject(sName, '
+            '"Stopping a container")\n'
+        ),
+    ),
     # --- Step routes that are not a plain save (phase 2, 2026-08-05) ---
     #
     # Each entry mutates the route's OWN call site. The rename has three
