@@ -90,11 +90,6 @@
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "ftResultGenerateLatex, fsPythonCommand, sCall, sImport"
     },
-    "5bb895584e46bdaa1d05e2f8e966ccb37bb19f399235d037d69858d6c92e8173": {
-      "sDisposition": "host-variant",
-      "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
-      "sSupportingSymbols": "fdictReadSidecar, S_TRACKED_REPOS_PATH"
-    },
     "5e1a3ec9bf10473f22881230e81c2ceed2859b52dbffb3f73038c0e93e1eeae3": {
       "sDisposition": "host-variant",
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
@@ -129,11 +124,6 @@
       "sDisposition": "container-only",
       "sRationale": "Container-only BY DESIGN: the host branch of this probe already exists (_fdictCompareHostFileHash) and is selected by the absent sDockerContainerId key on the record.",
       "sSupportingSymbols": "_fdictProbeContainerFileHash, sCommand, _fdictCompareHostFileHash, sDockerContainerId"
-    },
-    "7a075381beffca56528c9a009d548b2cf8348fdc3d68090cbaa0b4c2f3d082ad": {
-      "sDisposition": "host-variant",
-      "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
-      "sSupportingSymbols": "flistDiscoverGitDirs, sCommand"
     },
     "7ac4c59baa7f428b512781b4dc39e48e579515679c41c911be4a88d838ef0900": {
       "sDisposition": "host-variant",
@@ -194,11 +184,6 @@
       "sDisposition": "host-variant",
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "ftResultAddFileToGithub, sCommand"
-    },
-    "a0ddec373493e5c2ead7c06c0447e17e2e61822f356b8072e597cf8e6350a3cf": {
-      "sDisposition": "host-variant",
-      "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
-      "sSupportingSymbols": "flistDiscoverNonGitDirs, sCommand"
     },
     "a333d74bf4145a51c9d5ddfd1292e27b6ae19299f214c3ee45e750e47016a154": {
       "sDisposition": "host-variant",
@@ -351,7 +336,7 @@
       "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     }
   },
-  "iRowCount": 137,
+  "iRowCount": 134,
   "iUndisposedSiteBudget": 67,
   "listRows": [
     {
@@ -1216,30 +1201,9 @@
       "sModule": "vaibify/gui/trackedReposManager.py"
     },
     {
-      "sCommandExpression": "f'cat {S_TRACKED_REPOS_PATH} 2>/dev/null'",
-      "sEnclosingFunction": "fdictReadSidecar",
-      "sFingerprint": "5bb895584e46bdaa1d05e2f8e966ccb37bb19f399235d037d69858d6c92e8173",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/trackedReposManager.py"
-    },
-    {
       "sCommandExpression": "sScript",
       "sEnclosingFunction": "flistBatchComputeRepoStatus",
       "sFingerprint": "a514d5f704c2c005a27b84a2e737e2e91d8b0db94ae048af4b4aeab3001af6d9",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/trackedReposManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "flistDiscoverGitDirs",
-      "sFingerprint": "7a075381beffca56528c9a009d548b2cf8348fdc3d68090cbaa0b4c2f3d082ad",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/trackedReposManager.py"
-    },
-    {
-      "sCommandExpression": "sCommand",
-      "sEnclosingFunction": "flistDiscoverNonGitDirs",
-      "sFingerprint": "a0ddec373493e5c2ead7c06c0447e17e2e61822f356b8072e597cf8e6350a3cf",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/trackedReposManager.py"
     },

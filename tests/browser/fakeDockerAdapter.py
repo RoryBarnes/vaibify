@@ -152,6 +152,11 @@ class FailClosedDockerAdapter:
             f"{S_PROJECT_REPO}/Generate/output.dat": 1000,
             f"{S_PROJECT_REPO}/Analyze/summary.json": 2000,
         }
+        # What the Repos panel's discovery finds under the workspace
+        # root: the lane's one project repository.
+        self.setWorkspaceRepositories = {
+            S_PROJECT_REPO[len(S_WORKSPACE_ROOT) + 1:],
+        }
 
     def fnTouchFile(self, sPath, iModifiedTime):
         """Age or freshen one watched path, as an in-container edit would."""
@@ -254,6 +259,30 @@ class FailClosedDockerAdapter:
 
     def fsHashContainerFileSha256(self, sContainerId, sPath):
         return "0" * 64
+
+    # The Repos panel's discovery, as TYPED READS. Two `find` execs
+    # became one directory listing plus one batched existence probe
+    # when the panel's poll stopped being able to mutate.
+    #
+    # MEASURED, on the same terms as the two above: no journey in this
+    # lane reaches either method. Versions that raised on every call
+    # left all seventy tests green. Modelled correctly regardless --
+    # the trap is a fake that answers WRONGLY for the journey that
+    # finally arrives -- but claiming no coverage this lane lacks.
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        if sDirectoryPath != S_WORKSPACE_ROOT:
+            raise UnmodelledContainerCall(
+                "The browser lane's adapter was asked to list a "
+                f"directory its contract does not model: {sDirectoryPath}"
+            )
+        return sorted(self.setWorkspaceRepositories)
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        return [
+            sPath[len(S_WORKSPACE_ROOT) + 1:].rsplit("/.git", 1)[0]
+            in self.setWorkspaceRepositories
+            for sPath in listPaths
+        ]
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         return self._ftAnswerModelledCommand(sCommand)

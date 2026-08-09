@@ -6055,6 +6055,57 @@ def _fdictEntry(sRel):
             'k+chr(32)+v for k,v in dictMtimes.items()))\\n"\n'
         ),
     ),
+    # --- The Repos panel's write, deleted (host mode wave 3) ---
+    #
+    # Both directions of one change. Auto-tracking every discovered
+    # repository is the product behaviour and is unchanged; PERSISTING
+    # it from a GET is what stopped, because the panel polls that GET
+    # on a timer. The second lever guards the regression the first one
+    # creates: with the read no longer writing, a mutation that fell
+    # back to an empty state would persist a sidecar holding only the
+    # repository the researcher just touched.
+    Falsification(
+        nodeid=(
+            'tests/testTrackedReposManager.py::'
+            'test_fdictReadOrSeedSidecar_seeds_in_memory_without_writing'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old=(
+            '    return fdictBuildInitialState(\n'
+            '        flistBuildSeedEntries(\n'
+            '            flistDiscoverGitDirs(connectionDocker, '
+            'sContainerId),\n'
+            '        ),\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictSeeded = fdictBuildInitialState(\n'
+            '        flistBuildSeedEntries(\n'
+            '            flistDiscoverGitDirs(connectionDocker, '
+            'sContainerId),\n'
+            '        ),\n'
+            '    )\n'
+            '    fnWriteSidecar(connectionDocker, sContainerId, '
+            'dictSeeded)\n'
+            '    return dictSeeded\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTrackedReposManager.py::'
+            'test_a_first_mutation_persists_the_whole_seed'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old=(
+            '    if dictSidecar is None:\n'
+            '        return _fdictSeedSidecarInMemory('
+            'connectionDocker, sContainerId)\n'
+        ),
+        new=(
+            '    if dictSidecar is None:\n'
+            '        return fdictBuildInitialState([])\n'
+        ),
+    ),
     # --- The poll's write, deleted (host mode wave 3) ---
     #
     # The mutant restores the pathfile push while leaving the typed

@@ -43,6 +43,7 @@ __all__ = [
     "fdictReadSidecar",
     "fnWriteSidecar",
     "fdictBuildInitialState",
+    "flistBuildSeedEntries",
     "fdictReadOrSeedSidecar",
     "flistDiscoverGitDirs",
     "flistDiscoverNonGitDirs",
@@ -64,6 +65,7 @@ import json
 import posixpath
 import threading
 
+S_WORKSPACE_ROOT = "/workspace"
 S_TRACKED_REPOS_DIR = "/workspace/.vaibify"
 S_TRACKED_REPOS_PATH = "/workspace/.vaibify/tracked_repos.json"
 I_SCHEMA_VERSION = 1
@@ -175,16 +177,27 @@ def _flockGetLock(sContainerId):
 
 
 def fdictReadSidecar(connectionDocker, sContainerId):
-    """Read the tracked_repos sidecar, returning None on any failure."""
+    """Read the tracked_repos sidecar, returning None on any failure.
+
+    A TYPED READ. It used to assemble ``cat <path>`` and hand it to the
+    general exec primitive, which the mutation gate must treat as
+    mutating because command text cannot be told apart from a delete --
+    so on an enforced lane the Repos panel's own read would be refused.
+    ``fbaFetchFile`` names a declared read operation and the adapter
+    builds the command, so the path can never become program text.
+
+    ``FileNotFoundError`` is an ``OSError`` and lands in the same net
+    as a malformed document: both mean "no usable sidecar", which the
+    caller answers by seeding one in memory.
+    """
     try:
-        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-            sContainerId,
-            f"cat {S_TRACKED_REPOS_PATH} 2>/dev/null",
+        baContent = connectionDocker.fbaFetchFile(
+            sContainerId, S_TRACKED_REPOS_PATH,
         )
-        if iExitCode != 0 or not sOutput.strip():
+        if not baContent.strip():
             return None
-        return json.loads(sOutput)
-    except (json.JSONDecodeError, OSError, ValueError):
+        return json.loads(baContent.decode("utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValueError):
         return None
 
 
@@ -208,35 +221,65 @@ def fdictBuildInitialState(listRepoEntries):
     }
 
 
+def _ftPartitionWorkspaceDirectories(connectionDocker, sContainerId):
+    """Return ``(listGitDirs, listNonGitDirs)`` under the workspace root.
+
+    TWO TYPED READS for what used to be two ``find`` execs -- and the
+    old pair ran THREE, because the non-git discovery called the git
+    discovery again to subtract it. One directory listing plus one
+    batched existence probe answers both questions at once, from one
+    consistent view of the workspace, and neither reaches the general
+    exec primitive.
+
+    Anything that is not a directory falls out naturally: a plain file
+    has no ``.git`` child, and the workspace's own dot-directories are
+    filtered by name as they always were.
+    """
+    try:
+        listEntries = connectionDocker.flistDirectoryEntries(
+            sContainerId, S_WORKSPACE_ROOT,
+        )
+    except OSError:
+        return ([], [])
+    listNames = sorted(
+        sName for sName in listEntries
+        if not sName.startswith(".")
+    )
+    if not listNames:
+        return ([], [])
+    listGitMarkers = [
+        S_WORKSPACE_ROOT + "/" + sName + "/.git" for sName in listNames
+    ]
+    try:
+        listHasGit = connectionDocker.flistContainerPathsExist(
+            sContainerId, listGitMarkers,
+        )
+    except OSError:
+        return ([], [])
+    listGitDirs = [
+        sName for sName, bHasGit in zip(listNames, listHasGit) if bHasGit
+    ]
+    listNonGitDirs = [
+        sName for sName, bHasGit in zip(listNames, listHasGit)
+        if not bHasGit
+    ]
+    return (listGitDirs, listNonGitDirs)
+
+
 def flistDiscoverGitDirs(connectionDocker, sContainerId):
     """Return sorted basenames of /workspace/<name>/.git directories."""
-    sCommand = (
-        "find /workspace -mindepth 2 -maxdepth 2 -type d "
-        "-name .git -printf '%h\\n' 2>/dev/null"
+    listGitDirs, _listNonGitDirs = _ftPartitionWorkspaceDirectories(
+        connectionDocker, sContainerId,
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    if iExitCode != 0 or not sOutput:
-        return []
-    listNames = _flistParseFindOutput(sOutput)
-    return sorted(listNames)
+    return listGitDirs
 
 
 def flistDiscoverNonGitDirs(connectionDocker, sContainerId):
     """Return sorted basenames of /workspace/<name> dirs lacking .git/."""
-    sCommand = (
-        "find /workspace -mindepth 1 -maxdepth 1 -type d "
-        "-printf '%f\\n' 2>/dev/null"
+    _listGitDirs, listNonGitDirs = _ftPartitionWorkspaceDirectories(
+        connectionDocker, sContainerId,
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand
-    )
-    if iExitCode != 0 or not sOutput:
-        return []
-    listAll = _flistFilterDirNames(sOutput)
-    setGit = set(flistDiscoverGitDirs(connectionDocker, sContainerId))
-    return sorted([s for s in listAll if s not in setGit])
+    return listNonGitDirs
 
 
 def _flistFilterDirNames(sOutput):
@@ -433,47 +476,69 @@ def _flistFallbackSequential(
 
 
 def _fdictLoadOrInit(connectionDocker, sContainerId):
-    """Read sidecar or build an empty one if absent/invalid."""
+    """Read the sidecar, or build the seed a fresh workspace implies.
+
+    The SEED, not an empty state, and that is load-bearing now that the
+    read path no longer writes. Before, the first GET persisted a
+    sidecar tracking every discovered repository, so the first mutation
+    loaded a full document. With the write gone, an empty fallback
+    would make the first Track action persist a sidecar containing that
+    one repository and silently untrack every other one.
+    """
     dictSidecar = fdictReadSidecar(connectionDocker, sContainerId)
     if dictSidecar is None:
-        return fdictBuildInitialState([])
+        return _fdictSeedSidecarInMemory(connectionDocker, sContainerId)
     dictSidecar.setdefault("iSchemaVersion", I_SCHEMA_VERSION)
     dictSidecar.setdefault("listTracked", [])
     dictSidecar.setdefault("listIgnored", [])
     return dictSidecar
 
 
-def _flistBuildSeedEntries(connectionDocker, sContainerId, listNames):
-    """Build tracked entries for auto-seeding from discovered repo names."""
-    listEntries = []
-    for sName in listNames:
-        dictStatus = fdictComputeRepoStatus(
-            connectionDocker, sContainerId, sName
-        )
-        listEntries.append(
-            {"sName": sName, "sUrl": dictStatus.get("sUrl")}
-        )
-    return listEntries
+def flistBuildSeedEntries(listNames):
+    """Build the tracked entries a fresh workspace seeds itself with.
+
+    PURE, and it used to run one ``git config --get remote.origin.url``
+    per repository to fill ``sUrl``. That was duplicated work as well as
+    a per-repo exec: the status payload's batch already reads every
+    tracked repo's URL, and ``_fdictBuildTrackedEntry`` prefers the
+    stored URL only when there IS one, falling back to the live value.
+    So a seed entry carries the name and leaves the URL to the batch.
+    """
+    return [{"sName": sName, "sUrl": None} for sName in listNames]
 
 
-def _fdictSeedSidecarFromDisk(connectionDocker, sContainerId):
-    """Discover repos and write a fresh sidecar tracking all of them."""
-    listDiscovered = flistDiscoverGitDirs(connectionDocker, sContainerId)
-    listEntries = _flistBuildSeedEntries(
-        connectionDocker, sContainerId, listDiscovered
+def _fdictSeedSidecarInMemory(connectionDocker, sContainerId):
+    """Return the sidecar a fresh workspace implies, WITHOUT writing it.
+
+    Auto-tracking every discovered repository is the product behaviour
+    and it is unchanged; what changed is that discovering it no longer
+    WRITES. A GET that creates state is wrong on its own terms, and
+    this one was wrong in a way that mattered: the Repos panel polls it
+    on a timer, so the dashboard held the only container mutation that
+    fired on a schedule, and a commit-guard carrier around it would
+    have had to hold the mutation drain on that same schedule --
+    refusing the researcher's own Run Step at random.
+
+    The seed is a pure function of what discovery found, so recomputing
+    it per read costs nothing beyond the discovery every poll does
+    anyway. It reaches disk the first time a MUTATION persists it,
+    which is the first moment the file has anything to say that
+    discovery does not.
+    """
+    return fdictBuildInitialState(
+        flistBuildSeedEntries(
+            flistDiscoverGitDirs(connectionDocker, sContainerId),
+        ),
     )
-    dictSidecar = fdictBuildInitialState(listEntries)
-    fnWriteSidecar(connectionDocker, sContainerId, dictSidecar)
-    return dictSidecar
 
 
 def fdictReadOrSeedSidecar(connectionDocker, sContainerId):
-    """Return the sidecar, atomically seeding it from disk when absent."""
+    """Return the sidecar, seeding it IN MEMORY when absent."""
     with _flockGetLock(sContainerId):
         dictSidecar = fdictReadSidecar(connectionDocker, sContainerId)
         if dictSidecar is not None:
             return dictSidecar
-        return _fdictSeedSidecarFromDisk(connectionDocker, sContainerId)
+        return _fdictSeedSidecarInMemory(connectionDocker, sContainerId)
 
 
 def _fnRemoveByName(listEntries, sRepoName):

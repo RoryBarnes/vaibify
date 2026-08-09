@@ -2004,11 +2004,6 @@ T_PUSH_ROUTES = (
 )
 
 
-def _fbCommandReadsTheTrackedSidecar(sCommand):
-    """Return True for the tracked-repos sidecar read, and nothing else."""
-    return sCommand.startswith("cat ") and "tracked_repos.json" in sCommand
-
-
 class DockerDoubleServingATokenedTrackedRepo(
     DockerDoubleThatCallsTheRealGates,
 ):
@@ -2020,27 +2015,25 @@ class DockerDoubleServingATokenedTrackedRepo(
     exercised the refusal rather than the push.
     """
 
-    def ftResultExecuteCommand(
-        self, sContainerId, sCommand, sWorkdir=None,
-    ):
-        if not _fbCommandReadsTheTrackedSidecar(sCommand):
-            return super().ftResultExecuteCommand(
-                sContainerId, sCommand, sWorkdir,
-            )
-        mutationAdmission.fnAssertContainerCommandAdmitted(
-            sContainerId, S_PRIMITIVE_EXEC,
-        )
-        self._fnRecordLiveAdmission(
-            sContainerId, S_PRIMITIVE_EXEC, sCommand,
-        )
-        return (0, json.dumps({
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        """Answer the sidecar read, which is a TYPED read now.
+
+        It was a ``cat`` through the general exec primitive when this
+        double was written, so it was gated and recorded like any
+        exec. Reading the tracked list no longer reaches that
+        primitive at all -- which is why the assertions below dropped
+        their sidecar clause.
+        """
+        if not sPath.endswith("tracked_repos.json"):
+            return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+        return json.dumps({
             "iSchemaVersion": 1,
             "listTracked": [{
                 "sName": S_PUSH_REPO_NAME,
                 "sUrl": S_TOKENED_PUSH_REMOTE,
             }],
             "listIgnored": [],
-        }))
+        }).encode("utf-8")
 
 
 @pytest.fixture
@@ -2101,10 +2094,13 @@ def testTheRepositoryPushRunsUnderTheDrain(
         f"/api/repos/{S_CONTAINER_ID}/{S_PUSH_REPO_NAME}/{sRoute}",
         json=dictBody,
     )
-    _fnAssertExecsNamingRanUnder(
-        connectionDocker, "tracked_repos.json",
-        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
-    )
+    # The tracked-list read used to be asserted here too, because it
+    # was a `cat` through the exec primitive and shared the push's
+    # drain. It is a typed read now and reaches no gated primitive, so
+    # there is nothing left for the admission ledger to say about it.
+    # It still runs inside the same worker -- the code path did not
+    # move -- but that is now a structural fact rather than an
+    # observable one, and stating it that way is the honest version.
     _fnAssertExecsNamingRanUnder(
         connectionDocker, S_PUSH_COMMAND_MARKER,
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,

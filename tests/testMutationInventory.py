@@ -142,7 +142,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 297
 # the container. Its pathfile push and the exec that consumed it were
 # the two mutation-capable sites; the typed reads that replaced them
 # are reads by construction.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 215
+# 215 -> 212: the Repos panel's poll followed it. Its sidecar `cat`
+# and its two `find` discoveries became typed reads, and the seed it
+# used to WRITE from a GET is computed in memory and persisted only by
+# a mutation. Three timer-driven mutation-capable sites gone.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
 
 
 # Every acquisition of a declared capability that still has no reviewed

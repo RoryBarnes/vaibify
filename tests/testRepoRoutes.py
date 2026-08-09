@@ -39,23 +39,35 @@ class FakeDocker:
         """Register a /workspace/ subdirectory that lacks a .git/."""
         self.setNonGitDirs.add(sName)
 
+    # --- the panel's typed reads ---
+    #
+    # The sidecar read and the two workspace discoveries stopped being
+    # `cat` and `find` execs: they are declared typed reads now, so a
+    # double still modelling that command text would be answering a
+    # question nothing asks. The FIXTURES are unchanged -- same repos,
+    # same non-git dirs, same sidecar bytes.
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        sContent = self.dictFiles.get(sPath, "")
+        if not sContent:
+            raise FileNotFoundError(sPath)
+        return sContent.encode("utf-8")
+
+    def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
+        if sDirectoryPath != "/workspace":
+            raise OSError(f"not modelled: {sDirectoryPath}")
+        return sorted(list(self.dictRepos) + list(self.setNonGitDirs))
+
+    def flistContainerPathsExist(self, sContainerId, listPaths):
+        listAnswers = []
+        for sPath in listPaths:
+            sName = sPath[len("/workspace/"):].rsplit("/.git", 1)[0]
+            listAnswers.append(sName in self.dictRepos)
+        return listAnswers
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
-        if sCommand.startswith("cat /workspace/.vaibify/"):
-            sContent = self.dictFiles.get(
-                "/workspace/.vaibify/tracked_repos.json", "")
-            if sContent:
-                return (0, sContent)
-            return (1, "")
         if sCommand.startswith("mkdir -p"):
             return self._ftMkdirCommand(sCommand)
-        if "find /workspace -mindepth 2" in sCommand:
-            listOut = [
-                f"/workspace/{s}" for s in self.dictRepos
-            ]
-            return (0, "\n".join(listOut) + "\n")
-        if "find /workspace -mindepth 1 -maxdepth 1" in sCommand:
-            listAll = list(self.dictRepos) + list(self.setNonGitDirs)
-            return (0, "\n".join(sorted(listAll)) + "\n")
         if (sCommand.startswith("test -e")
                 and ".gitignore" in sCommand):
             sPath = sCommand.split(
@@ -237,14 +249,15 @@ def testStatusAutoSeedsWhenSidecarMissing(
     )
     assert listTrackedNames == ["alpha", "beta"]
     assert dictBody["listUndecided"] == []
-    sSidecar = fixtureDocker.dictFiles[
+    # The panel shows every discovered repository as tracked, and the
+    # READ does not persist that. It used to: this GET wrote the
+    # sidecar, which put a container mutation on the panel's
+    # five-second timer. The seed reaches disk when a MUTATION first
+    # has something to say (testStatusSeedPersistsOnFirstMutation).
+    assert (
         "/workspace/.vaibify/tracked_repos.json"
-    ]
-    dictStored = json.loads(sSidecar)
-    listStoredNames = sorted(
-        d["sName"] for d in dictStored["listTracked"]
-    )
-    assert listStoredNames == ["alpha", "beta"]
+        not in fixtureDocker.dictFiles
+    ), "the status read persisted a sidecar"
 
 
 def testStatusAutoSeedsEmptyWhenNoRepos(
@@ -257,8 +270,31 @@ def testStatusAutoSeedsEmptyWhenNoRepos(
     assert dictBody["listUndecided"] == []
     assert (
         "/workspace/.vaibify/tracked_repos.json"
-        in fixtureDocker.dictFiles
+        not in fixtureDocker.dictFiles
+    ), "the status read persisted a sidecar"
+
+
+def testStatusSeedPersistsOnFirstMutation(fixtureDocker, fixtureClient):
+    """The seed reaches disk when a mutation first needs it to.
+
+    The half of the contract the read gave up. A researcher who
+    ignores one repository must not thereby untrack the rest, which is
+    exactly what an empty fallback would have done once the read
+    stopped writing.
+    """
+    fixtureDocker.fnAddRepo("alpha")
+    fixtureDocker.fnAddRepo("beta")
+    fixtureClient.get("/api/repos/cid1/status")
+    assert (
+        "/workspace/.vaibify/tracked_repos.json"
+        not in fixtureDocker.dictFiles
     )
+    fixtureClient.post("/api/repos/cid1/beta/ignore")
+    dictStored = json.loads(fixtureDocker.dictFiles[
+        "/workspace/.vaibify/tracked_repos.json"
+    ])
+    assert [d["sName"] for d in dictStored["listTracked"]] == ["alpha"]
+    assert [d["sName"] for d in dictStored["listIgnored"]] == ["beta"]
 
 
 def testStatusReturnsTrackedWithUrl(
