@@ -241,3 +241,65 @@ def testAHostProjectIsRefusedEvenWhenDockerIsUnreachable(
         "a host project's stop reported the missing daemon rather than "
         f"the missing container: {response.status_code} {response.text}"
     )
+
+
+# ---------------------------------------------------------------------
+# Registration: the mode is recorded, or refused by name.
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def testRegisteringAHostProjectRecordsItsMode(tclientBothModes, tmp_path):
+    """``POST /api/registry`` carries the mode through to the registry.
+
+    Until this landed a host project could only be registered from
+    Python, so nothing a researcher can reach could create one. The
+    mode decides which leg the connection router sends every later call
+    to, so it is recorded at registration and never inferred.
+
+    Kills: dropping ``sMode`` from the ``fnAddProject`` call, which
+    registers every project as a container whatever was asked for.
+    """
+    client, _ = tclientBothModes
+    sDirectory = str(tmp_path / "freshly-added")
+    os.makedirs(sDirectory, exist_ok=True)
+    with open(
+        os.path.join(sDirectory, "vaibify.yml"), "w",
+    ) as fileConfig:
+        fileConfig.write("projectName: freshly-added\n")
+
+    response = client.post(
+        "/api/registry", json={"sDirectory": sDirectory, "sMode": "host"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert registryManager.fbIsHostProject("freshly-added"), (
+        "the project registered as a container despite asking for host"
+    )
+
+
+def testAnUnknownModeIsRefusedRatherThanSilentlyContainerized(
+    tclientBothModes, tmp_path,
+):
+    """A typo in the mode must not register a container by default.
+
+    The vocabulary is validated at the writer, so this asserts the
+    refusal reaches the caller rather than being swallowed into the
+    default — a project silently registered in the wrong mode would
+    send every later call to the wrong leg.
+    """
+    client, _ = tclientBothModes
+    sDirectory = str(tmp_path / "typo-mode")
+    os.makedirs(sDirectory, exist_ok=True)
+    with open(
+        os.path.join(sDirectory, "vaibify.yml"), "w",
+    ) as fileConfig:
+        fileConfig.write("projectName: typo-mode\n")
+
+    response = client.post(
+        "/api/registry",
+        json={"sDirectory": sDirectory, "sMode": "hsot"},
+    )
+
+    assert response.status_code == 409, response.text
+    assert registryManager.fdictGetProject("typo-mode") is None

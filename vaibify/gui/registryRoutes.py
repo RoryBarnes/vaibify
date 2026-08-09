@@ -49,10 +49,25 @@ _T_AGENT_SETTINGS = (
 
 
 class AddProjectRequest(BaseModel):
+    """Body for ``POST /api/registry``.
+
+    ``sMode`` decides which leg the connection router sends this
+    project's work to for the rest of its life, so it is recorded at
+    registration and never inferred later. Absent means container,
+    which is what every entry written before host mode existed meant.
+    """
     sDirectory: str
+    sMode: str = "container"
 
 
 class CreateProjectRequest(BaseModel):
+    # A host project skips every container field below it -- there is
+    # no image to build, no packages to install into one, and no
+    # resource limits to set on one. They stay on the model with their
+    # defaults rather than being split into a second request shape:
+    # the create WIZARD is what hides them, and a second model would be
+    # a second place for the two flows to drift apart.
+    sMode: str = "container"
     sDirectory: str
     sProjectName: str
     sTemplateName: str
@@ -408,10 +423,13 @@ def _fnRegisterAddProject(app, dictCtx):
             fnAddProject, fdictGetProject,
         )
         try:
-            fnAddProject(request.sDirectory)
+            fnAddProject(request.sDirectory, sMode=request.sMode)
         except FileNotFoundError as error:
             raise HTTPException(404, str(error))
         except ValueError as error:
+            # Also the unknown-mode refusal: fnAddProject validates the
+            # vocabulary, so a typo in sMode is a 409 naming it rather
+            # than a project silently registered as a container.
             raise HTTPException(409, str(error))
         sName = _fsProjectNameForDirectory(request.sDirectory)
         return fdictGetProject(sName)
@@ -1132,7 +1150,7 @@ def _fnRegisterCreateProject(app, dictCtx):
         _fnRejectDuplicateProjectName(request.sProjectName)
         _fnScaffoldProject(request)
         _fnWriteProjectConfig(request)
-        _fnRegisterNewProject(request.sDirectory)
+        _fnRegisterNewProject(request.sDirectory, request.sMode)
         return {"bSuccess": True, "sDirectory": request.sDirectory}
 
 
@@ -1308,10 +1326,10 @@ def _fsRepositoryNameFromUrl(sUrl):
     return sName
 
 
-def _fnRegisterNewProject(sDirectory):
-    """Register the newly created project."""
+def _fnRegisterNewProject(sDirectory, sMode="container"):
+    """Register the newly created project in the requested mode."""
     from vaibify.config.registryManager import fnAddProject
     try:
-        fnAddProject(sDirectory)
+        fnAddProject(sDirectory, sMode=sMode)
     except ValueError as error:
         raise HTTPException(409, str(error))

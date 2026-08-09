@@ -6055,6 +6055,20 @@ def _fdictEntry(sRel):
             'k+chr(32)+v for k,v in dictMtimes.items()))\\n"\n'
         ),
     ),
+    # A host project a researcher can actually create: until the mode
+    # rode the registration route, one could be made only from Python.
+    Falsification(
+        nodeid=(
+            'tests/testHostModeContainerOnlyRefusals.py::'
+            'testRegisteringAHostProjectRecordsItsMode'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '            fnAddProject(request.sDirectory, '
+            'sMode=request.sMode)\n'
+        ),
+        new='            fnAddProject(request.sDirectory)\n',
+    ),
     # --- The two claims host mode gives up (host mode wave 3) ---
     #
     # Level 3 is DEFINED by a pinned container image, and Supervised

@@ -4684,7 +4684,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # its ordering comment per route — the refusal itself lives once,
     # in routeContext, because a second copy is how one of them would
     # come to answer differently from the others.
-    "registryRoutes.py": 1317,
+    # +18 (2026-08-08): registration carries the project's MODE. Until
+    # it did, a host project could be created only from Python, so
+    # nothing a researcher can reach could make one. The mode decides
+    # which leg every later call takes, so it is recorded here rather
+    # than inferred later.
+    "registryRoutes.py": 1335,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
