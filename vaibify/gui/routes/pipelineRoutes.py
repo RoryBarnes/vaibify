@@ -310,13 +310,29 @@ def _fnRegisterPipelineState(app, dictCtx):
     reconciliation against the raw pipeline_state.json file.
     """
 
+    # mode-b, and the carrier is opened on a branch this route usually
+    # does not take. The READ is a typed read needing no admission; the
+    # RECONCILE is a real container write, and it happens only when a
+    # runner's heartbeat has gone stale. So the poll — every ten
+    # seconds, for as long as a workflow is open — holds no drain at
+    # all on its ordinary path, and takes one only in the moment it has
+    # to record that a runner died. Passing the carried persister is
+    # what makes that write legal on the enforced branch; without it
+    # the reconcile leaks onto the background lane, where the gate is a
+    # documented no-op and nothing records the write.
     @ffnAgentAction("get-pipeline-state")
     @app.get("/api/pipeline/{sContainerId}/state")
-    async def fdictGetPipelineState(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictGetPipelineState(
+        sContainerId: str, requestHttp: Request,
+    ):
         from ..pipelineState import fdictReadReconciledState
-        dictCtx["require"]()
+        dictCtx["require"](sContainerId)
         dictState = await fdictReadReconciledState(
             dictCtx, sContainerId,
+            fnPersistReconciled=_ffnBuildCarriedStatePersister(
+                dictCtx, sContainerId, requestHttp,
+            ),
         )
         iSyncEpoch = fiGetSyncEpoch(dictCtx, sContainerId)
         if dictState is None:

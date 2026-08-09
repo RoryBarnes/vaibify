@@ -6045,6 +6045,82 @@ def _fdictEntry(sRel):
             '        if supervisor.sName != supervisorSelf.sName:\n'
         ),
     ),
+    # --- The rest of the activation surface (host mode wave 3) ---
+    #
+    # The settings read declares typed-read in its strongest form -- it
+    # reaches NO container primitive -- so the only way to break it is
+    # to add a reach, exactly as the compare-plot entry does.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheSettingsReadOpensNoContainerConnectionAtAll'
+        ),
+        source='vaibify/gui/routes/settingsRoutes.py',
+        old=(
+            '    async def fdictGetSettings(sContainerId: str):\n'
+            '        return fdictExtractSettings(\n'
+        ),
+        new=(
+            '    async def fdictGetSettings(sContainerId: str):\n'
+            '        dictCtx["docker"].ftResultExecuteCommand(\n'
+            '            sContainerId, "echo settings",\n'
+            '        )\n'
+            '        return fdictExtractSettings(\n'
+        ),
+    ),
+    # The state poll's two directions. Its carrier opens on a branch it
+    # usually does not take, so "carried" and "not carried on the
+    # ordinary path" are separate guarantees: hoisting the carrier out
+    # of the branch makes every tenth second hold the drain, and
+    # dropping the persister returns a real container write to the
+    # background lane where the gate is a documented no-op.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheOrdinaryStatePollHoldsNoDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '            fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
+            '                dictCtx, sContainerId, requestHttp,\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        fnPersistReconciledAlways = (\n'
+            '            _ffnBuildCarriedStatePersister(\n'
+            '                dictCtx, sContainerId, requestHttp,\n'
+            '            )\n'
+            '        )\n'
+            '        await fnPersistReconciledAlways({"bRunning": False})\n'
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '            fnPersistReconciled=fnPersistReconciledAlways,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheStaleHeartbeatReconcileWritesUnderTheDrain'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '            fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
+            '                dictCtx, sContainerId, requestHttp,\n'
+            '            ),\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictState = await fdictReadReconciledState(\n'
+            '            dictCtx, sContainerId,\n'
+            '        )\n'
+        ),
+    ),
     # --- Container-only capabilities, refused for host projects ---
     #
     # (host mode wave 3, 2026-08-08). Both directions of one branch,

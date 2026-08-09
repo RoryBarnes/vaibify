@@ -15,6 +15,7 @@ from ..routeContext import (
 )
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
+    S_CARRIER_TYPED_READ,
     ffnDeclareCarrierMode,
 )
 from ..pipelineServer import (
@@ -32,7 +33,15 @@ from ..pipelineServer import (
 def _fnRegisterSettingsGet(app, dictCtx):
     """Register GET /api/settings route."""
 
+    # typed-read, and here that is the strong form of the claim: the
+    # handler reaches no container primitive AT ALL. It answers from
+    # the workflow the hub already holds in memory, so there is no
+    # exec, no read, and nothing for an admission to admit. Part of the
+    # host activation surface (a workflow open loads settings), which
+    # is why it leaves the awaiting set with the rest of that surface
+    # rather than waiting for phase 4.
     @app.get("/api/settings/{sContainerId}")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fdictGetSettings(sContainerId: str):
         return fdictExtractSettings(
             fdictRequireWorkflow(

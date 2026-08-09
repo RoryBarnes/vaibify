@@ -3651,6 +3651,149 @@ def testAQuietContainerIsNeverReportedAsBusy(tclientGated):
 
 
 # ---------------------------------------------------------------------
+# Group 7c -- the rest of the host activation surface that could move.
+#
+# Opening a workflow fires four automatic reads. Badges is above; these
+# are the settings load and the pipeline-state recovery, and they
+# migrate for opposite reasons.
+#
+# Settings reaches NO container primitive at all -- it answers from the
+# workflow the hub already holds -- so it declares typed-read, and the
+# proof is an empty ledger.
+#
+# Pipeline state is a typed read that occasionally WRITES: when a
+# runner's heartbeat has gone stale the reader reconciles the file so
+# the dashboard stops claiming a dead run is live. That write used to
+# leave on the background lane, where the gate is a documented no-op.
+# It is carried now, and the carrier opens ONLY on that branch -- which
+# is what lets a route polled every ten seconds declare mode (b)
+# without holding a drain on a timer. Both directions are asserted,
+# because "the poll holds no drain" and "the reconcile is carried" are
+# separately losable.
+#
+# The two reads that did NOT move are the repos-panel status and the
+# file-status poll. Both run on a five-second timer and both reach a
+# container WRITE, so a carrier on either would hold the drain on a
+# timer -- and live carrier work is what the run-dispatch gate refuses
+# a Run Step against. That is the Run-Step-always-refused shape this
+# repository has already shipped once, so they need the read redesigned
+# rather than wrapped, and they stay awaiting until that is decided.
+# ---------------------------------------------------------------------
+
+S_STATE_PATH = "/workspace/.vaibify/pipeline_state.json"
+
+
+def testTheSettingsReadOpensNoContainerConnectionAtAll(tclientGated):
+    """GET /api/settings/{id} is typed-read in its strongest form.
+
+    Not "reaches only typed reads" but "reaches nothing": the handler
+    answers from the in-memory workflow. The declaration would be a
+    lie the moment this route grew a container call, and an empty
+    ledger is the only assertion that notices.
+    """
+    client, connectionDocker = tclientGated
+    response = client.get(f"/api/settings/{S_CONTAINER_ID}")
+    assert response.status_code == 200, response.text
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "the settings read reached a container primitive: "
+        f"{connectionDocker.listAdmittedPrimitives}. It declares "
+        "typed-read, which claims it reaches no mutation-capable "
+        "primitive at all."
+    )
+
+
+@pytest.mark.falsification
+def testTheOrdinaryStatePollHoldsNoDrain(tclientGated):
+    """The ten-second poll opens no carrier on its ordinary path.
+
+    The draft double serves no state file, so the read returns "not
+    running" and the reconcile branch is never taken — which is the
+    ordinary case, ninety-nine polls in a hundred. If this route
+    carried unconditionally it would hold the container's mutation
+    drain every ten seconds, and a Run Step arriving in that window is
+    refused by the dispatch gate against live carrier work.
+
+    Kills: hoisting the carrier out of the persister and around the
+    whole handler.
+    """
+    client, connectionDocker = tclientGated
+    response = client.get(f"/api/pipeline/{S_CONTAINER_ID}/state")
+    assert response.status_code == 200, response.text
+    listCarried = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sMode"] == (
+            mutationAdmission.S_ADMISSION_MODE_LOCK_HELD
+        )
+    ]
+    assert listCarried == [], (
+        "an ordinary state poll held the drain: "
+        f"{listCarried}. Every tenth second, for as long as a workflow "
+        "is open, a Run Step would race it."
+    )
+
+
+class DockerDoubleServingAStaleRunnerState(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gate-faithful double over a state file whose runner died.
+
+    ``bRunning`` is still true and the heartbeat is an hour old, which
+    is exactly what a killed runner leaves behind: nothing writes
+    ``bRunning: False`` on the way out of a SIGKILL. The reader is what
+    notices, and its correction is a container write.
+    """
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_STATE_PATH:
+            return json.dumps({
+                "bRunning": True,
+                "iCurrentStep": 1,
+                "sLastHeartbeat": (
+                    datetime.now(timezone.utc) - timedelta(hours=1)
+                ).isoformat(),
+            }).encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+
+@pytest.fixture
+def tclientStaleRunner():
+    """The gated client over a container whose runner stopped beating."""
+    return _tConnectGatedClient(DockerDoubleServingAStaleRunnerState())
+
+
+@pytest.mark.falsification
+def testTheStaleHeartbeatReconcileWritesUnderTheDrain(tclientStaleRunner):
+    """The rare branch: recording a dead runner is a carried mutation.
+
+    The write is what makes the dashboard stop claiming a finished run
+    is live, so it is not optional and it is not a read. Before this
+    migration it left through ``_fnPersistReconciledOnTheBackgroundLane``,
+    where the commit guard is a no-op by design — an unrecorded
+    container write on the hub's most frequent poll.
+
+    Kills: dropping ``fnPersistReconciled`` from the route's call, which
+    returns the reconciling write to the background lane.
+    """
+    client, connectionDocker = tclientStaleRunner
+    response = client.get(f"/api/pipeline/{S_CONTAINER_ID}/state")
+    assert response.status_code == 200, response.text
+    assert response.json()["bRunning"] is False, (
+        "the reader did not reconcile the stale heartbeat, so no write "
+        f"was ever due and this asserts nothing: {response.json()}"
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+            and dictReached["sPath"].startswith(S_STATE_PATH)
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "pipeline-state reconcile write",
+    )
+
+
+# ---------------------------------------------------------------------
 # Group 8 -- the three step routes that are not a plain save, mode (b).
 #
 # Every OTHER step route persists project.json and nothing else, which

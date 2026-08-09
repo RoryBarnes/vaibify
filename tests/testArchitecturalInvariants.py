@@ -4130,7 +4130,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # for non-substrate errors is the pinned behaviour, not padding
     # (host-mode connections raise plain OSErrors that the old except
     # clause misclassified).
-    "routes/pipelineRoutes.py": 3073,
+    # +16 (2026-08-08): the pipeline-state read joins the enforced
+    # branch (host-mode wave 3). The persister it now passes already
+    # existed for the kill route, so the added lines are the
+    # declaration, the request parameter, and the comment recording
+    # why a route polled every ten seconds may declare mode (b)
+    # without holding a drain on a timer — its carrier opens only on
+    # the reconcile branch.
+    "routes/pipelineRoutes.py": 3089,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

@@ -51,7 +51,11 @@ def _fdictBuildEpochContext():
     return {
         "workflows": {S_CONTAINER_ID: dictWorkflow},
         "paths": {S_CONTAINER_ID: S_REPO + "/.vaibify/workflows/d.json"},
-        "require": lambda: None,
+        # Accepts the resource id, because production's does: a route
+        # that knows which resource it is serving passes it, and a host
+        # project's id short-circuits the daemon check. A double that
+        # took no argument would make the caller look wrong.
+        "require": lambda *aArgs: None,
         "save": lambda sId, dictWf: None,
         "docker": object(),
         "dictSyncEpochs": {},
@@ -275,11 +279,20 @@ def test_refresh_remotes_bumps_sync_epoch(fixtureCarrierStoodDown):
     assert _fiEpochOf(dictCtx) == 1
 
 
-async def _fdictFakeReconciledState(dictCtx, sContainerId, fNow=None):
+# Both doubles carry ``fnPersistReconciled`` because the real reader
+# takes it and the state route now passes one: the reconciling WRITE
+# is a container mutation, so on the enforced branch it has to be
+# carried rather than left to the background lane. A double that
+# dropped the parameter would make the route look wrong.
+async def _fdictFakeReconciledState(
+    dictCtx, sContainerId, fNow=None, fnPersistReconciled=None,
+):
     return {"bRunning": True, "iCurrentStep": 2}
 
 
-async def _fdictFakeReconciledNone(dictCtx, sContainerId, fNow=None):
+async def _fdictFakeReconciledNone(
+    dictCtx, sContainerId, fNow=None, fnPersistReconciled=None,
+):
     return None
 
 
