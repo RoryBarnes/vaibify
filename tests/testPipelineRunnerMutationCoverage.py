@@ -38,6 +38,18 @@ def _fMockDocker(iExitCode=0, sOutput=""):
     _fnConfigureStreamingMock(mockDocker, [(iExitCode, sOutput)])
     mockDocker.fnWriteFile = MagicMock()
     mockDocker.fbaFetchFile.return_value = b"{}"
+    # ``sOutput`` keeps its meaning for the output-existence sweep --
+    # the set of paths that exist -- now that the sweep is a batched
+    # typed read rather than an xargs whose stdout listed them.
+    setPresentPaths = {
+        sLine.strip() for sLine in (sOutput or "").splitlines()
+        if sLine.strip()
+    }
+    mockDocker.flistContainerPathsExist.side_effect = (
+        lambda sContainerId, listPaths: [
+            sPath in setPresentPaths for sPath in listPaths
+        ]
+    )
     return mockDocker
 
 

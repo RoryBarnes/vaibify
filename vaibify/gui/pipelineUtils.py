@@ -348,11 +348,17 @@ def _fnRecordRunStats(
     """
     dictRunStats = {
         "fWallClock": round(time.time() - fStartTime, 1),
-        "fCpuTime": round(fCpuTime, 1),
         "sFinishedUtc": datetime.now(timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ",
         ),
     }
+    # ``None`` means nobody measured it -- a host run takes no CPU
+    # reading, because the measurement came from a GNU time wrapper
+    # host mode does not use. The key is OMITTED rather than zeroed,
+    # on the same terms as bDeterminismApplied below: an absent key is
+    # unknown, and 0.0 would be a measurement.
+    if fCpuTime is not None:
+        dictRunStats["fCpuTime"] = round(fCpuTime, 1)
     if iExitCode is not None:
         dictRunStats["iExitCode"] = int(iExitCode)
     if bDeterminismApplied is not None:

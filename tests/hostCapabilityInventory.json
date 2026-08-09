@@ -25,11 +25,6 @@
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
       "sSupportingSymbols": "ftResultGitAddInContainer, sCommand"
     },
-    "2d6d4644727a76e1779ffd4836ea3600909341565f74d1d42058a5687e1b797d": {
-      "sDisposition": "host-variant",
-      "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
-      "sSupportingSymbols": "_fsetMissingPathsBatched, sPathfile"
-    },
     "3297f4a18b52eee58506f2993431a6450bf7a33d05156600bda923a6f40847fe": {
       "sDisposition": "host-variant",
       "sRationale": "The host gateway's own internal delegation -- this IS the host implementation, not a caller handing it a command.",
@@ -149,11 +144,6 @@
       "sDisposition": "host-variant",
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
       "sSupportingSymbols": "ftResultGitFetchInContainer, sCommand"
-    },
-    "832d1b7932c242657fce514c60ba9b9d8bf4f7ba2d170a0b1a08af3dc8a4112d": {
-      "sDisposition": "host-variant",
-      "sRationale": "Step execution / verify path; the plan specifies a gated host launch and an in-process verify sweep.",
-      "sSupportingSymbols": "_fnRemoveVerifyPathfile, sPathfile"
     },
     "89b2fe519e86c9f535261b7f8453df94436bc0d0963f9953c1aed25f955febb6": {
       "sDisposition": "host-variant",
@@ -336,7 +326,7 @@
       "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     }
   },
-  "iRowCount": 134,
+  "iRowCount": 132,
   "iUndisposedSiteBudget": 67,
   "listRows": [
     {
@@ -627,23 +617,9 @@
       "sModule": "vaibify/gui/pipelineRunner.py"
     },
     {
-      "sCommandExpression": "f'rm -f {sPathfile}'",
-      "sEnclosingFunction": "_fnRemoveVerifyPathfile",
-      "sFingerprint": "832d1b7932c242657fce514c60ba9b9d8bf4f7ba2d170a0b1a08af3dc8a4112d",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineRunner.py"
-    },
-    {
       "sCommandExpression": "f'test -f {sQuoted}'",
       "sEnclosingFunction": "_fsMissingDependencyFile",
       "sFingerprint": "ae317769076a8f87e54e34ca31e512585eb53b216a7dde4e95f7117641c1cd9c",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/pipelineRunner.py"
-    },
-    {
-      "sCommandExpression": "\"xargs -d '\\\\n' -a \" + sPathfile + ' -I{} sh -c \\'test -e \"$1\" && printf %s\\\\\\\\n \"$1\"\\' _ {} 2>/dev/null'",
-      "sEnclosingFunction": "_fsetMissingPathsBatched",
-      "sFingerprint": "2d6d4644727a76e1779ffd4836ea3600909341565f74d1d42058a5687e1b797d",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/pipelineRunner.py"
     },

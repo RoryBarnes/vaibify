@@ -102,7 +102,10 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # new typed reads and their router delegations, and all five were
 # classified in the same change. A poll that no longer mutates is the
 # gain the ratchet is holding.
-I_UNCLASSIFIED_ROW_BUDGET = 297
+# 297 -> 295: the step runner's output-existence sweep stopped
+# writing a pathfile and running xargs over it; the two rows went with
+# the mechanism.
+I_UNCLASSIFIED_ROW_BUDGET = 295
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -146,7 +149,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 297
 # and its two `find` discoveries became typed reads, and the seed it
 # used to WRITE from a GET is computed in memory and persisted only by
 # a mutation. Three timer-driven mutation-capable sites gone.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 212
+# 212 -> 209: the same sweep, counted where it matters most. It ran
+# on the core RUN path -- a tar write, an xargs, and an rm, three
+# container mutations performed to answer a question about existence,
+# which the batched existence probe answers as a read.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 209
 
 
 # Every acquisition of a declared capability that still has no reviewed

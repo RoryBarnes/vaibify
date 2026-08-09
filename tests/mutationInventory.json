@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 62,
-  "iRowCount": 329,
+  "iRowCount": 327,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -4212,58 +4212,6 @@
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineRunner.py",
-      "sFingerprint": "6b7ea621a84b969a",
-      "sFunction": "_fnRemoveVerifyPathfile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
-      "sReferenceKind": "direct-call"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "archive-write",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineRunner.py",
-      "sFingerprint": "e3c1947767754721",
-      "sFunction": "_fnWriteVerifyPathfile",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "fnWriteFile",
-      "sReferenceKind": "passed-callable"
-    },
-    {
-      "bInsideGateway": false,
-      "bMutationCapable": true,
-      "iOrdinal": 0,
-      "listCarrierModes": [
-        "UNCLASSIFIED"
-      ],
-      "listExecutionLanes": [
-        "UNCLASSIFIED"
-      ],
-      "listLockOwners": [
-        "UNCLASSIFIED"
-      ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
-      "sFile": "gui/pipelineRunner.py",
       "sFingerprint": "483d7ccb276e69f1",
       "sFunction": "_fsMissingDependencyFile",
       "sJournalKind": "UNCLASSIFIED",
@@ -4275,7 +4223,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -4286,17 +4234,17 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/pipelineRunner.py",
-      "sFingerprint": "b615ab23e97b7855",
+      "sFingerprint": "b4cfb4f324d6ddb0",
       "sFunction": "_fsetMissingPathsBatched",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {
