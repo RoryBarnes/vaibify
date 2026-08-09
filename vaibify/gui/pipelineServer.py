@@ -459,6 +459,7 @@ def fsResolveFigurePath(sWorkflowDirectory, sFilePath):
 def fbaFetchFigureWithFallback(
     connectionDocker, sContainerId, sAbsPath,
     sWorkflowDirectory, sWorkdir, sFilePath,
+    sProjectRoot=WORKSPACE_ROOT,
 ):
     """Try primary path, then fallback with sWorkdir prefix.
 
@@ -476,14 +477,14 @@ def fbaFetchFigureWithFallback(
     if sWorkdir and not sFilePath.startswith("/"):
         return _fbaFetchFallback(
             connectionDocker, sContainerId,
-            sWorkflowDirectory, sWorkdir, sFilePath,
+            sWorkflowDirectory, sWorkdir, sFilePath, sProjectRoot,
         )
     raise HTTPException(404, "Figure not found")
 
 
 def _fbaFetchFallback(
     connectionDocker, sContainerId,
-    sWorkflowDirectory, sWorkdir, sFilePath,
+    sWorkflowDirectory, sWorkdir, sFilePath, sProjectRoot,
 ):
     """Attempt to fetch figure from workdir-relative path."""
     if sWorkdir.startswith("/"):
@@ -491,7 +492,7 @@ def _fbaFetchFallback(
     else:
         sFallback = posixpath.join(
             sWorkflowDirectory, sWorkdir, sFilePath)
-    fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT)
+    fsValidatePathWithinRoot(sFallback, sProjectRoot)
     try:
         return connectionDocker.fbaFetchFile(
             sContainerId, sFallback, iMaxBytes=None,

@@ -2650,7 +2650,10 @@ def _fdictEntry(sRel):
         # an existence oracle over arbitrary container paths.
         nodeid='tests/testAgentLaneEnforcement.py::testFigureProbeValidatesTheWorkdirFallback',
         source='vaibify/gui/routes/figureRoutes.py',
-        old='            fsValidatePathWithinRoot(sFallback, WORKSPACE_ROOT))',
+        # Re-pinned 2026-08-08: the jail's root became the resource's
+        # own (host-mode wave 4), so the anchor names sProjectRoot.
+        # The kill was hand-replayed against the new spelling.
+        old='            fsValidatePathWithinRoot(sFallback, sProjectRoot))',
         new='            sFallback)',
     ),
     Falsification(
@@ -8546,5 +8549,75 @@ def _fdictEntry(sRel):
         new=(
             '    fsValidatePathWithinRoot(sNormalized, WORKSPACE_ROOT)\n'
         ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheExistenceProbeAcceptsPathsInsideTheHostProject'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, sWorkspaceRoot,\n'
+            '        )\n'
+        ),
+        new='        sProjectRoot = sWorkspaceRoot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testTheExistenceProbeStillJailsAContainerToTheVolume'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # The registry read that skips the mode -- the shortcut that
+        # looks like it does the same thing and jails every
+        # containerized project inside the researcher's config folder.
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, sWorkspaceRoot,\n'
+            '        )\n'
+        ),
+        new=(
+            '        from vaibify.config import registryManager\n'
+            '        sProjectRoot = (registryManager.fdictGetProject(\n'
+            '            sContainerId) or {}).get('
+            '"sDirectory", sWorkspaceRoot)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAHostProjectsFigureIsServedFromItsOwnDirectory'
+        ),
+        source='vaibify/gui/routes/figureRoutes.py',
+        # Both the HEAD probe and the GET serve resolve the root; the
+        # honest mutation is "the figure lane stopped asking", which
+        # is both of them.
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, WORKSPACE_ROOT,\n'
+            '        )\n'
+        ),
+        new='        sProjectRoot = WORKSPACE_ROOT\n',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostModeProjectRoots.py::'
+            'testAContainerFigureIsStillJailedToTheVolume'
+        ),
+        source='vaibify/gui/routes/figureRoutes.py',
+        old=(
+            '        sProjectRoot = projectRoots.fsResolveProjectRoot(\n'
+            '            sContainerId, WORKSPACE_ROOT,\n'
+            '        )\n'
+        ),
+        new=(
+            '        from vaibify.config import registryManager\n'
+            '        sProjectRoot = (registryManager.fdictGetProject(\n'
+            '            sContainerId) or {}).get('
+            '"sDirectory", WORKSPACE_ROOT)\n'
+        ),
+        iExpectedOccurrences=2,
     ),
 ]

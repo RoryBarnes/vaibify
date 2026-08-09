@@ -33,6 +33,7 @@ from ..workflowManager import (
     fdictResolveTestCommandGroups,
     fsResolveStepWorkdir,
 )
+from .. import projectRoots
 from .. import pipelineServer as _pipelineServer
 from ..pipelineServer import (
     SaveAndRunTestRequest,
@@ -459,7 +460,7 @@ def _fnRegisterTestGenerate(app, dictCtx):
         return {"bSuccess": True}
 
 
-def _fsResolveTestFilePath(sFilePath, sProjectRepoPath):
+def _fsResolveTestFilePath(sFilePath, sProjectRepoPath, sProjectRoot):
     """Return the validated container-absolute path for a test-file edit.
 
     ``save-and-run-test`` is agent-safe and takes a caller-supplied
@@ -471,10 +472,12 @@ def _fsResolveTestFilePath(sFilePath, sProjectRepoPath):
     the host, which is why this was easy to miss.
 
     Repo-relative inputs are joined onto the project repo, matching the
-    paths ``testGenerator`` writes; the workspace root is the fallback
-    for a workflow that has no detected repo.
+    paths ``testGenerator`` writes; the project's own root is the
+    fallback for a workflow that has no detected repo — the container
+    volume for a container project, the registered directory for a
+    host one.
     """
-    sRoot = sProjectRepoPath or WORKSPACE_ROOT
+    sRoot = sProjectRepoPath or sProjectRoot
     sCandidate = (
         sFilePath if sFilePath.startswith("/")
         else posixpath.join(sRoot, sFilePath)
@@ -660,6 +663,9 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         sFilePath = _fsResolveTestFilePath(
             request.sFilePath,
             dictWorkflow.get("sProjectRepoPath", ""),
+            projectRoots.fsResolveProjectRoot(
+                sContainerId, WORKSPACE_ROOT,
+            ),
         )
 
         def ftWriteThenRunTheTest():

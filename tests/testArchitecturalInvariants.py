@@ -4154,7 +4154,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # raises happens at or after a write). Reaching 800 exactly was
     # possible only by deleting the blank line after each docstring's
     # summary, which is deforming the source to satisfy a number.
-    "routes/testRoutes.py": 802,
+    # +6 (2026-08-08): the save-and-run-test write path threads the
+    # resource's own root instead of the module constant, so a host
+    # project's repo-relative test file resolves under its own
+    # directory (host-mode wave 4).
+    "routes/testRoutes.py": 808,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -4450,7 +4454,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # The answering is a new module; what lands here is the question
     # and the paragraph saying why measuring a host path against
     # ``/workspace`` refuses every legitimate one.
-    "pipelineServer.py": 2533,
+    "pipelineServer.py": 2534,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

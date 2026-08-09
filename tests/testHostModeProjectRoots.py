@@ -138,15 +138,38 @@ def testAHostEntryWithNoDirectoryRefusesToResolve(tmp_path):
 # ── Discovery: the route asks, and passes the answer on ──────────
 
 class RecordingConnection:
-    """A connection that records commands and finds no candidates."""
+    """A connection that records what it was asked to reach for.
+
+    Deliberately not a permissive mock: every method it answers is one
+    these routes are expected to call, and it records the paths so a
+    test can assert WHICH path passed the guard rather than only that
+    the request did not 403.
+    """
 
     def __init__(self):
         self.listCommands = []
+        self.listProbedPaths = []
+        self.listFetchedPaths = []
 
     def ftResultExecuteCommand(self, sResourceId, sCommand, **kwargs):
         del sResourceId, kwargs
         self.listCommands.append(sCommand)
         return 0, ""
+
+    def flistContainerPathsExist(self, sResourceId, listPaths):
+        del sResourceId
+        self.listProbedPaths.extend(listPaths)
+        return [True] * len(listPaths)
+
+    def fbaFetchFile(self, sResourceId, sPath, iMaxBytes=None):
+        del sResourceId, iMaxBytes
+        self.listFetchedPaths.append(sPath)
+        return b"%PDF-1.4 figure bytes"
+
+    def flistDirectoryEntries(self, sResourceId, sPath):
+        del sResourceId
+        self.listProbedPaths.append(sPath)
+        return []
 
 
 def _ftBuildDiscoveryClient():
@@ -300,4 +323,203 @@ def testASiblingDirectorySharingThePrefixIsRefused(tmp_path):
         _fsValidateConnectWorkflowPath(
             sDirectory + "Sibling/.vaibify/projects/study.json", sRoot,
         )
+    assert excInfo.value.status_code == 403
+
+
+# ── The file and figure lanes measure against the same root ──────
+
+def _ftBuildFileClient(dictWorkflows=None):
+    """Return ``(client, connection)`` serving the file routes."""
+    from vaibify.gui.routes.fileRoutes import fnRegisterAll
+    connection = RecordingConnection()
+    app = FastAPI()
+    app.state.dictContainerOwners = {}
+    dictCtx = {
+        "require": lambda *aArgs: None,
+        "docker": connection,
+        "workflows": dictWorkflows or {},
+        "paths": {},
+        "workflowDir": lambda sResourceId: "/unused",
+    }
+    fnRegisterAll(app, dictCtx, S_CONTAINER_ROOT)
+    return TestClient(app), connection
+
+
+@pytest.mark.falsification
+def testTheExistenceProbeAcceptsPathsInsideTheHostProject(tmp_path):
+    """Every file badge in the dashboard runs through this guard.
+
+    The batch is what the file panel asks on every poll, so a root
+    that refuses host paths does not fail once and loudly — it paints
+    every badge in the project with a 403.
+
+    Kills: the batch measuring against the app-wide workspace
+    constant, which no host path can ever be inside.
+    """
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    sFilePath = os.path.join(sDirectory, "repo", "Step", "output.dat")
+    client, connection = _ftBuildFileClient()
+    response = client.post(
+        f"/api/files/{S_HOST_PROJECT}/exist",
+        json={"saRelativePaths": [sFilePath]},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["dictExists"] == {sFilePath: True}
+    assert connection.listProbedPaths == [sFilePath]
+
+
+@pytest.mark.falsification
+def testTheExistenceProbeStillJailsAContainerToTheVolume(tmp_path):
+    """The other direction: a container project keeps the volume jail.
+
+    Kills: reading ``sDirectory`` straight out of the registry
+    without consulting the mode — the plausible shortcut — which
+    would jail every containerized project inside the researcher's
+    HOST config folder, a path the container cannot see.
+    """
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    client, connection = _ftBuildFileClient()
+    response = client.post(
+        f"/api/files/{S_CONTAINER_PROJECT}/exist",
+        json={"saRelativePaths": ["/workspace/repo/Step/output.dat"]},
+    )
+    assert response.status_code == 200, response.text
+    assert connection.listProbedPaths == [
+        "/workspace/repo/Step/output.dat",
+    ]
+
+
+def testTheExistenceProbeRefusesAContainerPathForAHostProject(tmp_path):
+    """The guard moved; it did not open."""
+    _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    client, _ = _ftBuildFileClient()
+    response = client.post(
+        f"/api/files/{S_HOST_PROJECT}/exist",
+        json={"saRelativePaths": ["/workspace/repo/Step/output.dat"]},
+    )
+    assert response.status_code == 403
+
+
+def testTheExistenceProbeRefusesAnEscapeFromTheHostProject(tmp_path):
+    """Traversal out of a host root is refused like any other."""
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    client, _ = _ftBuildFileClient()
+    response = client.post(
+        f"/api/files/{S_HOST_PROJECT}/exist",
+        json={"saRelativePaths": [
+            os.path.join(sDirectory, "..", "secrets", "keys.txt"),
+        ]},
+    )
+    assert response.status_code == 403
+
+
+def testDirectoryListingIsJailedToTheHostProjectRoot(tmp_path):
+    """Browsing a host project lists inside it, and nowhere else."""
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    client, connection = _ftBuildFileClient()
+    response = client.get(
+        f"/api/files/{S_HOST_PROJECT}{sDirectory}/repo",
+    )
+    assert response.status_code == 200, response.text
+    assert f"{sDirectory}/repo" in connection.listCommands[0]
+    responseEscape = client.get(f"/api/files/{S_HOST_PROJECT}/etc")
+    assert responseEscape.status_code == 403
+
+
+def _ftBuildFigureClient(sWorkflowDirectory):
+    """Return ``(client, connection)`` serving the figure routes."""
+    from vaibify.gui.routes.figureRoutes import fnRegisterAll
+    connection = RecordingConnection()
+    app = FastAPI()
+    app.state.dictContainerOwners = {}
+    dictCtx = {
+        "require": lambda *aArgs: None,
+        "docker": connection,
+        "workflows": {},
+        "paths": {},
+        "workflowDir": lambda sResourceId: sWorkflowDirectory,
+    }
+    fnRegisterAll(app, dictCtx)
+    return TestClient(app), connection
+
+
+@pytest.mark.falsification
+def testAHostProjectsFigureIsServedFromItsOwnDirectory(tmp_path):
+    """A produced figure is the output half of the walkthrough.
+
+    Kills: the figure lane taking the container volume back as its
+    jail, which answers 403 for every figure a host pipeline
+    produces — the researcher sees a broken image and a traversal
+    error about their own file.
+    """
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    sWorkflowDirectory = os.path.join(sDirectory, "repo")
+    client, connection = _ftBuildFigureClient(sWorkflowDirectory)
+    response = client.get(
+        f"/api/figure/{S_HOST_PROJECT}/Plot/figure.pdf",
+    )
+    assert response.status_code == 200, response.text
+    assert connection.listFetchedPaths == [
+        os.path.join(sWorkflowDirectory, "Plot", "figure.pdf"),
+    ]
+
+
+@pytest.mark.falsification
+def testAContainerFigureIsStillJailedToTheVolume(tmp_path):
+    """The other direction: container figure serving is unchanged.
+
+    Kills: reading the registry directory without consulting the
+    mode, which jails a containerized project's figures inside the
+    researcher's host config folder and 403s every one of them.
+    """
+    _fsRegisterProject(tmp_path, S_CONTAINER_PROJECT, "container")
+    client, connection = _ftBuildFigureClient("/workspace/repo")
+    response = client.get(
+        f"/api/figure/{S_CONTAINER_PROJECT}/Plot/figure.pdf",
+    )
+    assert response.status_code == 200, response.text
+    assert connection.listFetchedPaths == [
+        "/workspace/repo/Plot/figure.pdf",
+    ]
+
+
+def testTheContainerEscapeHatchDoesNotOpenAHostProject(tmp_path):
+    """``fsResolveFigurePath`` promotes a ``workspace/``-prefixed name.
+
+    That prefix is a container convenience: it turns a relative name
+    into ``/workspace/...`` rather than joining it onto the workflow
+    directory. For a host project that lands outside the root, and the
+    guard must say so rather than reaching for a path on the
+    researcher's machine that has nothing to do with their project.
+    """
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    client, connection = _ftBuildFigureClient(
+        os.path.join(sDirectory, "repo"),
+    )
+    response = client.get(
+        f"/api/figure/{S_HOST_PROJECT}/workspace/Plot/figure.pdf",
+    )
+    assert response.status_code == 403
+    assert connection.listFetchedPaths == []
+
+
+def testTheTestWriteFallbackRootFollowsTheMode(tmp_path):
+    """A workflow with no detected repo falls back to its own root.
+
+    Regression cover rather than a registered falsification: the
+    mutation that breaks it is the resolver pair already registered
+    above. What this pins is that the save-and-run-test path threads
+    the resolved root instead of the module constant.
+    """
+    from fastapi import HTTPException
+    from vaibify.gui.routes.testRoutes import _fsResolveTestFilePath
+    sDirectory = _fsRegisterProject(tmp_path, S_HOST_PROJECT, "host")
+    sRoot = projectRoots.fsResolveProjectRoot(
+        S_HOST_PROJECT, S_CONTAINER_ROOT,
+    )
+    assert _fsResolveTestFilePath(
+        "Step/testStep.py", "", sRoot,
+    ) == os.path.join(sDirectory, "Step", "testStep.py")
+    with pytest.raises(HTTPException) as excInfo:
+        _fsResolveTestFilePath("/workspace/Step/testStep.py", "", sRoot)
     assert excInfo.value.status_code == 403
