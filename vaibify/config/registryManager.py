@@ -124,27 +124,38 @@ def fsDiscoverConfigInDirectory(sDirectory):
     )
 
 
-def fnAddProject(sDirectory):
+def fnAddProject(sDirectory, sMode="container"):
     """Register a project directory in the global registry.
 
     Parameters
     ----------
     sDirectory : str
         Absolute path to the project directory.
+    sMode : str
+        ``"container"`` (the default) or ``"host"``. A host project's
+        pipeline runs directly on this machine; its registry name is
+        its resource id everywhere a container project carries a
+        Docker id.
 
     Raises
     ------
     FileNotFoundError
         If no config file exists in the directory.
     ValueError
-        If the project is already registered.
+        If the project is already registered, or ``sMode`` is not a
+        recognized mode.
     """
+    if sMode not in ("container", "host"):
+        raise ValueError(
+            f"Unknown project mode {sMode!r}; expected 'container' "
+            "or 'host'"
+        )
     sAbsDirectory = os.path.abspath(sDirectory)
     sConfigPath = fsDiscoverConfigInDirectory(sAbsDirectory)
     sName = _fsProjectNameFromConfig(sConfigPath)
     sContainerName = sName
     dictProject = _fdictBuildProjectEntry(
-        sName, sAbsDirectory, sConfigPath, sContainerName,
+        sName, sAbsDirectory, sConfigPath, sContainerName, sMode,
     )
 
     def fnAppendUnlessDuplicate(dictRegistry):
@@ -201,14 +212,20 @@ def _fbSamePhysicalDirectory(sExistingPath, sCandidatePath):
 
 
 def _fdictBuildProjectEntry(
-    sName, sDirectory, sConfigPath, sContainerName,
+    sName, sDirectory, sConfigPath, sContainerName, sMode,
 ):
-    """Construct a registry entry dict."""
+    """Construct a registry entry dict.
+
+    ``sMode`` is stored explicitly for new entries; entries written
+    before host mode existed have no key, and an absent key reads as
+    container mode everywhere (see :func:`fbIsHostProject`).
+    """
     return {
         "sName": sName,
         "sDirectory": sDirectory,
         "sConfigPath": sConfigPath,
         "sContainerName": sContainerName,
+        "sMode": sMode,
     }
 
 
@@ -329,7 +346,9 @@ def flistGetAllProjectsWithStatus():
 
 
 def _fdictEnrichWithStatus(dictProject):
-    """Add Docker status fields to a project entry copy."""
+    """Add status fields to a project entry copy, branching by mode."""
+    if dictProject.get("sMode") == "host":
+        return _fdictEnrichHostProjectStatus(dictProject)
     from vaibify.docker.imageBuilder import fbImageExists
     from vaibify.docker.containerManager import (
         fdictGetContainerStatus,
@@ -343,6 +362,27 @@ def _fdictEnrichWithStatus(dictProject):
     dictEnriched["sStatus"] = _fsResolveDisplayStatus(
         dictEnriched["bImageExists"], dictStatus,
     )
+    return dictEnriched
+
+
+def _fdictEnrichHostProjectStatus(dictProject):
+    """Add status fields to a host entry copy; Docker is never consulted.
+
+    Host picker vocabulary (host-mode plan §9): ``ready`` when the
+    project directory and its config are both present, ``missing``
+    when either is gone (the tile renders red with the path shown).
+    ``in use`` is not decided here — it is the existing name-keyed
+    lock annotation, which works unchanged for host names. There is
+    no image and no container, so those fields are honestly False.
+    """
+    dictEnriched = dict(dictProject)
+    dictEnriched["bImageExists"] = False
+    dictEnriched["bRunning"] = False
+    bProjectPresent = (
+        os.path.isdir(dictProject.get("sDirectory", ""))
+        and os.path.isfile(dictProject.get("sConfigPath", ""))
+    )
+    dictEnriched["sStatus"] = "ready" if bProjectPresent else "missing"
     return dictEnriched
 
 

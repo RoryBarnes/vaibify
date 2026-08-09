@@ -386,3 +386,111 @@ def testGetContainerUserReturnsActualUser(tmp_path, monkeypatch):
     )
     sResult = registryManager.fsGetContainerUser("real-project")
     assert sResult == "scientist"
+
+
+# -----------------------------------------------------------------------
+# Host entries: sMode discriminator + status enrichment (host-mode §9)
+# -----------------------------------------------------------------------
+
+
+def _fnPatchDockerProbesToExplode(monkeypatch):
+    """Make both Docker status probes fail loudly if consulted."""
+
+    def fnExplodeOnDockerTouch(*tArguments, **dictKeywords):
+        raise AssertionError("a host entry consulted Docker")
+
+    monkeypatch.setattr(
+        "vaibify.docker.imageBuilder.fbImageExists",
+        fnExplodeOnDockerTouch,
+    )
+    monkeypatch.setattr(
+        "vaibify.docker.containerManager.fdictGetContainerStatus",
+        fnExplodeOnDockerTouch,
+    )
+
+
+def testAddProjectStoresTheHostMode(tmp_path):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-proj")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    dictProject = registryManager.fdictGetProject("host-proj")
+    assert dictProject["sMode"] == "host"
+    assert registryManager.fbIsHostProject("host-proj")
+
+
+def testAddProjectDefaultsToContainerMode(tmp_path):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "container-proj")
+    registryManager.fnAddProject(sProjectDir)
+    dictProject = registryManager.fdictGetProject("container-proj")
+    assert dictProject["sMode"] == "container"
+    assert not registryManager.fbIsHostProject("container-proj")
+
+
+def testAddProjectRefusesAnUnknownMode(tmp_path):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "odd-proj")
+    with pytest.raises(ValueError, match="Unknown project mode"):
+        registryManager.fnAddProject(sProjectDir, sMode="sandbox")
+    assert registryManager.flistGetAllProjects() == []
+
+
+def testHostEntryStatusIsReadyWithoutConsultingDocker(
+    tmp_path, monkeypatch,
+):
+    """A host entry's status never touches Docker (host-mode plan §9).
+
+    Both Docker probes are patched to raise, so a mode branch stuck at
+    the container side cannot pass quietly. Kills: the enrichment
+    dispatch reading every entry as a container entry.
+    """
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-ready")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    _fnPatchDockerProbesToExplode(monkeypatch)
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "ready"
+    assert listResult[0]["bImageExists"] is False
+    assert listResult[0]["bRunning"] is False
+
+
+def testHostEntryStatusIsMissingWhenTheDirectoryIsGone(
+    tmp_path, monkeypatch,
+):
+    import shutil
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-gone")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    _fnPatchDockerProbesToExplode(monkeypatch)
+    shutil.rmtree(sProjectDir)
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "missing"
+
+
+def testHostEntryStatusIsMissingWhenTheConfigIsGone(
+    tmp_path, monkeypatch,
+):
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "host-noconf")
+    registryManager.fnAddProject(sProjectDir, sMode="host")
+    _fnPatchDockerProbesToExplode(monkeypatch)
+    os.unlink(os.path.join(sProjectDir, "vaibify.yml"))
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "missing"
+
+
+def testContainerEntryStatusStillConsultsDocker(tmp_path, monkeypatch):
+    """The symmetric direction: a container entry keeps its Docker truth.
+
+    Kills: the enrichment dispatch reading every entry as a host entry,
+    which would report a running container as a red host tile.
+    """
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "container-live")
+    registryManager.fnAddProject(sProjectDir)
+    monkeypatch.setattr(
+        "vaibify.docker.imageBuilder.fbImageExists", lambda sTag: True,
+    )
+    monkeypatch.setattr(
+        "vaibify.docker.containerManager.fdictGetContainerStatus",
+        lambda sName: {
+            "bExists": True, "bRunning": True, "sStatus": "running",
+        },
+    )
+    listResult = registryManager.flistGetAllProjectsWithStatus()
+    assert listResult[0]["sStatus"] == "running"
+    assert listResult[0]["bRunning"] is True
+    assert listResult[0]["bImageExists"] is True
