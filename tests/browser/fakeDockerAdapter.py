@@ -124,14 +124,6 @@ LIST_MODELLED_COMMANDS = [
         "sLaneTwoAssertion": "testRealContainerReportsItsContainerUser",
     },
     {
-        "sMatch": "vaibifyPoll.list",
-        "sPurpose": (
-            "file-status poll: mtimes for the watched paths plus a "
-            "sha256 fingerprint of the workflow file"
-        ),
-        "sLaneTwoAssertion": "testRealContainerStatsAndFingerprints",
-    },
-    {
         "sMatch": "python3 -c",
         "sPurpose": (
             "conftest-version scan, marker directory creation, and "
@@ -226,13 +218,6 @@ class FailClosedDockerAdapter:
             return self._ftAnswerFileMove(sCommand)
         if "printenv CONTAINER_USER" in sCommand:
             return (0, "researcher\n")
-        if "vaibifyPoll.list" in sCommand:
-            listLines = [
-                f"{sPath} {iStamp}" for sPath, iStamp
-                in sorted(self.dictFileModifiedTimes.items())
-            ]
-            listLines.append("fingerprint:" + "0" * 64)
-            return (0, "\n".join(listLines) + "\n")
         if "python3 -c" in sCommand:
             # The conftest-version scan parses stdout as JSON; the
             # directory-creation and marker-copy helpers ignore it.
@@ -246,6 +231,29 @@ class FailClosedDockerAdapter:
             "Do NOT add a default return -- a fake that answers "
             "everything proves nothing."
         )
+
+    # The file-status poll's two TYPED READS. They are adapter methods,
+    # not commands, so they are modelled here rather than in
+    # LIST_MODELLED_COMMANDS -- the poll stopped composing `xargs -a`
+    # over a scratch file when it moved onto typed reads, and the
+    # command entry that used to stand for it was retired with it.
+    #
+    # MEASURED, and worth knowing: no journey in this lane currently
+    # reaches either method. A version of them that raised on every
+    # call left all seventy tests green, because the lane's journeys do
+    # not dwell in an open workflow long enough to poll. They are
+    # modelled correctly anyway -- a fake that answers wrongly is a
+    # trap for the journey that finally does -- but the coverage claim
+    # belongs to whoever writes that journey, not to this file.
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        return {
+            sPath: str(self.dictFileModifiedTimes[sPath])
+            for sPath in listPaths
+            if sPath in self.dictFileModifiedTimes
+        }
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        return "0" * 64
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         return self._ftAnswerModelledCommand(sCommand)

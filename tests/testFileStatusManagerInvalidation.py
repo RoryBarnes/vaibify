@@ -10,8 +10,7 @@ from vaibify.gui.fileStatusManager import (
     _fbPlotNewerThanUserVerification,
     _fdictBuildScriptStatus,
     _fdictDetectChangedFiles,
-    _fdictParseStatLines,
-    _fdictStatViaPathfile,
+    _fdictStatPaths,
     _fiMarkerMtime,
     _fdictDetectAndInvalidate,
     _flistNewerPaths,
@@ -350,33 +349,24 @@ def test_fdictDetectAndInvalidate_no_save_when_no_changes():
 
 
 # ---------------------------------------------------------------
-# Single-exec stat helpers: empty input + line parsing
+# The stat batch's empty-input short circuit.
+#
+# The two line-parsing tests that stood here went with the mechanism
+# they tested: the poll no longer parses `stat -c '%n %Y'` text, so
+# there is no parser to feed a malformed line to. That coverage moved
+# to tests/testDockerConnection.py, which EXECUTES the typed-read
+# program the container will run and checks the shape it emits --
+# strictly more than the old tests did, because nothing previously ran
+# the program text itself.
 # ---------------------------------------------------------------
 
 
-def test_fdictStatViaPathfile_empty_paths_returns_empty():
+def test_fdictStatPaths_empty_paths_returns_empty():
     mockDocker = MagicMock()
-    dictResult = _fdictStatViaPathfile(mockDocker, "cid", [])
+    dictResult = _fdictStatPaths(mockDocker, "cid", [])
     assert dictResult == {}
+    mockDocker.fdictStatPathMtimes.assert_not_called()
     mockDocker.ftResultExecuteCommand.assert_not_called()
-    mockDocker.fnWriteFileViaTar.assert_not_called()
-
-
-def test_fdictParseStatLines_parses_stat_output():
-    dictResult = _fdictParseStatLines(
-        "/ws/a.dat 123\n/ws/b.dat 456\n",
-    )
-    assert dictResult == {
-        "/ws/a.dat": "123",
-        "/ws/b.dat": "456",
-    }
-
-
-def test_fdictParseStatLines_skips_malformed_lines():
-    dictResult = _fdictParseStatLines(
-        "malformed_line_no_space\n/ws/good.dat 999\n\n",
-    )
-    assert dictResult == {"/ws/good.dat": "999"}
 
 
 # ---------------------------------------------------------------

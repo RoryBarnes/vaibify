@@ -947,12 +947,6 @@ LIST_FALSIFICATIONS = [
         new="""dictVerify.get("sUser") in ("passed",):""",
     ),
     Falsification(
-        nodeid='tests/testFileStatusManagerStaleness.py::test_fdictParseStatLines_handles_path_with_space',
-        source='vaibify/gui/fileStatusManager.py',
-        old="""sLine.rsplit(" ", 1)""",
-        new="""sLine.split(" ", 1)""",
-    ),
-    Falsification(
         nodeid='tests/testPathValidation.py::testRejectsRootEmbeddedAsInteriorSubstring',
         source='vaibify/gui/pipelineServer.py',
         old="""if not sNormalized.startswith(sRoot + "/") and sNormalized != sRoot:""",
@@ -6045,6 +6039,49 @@ def _fdictEntry(sRel):
             '        if supervisor.sName != supervisorSelf.sName:\n'
         ),
     ),
+    # The stat batch's OUTPUT SHAPE, which nothing else in the suite
+    # executes. Reverting it to line-oriented text is the plausible
+    # regression -- it is what the program replaced -- and it brings
+    # back the parse that a path containing a space used to defeat.
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_the_mtime_program_answers_json_and_skips_absent_paths'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        "sys.stdout.write(json.dumps(dictMtimes))\\n"\n',
+        new=(
+            '        "sys.stdout.write(chr(10).join('
+            'k+chr(32)+v for k,v in dictMtimes.items()))\\n"\n'
+        ),
+    ),
+    # --- The poll's write, deleted (host mode wave 3) ---
+    #
+    # The mutant restores the pathfile push while leaving the typed
+    # read in place, so the poll still answers correctly and the only
+    # thing that changes is that it writes into the container again on
+    # a five-second timer. That is the whole point: the defect this
+    # guards against is invisible in every functional assertion, which
+    # is why it survived as long as it did.
+    Falsification(
+        nodeid=(
+            'tests/testFileStatusManager.py::'
+            'testTheStatBatchWritesNothingIntoTheContainer'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '    try:\n'
+            '        dictModTimes = connectionDocker.fdictStatPathMtimes(\n'
+        ),
+        new=(
+            '    try:\n'
+            '        connectionDocker.fnWriteFileViaTar(\n'
+            '            sContainerId, "/tmp/vaibifyPoll.list",\n'
+            '            ("\\n".join(listPaths) + "\\n").encode("utf-8"),\n'
+            '        )\n'
+            '        dictModTimes = connectionDocker.fdictStatPathMtimes(\n'
+        ),
+    ),
     # --- The rest of the activation surface (host mode wave 3) ---
     #
     # The settings read declares typed-read in its strongest form -- it
@@ -6563,37 +6600,6 @@ def _fdictEntry(sRel):
 
     # --- Group 6 (2026-08-06): the step panel's probe-and-record
     # routes, and the three POSTs that turn out to be reads. ---
-    Falsification(
-        nodeid=(
-            'tests/testCarrierMigratedRoutes.py::'
-            'testTheAcknowledgeStepProbeRunsUnderTheDrain'
-        ),
-        source='vaibify/gui/routes/pipelineRoutes.py',
-        # Back to the bare to_thread the route used before: the stat
-        # probe's scratch-file write then reaches the primitive with no
-        # admission, which is the exploit shape -- a hand-over arriving
-        # mid-probe sees an unlocked container.
-        #
-        # RECORDED COLLATERAL, intrinsic rather than drift: this also
-        # fails testTheAcknowledgeStepSaveCommitsThroughTheSynchronous-
-        # Carrier, because the probe runs FIRST and its refusal 500s the
-        # handler before the save happens. No mutation can separate a
-        # downstream carrier from an upstream refusal in a straight-line
-        # handler; the reverse direction DOES isolate.
-        old=(
-            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation('
-            '\n'
-            '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
-            '\n'
-            '        sContainerId, dictLaneTuple, "helper", '
-            '"acknowledge-step",\n'
-            '        fdictStatTheOutputs,\n'
-            '    )\n'
-            '    return dictOutcome["result"]\n'
-        ),
-        new='    return await asyncio.to_thread(fdictStatTheOutputs)\n',
-    ),
-
     Falsification(
         nodeid=(
             'tests/testCarrierMigratedRoutes.py::'
@@ -7870,7 +7876,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testFileStatusManager.py::'
-            'testStatViaPathfilePropagatesNonSubstrateErrors'
+            'testTheStatBatchPropagatesNonSubstrateErrors'
         ),
         source='vaibify/gui/fileStatusManager.py',
         # The migrated poll net decays into a blanket pass: every

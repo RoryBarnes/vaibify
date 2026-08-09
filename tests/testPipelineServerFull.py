@@ -62,6 +62,21 @@ class MockDockerFull:
             "sImage": "ubuntu:24.04",
         }]
 
+    # The poll's typed reads. They answer the same fixture this
+    # double's retired `stat -c` branch answered; what changed is
+    # that the poll asks the ADAPTER for mtimes instead of composing
+    # a command, so a double still modelling the command text would
+    # be answering a question nothing asks.
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        dictAll = {"/workspace/stepA/out.dat": "1700000000"}
+        return {
+            sPath: dictAll[sPath]
+            for sPath in listPaths if sPath in dictAll
+        }
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        return ""
+
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None,
     ):
@@ -77,8 +92,6 @@ class MockDockerFull:
             return (0, "/workspace/.vaibify/logs/run.log\n")
         if "find" in sCommand:
             return (0, "")
-        if "stat -c" in sCommand:
-            return (0, "/workspace/stepA/out.dat 1700000000")
         if "test -d" in sCommand:
             return (0, "f")
         if "cat" in sCommand and "pipeline_state" in sCommand:
@@ -427,11 +440,18 @@ def test_fdictGetModTimes_empty():
     assert dictResult == {}
 
 
-def test_fdictGetModTimes_parses_output():
+def test_fdictGetModTimes_returns_the_adapters_answer():
+    """The poll passes the typed read's answer through unchanged.
+
+    It used to parse `stat -c '%n %Y'` text, so this test fed it
+    output. There is no text to parse now — the adapter answers a
+    dict — and what is left worth asserting is that the poll does not
+    reshape it on the way out.
+    """
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (
-        0, "/workspace/a.npy 1700000000\n"
-    )
+    mockDocker.fdictStatPathMtimes.return_value = {
+        "/workspace/a.npy": "1700000000",
+    }
     dictResult = pipelineServer._fdictGetModTimes(
         mockDocker, "cid", ["/workspace/a.npy"]
     )

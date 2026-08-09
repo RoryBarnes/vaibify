@@ -69,13 +69,19 @@ class MockDockerConnection:
             return (0, "f")
         if "cat" in sCommand and "pipeline_state" in sCommand:
             return (1, "")
-        if "stat -c" in sCommand:
-            return (0, "")
         if "ps aux" in sCommand:
             return (0, "0\n")
         if "git rev-parse --show-toplevel" in sCommand:
             return (0, "/workspace\n")
         return (0, "")
+
+    # The poll's typed reads, keeping this double's `stat -c` fixture
+    # ("no file has an mtime") in the shape the poll now asks for.
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        return {}
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        return ""
 
     def _ftFileExists(self, sCommand):
         sPath = sCommand.split("test -e ", 1)[1].strip().strip("'")

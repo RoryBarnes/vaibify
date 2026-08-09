@@ -114,14 +114,27 @@ class _MockDocker:
             if isinstance(baContent, bytes) else baContent
         )
 
+    # --- the poll's two typed reads ---
+    #
+    # Modelled as ADAPTER methods, not as exec output: the poll stopped
+    # composing `xargs -a`/`sha256sum` when it moved onto typed reads,
+    # and a double that still answered that command text would be
+    # modelling a mechanism the product no longer has -- passing while
+    # the real connection was never asked for anything.
+
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        return {
+            sPath: self.dictMtimes[sPath]
+            for sPath in listPaths if sPath in self.dictMtimes
+        }
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        baContent = self.dictFiles.get(sPath)
+        if baContent is None:
+            return ""
+        return hashlib.sha256(baContent).hexdigest()
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
-        if sCommand.startswith("xargs -d "):
-            sLines = self._fsBuildStatLinesFromFile()
-            if "sha256sum" in sCommand:
-                sLines += "\n" + self._fsBuildFingerprintLine()
-            return (0, sLines)
-        if sCommand.startswith("stat -c '%n %Y' "):
-            return (0, self._fsBuildStatLines(sCommand))
         if sCommand.startswith("test -e ") and "exists:" in sCommand:
             return (0, self._fsBuildExistsLine(sCommand))
         if "find" in sCommand and ".vaibify/workflows" in sCommand:
@@ -137,28 +150,6 @@ class _MockDocker:
         ):
             return (1, "")
         return (0, "")
-
-    def _fsBuildStatLines(self, sCommand):
-        listLines = []
-        for sPath, sMtime in self.dictMtimes.items():
-            if "'" + sPath + "'" in sCommand:
-                listLines.append(f"{sPath} {sMtime}")
-        return "\n".join(listLines)
-
-    def _fsBuildStatLinesFromFile(self):
-        listLines = []
-        for sPath in self._sLastPathFile.strip().split("\n"):
-            sMtime = self.dictMtimes.get(sPath)
-            if sMtime:
-                listLines.append(f"{sPath} {sMtime}")
-        return "\n".join(listLines)
-
-    def _fsBuildFingerprintLine(self):
-        """Mirror the piggybacked ``sha256sum`` of workflow.json."""
-        baContent = self.dictFiles.get(_S_WORKFLOW_PATH)
-        if baContent is None:
-            return "fingerprint:"
-        return "fingerprint:" + hashlib.sha256(baContent).hexdigest()
 
     def _fsBuildExistsLine(self, sCommand):
         """Resolve the ``test -e ... && echo exists:1 || echo exists:0`` probe."""

@@ -200,6 +200,51 @@ class HostConnection:
             for sPath in listPaths
         ]
 
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        """Return ``{sPath: sMtime}`` for the host paths that exist.
+
+        Keyed by the path the CALLER gave, not by the realpath the
+        guard resolved: the file panel looks its answers up by the
+        path it asked about, and a symlinked project directory would
+        otherwise hand back keys that match nothing.
+
+        Seconds truncated to an integer string, matching the container
+        leg — the two legs answer one contract, and a host project
+        whose mtimes carried sub-second precision would compare
+        unequal against a cache written by the same dashboard.
+        """
+        dictMtimes = {}
+        for sPath in listPaths:
+            try:
+                tStat = os.stat(
+                    self._fsValidateHostPath(sContainerId, sPath),
+                )
+            except OSError:
+                continue
+            dictMtimes[sPath] = str(int(tStat.st_mtime))
+        return dictMtimes
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        """Return the host file's sha256 hex digest, or ``''``.
+
+        Empty when unreadable, on the same terms as the container leg:
+        no fingerprint means "cannot compare", which is the ordinary
+        answer for a workflow whose file does not exist yet — and, via
+        the cap below, for one too large to be a fingerprint target.
+
+        Reads through this class's own capped read rather than
+        streaming as the container program does. The asymmetry is
+        deliberate: the container program streams because it runs
+        somewhere with a memory ceiling nobody here can see, while this
+        leg already has one bounded reader and a second one would be a
+        second place to get the path guard right.
+        """
+        try:
+            baContent = self.fbaFetchFile(sContainerId, sPath)
+        except (OSError, ValueError):
+            return ""
+        return hashlib.sha256(baContent).hexdigest()
+
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path."""
         sRealPath = self._fsValidateHostPath(sContainerId, sPath)

@@ -218,34 +218,47 @@ def testRealContainerReportsItsContainerUser():
 
 
 def testRealContainerStatsAndFingerprints():
-    """The file-status poll's stat and sha256 must both work.
+    """The poll's two typed reads must work in a real container.
 
-    Lane 1's fake answers this with synthetic mtimes and a constant
-    fingerprint, and the whole staleness model rests on it: if `stat
-    -c '%n %Y'` or `sha256sum` is missing or formats differently in a
-    real container, every step reads as fresh forever and the
-    dashboard silently stops reporting invalidation.
+    Lane 1's fake answers these with synthetic mtimes and a constant
+    fingerprint, and the whole staleness model rests on them: if the
+    stat batch or the hash misbehaves in a real container, every step
+    reads as fresh forever and the dashboard silently stops reporting
+    invalidation.
+
+    Driven through the ADAPTERS rather than through composed shell,
+    which is the point of the migration this test followed. It ran
+    ``stat -c '%n %Y'`` and ``sha256sum`` before — GNU spellings a BSD
+    userland does not have — and, more to the point, the poll issues no
+    command at all now: a probe of the old command text would verify a
+    mechanism the product does not use.
     """
     sContainer = _fsRequireAcceptanceContainer()
     connection = _fconnectionOpen()
     connection.ftResultExecuteCommand(
         sContainer, "printf 'x' > /tmp/vaibifyStatProbe",
     )
-    iCode, sOutput = connection.ftResultExecuteCommand(
-        sContainer,
-        "stat -c '%n %Y' /tmp/vaibifyStatProbe; "
-        "printf 'fingerprint:%s\\n' "
-        "\"$(sha256sum -- /tmp/vaibifyStatProbe | cut -d' ' -f1)\"",
+    dictMtimes = connection.fdictStatPathMtimes(
+        sContainer, ["/tmp/vaibifyStatProbe", "/tmp/vaibifyNoSuchFile"],
     )
-    assert iCode == 0, f"exit {iCode}: {sOutput!r}"
-    listLines = [s for s in sOutput.splitlines() if s.strip()]
-    sStat = listLines[0].split()
-    assert sStat[0] == "/tmp/vaibifyStatProbe"
-    assert sStat[1].isdigit(), f"mtime not an integer: {sStat!r}"
-    sFingerprint = [
-        s for s in listLines if s.startswith("fingerprint:")
-    ][0]
-    assert len(sFingerprint.split(":", 1)[1].strip()) == 64
+    assert list(dictMtimes) == ["/tmp/vaibifyStatProbe"], (
+        f"absent paths must be omitted, not reported: {dictMtimes}"
+    )
+    assert dictMtimes["/tmp/vaibifyStatProbe"].isdigit(), (
+        f"mtime is not an integer string: {dictMtimes!r}"
+    )
+    sFingerprint = connection.fsHashContainerFileSha256(
+        sContainer, "/tmp/vaibifyStatProbe",
+    )
+    assert len(sFingerprint) == 64, (
+        f"fingerprint is not a sha256 hex digest: {sFingerprint!r}"
+    )
+    assert connection.fsHashContainerFileSha256(
+        sContainer, "/tmp/vaibifyNoSuchFile",
+    ) == "", (
+        "an absent file must answer the empty string, which the reload "
+        "detector reads as 'cannot compare'"
+    )
     connection.ftResultExecuteCommand(
         sContainer, "rm -f /tmp/vaibifyStatProbe",
     )

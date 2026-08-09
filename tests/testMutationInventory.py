@@ -97,7 +97,12 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 300 -> 299 with the project-create route's mode-(b) migration: the
 # blank project.json write moved out of the handler into the carrier's
 # worker and was classified in the same change.
-I_UNCLASSIFIED_ROW_BUDGET = 299
+# 299 -> 297 with the file poll's typed-read migration: two rows went
+# away with the pathfile write and its exec, five arrived with the two
+# new typed reads and their router delegations, and all five were
+# classified in the same change. A poll that no longer mutates is the
+# gain the ratchet is holding.
+I_UNCLASSIFIED_ROW_BUDGET = 297
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -133,7 +138,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 299
 # no command or path of its own, and the admission gate for the
 # operation asserts inside the leg's primitive. All twelve are
 # classified `excluded` with that rationale in the same change.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 217
+# 217 -> 215: the file panel's five-second poll stopped writing into
+# the container. Its pathfile push and the exec that consumed it were
+# the two mutation-capable sites; the typed reads that replaced them
+# are reads by construction.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 215
 
 
 # Every acquisition of a declared capability that still has no reviewed

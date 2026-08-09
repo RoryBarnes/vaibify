@@ -46,6 +46,8 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "fbContainerPathIsDirectory",
     "flistContainerPathsExist",
     "fdictReadFilesystemUsage",
+    "fdictStatPathMtimes",
+    "fsHashContainerFileSha256",
     "fiterStreamFile",
 )
 
@@ -148,6 +150,18 @@ class ConnectionRouter:
         return self.fconnectionForResource(
             sResourceId,
         ).fdictReadFilesystemUsage(sResourceId, *tArguments, **dictKeywords)
+
+    def fdictStatPathMtimes(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fdictStatPathMtimes(sResourceId, *tArguments, **dictKeywords)
+
+    def fsHashContainerFileSha256(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(sResourceId).fsHashContainerFileSha256(
+            sResourceId, *tArguments, **dictKeywords,
+        )
 
     def fiterStreamFile(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""

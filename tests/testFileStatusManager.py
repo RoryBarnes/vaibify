@@ -1,4 +1,4 @@
-"""Tests for the single-exec pathfile stat used by the poll loop."""
+"""Tests for the typed-read stat batch used by the poll loop."""
 
 from unittest.mock import MagicMock
 
@@ -8,73 +8,103 @@ import pytest
 from vaibify.gui.fileStatusManager import (
     _LIST_CONTAINER_KEYED_CACHES,
     _fdictGetModTimes,
-    _fdictStatViaPathfile,
+    _fdictStatPaths,
     fsetSweepAllContainerCaches,
 )
 
 
-def _fmockDockerWithStatOutput(sOutput):
-    """Build a MagicMock connectionDocker that returns sOutput on exec."""
+def _fmockDockerWithMtimes(dictPathToMtime):
+    """Build a connection double whose typed stat answers a dict.
+
+    The double answers the ADAPTER, not an exec: the poll no longer
+    composes a command, so a double that modelled `stat -c` output
+    would be modelling a mechanism the product does not have.
+    """
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.return_value = (0, sOutput)
+    mockDocker.fdictStatPathMtimes.side_effect = (
+        lambda sContainerId, listPaths: {
+            sPath: dictPathToMtime[sPath]
+            for sPath in listPaths if sPath in dictPathToMtime
+        }
+    )
+    mockDocker.fsHashContainerFileSha256.return_value = ""
     return mockDocker
 
 
-def _fsBuildStatOutput(listPaths, iMtime=100):
-    """Build a fake 'name mtime' stat output for the given paths."""
-    return "".join(f"{sPath} {iMtime}\n" for sPath in listPaths)
+def _fdictBuildMtimes(listPaths, iMtime=100):
+    """Return a {path: mtime-string} map for the given paths."""
+    return {sPath: str(iMtime) for sPath in listPaths}
 
 
 # ---------------------------------------------------------------
-# WI-1 / WI-9 #1: single exec per poll regardless of path count
+# WI-1 / WI-9 #1: one round-trip per poll regardless of path count,
+# and NO container write. The write is the property that matters
+# most here: it was the dashboard's only mutation on a timer, and
+# it is what kept this route outside the commit-guard boundary.
 # ---------------------------------------------------------------
 
 
-def testStatViaPathfileSingleExec():
+def testTheStatBatchIsOneTypedReadForAnyNumberOfPaths():
     listPaths = [f"/ws/parent/file{iIndex}.dat" for iIndex in range(600)]
-    mockDocker = _fmockDockerWithStatOutput(_fsBuildStatOutput(listPaths))
-    dictResult = _fdictStatViaPathfile(mockDocker, "cid", listPaths)
-    assert mockDocker.ftResultExecuteCommand.call_count == 1
-    assert mockDocker.fnWriteFileViaTar.call_count == 1
+    mockDocker = _fmockDockerWithMtimes(_fdictBuildMtimes(listPaths))
+    dictResult = _fdictStatPaths(mockDocker, "cid", listPaths)
+    assert mockDocker.fdictStatPathMtimes.call_count == 1
     assert len(dictResult) == 600
 
 
-# ---------------------------------------------------------------
-# WI-4 / WI-9 #3: NotFound while writing pathfile -> {}
-# ---------------------------------------------------------------
+@pytest.mark.falsification
+def testTheStatBatchWritesNothingIntoTheContainer():
+    """The poll must reach no write primitive at all.
 
+    Six hundred paths used to be delivered by pushing a newline list
+    into /tmp and running `xargs -a` over it, because a shell argv
+    will not hold them. That write ran every five seconds for as long
+    as a workflow was open, and a container mutation on a timer cannot
+    be carried by a commit-guard carrier without holding the mutation
+    drain on that same timer -- which is what refuses a researcher's
+    Run Step at random.
 
-def testStatViaPathfileSwallowsNotFound():
-    mockDocker = MagicMock()
-    mockDocker.fnWriteFileViaTar.side_effect = docker.errors.NotFound(
-        "container gone",
-    )
-    dictResult = _fdictStatViaPathfile(
-        mockDocker, "cid", ["/ws/a.dat"],
-    )
-    assert dictResult == {}
+    Kills: restoring the pathfile push in ``_ftStatAndFingerprint``.
+    """
+    listPaths = [f"/ws/parent/file{iIndex}.dat" for iIndex in range(600)]
+    mockDocker = _fmockDockerWithMtimes(_fdictBuildMtimes(listPaths))
+    _fdictStatPaths(mockDocker, "cid", listPaths)
+    mockDocker.fnWriteFileViaTar.assert_not_called()
+    mockDocker.fnWriteFile.assert_not_called()
     mockDocker.ftResultExecuteCommand.assert_not_called()
 
 
-def testStatViaPathfileSwallowsApiError():
+# ---------------------------------------------------------------
+# WI-4 / WI-9 #3: a container that vanishes mid-poll -> {}
+# ---------------------------------------------------------------
+
+
+def testTheStatBatchSwallowsNotFound():
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.side_effect = docker.errors.APIError(
+    mockDocker.fdictStatPathMtimes.side_effect = docker.errors.NotFound(
+        "container gone",
+    )
+    dictResult = _fdictStatPaths(mockDocker, "cid", ["/ws/a.dat"])
+    assert dictResult == {}
+
+
+def testTheStatBatchSwallowsApiError():
+    mockDocker = MagicMock()
+    mockDocker.fdictStatPathMtimes.side_effect = docker.errors.APIError(
         "409 conflict",
     )
-    dictResult = _fdictStatViaPathfile(
-        mockDocker, "cid", ["/ws/a.dat"],
-    )
+    dictResult = _fdictStatPaths(mockDocker, "cid", ["/ws/a.dat"])
     assert dictResult == {}
 
 
 @pytest.mark.falsification
-def testStatViaPathfilePropagatesNonSubstrateErrors():
+def testTheStatBatchPropagatesNonSubstrateErrors():
     """A failure that is NOT the container substrate escapes the poll net.
 
     Pins the boundary of the vanished-mid-poll catch: only a substrate
     error (the Docker SDK's ``APIError`` family today) may degrade to
     "no answer this tick". A coding error such as a ``ValueError``
-    raised by the connection must propagate — swallowing it would
+    raised by the connection must propagate -- swallowing it would
     report a healthy-looking empty poll over a real bug. The catch
     migrated from ``except (APIError, NotFound)`` to the gateway's
     ``fbErrorMeansContainerUnreachable`` predicate, and this is the
@@ -82,15 +112,14 @@ def testStatViaPathfilePropagatesNonSubstrateErrors():
     ``except Exception: pass``.
 
     Kills: replacing the ``fbErrorMeansContainerUnreachable`` check in
-    ``_ftStatAndFingerprintViaPathfile`` with a blanket pass
-    (``if False: raise``).
+    ``_ftStatAndFingerprint`` with a blanket pass (``if False: raise``).
     """
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.side_effect = ValueError(
+    mockDocker.fdictStatPathMtimes.side_effect = ValueError(
         "a real bug, not a container failure",
     )
     with pytest.raises(ValueError):
-        _fdictStatViaPathfile(mockDocker, "cid", ["/ws/a.dat"])
+        _fdictStatPaths(mockDocker, "cid", ["/ws/a.dat"])
 
 
 # ---------------------------------------------------------------
@@ -106,34 +135,6 @@ def testStatViaPathfilePropagatesNonSubstrateErrors():
 # ---------------------------------------------------------------
 
 
-def _fdictMakeStatResponder(dictPathToMtime):
-    """Return side_effects that emit stat output for the queried paths.
-
-    ``fnCaptureWrite`` reads the pathlist tar-write made by
-    ``_fdictStatViaPathfile`` and stores it; ``fnRespondExec`` then
-    replays the current entry for each queried path. The shared
-    ``dictPathToMtime`` is mutable so a test can simulate an
-    in-place edit by bumping a single key between calls.
-    """
-    dictState = {"listLastQueried": []}
-
-    def fnCaptureWrite(sContainerId, sPathFile, baContent, *args, **kwargs):
-        sText = baContent.decode("utf-8")
-        dictState["listLastQueried"] = [
-            sLine for sLine in sText.split("\n") if sLine
-        ]
-
-    def fnRespondExec(sContainerId, sCommand, *args, **kwargs):
-        listLines = []
-        for sPath in dictState["listLastQueried"]:
-            sMtime = dictPathToMtime.get(sPath)
-            if sMtime is not None:
-                listLines.append(f"{sPath} {sMtime}\n")
-        return (0, "".join(listLines))
-
-    return fnCaptureWrite, fnRespondExec, dictState
-
-
 def testInPlaceEditOfChildSurfacesOnNextPoll():
     """Editing a child in place must be visible on the very next poll.
 
@@ -147,10 +148,7 @@ def testInPlaceEditOfChildSurfacesOnNextPoll():
     sParent = "/ws/proj/.vaibify/workflows"
     sWorkflow = f"{sParent}/example.json"
     dictPathToMtime = {sParent: "1000", sWorkflow: "500"}
-    fnWrite, fnExec, _dictState = _fdictMakeStatResponder(dictPathToMtime)
-    mockDocker = MagicMock()
-    mockDocker.fnWriteFileViaTar.side_effect = fnWrite
-    mockDocker.ftResultExecuteCommand.side_effect = fnExec
+    mockDocker = _fmockDockerWithMtimes(dictPathToMtime)
     dictFirst = _fdictGetModTimes(mockDocker, "cid", [sWorkflow])
     assert dictFirst[sWorkflow] == "500"
     # In-place edit: child mtime moves, parent mtime stays put.
@@ -159,26 +157,25 @@ def testInPlaceEditOfChildSurfacesOnNextPoll():
     assert dictSecond[sWorkflow] == "750"
 
 
-def testGetModTimesIsOneExecPerCall():
-    """Every poll issues exactly one stat exec for the polled paths.
+def testGetModTimesIsOneRoundTripPerCall():
+    """Every poll issues exactly one stat read for the polled paths.
 
     Guards against a future "optimization" reintroducing a
     parent-stat-then-child-stat split, which is what created the
     in-place-edit blind spot in the first place.
     """
     listPaths = [f"/ws/parent/file{iIndex}.dat" for iIndex in range(4)]
-    mockDocker = _fmockDockerWithStatOutput(_fsBuildStatOutput(listPaths))
+    mockDocker = _fmockDockerWithMtimes(_fdictBuildMtimes(listPaths))
     _fdictGetModTimes(mockDocker, "cid", listPaths)
-    assert mockDocker.ftResultExecuteCommand.call_count == 1
-    assert mockDocker.fnWriteFileViaTar.call_count == 1
+    assert mockDocker.fdictStatPathMtimes.call_count == 1
 
 
 def testGetModTimesEmptyPathlistDoesNoWork():
-    """An empty pathlist short-circuits without touching docker."""
+    """An empty pathlist short-circuits without touching the container."""
     mockDocker = MagicMock()
     dictResult = _fdictGetModTimes(mockDocker, "cid", [])
     assert dictResult == {}
-    mockDocker.fnWriteFileViaTar.assert_not_called()
+    mockDocker.fdictStatPathMtimes.assert_not_called()
     mockDocker.ftResultExecuteCommand.assert_not_called()
 
 

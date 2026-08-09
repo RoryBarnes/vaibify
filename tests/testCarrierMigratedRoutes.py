@@ -248,6 +248,38 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
         self.listTypedPathProbes.append(sPath)
         return False
 
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        """Stat a batch the way the real typed-read adapter does.
+
+        Enters the audited read and asserts the command gate exactly
+        as the real one does, then records into the typed-probe ledger
+        rather than the admission ledger -- because a typed read is
+        expected to reach the primitive with NO admission open, and
+        recording it as an admitted primitive would make every
+        assertion about this route's admissions answer for it.
+        """
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.extend(listPaths)
+        return {}
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        """Hash a file the way the real typed-read adapter does."""
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.append(sPath)
+        return ""
+
     def fbContainerPathIsDirectory(self, sContainerId, sPath):
         """Probe a directory the way the real typed-read adapter does.
 
@@ -4553,48 +4585,45 @@ def testTheExistenceBatchIsATypedReadAndNotAnExec(tclientGated):
 # separate the PROBE's write from the workflow SAVE's: both go through
 # the same primitive, and a write carries no command text to tell them
 # apart by.
-S_POLL_PATHFILE = "/tmp/vaibifyPoll.list"
+def testTheAcknowledgeStepProbeIsATypedReadAndNotAWrite(
+    tclientGatedWithPlots,
+):
+    """Acknowledging a step stats its outputs WITHOUT writing anything.
 
+    This test used to assert the opposite half of the same fact: the
+    probe wrote its path list into ``/tmp/vaibifyPoll.list`` and ran
+    ``xargs … stat`` over it, so the route had to carry both under
+    mode (b) or the researcher's "I have seen this output" click would
+    500. The probe is a typed read now -- the paths ride as a literal
+    inside a fixed program -- so there is nothing left to admit, and
+    the guarantee worth pinning is that no write happens at all.
 
-@pytest.mark.falsification
-def testTheAcknowledgeStepProbeRunsUnderTheDrain(tclientGatedWithPlots):
-    """Acknowledging a step stats its outputs under mode (b).
+    Both halves are asserted, because either alone is satisfiable by a
+    route that does nothing: the probe must have RUN (the typed-probe
+    ledger is non-empty) and no write may name the retired pathfile.
 
-    The probe LOOKS like a read and is not, which is the whole reason
-    this route was easy to migrate wrongly: ``_fdictGetModTimes``
-    batches its stat by WRITING the requested path list into the
-    container as a scratch file and then running ``xargs … stat``
-    through the general exec primitive. A migration that carried only
-    the workflow save would leave both of those refused, and the
-    researcher's "I have seen this output" click would 500.
-
-    Selected on the PATHFILE write rather than on "any write", because
-    the workflow save that follows is also a write through the same
-    primitive; selecting loosely would let the save's admission answer
-    for the probe's.
-
-    Nothing here asserts the response STATUS, for the reason
-    :func:`_fnAssertSelectedRanUnder` records: a refused mutation
-    surfaces as a 500, so a status assertion would drag the SAVE's
-    defect onto this test as well and neither carrier would isolate.
-    Verified — with the status assertion in place, removing the save's
-    carrier failed this test too.
-
-    Kills: passing ``_fdictRebaselineModTimesUnderTheDrain``'s worker to
-    ``asyncio.to_thread`` instead of ``fdictRunLockHeldMutation``.
+    The guarantee that the poll never writes has its own lever in
+    ``tests/testFileStatusManager.py``; this asserts the property at
+    the ROUTE, where a caller could reintroduce a write of its own.
     """
     client, connectionDocker = tclientGatedWithPlots
+    connectionDocker.listTypedPathProbes.clear()
     client.post(
         f"/api/pipeline/{S_CONTAINER_ID}/acknowledge-step/0",
     )
-    _fnAssertSelectedRanUnder(
-        connectionDocker,
-        lambda dictReached: (
-            dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
-            and dictReached["sPath"] == S_POLL_PATHFILE
-        ),
-        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
-        f"write of the stat path file {S_POLL_PATHFILE}",
+    assert connectionDocker.listTypedPathProbes, (
+        "the route made no typed path probe at all, so this asserts "
+        "nothing: it returned before stating the step's outputs"
+    )
+    listPathfileWrites = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPath"].startswith("/tmp/")
+    ]
+    assert listPathfileWrites == [], (
+        f"the acknowledge probe wrote into /tmp: {listPathfileWrites}. "
+        "The stat batch carries its paths as a literal now; a scratch "
+        "file would put a container mutation back on this route."
     )
 
 

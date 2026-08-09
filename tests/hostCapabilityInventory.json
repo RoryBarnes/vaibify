@@ -180,11 +180,6 @@
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
       "sSupportingSymbols": "fdictRemoteHeadsInContainer, sCommand"
     },
-    "90611da85b151530213eef8ec98ec8c69539a18089212bbe20cd970f73c4a776": {
-      "sDisposition": "host-variant",
-      "sRationale": "The stat batch (xargs -d, stat -c, sha256sum) is replaced by HostRepoFiles on the host per the plan.",
-      "sSupportingSymbols": "_ftStatAndFingerprintViaPathfile, sCmd"
-    },
     "9153f53f968757f1e5db28a689970147fc5163aa1be7726494c2a72457e33968": {
       "sDisposition": "host-variant",
       "sRationale": "The introspection-script runner has a host implementation specified in the plan.",
@@ -356,7 +351,7 @@
       "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     }
   },
-  "iRowCount": 138,
+  "iRowCount": 137,
   "iUndisposedSiteBudget": 67,
   "listRows": [
     {
@@ -582,13 +577,6 @@
       "sFingerprint": "090f643fe353d4d87e83ba1be4c79925cf24cd242bc94aab0ed1372f3fd77caa",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/diskSpace.py"
-    },
-    {
-      "sCommandExpression": "sCmd",
-      "sEnclosingFunction": "_ftStatAndFingerprintViaPathfile",
-      "sFingerprint": "90611da85b151530213eef8ec98ec8c69539a18089212bbe20cd970f73c4a776",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/fileStatusManager.py"
     },
     {
       "sCommandExpression": "f'python3 {sScriptPath}'",

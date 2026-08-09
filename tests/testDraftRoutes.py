@@ -98,13 +98,20 @@ class MockDockerDraft:
             return (0, "f")
         if "cat" in sCommand and "pipeline_state" in sCommand:
             return (1, "")
-        if "stat -c" in sCommand:
-            return (0, "")
         if "ps aux" in sCommand:
             return (0, "0\n")
         if "git rev-parse --show-toplevel" in sCommand:
             return (0, S_PROJECT_REPO + "\n")
         return (0, "")
+
+    # The poll's typed reads. This double modelled `stat -c` with an
+    # empty answer -- "no file has an mtime" -- and these keep exactly
+    # that fixture while speaking the shape the poll now asks for.
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        return {}
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        return ""
 
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath in self._dictFiles:

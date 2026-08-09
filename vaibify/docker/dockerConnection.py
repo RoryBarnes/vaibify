@@ -250,6 +250,8 @@ S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
 S_TYPED_READ_FILE_EXISTS = "fileExists"
 S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
 S_TYPED_READ_PATHS_EXIST = "pathsExist"
+S_TYPED_READ_PATH_MTIMES = "pathMtimes"
+S_TYPED_READ_FILE_SHA256 = "fileSha256"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -314,6 +316,60 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write(json.dumps("
         "[os.path.exists(s) for s in "
         + _S_TYPED_READ_PATH_SLOT + "]))"
+    ),
+    # The file panel's five-second poll, which is the hottest read in
+    # the product. It replaced a WRITE plus an exec: the old shape
+    # pushed a newline-delimited path list into /tmp and ran `xargs -d
+    # -a <file> stat -c '%n %Y'` over it, because a shell argv will not
+    # hold a thousand paths. A Python list literal will, so the write
+    # is simply gone -- and with it the only container mutation on the
+    # dashboard's timer, which is what let this route stay outside the
+    # commit-guard boundary. `xargs -d`, `stat -c` and `sha256sum` are
+    # also GNU-only spellings that fail on a BSD userland.
+    #
+    # A path that vanishes between the listing and the stat is SKIPPED,
+    # not an error, exactly as `2>/dev/null` made it: the poll's answer
+    # is "these are the files that exist and when they changed", and a
+    # file deleted mid-poll is absent by the next tick anyway.
+    #
+    # Seconds are truncated to an integer string because that is what
+    # `stat -c %Y` returned. `st_mtime` carries sub-second precision and
+    # keeping it would be an improvement -- and would also make every
+    # cached mtime in every workflow compare unequal exactly once, on
+    # the tick after an upgrade, reporting every file as modified. That
+    # is a change worth making deliberately, not as a side effect of
+    # this one.
+    S_TYPED_READ_PATH_MTIMES: (
+        "import json,os,sys\n"
+        "dictMtimes={}\n"
+        "for sPath in " + _S_TYPED_READ_PATH_SLOT + ":\n"
+        "    try:\n"
+        "        dictMtimes[sPath]=str(int(os.stat(sPath).st_mtime))\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "sys.stdout.write(json.dumps(dictMtimes))\n"
+    ),
+    # The content fingerprint that rides with the poll, replacing
+    # `sha256sum <path> | cut -d' ' -f1`. Streamed rather than read
+    # whole: the workflow document this hashes is small today, and a
+    # program that reads an arbitrary path into memory is one large
+    # file away from being a problem nobody predicted.
+    #
+    # An unreadable file answers with the EMPTY STRING rather than
+    # failing, which is the contract the reload detector already had
+    # from `2>/dev/null`: no fingerprint means "cannot compare", and it
+    # falls back to its other signals.
+    S_TYPED_READ_FILE_SHA256: (
+        "import hashlib,sys\n"
+        "hashFile=hashlib.sha256()\n"
+        "try:\n"
+        "    with open(" + _S_TYPED_READ_PATH_SLOT + ",'rb') as fileIn:\n"
+        "        for baChunk in iter(lambda: fileIn.read(65536), b''):\n"
+        "            hashFile.update(baChunk)\n"
+        "    sDigest=hashFile.hexdigest()\n"
+        "except OSError:\n"
+        "    sDigest=''\n"
+        "sys.stdout.write(sDigest)\n"
     ),
 }
 
@@ -830,6 +886,56 @@ class DockerConnection:
                 "answers onto the wrong paths."
             )
         return [bool(bExists) for bExists in listAnswers]
+
+    def fdictStatPathMtimes(self, sContainerId, listPaths):
+        """Return ``{sAbsPath: sMtime}`` for the paths that exist.
+
+        The file panel's poll, as a typed read. Absent paths are simply
+        missing from the answer — the caller asks "which of these exist
+        and when did they change", and there is no third state. A failed
+        READ raises ``OSError``; an unparseable answer is a failed read.
+
+        Unlike :meth:`flistContainerPathsExist` this does NOT check the
+        answer's length against the request, and must not: a short list
+        there would silently realign positional answers onto the wrong
+        paths, while here every answer carries its own key.
+        """
+        if not listPaths:
+            return {}
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_PATH_MTIMES, list(listPaths),
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot stat paths in container "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        try:
+            return json.loads(tExecResult.sStdout.strip() or "{}")
+        except ValueError as errorParse:
+            raise OSError(
+                f"The batched stat answered unparseable output: "
+                f"{errorParse}"
+            )
+
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        """Return a file's sha256 hex digest, or ``''`` when unreadable.
+
+        The empty answer is the contract, not a swallowed failure: the
+        reload detector compares fingerprints and treats "no
+        fingerprint" as "cannot compare", falling back to its other
+        signals. A file that does not exist yet is the ordinary case on
+        a fresh workflow.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_FILE_SHA256, sPath,
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                f"Cannot hash file in container: {sPath} "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        return tExecResult.sStdout.strip()
 
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path.
