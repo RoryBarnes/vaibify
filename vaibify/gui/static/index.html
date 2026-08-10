@@ -267,7 +267,13 @@
         <div style="margin-bottom: 10px;">
             <div class="container-card" id="btnNoWorkflow">
                 <span class="name">Blank Project</span>
-                <span class="image">Work directly in the container</span>
+                <!-- The subtitle names WHERE the work happens, so it
+                     is rewritten for a host project by
+                     fnShowWorkflowPicker; a host researcher offered
+                     "in the container" is being told about a place
+                     their project does not have. -->
+                <span class="image" id="blankProjectLocation"
+                      >Work directly in the container</span>
             </div>
         </div>
         <div id="listWorkflows"></div>
@@ -299,6 +305,14 @@
                   style="display: none;"
                   title="Commands run directly on this machine, with your full user authority. Not contained; PROOF Level 3 and Supervised attribution are unavailable."
                   >HOST MODE &mdash; uncontained</span>
+            <!-- The git badges pause themselves rather than queue
+                 behind live work, which leaves the ones on screen
+                 stale. Stale-and-labelled is honest; stale-and-silent
+                 is the dashboard claiming a repository state it has
+                 not read. -->
+            <span id="refreshPausedBadge" class="refresh-paused-badge"
+                  style="display: none;"
+                  >Git status paused</span>
             <span class="toolbar-label" id="activeResourceLabel"
                   >Container:</span>
             <span id="activeContainerName" class="toolbar-value"></span>

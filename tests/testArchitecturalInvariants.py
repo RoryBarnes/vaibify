@@ -4465,7 +4465,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +16 (2026-08-09): the connect handshake answers which MODE the
     # resource is, so the uncontained badge is the server's claim on
     # every entry path rather than something the dashboard infers.
-    "pipelineServer.py": 2550,
+    # +25 (2026-08-10): the same handshake answers WHERE the resource's
+    # files live. The frontend wrote ``/workspace`` as a constant in
+    # twenty-five places, which is true of a container and false of a
+    # host project; the root is now the server's answer for the same
+    # reason the mode is, and sits beside it because they are learned
+    # on the same entry paths and would drift if split.
+    "pipelineServer.py": 2575,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

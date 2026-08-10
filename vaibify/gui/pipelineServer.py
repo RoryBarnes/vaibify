@@ -1654,7 +1654,31 @@ def _fdictConnectNoWorkflow(dictCtx, sContainerId, sBrowserSessionId=""):
         "dictWorkflow": None,
         "sLeaseId": dictCtx.get("sViewerLease", ""),
         "sProjectMode": fsProjectModeOfResource(sContainerId),
+        "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
     }
+
+
+def fsWorkspaceRootOfResource(sResourceId):
+    """Return the root this resource's files live under, for the client.
+
+    The frontend has always written ``/workspace`` as a constant, which
+    is true of a container and false of a host project, whose files
+    live in the directory the researcher registered. Answered by the
+    server for the same reason the mode is: a root the dashboard
+    derives for itself is one it can be wrong about, and the wrong
+    answer here browses a directory that does not exist and reports a
+    project as empty.
+
+    A host entry with no directory has no honest answer; rather than
+    fail the connect, fall back to the container root and let the
+    server-side guards refuse the paths built from it -- the connect
+    path's own resolution already raises where it matters.
+    """
+    from .projectRoots import fsResolveProjectRoot
+    try:
+        return fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT)
+    except ValueError:
+        return WORKSPACE_ROOT
 
 
 def fsProjectModeOfResource(sResourceId):
@@ -1852,6 +1876,7 @@ async def fdictHandleConnect(
                 workflowManager.fsComputeWorkflowFingerprint(dictWorkflow)
             ),
             "sProjectMode": fsProjectModeOfResource(sContainerId),
+            "sWorkspaceRoot": fsWorkspaceRootOfResource(sContainerId),
         }
     except HTTPException:
         raise

@@ -9301,4 +9301,86 @@ def _fdictEntry(sRel):
         old='        if bTerminateRecorded:\n',
         new='        if False:\n',
     ),
+    # --- Backend-supplied workspace root + the paused label (wave 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testAHostProjectIsToldItsOwnDirectory'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        return fsResolveProjectRoot('
+            'sResourceId, WORKSPACE_ROOT)\n'
+        ),
+        new='        return WORKSPACE_ROOT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkspaceRootHandshake.py::'
+            'testAContainerProjectIsStillToldTheContainerRoot'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # The other direction: every containerized dashboard pointed at
+        # a HOST path the container cannot see.
+        old=(
+            '        return fsResolveProjectRoot('
+            'sResourceId, WORKSPACE_ROOT)\n'
+        ),
+        new=(
+            '        from vaibify.config.registryManager import '
+            'fdictGetProject\n'
+            '        return (fdictGetProject(sResourceId) or {}).get('
+            '"sDirectory", WORKSPACE_ROOT)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testWorkspaceRootReachesThePanels.py::'
+            'testTheFilePanelBrowsesTheRootTheServerSent'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Storing the answer and not using it: green everywhere, and
+        # the host file browser still opens a path nobody has.
+        old=(
+            '        sCurrentPath = sPath || '
+            'VaibifyApp.fsGetWorkspaceRoot();\n'
+        ),
+        new='        sCurrentPath = sPath || "/workspace";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testWorkspaceRootReachesThePanels.py::'
+            'testTheContainerRootStillReachesThePanel'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Dropping the fallback: an older server that sends no root at
+        # all leaves every panel browsing "undefined".
+        old=(
+            '        _dictSessionState.sWorkspaceRoot = '
+            'sWorkspaceRoot || "/workspace";\n'
+        ),
+        new='        _dictSessionState.sWorkspaceRoot = sWorkspaceRoot;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPausedBadgeIndicator.py::'
+            'testAPausedRefreshSaysSoAndNamesWhatIsBusy'
+        ),
+        source='vaibify/gui/static/scriptGitBadges.js',
+        # Keeping the last known map without saying so: badges from an
+        # earlier minute, read as current.
+        old='            _fnShowRefreshPaused(true, dictResult.sPausedBy);\n',
+        new='            void dictResult.sPausedBy;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testPausedBadgeIndicator.py::'
+            'testACompletedRefreshClearsTheLabel'
+        ),
+        source='vaibify/gui/static/scriptGitBadges.js',
+        # The other direction: a staleness warning that is always on is
+        # one nobody reads.
+        old='        _fnShowRefreshPaused(false, "");\n        var dictDiff = _fbBadgeMapChanged(\n',
+        new='        var dictDiff = _fbBadgeMapChanged(\n',
+    ),
 ]

@@ -1052,7 +1052,7 @@ var VaibifyEventBindings = (function () {
                     }
                     if (sPanel === "files") {
                         VaibifyFiles.fnLoadDirectory(
-                            "/workspace");
+                            VaibifyApp.fsGetWorkspaceRoot());
                     } else if (sPanel === "logs") {
                         VaibifyApp.fnLoadLogs();
                     } else if (sPanel === "repos") {

@@ -116,8 +116,18 @@ var VaibifyGitBadges = (function () {
                 return s.substring(sPrefix.length);
             }
         }
-        if (s.indexOf("/workspace/") === 0) {
-            return s.substring("/workspace/".length);
+        /* The project's own root, not the container constant: a host
+           project's absolute paths start with the registered
+           directory, and leaving them absolute makes every badge key
+           miss the repo-relative path the step list looks it up by. */
+        var sRoot = "/workspace";
+        if (typeof VaibifyApp !== "undefined" &&
+            VaibifyApp.fsGetWorkspaceRoot) {
+            sRoot = VaibifyApp.fsGetWorkspaceRoot() || sRoot;
+        }
+        var sRootPrefix = sRoot.replace(/\/+$/, "") + "/";
+        if (s.indexOf(sRootPrefix) === 0) {
+            return s.substring(sRootPrefix.length);
         }
         if (sWorkdir && s.indexOf(sWorkdir + "/") === 0) {
             return s.substring(sWorkdir.length + 1);
@@ -180,6 +190,23 @@ var VaibifyGitBadges = (function () {
         return sHtml;
     }
 
+    function _fnShowRefreshPaused(bPaused, sPausedBy) {
+        /* Keeping the last known map is only half of honest. A badge
+           that is older than the moment it is being read as, with
+           nothing on screen saying so, is the dashboard asserting a
+           repository state it did not read — the same class of claim
+           as an optimistically-green step. So the pause is visible,
+           and it names what the project is busy with. */
+        var elBadge = document.getElementById("refreshPausedBadge");
+        if (!elBadge) return;
+        elBadge.style.display = bPaused ? "" : "none";
+        elBadge.title = bPaused
+            ? ("Git badges are showing the last reading: " +
+               (sPausedBy || "this project is busy") +
+               ". They refresh when it finishes.")
+            : "";
+    }
+
     function _fnApplyBadgeRefresh(dictResult) {
         if (!dictResult || typeof dictResult !== "object") return;
         /* A paused refresh carries no badge map, because the server
@@ -187,7 +214,11 @@ var VaibifyGitBadges = (function () {
            no remote state. Applying it would replace every badge with
            "none" and report that as fact. The last known map stands
            until a refresh actually completes. */
-        if (dictResult.bRefreshPaused) return;
+        if (dictResult.bRefreshPaused) {
+            _fnShowRefreshPaused(true, dictResult.sPausedBy);
+            return;
+        }
+        _fnShowRefreshPaused(false, "");
         var dictDiff = _fbBadgeMapChanged(
             _dictState.dictBadges, dictResult.dictBadges || {});
         _dictState.dictBadges = dictResult.dictBadges || {};
@@ -204,6 +235,10 @@ var VaibifyGitBadges = (function () {
         return VaibifyApi.fdictGet(
             "/api/git/" + encodeURIComponent(sContainerId) + "/badges"
         ).then(_fnApplyBadgeRefresh).catch(function () {
+            /* A failed request is not a pause, and leaving the pause
+               label up would attribute a broken connection to work the
+               researcher started. */
+            _fnShowRefreshPaused(false, "");
             _dictState.dictBadges = {};
         });
     }

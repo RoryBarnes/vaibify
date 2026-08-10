@@ -262,6 +262,22 @@ html, body {
     white-space: nowrap;
 }
 
+/* Amber, not red: nothing is wrong. The badges on screen are simply
+   older than this moment, because reading them would have queued
+   behind work the researcher started. */
+.refresh-paused-badge {
+    background: rgba(241, 196, 15, 0.10);
+    border: 1px solid #f1c40f;
+    color: var(--text-primary);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin-right: 10px;
+    font-size: 0.75em;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
 .container-tile-note {
     margin-left: 8px;
     color: var(--color-red-text);

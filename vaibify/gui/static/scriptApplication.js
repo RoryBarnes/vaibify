@@ -25,6 +25,11 @@ const VaibifyApp = (function () {
            container so an older server that sends no mode renders
            exactly what it always did. */
         sProjectMode: "container",
+        /* Where this project's files live. A container's is
+           /workspace; a host project's is the directory the
+           researcher registered, and the frontend has no way to know
+           it. Same default for the same reason. */
+        sWorkspaceRoot: "/workspace",
     };
 
     var _S_LEASE_STORAGE_KEY = "vaibifyContainerLease";
@@ -513,6 +518,15 @@ const VaibifyApp = (function () {
         _dictUiState.bBinaryAddFormOpen = false;
     }
 
+    function fnApplyWorkspaceRoot(sWorkspaceRoot) {
+        /* Stored, never derived. Every file panel, directory browser
+           and path-display in the dashboard used to write /workspace
+           as a constant, which is true of a container and false of a
+           host project. An empty or missing value keeps the container
+           default so an older server behaves exactly as it did. */
+        _dictSessionState.sWorkspaceRoot = sWorkspaceRoot || "/workspace";
+    }
+
     function fnApplyProjectMode(sProjectMode) {
         /* The mode is always the SERVER's answer -- the registry
            listing that rendered the tile on the project-list screen,
@@ -570,6 +584,7 @@ const VaibifyApp = (function () {
         document.getElementById("activeContainerName").textContent =
             VaibifyContainerManager.fsGetSelectedContainerName() || "";
         fnApplyProjectMode(data.sProjectMode);
+        fnApplyWorkspaceRoot(data.sWorkspaceRoot);
         document.getElementById("activeWorkflowName").textContent =
             sWorkflowName || "";
         document.title = (VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify") +
@@ -744,6 +759,7 @@ const VaibifyApp = (function () {
             document.getElementById("activeContainerName").textContent =
                 VaibifyContainerManager.fsGetSelectedContainerName() || "";
             fnApplyProjectMode(dictConnect.sProjectMode);
+            fnApplyWorkspaceRoot(dictConnect.sWorkspaceRoot);
             _fnRenderToolkitBanner(0);
             document.title = VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
@@ -901,7 +917,21 @@ const VaibifyApp = (function () {
         _fnStartContainerHubPolling();
     }
 
+    function _fnApplyBlankProjectLocation() {
+        /* "Work directly in the container" is the one line on this
+           screen that names a place, and a host project does not have
+           that place. Rewritten from the mode the server declared
+           rather than from anything the picker infers. */
+        var elLocation = document.getElementById("blankProjectLocation");
+        if (!elLocation) return;
+        elLocation.textContent =
+            _dictSessionState.sProjectMode === "host"
+                ? "Work directly in the project directory"
+                : "Work directly in the container";
+    }
+
     function fnShowWorkflowPicker(sContainerName) {
+        _fnApplyBlankProjectLocation();
         document.getElementById("containerLanding").style.display = "none";
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
@@ -1097,9 +1127,13 @@ const VaibifyApp = (function () {
     }
 
     function fsGetWorkflowDirectory() {
-        if (!_dictWorkflowState.sWorkflowPath) return "/workspace";
+        if (!_dictWorkflowState.sWorkflowPath) {
+            return _dictSessionState.sWorkspaceRoot;
+        }
         var iLastSlash = _dictWorkflowState.sWorkflowPath.lastIndexOf("/");
-        return iLastSlash > 0 ? _dictWorkflowState.sWorkflowPath.substring(0, iLastSlash) : "/workspace";
+        return iLastSlash > 0
+            ? _dictWorkflowState.sWorkflowPath.substring(0, iLastSlash)
+            : _dictSessionState.sWorkspaceRoot;
     }
 
     /* --- Global Settings --- */
@@ -4834,6 +4868,10 @@ const VaibifyApp = (function () {
         fsGetProjectMode: function () {
             return _dictSessionState.sProjectMode;
         },
+        fsGetWorkspaceRoot: function () {
+            return _dictSessionState.sWorkspaceRoot;
+        },
+        fnApplyWorkspaceRoot: fnApplyWorkspaceRoot,
         fsGetSessionToken: function () {
             return _dictSessionState.sSessionToken;
         },
