@@ -472,7 +472,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2241,
+      "iLine": 2269,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -485,7 +485,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2236,
+      "iLine": 2264,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -680,7 +680,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 52,
+      "iLine": 51,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -9571,13 +9571,13 @@
       "sScopeFingerprint": "1416c2b66127daa3"
     },
     {
-      "iLine": 422,
+      "iLine": 423,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "host/hostConnection.py",
       "sFingerprint": "001a2030acc0bc3e",
       "sFunction": "_ftLaunchGatedAndStream",
-      "sScopeFingerprint": "2a241fb7c18d806e"
+      "sScopeFingerprint": "22ab66ddd1269c11"
     },
     {
       "iLine": 192,

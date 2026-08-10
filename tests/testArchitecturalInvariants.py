@@ -4141,7 +4141,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # level gates, because Level 3 is defined by a pinned image and a
     # host project must be told that once rather than handed seven
     # container criteria it can never satisfy.
-    "routes/pipelineRoutes.py": 3094,
+    # +60 (2026-08-10): Cancel grows a host lane (host-mode wave 5).
+    # The container sweep pattern-matches a process table, which is
+    # safe only where the whole table is vaibify's; on the host the
+    # only thing that may be signalled is a journaled process group,
+    # so the two are separate lanes rather than one parameterized
+    # one. Not a split seam: both lanes are the kill route's single
+    # responsibility, and moving one out would leave the route
+    # choosing between two modules by mode — the branch, relocated.
+    "routes/pipelineRoutes.py": 3154,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

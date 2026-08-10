@@ -48,20 +48,21 @@ __all__ = [
 
 import hashlib
 import os
-import signal
 import subprocess
 import sys
 import tempfile
 import threading
-import time
 
 from vaibify.config import mutationAdmission
 from vaibify.docker.dockerConnection import ExecResult
+from vaibify.host.hostCancellation import (
+    fbProcessGroupProvedEmpty,
+    fnTerminateProcessGroup,
+)
 
 I_MAX_FETCH_FILE_BYTES = 64 * 1024 * 1024
 I_STREAM_CHUNK_BYTES = 1048576
 F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS = 300.0
-F_TERMINATE_GRACE_SECONDS = 2.0
 I_NEW_FILE_MODE = 0o644
 
 _S_HOST_DIAGNOSTICS_ROOT = os.path.join(
@@ -439,7 +440,7 @@ class HostConnection:
             processChild, fTimeoutSeconds,
         )
         if bTimedOut:
-            _fnTerminateProcessGroup(processChild.pid)
+            fnTerminateProcessGroup(processChild.pid)
             processChild.wait()
         sStdout, sStderr = _ftCollectStreamsBounded(
             tStreams, processChild.pid, fTimeoutSeconds,
@@ -449,7 +450,7 @@ class HostConnection:
                 f"\nhost exec timed out after {fTimeoutSeconds}s; "
                 "the recorded process group was terminated"
             )
-        if _fbProcessGroupProvedEmpty(processChild.pid):
+        if fbProcessGroupProvedEmpty(processChild.pid):
             mutationAdmission.fnSettleJournaledHostExec(dictHostExecHandle)
         return ExecResult(
             iExitCode=(
@@ -535,7 +536,7 @@ def _ftCollectStreamsBounded(tStreams, iProcessGroup, fTimeoutSeconds):
         tStreams, F_PIPE_DRAIN_GRACE_SECONDS,
     )
     if not bDrained:
-        _fnTerminateProcessGroup(iProcessGroup)
+        fnTerminateProcessGroup(iProcessGroup)
         bDrained = _fbJoinBothStreamsWithin(
             tStreams, F_PIPE_DRAIN_GRACE_SECONDS,
         )
@@ -576,31 +577,3 @@ def _fbAwaitProcessWithinBound(processChild, fTimeoutSeconds):
         return True
     except subprocess.TimeoutExpired:
         return False
-
-
-def _fnTerminateProcessGroup(iProcessGroup):
-    """TERM then KILL the recorded group; tolerate an already-empty one."""
-    for iSignalNumber, fGraceSeconds in (
-        (signal.SIGTERM, F_TERMINATE_GRACE_SECONDS),
-        (signal.SIGKILL, 0.0),
-    ):
-        try:
-            os.killpg(iProcessGroup, iSignalNumber)
-        except (ProcessLookupError, PermissionError):
-            return
-        fDeadline = time.monotonic() + fGraceSeconds
-        while time.monotonic() < fDeadline:
-            if _fbProcessGroupProvedEmpty(iProcessGroup):
-                return
-            time.sleep(0.05)
-
-
-def _fbProcessGroupProvedEmpty(iProcessGroup):
-    """Return True only when no process remains in the group."""
-    try:
-        os.killpg(iProcessGroup, 0)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    return False

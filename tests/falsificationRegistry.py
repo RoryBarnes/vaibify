@@ -7962,7 +7962,11 @@ def _fdictEntry(sRel):
             'tests/testHostConnection.py::TestGatedExec::'
             'test_timeout_terminates_the_whole_recorded_group'
         ),
-        source='vaibify/host/hostConnection.py',
+        # Re-pinned when the termination primitives moved to
+        # hostCancellation.py, which Cancel and the host connection's
+        # own timeout now share. The guarantee and the mutation are
+        # unchanged; only the file the line lives in moved.
+        source='vaibify/host/hostCancellation.py',
         # Narrowing the group kill to a single PID leaves a backgrounded
         # sibling alive -- the unrelated-process-safety cuts both ways.
         old=(
@@ -8432,13 +8436,22 @@ def _fdictEntry(sRel):
         # A kind filter that skips every record makes the journal half
         # vacuously idle — indistinguishable, to every veto, from a
         # project that has never run anything.
+        #
+        # The probe line is carried along only to disambiguate: the
+        # holder LISTING grew an identical filter, and an `old` that
+        # matches both would mutate a guarantee this test does not
+        # observe.
         old=(
             '        if dictRecord.get("sKind") != "host-exec":\n'
             '            continue\n'
+            '        dictProbe = _fdictProbeHelperOperation('
+            'dictRecord, None)\n'
         ),
         new=(
             '        if True:\n'
             '            continue\n'
+            '        dictProbe = _fdictProbeHelperOperation('
+            'dictRecord, None)\n'
         ),
     ),
     Falsification(
@@ -8815,5 +8828,190 @@ def _fdictEntry(sRel):
             '_T_CONTAINER_WIZARD_PAGES;\n'
         ),
         new='        return _T_CONTAINER_WIZARD_PAGES;\n',
+    ),
+    # --- Cancelling a host run (host mode wave 5) ---
+    #
+    # The dangerous mutant on this path is not "Cancel does nothing".
+    # It is "Cancel signals a group it cannot prove is still ours",
+    # which on a researcher's own machine means killing a stranger's
+    # process with the researcher's authority. Both halves of the one
+    # predicate are therefore mutated, and the refusing direction is
+    # scored by a test in which a LIVE process must survive.
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testAProvenGroupIsTerminated'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        old='    if dictHolder["bHolderProven"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testARecycledIdentityIsRefusedAndItsProcessSurvives'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        # "Make cancel more reliable by signalling whatever the record
+        # names" -- the plausible mutation, and the one the whole
+        # module exists to forbid.
+        old='    if dictHolder["bHolderProven"]:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testARunThatAlreadyFinishedIsReportedAsExitedNotRefused'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        old=(
+            '    if fbProcessGroupProvedEmpty(iProcessGroup):\n'
+            '        dictOutcome["listAlreadyExited"].append({\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictOutcome["listAlreadyExited"].append({\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testAnUnusableProcessGroupIsNeverSignalled'
+        ),
+        source='vaibify/host/hostCancellation.py',
+        # os.killpg(0, SIGKILL) signals the CALLER's process group:
+        # without this guard a journal record carrying a zero group id
+        # makes Cancel kill the hub.
+        old=(
+            '    if not fbIsUsablePid(iProcessGroup):\n'
+            '        return\n'
+        ),
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testTheListingNamesOnlyHostExecRecords'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Both kinds carry a holder pid, so an unfiltered listing hands
+        # the terminator the hub's own carrier worker.
+        old=(
+            '        if dictRecord.get("sKind") != "host-exec":\n'
+            '            continue\n'
+            '        listHolders.append(\n'
+        ),
+        new='        listHolders.append(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testTheListingMarksARecycledIdentityUnproven'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # The bare existence check -- the shortcut taken when reading a
+        # start clock looks like overhead. It also fails the
+        # recycled-identity test above, because one implementation has
+        # two observers; that one proves the consequence, this one
+        # proves the property.
+        old=(
+            '        and fbIsProcessAliveSince(\n'
+            '            iHolderPid, dictRecord.get("sInFlightIso"),\n'
+            '        )\n'
+        ),
+        new=(
+            '        and fbIsProcessAliveSince(\n'
+            '            iHolderPid, None,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testAnUnreadableJournalRaisesInsteadOfReportingNothing'
+            'ToCancel'
+        ),
+        source='vaibify/config/operationJournal.py',
+        # Falling back the way the busy-oracle predicate does. Safe for
+        # a veto, dishonest for an action: it answers "0 processes"
+        # about a machine whose work could not be enumerated at all.
+        old=(
+            '    if dictOutcomeRead["sReadState"] not in '
+            '("absent", "valid"):\n'
+            '        raise OperationJournalUnreadableError(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise OperationJournalUnreadableError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testKillingAHostProjectSignalsTheJournalAndNeverThe'
+            'ProcessTable'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        if fbIsHostProject(sContainerId):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testKillingAContainerProjectStillSweepsItsProcessTable'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        if fbIsHostProject(sContainerId):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostCancel.py::'
+            'testARefusedCancellationReachesTheResponse'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The key stays, so the container-direction test above is
+        # untouched and this kill isolates: what is lost is only the
+        # CONTENT, which is the whole report.
+        old='            "listCancellationRefusals": listRefused,\n',
+        new='            "listCancellationRefusals": [],\n',
+    ),
+    # The two frontend halves. A refusal the dashboard never renders
+    # is a dashboard that says the machine is quiet.
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testTheHostConfirmationNeverSaysTheProcessesAreInAContainer'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='        if (VaibifyApp.fsGetProjectMode() === "host") {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testTheContainerConfirmationIsUnchanged'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='        if (VaibifyApp.fsGetProjectMode() === "host") {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testARefusedCancellationIsShownAndNotRoundedDownToZero'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='        if (listRefusals.length > 0) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostCancelSurface.py::'
+            'testACleanCancellationRaisesNoAlarm'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        new='        if (true) {\n',
+        old='        if (listRefusals.length > 0) {\n',
     ),
 ]

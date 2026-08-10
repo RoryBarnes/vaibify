@@ -67,6 +67,7 @@ __all__ = [
     "flistJournaledContainerNames",
     "fdictReadJournalOutcome",
     "fbAnyHostExecHolderLive",
+    "flistDescribeHostExecHolders",
     "fsPrepareOperation",
     "fnPromoteOperationToInFlight",
     "fnAmendInFlightHolderIdentity",
@@ -790,6 +791,71 @@ def fbAnyHostExecHolderLive(sContainerName):
         if dictProbe["bHolderAlive"] or not dictProbe["bSettled"]:
             return True
     return False
+
+
+def flistDescribeHostExecHolders(sContainerName):
+    """Return one description per unsettled ``host-exec`` record.
+
+    The naming half of the host busy oracle: :func:`fbAnyHostExecHolderLive`
+    answers *whether* something may survive, this answers *what* — the
+    operation label, the recorded identity, and whether that identity is
+    still PROVABLE — for the two surfaces that must act on a specific
+    process group rather than on a yes/no: Cancel, and the quarantine
+    view that offers to terminate what it names. Read-only; nothing is
+    settled, persisted, or signalled here.
+
+    ``bHolderProven`` uses the record's own recycle-proof prover, so a
+    caller signalling on it agrees with the busy oracle by construction
+    rather than by a second, drifting judgement. It is the caller's job
+    to refuse to signal when the flag is False — a PID that vanished
+    may have been handed to an unrelated process, and its process group
+    with it.
+
+    Unlike the fail-safe predicate, an unreadable journal RAISES here.
+    A veto can honestly answer "assume busy" without knowing anything;
+    an action that is about to send a signal cannot, and inventing an
+    empty list would report "nothing to cancel" about a project whose
+    records could not be read at all.
+    """
+    dictOutcomeRead = fdictReadJournalOutcome(sContainerName)
+    if dictOutcomeRead["sReadState"] not in ("absent", "valid"):
+        raise OperationJournalUnreadableError(
+            f"Cannot name the host-exec holders of '{sContainerName}': "
+            f"its journal read as {dictOutcomeRead['sReadState']} "
+            f"({dictOutcomeRead['sDetail']})"
+        )
+    listHolders = []
+    for sOperationId, dictRecord in sorted(
+        dictOutcomeRead["dictOperations"].items(),
+    ):
+        if dictRecord.get("sKind") != "host-exec":
+            continue
+        listHolders.append(
+            _fdictDescribeHostExecHolder(sOperationId, dictRecord),
+        )
+    return listHolders
+
+
+def _fdictDescribeHostExecHolder(sOperationId, dictRecord):
+    """Return one host-exec record's identity plus its proven flag."""
+    iHolderPid = dictRecord.get("iHolderPid")
+    iHolderProcessGroup = dictRecord.get("iHolderProcessGroup")
+    bHolderProven = (
+        fbIsUsablePid(iHolderPid)
+        and fbIsUsablePid(iHolderProcessGroup)
+        and fbIsProcessAliveSince(
+            iHolderPid, dictRecord.get("sInFlightIso"),
+        )
+    )
+    return {
+        "sOperationId": sOperationId,
+        "sOperationLabel": dictRecord.get("sTarget", ""),
+        "sState": dictRecord.get("sState", ""),
+        "sInFlightIso": dictRecord.get("sInFlightIso", ""),
+        "iHolderPid": iHolderPid,
+        "iHolderProcessGroup": iHolderProcessGroup,
+        "bHolderProven": bHolderProven,
+    }
 
 
 def _fdictProbeExecOperation(dictRecord, connectionDocker):

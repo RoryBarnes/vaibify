@@ -893,13 +893,50 @@ var VaibifyPipelineRunner = (function () {
         );
     }
 
+    function _fsKillConfirmationBody() {
+        /* A host project has no container, and telling a researcher
+           their processes will be stopped "in the container" while
+           vaibify is about to send signals on their own machine is
+           the mode being invisible at the moment it matters most.
+           The host wording is the weaker claim host mode is allowed
+           to make: vaibify can stop what it started, and cannot
+           speak for anything that detached from it. */
+        if (VaibifyApp.fsGetProjectMode() === "host") {
+            return "This will stop the pipeline processes vaibify " +
+                "started on this machine.\n\n" +
+                "Any in-progress computations will be lost. A command " +
+                "that detached into its own session is not something " +
+                "vaibify can see or stop.";
+        }
+        return "This will kill all running pipeline processes " +
+            "in the container.\n\n" +
+            "Any in-progress computations will be lost.";
+    }
+
+    function _fnReportKillOutcome(dictResult) {
+        /* A refusal is reported, never rounded down into the count.
+           The server declines to signal a run whose journaled identity
+           it can no longer prove, because that process id may since
+           have been handed to something else — and a researcher shown
+           only "0 process(es)" would reasonably conclude their machine
+           is quiet. */
+        var listRefusals = dictResult.listCancellationRefusals || [];
+        VaibifyApp.fnShowToast(
+            "Killed " + dictResult.iProcessesKilled +
+            " process(es)", "success");
+        if (listRefusals.length > 0) {
+            VaibifyApp.fnShowToast(
+                listRefusals.length + " recorded run(s) could not be " +
+                "identified and were left alone — run " +
+                "'vaibify reconcile' to settle them", "error");
+        }
+    }
+
     function fnKillPipeline() {
         var sContainerId = VaibifyApp.fsGetContainerId();
         VaibifyApp.fnShowConfirmModal(
             "Stop All Tasks",
-            "This will kill all running pipeline processes " +
-            "in the container.\n\n" +
-            "Any in-progress computations will be lost.",
+            _fsKillConfirmationBody(),
             async function () {
                 try {
                     var dictResult = await VaibifyApi.fdictPostRaw(
@@ -908,9 +945,7 @@ var VaibifyPipelineRunner = (function () {
                     if (dictResult.bSuccess) {
                         VaibifyApp.fnClearAllStepStatuses();
                         VaibifyApp.fnRenderStepList();
-                        VaibifyApp.fnShowToast(
-                            "Killed " + dictResult.iProcessesKilled +
-                            " process(es)", "success");
+                        _fnReportKillOutcome(dictResult);
                     } else {
                         VaibifyApp.fnShowToast(
                             "Kill failed", "error");

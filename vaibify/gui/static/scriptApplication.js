@@ -19,6 +19,12 @@ const VaibifyApp = (function () {
         sLeaseId: "",
         sLeaseContainerName: null,
         bSessionExpiryWarned: false,
+        /* The server's answer, stored so panels that must speak
+           differently about a host project ask one place rather than
+           each inferring the mode for themselves. Defaults to the
+           container so an older server that sends no mode renders
+           exactly what it always did. */
+        sProjectMode: "container",
     };
 
     var _S_LEASE_STORAGE_KEY = "vaibifyContainerLease";
@@ -522,6 +528,7 @@ const VaibifyApp = (function () {
            workflow toolbar, and two elements with one rule cannot
            disagree the way two rules would. */
         var bHost = sProjectMode === "host";
+        _dictSessionState.sProjectMode = bHost ? "host" : "container";
         document.querySelectorAll(".host-mode-badge").forEach(
             function (elBadge) {
                 elBadge.style.display = bHost ? "" : "none";
@@ -4823,6 +4830,9 @@ const VaibifyApp = (function () {
         _fnInvalidateAllRenderCaches: _fnInvalidateAllRenderCaches,
         fsGetContainerId: function () {
             return _dictSessionState.sContainerId;
+        },
+        fsGetProjectMode: function () {
+            return _dictSessionState.sProjectMode;
         },
         fsGetSessionToken: function () {
             return _dictSessionState.sSessionToken;

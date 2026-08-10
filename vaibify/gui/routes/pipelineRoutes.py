@@ -288,6 +288,59 @@ async def _fiCountThenKillUnderTheDrain(
     )
 
 
+async def _fiSweepContainerProcesses(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
+):
+    """Return how many of the workflow's container processes were killed.
+
+    A workflow whose steps name no killable command yields no pattern,
+    and no sweep runs — an empty grep alternation matches every line.
+    """
+    listPatterns = _flistExtractKillPatterns(dictWorkflow)
+    sGrepPattern = "|".join(re.escape(sPattern) for sPattern in listPatterns)
+    if not sGrepPattern:
+        return 0
+    return await _fiCountThenKillUnderTheDrain(
+        dictCtx, sContainerId, listPatterns, sGrepPattern, requestHttp,
+    )
+
+
+async def _fdictCancelHostRunUnderTheDrain(sResourceName, requestHttp):
+    """Terminate the project's journaled process groups under one drain.
+
+    The host counterpart of the count-then-kill sweep above, and it is
+    a REPLACEMENT rather than a variant: that sweep pattern-matches a
+    process table, which is safe inside a container whose whole process
+    table belongs to vaibify and catastrophic on the researcher's own
+    machine, where the same script name may be open in their editor.
+    What may be signalled on the host is only what vaibify journaled
+    when it started it — see ``vaibify/host/hostCancellation.py`` for
+    why an unprovable identity is refused rather than guessed.
+
+    Mode (b) and the drain is held for the same reason the container
+    sweep holds it: an ownership hand-over must not commit against a
+    project this request is still sending signals into.
+
+    An unreadable journal raises out of the worker and poisons, which
+    is correct — a Cancel that cannot read the record of what is
+    running has produced genuinely unknown state, and that is what
+    reconciliation exists for.
+    """
+    from vaibify.host import hostCancellation
+
+    def fdictTerminateJournaledGroups(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: hostCancellation.fdictCancelJournaledHostRun(
+                sResourceName,
+            ),
+        )
+    return await fgenericRunWorkerUnderTheDrain(
+        sResourceName, fdictTerminateJournaledGroups, "kill-pipeline",
+        requestHttp,
+    )
+
+
 def _fiCountAndKillMatchingProcesses(
     connectionDocker, sContainerId, listPatterns, sGrepPattern,
 ):
@@ -469,15 +522,16 @@ def _fnRegisterPipelineKill(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         bTaskCancelled = _fbCancelPipelineTask(
             dictCtx["pipelineTasks"], sContainerId)
-        listPatterns = _flistExtractKillPatterns(dictWorkflow)
-        listSafe = [re.escape(s) for s in listPatterns]
-        sGrepPattern = (
-            "|".join(listSafe) if listSafe else "")
-        iCountBefore = 0
-        if sGrepPattern:
-            iCountBefore = await _fiCountThenKillUnderTheDrain(
-                dictCtx, sContainerId, listPatterns, sGrepPattern,
-                requestHttp,
+        listRefused = []
+        if fbIsHostProject(sContainerId):
+            dictCancelled = await _fdictCancelHostRunUnderTheDrain(
+                sContainerId, requestHttp,
+            )
+            iCountBefore = dictCancelled["iGroupsTerminated"]
+            listRefused = dictCancelled["listRefused"]
+        else:
+            iCountBefore = await _fiSweepContainerProcesses(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
             )
         await _fnMarkPipelineStopped(
             dictCtx, sContainerId, requestHttp,
@@ -486,6 +540,12 @@ def _fnRegisterPipelineKill(app, dictCtx):
             "bSuccess": True,
             "iProcessesKilled": iCountBefore,
             "bTaskCancelled": bTaskCancelled,
+            # A refusal to signal is reported, never folded into the
+            # count: "0 processes" for a run vaibify declined to touch
+            # would tell the researcher their machine is quiet when it
+            # may not be. Always present, empty on the container leg,
+            # so the dashboard reads one shape.
+            "listCancellationRefusals": listRefused,
         }
 
 
