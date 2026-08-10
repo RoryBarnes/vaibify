@@ -307,6 +307,21 @@ unifying the path handling itself would silently mangle one lane or
 the other, and the failure would not surface until a cross-platform
 user hit it.
 
+**Host mode does not repeal that rule; it survives it by staying
+POSIX.** A host project's pipeline runs on the researcher's own
+machine, so `workflowManager` now composes paths that are host paths —
+and it still uses `posixpath`, deliberately. Host mode is macOS and
+Linux only, where `posixpath` and `os.path` are the same module, so one
+implementation serves both modes exactly. The boundary is Windows: the
+step commands are composed `bash -c` text and the POSIX path guards
+weaken silently there, so Windows is refused rather than accommodated,
+and this paragraph is the reason a reader will not find a host-path
+fork of the workflow manager. One was tried (the withdrawn
+`director` module) and abandoned — swap the connection object, never
+fork the path handling.
+Modules that are host-only (`vaibify/host/`) still use `os.path`,
+because they say what they mean.
+
 **Do not revert to `/workspace`-as-repo.** Every vaibify workflow
 must live inside a git repository — its "project repo" —
 auto-detected from the project.json's parent via

@@ -818,6 +818,89 @@ The `vaibify sessions` CLI (see [CLI Reference](cli.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
 
+## Host mode: the same hub, a different substrate
+
+A project is either **containerized** or **host**. A host project has
+no image, no container and no volume: its pipeline runs directly on the
+researcher's machine, in the directory they registered. It exists
+because the image build ends most first encounters with vaibify before
+they begin (see [philosophy.md](philosophy.md) for the stance, which is
+that the container remains the default and the destination).
+
+Almost nothing above changes, and that is the design. The ownership
+model — flock, lease, two-tab arbitration, orphan and expiry, transfer
+— was already Docker-free and name-keyed, so it is reused whole. The
+mutation boundary is reused whole. The journal is reused whole, with
+one new record kind. What is swapped is the *substrate*, at exactly one
+seam.
+
+**The seam is the connection object.** `dictCtx["docker"]` holds a
+`ConnectionRouter` that dispatches per call on the resource id every
+call site already passes: a Docker container id routes to
+`DockerConnection`, a registry name that names a host project routes to
+`HostConnection` (`vaibify/host/hostConnection.py`), which implements
+the same duck-typed surface against `subprocess` and `os.*`. The
+router's twelve delegations are explicit rather than a dynamic
+`__getattr__`, so the capability inventory can read them. A host-path
+*fork* of the workflow manager was tried once (the withdrawn
+`director` module) and abandoned: swap the connection, never fork the
+path handling.
+
+**Every host subprocess is gated and journaled, with no exceptions.**
+The child is spawned suspended behind a stdin gate in its own session;
+a `host-exec` journal record carrying its recycle-proof identity (PID,
+process group, in-flight stamp) is persisted and identity-gated; only
+then is the gate released. A crash at any point leaves an *identified*
+record rather than a process nobody can name. This is the host
+analogue of Docker's `exec_create → journal → exec_start` split, and it
+is what makes the quiescence claim — "every process vaibify started has
+exited" — sayable at all. The record carries a bounded operation label
+(`pipeline-step:A03`, `git-status`), never command text, because the
+journal's schema allowlist admits no commands.
+
+**What that claim is NOT.** A command can `setsid` out of its process
+group, and nothing in the journal can see it. Host mode therefore never
+says "nothing is running"; it says what it can prove, in the quarantine
+copy, in the Cancel confirmation, and in the CLI. This is the same
+boundary the interactive terminal was withdrawn over.
+
+**Cancel signals a recorded group, never a matched name.** The
+container lane greps its own process table, which is safe there
+because the whole table belongs to vaibify. On the host that same
+sweep matches the researcher's editor. So the host lane signals only
+process groups it journaled, and only while the recorded identity is
+still *provable* — a PID that vanished may have been handed to
+something else. An unprovable record is reported and routed to
+reconciliation, never guessed at (`vaibify/host/hostCancellation.py`).
+
+**Two quarantine exits, and they are not the same act.** A container's
+break-glass stops the container first, so clearing the marker
+afterwards rests on something proven; it refuses a host project by
+name. A host project instead has `--terminate-recorded`, which signals
+the journaled groups and re-runs the proof, and — for a marker too
+damaged to parse — `--abandon-host-journal`, which proves nothing and
+says so. Abandonment writes an attributable audit entry (project name
+*and* canonical directory, marker sha256, UTC timestamp, host uid and
+session) beside the journal, appended and fsynced **before** the marker
+is unlinked and idempotent by marker hash, so "a marker abandoned with
+no record of who abandoned it" is unreachable rather than unlikely.
+
+**Three capabilities are given up by name.** PROOF Level 3 is defined
+by a pinned image; Supervised attribution is only honest when vaibify
+mediates every path to the files; the agent lane does not exist,
+because on the host the agent *is* the user and `bAgentSafe` has no
+discriminator left. Each is refused at its own door with a message
+naming the mode, rather than degrading into a misleading cascade.
+
+**Paths.** Every direct path argument and working directory is
+validated against exactly two roots — the project directory and the
+project's `~/.vaibify/tmp/host-diagnostics/<digest>/` scratch subtree —
+with symlinks resolved before containment is checked. It defends
+against hostile wire input; it deliberately cannot see paths embedded
+inside opaque workflow shell text, and the warning modal owns that
+disclosure. Windows is refused outright: there the `bash -c` command
+composition and the POSIX guards weaken silently rather than failing.
+
 ## Container mutations announce themselves
 
 The section above says a container is owned by one session at a time
