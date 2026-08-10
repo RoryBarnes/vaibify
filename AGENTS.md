@@ -479,11 +479,26 @@ tools/generateMutationInventory.py --write`; drift-check with
   `exec*` / `spawn*` / `popen`, `asyncio.create_subprocess_*`,
   `pty.spawn`, multiprocessing and process pools, Docker client
   constructors and low-level `APIClient` methods, direct Unix-socket
-  access, and reflection (`eval`, `exec`, `sys.modules[...]`,
-  `importlib`, `__import__`, dynamic `getattr`). **This is the
-  completeness boundary and it fails closed.** Importing `os` is not
-  acquisition; `from os import system` is — 33 GUI modules import `os`,
-  so a module-level reading would be useless.
+  access, process signalling (`os.kill` / `os.killpg`), and reflection
+  (`eval`, `exec`, `sys.modules[...]`, `importlib`, `__import__`,
+  dynamic `getattr`). **This is the completeness boundary and it fails
+  closed.** Importing `os` is not acquisition; `from os import system`
+  is — 33 GUI modules import `os`, so a module-level reading would be
+  useless.
+
+  Signalling joined the vocabulary on 2026-08-10 and is worth a
+  sentence, because it is the one member that is not command
+  authority: a signal cannot make a process do anything new, only stop
+  one. It went unrecorded for as long as every signal vaibify sent went
+  to a process vaibify had created and was tracking. Host mode changed
+  that — `hostCancellation` signals a process group named by a number
+  read back out of a journal file, on the researcher's own machine.
+  The scope is the namespaced `os` surface only: a bare
+  `processChild.kill()` on a Popen handle is not matched, because
+  `.kill()` and `.terminate()` are ordinary method names shared with
+  threads and test doubles, and matching them by spelling is the defect
+  this scanner exists to avoid. The launch that produced such a handle
+  is already an acquisition.
 - **Use sites** — decoded calls and commands. **Metadata,
   best-effort.** A launch whose argv the scan cannot read becomes a row
   with an UNKNOWN command, never a site that disappears.

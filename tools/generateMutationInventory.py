@@ -247,6 +247,7 @@ SET_MUTATION_CAPABLE_ACCESS = frozenset({
 # tell a reviewer nothing.
 
 S_CAPABILITY_PROCESS_LAUNCH = "process-launch"
+S_CAPABILITY_PROCESS_SIGNAL = "process-signal"
 S_CAPABILITY_DOCKER_CLIENT = "docker-client"
 S_CAPABILITY_REFLECTION = "reflection"
 S_CAPABILITY_UNIX_SOCKET = "unix-socket"
@@ -285,6 +286,30 @@ SET_OS_PROCESS_MEMBERS = frozenset({
     "system", "popen", "fork", "forkpty", "posix_spawn", "posix_spawnp",
 })
 TUPLE_OS_PROCESS_MEMBER_PREFIXES = ("exec", "spawn")
+
+# ``os``'s process-SIGNALLING surface, admitted 2026-08-10. Signalling
+# is not command authority -- a signal cannot make a process do
+# anything new, only stop one -- which is why this vocabulary went
+# without it for as long as every signal vaibify sent went to a process
+# vaibify had itself created and was tracking: its own keep-alive
+# helper, its own hub, itself.
+#
+# Host mode changed the answer. ``hostCancellation`` signals a process
+# GROUP named by a number read back out of a journal file, on the
+# researcher's own machine, where being wrong stops a stranger's
+# program with the researcher's own authority. A reviewer asking "what
+# can this codebase do to my machine?" should not have to already know
+# that to find out.
+#
+# STATED SCOPE, because it is narrower than the capability: this covers
+# the namespaced ``os`` surface only. A bare ``processChild.kill()`` or
+# ``.terminate()`` on a Popen handle is NOT matched, and deliberately
+# so -- those are ordinary method names shared with threads, tasks and
+# test doubles, and matching them would be exactly the
+# classification-by-spelling defect this module fixed elsewhere. The
+# launch that produced such a handle is already an acquisition, so the
+# object being signalled is in the record even when the signal is not.
+SET_OS_SIGNAL_MEMBERS = frozenset({"kill", "killpg"})
 
 # Reflection obtained without importing anything. Listing only
 # ``importlib`` / ``__import__`` / ``getattr`` would leave
@@ -1063,6 +1088,8 @@ def _fsCapabilityForMember(sModule, sMember):
         TUPLE_OS_PROCESS_MEMBER_PREFIXES,
     ):
         return S_CAPABILITY_PROCESS_LAUNCH
+    if sMember in SET_OS_SIGNAL_MEMBERS:
+        return S_CAPABILITY_PROCESS_SIGNAL
     return None
 
 

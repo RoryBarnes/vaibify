@@ -1,5 +1,5 @@
 {
-  "iAcquisitionCount": 62,
+  "iAcquisitionCount": 69,
   "iRowCount": 327,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
@@ -82,6 +82,19 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
+      "iLine": 116,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "separate-authority",
+      "sDispositionRationale": "`vaibify sessions stop` on the researcher's own host lane, which is outside the carrier's scope by design (design section 8: a trust judgement about the hub itself needs no capability). The PID comes from vaibify's own session registry and is checked for recycle-proof liveness before the signal; the signal is SIGTERM to a hub this user started.",
+      "sFile": "cli/commandSessions.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "fnTerminateSessionPid",
+      "sScopeFingerprint": "9d7aaf5d92949f7a"
+    },
+    {
       "iLine": 6,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -160,6 +173,32 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
+      "iLine": 122,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "separate-authority",
+      "sDispositionRationale": "SIGTERM to the caffeinate helper THIS process launched and holds the pid of. Not a container mutation and reachable from no request lane: it runs on claim/release and at shutdown, so a carrier admission would have nothing to admit.",
+      "sFile": "config/keepAliveManager.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "_fnKillIfRunning",
+      "sScopeFingerprint": "bedf6a6448c7954f"
+    },
+    {
+      "iLine": 736,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.killpg",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Signal 0, delivering nothing -- the journal's own emptiness probe for helper and host-exec records. Callers reach it only through the probe catalog, which has already checked the recorded pid and group are usable.",
+      "sFile": "config/operationJournal.py",
+      "sFingerprint": "0df444706ad02289",
+      "sScope": "_fbProcessGroupIsEmpty",
+      "sScopeFingerprint": "8ca5c8812a6e96ae"
+    },
+    {
       "iLine": 32,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
@@ -171,6 +210,19 @@
       "sFingerprint": "7d8752c4c7ea34c2",
       "sScope": "<module>",
       "sScopeFingerprint": "7d8752c4c7ea34c2"
+    },
+    {
+      "iLine": 48,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Signal 0, delivering nothing -- the shared PID-existence probe behind every lock, lease and journal staleness check. PermissionError counts as alive (the process exists under another user), which is the conservative direction: it never reaps a live holder.",
+      "sFile": "config/processLiveness.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "fbIsProcessAlive",
+      "sScopeFingerprint": "b836618d2023730f"
     },
     {
       "iLine": 11,
@@ -459,7 +511,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 773,
+      "iLine": 824,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "unix-socket",
@@ -472,7 +524,7 @@
       "sScopeFingerprint": "9e460f82d688866b"
     },
     {
-      "iLine": 2269,
+      "iLine": 2294,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -485,7 +537,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 2264,
+      "iLine": 2289,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "reflection",
@@ -628,6 +680,19 @@
       "sScopeFingerprint": "f5f03ff3b7eb02ca"
     },
     {
+      "iLine": 536,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.kill",
+      "sDisposition": "separate-authority",
+      "sDispositionRationale": "The idle self-shutdown signals os.getpid() -- this process, and only this process. The busy veto that precedes it reads dictContainerOwners so a hub can never self-retire mid-run. There is no other target reachable from this call.",
+      "sFile": "gui/serverLifespan.py",
+      "sFingerprint": "670635d843915ac7",
+      "sScope": "_fnIdleShutdownWatchdogLoop",
+      "sScopeFingerprint": "8bdb9f054b58908c"
+    },
+    {
       "iLine": 100,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
@@ -680,7 +745,33 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 51,
+      "iLine": 159,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.killpg",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "Signal 0 delivers nothing: this is an existence probe, not a signal. It answers whether a recorded group still has members, which is what makes host mode's weaker quiescence claim sayable. The same fbIsUsablePid guard applies, so a zero group id can never be probed as the caller's own.",
+      "sFile": "host/hostCancellation.py",
+      "sFingerprint": "0df444706ad02289",
+      "sScope": "fbProcessGroupProvedEmpty",
+      "sScopeFingerprint": "d3cfba689c5c565b"
+    },
+    {
+      "iLine": 139,
+      "iOrdinal": 0,
+      "sAcquisitionKind": "attribute",
+      "sCapability": "process-signal",
+      "sCapabilityName": "os.killpg",
+      "sDisposition": "guarded",
+      "sDispositionRationale": "The one site that signals something vaibify did not create in this process: a host project's journaled process GROUP, on the researcher's own machine. Guarded three ways, each with a registered falsification -- the group is only ever one the host-exec journal recorded; it is signalled only while the holder pid is provably the recorded one (fbIsProcessAliveSince, recycle-proof), an unprovable identity being reported and routed to reconciliation rather than guessed at; and fbIsUsablePid refuses a zero or absent group id, which killpg would otherwise read as the CALLER's own group. Reached from POST /api/pipeline/{id}/kill under a mode-(b) carrier, and from `vaibify reconcile --terminate-recorded` on the host lane.",
+      "sFile": "host/hostCancellation.py",
+      "sFingerprint": "0df444706ad02289",
+      "sScope": "fnTerminateProcessGroup",
+      "sScopeFingerprint": "a8f23b567a894524"
+    },
+    {
+      "iLine": 50,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -9571,7 +9662,7 @@
       "sScopeFingerprint": "1416c2b66127daa3"
     },
     {
-      "iLine": 423,
+      "iLine": 406,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "host/hostConnection.py",

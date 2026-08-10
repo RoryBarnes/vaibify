@@ -9434,4 +9434,17 @@ def _fdictEntry(sRel):
             '    def fdictReadFilesystemUsage(self, sContainerId, sPath):\n'
         ),
     ),
+    # --- Process signalling joins the dangerous vocabulary (2026-08-10) ---
+    Falsification(
+        nodeid=(
+            'tests/testMutationInventory.py::'
+            'testSignallingAProcessIsAnAcquisition'
+        ),
+        source='tools/generateMutationInventory.py',
+        # Emptying the vocabulary returns all seven of this package's
+        # signalling sites to being invisible, including the one that
+        # aims a group kill at a number read off disk.
+        old='SET_OS_SIGNAL_MEMBERS = frozenset({"kill", "killpg"})\n',
+        new='SET_OS_SIGNAL_MEMBERS = frozenset()\n',
+    ),
 ]

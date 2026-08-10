@@ -68,6 +68,18 @@ PATH_PACKAGE = PATH_REPOSITORY / "vaibify"
 # client, a raw daemon socket. Reflection is an acquisition too (R3) but
 # it is not a raw effect -- it is a way of reaching one, and the thing it
 # reaches lands in this list under its own name.
+#
+# ``process-signal`` (admitted to the inventory 2026-08-10) is
+# deliberately NOT here, and the omission is recorded rather than left
+# to look like an oversight. Four of its seven sites pass signal 0,
+# which delivers nothing at all -- they are existence probes wearing a
+# signal's spelling -- and two of the remaining three signal a process
+# THIS process created and holds the pid of, or the hub itself. Listing
+# all seven as raw effects would bury the one that is: the host
+# cancellation group kill. That one carries its review in its inventory
+# disposition, where the reasoning sits next to the code it is about.
+# Revisit if a second signalling site ever aims outside vaibify's own
+# processes.
 SET_RAW_EFFECT_CAPABILITIES = frozenset({
     "process-launch", "docker-client", "unix-socket",
 })

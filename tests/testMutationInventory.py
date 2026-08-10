@@ -581,6 +581,80 @@ def testAnImportedProcessCapabilityIsRecordedWhateverIsDoneWithIt(
 
 
 @pytest.mark.falsification
+def testSignallingAProcessIsAnAcquisition(moduleGenerator):
+    """Stopping a process is a capability, even though it starts none.
+
+    Signalling was outside this vocabulary for as long as every signal
+    vaibify sent went to a process it had created and was tracking. Host
+    mode changed the answer: a host cancellation signals a process GROUP
+    named by a number read back out of a journal file, on the
+    researcher's own machine, where being wrong stops somebody else's
+    program with the researcher's authority. A reviewer asking what this
+    codebase can do to their machine should find that in the record.
+
+    Both spellings, and both call shapes -- a real signal and the
+    signal-0 existence probe -- because the ACQUISITION is the attribute
+    load either way and a scanner that only saw the delivering call
+    would miss the four probe sites entirely.
+
+    Kills: emptying the signalling vocabulary, which returns all seven
+    of this package's signalling sites to being invisible.
+    """
+    for sShape, sSource in {
+        "a group kill": (
+            "import os\n"
+            "def fnStop(iGroup):\n"
+            "    os.killpg(iGroup, 9)\n"
+        ),
+        "a single-process signal": (
+            "import os\n"
+            "def fnStop(iPid):\n"
+            "    os.kill(iPid, 15)\n"
+        ),
+        "a signal-0 existence probe": (
+            "import os\n"
+            "def fbAlive(iPid):\n"
+            "    os.kill(iPid, 0)\n"
+        ),
+        "the module renamed on import": (
+            "import os as operatingSystem\n"
+            "def fnStop(iGroup):\n"
+            "    operatingSystem.killpg(iGroup, 9)\n"
+        ),
+    }.items():
+        listAcquisitions = _flistScanAcquisitions(moduleGenerator, sSource)
+        assert [
+            dictAcquisition["sCapability"]
+            for dictAcquisition in listAcquisitions
+        ] == [moduleGenerator.S_CAPABILITY_PROCESS_SIGNAL], (
+            f"{sShape}: signalling left the record"
+        )
+
+
+def testAnOrdinaryKillMethodIsNotASignallingAcquisition(moduleGenerator):
+    """The stated scope limit, asserted rather than only described.
+
+    ``.kill()`` and ``.terminate()`` are ordinary method names shared
+    with threads, asyncio tasks and test doubles. Matching them by
+    spelling is the classification-by-spelling defect this scanner was
+    rewritten to remove, so the vocabulary covers the namespaced ``os``
+    surface and stops there -- and the launch that produced a real
+    Popen handle is an acquisition already, so the object being
+    signalled is in the record even when the signal is not.
+    """
+    listAcquisitions = _flistScanAcquisitions(
+        moduleGenerator,
+        "def fnStop(threadWorker, taskAsync):\n"
+        "    threadWorker.kill()\n"
+        "    taskAsync.terminate()\n",
+    )
+    assert listAcquisitions == [], (
+        "a bare .kill()/.terminate() was classified as signalling: "
+        f"{listAcquisitions}"
+    )
+
+
+@pytest.mark.falsification
 def testAnAcquisitionInsideAClassOrANestedFunctionIsRecorded(
     moduleGenerator,
 ):
