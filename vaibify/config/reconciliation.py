@@ -39,6 +39,7 @@ __all__ = [
     "fnCleanupAndClearProvenRecords",
     "fdictReconcileCrashTimeJournal",
     "fdictExecuteBreakGlass",
+    "fdictAbandonHostJournal",
 ]
 
 import logging
@@ -360,7 +361,20 @@ def fdictExecuteBreakGlass(
     bytes still hash to ``sExpectedSha256``. ``bHoldFlock=False`` is for
     the live-hub handler, which already holds the container flock
     through its owner record.
+
+    A HOST project is refused here by name. This transaction's only
+    containment is the stop, and a host project has no container to
+    stop: it would find nothing, prove nothing by finding it, and
+    delete the marker anyway — precisely the behaviour
+    :func:`_fnStopContainerOrRefuse` was rewritten to remove. Host
+    projects exit through :func:`fdictAbandonHostJournal`, which does
+    not pretend to prove anything.
     """
+    _fnRefuseHostProject(
+        sContainerName, "The break-glass",
+        "abandon the host journal instead, which records that the "
+        "proof was given up rather than claiming one",
+    )
     fileHandleLock = None
     if bHoldFlock:
         try:
@@ -399,6 +413,124 @@ def fdictExecuteBreakGlass(
         "'%s'", sContainerName,
     )
     return {"bCleared": True, "sContainerName": sContainerName}
+
+
+def _fnRefuseHostProject(sContainerName, sSubject, sAlternative):
+    """Refuse an operation whose containment a host project cannot have."""
+    from vaibify.config.registryManager import fbIsHostProject
+    if fbIsHostProject(sContainerName):
+        raise ReconciliationRefusedError(
+            f"{sSubject} is for containerized projects: '{sContainerName}' "
+            f"runs on this machine and has no container to stop, so "
+            f"{sAlternative}."
+        )
+
+
+def _fnRequireHostProject(sContainerName, sSubject):
+    """Refuse an operation that would give up a proof a container can make."""
+    from vaibify.config.registryManager import fbIsHostProject
+    if not fbIsHostProject(sContainerName):
+        raise ReconciliationRefusedError(
+            f"{sSubject} is for host projects: '{sContainerName}' is "
+            "containerized, and stopping its container PROVES the writer "
+            "gone where abandoning only asserts it. Use "
+            "'vaibify reconcile --break-glass' instead."
+        )
+
+
+def fdictAbandonHostJournal(
+    sContainerName, sExpectedSha256, iPort=0, bHoldFlock=True,
+):
+    """Give up on proving a host project's marker, and record that.
+
+    The honest counterpart of the break-glass for a project with no
+    container. Nothing here proves anything: the researcher asserts
+    that nothing the marker describes survives, and vaibify's whole
+    contribution is to make that assertion **attributable** — who,
+    which project, which exact marker bytes, when — and then to get out
+    of the way.
+
+    The ordering is the guarantee. The audit entry is appended and
+    fsynced BEFORE the marker is unlinked, under the same
+    reconciliation flock the claim path arbitrates on, and the append
+    is idempotent by marker hash. A crash anywhere in between therefore
+    re-runs to completion, and "a marker abandoned with no record of
+    who abandoned it" is unreachable rather than merely unlikely.
+
+    The hash pre-check runs first and has no side effect, so a stale or
+    misdirected request writes no audit entry about a marker it was
+    never going to clear.
+    """
+    _fnRequireHostProject(sContainerName, "Abandoning a journal")
+    fileHandleLock = None
+    if bHoldFlock:
+        fileHandleLock = _ffileAcquireReconciliationLockOrRefuse(
+            sContainerName, iPort, "abandonment",
+        )
+    try:
+        _fnAssertMarkerStillHashesTo(sContainerName, sExpectedSha256)
+        _fnRecordAbandonmentOnce(sContainerName, sExpectedSha256)
+        try:
+            operationJournal.fnBreakGlassClearMalformedJournal(
+                sContainerName, sExpectedSha256,
+            )
+        except operationJournal.OperationJournalError as error:
+            raise ReconciliationRefusedError(str(error))
+    finally:
+        if fileHandleLock is not None:
+            containerLock.fnReleaseContainerLock(fileHandleLock)
+    logger.warning(
+        "Abandoned the journal marker for host project '%s' without "
+        "proof; the abandonment is recorded in the audit beside it",
+        sContainerName,
+    )
+    return {"bCleared": True, "sContainerName": sContainerName}
+
+
+def _ffileAcquireReconciliationLockOrRefuse(sContainerName, iPort, sSubject):
+    """Take the reconciliation flock, or refuse naming the live hub."""
+    try:
+        return containerLock.ffileAcquireReconciliationLock(
+            sContainerName, iPort,
+        )
+    except containerLock.ContainerLockedError:
+        raise ReconciliationRefusedError(
+            f"A live vaibify process holds '{sContainerName}'; route the "
+            f"{sSubject} to that hub with 'vaibify reconcile' instead."
+        )
+
+
+def _fnAssertMarkerStillHashesTo(sContainerName, sExpectedSha256):
+    """Refuse before any side effect when the marker bytes have moved on."""
+    try:
+        operationJournal.fnAssertJournalIsBreakGlassClearable(
+            sContainerName, sExpectedSha256,
+        )
+    except operationJournal.OperationJournalError as error:
+        raise ReconciliationRefusedError(str(error))
+
+
+def _fnRecordAbandonmentOnce(sContainerName, sExpectedSha256):
+    """Append the audit entry unless this marker already has one."""
+    from vaibify.config import abandonmentAudit
+    from vaibify.config.registryManager import fdictGetProject
+    if abandonmentAudit.fbHasRecordedAbandonment(
+        sContainerName, sExpectedSha256,
+    ):
+        return
+    dictProject = fdictGetProject(sContainerName) or {}
+    sDirectory = dictProject.get("sDirectory", "")
+    abandonmentAudit.fnRecordAbandonment(
+        abandonmentAudit.fdictBuildAbandonmentEntry(
+            sContainerName,
+            # Empty stays empty: ``realpath("")`` answers the working
+            # directory, and an audit entry naming whatever directory
+            # the command happened to run in is worse than one
+            # admitting it could not name the project's.
+            os.path.realpath(sDirectory) if sDirectory else "",
+            sExpectedSha256,
+        ),
+    )
 
 
 def _fnStopContainerOrRefuse(fnStopContainerByName, sContainerName):

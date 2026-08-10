@@ -55,8 +55,17 @@ def _fnPrintJournalRecords(sContainerName, listRecords):
 
 
 def _fiReportMalformedJournal(sContainerName, error):
-    """Explain a non-valid journal and name the break-glass path."""
+    """Explain a non-valid journal and name the destructive exit.
+
+    WHICH exit depends on the mode, and the difference is not cosmetic.
+    A container's break-glass stops the container first, so clearing
+    the marker afterwards rests on something proven. A host project has
+    no container to stop and therefore no proof to offer, so its exit
+    is named for what it actually does. Printing the container recipe
+    to a host researcher would send them to a command that refuses.
+    """
     from vaibify.config.operationJournal import fsComputeJournalFileSha256
+    from vaibify.config.registryManager import fbIsHostProject
     click.echo(f"Error: {error}", err=True)
     if getattr(error, "sReadState", "") == "requiresUpgrade":
         click.echo(
@@ -65,6 +74,19 @@ def _fiReportMalformedJournal(sContainerName, error):
         )
         return 1
     sMarkerSha256 = fsComputeJournalFileSha256(sContainerName)
+    if fbIsHostProject(sContainerName):
+        click.echo(
+            "This project runs on this machine, so there is no container "
+            "to stop and nothing vaibify can prove about what the marker "
+            "describes. If you have inspected it and are willing to "
+            "ASSERT that nothing it describes survives — an assertion "
+            "that will be recorded against your account, this project "
+            "and these exact marker bytes — re-run with:\n"
+            f"  vaibify reconcile {sContainerName} "
+            f"--abandon-host-journal {sMarkerSha256}",
+            err=True,
+        )
+        return 1
     click.echo(
         "If you have inspected the marker and accept destroying it, "
         "re-run with:\n"
@@ -131,6 +153,46 @@ def fiRunCrashTimeBreakGlass(sContainerName, sMarkerSha256):
     return 0
 
 
+def fbConfirmAbandoningTheProof(sContainerName, bAssumeYes):
+    """Ask, in the words of what is being given up, before abandoning.
+
+    The hash argument already makes this deliberate; the prompt exists
+    because "clear the quarantine" and "declare that a proof cannot be
+    made and that you are proceeding anyway" are different acts, and
+    only one of them is what is about to happen.
+    """
+    if bAssumeYes:
+        return True
+    click.echo(
+        f"Host project '{sContainerName}' has a journal marker vaibify "
+        "cannot read, and no container to stop. Abandoning it does not "
+        "prove that the work it describes has ended — it records that "
+        "you asserted so.\n"
+        "Anything the marker describes may still be running on this "
+        "machine right now."
+    )
+    return click.confirm(
+        "Abandon the proof for this project and clear the marker?"
+    )
+
+
+def fiRunCrashTimeAbandonHostJournal(sContainerName, sMarkerSha256):
+    """Abandon a host project's marker; return the process exit code."""
+    try:
+        reconciliation.fdictAbandonHostJournal(
+            sContainerName, sMarkerSha256,
+        )
+    except reconciliation.ReconciliationRefusedError as error:
+        click.echo(f"Abandonment refused: {error}", err=True)
+        return 1
+    click.echo(
+        f"Abandoned the journal marker for host project "
+        f"'{sContainerName}'. Nothing was proven; the assertion is "
+        "recorded beside the journal."
+    )
+    return 0
+
+
 def _fbStopContainerByName(sContainerName):
     """Stop the possibly-relevant container and PROVE it settled.
 
@@ -144,8 +206,7 @@ def _fbStopContainerByName(sContainerName):
 
 
 def _fiRouteToLiveHub(
-    sContainerName, dictHolder, bAssumeYes, sBreakGlassSha256,
-    sForceAbandonOperationId,
+    sContainerName, dictHolder, bAssumeYes, dictDestructive,
 ):
     """Route the operation to the live hub over its control socket."""
     from vaibify.gui.hostControlChannel import (
@@ -166,8 +227,7 @@ def _fiRouteToLiveHub(
         "its host control socket."
     )
     dictRequest = _fdictBuildHubRequest(
-        sContainerName, bAssumeYes, sBreakGlassSha256,
-        sForceAbandonOperationId,
+        sContainerName, bAssumeYes, dictDestructive,
     )
     if dictRequest is None:
         return 1
@@ -194,22 +254,32 @@ def _fiRouteToLiveHub(
     return 0
 
 
-def _fdictBuildHubRequest(
-    sContainerName, bAssumeYes, sBreakGlassSha256,
-    sForceAbandonOperationId,
-):
+def _fdictBuildHubRequest(sContainerName, bAssumeYes, dictDestructive):
     """Build the socket request, showing and confirming the records."""
-    if sForceAbandonOperationId:
+    if dictDestructive["sForceAbandonOperationId"]:
         return {
             "sOperation": "force-abandon",
             "sContainerName": sContainerName,
-            "sExpectedOperationId": sForceAbandonOperationId,
+            "sExpectedOperationId": (
+                dictDestructive["sForceAbandonOperationId"]
+            ),
         }
-    if sBreakGlassSha256:
+    if dictDestructive["sBreakGlassSha256"]:
         return {
             "sOperation": "break-glass",
             "sContainerName": sContainerName,
-            "sMarkerSha256": sBreakGlassSha256,
+            "sMarkerSha256": dictDestructive["sBreakGlassSha256"],
+        }
+    if dictDestructive["sAbandonHostJournalSha256"]:
+        if not fbConfirmAbandoningTheProof(sContainerName, bAssumeYes):
+            click.echo("Abandonment cancelled; the quarantine stands.")
+            return None
+        return {
+            "sOperation": "abandon-host-journal",
+            "sContainerName": sContainerName,
+            "sMarkerSha256": (
+                dictDestructive["sAbandonHostJournalSha256"]
+            ),
         }
     try:
         listRecords = reconciliation.flistDescribeJournalRecords(
@@ -255,18 +325,25 @@ def _fdictBuildHubRequest(
     help="Poison the named wedged operation on the live hub that holds "
          "this container; mutation is refused until reconciled.",
 )
+@click.option(
+    "--abandon-host-journal", "sAbandonHostJournalSha256", default="",
+    help="For a HOST project only: give up on proving a MALFORMED "
+         "marker whose raw bytes hash to this sha256, recording the "
+         "abandonment beside the journal. Proves nothing.",
+)
 def fnReconcileCommand(container, bAssumeYes, sBreakGlassSha256,
-              sForceAbandonOperationId):
+                       sForceAbandonOperationId,
+                       sAbandonHostJournalSha256):
     """Prove a quarantined container's past operations settled."""
     sys.exit(fiRunReconcileCommand(
         container, bAssumeYes, sBreakGlassSha256,
-        sForceAbandonOperationId,
+        sForceAbandonOperationId, sAbandonHostJournalSha256,
     ))
 
 
 def fiRunReconcileCommand(
     sContainerName, bAssumeYes, sBreakGlassSha256="",
-    sForceAbandonOperationId="",
+    sForceAbandonOperationId="", sAbandonHostJournalSha256="",
 ):
     """The reconcile entry: discovery picks the crash or live-hub path."""
     if not fbIsValidProjectName(sContainerName):
@@ -274,11 +351,15 @@ def fiRunReconcileCommand(
             f"Error: invalid container name {sContainerName!r}.", err=True,
         )
         return 2
+    dictDestructive = {
+        "sBreakGlassSha256": sBreakGlassSha256,
+        "sForceAbandonOperationId": sForceAbandonOperationId,
+        "sAbandonHostJournalSha256": sAbandonHostJournalSha256,
+    }
     dictHolder = fdictReadLockHolder(sContainerName)
     if dictHolder:
         return _fiRouteToLiveHub(
-            sContainerName, dictHolder, bAssumeYes, sBreakGlassSha256,
-            sForceAbandonOperationId,
+            sContainerName, dictHolder, bAssumeYes, dictDestructive,
         )
     if sForceAbandonOperationId:
         click.echo(
@@ -289,4 +370,11 @@ def fiRunReconcileCommand(
         return 2
     if sBreakGlassSha256:
         return fiRunCrashTimeBreakGlass(sContainerName, sBreakGlassSha256)
+    if sAbandonHostJournalSha256:
+        if not fbConfirmAbandoningTheProof(sContainerName, bAssumeYes):
+            click.echo("Abandonment cancelled; the quarantine stands.")
+            return 1
+        return fiRunCrashTimeAbandonHostJournal(
+            sContainerName, sAbandonHostJournalSha256,
+        )
     return fiRunCrashTimeReconcile(sContainerName, bAssumeYes)

@@ -11,8 +11,9 @@ foreign uid is closed without a byte of response.
 
 The protocol is a CLOSED, allowlisted operation schema: one JSON line
 in, one JSON line out. The operations shipped here are the ones with
-consumers today — ``reconcile``, ``force-abandon``, ``break-glass``
-(the ``vaibify reconcile`` CLI), ``mint-transfer`` (the ``vaibify open``
+consumers today — ``reconcile``, ``force-abandon``, ``break-glass``,
+``abandon-host-journal`` (the ``vaibify reconcile`` CLI),
+``mint-transfer`` (the ``vaibify open``
 CLI, slice 5), and ``mint-bootstrap`` (the headless ``vaibify do``
 credential, slice 8). Any unlisted opcode is rejected with a defined
 error naming the allowlist.
@@ -77,6 +78,7 @@ logger = logging.getLogger("vaibify")
 S_SOCKET_OPERATION_RECONCILE = "reconcile"
 S_SOCKET_OPERATION_FORCE_ABANDON = "force-abandon"
 S_SOCKET_OPERATION_BREAK_GLASS = "break-glass"
+S_SOCKET_OPERATION_ABANDON_HOST_JOURNAL = "abandon-host-journal"
 S_SOCKET_OPERATION_MINT_TRANSFER = "mint-transfer"
 S_SOCKET_OPERATION_MINT_BOOTSTRAP = "mint-bootstrap"
 
@@ -633,6 +635,53 @@ async def _fdictHandleBreakGlass(app, dictCtx, dictRequest):
     return {"bAccepted": True, "bCleared": dictOutcome["bCleared"]}
 
 
+async def _fdictHandleAbandonHostJournal(app, dictCtx, dictRequest):
+    """Give up on proving a HOST project's malformed marker, recorded.
+
+    The same shape as the break-glass and deliberately a separate
+    opcode rather than a mode branch inside it: what the two do is not
+    the same act. The break-glass stops a container and clears a marker
+    it has therefore made safe; this one clears a marker on a
+    researcher's assertion and writes down whose assertion it was. A
+    single opcode that silently did one or the other depending on a
+    registry lookup would make the audited path reachable by accident.
+    """
+    del dictCtx
+    sName = _fsValidatedContainerName(dictRequest)
+    if not sName:
+        return _fdictRefusal("a valid sContainerName is required")
+    sMarkerSha256 = dictRequest.get("sMarkerSha256", "")
+    if not sMarkerSha256 or not isinstance(sMarkerSha256, str):
+        return _fdictRefusal(
+            "abandon-host-journal requires sMarkerSha256 — the sha256 of "
+            "the raw marker bytes, so a replacement record written since "
+            "the inspection is never cleared"
+        )
+    if not _fbHubHoldsContainerFlock(app.state, sName):
+        return _fdictRefusal(_fsNotHeldHereRefusal(sName))
+    lockMutation = sessionLifecycle.flockContainerMutationForAppState(
+        app.state, sName,
+    )
+    try:
+        await asyncio.wait_for(
+            lockMutation.acquire(), F_RECONCILE_DRAIN_WAIT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        return _fdictRefusal(
+            f"a guarded mutation still holds container '{sName}'s drain"
+        )
+    try:
+        dictOutcome = await asyncio.to_thread(
+            reconciliation.fdictAbandonHostJournal,
+            sName, sMarkerSha256, 0, False,
+        )
+    except reconciliation.ReconciliationRefusedError as error:
+        return _fdictRefusal(str(error))
+    finally:
+        lockMutation.release()
+    return {"bAccepted": True, "bCleared": dictOutcome["bCleared"]}
+
+
 def _fbStopContainerByNameProven(sContainerName):
     """Stop the named container and PROVE it stopped or absent.
 
@@ -748,6 +797,8 @@ _DICT_SOCKET_OPERATION_HANDLERS = {
     S_SOCKET_OPERATION_RECONCILE: _fdictHandleReconcile,
     S_SOCKET_OPERATION_FORCE_ABANDON: _fdictHandleForceAbandon,
     S_SOCKET_OPERATION_BREAK_GLASS: _fdictHandleBreakGlass,
+    S_SOCKET_OPERATION_ABANDON_HOST_JOURNAL:
+        _fdictHandleAbandonHostJournal,
     S_SOCKET_OPERATION_MINT_TRANSFER: _fdictHandleMintTransfer,
     S_SOCKET_OPERATION_MINT_BOOTSTRAP: _fdictHandleMintBootstrap,
 }

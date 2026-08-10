@@ -4521,7 +4521,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that is most of the rise, and it earns its place -- the suite is
     # developed on macOS and CI was the only place the difference could
     # ever appear.
-    "hostControlChannel.py": 833,
+    # +51 (2026-08-10): one more allowlisted opcode,
+    # ``abandon-host-journal`` (host-mode wave 5). Deliberately a
+    # SEPARATE handler rather than a mode branch inside the
+    # break-glass: the two clear the same marker for opposite reasons,
+    # one having proven the writer gone and one having recorded that
+    # nobody could, and a single opcode choosing between them on a
+    # registry lookup would make the unproven path reachable by
+    # accident. The duplication is the point.
+    "hostControlChannel.py": 884,
     # NEW at 823 (2026-08-01): sessionLifecycle.py is the single
     # state-transition authority (design §3) — claim, release,
     # transfer, and now the slice-6 orphan transition commit in one

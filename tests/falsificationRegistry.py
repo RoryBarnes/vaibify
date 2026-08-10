@@ -9115,4 +9115,122 @@ def _fdictEntry(sRel):
             'mode=I_SCRATCH_DIRECTORY_MODE, exist_ok=True)\n'
         ),
     ),
+    # --- Abandoning a host journal (host mode wave 5) ---
+    #
+    # Two exits from a quarantine that look alike and are not: one
+    # proves, one asserts and is recorded. The mutations below are the
+    # ways that distinction can be lost.
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAbandoningRecordsTheAssertionAndThenClearsTheMarker'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # An anonymous deletion. Everything a researcher sees is
+        # identical; the only difference is that nobody can ever say
+        # who gave up on this project's proof.
+        old=(
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testTheAuditIsOnDiskBeforeTheMarkerIsUnlinked'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # The ordering inverted: unlink first, record after. Correct in
+        # every run that finishes, and unrecoverable in the one that
+        # does not.
+        old=(
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+            '        try:\n'
+        ),
+        new=(
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+            '        try:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testRerunningAfterACrashRecordsOneEventNotTwo'
+        ),
+        source='vaibify/config/reconciliation.py',
+        old=(
+            '    if abandonmentAudit.fbHasRecordedAbandonment(\n'
+            '        sContainerName, sExpectedSha256,\n'
+            '    ):\n'
+            '        return\n'
+        ),
+        new='    if False:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAContainerProjectCannotBeAbandoned'
+        ),
+        source='vaibify/config/reconciliation.py',
+        old=(
+            '    _fnRequireHostProject(sContainerName, '
+            '"Abandoning a journal")\n'
+        ),
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAHostProjectCannotBeBreakGlassed'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # The other direction: the PROVING exit run against a project
+        # it can prove nothing about. It stops nothing, learns nothing
+        # by stopping nothing, and clears the marker regardless.
+        old=(
+            'def _fnRefuseHostProject(sContainerName, sSubject, '
+            'sAlternative):\n'
+            '    """Refuse an operation whose containment a host project '
+            'cannot have."""\n'
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if fbIsHostProject(sContainerName):\n'
+        ),
+        new=(
+            'def _fnRefuseHostProject(sContainerName, sSubject, '
+            'sAlternative):\n'
+            '    """Refuse an operation whose containment a host project '
+            'cannot have."""\n'
+            '    from vaibify.config.registryManager import '
+            'fbIsHostProject\n'
+            '    if False:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAbandonHostJournal.py::'
+            'testAStaleHashWritesNoAuditAndClearsNothing'
+        ),
+        source='vaibify/config/reconciliation.py',
+        # Recording the assertion before checking the hash: a
+        # misdirected request then leaves behind an audit entry saying
+        # a researcher abandoned a marker they never touched.
+        old=(
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+        ),
+        new=(
+            '        _fnRecordAbandonmentOnce('
+            'sContainerName, sExpectedSha256)\n'
+            '        _fnAssertMarkerStillHashesTo('
+            'sContainerName, sExpectedSha256)\n'
+        ),
+    ),
 ]
