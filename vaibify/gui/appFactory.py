@@ -219,7 +219,26 @@ def fappCreateHubApplication(iExpectedPort=0):
 def _fnRegisterHubLockLifecycle(app):
     """Reap stale claims at startup; release held locks at shutdown."""
     _fnRegisterHubStartupReapStaleClaims(app)
+    _fnRegisterHubStartupSweepHostScratch(app)
     _fnRegisterHubShutdownReleaseLocks(app)
+
+
+def _fnRegisterHubStartupSweepHostScratch(app):
+    """Retire unreachable host-mode scratch before the hub serves.
+
+    Registered HERE and not beside the ephemeral-secret sweep, which
+    is gated on enumerating what the Docker daemon still bind-mounts
+    and skips itself entirely when that enumeration fails. A host-only
+    hub has no daemon to ask, and nothing in this subtree is mounted
+    into anything, so tying the two together would mean the scratch of
+    a daemon-less machine is never swept at all.
+    """
+
+    async def fnSweepHostScratch(app):
+        del app
+        from vaibify.host.hostScratch import fnSweepStaleHostScratch
+        fnSweepStaleHostScratch()
+    app.state.listLifespanStartup.append(fnSweepHostScratch)
 
 
 def _fnRegisterHubStartupReapStaleClaims(app):

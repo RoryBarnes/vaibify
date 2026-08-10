@@ -9014,4 +9014,105 @@ def _fdictEntry(sRel):
         new='        if (true) {\n',
         old='        if (listRefusals.length > 0) {\n',
     ),
+    # --- The host-diagnostics sweeper (host mode wave 5) ---
+    #
+    # A sweeper does permanent harm by working correctly on the wrong
+    # tree, and this repository has already lost a container to one.
+    # Both directions of the TTL, plus the two ways a traversal can be
+    # talked into following a link out of the subtree.
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testStaleOperationDirectoriesGoAndRecentOnesStay'
+        ),
+        source='vaibify/host/hostScratch.py',
+        old='    if dictOperation["fModifiedEpoch"] >= fCutoff:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testAPlantedSymlinkIsUnlinkedAndItsTargetSurvives'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # Describing entries through the link: the age read becomes the
+        # TARGET's age and the size becomes the target's size, so the
+        # sweeper is deciding about somebody else's file.
+        old='        tStat = os.lstat(sPath)\n',
+        new='        tStat = os.stat(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testAPlantedSymlinkToADirectoryIsUnlinkedNotWalked'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # The module's entire symlink discipline is this one line.
+        # Without the islink half, a link TO a directory is a directory
+        # to every traversal and removal here: rmtree then refuses the
+        # symlinked root and the ignored error leaves the entry forever.
+        # Not observable to the link-to-a-FILE test beside it, which is
+        # why that case is scored separately.
+        old=(
+            '    return os.path.isdir(sPath) and not '
+            'os.path.islink(sPath)\n'
+        ),
+        new='    return os.path.isdir(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testTheCredentialStoreBesideTheSubtreeIsNeverTouched'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # Rooting the traversal one level up, at the shared parent. The
+        # sweep then walks the ephemeral credential store, where age is
+        # emphatically not evidence of garbage and where a deletion has
+        # already cost this project a container.
+        old=(
+            '    for sProjectPath in _flistScanPathsQuietly('
+            '_S_HOST_DIAGNOSTICS_ROOT):\n'
+            '        if not _fbIsRealDirectory(sProjectPath):\n'
+            '            listOperations.append('
+            '_fdictDescribeEntry(sProjectPath))\n'
+        ),
+        new=(
+            '    for sProjectPath in _flistScanPathsQuietly('
+            'os.path.dirname(_S_HOST_DIAGNOSTICS_ROOT)):\n'
+            '        if not _fbIsRealDirectory(sProjectPath):\n'
+            '            listOperations.append('
+            '_fdictDescribeEntry(sProjectPath))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testTheByteCapRetiresTheOldestSurvivorsFirst'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # Newest-first: the cap still holds and the capture the
+        # researcher is most likely to want is the one thrown away.
+        old=(
+            '        listOperations, key=lambda dictEntry: '
+            'dictEntry["fModifiedEpoch"],\n'
+        ),
+        new=(
+            '        listOperations, key=lambda dictEntry: '
+            '-dictEntry["fModifiedEpoch"],\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostScratchSweeper.py::'
+            'testEveryLevelOfTheSubtreeIsPrivateToTheUser'
+        ),
+        source='vaibify/host/hostScratch.py',
+        # The obvious one-liner. Its leaf is 0700 and every level above
+        # it is the default, which is what the first draft shipped.
+        old='    _fnEnsurePrivateDirectory(sDirectory)\n',
+        new=(
+            '    os.makedirs(sDirectory, '
+            'mode=I_SCRATCH_DIRECTORY_MODE, exist_ok=True)\n'
+        ),
+    ),
 ]

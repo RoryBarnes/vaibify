@@ -12,13 +12,13 @@ import stat
 import pytest
 
 from vaibify.config import containerLock, operationJournal
-from vaibify.host import hostConnection
+from vaibify.host import hostScratch
 from vaibify.host.hostConnection import (
     HostConnection,
     HostPathOutsideProjectError,
     UnknownHostProjectError,
-    fsHostScratchRootForProject,
 )
+from vaibify.host.hostScratch import fsHostScratchRootForProject
 
 S_PROJECT_NAME = "host-conn-proj"
 
@@ -33,8 +33,11 @@ def fixtureIsolateJournalAndScratch(tmp_path, monkeypatch):
     monkeypatch.setattr(
         containerLock, "_S_LOCK_DIRECTORY", str(tmp_path / "locks"),
     )
+    # Patched on hostScratch, which OWNS the subtree layout; the
+    # connection imports the derivation rather than keeping a
+    # second copy of it, so there is one place to redirect.
     monkeypatch.setattr(
-        hostConnection, "_S_HOST_DIAGNOSTICS_ROOT",
+        hostScratch, "_S_HOST_DIAGNOSTICS_ROOT",
         str(tmp_path / "host-diagnostics"),
     )
 

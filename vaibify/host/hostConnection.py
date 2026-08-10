@@ -42,7 +42,6 @@ __all__ = [
     "HostConnection",
     "HostPathOutsideProjectError",
     "UnknownHostProjectError",
-    "fsHostScratchRootForProject",
     "F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS",
 ]
 
@@ -59,15 +58,12 @@ from vaibify.host.hostCancellation import (
     fbProcessGroupProvedEmpty,
     fnTerminateProcessGroup,
 )
+from vaibify.host.hostScratch import fsHostScratchRootForProject
 
 I_MAX_FETCH_FILE_BYTES = 64 * 1024 * 1024
 I_STREAM_CHUNK_BYTES = 1048576
 F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS = 300.0
 I_NEW_FILE_MODE = 0o644
-
-_S_HOST_DIAGNOSTICS_ROOT = os.path.join(
-    os.path.expanduser("~"), ".vaibify", "tmp", "host-diagnostics",
-)
 
 # The child blocks on its stdin until the parent has journaled its
 # identity, then becomes the command via exec — so the command's first
@@ -86,19 +82,6 @@ class HostPathOutsideProjectError(RuntimeError):
 
 class UnknownHostProjectError(RuntimeError):
     """The resource id does not name a registered host project."""
-
-
-def fsHostScratchRootForProject(sProjectRoot):
-    """Return the project's scratch subtree, keyed by canonical identity.
-
-    The key is a digest of the realpath rather than the display name so
-    a reused project name can never inherit another directory's scratch
-    space, and so the directory name is filesystem-safe by construction.
-    """
-    sCanonicalIdentity = hashlib.sha256(
-        os.path.realpath(sProjectRoot).encode("utf-8"),
-    ).hexdigest()[:16]
-    return os.path.join(_S_HOST_DIAGNOSTICS_ROOT, sCanonicalIdentity)
 
 
 def _fsResolveRegisteredHostProjectRoot(sResourceId):
