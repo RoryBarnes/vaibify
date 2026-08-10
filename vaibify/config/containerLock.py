@@ -63,12 +63,45 @@ class ContainerQuarantinedError(ContainerLockedError):
         self.iHolderPort = 0
         self.sReason = sReason
         RuntimeError.__init__(
-            self,
+            self, _fsDescribeQuarantine(sProjectName, sReason),
+        )
+
+
+def _fsDescribeQuarantine(sProjectName, sReason):
+    """Return the quarantine sentence, in the vocabulary of the mode.
+
+    A containerized researcher is told a past operation could not be
+    proven settled and that reconciliation must run first — the
+    container is the thing being held.
+
+    A HOST researcher is told something different and more alarming,
+    because it is: the work vaibify cannot prove has ended is running
+    on the machine they are sitting at. So the host sentence names what
+    is still detected, why ownership stays locked, the three things
+    they can do about it, and — required by the weaker guarantee host
+    mode is allowed to make — that a command which detached into its
+    own session is invisible to all of this. Telling that researcher to
+    reconcile "this container" would send them looking for one that
+    does not exist.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    if not fbIsHostProject(sProjectName):
+        return (
             f"Container '{sProjectName}' is quarantined: {sReason}. A "
             "journaled operation from a previous session could not be "
             "proven settled; reconciliation is required before this "
-            "container can be claimed.",
+            "container can be claimed."
         )
+    return (
+        f"Host run not settled. Vaibify still detects the process group "
+        f"it started for project '{sProjectName}': {sReason}. To prevent "
+        "overlapping work in this project, ownership remains locked. "
+        "Wait for it to finish, run "
+        f"'vaibify reconcile {sProjectName}' to retry verification, or "
+        f"'vaibify reconcile {sProjectName} --terminate-recorded' to "
+        "terminate the processes vaibify recorded. Vaibify cannot "
+        "detect processes that detached into a new session."
+    )
 
 
 class ContainerBusyOperationError(ContainerLockedError):

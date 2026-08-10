@@ -9233,4 +9233,72 @@ def _fdictEntry(sRel):
             'sContainerName, sExpectedSha256)\n'
         ),
     ),
+    # --- What a quarantined HOST project says and offers (wave 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testAHostQuarantineNamesTheMachineAndWhatCannotBeSeen'
+        ),
+        source='vaibify/config/containerLock.py',
+        old='    if not fbIsHostProject(sProjectName):\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testAContainerQuarantineKeepsItsOwnSentence'
+        ),
+        source='vaibify/config/containerLock.py',
+        # The other direction: every containerized researcher told to
+        # terminate recorded host processes for work that runs
+        # somewhere else entirely.
+        old='    if not fbIsHostProject(sProjectName):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testTerminateRecordedSignalsTheJournaledGroupThenReproves'
+        ),
+        source='vaibify/cli/commandReconcile.py',
+        # Terminate, report, stop. The machine changes and the
+        # dashboard does not: the project stays quarantined by the very
+        # record the researcher just settled.
+        old=(
+            '        iOutcome = fiTerminateRecordedHostProcesses('
+            'sContainerName)\n'
+            '        if iOutcome != 0:\n'
+            '            return iOutcome\n'
+            '        return fiRunCrashTimeReconcile('
+            'sContainerName, bAssumeYes)\n'
+        ),
+        new=(
+            '        return fiTerminateRecordedHostProcesses('
+            'sContainerName)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testTerminateRecordedRefusesAContainerProject'
+        ),
+        source='vaibify/cli/commandReconcile.py',
+        # Without the mode check a containerized project's journal --
+        # whose holder pids are the HUB's own workers -- is handed to a
+        # process-group terminator.
+        old='    if not fbIsHostProject(sContainerName):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostQuarantineSurface.py::'
+            'testTerminateRecordedRefusesWhileALiveHubHoldsTheProject'
+        ),
+        source='vaibify/cli/commandReconcile.py',
+        # The flag falls through to the terminator while a hub is live,
+        # killing processes it is still streaming from and leaving it
+        # reading pipes whose writers vanished.
+        old='        if bTerminateRecorded:\n',
+        new='        if False:\n',
+    ),
 ]

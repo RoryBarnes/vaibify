@@ -136,6 +136,66 @@ def fiRunCrashTimeReconcile(sContainerName, bAssumeYes):
     return 0
 
 
+def fiTerminateRecordedHostProcesses(sContainerName):
+    """Signal a host project's journaled groups; return the exit code.
+
+    The lever a quarantined host project has and a container does not:
+    there is no container to stop, but every process vaibify started
+    was journaled with a recycle-proof identity, so the ones still
+    wearing that identity can be signalled.
+
+    Crash-time only, and that is a design position rather than a gap. A
+    live hub holding this project's flock OWNS these records; killing
+    them behind its back would leave it streaming from pipes whose
+    writers vanished, and the lever for a wedged worker on a live hub
+    is ``--force-abandon``.
+
+    What it cannot do is stated where the researcher reads it: an
+    unprovable identity is reported, never signalled, and a process
+    that detached into its own session is outside all of this.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.host import hostCancellation
+    if not fbIsHostProject(sContainerName):
+        click.echo(
+            "Error: --terminate-recorded is for host projects. A "
+            f"containerized project like '{sContainerName}' is settled "
+            "by stopping its container, which reconciliation already "
+            "does.", err=True,
+        )
+        return 2
+    try:
+        dictCancelled = hostCancellation.fdictCancelJournaledHostRun(
+            sContainerName,
+        )
+    except Exception as error:
+        click.echo(f"Error: could not read the records: {error}", err=True)
+        return 1
+    _fnReportTerminationOutcome(dictCancelled)
+    return 0
+
+
+def _fnReportTerminationOutcome(dictCancelled):
+    """Print what was signalled, what had ended, and what was refused."""
+    click.echo(
+        f"Terminated {dictCancelled['iGroupsTerminated']} recorded "
+        f"process group(s); "
+        f"{len(dictCancelled['listAlreadyExited'])} had already ended."
+    )
+    for dictRefused in dictCancelled["listRefused"]:
+        click.echo(
+            f"  NOT signalled: {dictRefused['sOperationLabel']} "
+            f"(pid {dictRefused['iHolderPid']}, group "
+            f"{dictRefused['iHolderProcessGroup']}) — "
+            f"{dictRefused['sReason']}", err=True,
+        )
+    click.echo(
+        "Vaibify cannot detect processes that detached into a new "
+        "session; what it proves is that every process it recorded has "
+        "exited."
+    )
+
+
 def fiRunCrashTimeBreakGlass(sContainerName, sMarkerSha256):
     """Run the crash-time break-glass; return the process exit code."""
     try:
@@ -326,24 +386,32 @@ def _fdictBuildHubRequest(sContainerName, bAssumeYes, dictDestructive):
          "this container; mutation is refused until reconciled.",
 )
 @click.option(
+    "--terminate-recorded", "bTerminateRecorded", is_flag=True,
+    help="For a HOST project only: signal the process groups vaibify "
+         "journaled for it, then retry the proof. A record whose "
+         "identity cannot be proven is reported, never signalled.",
+)
+@click.option(
     "--abandon-host-journal", "sAbandonHostJournalSha256", default="",
     help="For a HOST project only: give up on proving a MALFORMED "
          "marker whose raw bytes hash to this sha256, recording the "
          "abandonment beside the journal. Proves nothing.",
 )
 def fnReconcileCommand(container, bAssumeYes, sBreakGlassSha256,
-                       sForceAbandonOperationId,
+                       sForceAbandonOperationId, bTerminateRecorded,
                        sAbandonHostJournalSha256):
     """Prove a quarantined container's past operations settled."""
     sys.exit(fiRunReconcileCommand(
         container, bAssumeYes, sBreakGlassSha256,
         sForceAbandonOperationId, sAbandonHostJournalSha256,
+        bTerminateRecorded,
     ))
 
 
 def fiRunReconcileCommand(
     sContainerName, bAssumeYes, sBreakGlassSha256="",
     sForceAbandonOperationId="", sAbandonHostJournalSha256="",
+    bTerminateRecorded=False,
 ):
     """The reconcile entry: discovery picks the crash or live-hub path."""
     if not fbIsValidProjectName(sContainerName):
@@ -358,9 +426,22 @@ def fiRunReconcileCommand(
     }
     dictHolder = fdictReadLockHolder(sContainerName)
     if dictHolder:
+        if bTerminateRecorded:
+            click.echo(
+                "Error: --terminate-recorded acts on records a live hub "
+                f"no longer owns, and pid={dictHolder.get('iPid')} still "
+                f"holds '{sContainerName}'. Stop that hub first, or use "
+                "--force-abandon for a wedged worker inside it.", err=True,
+            )
+            return 2
         return _fiRouteToLiveHub(
             sContainerName, dictHolder, bAssumeYes, dictDestructive,
         )
+    if bTerminateRecorded:
+        iOutcome = fiTerminateRecordedHostProcesses(sContainerName)
+        if iOutcome != 0:
+            return iOutcome
+        return fiRunCrashTimeReconcile(sContainerName, bAssumeYes)
     if sForceAbandonOperationId:
         click.echo(
             "Error: --force-abandon targets a wedged worker on a LIVE "
