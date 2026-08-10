@@ -341,7 +341,7 @@ def testFrontendEntriesAreDeferredWhenNoBrowserIsInstalled(monkeypatch):
         entry.nodeid in setMarked for entry, _sPhrase in listDeferred
     ), "an entry was deferred without carrying the browser marker"
     assert all(
-        sPhrase == "a browser" for _entry, sPhrase in listDeferred
+        sPhrase == "browser" for _entry, sPhrase in listDeferred
     ), "the deferral did not name the facility it was waiting on"
     assert len(listEvaluable) + len(listDeferred) == len(
         moduleTool.LIST_FALSIFICATIONS
@@ -401,7 +401,7 @@ def testDeferredEntriesAreNamedAndLeftOutOfTheDenominator(monkeypatch, capsys):
     )
     monkeypatch.setattr(
         moduleTool, "_tPartitionRegistryForThisHost",
-        lambda: ([entryJudged], [(entryDeferred, "a live Docker daemon")]),
+        lambda: ([entryJudged], [(entryDeferred, "live Docker daemon")]),
     )
     monkeypatch.setattr(
         moduleTool, "_fdictCaptureOriginals", lambda: {"sourceUnderTest": "alpha"},

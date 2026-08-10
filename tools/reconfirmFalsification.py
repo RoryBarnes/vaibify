@@ -124,6 +124,11 @@ def _fbPlaywrightInstalled():
 # (marker, env var demanding it, availability probe, phrase for the
 # NOT EVALUATED line). Adding a facility is adding a row.
 #
+# The phrase is a bare noun phrase with NO article, because it is read
+# in two grammatical positions -- "needs a <phrase>" and "no <phrase>"
+# -- and an article baked into it makes one of them wrong. It used to
+# read "no a live Docker daemon".
+#
 # Each probe is wrapped rather than named directly so the lookup
 # happens when the partition runs, not when this module is imported --
 # otherwise a test could not substitute "no daemon" or "no browser"
@@ -131,11 +136,11 @@ def _fbPlaywrightInstalled():
 T_DEFERRABLE_FACILITIES = (
     (
         S_LIVE_DAEMON_MARKER, S_REQUIRE_DAEMON_ENV,
-        lambda: _fbDaemonReachable(), "a live Docker daemon",
+        lambda: _fbDaemonReachable(), "live Docker daemon",
     ),
     (
         S_BROWSER_MARKER, S_REQUIRE_BROWSER_ENV,
-        lambda: _fbPlaywrightInstalled(), "a browser",
+        lambda: _fbPlaywrightInstalled(), "browser",
     ),
 )
 
@@ -542,7 +547,7 @@ def fnReconfirmAll(listOnly=()):
     for sNodeId, sStatus in listResults:
         print(f"{sStatus:48}  {sNodeId}")
     for entry, sPhrase in listDeferred:
-        print(f"{'NOT EVALUATED: needs ' + sPhrase:48}  "
+        print(f"{'NOT EVALUATED: needs a ' + sPhrase:48}  "
               f"{entry.nodeid}")
     listBad = [r for r in listResults if not r[1].startswith("KILLED")]
     # A narrowed run cannot speak to registry COMPLETENESS: almost every

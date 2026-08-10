@@ -7748,11 +7748,13 @@ def _fdictEntry(sRel):
         ),
         source='tools/reconfirmFalsification.py',
         # Re-pinned 2026-08-09: the deferral now names WHICH facility
-        # was missing, so the printed line is composed. The kill was
+        # was missing, so the printed line is composed. Re-pinned again
+        # 2026-08-10, when the article moved out of the phrase and into
+        # the sentence ("no a live Docker daemon"). Both kills were
         # hand-replayed against the new spelling.
         old=(
             '    for entry, sPhrase in listDeferred:\n'
-            "        print(f\"{'NOT EVALUATED: needs ' + sPhrase:48}  \"\n"
+            "        print(f\"{'NOT EVALUATED: needs a ' + sPhrase:48}  \"\n"
             '              f"{entry.nodeid}")\n'
         ),
         new='',
