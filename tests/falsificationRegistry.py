@@ -9383,4 +9383,53 @@ def _fdictEntry(sRel):
         old='        _fnShowRefreshPaused(false, "");\n        var dictDiff = _fbBadgeMapChanged(\n',
         new='        var dictDiff = _fbBadgeMapChanged(\n',
     ),
+    # --- The adversarial host path corpus (host mode wave 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testHostPathGuardCorpus.py::'
+            'testEveryPathTakingMethodRefusesEveryHostilePath'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The guard dropped from the ONE method that swallows OSError,
+        # where an escape looks exactly like an ordinary absent file.
+        old=(
+            '                tStat = os.stat(\n'
+            '                    self._fsValidateHostPath('
+            'sContainerId, sPath),\n'
+            '                )\n'
+        ),
+        new='                tStat = os.stat(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostPathGuardCorpus.py::'
+            'testTheLegitimateProjectPathsAreStillAdmitted'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The other direction: a guard that refuses everything is not
+        # secure, it is broken, and a refusal-only corpus cannot tell.
+        old='        for sAllowedRoot in (sProjectRoot, sScratchRoot):\n',
+        new='        for sAllowedRoot in ():\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostPathGuardCorpus.py::'
+            'testEveryPathTakingMethodIsInTheCorpusTable'
+        ),
+        source='vaibify/host/hostConnection.py',
+        # The class-level failure, expressed as what it actually is: a
+        # new path-taking method arriving with no guard and no corpus
+        # entry. The refusal corpus above passes happily beside it.
+        old=(
+            '    def fdictReadFilesystemUsage(self, sContainerId, sPath):\n'
+        ),
+        new=(
+            '    def fbContainerPathIsReadable(self, sContainerId, sPath):\n'
+            '        """A new entry point nobody added to the corpus."""\n'
+            '        del sContainerId\n'
+            '        return os.access(sPath, os.R_OK)\n'
+            '\n'
+            '    def fdictReadFilesystemUsage(self, sContainerId, sPath):\n'
+        ),
+    ),
 ]
