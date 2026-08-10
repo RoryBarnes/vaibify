@@ -63,6 +63,25 @@ class FakeDockerMinimal:
             for sPath in listPaths
         ]
 
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """The repository-status batch, as the typed read answers it."""
+        listStatuses = []
+        for sRepoPath in listRepoPaths:
+            sName = sRepoPath[len("/workspace/"):]
+            if sName not in self.dictRepos:
+                listStatuses.append(
+                    {"sPath": sRepoPath, "bMissing": True},
+                )
+                continue
+            listStatuses.append({
+                "sPath": sRepoPath,
+                "bMissing": False,
+                "sBranch": "main\n",
+                "sUrl": self.dictRepos[sName] + "\n",
+                "sPorcelain": "",
+            })
+        return listStatuses
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if sCommand.startswith("mkdir -p"):
             return (0, "")

@@ -65,6 +65,35 @@ class FakeDocker:
             listAnswers.append(sName in self.dictRepos)
         return listAnswers
 
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """Answer the repository-status batch as the typed read does.
+
+        The RAW shape git prints, not the parsed one: branch and url
+        with their trailing newline, porcelain as real newline-separated
+        lines. The parse is what changed in this migration, so a double
+        that handed back tidy values would test the fixture rather than
+        the code.
+        """
+        listStatuses = []
+        for sRepoPath in listRepoPaths:
+            sName = sRepoPath[len("/workspace/"):]
+            dictRepo = self.dictRepos.get(sName)
+            if dictRepo is None:
+                listStatuses.append(
+                    {"sPath": sRepoPath, "bMissing": True},
+                )
+                continue
+            listStatuses.append({
+                "sPath": sRepoPath,
+                "bMissing": False,
+                "sBranch": dictRepo["sBranch"] + "\n",
+                "sUrl": dictRepo["sUrl"] + "\n",
+                "sPorcelain": (
+                    " M somefile.txt\n" if dictRepo["bDirty"] else ""
+                ),
+            })
+        return listStatuses
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if sCommand.startswith("mkdir -p"):
             return self._ftMkdirCommand(sCommand)

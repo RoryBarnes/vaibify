@@ -192,6 +192,14 @@ DICT_PRIMITIVE_ACCESS = {
     # write was the dashboard's only mutation on a timer.
     "fdictStatPathMtimes": S_ACCESS_TYPED_READ,
     "fsHashContainerFileSha256": S_ACCESS_TYPED_READ,
+    # The Repositories panel's five-second poll, and the first typed
+    # read whose program runs an EXTERNAL binary: git is the only way
+    # to ask git. What varies is still only the path literal, and the
+    # argv around it is fixed text in the program table. It replaced a
+    # shell script the caller ASSEMBLED with repository names
+    # interpolated raw -- the last exec keeping that route outside the
+    # commit-guard boundary.
+    "flistReadGitRepoStatuses": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,

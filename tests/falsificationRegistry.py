@@ -9447,4 +9447,125 @@ def _fdictEntry(sRel):
         old='SET_OS_SIGNAL_MEMBERS = frozenset({"kill", "killpg"})\n',
         new='SET_OS_SIGNAL_MEMBERS = frozenset()\n',
     ),
+    # --- The Repos poll becomes a typed read (2026-08-10) ---
+    #
+    # One migration, five separately-observable guarantees, because the
+    # shell script it replaced was wrong in five separate ways and a
+    # single happy-path test would have covered none of them.
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testTheBatchIssuesNoCommandAtAll'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # The migration undone: back to an exec, and with it the route
+        # goes back outside the commit-guard boundary.
+        old=(
+            '        listRaw = connectionDocker.flistReadGitRepoStatuses(\n'
+            '            sContainerId, listRepoPaths,\n'
+            '        )\n'
+        ),
+        new=(
+            '        listRaw = connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId, "echo []",\n'
+            '        ) and []\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testAnswersAreKeyedByPathNotByPosition'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # Positional matching: the natural way to write it, and
+        # silently wrong -- every repository inherits its neighbour's
+        # branch, url and dirtiness, and the panel looks plausible.
+        old=(
+            '    return [\n'
+            '        _fdictStatusFromRawRecord(sName, dictByPath.get(sPath))\n'
+            '        for sName, sPath in zip(listRepoNames, listRepoPaths)\n'
+            '    ]\n'
+        ),
+        new=(
+            '    return [\n'
+            '        _fdictStatusFromRawRecord(\n'
+            '            sName,\n'
+            '            listRaw[iIndex] if iIndex < len(listRaw) else None,\n'
+            '        )\n'
+            '        for iIndex, sName in enumerate(listRepoNames)\n'
+            '    ]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testAFailedReadReportsMissingRatherThanRaising'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        old='    except (OSError, ValueError):\n',
+        new='    except ():\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testARepositoryNameNeverReachesAShell'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # Names re-entering command text. Distinct from the
+        # no-command mutant above: this one keeps the typed read AND
+        # adds a shell beside it, which is how a migration half-lands.
+        old=(
+            '    listRepoPaths = [\n'
+            '        posixpath.join(sRepoRoot, sName) for sName in listRepoNames\n'
+            '    ]\n'
+        ),
+        new=(
+            '    listRepoPaths = [\n'
+            '        posixpath.join(sRepoRoot, sName) for sName in listRepoNames\n'
+            '    ]\n'
+            '    for sName in listRepoNames:\n'
+            '        connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId, "git -C /workspace/" + sName + " status",\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testTheStatusRouteNoLongerAwaitsACarrierMode'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # Putting it back on the ambient admission, where the
+        # declaration buys nothing.
+        old=(
+            '    ("GET", "/api/pipeline/{sContainerId}/workflow-discovery"),\n'
+            '    ("GET", "/api/repos/{sContainerId}/{sRepoName}/dirty-files"),\n'
+            '    ("GET", "/api/steps/{sContainerId}"),\n'
+        ),
+        new=(
+            '    ("GET", "/api/pipeline/{sContainerId}/workflow-discovery"),\n'
+            '    ("GET", "/api/repos/{sContainerId}/status"),\n'
+            '    ("GET", "/api/repos/{sContainerId}/{sRepoName}/dirty-files"),\n'
+            '    ("GET", "/api/steps/{sContainerId}"),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepoStatusTypedRead.py::'
+            'testAFilenameContainingAPipeNoLongerCorruptsTheAnswer'
+        ),
+        source='vaibify/gui/trackedReposManager.py',
+        # The old transport put back: porcelain split at pipes, so a
+        # filename containing one becomes two lines. Observable only
+        # through the artefact filter, which is why the test's fixture
+        # is an artefact rather than an ordinary file.
+        old='        fsFilterArtifacts(dictRecord.get("sPorcelain") or ""),\n',
+        new=(
+            '        fsFilterArtifacts(\n'
+            '            (dictRecord.get("sPorcelain") or "").replace(\n'
+            '                "|", chr(10),\n'
+            '            ),\n'
+            '        ),\n'
+        ),
+    ),
 ]

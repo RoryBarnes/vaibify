@@ -122,7 +122,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("GET", "/api/pipeline/{sContainerId}/host-log-tail"),
     ("GET", "/api/pipeline/{sContainerId}/state"),
     ("GET", "/api/pipeline/{sContainerId}/workflow-discovery"),
-    ("GET", "/api/repos/{sContainerId}/status"),
     ("GET", "/api/repos/{sContainerId}/{sRepoName}/dirty-files"),
     ("GET", "/api/settings/{sContainerId}"),
     ("GET", "/api/steps/{sContainerId}"),

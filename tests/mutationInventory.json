@@ -1,6 +1,6 @@
 {
   "iAcquisitionCount": 69,
-  "iRowCount": 327,
+  "iRowCount": 328,
   "iUnresolvedSiteCount": 31,
   "listAcquisitions": [
     {
@@ -355,7 +355,7 @@
       "sScopeFingerprint": "2b0dfd1fe935b926"
     },
     {
-      "iLine": 1304,
+      "iLine": 1424,
       "iOrdinal": 0,
       "sAcquisitionKind": "import-from",
       "sCapability": "docker-client",
@@ -459,7 +459,7 @@
       "sScopeFingerprint": "7d8752c4c7ea34c2"
     },
     {
-      "iLine": 181,
+      "iLine": 192,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -771,7 +771,7 @@
       "sScopeFingerprint": "a8f23b567a894524"
     },
     {
-      "iLine": 50,
+      "iLine": 60,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -3048,6 +3048,34 @@
       "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
       "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
       "sPrimitive": "flistDirectoryEntries",
+      "sReferenceKind": "direct-call"
+    },
+    {
+      "bInsideGateway": false,
+      "bMutationCapable": false,
+      "iOrdinal": 0,
+      "listCarrierModes": [
+        "none"
+      ],
+      "listExecutionLanes": [
+        "http",
+        "websocket",
+        "background"
+      ],
+      "listLockOwners": [
+        "none"
+      ],
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "Pure mode dispatch: this row forwards one duck-typed call to the leg the registry mode names (fconnectionForResource), adding no command, path, or authority of its own. The admission gate asserting for this operation lives inside the leg's primitive -- DockerConnection or HostConnection -- which is where the carrier's refusal fires.",
+      "sFile": "gui/connectionRouter.py",
+      "sFingerprint": "9ca0387b62ff5369",
+      "sFunction": "flistReadGitRepoStatuses",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "route one connection call to the Docker or host leg by registry mode",
+      "sOperationMetadata": "resource id decides the leg; a missing Docker leg raises DockerLegUnavailableError",
+      "sPrimitive": "flistReadGitRepoStatuses",
       "sReferenceKind": "direct-call"
     },
     {
@@ -8656,28 +8684,29 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
-        "UNCLASSIFIED"
+        "none"
       ],
       "listExecutionLanes": [
-        "UNCLASSIFIED"
+        "http",
+        "background"
       ],
       "listLockOwners": [
-        "UNCLASSIFIED"
+        "none"
       ],
-      "sAccess": "arbitrary-command",
-      "sCarrierDisposition": "UNCLASSIFIED",
-      "sExclusionRationale": "UNCLASSIFIED",
+      "sAccess": "typed-read",
+      "sCarrierDisposition": "excluded",
+      "sExclusionRationale": "A declared typed read, so it reaches no gated primitive and needs no admission -- which is the point: the Repositories panel polls this every five seconds, and a route on a timer that took the mutation drain would make Run Step refuse at random for as long as the panel stayed open. It replaced a shell script this module ASSEMBLED with repository names interpolated raw into echo and git -C, which was the last exec keeping GET /api/repos/{id}/status outside the commit-guard boundary.",
       "sFile": "gui/trackedReposManager.py",
-      "sFingerprint": "48d062f03a23487b",
+      "sFingerprint": "5ad1a27e598f9dd0",
       "sFunction": "flistBatchComputeRepoStatus",
-      "sJournalKind": "UNCLASSIFIED",
-      "sLifetime": "UNCLASSIFIED",
-      "sLogicalOperation": "UNCLASSIFIED",
-      "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sJournalKind": "none",
+      "sLifetime": "request",
+      "sLogicalOperation": "read branch, remote url and porcelain for every tracked repository in one typed read",
+      "sOperationMetadata": "repository paths only; the git argv is fixed program text in the typed-read table, with core.fsmonitor disabled so a repository cannot choose what the poll runs",
+      "sPrimitive": "flistReadGitRepoStatuses",
       "sReferenceKind": "direct-call"
     },
     {
@@ -9518,7 +9547,7 @@
       "sScopeFingerprint": "60f361fd2a414d1d"
     },
     {
-      "iLine": 623,
+      "iLine": 709,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9527,7 +9556,7 @@
       "sScopeFingerprint": "48b2dac70f916724"
     },
     {
-      "iLine": 487,
+      "iLine": 573,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9536,7 +9565,7 @@
       "sScopeFingerprint": "06a006562db2c70f"
     },
     {
-      "iLine": 1129,
+      "iLine": 1249,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9545,7 +9574,7 @@
       "sScopeFingerprint": "d3b234adfa828f4e"
     },
     {
-      "iLine": 457,
+      "iLine": 543,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9554,7 +9583,7 @@
       "sScopeFingerprint": "4cb7e49aec6101b0"
     },
     {
-      "iLine": 1117,
+      "iLine": 1237,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9563,7 +9592,7 @@
       "sScopeFingerprint": "60430d34c7a6d2f7"
     },
     {
-      "iLine": 1104,
+      "iLine": 1224,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9572,7 +9601,7 @@
       "sScopeFingerprint": "f28373336e34b240"
     },
     {
-      "iLine": 1111,
+      "iLine": 1231,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9581,7 +9610,7 @@
       "sScopeFingerprint": "5775912ab9f828b7"
     },
     {
-      "iLine": 591,
+      "iLine": 677,
       "iOrdinal": 0,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9590,7 +9619,7 @@
       "sScopeFingerprint": "de871645e02ba7a2"
     },
     {
-      "iLine": 586,
+      "iLine": 672,
       "iOrdinal": 1,
       "sBlindSpotKind": "untraceable-docker-sdk-root",
       "sFile": "docker/dockerConnection.py",
@@ -9662,7 +9691,7 @@
       "sScopeFingerprint": "1416c2b66127daa3"
     },
     {
-      "iLine": 406,
+      "iLine": 497,
       "iOrdinal": 0,
       "sBlindSpotKind": "opaque-subprocess-command",
       "sFile": "host/hostConnection.py",

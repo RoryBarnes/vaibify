@@ -105,7 +105,11 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 297 -> 295: the step runner's output-existence sweep stopped
 # writing a pathfile and running xargs over it; the two rows went with
 # the mechanism.
-I_UNCLASSIFIED_ROW_BUDGET = 295
+# 295 -> 294: the Repos panel's per-repository `git status` batch --
+# an assembled shell script -- became one typed read. Its exec row
+# went, two rows arrived (the read and its router delegation), and
+# both were classified in the same change.
+I_UNCLASSIFIED_ROW_BUDGET = 294
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -153,7 +157,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 295
 # on the core RUN path -- a tar write, an xargs, and an rm, three
 # container mutations performed to answer a question about existence,
 # which the batched existence probe answers as a read.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 209
+# 209 -> 208: the LAST exec on the Repos panel's five-second timer.
+# Its git-status batch was a shell script assembled here with
+# repository names interpolated raw; it is a typed read now, and with
+# it gone that route could finally leave the awaiting set.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 208
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -1637,6 +1645,11 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     "read",
     "close",
     "fsResolveDockerHost",
+    # Pure text assembly: looks a program up by NAME in the fixed
+    # table and substitutes the path literal. It makes no call, and it
+    # is module-level rather than a method precisely so the host leg
+    # can share the one table instead of growing a second copy.
+    "fsRenderBatchedTypedReadProgram",
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",

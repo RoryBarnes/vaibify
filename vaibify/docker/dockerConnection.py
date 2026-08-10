@@ -252,6 +252,7 @@ S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
 S_TYPED_READ_PATHS_EXIST = "pathsExist"
 S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
+S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -371,7 +372,92 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    sDigest=''\n"
         "sys.stdout.write(sDigest)\n"
     ),
+    # The Repositories panel's five-second poll. The FIRST typed read
+    # that runs an external program rather than reading the filesystem
+    # directly, which is worth saying out loud: what the caller may
+    # vary is still only the path literal, and the argv around it is
+    # fixed text in this file, so the property that makes a typed read
+    # safe is unchanged. Git is simply the only way to ask git.
+    #
+    # It replaces a shell script this module's own callers ASSEMBLED,
+    # interpolating repository names raw into `echo "..."` and
+    # `git -C /workspace/<name>`, and that shape had four defects at
+    # once. A name is user-chosen text reaching a shell. `echo -n` is
+    # not portable. Porcelain output was squeezed through `tr` with a
+    # pipe as the record separator, so a filename containing `|`
+    # silently corrupted the parse. And, because it was an exec, it
+    # kept the whole route outside the commit-guard boundary: a route
+    # on a five-second timer cannot hold the mutation drain without
+    # making Run Step randomly refuse.
+    #
+    # `-c core.fsmonitor=false` is load-bearing rather than tidiness:
+    # `core.fsmonitor` may name a HOOK COMMAND that `git status`
+    # executes, so a repository could otherwise choose what this poll
+    # runs. The timeout bounds a repository large enough to make
+    # status slow; a repo that times out reports as it does when git
+    # fails, which is the honest answer for "we could not read it".
+    #
+    # Every field falls back to the empty string on any failure, and
+    # bMissing is decided by the presence of `.git` alone, so a
+    # directory that is not a repository is reported as missing rather
+    # than as an error.
+    S_TYPED_READ_GIT_REPO_STATUS: (
+        "import json,os,subprocess,sys\n"
+        "T_FIELDS=(('sBranch',('rev-parse','--abbrev-ref','HEAD')),"
+        "('sUrl',('config','--get','remote.origin.url')),"
+        "('sPorcelain',('status','--porcelain')))\n"
+        "listStatuses=[]\n"
+        "for sPath in " + _S_TYPED_READ_PATH_SLOT + ":\n"
+        "    if not os.path.isdir(os.path.join(sPath,'.git')):\n"
+        "        listStatuses.append({'sPath':sPath,'bMissing':True})\n"
+        "        continue\n"
+        "    dictStatus={'sPath':sPath,'bMissing':False}\n"
+        "    for sField,tArgs in T_FIELDS:\n"
+        "        try:\n"
+        "            processGit=subprocess.run(\n"
+        "                ['git','-c','core.fsmonitor=false','-C',sPath]\n"
+        "                +list(tArgs),\n"
+        "                capture_output=True,text=True,timeout=30)\n"
+        "            dictStatus[sField]=(processGit.stdout\n"
+        "                if processGit.returncode==0 else '')\n"
+        "        except Exception:\n"
+        "            dictStatus[sField]=''\n"
+        "    listStatuses.append(dictStatus)\n"
+        "sys.stdout.write(json.dumps(listStatuses))\n"
+    ),
 }
+
+
+def fsRenderBatchedTypedReadProgram(sOperation, listPaths):
+    """Return the program text for a BATCHED typed-read operation.
+
+    The host leg needs the SAME program text the Docker leg runs, and
+    must not grow a second copy of the table: two tables that had to
+    agree would be a divergence bug waiting for the day somebody edits
+    one. So the table is here and both legs read it.
+
+    List-only by signature, and that is why this is a separate function
+    rather than the assembly inside :meth:`_ftRunTypedRead`: that one
+    accepts a single path OR a sequence, and sharing it would have
+    meant one parameter holding either a string or a list — a shape the
+    naming doctrine has no cast for and would have to grandfather.
+    Every batched program embeds a list literal, so the host leg's
+    caller has no such ambiguity to express.
+
+    The operation NAME is looked up; an unknown one raises rather than
+    running anything, and :func:`_fsTypedReadPathLiteral` still admits
+    nothing but strings into the slot.
+    """
+    sTemplate = _DICT_TYPED_READ_PROGRAMS.get(sOperation)
+    if sTemplate is None:
+        raise ValueError(
+            f"{sOperation!r} is not a declared typed-read operation; "
+            f"the declared set is {sorted(_DICT_TYPED_READ_PROGRAMS)}"
+        )
+    return sTemplate.replace(
+        _S_TYPED_READ_PATH_SLOT,
+        _fsTypedReadPathLiteral(list(listPaths)),
+    )
 
 
 def _fsTypedReadPathLiteral(objPaths):
@@ -886,6 +972,40 @@ class DockerConnection:
                 "answers onto the wrong paths."
             )
         return [bool(bExists) for bExists in listAnswers]
+
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """Return one raw status record per repository path, in order.
+
+        Each record carries ``sPath``, ``bMissing``, and — for a
+        present repository — ``sBranch``, ``sUrl`` and ``sPorcelain``
+        exactly as git printed them. Interpreting those (filtering
+        artefacts, deciding dirtiness) is the caller's business and
+        stays out here: this method's whole job is to get the bytes
+        back without a shell in the middle.
+
+        A failed READ raises ``OSError``, and so does an unparseable
+        answer. A repository git could not answer about is NOT a
+        failed read — it comes back with empty fields, which is the
+        same distinction the poll has always drawn.
+        """
+        if not listRepoPaths:
+            return []
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_GIT_REPO_STATUS,
+            list(listRepoPaths),
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot read repository status in container "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        try:
+            return json.loads(tExecResult.sStdout.strip() or "[]")
+        except ValueError as errorParse:
+            raise OSError(
+                "The repository status read answered unparseable "
+                f"output: {errorParse}"
+            )
 
     def fdictStatPathMtimes(self, sContainerId, listPaths):
         """Return ``{sAbsPath: sMtime}`` for the paths that exist.

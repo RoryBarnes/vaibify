@@ -180,11 +180,6 @@
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
       "sSupportingSymbols": "fnStoreCredentialInContainer, sCommand"
     },
-    "a514d5f704c2c005a27b84a2e737e2e91d8b0db94ae048af4b4aeab3001af6d9": {
-      "sDisposition": "host-variant",
-      "sRationale": "Repository discovery (find /workspace, test -d, git -C) becomes os.scandir and host git execution on the host per the plan.",
-      "sSupportingSymbols": "flistBatchComputeRepoStatus, sScript"
-    },
     "a5f4a17ce71a058c1368170133dd1a31c85e551e60b26e67873ef9a9f772b2d3": {
       "sDisposition": "host-variant",
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
@@ -326,7 +321,7 @@
       "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     }
   },
-  "iRowCount": 132,
+  "iRowCount": 131,
   "iUndisposedSiteBudget": 67,
   "listRows": [
     {
@@ -1173,13 +1168,6 @@
       "sCommandExpression": "sCommand",
       "sEnclosingFunction": "_fsRunGitCommand",
       "sFingerprint": "c610242fd0b06ccd70e000bcad2895135fe56a00577b25aa71633ba47dcd906d",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/trackedReposManager.py"
-    },
-    {
-      "sCommandExpression": "sScript",
-      "sEnclosingFunction": "flistBatchComputeRepoStatus",
-      "sFingerprint": "a514d5f704c2c005a27b84a2e737e2e91d8b0db94ae048af4b4aeab3001af6d9",
       "sMethod": "ftResultExecuteCommand",
       "sModule": "vaibify/gui/trackedReposManager.py"
     },

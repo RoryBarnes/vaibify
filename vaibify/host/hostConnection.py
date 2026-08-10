@@ -32,6 +32,14 @@ Three properties are the contract, in priority order:
    forgets its carrier raises ``MutationNotAdmittedError`` identically
    in both modes.
 
+   With ONE named exception, mirroring the Docker leg's:
+   :meth:`HostConnection._ftRunTypedReadProgram` asserts no admission,
+   because a five-second poll cannot hold the mutation drain without
+   making Run Step refuse at random. It is the host's single grant
+   point, it takes an operation NAME from a fixed table and builds the
+   command itself, and it is still gated and journaled — the record is
+   never what is skipped.
+
 What this class deliberately does NOT implement: container discovery
 (the connection router answers it from the registry), the terminal PTY
 cluster (the terminal is disabled product-wide), and the root shell
@@ -46,14 +54,20 @@ __all__ = [
 ]
 
 import hashlib
+import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
 import threading
 
 from vaibify.config import mutationAdmission
-from vaibify.docker.dockerConnection import ExecResult
+from vaibify.docker.dockerConnection import (
+    ExecResult,
+    S_TYPED_READ_GIT_REPO_STATUS,
+    fsRenderBatchedTypedReadProgram,
+)
 from vaibify.host.hostCancellation import (
     fbProcessGroupProvedEmpty,
     fnTerminateProcessGroup,
@@ -63,6 +77,11 @@ from vaibify.host.hostScratch import fsHostScratchRootForProject
 I_MAX_FETCH_FILE_BYTES = 64 * 1024 * 1024
 I_STREAM_CHUNK_BYTES = 1048576
 F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS = 300.0
+# A typed read answers a poll, so it is bounded far tighter than an
+# ordinary command: a read that has not finished in this long is not
+# going to make the next tick either, and the poll's honest answer is
+# that it could not read.
+F_TYPED_READ_TIMEOUT_SECONDS = 60.0
 I_NEW_FILE_MODE = 0o644
 
 # The child blocks on its stdin until the parent has journaled its
@@ -135,8 +154,10 @@ class HostConnection:
         )
 
     # -----------------------------------------------------------------
-    # Typed reads: direct os.* calls, no subprocess, so the audited-read
-    # exemption is never entered on the host leg.
+    # Typed reads: direct os.* calls. No subprocess, so these enter no
+    # exemption at all -- there is no admission here to suppress. The
+    # one read that DOES need a subprocess (git status, below) has its
+    # own named grant point.
     # -----------------------------------------------------------------
 
     def fbaFetchFile(
@@ -367,6 +388,76 @@ class HostConnection:
         return self._ftLaunchGatedAndStream(
             sContainerId, sCommand, sWorkdir, sUser, fnEmitChunk,
             None, sOperationLabel, fnPhaseCallback=fnPhaseCallback,
+        )
+
+    # -----------------------------------------------------------------
+    # The typed-read grant point (host leg).
+    # -----------------------------------------------------------------
+
+    def flistReadGitRepoStatuses(self, sContainerId, listRepoPaths):
+        """Return one raw status record per repository path, in order.
+
+        The host twin of the Docker leg's method of the same name, and
+        the same JSON shape, so the caller above cannot tell which leg
+        answered.
+        """
+        if not listRepoPaths:
+            return []
+        for sRepoPath in listRepoPaths:
+            self._fsValidateHostPath(sContainerId, sRepoPath)
+        tExecResult = self._ftRunTypedReadProgram(
+            sContainerId, S_TYPED_READ_GIT_REPO_STATUS,
+            list(listRepoPaths),
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot read repository status on the host "
+                f"({tExecResult.sStderr.strip()})"
+            )
+        try:
+            return json.loads(tExecResult.sStdout.strip() or "[]")
+        except ValueError as errorParse:
+            raise OSError(
+                "The repository status read answered unparseable "
+                f"output: {errorParse}"
+            )
+
+    def _ftRunTypedReadProgram(self, sResourceId, sOperationName, listPaths):
+        """Run one NAMED read program; the host leg's single grant point.
+
+        WHY THIS EXISTS AT ALL, since every other host read is a plain
+        ``os.*`` call and needs nothing. Reading a repository's status
+        means running ``git``: there is no other way to ask git. And
+        the Repositories panel asks on a five-second timer, so this
+        cannot assert a command admission the way the two exec methods
+        do — a poll holding the mutation drain is what makes Run Step
+        refuse at random, which this product has already shipped once.
+
+        So this is the host analogue of
+        ``DockerConnection._ftRunTypedRead``, with the same shape and
+        the same reason for it. It takes an operation NAME from a fixed
+        table plus a flat sequence of paths, and **builds the command
+        itself**; it never accepts one. A caller can choose which
+        directories are read, never what runs in them.
+
+        What it does NOT skip is the record. Ruling 12 says every
+        subprocess a host project starts is gated and journaled, and
+        this one is: the launch goes through the same
+        :meth:`_ftLaunchGatedAndStream` as everything else, so its
+        process group is on disk before its first instruction runs and
+        Cancel and the quiescence probes can see it. The admission is
+        what is absent, and only that.
+        """
+        sProgram = fsRenderBatchedTypedReadProgram(
+            sOperationName, listPaths,
+        )
+        return self._ftLaunchGatedAndStream(
+            sResourceId,
+            f"{shlex.quote(sys.executable)} -c "
+            f"{shlex.quote(sProgram)}",
+            None, None, None,
+            F_TYPED_READ_TIMEOUT_SECONDS,
+            f"typed-read:{sOperationName}",
         )
 
     def ftResultExecuteCommand(

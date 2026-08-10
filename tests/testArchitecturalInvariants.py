@@ -4810,7 +4810,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # thread the panel's own sidecar and remote through, and a
     # sibling route module may not import them.
     # −38 (2026-08-05): the lifted drain wrapper, as above.
-    "routes/repoRoutes.py": 786,
+    # +12 (2026-08-10): the status route declares `typed-read` and
+    # threads the project root into the repository-status batch. The
+    # comment carries most of it: this route is a five-second poll, and
+    # the reason it may declare a mode with no carrier is that every
+    # container primitive it reaches is now a declared read.
+    "routes/repoRoutes.py": 798,
     # NEW at 808 (2026-08-05): stepRoutes.py crossed the cap by 8 lines
     # when its last three routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Two of the three could not stay inline:

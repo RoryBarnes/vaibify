@@ -47,6 +47,7 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "flistContainerPathsExist",
     "fdictReadFilesystemUsage",
     "fdictStatPathMtimes",
+    "flistReadGitRepoStatuses",
     "fsHashContainerFileSha256",
     "fiterStreamFile",
 )
@@ -156,6 +157,16 @@ class ConnectionRouter:
         return self.fconnectionForResource(
             sResourceId,
         ).fdictStatPathMtimes(sResourceId, *tArguments, **dictKeywords)
+
+    def flistReadGitRepoStatuses(
+        self, sResourceId, *tArguments, **dictKeywords,
+    ):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).flistReadGitRepoStatuses(
+            sResourceId, *tArguments, **dictKeywords,
+        )
 
     def fsHashContainerFileSha256(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""

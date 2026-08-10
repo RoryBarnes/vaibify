@@ -19,7 +19,8 @@ from vaibify.reproducibility.credentialRedactor import fsRedactCredentials
 from .. import syncDispatcher, trackedReposManager
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
-from ..pipelineServer import fnBumpSyncEpoch
+from ..pipelineServer import WORKSPACE_ROOT, fnBumpSyncEpoch
+from ..projectRoots import fsResolveProjectRoot
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
@@ -28,6 +29,7 @@ from ..routeContext import (
 )
 from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_TYPED_READ,
     ffnDeclareCarrierMode,
 )
 
@@ -135,7 +137,8 @@ def _flistBuildTrackedEntries(
     ]
     listNames = [d["sName"] for d in listStored]
     listStatuses = trackedReposManager.flistBatchComputeRepoStatus(
-        connectionDocker, sContainerId, listNames
+        connectionDocker, sContainerId, listNames,
+        fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT),
     )
     return _flistMergeTrackedWithStatus(
         listStored, listStatuses, setDiscovered)
@@ -242,7 +245,16 @@ def _fdictBuildStatusResponse(connectionDocker, sContainerId):
 def _fnRegisterStatus(app, dictCtx):
     """Register GET /api/repos/{id}/status route."""
 
+    # `typed-read` in the strong form: every container primitive this
+    # route now reaches is a declared typed read -- the sidecar fetch,
+    # the two discovery reads, and the repository-status batch that
+    # used to be an assembled shell script. Nothing here needs an
+    # admission, which is the whole point: the Repositories panel polls
+    # every five seconds, and a route on a timer that took the mutation
+    # drain would make Run Step refuse at random for as long as the
+    # panel stayed open.
     @app.get("/api/repos/{sContainerId}/status")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
     async def fdictHandleRepoStatus(sContainerId: str):
         dictCtx["require"](sContainerId)
         return await asyncio.to_thread(

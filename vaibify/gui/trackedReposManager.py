@@ -372,107 +372,73 @@ def _fdictMissingStatus(sRepoName):
 
 def flistBatchComputeRepoStatus(
     connectionDocker, sContainerId, listRepoNames,
+    sRepoRoot=S_WORKSPACE_ROOT,
 ):
-    """Compute status for multiple repos in a single docker exec."""
+    """Return one status dict per repository name, in the order given.
+
+    One typed read for the whole panel. What this replaced was a SHELL
+    SCRIPT this module assembled, interpolating each repository name
+    raw into ``echo "..."`` and ``git -C /workspace/<name>``, and that
+    shape carried four defects at once: a repository name is
+    user-chosen text reaching a shell; ``echo -n`` is not portable;
+    porcelain output was squeezed through ``tr`` with a pipe as the
+    record separator, so a filename containing ``|`` corrupted the
+    parse; and, being an exec, it kept this whole route outside the
+    commit-guard boundary, because a route on a five-second timer
+    cannot hold the mutation drain without making Run Step refuse at
+    random.
+
+    A failed READ answers "missing" for every repository rather than
+    raising. That is the same answer the shell script's non-zero exit
+    produced, and it is the right one for a poll: the panel's job is to
+    say what it can see, and a read it could not perform is indeed
+    nothing it can see.
+    """
     if not listRepoNames:
         return []
-    sScript = _fsBuildBatchStatusScript(listRepoNames)
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sScript,
-    )
-    if iExitCode != 0 or not sOutput:
-        return _flistFallbackSequential(
-            connectionDocker, sContainerId, listRepoNames)
-    return _flistParseBatchOutput(sOutput, listRepoNames)
-
-
-def _fsBuildBatchStatusScript(listRepoNames):
-    """Build a shell script that dumps status for every repo."""
-    listParts = ['echo "["']
-    for iIdx, sName in enumerate(listRepoNames):
-        sComma = ',' if iIdx > 0 else ''
-        listParts.append(
-            _fsBuildSingleRepoBlock(sName, sComma))
-    listParts.append('echo "]"')
-    return " && ".join(listParts)
-
-
-def _fsBuildSingleRepoBlock(sRepoName, sComma):
-    """Build shell commands that emit one JSON object for sRepoName."""
-    sPath = "/workspace/" + sRepoName
-    return (
-        'echo "' + sComma + '{"'
-        ' && echo "\\"sName\\": \\"' + sRepoName + '\\","'
-        ' && ' + _fsBuildGitFieldCommand(sPath, "sBranch",
-            "rev-parse --abbrev-ref HEAD")
-        + ' && ' + _fsBuildGitFieldCommand(sPath, "sUrl",
-            "config --get remote.origin.url")
-        + ' && ' + _fsBuildPorcelainCommand(sPath)
-        + ' && ' + _fsBuildMissingCheck(sPath)
-        + ' && echo "}"'
-    )
-
-
-def _fsBuildGitFieldCommand(sPath, sFieldName, sGitArgs):
-    """Build shell for one git field: echo key, run git, close quote."""
-    return (
-        'echo -n "\\"' + sFieldName + '\\": \\""'
-        ' && (git -C ' + sPath + ' ' + sGitArgs
-        + ' 2>/dev/null || echo -n "")'
-        ' && echo "\\","'
-    )
-
-
-def _fsBuildPorcelainCommand(sPath):
-    """Build shell for the sPorcelain field using pipe-delimited output."""
-    return (
-        'echo -n "\\"sPorcelain\\": \\""'
-        " && (git -C " + sPath + " status --porcelain"
-        " 2>/dev/null | tr '\\n' '|' || echo -n \"\")"
-        ' && echo "\\","'
-    )
-
-
-def _fsBuildMissingCheck(sPath):
-    """Build shell for the bMissing field via test -d."""
-    return (
-        "if test -d " + sPath + "/.git;"
-        ' then echo "\\"bMissing\\": false";'
-        ' else echo "\\"bMissing\\": true"; fi'
-    )
-
-
-def _flistParseBatchOutput(sOutput, listRepoNames):
-    """Parse the batch script's JSON output into status dicts."""
-    try:
-        listRaw = json.loads(sOutput)
-    except (json.JSONDecodeError, ValueError):
-        return [_fdictMissingStatus(s) for s in listRepoNames]
-    return [_fdictFromRawBatchEntry(d) for d in listRaw]
-
-
-def _fdictFromRawBatchEntry(dictRaw):
-    """Convert one raw batch entry into a clean status dict."""
-    sName = dictRaw.get("sName", "")
-    if dictRaw.get("bMissing", True):
-        return _fdictMissingStatus(sName)
-    sPorcelain = (dictRaw.get("sPorcelain", "") or "")
-    sPorcelain = sPorcelain.replace("|", "\n")
-    sFiltered = fsFilterArtifacts(sPorcelain)
-    return _fdictBuildPresentStatus(
-        sName, (dictRaw.get("sBranch") or "").strip(),
-        sFiltered, (dictRaw.get("sUrl") or "").strip() or None,
-    )
-
-
-def _flistFallbackSequential(
-    connectionDocker, sContainerId, listRepoNames,
-):
-    """Fall back to per-repo status if the batch script fails."""
-    return [
-        fdictComputeRepoStatus(connectionDocker, sContainerId, s)
-        for s in listRepoNames
+    listRepoPaths = [
+        posixpath.join(sRepoRoot, sName) for sName in listRepoNames
     ]
+    try:
+        listRaw = connectionDocker.flistReadGitRepoStatuses(
+            sContainerId, listRepoPaths,
+        )
+    except (OSError, ValueError):
+        return [_fdictMissingStatus(sName) for sName in listRepoNames]
+    return _flistStatusesFromRawRecords(
+        listRaw, listRepoNames, listRepoPaths,
+    )
+
+
+def _flistStatusesFromRawRecords(listRaw, listRepoNames, listRepoPaths):
+    """Turn the read's raw records into status dicts, keyed by path.
+
+    Keyed rather than positional, on the same reasoning the batched
+    stat uses: a short or reordered answer would otherwise realign
+    every repository's status onto the wrong repository, which is a
+    silently wrong panel rather than a visibly broken one.
+    """
+    dictByPath = {
+        dictRecord.get("sPath"): dictRecord
+        for dictRecord in listRaw
+        if isinstance(dictRecord, dict)
+    }
+    return [
+        _fdictStatusFromRawRecord(sName, dictByPath.get(sPath))
+        for sName, sPath in zip(listRepoNames, listRepoPaths)
+    ]
+
+
+def _fdictStatusFromRawRecord(sRepoName, dictRecord):
+    """Build one repository's status dict from its raw record."""
+    if dictRecord is None or dictRecord.get("bMissing", True):
+        return _fdictMissingStatus(sRepoName)
+    return _fdictBuildPresentStatus(
+        sRepoName,
+        (dictRecord.get("sBranch") or "").strip(),
+        fsFilterArtifacts(dictRecord.get("sPorcelain") or ""),
+        (dictRecord.get("sUrl") or "").strip() or None,
+    )
 
 
 def _fdictLoadOrInit(connectionDocker, sContainerId):
