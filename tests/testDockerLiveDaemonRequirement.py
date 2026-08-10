@@ -197,6 +197,85 @@ def testADriftedOccurrenceCountErrorsRatherThanUnderMutating():
     )
 
 
+def testNarrowingTheRunNeverPromotesADeferredEntryIntoTheJudgedSet(
+    monkeypatch,
+):
+    """``--only`` filters AFTER the partition, not instead of it.
+
+    The tempting implementation narrows the raw registry and then
+    partitions -- or, worse, narrows and skips the partition entirely,
+    which is what a hand-rolled subset driver did. A ``docker_live``
+    entry then runs on a daemon-less host, its child sets the
+    requirement variable, its skip becomes a failure, and the report
+    says "does not pass on clean code". That is a deferral wearing a
+    defect's clothes: it names a guard the reader will go looking for
+    and will not find, which is precisely the false alarm the
+    NOT-EVALUATED tier was built to stop.
+
+    So the property is compositional and worth pinning on its own: no
+    selection may move an entry from the deferred list into the judged
+    list.
+    """
+    moduleTool = _fmoduleReconfirmationHarness()
+    monkeypatch.setattr(moduleTool, "_fbDaemonReachable", lambda: False)
+    monkeypatch.setattr(
+        moduleTool, "_fbPlaywrightInstalled", lambda: True,
+    )
+    monkeypatch.delenv(moduleTool.S_REQUIRE_DAEMON_ENV, raising=False)
+
+    listEvaluable, listDeferred = moduleTool._tPartitionRegistryForThisHost()
+    assert listDeferred, "no deferred entry, so this proves nothing"
+    setDeferredIds = {entry.nodeid for entry, _sPhrase in listDeferred}
+
+    # Select by the source file of a DEFERRED entry, which is the
+    # realistic way to catch one: a regression sweep names the files a
+    # session touched, not the tests.
+    entryDeferred = listDeferred[0][0]
+    listSelectedEvaluable, listSelectedDeferred = (
+        moduleTool._tSelectRequestedEntries(
+            listEvaluable, listDeferred, [entryDeferred.source],
+        )
+    )
+    assert not any(
+        entry.nodeid in setDeferredIds for entry in listSelectedEvaluable
+    ), (
+        "narrowing promoted a facility-gated entry into the judged "
+        "set, where it will be run without its facility and reported "
+        "as a broken guard"
+    )
+    assert any(
+        entry.nodeid == entryDeferred.nodeid
+        for entry, _sPhrase in listSelectedDeferred
+    ), "the selected deferred entry vanished instead of being reported"
+
+
+def testANarrowedRunDoesNotClaimToHaveCheckedRegistryCompleteness():
+    """A subset cannot judge coverage, and must not imply it did.
+
+    Almost every falsification-marked test is outside any narrow
+    selection, so running the completeness check would print a wall of
+    phantom gaps -- and NOT running it silently would report a clean
+    bill the run never earned. The third answer is to skip it and say
+    so, which is the same rule this file's daemon tier follows.
+    """
+    from pathlib import Path as PathAlias
+    sSource = (
+        PathAlias(__file__).resolve().parent.parent
+        / "tools" / "reconfirmFalsification.py"
+    ).read_text()
+    assert (
+        "listUncovered = [] if listOnly else "
+        "_flistMarkedTestsWithoutEntry()"
+    ) in sSource, (
+        "a narrowed run must not run the completeness check over the "
+        "whole registry"
+    )
+    assert "NARROWED run" in sSource, (
+        "a narrowed run must announce that it is not the standing "
+        "negative control"
+    )
+
+
 def testEntriesNeedingADaemonAreDeferredNotErroredWhenNoneExists(monkeypatch):
     """No daemon and no demand: partition, do not pretend to judge.
 

@@ -65,6 +65,14 @@ untracked non-ignored files into the worktree first.
 
     python tools/reconfirmFalsification.py
     python tools/reconfirmFalsification.py --include-local-diff
+    python tools/reconfirmFalsification.py --only tests/testHostCancel.py
+
+``--only`` narrows the run to entries matching a node-id or source
+substring, for the per-chunk re-confirmation the house rhythm asks for
+after every commit. It filters AFTER the facility partition, so a
+deferred entry is still reported as unevaluated rather than run
+without its facility and scored as broken; and it declines to judge
+registry completeness, saying so, because a subset cannot.
 """
 
 import argparse
@@ -467,9 +475,53 @@ def _tPartitionRegistryForThisHost():
     )
 
 
-def fnReconfirmAll():
-    """Re-confirm all entries; exit nonzero on any failure or coverage gap."""
-    listEvaluable, listDeferred = _tPartitionRegistryForThisHost()
+def _fbEntryMatchesAnyNeedle(entry, listNeedles):
+    """Return True when a --only needle names this entry."""
+    return any(
+        sNeedle in entry.nodeid or sNeedle in entry.source
+        for sNeedle in listNeedles
+    )
+
+
+def _tSelectRequestedEntries(listEvaluable, listDeferred, listNeedles):
+    """Narrow both partitions to the entries ``--only`` asked for.
+
+    Applied AFTER the facility partition, never instead of it. A
+    selector that filtered the raw registry would hand a
+    ``docker_live`` entry to a daemon-less run, whose child sets
+    ``VAIBIFY_REQUIRE_DOCKER_DAEMON`` and turns the skip into a
+    failure — reported as "does not pass on clean code", which is a
+    deferral wearing a defect's clothes. That is the exact confusion
+    the NOT-EVALUATED tier exists to prevent, and it is easy to
+    reintroduce by filtering one line too early.
+    """
+    if not listNeedles:
+        return listEvaluable, listDeferred
+    return (
+        [e for e in listEvaluable
+         if _fbEntryMatchesAnyNeedle(e, listNeedles)],
+        [(e, sPhrase) for e, sPhrase in listDeferred
+         if _fbEntryMatchesAnyNeedle(e, listNeedles)],
+    )
+
+
+def fnReconfirmAll(listOnly=()):
+    """Re-confirm entries; exit nonzero on any failure or coverage gap.
+
+    ``listOnly`` narrows the run to entries whose node id or source
+    file contains one of the given substrings. It exists because the
+    house rhythm re-confirms a chunk's own entries after every commit
+    and the full registry takes far longer than a chunk does — but a
+    narrowed run is NOT the standing negative control, so it declines
+    to judge registry completeness and says so rather than reporting a
+    clean coverage check it did not perform.
+    """
+    listEvaluable, listDeferred = _tSelectRequestedEntries(
+        *_tPartitionRegistryForThisHost(), listNeedles=list(listOnly),
+    )
+    if listOnly and not listEvaluable and not listDeferred:
+        print(f"No registry entry matches {list(listOnly)}")
+        sys.exit(2)
     dictOriginal = _fdictCaptureOriginals()
     bBatchClean = _fbAllPreconditionsPassInOneRun(listEvaluable)
     if not bBatchClean:
@@ -493,9 +545,21 @@ def fnReconfirmAll():
         print(f"{'NOT EVALUATED: needs ' + sPhrase:48}  "
               f"{entry.nodeid}")
     listBad = [r for r in listResults if not r[1].startswith("KILLED")]
-    listUncovered = _flistMarkedTestsWithoutEntry()
+    # A narrowed run cannot speak to registry COMPLETENESS: almost every
+    # marked test is outside the selection by construction, so running
+    # the check would report a wall of phantom gaps. Announced rather
+    # than silently skipped -- a check that can be skipped must say
+    # what the skip reported.
+    listUncovered = [] if listOnly else _flistMarkedTestsWithoutEntry()
     print(f"\n{len(listResults) - len(listBad)}/{len(listResults)} "
           "kill-confirmed")
+    if listOnly:
+        print(
+            f"NARROWED run (--only {' '.join(listOnly)}): this is not "
+            "the standing negative control. Registry completeness was "
+            "NOT checked, and every entry outside the selection was "
+            "neither run nor judged."
+        )
     if listDeferred:
         setPhrases = sorted({sPhrase for _, sPhrase in listDeferred})
         print(f"{len(listDeferred)} entr"
@@ -532,6 +596,16 @@ def main():
             "reports on code you do not have."
         ),
     )
+    parser.add_argument(
+        "--only", dest="listOnly", action="append", default=[],
+        metavar="SUBSTRING",
+        help=(
+            "Re-confirm only the entries whose pytest node id or source "
+            "file contains SUBSTRING (repeatable). For checking a "
+            "chunk's own entries after a commit; the result is NOT the "
+            "standing negative control, and the run says so."
+        ),
+    )
     args = parser.parse_args()
 
     listDirty = _flistUncommittedChanges()
@@ -552,7 +626,7 @@ def main():
         if args.include_local_diff:
             fnCopyLocalChangesIntoWorktree(sWorktree)
         PATH_TREE = pathlib.Path(sWorktree)
-        fnReconfirmAll()
+        fnReconfirmAll(args.listOnly)
     finally:
         PATH_TREE = REPO
         fnRemoveDisposableWorktree(sWorktree)
