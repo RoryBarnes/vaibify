@@ -49,6 +49,7 @@ T_BUILD_CONTEXT_GLOBS = (
     "vaibify/containerImage/entrypoint.sh",
     "vaibify/containerImage/checkIsolation.sh",
     "vaibify/containerImage/vaibifyDo.py",
+    "vaibify/containerImage/craftGuide.md",
     "vaibify/containerImage/overlays/**/*",
     "vaibify/containerImage/skills/**/*",
 )

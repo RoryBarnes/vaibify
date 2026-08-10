@@ -802,6 +802,7 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
     ".vaibify/overleafPushManifest.json",
     ".vaibify/ai_provenance.json",
     ".vaibify/AGENTS.md",
+    ".vaibify/agentContext.md",
     ".vaibify/promptRecord/index.json",
     ".vaibify/promptRecord/attribution/events.jsonl",
     ".vaibify/promptRecord/attribution/flags.jsonl",
@@ -816,6 +817,7 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
 TUPLE_SNAPSHOT_SKIP_TEXT_PATHS = (
     "MANIFEST.sha256",
     ".vaibify/AGENTS.md",
+    ".vaibify/agentContext.md",
     "CLAUDE.md",
     "AGENTS.md",
 )

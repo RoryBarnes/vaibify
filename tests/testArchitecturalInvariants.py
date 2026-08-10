@@ -4064,7 +4064,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # worker rather than a typed-read declaration, and the two to_thread
     # hops it used to make became direct calls inside that worker.
     # **No route in this module is awaiting any longer.**
-    "routes/pipelineRoutes.py": 3070,
+    # +19 (2026-08-10): the adopt-affordance corruption guard. Two
+    # lines of logic; the rest is the docstring recording WHY a
+    # second existence check suppresses the offer — repo-root names
+    # became symlinks onto vaibify's own composed agent context, and
+    # fbIsFile follows symlinks, so the affordance would otherwise
+    # offer to import the shipped craft guide as the researcher's
+    # project context. Telling a linked root from a real one needs
+    # symlink detection no RepoFiles backend has. Same cohesive
+    # responsibility: the envelope poll this boolean already feeds.
+    "routes/pipelineRoutes.py": 3089,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -4659,7 +4668,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reuse fnCommitWorkflowSave's record without handing the journal
     # probe a hash belonging to a different file. Same cohesive
     # responsibility: the Replay axis, in the module that owns it.
-    "routes/replayRoutes.py": 962,
+    # +63 (2026-08-10): recomposing the agent context on save. The
+    # repo-root name every provider reads is a symlink onto the
+    # composed .vaibify/agentContext.md, so a context saved here that
+    # updated only .vaibify/AGENTS.md would leave every agent reading
+    # the researcher's PREVIOUS instructions until the container
+    # restarted. The banner constant is duplicated from entrypoint.sh
+    # for the reason introspectionScript.py duplicates dataLoaders.py
+    # -- a container script cannot import from the host -- and
+    # testComposedContextSeparatorMatchesTheHost fails on drift. Same
+    # cohesive responsibility: this module already owns every write to
+    # the project-context file.
+    "routes/replayRoutes.py": 1025,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a

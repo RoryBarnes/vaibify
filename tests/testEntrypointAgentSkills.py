@@ -312,17 +312,35 @@ def _fsExtractBashFunction(sEntrypoint, sName):
 
 
 def _fsExtractLinkFunction():
-    """Return fnLinkRepoClaudeMd plus the helper it calls.
+    """Return fnLinkRepoClaudeMd plus every helper it calls.
 
     The linker delegates Cline's `.clinerules/` directory to
-    ``fnLinkClineRules``, so extracting the caller alone leaves the
-    snippet calling an undefined function and bash exits 127 -- a
-    harness failure that looks exactly like a product failure. Both
-    are pulled so this still exercises the real shell.
+    ``fnLinkClineRules`` and the composed agent context to
+    ``fnWriteRepoAgentContext`` (itself calling
+    ``fnIgnoreGeneratedContext``), so extracting the caller alone
+    leaves the snippet calling undefined functions and bash exits
+    127 -- a harness failure that looks exactly like a product
+    failure. All four are pulled so this still exercises the real
+    shell.
+
+    The two constants are extracted rather than restated: a copy here
+    would let the harness keep passing while the entrypoint composed a
+    file under a different name.
     """
     sEntrypoint = _fsReadDockerFile("entrypoint.sh")
+    matchConstants = re.search(
+        r'^COMPOSED_CONTEXT_BASENAME=.*?^COMPOSED_CONTEXT_SEPARATOR=".*?"$',
+        sEntrypoint, re.DOTALL | re.MULTILINE,
+    )
+    assert matchConstants, "the composed-context constants moved"
     return (
-        _fsExtractBashFunction(sEntrypoint, "fnLinkClineRules")
+        matchConstants.group(0)
+        + "\n"
+        + _fsExtractBashFunction(sEntrypoint, "fnIgnoreGeneratedContext")
+        + "\n"
+        + _fsExtractBashFunction(sEntrypoint, "fnWriteRepoAgentContext")
+        + "\n"
+        + _fsExtractBashFunction(sEntrypoint, "fnLinkClineRules")
         + "\n"
         + _fsExtractBashFunction(sEntrypoint, "fnLinkRepoClaudeMd")
     )
@@ -333,10 +351,12 @@ def testLinkRepoClaudeMdCanonicalizesAgentsMd(tmp_path):
 
     Exercises the real bash function against a temp workspace: a
     legacy ``.vaibify/CLAUDE.md`` becomes the canonical
-    ``.vaibify/AGENTS.md``, both repo-root names become symlinks to
-    it, and an existing root file is never clobbered.
+    ``.vaibify/AGENTS.md``, the repo-root names become symlinks onto
+    the composed agent context that carries it, and an existing root
+    file is never clobbered.
     """
     import subprocess
+    (tmp_path / "CLAUDE.md").write_text("SHIPPED GUIDANCE\n")
     pathRepo = tmp_path / "exampleRepo"
     (pathRepo / ".vaibify").mkdir(parents=True)
     (pathRepo / ".vaibify" / "CLAUDE.md").write_text("legacy context\n")
@@ -358,7 +378,14 @@ def testLinkRepoClaudeMdCanonicalizesAgentsMd(tmp_path):
     assert not (pathRepo / ".vaibify" / "CLAUDE.md").exists()
     for sName in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
         assert (pathRepo / sName).is_symlink()
-        assert (pathRepo / sName).read_text() == "legacy context\n"
+        sDelivered = (pathRepo / sName).read_text()
+        assert "legacy context" in sDelivered, (
+            f"{sName} lost the migrated project context"
+        )
+        assert "SHIPPED GUIDANCE" in sDelivered, (
+            f"{sName} resolves to the researcher's context alone, so "
+            f"that provider receives no shipped craft guidance"
+        )
     assert not (pathOther / "CLAUDE.md").is_symlink()
     assert (pathOther / "CLAUDE.md").read_text() == (
         "pre-existing root file\n"

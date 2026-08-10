@@ -64,7 +64,9 @@ def fnCheckContainerContextIsUsable():
     """The build context must be present and be vaibify's own."""
     from vaibify.resources import fpathContainerImageRoot
     pathContext = fpathContainerImageRoot()
-    for sRequired in ("Dockerfile", "entrypoint.sh", "vaibifyDo.py"):
+    for sRequired in (
+        "Dockerfile", "entrypoint.sh", "vaibifyDo.py", "craftGuide.md",
+    ):
         if not (pathContext / sRequired).is_file():
             fnFailWith(
                 f"build context '{pathContext}' is missing "

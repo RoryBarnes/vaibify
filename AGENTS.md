@@ -736,16 +736,66 @@ accident. `tests/testEntrypointAgentDocLinks.py` fails if an agent is
 added to the skills loop without a path to the guidance, which is
 exactly how Cline came to ship with skills and no instructions.
 
-**Agent-facing docs have one source and several names.** Inside the
-container the canonical file is
-`/workspace/<repo>/.vaibify/AGENTS.md`; `entrypoint.sh`'s
+**Agent-facing docs have two sources, one composed file, and several
+names.** In-container guidance comes from two places that must never
+be merged: vaibify's shipped craft guidance
+(`vaibify/containerImage/craftGuide.md`, appended to the generated
+`/workspace/CLAUDE.md`) and the researcher's own project context
+(`/workspace/<repo>/.vaibify/AGENTS.md`, written by the Project
+Context editor). `entrypoint.sh`'s `fnWriteRepoAgentContext`
+concatenates them — shipped first, researcher's last so it wins on
+conflict — into `/workspace/<repo>/.vaibify/agentContext.md`, and
 `fnLinkRepoClaudeMd` symlinks `/workspace/<repo>/CLAUDE.md`,
-`/workspace/<repo>/AGENTS.md` and `/workspace/<repo>/GEMINI.md` to it,
-and migrates a legacy CLAUDE.md in that directory into place. So write
-in-container agent guidance once, to the canonical file. Never author
-a provider-specific one — a second *real* file at one of those names
-shadows the symlink for that provider only, and the three agents
+`/workspace/<repo>/AGENTS.md` and `/workspace/<repo>/GEMINI.md` to
+*that*, migrating a legacy CLAUDE.md in that directory into place.
+Cline's `.clinerules/vaibify.md` points at the same composed file.
+
+So write each kind of guidance once, to its own source: craft to
+`craftGuide.md`, project specifics to `.vaibify/AGENTS.md`. Never
+author a provider-specific file — a second *real* file at one of those
+names shadows the symlink for that provider only, and the agents
 silently start reading different instructions.
+
+**Repointing keys on vaibify's own link targets, never on being a
+link.** `fbLinkPointsAtVaibifyContext` recognizes the three names
+vaibify itself has ever pointed a root name at, dangling included, and
+repoints those onto the composed file; a real file, or a symlink the
+researcher made, is left alone. Dangling is the case that matters:
+these links live in the workspace volume, not the image, so a rebuild
+does not clear them — and the legacy migration renames
+`.vaibify/CLAUDE.md` to `AGENTS.md` while an older root link still
+aims at the old name. The previous guard tested `[ ! -e ] && [ ! -L ]`,
+and a dangling symlink is `-L` true, so that provider silently read
+nothing at all.
+
+**The composed file is vaibify's; `.vaibify/AGENTS.md` is the
+researcher's.** Vaibify reads their file and never writes it. The
+composed one is regenerated on every container start and rewritten by
+the project-context save route, so a saved edit reaches agents without
+a restart; it is gitignored, because it is output, not source.
+
+Composing is what makes delivery independent of how each agent walks
+the directory tree. The workspace-root doc reaches only providers that
+traverse upward, and vaibify installs seven agents whose discovery
+rules it does not control; the repo-root name is the one place all of
+them already read. That is also why the craft guidance cannot simply
+be appended to the researcher's file — a provider reads one file per
+name, so composition is the only way both arrive with neither
+overwriting the other.
+
+One consequence lands on the host: repo-root names are symlinks and
+existence checks follow them, so the "adopt this repo's root context"
+affordance would otherwise offer to import vaibify's own craft guide
+as the researcher's project context.
+`_fbRootContextCandidateDetected` suppresses the offer whenever the
+composed file exists, which costs a false negative on a repository
+carrying a real pre-existing root `CLAUDE.md` (the editor's Import
+path still reaches it). Telling those apart needs symlink detection
+that none of the three `RepoFiles` backends has — the container one
+would need a new entry in the typed-read table, and widening that
+boundary for an affordance is the wrong trade.
+`tests/testComposedAgentContext.py` and
+`tests/testEntrypointCraftGuide.py` enforce all of this.
 
 (These are container paths, deliberately absolute:
 `tools/checkAgentDocsPaths.py` resolves repo-relative references and

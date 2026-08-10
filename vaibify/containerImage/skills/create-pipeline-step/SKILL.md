@@ -58,9 +58,11 @@ Worked example — producer declares, consumer tokenizes:
 
 ## Phase 4: Scripts and the project entry
 
-Scripts follow the repo style guide (read the repo CLAUDE.md first):
-Hungarian notation, return-type function prefixes, functions ~20
-lines, `import vplot` for any matplotlib figure.
+Scripts follow the "Scientific Code Craft" sections of
+`/workspace/CLAUDE.md` (Hungarian notation, return-type function
+prefixes, single-purpose functions, observability, error handling),
+plus any conventions in the repo's own `.vaibify/AGENTS.md`, which
+take precedence where they conflict.
 
 Project entry rules:
 - EVERY output file declared in `saOutputDataFiles` or `saPlotFiles` — no

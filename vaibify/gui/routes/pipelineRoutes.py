@@ -2195,8 +2195,27 @@ def _fbRootContextCandidateDetected(filesRepo):
     ``.vaibify/AGENTS.md`` does not exist and a root ``CLAUDE.md`` or
     ``AGENTS.md`` does — after adoption the root name is a symlink to
     the canonical file, so this reads False again.
+
+    The generated ``.vaibify/agentContext.md`` suppresses the offer as
+    well, and that is a CORRUPTION guard, not a tidiness one. The
+    repo-root names are symlinks onto the composed context, and
+    ``fbIsFile`` follows symlinks — so in a repository with no project
+    context yet, the offer would otherwise read True and adopting it
+    would import vaibify's OWN shipped craft guidance as the
+    researcher's project context.
+
+    The cost is a false negative: a repository carrying a real
+    pre-existing root ``CLAUDE.md`` loses the one-click adopt
+    affordance (the editor's Import path still reaches it). Telling
+    the two apart needs symlink detection, which none of the three
+    ``RepoFiles`` backends can do today — the container one would need
+    a new entry in the typed-read table. Suppressing is the safe half
+    of that trade; widening a security boundary for an affordance is
+    not.
     """
     if filesRepo.fbIsFile(".vaibify/AGENTS.md"):
+        return False
+    if filesRepo.fbIsFile(".vaibify/agentContext.md"):
         return False
     return filesRepo.fbIsFile("CLAUDE.md") or filesRepo.fbIsFile(
         "AGENTS.md",

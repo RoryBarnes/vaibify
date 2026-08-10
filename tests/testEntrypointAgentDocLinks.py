@@ -75,9 +75,12 @@ def testClineGetsARulesDirectoryNotAFlatSymlink():
     assert "mkdir -p" in sBody and ".clinerules" in sBody, (
         "Cline's rules location must be created as a directory"
     )
-    assert "../.vaibify/AGENTS.md" in sBody, (
-        "the rules file must point at the canonical AGENTS.md, not "
-        "hold its own copy"
+    assert "../.vaibify/${COMPOSED_CONTEXT_BASENAME}" in sBody, (
+        "the rules file must point at the composed agent context, not "
+        "hold its own copy. Pointing it at .vaibify/AGENTS.md directly "
+        "delivers the researcher's project context but none of the "
+        "shipped craft guidance, which is the gap Cline had before "
+        "the composed context existed."
     )
     assert "command -v cline" in sBody, (
         "creating a .clinerules directory in a repository that has no "

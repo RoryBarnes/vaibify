@@ -103,6 +103,54 @@ def test_write_then_read_round_trips(fixtureHarness):
     assert dictBody["sContent"] == "# my project\n"
 
 
+def test_saving_context_refreshes_what_the_agents_read(fixtureHarness):
+    """A save must reach the composed file, over the real route.
+
+    The repo-root name every provider reads is a symlink onto
+    ``.vaibify/agentContext.md``, so a save that updates only
+    ``.vaibify/AGENTS.md`` leaves every agent reading the researcher's
+    PREVIOUS instructions until the container restarts.
+
+    This drives the actual endpoint rather than the recompose helper:
+    with the helper tested alone, deleting its call from the handler
+    changed nothing and the whole suite stayed green -- the wiring is
+    the part that can rot.
+    """
+    from vaibify.gui.routes.replayRoutes import (
+        S_COMPOSED_CONTEXT_RELATIVE_PATH,
+    )
+    clientTest, stubDocker = fixtureHarness
+    stubDocker.dictFiles["/workspace/CLAUDE.md"] = (
+        b"# Vaibify Container Environment\n\n## Observability\n"
+    )
+    sComposedPath = S_REPO_PATH + "/" + S_COMPOSED_CONTEXT_RELATIVE_PATH
+
+    dictResponse = clientTest.put(
+        _fsContextUrl(), json={"sContent": "# Never refit\n"},
+    )
+    assert dictResponse.status_code == 200
+    assert sComposedPath in stubDocker.dictFiles, (
+        "the save never refreshed the composed context, so agents "
+        "keep reading the researcher's previous instructions"
+    )
+    sComposed = stubDocker.dictFiles[sComposedPath].decode("utf-8")
+    assert "## Observability" in sComposed
+    assert "# Never refit" in sComposed
+    assert sComposed.index("## Observability") < sComposed.index(
+        "# Never refit",
+    ), "the researcher's context must come last so it wins"
+
+
+def test_saving_context_survives_a_missing_workspace_doc(fixtureHarness):
+    """No workspace doc to compose from must not fail their save."""
+    clientTest, stubDocker = fixtureHarness
+    dictResponse = clientTest.put(
+        _fsContextUrl(), json={"sContent": "# my project\n"},
+    )
+    assert dictResponse.status_code == 200
+    assert stubDocker.dictFiles[S_CONTEXT_ABS_PATH] == b"# my project\n"
+
+
 def test_write_over_cap_is_413(fixtureHarness):
     clientTest, _ = fixtureHarness
     sBig = "x" * (I_MAX_CONTEXT_CONTENT_BYTES + 1)

@@ -5,6 +5,27 @@ REPOS_CONF="${REPOS_CONF:-/etc/vaibify/container.conf}"
 CONTAINER_USER="${CONTAINER_USER:-researcher}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-pip}"
 VC_PROJECT_NAME="${VC_PROJECT_NAME:-Vaibify}"
+CRAFT_GUIDE_PATH="${CRAFT_GUIDE_PATH:-/usr/share/vaibify/craftGuide.md}"
+
+# The composed agent context each provider's repo-root name points at,
+# and the banner separating vaibify's shipped guidance from the
+# researcher's own. The host composes the same file when the Project
+# Context editor saves, so this banner is duplicated -- deliberately,
+# the way introspectionScript.py duplicates dataLoaders.py, because a
+# container script cannot import from the host. The counterpart is
+# S_COMPOSED_CONTEXT_SEPARATOR in vaibify/gui/routes/replayRoutes.py;
+# testComposedContextSeparatorMatchesTheHost fails if they drift.
+COMPOSED_CONTEXT_BASENAME="agentContext.md"
+COMPOSED_CONTEXT_SEPARATOR="
+
+---
+
+# Project Context (authored by the researcher)
+
+The section below is the researcher's own standing instructions for
+this repository, kept in \`.vaibify/AGENTS.md\`. Where it conflicts with
+anything above, it wins. That file is the authoritative copy: if it has
+been edited since this container started, read it directly."
 
 # saStartupWarnings: each entry is "<name>: <category>: <one-line-reason>".
 # Surfaced by the GUI readiness probe so the user can act on partial-startup
@@ -936,13 +957,6 @@ Two rules that must never be violated, skill or not:
   `accept-plots-as-standard`; surface the request and let the
   researcher click. `push-to-github` is agent-callable on request.
 
-## Conventions
-
-- Follow Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)
-- Function names start with return-type prefix (fb, fi, fs, fn, flist, fdict)
-- Functions should be under 20 lines
-- Output figures go in `Plot/` subdirectories
-
 ## Creating New Pipeline Steps
 
 To author a new analysis or plot step, use the
@@ -991,6 +1005,12 @@ it permanent:
 - Test changes with `pytest` before committing
 - All repositories are public or will be — never embed secrets in code
 CLAUDEMD
+    if [ -f "${CRAFT_GUIDE_PATH}" ]; then
+        cat "${CRAFT_GUIDE_PATH}" >> "${sClaudeMd}"
+    else
+        fnAppendStartupWarning "craftGuide" "agent-docs" \
+            "craft guide missing at ${CRAFT_GUIDE_PATH}; agents receive operational context only"
+    fi
     if [ ! -e "${WORKSPACE}/AGENTS.md" ]; then
         ln -s "CLAUDE.md" "${WORKSPACE}/AGENTS.md"
     fi
@@ -1018,21 +1038,105 @@ fnLinkRepoClaudeMd() {
             mv "${sVaibDir}/CLAUDE.md" "${sSource}"
             echo "[vaib]   Migrated .vaibify/CLAUDE.md to AGENTS.md"
         fi
-        [ -f "${sSource}" ] || continue
+        fnWriteRepoAgentContext "${sRepoDir}" || continue
         # Repo-root FILE conventions. Verified per provider rather than
         # assumed: Claude reads CLAUDE.md, Gemini reads GEMINI.md, and
         # Codex, OpenCode, OpenHands (v1) and Pi all read AGENTS.md. The
         # three names below therefore cover six of the seven agents.
+        #
+        # They point at the COMPOSED context, not at the researcher's
+        # file directly: a provider reads exactly one file per name, so
+        # composing is the only way both vaibify's craft guidance and
+        # the researcher's instructions arrive without either
+        # overwriting the other. Pointing at the repo root is also what
+        # makes delivery independent of how each agent walks the
+        # directory tree -- the workspace-root doc reaches only the
+        # providers that traverse upward.
         local sName
         for sName in CLAUDE.md AGENTS.md GEMINI.md; do
             local sTarget="${sRepoDir}/${sName}"
             if [ ! -e "${sTarget}" ] && [ ! -L "${sTarget}" ]; then
-                ln -s ".vaibify/AGENTS.md" "${sTarget}"
+                ln -s ".vaibify/${COMPOSED_CONTEXT_BASENAME}" "${sTarget}"
                 echo "[vaib]   Linked ${sName} in $(basename "${sRepoDir}")"
+            elif fbLinkPointsAtVaibifyContext "${sTarget}" ""; then
+                # Vaibify's own link from before the craft guide
+                # shipped. Repointing it is safe -- it is not the
+                # researcher's file -- and without this an existing
+                # repository would never receive the craft guidance.
+                ln -sfn ".vaibify/${COMPOSED_CONTEXT_BASENAME}" "${sTarget}"
+                echo "[vaib]   Repointed ${sName} in" \
+                    "$(basename "${sRepoDir}") to the composed context"
             fi
         done
         fnLinkClineRules "${sRepoDir}"
     done
+}
+
+# ---------------------------------------------------------------------------
+# fbLinkPointsAtVaibifyContext: True for a symlink vaibify itself created
+# Arguments: sPath sPrefix
+# ---------------------------------------------------------------------------
+# Only vaibify's own links may be repointed; a REAL file at one of the
+# provider names is the researcher's and is never touched.
+#
+# A dangling link counts as owned, and that case is not hypothetical:
+# the legacy migration above renames .vaibify/CLAUDE.md to AGENTS.md
+# and leaves an older root symlink aimed at a file that no longer
+# exists. The previous guard tested [ ! -e ] && [ ! -L ], and a
+# dangling symlink is -L true, so it was never repaired -- that
+# provider silently read nothing at all.
+fbLinkPointsAtVaibifyContext() {
+    local sPath="$1"
+    local sPrefix="$2"
+    [ -L "${sPath}" ] || return 1
+    local sLinkTarget
+    sLinkTarget=$(readlink "${sPath}")
+    case "${sLinkTarget}" in
+        "${sPrefix}.vaibify/AGENTS.md") return 0 ;;
+        "${sPrefix}.vaibify/CLAUDE.md") return 0 ;;
+        "${sPrefix}.vaibify/${COMPOSED_CONTEXT_BASENAME}") return 0 ;;
+    esac
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# fnWriteRepoAgentContext: Compose shipped guidance + the researcher's own
+# Arguments: sRepoDir
+# ---------------------------------------------------------------------------
+# The composed file is vaibify's, regenerated every start; the
+# researcher's .vaibify/AGENTS.md is read and never written. Returns
+# non-zero when the workspace context is missing so the caller leaves
+# the repo-root names alone rather than linking them at nothing.
+fnWriteRepoAgentContext() {
+    local sRepoDir="$1"
+    local sVaibDir="${sRepoDir}/.vaibify"
+    local sComposed="${sVaibDir}/${COMPOSED_CONTEXT_BASENAME}"
+    if [ ! -f "${WORKSPACE}/CLAUDE.md" ]; then
+        return 1
+    fi
+    cat "${WORKSPACE}/CLAUDE.md" > "${sComposed}" || return 1
+    if [ -f "${sVaibDir}/AGENTS.md" ]; then
+        printf '%s\n\n' "${COMPOSED_CONTEXT_SEPARATOR}" >> "${sComposed}"
+        cat "${sVaibDir}/AGENTS.md" >> "${sComposed}"
+    fi
+    fnIgnoreGeneratedContext "${sVaibDir}"
+}
+
+# ---------------------------------------------------------------------------
+# fnIgnoreGeneratedContext: Keep the generated context out of git
+# Arguments: sVaibDir
+# ---------------------------------------------------------------------------
+# It is vaibify's output, regenerated on every start, and it would
+# otherwise land in the researcher's commits and their provenance
+# record.
+fnIgnoreGeneratedContext() {
+    local sVaibDir="$1"
+    local sIgnoreFile="${sVaibDir}/.gitignore"
+    if [ -f "${sIgnoreFile}" ] && grep -qxF "${COMPOSED_CONTEXT_BASENAME}" \
+        "${sIgnoreFile}"; then
+        return 0
+    fi
+    printf '%s\n' "${COMPOSED_CONTEXT_BASENAME}" >> "${sIgnoreFile}"
 }
 
 # ---------------------------------------------------------------------------
@@ -1058,9 +1162,13 @@ fnLinkClineRules() {
     mkdir -p "${sRulesDir}"
     local sTarget="${sRulesDir}/vaibify.md"
     if [ ! -e "${sTarget}" ] && [ ! -L "${sTarget}" ]; then
-        ln -s "../.vaibify/AGENTS.md" "${sTarget}"
+        ln -s "../.vaibify/${COMPOSED_CONTEXT_BASENAME}" "${sTarget}"
         echo "[vaib]   Linked .clinerules/vaibify.md in" \
             "$(basename "${sRepoDir}")"
+    elif fbLinkPointsAtVaibifyContext "${sTarget}" "../"; then
+        ln -sfn "../.vaibify/${COMPOSED_CONTEXT_BASENAME}" "${sTarget}"
+        echo "[vaib]   Repointed .clinerules/vaibify.md in" \
+            "$(basename "${sRepoDir}") to the composed context"
     fi
 }
 

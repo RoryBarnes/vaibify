@@ -59,6 +59,7 @@ from ..personalLayerManager import (
     flistValidateIncludedPaths,
 )
 from ..pipelineServer import fdictRequireWorkflow
+from ...config.mutationAdmission import ControlPlaneRefusalError
 from ..projectContextManager import (
     I_MAX_CONTEXT_CONTENT_BYTES,
     S_CONTEXT_TEMPLATE,
@@ -259,6 +260,65 @@ def _fnCommitContextWrite(
     )
 
 
+# Mirrors COMPOSED_CONTEXT_BASENAME / COMPOSED_CONTEXT_SEPARATOR in
+# vaibify/containerImage/entrypoint.sh. The container composes this
+# file at startup and the host recomposes it on save, so both spellings
+# must agree; testComposedContextSeparatorMatchesTheHost fails if they
+# drift. Duplicated rather than shared for the reason
+# introspectionScript.py duplicates dataLoaders.py -- a container
+# script cannot import from the host environment.
+S_COMPOSED_CONTEXT_RELATIVE_PATH = ".vaibify/agentContext.md"
+S_COMPOSED_CONTEXT_SEPARATOR = """
+
+---
+
+# Project Context (authored by the researcher)
+
+The section below is the researcher's own standing instructions for
+this repository, kept in `.vaibify/AGENTS.md`. Where it conflicts with
+anything above, it wins. That file is the authoritative copy: if it has
+been edited since this container started, read it directly."""
+
+
+def _fnRecomposeAgentContext(
+    dictCtx, sContainerId, dictWorkflow, sContent, requestHttp,
+):
+    """Rewrite the composed agent context so a save is not stale.
+
+    The repo-root name every provider reads is a symlink onto the
+    composed file, which the entrypoint builds at container start. A
+    context saved mid-session would therefore not reach any agent
+    until the container restarted -- the researcher's own instructions
+    silently lagging is worse than the craft guidance being late.
+
+    Best-effort by design: the researcher's file is already committed
+    by the caller, so failing here must not fail their save. The
+    composed file is regenerated at every container start, so the worst
+    case is the staleness this exists to shorten, not a lost edit.
+    """
+    sWorkspaceContext = _fsFetchContextOrNone(
+        dictCtx, sContainerId, "/workspace/CLAUDE.md",
+    )
+    if sWorkspaceContext is None:
+        return
+    sComposed = sWorkspaceContext + S_COMPOSED_CONTEXT_SEPARATOR + (
+        "\n\n" + sContent
+    )
+    sComposedPath = posixpath.join(
+        dictWorkflow.get("sProjectRepoPath") or "",
+        S_COMPOSED_CONTEXT_RELATIVE_PATH,
+    )
+    try:
+        _fnCommitContextWrite(
+            dictCtx, sContainerId, sComposedPath, sComposed,
+            requestHttp, "The composed agent-context refresh",
+        )
+    except ControlPlaneRefusalError:
+        raise
+    except Exception:  # noqa: BLE001 — see the best-effort note above
+        return
+
+
 def _fnRequireContentWithinCap(sContent):
     """Raise HTTP 413 when the content exceeds the context size cap."""
     if len(sContent.encode("utf-8")) > I_MAX_CONTEXT_CONTENT_BYTES:
@@ -305,6 +365,9 @@ def _fnRegisterUpdateProjectContext(app, dictCtx):
         _fnCommitContextWrite(
             dictCtx, sContainerId, sAbsPath, sContent, requestHttp,
             "The project-context update",
+        )
+        _fnRecomposeAgentContext(
+            dictCtx, sContainerId, dictWorkflow, sContent, requestHttp,
         )
         from ..routeContext import fnRecordAttributionEvent
         fnRecordAttributionEvent(
