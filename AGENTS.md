@@ -642,7 +642,7 @@ to fix in both lanes or neither, never as a terminal-specific hole.
 Four controls keep the feature contained. A no-callers invariant over
 `terminalContainment` **cannot** pass, because the module keeps
 production callers for drain, reap and shutdown, so they are narrower:
-only `gui/routes/terminalRoutes.py` constructs a `TerminalSession`
+only `vaibify/gui/routes/terminalRoutes.py` constructs a `TerminalSession`
 (`testOnlyTheGatedRouteConstructsATerminalSession`), so every shell is
 one the gate admitted; only one handler answers the path
 (`testOnlyOneHandlerServesTheTerminalWebSocket`); only the seam names
