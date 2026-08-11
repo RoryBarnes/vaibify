@@ -126,6 +126,7 @@ var VaibifyWorkflowManager = (function () {
             fnCheckOriginDrift(sId, false);
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return;
+            if (_fbRecoverFromLostClaim(error)) return;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -134,6 +135,26 @@ var VaibifyWorkflowManager = (function () {
                 _fnHideLargeWorkflowLoadingBanner();
             }
         }
+    }
+
+    var _S_REFUSAL_CLAIM_REQUIRED = "claim-required";
+
+    function _fbRecoverFromLostClaim(error) {
+        /* A refusal that names an action must leave the researcher
+           somewhere they can perform it. This one said "claim this
+           container" from the workflow picker, which has no claim
+           control -- the project TILE is the claim control, one screen
+           back -- so the dashboard read as wedged. Returning to the
+           list is the whole recovery: selecting the project again
+           claims it. */
+        var dictDetail = (error && error.dictDetail) || {};
+        if (dictDetail.sRefusal !== _S_REFUSAL_CLAIM_REQUIRED) {
+            return false;
+        }
+        VaibifyApp.fnShowToast(dictDetail.sMessage, "warning");
+        VaibifyApp.fnShowContainerLanding();
+        VaibifyContainerManager.fnLoadContainers();
+        return true;
     }
 
     var _bRefreshing = false;

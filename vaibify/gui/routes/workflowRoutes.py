@@ -40,6 +40,12 @@ _PATTERN_WORKFLOW_FILENAME = re.compile(
     r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
 )
 
+# The one connect refusal a researcher can act on themselves. The
+# dashboard reads this rather than the prose so the recovery survives
+# a reworded message; the other 409s here have no recovery to offer
+# and deliberately carry no code.
+S_REFUSAL_CLAIM_REQUIRED = "claim-required"
+
 
 def _fsValidateAndNormalizeFileName(sFileName):
     """Validate sFileName and return its normalized .json basename.
@@ -382,10 +388,18 @@ def _fnRequireOwningLeaseForConnect(dictCtx, sContainerId, requestHttp):
     sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)
     if dictContainerOwners.get(sName) is None:
         if dictCtx.get("bIsHub"):
-            raise HTTPException(
-                409,
-                "Claim this container before connecting to it.",
-            )
+            # Structured, because the dashboard has somewhere to send
+            # the researcher for THIS refusal and nowhere to send them
+            # for the in-use one below. Matching on the prose would
+            # make the recovery hostage to the wording.
+            raise HTTPException(409, {
+                "sMessage": (
+                    "This project is no longer claimed by this "
+                    "session. Select it again on the project list to "
+                    "claim it."
+                ),
+                "sRefusal": S_REFUSAL_CLAIM_REQUIRED,
+            })
         return
     sLeaseId = fsLeaseFromRequest(requestHttp)
     sBrowserSessionId = _fsResolveBrowserSessionId(dictCtx, requestHttp)

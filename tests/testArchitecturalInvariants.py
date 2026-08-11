@@ -4599,7 +4599,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # cases (lock-held refuses, durable adopts, unregistered is
     # invisible) after an earlier wording claimed the opposite of the
     # third.
-    "sessionLifecycle.py": 1319,
+    # +51 (2026-08-10): fbOwningBrowserIsPresentBeforeFirstSocket, the
+    # reaper's presence veto for a claim that has not opened its first
+    # socket. It is a lifecycle clock, and this module is where the
+    # lifecycle clocks live — it reads the browser-session stamp the
+    # §11 sweep reads and answers about the same ACTIVE/ORPHANED states
+    # the §4 trigger two functions above it answers about. Homing it in
+    # serverLifespan (its only caller) would put a window that decides
+    # whether an ownership survives in the module that merely schedules
+    # the pass.
+    "sessionLifecycle.py": 1370,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a

@@ -451,19 +451,51 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
             or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
         )
 
+    def fbReapIsVetoed(sName):
+        """Every reason this record must survive the pass, work or not.
+
+        Presence sits beside the work vetoes rather than inside them
+        because it is not work: it says the researcher who claimed this
+        is still at the keyboard, waiting on the very screen the claim
+        put in front of them.
+        """
+        return (
+            fbGuardedWorkLive(sName)
+            or _fbOwningBrowserStillAttends(app, dictContainerOwners, sName)
+        )
+
     _fnDrainTerminalsOfReapableOwners(
-        app, dictContainerOwners, fbGuardedWorkLive,
+        app, dictContainerOwners, fbReapIsVetoed,
     )
     containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
         lambda sName: (
-            fbGuardedWorkLive(sName)
+            fbReapIsVetoed(sName)
             or terminalContainment.fbContainerHasLiveTerminalRecords(
                 app.state, sName,
             )
             or _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName)
         ),
         dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
+    )
+
+
+def _fbOwningBrowserStillAttends(app, dictContainerOwners, sName):
+    """Veto the reap of a socketless claim whose browser is still here.
+
+    The window between a claim and its first socket is the one stretch
+    where nothing stamps the record's liveness, and it is exactly where
+    the product asks a researcher to wait — on container readiness, or
+    on the host-mode disclosure. The predicate lives in
+    ``sessionLifecycle``, which owns the browser-session clocks; this
+    is only the reaper's call into it.
+    """
+    from . import sessionLifecycle
+    recordOwner = dictContainerOwners.get(sName)
+    if recordOwner is None:
+        return False
+    return sessionLifecycle.fbOwningBrowserIsPresentBeforeFirstSocket(
+        app.state, recordOwner,
     )
 
 
@@ -490,7 +522,7 @@ def _fbOrphanedOwnerJournalUnsettled(dictContainerOwners, sName):
 
 
 def _fnDrainTerminalsOfReapableOwners(
-    app, dictContainerOwners, fbGuardedWorkLive,
+    app, dictContainerOwners, fbReapIsVetoed,
 ):
     """Terminate-and-prove the terminals of every reap-eligible owner.
 
@@ -510,7 +542,7 @@ def _fnDrainTerminalsOfReapableOwners(
             continue
         if not containerOwnership.fbOwnerIsReapable(recordOwner):
             continue
-        if fbGuardedWorkLive(sName):
+        if fbReapIsVetoed(sName):
             continue
         terminalContainment.fdictDrainTerminalRecordsForContainer(
             app.state, sName,

@@ -106,6 +106,15 @@ F_RECONNECT_WINDOW_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
 F_SLIDING_IDLE_SECONDS = containerOwnership.ffReadSecondsFromEnvironment(
     "VAIBIFY_SLIDING_IDLE_SECONDS", 3600.0,
 )
+# How recently the owning browser must have spoken for a claim that has
+# not opened its first socket yet to count as still attended. Measured
+# against the hub screens' own poll, which is far faster, so the
+# window's job is only to notice a browser that STOPPED.
+F_CLAIM_PRESENCE_WINDOW_SECONDS = (
+    containerOwnership.ffReadSecondsFromEnvironment(
+        "VAIBIFY_CLAIM_PRESENCE_WINDOW_SECONDS", 30.0,
+    )
+)
 F_ABSOLUTE_SESSION_CAP_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
         "VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS", 43200.0,
@@ -1143,6 +1152,48 @@ def _fbOwnerPastReconnectWindow(recordOwner):
         time.monotonic() - recordOwner.fLastSeenMonotonic
         >= F_RECONNECT_WINDOW_SECONDS
     )
+
+
+def fbOwningBrowserIsPresentBeforeFirstSocket(appState, recordOwner):
+    """Return True when a socketless claim's browser is demonstrably here.
+
+    The idle reaper asks "has this claim been abandoned?" and answers
+    it from ``fLastSeenMonotonic``, which only a socket ever stamps. In
+    the window between the claim and the first socket there is no
+    socket by definition, so the record ages out on a clock nothing can
+    advance — and the product PUTS work in that window. A container
+    claim waits on readiness; a host claim waits on the researcher
+    reading the uncontained-execution disclosure, which is a screen
+    they are meant to spend time on. Thirty seconds later the record is
+    reaped and their next click answers "Claim this container before
+    connecting to it" for a project they hold.
+
+    The evidence the reaper actually wants is whether the OWNING
+    BROWSER is still there, and the hub already knows: every
+    authenticated request refreshes the session's own last-seen stamp,
+    and the hub screens poll while they are open. So a session seen
+    within the window vetoes the reap, and a browser that closed stops
+    refreshing and frees the claim exactly as before.
+
+    Deliberately narrow. It answers only for an ACTIVE record that has
+    never had a socket. A record whose socket existed and went away is
+    the ORPHANED_SESSION path's business (design §4/§7), which has its
+    own conditions and is untouched here; and a record with no bound
+    session (the transitional and viewer records, which carry '')
+    keeps today's behaviour, because there is no session to ask.
+    """
+    if recordOwner.sState != containerOwnership.S_OWNER_STATE_ACTIVE:
+        return False
+    if recordOwner.bSocketEverExisted:
+        return False
+    if not recordOwner.sBrowserSessionId:
+        return False
+    dictLifetime = browserSession.fdictActiveSessionLifetimes(
+        getattr(appState, "dictBrowserSessions", {}) or {},
+    ).get(recordOwner.sBrowserSessionId)
+    if dictLifetime is None:
+        return False
+    return dictLifetime["fIdleSeconds"] < F_CLAIM_PRESENCE_WINDOW_SECONDS
 
 
 # ---------------------------------------------------------------------

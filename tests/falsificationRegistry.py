@@ -1554,10 +1554,18 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/routes/workflowRoutes.py',
         old="""    if dictContainerOwners.get(sName) is None:
         if dictCtx.get("bIsHub"):
-            raise HTTPException(
-                409,
-                "Claim this container before connecting to it.",
-            )
+            # Structured, because the dashboard has somewhere to send
+            # the researcher for THIS refusal and nowhere to send them
+            # for the in-use one below. Matching on the prose would
+            # make the recovery hostage to the wording.
+            raise HTTPException(409, {
+                "sMessage": (
+                    "This project is no longer claimed by this "
+                    "session. Select it again on the project list to "
+                    "claim it."
+                ),
+                "sRefusal": S_REFUSAL_CLAIM_REQUIRED,
+            })
         return""",
         new="""    if dictContainerOwners.get(sName) is None:
         return""",
@@ -3659,12 +3667,12 @@ def _fdictEntry(sRel):
         nodeid='tests/testTerminalContainmentLive.py::test_reaper_kills_the_detached_descendant_or_quarantines',
         source='vaibify/gui/serverLifespan.py',
         old='''    _fnDrainTerminalsOfReapableOwners(
-        app, dictContainerOwners, fbGuardedWorkLive,
+        app, dictContainerOwners, fbReapIsVetoed,
     )
     containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
         lambda sName: (
-            fbGuardedWorkLive(sName)
+            fbReapIsVetoed(sName)
             or terminalContainment.fbContainerHasLiveTerminalRecords(
                 app.state, sName,
             )
@@ -3674,7 +3682,7 @@ def _fdictEntry(sRel):
     )''',
         new='''    containerOwnership.flistReapIdleOwnerships(
         dictContainerOwners,
-        lambda sName: fbGuardedWorkLive(sName),
+        lambda sName: fbReapIsVetoed(sName),
         dictSessionOwner=getattr(app.state, "dictSessionOwner", None),
     )''',
     ),
@@ -9728,5 +9736,108 @@ def _fdictEntry(sRel):
         # dashboard with an error for everybody.
         old='        if (!_dictSessionState.sSessionToken) {\n',
         new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_host_claim_survives_the_time_it_takes_to_read_'
+            'the_warning'
+        ),
+        source='vaibify/gui/serverLifespan.py',
+        # Drop the presence veto: the claim is reaped while the
+        # disclosure is still on screen.
+        old=(
+            '            or _fbOwningBrowserStillAttends('
+            'app, dictContainerOwners, sName)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_container_claim_survives_a_pause_on_the_workflow_'
+            'picker'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Scope presence to host projects only -- the shape of a fix
+        # that answers the report and leaves the class.
+        old=(
+            '    if not recordOwner.sBrowserSessionId:\n'
+            '        return False\n'
+        ),
+        new=(
+            '    if not recordOwner.sBrowserSessionId:\n'
+            '        return False\n'
+            '    from vaibify.config.registryManager import fbIsHostProject\n'
+            '    if not fbIsHostProject(recordOwner.sContainerId):\n'
+            '        return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_claim_whose_browser_went_away_is_still_reaped'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Presence that never consults the session clock: every
+        # abandoned claim becomes permanent.
+        old=(
+            '    return dictLifetime["fIdleSeconds"] < '
+            'F_CLAIM_PRESENCE_WINDOW_SECONDS\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_presence_answers_only_before_the_first_socket'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Widen presence past the first socket, which quietly disables
+        # the ORPHANED_SESSION machinery for every open tab.
+        old=(
+            '    if recordOwner.bSocketEverExisted:\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimSurvivesTheDisclosure.py::'
+            'test_a_record_bound_to_no_session_keeps_the_old_behaviour'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        # Consult the store with an unbound id, pinning a record
+        # nobody can be shown to be attending.
+        old=(
+            '    if not recordOwner.sBrowserSessionId:\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLostClaimIsRecoverable.py::'
+            'testALostClaimSendsTheResearcherWhereTheyCanClaimAgain'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Report the refusal as a bare toast: the researcher stays on a
+        # screen with no claim control, which is what shipped.
+        old='            if (_fbRecoverFromLostClaim(error)) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLostClaimIsRecoverable.py::'
+            'testAnInUseRefusalDoesNotBounceYouBackToTheTile'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # Recover on any error, which sends a researcher refused
+        # for a reason they cannot fix back to be refused again.
+        old=(
+            '        if (dictDetail.sRefusal !== '
+            '_S_REFUSAL_CLAIM_REQUIRED) {\n'
+        ),
+        new='        if (false) {\n',
     ),
 ]
