@@ -9641,4 +9641,92 @@ def _fdictEntry(sRel):
             '            raise HostPathOutsideProjectError(sPath)\n'
         ),
     ),
+    # --- The launch path told the researcher three untrue things ---
+    #
+    # Found by a maintainer trying to follow a test plan (2026-08-10).
+    # From outside they compose into "vaibify is hanging", which is not
+    # what was happening and is why each is scored separately.
+    Falsification(
+        nodeid=(
+            'tests/testGuiLaunchHonesty.py::'
+            'testGuiWithNoProjectLaunchesTheHubNotTheSingleProjectViewer'
+        ),
+        source='vaibify/cli/main.py',
+        # What shipped: the single-project viewer, with a container
+        # path as its workspace root, while the help promised the
+        # landing page.
+        old='        fnLaunchHub(None)\n        return\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiLaunchHonesty.py::'
+            'testANamedProjectThatCannotResolveStopsTheCommand'
+        ),
+        source='vaibify/cli/main.py',
+        # The swallowed exit, restored: a resolver's sys.exit caught
+        # and discarded, so a fatal message printed as noise before a
+        # successful start.
+        # Anchored through the following line: this call spells the
+        # same three lines in three commands, and only the gui one is
+        # the subject here.
+        old=(
+            '    configProject = fconfigResolveProject(sProjectName)\n'
+            '    sUrl = "http://127.0.0.1:8050"\n'
+        ),
+        new=(
+            '    try:\n'
+            '        configProject = fconfigResolveProject(sProjectName)\n'
+            '    except SystemExit:\n'
+            '        configProject = None\n'
+            '    sUrl = "http://127.0.0.1:8050"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiLaunchHonesty.py::'
+            'testTheAnnouncementNeverOffersTheAddressAsTheWayIn'
+        ),
+        source='vaibify/cli/main.py',
+        # The bare address alone, which is the one string that cannot
+        # sign in.
+        old=(
+            '    click.echo(\n'
+            '        "Opening your browser. The dashboard signs in with '
+            'a one-time "\n'
+            '        "link, so that tab is the way in — this address '
+            'alone cannot "\n'
+            '        "sign in. If no window opened, re-run this command."\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testUnsignedTabSaysSo.py::'
+            'testAnUnsignedTabNamesTheProblemAndTheFix'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Carrying on with no credential: the first 401 kills
+        # initialization, the static placeholder stays, and a refused
+        # dashboard is pixel-identical to a slow one.
+        old=(
+            '        if (!_dictSessionState.sSessionToken) {\n'
+            '            _fnReportNoCredentialAndStop();\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testUnsignedTabSaysSo.py::'
+            'testASignedTabStillLoadsItsContainers'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The other direction: refusing every tab would replace the
+        # dashboard with an error for everybody.
+        old='        if (!_dictSessionState.sSessionToken) {\n',
+        new='        if (true) {\n',
+    ),
 ]

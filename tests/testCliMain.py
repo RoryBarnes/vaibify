@@ -197,10 +197,11 @@ def test_setup_help_text():
 
 
 def test_gui_help_text():
+    """Updated 2026-08-10 with the command's wording; see testCliCommands."""
     runner = CliRunner()
     result = runner.invoke(main, ["gui", "--help"])
     assert result.exit_code == 0
-    assert "pipeline" in result.output.lower()
+    assert "dashboard" in result.output.lower()
 
 
 def test_gui_help_no_user_option():
@@ -501,12 +502,20 @@ def test_setup_launches_wizard():
 
 
 @patch("vaibify.cli.main.fconfigResolveProject")
-def test_gui_launches_pipeline_viewer(mockConfig):
-    """Lines 144-163: gui command starts pipeline viewer.
+def test_gui_with_a_project_launches_that_projects_viewer(mockConfig):
+    """Rewritten 2026-08-10: this invoked ``gui`` with NO project.
 
-    See note in ``test_fnLaunchHub_starts_server`` — env-var
-    suppression is the only reliable way to keep the daemon thread
-    from firing a real browser tab after the patch context exits.
+    It predated the fix and pinned the defect. A bare ``gui`` built the
+    single-project viewer with a ``/workspace`` workspace root — a
+    container path, on a laptop — while its own help promised the
+    landing page; the fixture above even supplied that root, so the
+    test agreed with the bug. A bare ``gui`` now launches the hub
+    (``testGuiLaunchHonesty``), and what belongs here is the branch
+    this command still owns: opening a NAMED project.
+
+    See ``test_fnLaunchHub_starts_server`` — env-var suppression is the
+    only reliable way to keep the daemon thread from firing a real
+    browser tab after the patch context exits.
     """
     import os
     mockConfig.return_value = SimpleNamespace(
@@ -524,7 +533,7 @@ def test_gui_launches_pipeline_viewer(mockConfig):
             mockCreateApp,
         ):
             runner = CliRunner()
-            result = runner.invoke(main, ["gui"])
+            result = runner.invoke(main, ["gui", "--project", "someProject"])
             assert result.exit_code == 0, result.output
-            assert "pipeline viewer" in result.output.lower()
+            assert "starting vaibify" in result.output.lower()
             mockRun.assert_called_once()

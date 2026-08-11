@@ -429,9 +429,38 @@ const VaibifyApp = (function () {
 
     /* --- Initialization --- */
 
+    function _fnReportNoCredentialAndStop() {
+        /* The tab holds no credential, so every API call will answer
+           401. Say so, in the place the researcher is already looking.
+
+           Without this the page half-initialised: fnLoadUserName threw
+           on the first 401, the rest of fnInitialize never ran, and
+           what stayed on screen was the STATIC "Loading containers..."
+           from index.html — so an unauthenticated dashboard was
+           indistinguishable from a slow one, and the Add button was
+           dead because its binding never happened. A spinner that
+           means "refused" is the dashboard misreporting its own
+           state. */
+        var elList = document.getElementById("listContainers");
+        if (elList) {
+            elList.innerHTML =
+                '<p style="color: var(--color-red-text);">' +
+                "This tab is not signed in.</p>" +
+                '<p class="muted-text">' +
+                "The dashboard signs in with a one-time link, so a " +
+                "bookmarked or retyped address cannot. Re-run " +
+                "<code>vaibify</code> and use the tab it opens." +
+                "</p>";
+        }
+    }
+
     async function fnInitialize() {
         _fnRestoreLeaseFromStorage();
         await fnFetchSessionToken();
+        if (!_dictSessionState.sSessionToken) {
+            _fnReportNoCredentialAndStop();
+            return;
+        }
         fnRegisterWebSocketHandlers();
         fnRegisterPollingHandlers();
         /* Container-independent: a session sitting on the picker is

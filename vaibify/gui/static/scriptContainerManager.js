@@ -1452,6 +1452,16 @@ var VaibifyContainerManager = (function () {
             bHostStage ? "" : "none";
         document.getElementById("addChoiceHostNote").style.display =
             bHostStage ? "" : "none";
+        /* The title is part of the stage. "Add Container" over the
+           host cards names the one thing a host project does not have,
+           on the very screen where the researcher is choosing to go
+           without it. */
+        var elTitle = document.getElementById("addChoiceTitle");
+        if (elTitle) {
+            elTitle.textContent = bHostStage
+                ? "Add Host Project"
+                : "Add Container";
+        }
     }
 
     function _fnCloseAddChoice() {
