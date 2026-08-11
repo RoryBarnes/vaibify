@@ -421,36 +421,63 @@ def _fnOpenTheAddDialog(page, serverHub):
     page.wait_for_selector("#modalAddChoice", timeout=5000)
 
 
-def testTheAddDialogOffersTheHostTier(pageDashboard, serverHub):
-    """The first stage names the tier and what it is for."""
+def testTheAddDialogAsksWhereTheWorkRunsFirst(pageDashboard, serverHub):
+    """Stage 1 is the environment kind, and both kinds are offered.
+
+    The host tier used to be a third card beside Add Existing and
+    Create New, which put "Add Container" over a choice between a
+    container and not-a-container.
+    """
     _fnOpenTheAddDialog(pageDashboard, serverHub)
-    sCard = pageDashboard.text_content("#btnChoiceHostMode")
-    assert "directly on this machine" in sCard
-    assert "experimentation" in sCard
-    assert pageDashboard.is_hidden("#addChoiceHostStage")
+    sHostCard = pageDashboard.text_content("#btnChoiceKindHost")
+    assert "This machine" in sHostCard
+    assert "experimentation" in sHostCard
+    sContainerCard = pageDashboard.text_content("#btnChoiceKindContainer")
+    assert "Container" in sContainerCard
+    assert pageDashboard.is_hidden("#addChoiceHowStage")
 
 
 @pytest.mark.falsification
-def testChoosingTheHostTierReOffersBothPathsWithTheDisclosure(
+def testChoosingTheHostKindReOffersBothPathsWithTheDisclosure(
     pageDashboard, serverHub,
 ):
-    """The mode is a stage, not a third path, and it says what it costs.
+    """The kind is a stage, not a path, and it says what it costs.
 
     Kills: the host card being wired to one path only, which silently
     removes the other -- a researcher who already has a vaibify.yml
     directory could then only register it as a container.
     """
     _fnOpenTheAddDialog(pageDashboard, serverHub)
-    pageDashboard.click("#btnChoiceHostMode")
+    pageDashboard.click("#btnChoiceKindHost")
     pageDashboard.wait_for_selector(
-        "#addChoiceHostStage", state="visible", timeout=5000,
+        "#addChoiceHowStage", state="visible", timeout=5000,
     )
     assert pageDashboard.is_hidden("#addChoiceCards")
-    assert pageDashboard.is_visible("#btnChoiceHostExisting")
-    assert pageDashboard.is_visible("#btnChoiceHostCreateNew")
+    assert pageDashboard.is_visible("#btnChoiceAddExisting")
+    assert pageDashboard.is_visible("#btnChoiceCreateNew")
     sNote = pageDashboard.text_content("#addChoiceHostNote")
     assert "full user authority" in sNote
     assert "Level 3" in sNote
+    assert "This machine" in pageDashboard.text_content("#addChoiceTitle")
+
+
+@pytest.mark.falsification
+def testTheContainerKindTakesTheSameSecondStageWithoutTheDisclosure(
+    pageDashboard, serverHub,
+):
+    """The other direction: one second stage, and the note is host-only.
+
+    Kills: showing the uncontained disclosure for a container, which
+    would teach a researcher to dismiss the one notice that matters.
+    """
+    _fnOpenTheAddDialog(pageDashboard, serverHub)
+    pageDashboard.click("#btnChoiceKindContainer")
+    pageDashboard.wait_for_selector(
+        "#addChoiceHowStage", state="visible", timeout=5000,
+    )
+    assert pageDashboard.is_visible("#btnChoiceAddExisting")
+    assert pageDashboard.is_hidden("#addChoiceHostNote")
+    assert "Container" in pageDashboard.text_content("#addChoiceTitle")
 
 
 @pytest.mark.falsification
@@ -470,8 +497,8 @@ def testTheHostCreateWizardSkipsEveryContainerPage(
     the answers where nothing reads them.
     """
     _fnOpenTheAddDialog(pageDashboard, serverHub)
-    pageDashboard.click("#btnChoiceHostMode")
-    pageDashboard.click("#btnChoiceHostCreateNew")
+    pageDashboard.click("#btnChoiceKindHost")
+    pageDashboard.click("#btnChoiceCreateNew")
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
     listTitles = [pageDashboard.text_content("#wizardStepTitle").strip()]
 
@@ -521,6 +548,7 @@ def testTheContainerCreateWizardStillWalksEveryPage(
 ):
     """The other direction: the container wizard is unchanged."""
     _fnOpenTheAddDialog(pageDashboard, serverHub)
+    pageDashboard.click("#btnChoiceKindContainer")
     pageDashboard.click("#btnChoiceCreateNew")
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
     iVisibleDots = pageDashboard.evaluate(
@@ -538,8 +566,8 @@ def testTheHostWizardShowsOnlyItsOwnProgressDots(
 ):
     """Four pages, four dots -- not four of eight that never arrive."""
     _fnOpenTheAddDialog(pageDashboard, serverHub)
-    pageDashboard.click("#btnChoiceHostMode")
-    pageDashboard.click("#btnChoiceHostCreateNew")
+    pageDashboard.click("#btnChoiceKindHost")
+    pageDashboard.click("#btnChoiceCreateNew")
     pageDashboard.wait_for_selector("#modalCreateWizard", timeout=5000)
     iVisibleDots = pageDashboard.evaluate(
         """() => Array.from(
@@ -547,3 +575,54 @@ def testTheHostWizardShowsOnlyItsOwnProgressDots(
         ).filter((el) => el.style.display !== 'none').length"""
     )
     assert iVisibleDots == 4
+
+
+# ── Grouping by machine, and saying what each tile is ────────────────
+#
+# A host project rendered under a heading reading "Containers", and the
+# only thing marking it out was a status dot in vaibify's own brand
+# colour -- which spends the brand on "this one is odd" and says
+# nothing about why. Both were reported by a researcher on the first
+# real walkthrough. The heading now names the MACHINE, because that is
+# the axis that survives a remote machine hosting either kind, and the
+# containment is said in words on the tile.
+
+
+@pytest.mark.falsification
+def testTheListIsHeadedByTheMachineNotTheContainment(
+    pageDashboard, serverHub,
+):
+    """The heading must not call a host project a container.
+
+    Kills: heading the list "Containers", which files every host
+    project under the one word it is not.
+    """
+    _fnWaitForPicker(pageDashboard, serverHub)
+    sHeading = pageDashboard.text_content("#labelContainers")
+    assert "This machine" in sHeading, sHeading
+    assert "Container" not in sHeading, (
+        f"the heading still names the containment: {sHeading}"
+    )
+
+
+@pytest.mark.falsification
+def testEveryTileSaysWhetherItIsContained(pageDashboard, serverHub):
+    """The chip carries what the heading no longer can.
+
+    Asserted on BOTH tiles in the same list: a chip that always reads
+    "contained" would pass a host-only assertion and quietly tell a
+    researcher their uncontained project was contained, which is the
+    single most consequential thing this screen says.
+
+    Kills: rendering one containment for every tile.
+    """
+    _fnWaitForPicker(pageDashboard, serverHub)
+    assert _fsTileChip(pageDashboard, S_HOST_PROJECT_READY) == "uncontained"
+    assert _fsTileChip(pageDashboard, S_CONTAINER_NAME) == "contained"
+
+
+def _fsTileChip(page, sName):
+    """Return a tile's containment chip text."""
+    return page.text_content(
+        f'.container-tile[data-name="{sName}"] .containment-chip',
+    ).strip()

@@ -263,6 +263,7 @@ def testCreationWizardPersistsSelectedAgent(
 
     pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     pageDashboard.locator("#btnAddContainer").click()
+    pageDashboard.locator("#btnChoiceKindContainer").click()
     pageDashboard.locator("#btnChoiceCreateNew").click()
     pageDashboard.locator("#btnWizardChooseDirectory").click()
     sRelativeDirectory = os.path.relpath(

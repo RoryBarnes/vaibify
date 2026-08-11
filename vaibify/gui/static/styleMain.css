@@ -231,10 +231,39 @@ html, body {
 
 /* Host projects: ready or missing, never built/started/stopped. The
    ready mark is deliberately NOT the container's favicon glyph — the
-   two states mean different things and must not read as the same. */
+   two states mean different things and must not read as the same.
+   It is deliberately not the BRAND blue either: the pale blue is
+   vaibify's own colour and spending it on "this tile is the unusual
+   one" reads as decoration while saying nothing about why. What the
+   tile is unusual FOR is now said in words by the containment chip,
+   so the dot can go back to meaning only "present and ready". */
 .status-dot.status-host-ready {
-    background: var(--color-pale-blue);
-    box-shadow: 0 0 6px rgba(19, 174, 213, 0.4);
+    background: var(--color-label);
+}
+
+/* The containment chip. Contained is the quiet default; uncontained
+   borrows the host-mode badge's palette on purpose — it is the same
+   claim about the same project, one screen earlier. */
+.containment-chip {
+    margin-left: 10px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 0.7em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.containment-chip--contained {
+    background: transparent;
+    border: 1px solid var(--text-muted);
+    color: var(--text-muted);
+}
+
+.containment-chip--direct {
+    background: var(--bg-error-tint);
+    border: 1px solid var(--border-error-tint);
+    color: var(--color-red-text);
 }
 
 .status-dot.status-missing {

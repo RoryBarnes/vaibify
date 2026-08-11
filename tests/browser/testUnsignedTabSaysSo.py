@@ -8,7 +8,8 @@ capability to redeem.
 What that used to look like: ``fnInitialize`` called
 ``fnFetchSessionToken``, got nothing, and carried on; the first
 authenticated call threw on its 401; the rest of initialization never
-ran; and what stayed on screen was the STATIC "Loading containers..."
+ran; and what stayed on screen was the STATIC "Loading
+environments..."
 from ``index.html``. So a refused dashboard was pixel-identical to a
 slow one, the Add button was dead because its binding never happened,
 and the honest diagnosis took a maintainer and a researcher the better
@@ -38,7 +39,7 @@ def testAnUnsignedTabNamesTheProblemAndTheFix(pageDashboard, serverHub):
     )
     pageDashboard.wait_for_function(
         """() => !document.getElementById('listContainers')
-            .innerText.includes('Loading containers')""",
+            .innerText.includes('Loading environments')""",
         timeout=10000,
     )
     sText = pageDashboard.text_content("#listContainers")

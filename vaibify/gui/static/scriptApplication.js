@@ -435,7 +435,7 @@ const VaibifyApp = (function () {
 
            Without this the page half-initialised: fnLoadUserName threw
            on the first 401, the rest of fnInitialize never ran, and
-           what stayed on screen was the STATIC "Loading containers..."
+           what stayed on screen was the STATIC "Loading environments..."
            from index.html — so an unauthenticated dashboard was
            indistinguishable from a slow one, and the Add button was
            dead because its binding never happened. A spinner that

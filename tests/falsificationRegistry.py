@@ -8802,25 +8802,38 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
-            'testChoosingTheHostTierReOffersBothPathsWithTheDisclosure'
+            'testChoosingTheHostKindReOffersBothPathsWithTheDisclosure'
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
         # Wired to one path instead of the stage: the other silently
         # disappears, and an existing host directory can then only be
         # registered as a container.
         old=(
-            '        document.getElementById("btnChoiceHostMode")'
-            '.addEventListener(\n'
             '            "click", function () { '
-            '_fnShowAddChoiceStage(true); }\n'
-            '        );\n'
+            '_fnShowAddChoiceStage(sKind); }\n'
         ),
         new=(
-            '        document.getElementById("btnChoiceHostMode")'
-            '.addEventListener(\n'
             '            "click", function () { '
-            'VaibifyWorkflowManager.fnOpenCreateWizard("host"); }\n'
-            '        );\n'
+            'VaibifyWorkflowManager.fnOpenCreateWizard(sKind); }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheContainerKindTakesTheSameSecondStageWithoutTheDisclosure'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # Show the uncontained disclosure for every kind, which teaches
+        # a researcher to dismiss the one notice that matters.
+        old=(
+            '        document.getElementById("addChoiceHostNote")'
+            '.style.display =\n'
+            '            sKind === "host" ? "" : "none";\n'
+        ),
+        new=(
+            '        document.getElementById("addChoiceHostNote")'
+            '.style.display =\n'
+            '            sKind ? "" : "none";\n'
         ),
     ),
     Falsification(
@@ -9839,5 +9852,27 @@ def _fdictEntry(sRel):
             '_S_REFUSAL_CLAIM_REQUIRED) {\n'
         ),
         new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testTheListIsHeadedByTheMachineNotTheContainment'
+        ),
+        source='vaibify/gui/static/index.html',
+        # Head the list by containment again, filing every host project
+        # under the one word it is not.
+        old='                This machine</h3>\n',
+        new='                Containers</h3>\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
+            'testEveryTileSaysWhetherItIsContained'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # One containment for every tile: an uncontained project is
+        # then labelled contained, on the screen where it matters most.
+        old='            (bHost ? "uncontained" : "contained") + "</span>"\n',
+        new='            "contained" + "</span>"\n',
     ),
 ]

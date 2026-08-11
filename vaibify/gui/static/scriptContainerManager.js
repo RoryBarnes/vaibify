@@ -201,6 +201,7 @@ var VaibifyContainerManager = (function () {
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
+            _fsRenderContainmentChip(bHost) +
             _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
@@ -211,6 +212,21 @@ var VaibifyContainerManager = (function () {
             '<div class="container-menu-item danger" ' +
             'data-action="remove">Remove from list</div>' +
             "</div></div>"
+        );
+    }
+
+    function _fsRenderContainmentChip(bHost) {
+        /* The list is grouped by MACHINE, so the tile has to say the
+           other thing: whether the work is contained. It used to be
+           said by the status dot alone, in the brand colour, which
+           spent vaibify's own blue on "this one is the odd one out"
+           and told a researcher nothing about why. The uncontained
+           chip deliberately matches the in-workflow badge, because it
+           is the same claim about the same project. */
+        return (
+            '<span class="containment-chip containment-chip--' +
+            (bHost ? "direct" : "contained") + '">' +
+            (bHost ? "uncontained" : "contained") + "</span>"
         );
     }
 
@@ -1436,61 +1452,78 @@ var VaibifyContainerManager = (function () {
         VaibifyNewWorkflowWizard.fnBindEventHandlers();
     }
 
+    /* The environment kind chosen on stage 1, carried into stage 2.
+       "" means stage 1 is still on screen. */
+    var _sChosenEnvironmentKind = "";
+
     function fnOpenAddChoice() {
-        _fnShowAddChoiceStage(false);
+        _fnShowAddChoiceStage("");
         document.getElementById("modalAddChoice").style.display = "flex";
     }
 
-    function _fnShowAddChoiceStage(bHostStage) {
-        /* One dialog, two stages. The host tier is a MODE, so picking
-           it re-offers the same two ways of adding a project rather
-           than becoming a third one -- and the disclosure appears
-           with it, before any directory is chosen. */
+    function _fnShowAddChoiceStage(sKind) {
+        /* One dialog, two stages: stage 1 asks WHERE the work runs,
+           stage 2 asks how the project gets here. The host tier used to
+           be a third card on stage 1, which put "Add Container" over a
+           choice between a container and not-a-container. Both kinds
+           now take the same second stage, and the disclosure appears
+           with the host kind -- before any directory is chosen. */
+        _sChosenEnvironmentKind = sKind;
         document.getElementById("addChoiceCards").style.display =
-            bHostStage ? "none" : "";
-        document.getElementById("addChoiceHostStage").style.display =
-            bHostStage ? "" : "none";
+            sKind ? "none" : "";
+        document.getElementById("addChoiceHowStage").style.display =
+            sKind ? "" : "none";
         document.getElementById("addChoiceHostNote").style.display =
-            bHostStage ? "" : "none";
-        /* The title is part of the stage. "Add Container" over the
-           host cards names the one thing a host project does not have,
-           on the very screen where the researcher is choosing to go
-           without it. */
+            sKind === "host" ? "" : "none";
+        _fnSetAddChoiceTitle(sKind);
+    }
+
+    function _fnSetAddChoiceTitle(sKind) {
+        /* The title carries the chosen kind, so the second stage never
+           asks a researcher to remember which branch they took. */
         var elTitle = document.getElementById("addChoiceTitle");
-        if (elTitle) {
-            elTitle.textContent = bHostStage
-                ? "Add Host Project"
-                : "Add Container";
+        if (!elTitle) return;
+        if (!sKind) {
+            elTitle.textContent = "Add Environment";
+            return;
         }
+        elTitle.textContent = "Add Environment — " + (
+            sKind === "host" ? "This machine" : "Container"
+        );
     }
 
     function _fnCloseAddChoice() {
         document.getElementById("modalAddChoice").style.display = "none";
-        _fnShowAddChoiceStage(false);
+        _fnShowAddChoiceStage("");
     }
 
     function fnBindAddChoiceModal() {
         document.getElementById("btnAddChoiceCancel").addEventListener(
             "click", _fnCloseAddChoice
         );
-        _fnBindAddChoiceCard(
-            "btnChoiceAddExisting", "container", "existing");
-        _fnBindAddChoiceCard(
-            "btnChoiceCreateNew", "container", "create");
-        _fnBindAddChoiceCard("btnChoiceHostExisting", "host", "existing");
-        _fnBindAddChoiceCard("btnChoiceHostCreateNew", "host", "create");
-        document.getElementById("btnChoiceHostMode").addEventListener(
-            "click", function () { _fnShowAddChoiceStage(true); }
-        );
+        _fnBindAddChoiceCard("btnChoiceAddExisting", "existing");
+        _fnBindAddChoiceCard("btnChoiceCreateNew", "create");
+        _fnBindEnvironmentKindCard("btnChoiceKindContainer", "container");
+        _fnBindEnvironmentKindCard("btnChoiceKindHost", "host");
         var elHelp = document.getElementById("btnAddChoiceHelp");
         if (elHelp) {
             elHelp.addEventListener("click", _fnShowAddChoiceHelp);
         }
     }
 
-    function _fnBindAddChoiceCard(sElementId, sMode, sPath) {
+    function _fnBindEnvironmentKindCard(sElementId, sKind) {
+        document.getElementById(sElementId).addEventListener(
+            "click", function () { _fnShowAddChoiceStage(sKind); }
+        );
+    }
+
+    function _fnBindAddChoiceCard(sElementId, sPath) {
+        /* The kind is read at CLICK time, not bound at wiring time:
+           one pair of cards now serves both kinds, so the mode is
+           whatever stage 1 last chose. */
         document.getElementById(sElementId).addEventListener(
             "click", function () {
+                var sMode = _sChosenEnvironmentKind || "container";
                 _fnCloseAddChoice();
                 if (sPath === "existing") {
                     VaibifyDirectoryBrowser.fnOpenDirectoryBrowser(sMode);
@@ -1503,28 +1536,44 @@ var VaibifyContainerManager = (function () {
 
     function _fnShowAddChoiceHelp() {
         VaibifyModals.fnShowInfoModal(
-            "Add Container — Help", _S_ADD_CHOICE_HELP);
+            "Add Environment — Help", _S_ADD_CHOICE_HELP);
         var elInfo = document.getElementById("modalInfo");
         if (elInfo) elInfo.style.zIndex = "1200";
     }
 
     var _S_ADD_CHOICE_HELP =
+        '<p>An <strong>environment</strong> is a place your projects ' +
+        'run. Adding one takes two steps: first where it runs, then ' +
+        'whether the project already exists.</p>' +
+        '<p><strong>Container</strong> &mdash; vaibify builds a Docker ' +
+        'image from your <code>vaibify.yml</code> and runs every step ' +
+        'inside it. The environment is pinned and rebuildable, which ' +
+        'is what lets a result reach reproducibility Level 3 and what ' +
+        'lets vaibify attest that an AI agent changed only what it ' +
+        'says it changed. Requires Docker, and the first build takes ' +
+        'minutes to hours.</p>' +
+        '<p><strong>This machine</strong> &mdash; vaibify runs your ' +
+        'steps directly, with no container. There is nothing to build, ' +
+        'so you can start immediately, and it is the right choice for ' +
+        'experimentation. In exchange the commands run with your full ' +
+        'user authority &mdash; your files, your network, your stored ' +
+        'credentials &mdash; and vaibify cannot reach Level 3 or ' +
+        'provide Supervised attribution for that project. You are ' +
+        'shown this again, in full, before you open one.</p>' +
         '<p><strong>Add Existing</strong> &mdash; point vaibify at a ' +
-        'directory on your host that already contains a ' +
-        '<code>vaibify.yml</code> file. The directory might be a ' +
-        'project a collaborator shared with you, a project you cloned ' +
-        'from GitHub, or one you created previously and removed from ' +
-        'the registry. Vaibify reads the existing config and registers ' +
-        'the project &mdash; nothing is overwritten.</p>' +
-        '<p><strong>Create New</strong> &mdash; launch the wizard that ' +
-        'walks you through creating a brand new project from scratch. ' +
-        'You pick a directory (existing or new), choose a starter ' +
-        'template, configure features and packages, and vaibify writes ' +
-        'a fresh <code>vaibify.yml</code> for you. Use this when you ' +
-        'are starting a project, not when you already have one.</p>' +
-        '<p>Both paths produce the same kind of registered project ' +
-        'afterward; the only difference is whether the configuration ' +
-        'file already exists.</p>';
+        'directory that already contains a <code>vaibify.yml</code>: ' +
+        'one a collaborator shared, one you cloned from GitHub, or one ' +
+        'you registered before and removed. The existing config is ' +
+        'read, never overwritten.</p>' +
+        '<p><strong>Create New</strong> &mdash; the wizard writes a ' +
+        'fresh <code>vaibify.yml</code>. You pick a directory, a ' +
+        'starter template and a name; a container environment also ' +
+        'asks about features and packages, which a host one has no ' +
+        'use for.</p>' +
+        '<p>The choice is not permanent in the sense that matters: ' +
+        'the same directory can be registered as a container ' +
+        'environment later, and starting on this machine is a ' +
+        'reasonable way to begin.</p>';
 
     function fsGetSelectedContainerId() {
         return _sSelectedContainerId;

@@ -20,14 +20,19 @@
          style="display: none;"></div>
     <div class="picker-content">
         <div class="picker-section-header">
+            <!-- The heading names the MACHINE, not the containment.
+                 A host project filed under "Containers" was a lie about
+                 what it is, and grouping by containment would have to
+                 be undone the moment a remote machine can host either
+                 kind. -->
             <h3 class="picker-section-label" id="labelContainers">
-                Containers</h3>
+                This machine</h3>
             <div style="display: flex; gap: 6px;">
                 <button class="btn-icon" id="btnAddContainer"
-                        title="Add container">+</button>
+                        title="Add environment">+</button>
                 <button class="btn-icon picker-refresh"
                         id="btnRefreshContainers"
-                        title="Refresh container list">&#x21bb;</button>
+                        title="Refresh">&#x21bb;</button>
                 <button class="btn-icon"
                         id="btnNewVaibifyWindow"
                         title="New vaibify window">&#x29C9;</button>
@@ -35,7 +40,7 @@
         </div>
         <div id="listContainers">
             <p class="muted-text" style="text-align: center;">
-                Loading containers...
+                Loading environments...
             </p>
         </div>
         <div id="unrecognizedSection" style="display: none;">
@@ -88,13 +93,36 @@
     <div class="modal modal-small">
         <div class="wizard-title-row">
             <h2 style="color: var(--color-pale-blue);"
-                id="addChoiceTitle">Add Container</h2>
+                id="addChoiceTitle">Add Environment</h2>
             <button type="button" id="btnAddChoiceHelp"
                     class="wizard-help-button"
                     title="What's the difference?"
-                    aria-label="Show help for add container choice">?</button>
+                    aria-label="Show help for the environment choice">?</button>
         </div>
+        <!-- Stage 1 asks WHERE the work runs; stage 2 asks how the
+             project gets here. They used to be one stage with the host
+             option bolted on as a third card, which made "Add
+             Container" the title over a choice that was not one. The
+             kind stage is also where a remote machine goes when there
+             is one, without disturbing stage 2. -->
         <div class="add-choice-cards" id="addChoiceCards">
+            <div class="add-choice-card" id="btnChoiceKindContainer">
+                <div class="add-choice-icon">&#128230;</div>
+                <div class="add-choice-title">Container</div>
+                <div class="add-choice-description">
+                    Contained and reproducible. Needs Docker
+                </div>
+            </div>
+            <div class="add-choice-card" id="btnChoiceKindHost">
+                <div class="add-choice-icon">&#128187;</div>
+                <div class="add-choice-title">This machine</div>
+                <div class="add-choice-description">
+                    No container. For experimentation
+                </div>
+            </div>
+        </div>
+        <div class="add-choice-cards" id="addChoiceHowStage"
+             style="display: none;">
             <div class="add-choice-card" id="btnChoiceAddExisting">
                 <div class="add-choice-icon">&#128193;</div>
                 <div class="add-choice-title">Add Existing</div>
@@ -103,35 +131,6 @@
                 </div>
             </div>
             <div class="add-choice-card" id="btnChoiceCreateNew">
-                <div class="add-choice-icon">&#43;</div>
-                <div class="add-choice-title">Create New</div>
-                <div class="add-choice-description">
-                    Set up a new project from a template
-                </div>
-            </div>
-            <!-- The third tier. It is a MODE, not a third way of
-                 adding, so choosing it re-offers the same two paths
-                 rather than replacing them: a researcher can add an
-                 existing host project or create one. -->
-            <div class="add-choice-card" id="btnChoiceHostMode">
-                <div class="add-choice-icon">&#128187;</div>
-                <div class="add-choice-title">
-                    Work directly on this machine</div>
-                <div class="add-choice-description">
-                    No container. For experimentation
-                </div>
-            </div>
-        </div>
-        <div class="add-choice-cards" id="addChoiceHostStage"
-             style="display: none;">
-            <div class="add-choice-card" id="btnChoiceHostExisting">
-                <div class="add-choice-icon">&#128193;</div>
-                <div class="add-choice-title">Add Existing</div>
-                <div class="add-choice-description">
-                    Browse for a directory with vaibify.yml
-                </div>
-            </div>
-            <div class="add-choice-card" id="btnChoiceHostCreateNew">
                 <div class="add-choice-icon">&#43;</div>
                 <div class="add-choice-title">Create New</div>
                 <div class="add-choice-description">
