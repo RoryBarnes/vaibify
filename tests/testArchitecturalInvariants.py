@@ -3465,90 +3465,112 @@ def _flistProductionPythonModules():
     ]
 
 
-def testWithdrawnTerminalRouteTouchesNothing():
-    """The terminal route refuses first and touches no shared state.
+# The one module allowed to build a terminal, now that there is one
+# again. It is named rather than the check being deleted: the parking
+# controls stopped being about a withdrawn feature on 2026-08-11 and
+# became about a CONTAINED one — a terminal must be reachable through
+# the gated route and nowhere else, so a background task or a
+# convenience helper cannot start a shell nobody authorized and nobody
+# journals.
+_S_TERMINAL_ROUTE_MODULE = "gui/routes/terminalRoutes.py"
 
-    Ordering is the whole contract. The pre-withdrawal handler resolved
-    the docker id, ran the ownership gate (which REFRESHES liveness),
-    and entered the connection counters before it could refuse anything
-    -- so an unauthenticated dial-in learned whether a named container
-    existed, and a refused one had already disturbed the owner's
-    liveness stamp. The withdrawn handler must reach none of that: the
-    close is the only statement it executes.
+
+def testTheTerminalRouteGatesBeforeItBuildsAnything():
+    """Standing is established before a session or a record exists.
+
+    Ordering is the contract, and it survives the feature coming back
+    with its emphasis moved. While the terminal was withdrawn the
+    ordering rule was "refuse first, touch nothing". Now that the route
+    serves, what must hold is that the ownership gate runs BEFORE the
+    session is constructed: a TerminalSession built ahead of the gate
+    would put a quarantine-bearing operation on a container for a
+    caller with no standing in it, and a refused dial-in would leave
+    the record behind.
+
+    The host refusal is checked in the same order for a different
+    reason: it must precede ``require``, because a host-only machine
+    has no daemon and answering "install Docker" about a project that
+    never wanted one is the ordering bug the container-only HTTP
+    routes already fixed.
     """
-    pathRoute = ROUTES_DIR / "terminalRoutes.py"
-    sSource = fsReadSource(pathRoute)
-    for sForbidden in (
-        "fsContainerNameForId",
-        "fiContainerSessionRejectionCode",
-        "fnServeUnderLiveConnectionCounters",
-        "TerminalSession",
-        "fnRunTerminalSession",
-    ):
-        assert f"{sForbidden}(" not in sSource, (
-            f"the withdrawn terminal route must not call {sForbidden}; "
-            f"the refusal is the first and only statement so it creates "
-            f"no ownership, no counters, no records, and reveals nothing "
-            f"about whether the container exists"
-        )
-    assert "I_REJECT_TERMINAL_DISABLED" in sSource, (
-        "the terminal route must close with the one fixed withdrawal "
-        "code, distinct from every authorization refusal"
+    sSource = fsReadSource(ROUTES_DIR / _S_TERMINAL_ROUTE_MODULE.split("/")[-1])
+    iGate = sSource.index("fiContainerSessionRejectionCode(")
+    iHostRefusal = sSource.index("fbIsHostProject(")
+    iRequire = sSource.index('dictCtx["require"](')
+    iSession = sSource.index("TerminalSession(")
+    assert iGate < iHostRefusal < iRequire < iSession, (
+        "the terminal route must gate, then refuse a host project, "
+        "then require the daemon, then build the session; found order "
+        f"gate={iGate} host={iHostRefusal} require={iRequire} "
+        f"session={iSession}"
     )
     assert "fnCloseWithCode(" in sSource, (
-        "the refusal must accept then close (fnCloseWithCode) so the "
+        "every refusal must accept then close (fnCloseWithCode) so the "
         "browser observes the real code instead of an opaque 1006"
+    )
+    assert "I_REJECT_TERMINAL_NOT_ON_HOST" in sSource, (
+        "a host project's refusal needs its own code: it is neither a "
+        "withdrawn feature nor a rejected credential"
     )
 
 
-def testNoProductionPathConstructsATerminalSession():
-    """Nothing in the shipped package constructs a terminal session.
+def testOnlyTheGatedRouteConstructsATerminalSession():
+    """Control 1: a shell exists only where the gate put it.
 
-    This is parking control 1. The route no longer builds one; this
-    fails the build if any production path -- a new route, a background
-    task, a convenience helper -- starts building one again while the
-    containment boundary is still unprovable.
+    This was "nothing constructs one" while the terminal was
+    withdrawn. The narrower rule that replaces it is the one that was
+    always doing the work: a second construction site — a background
+    task, a helper, a new route — would be a shell nobody authorized
+    and no journal record covers.
     """
     listViolations = []
     for pathModule in _flistProductionPythonModules():
         if pathModule.name in _SET_TERMINAL_SEAM_MODULES:
             continue
+        sRelative = str(pathModule.relative_to(PACKAGE_DIR))
+        if sRelative == _S_TERMINAL_ROUTE_MODULE:
+            continue
         _, treeAst = ftParseFile(pathModule)
         if "TerminalSession" in _flistCallNames(treeAst):
-            listViolations.append(str(pathModule.relative_to(PACKAGE_DIR)))
+            listViolations.append(sRelative)
     assert listViolations == [], (
-        f"no production path may construct a TerminalSession while the "
-        f"terminal is withdrawn; found in: {listViolations}"
+        f"only {_S_TERMINAL_ROUTE_MODULE} may construct a "
+        f"TerminalSession, so every shell is one the ownership gate "
+        f"admitted; found in: {listViolations}"
     )
 
 
-def testOnlyTheWithdrawnHandlerServesTheTerminalWebSocket():
-    """Parking control 2: exactly one handler answers ``/ws/terminal``."""
+def testOnlyOneHandlerServesTheTerminalWebSocket():
+    """Control 2: exactly one handler answers ``/ws/terminal``."""
     listServing = [
         str(pathModule.relative_to(PACKAGE_DIR))
         for pathModule in _flistProductionPythonModules()
         if _S_TERMINAL_WS_PATH in fsReadSource(pathModule)
     ]
-    assert listServing == ["gui/routes/terminalRoutes.py"], (
-        f"only the withdrawn refusal handler may answer "
+    assert listServing == [_S_TERMINAL_ROUTE_MODULE], (
+        f"only the gated handler may answer "
         f"{_S_TERMINAL_WS_PATH}; found in: {listServing}"
     )
     sSource = fsReadSource(ROUTES_DIR / "terminalRoutes.py")
     assert sSource.count("@app.websocket(") == 1, (
-        "terminalRoutes must register exactly one WebSocket endpoint -- "
-        "the refusal -- so no second path can serve a session"
+        "terminalRoutes must register exactly one WebSocket endpoint, "
+        "so no second path can serve a session past the gate"
     )
 
 
-def testNoProductionPathPreparesATerminalExecutionRecord():
-    """Parking control 3: only the parked seam names the creation calls.
+def testOnlyTheSeamPreparesATerminalExecutionRecord():
+    """Control 3: only the seam names the record-creation calls.
 
     A terminal execution becomes durable through
     ``fsPrepareTerminalOperation`` -> ``fnPromoteTerminalOperation`` ->
-    ``fnRegisterTerminalRecord``. Outside the seam module (whose own
-    constructor is unreachable, per parking control 1) no shipped module
-    may name any of them, so no container can acquire a new
-    quarantine-bearing terminal record.
+    ``fnRegisterTerminalRecord``. That record is what makes the weaker
+    quiescence claim honest: a container whose terminal ran reports
+    UNPROVEN instead of quiet, and it can only do that if the record
+    exists. A module that assembled the pieces itself could start a
+    shell with no record at all — invisible rather than unproven,
+    which is the failure mode the withdrawal was protecting against.
+    The route is exempt for ``TerminalSession`` alone (control 1); it
+    names none of the rest.
     """
     listViolations = []
     for pathModule in _flistProductionPythonModules():
@@ -3557,25 +3579,37 @@ def testNoProductionPathPreparesATerminalExecutionRecord():
         _, treeAst = ftParseFile(pathModule)
         setCalled = set(_flistCallNames(treeAst))
         setOffending = setCalled & _SET_TERMINAL_CREATION_SYMBOLS
+        if str(pathModule.relative_to(PACKAGE_DIR)) == (
+            _S_TERMINAL_ROUTE_MODULE
+        ):
+            setOffending = setOffending - {"TerminalSession"}
         if setOffending:
             listViolations.append(
                 (str(pathModule.relative_to(PACKAGE_DIR)),
                  sorted(setOffending))
             )
     assert listViolations == [], (
-        f"terminal-record creation is parked; only the seam module may "
-        f"name these calls. Found: {listViolations}"
+        f"terminal-record creation belongs to the seam module alone, "
+        f"so no shell can run without the record that makes the "
+        f"quiescence claim honest. Found: {listViolations}"
     )
 
 
 def testRemainingContainmentCallsAreCleanupOnly():
-    """Parking control 4: every live containment caller is cleanup.
+    """Control 4: every containment caller outside the seam is cleanup.
 
-    ``terminalContainment`` keeps production callers -- appFactory
-    builds the registry and drains it at shutdown, sessionLifecycle and
+    ``terminalContainment`` has production callers -- appFactory builds
+    the registry and drains it at shutdown, sessionLifecycle and
     serverLifespan drain and query it on release, reap, and shutdown --
     which is why a no-callers invariant cannot pass. What must hold is
     narrower: none of those callers CREATES anything.
+
+    The gated route is exempt for ``TerminalSession`` alone, the same
+    single exemption control 1 grants. Note it lands here only because
+    its module docstring NAMES ``terminalContainment`` while explaining
+    the quiescence claim -- the scan selects modules by that word -- so
+    without the exemption this control would be enforcing "do not
+    mention the module you are describing".
     """
     listViolations = []
     for pathModule in _flistProductionPythonModules():
@@ -3588,6 +3622,10 @@ def testRemainingContainmentCallsAreCleanupOnly():
         setOffending = (
             set(_flistCallNames(treeAst)) & _SET_TERMINAL_CREATION_SYMBOLS
         )
+        if str(pathModule.relative_to(PACKAGE_DIR)) == (
+            _S_TERMINAL_ROUTE_MODULE
+        ):
+            setOffending = setOffending - {"TerminalSession"}
         if setOffending:
             listViolations.append(
                 (str(pathModule.relative_to(PACKAGE_DIR)),

@@ -37,18 +37,30 @@ at any corner of the screen tells you where the project stands.
 
 ## Terminal
 
-**The in-browser terminal is disabled.** The terminal strip explains
-this in place of a shell.
+**Containerized projects get a shell in the dashboard.** The terminal
+strip opens a session inside the container, with tabs and panes.
 
-The reason is containment. A shell can start a process that detaches
-from the process group vaibify records for it, so vaibify cannot prove
-such a process has stopped — and if it cannot prove that, then
-releasing a container, handing it to another session, or shutting the
-hub down could not honestly report the container quiet. An unprovable
-boundary is worse than a missing feature, so the feature is the one
-that goes.
+**It costs one guarantee, and you should know which.** A shell can
+start a process that detaches from the process group vaibify records
+for it, so vaibify cannot prove such a process has stopped. Rather than
+claim otherwise, vaibify stops claiming: once a terminal has run in a
+container, releasing it, handing it to another session, or shutting the
+hub down reports the container's quiescence as **unproven** instead of
+quiet, and asks you to settle it with:
 
-To reach a shell inside the container, use Docker directly:
+```bash
+vaibify reconcile
+```
+
+Nothing is lost silently — a container in that state is quarantined
+until reconcile proves it, rather than being reported clean.
+
+**A project that runs on your machine has no in-dashboard terminal.**
+There is no container to open a shell inside, and your own terminal is
+the same shell with the same authority; the strip names the project's
+directory so you can `cd` straight to it.
+
+You can always reach a container's shell outside vaibify:
 
 ```bash
 docker exec -it <container-name> bash
@@ -234,12 +246,15 @@ tweaking a script without re-running the simulation.
 
 #### Interactive steps
 
-An *interactive* step is one a human drives in a shell. Because the
-in-browser terminal is disabled (see [Terminal](#terminal)), **an
-interactive step cannot be run from the dashboard**: **Run in Terminal**
-reports the refusal instead of starting a step that could never
-finish. Make the step automated, or run its commands yourself in a
-`docker exec` shell.
+An *interactive* step is one a human drives in a shell. **Run in
+Terminal** opens a tab, runs the step's commands there, and watches for
+the exit code, so the step's badge settles when you are done with it.
+
+In a project that runs on your machine there is no terminal in the
+dashboard (see [Terminal](#terminal)), so an interactive step reports
+the refusal rather than starting something that could never report
+finishing. Make the step automated, or run its commands in your own
+shell.
 
 #### The expanded step view
 

@@ -1060,6 +1060,7 @@ const VaibifyApp = (function () {
             _dictWorkflowState.abortControllerFileCheck.abort();
             _dictWorkflowState.abortControllerFileCheck = null;
         }
+        VaibifyPipelineRunner.fnCancelSentinelMonitor();
     }
 
     function fnDisconnect() {

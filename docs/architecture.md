@@ -640,10 +640,9 @@ closed 4409, and the browser reported a healthy server as unreachable.
 So the budget is: at most one live **pipeline** WebSocket per container
 (`iLivePipelineConnectionCount`); sockets on any other lane are counted
 in `iLiveConnectionCount` for liveness (the reaper and the idle watchdog
-read it) but are never refused. The terminal is disabled (see "The
-interactive terminal is disabled" in `AGENTS.md`), so the unbudgeted
-lane has no production caller today; the budget still holds and is
-driven through the real wrapper by a test-owned socket on that lane. `fnIncrementLiveConnection` /
+read it) but are never refused. The terminal is that lane's production
+caller, which is exactly why the budget must never be extended back
+over it. `fnIncrementLiveConnection` /
 `fnDecrementLiveConnection` keep both counts, and a second concurrent
 pipeline connection presenting the same lease is refused with 4409.
 
@@ -1102,9 +1101,10 @@ following files control test generation:
 - `commandUtilities.py` — script path extraction from commands.
 - `dependencyScanner.py` — code dependency analysis for scripts.
 - `registryRoutes.py` — project registry API.
-- `terminalSession.py` — PTY bridge for the terminal WebSocket. No
-  production path constructs one: the terminal is disabled (see
-  `AGENTS.md`, "The interactive terminal is disabled").
+- `terminalSession.py` — PTY bridge for the terminal WebSocket.
+  Constructed only by `routes/terminalRoutes.py`, after the ownership
+  gate (see `AGENTS.md`, "The terminal serves containers, and costs
+  the quiescence claim").
 - `resourceMonitor.py` — container CPU and memory stats.
 - `figureServer.py` — small utility; see source.
 - `setupServer.py` — setup wizard host-side server.

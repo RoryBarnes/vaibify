@@ -643,26 +643,31 @@ def _fnReleaseBrowserLaneOwnership(stateApp):
 
 
 # ---------------------------------------------------------------------
-# Journey -- the disabled terminal is honest in the browser
+# Journey -- the terminal, in a real browser
 # ---------------------------------------------------------------------
 
 
-def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
+def testTheTerminalDialsItsSocketAndTheServerGatesIt(
     pageDashboard, serverHub,
 ):
-    """The page must not open a terminal socket, and the server refuses.
+    """The page opens a terminal socket, and an unclaimed dial is refused.
 
     Two halves that only mean something together. The server half opens
-    a real ``/ws/terminal`` socket from the real browser and reads the
-    close code: it must be the withdrawal code, not an authorization
-    refusal, so a client can tell "this feature is gone" from "your
-    claim is bad". The frontend half asserts the page never dials the
-    lane at all -- a socket left to be refused would surface a
-    deliberate refusal as a connection failure, and the interactive-step
-    launcher would poll for a sentinel no shell will ever print.
+    a real ``/ws/terminal`` socket from the real browser with no claim
+    behind it and reads the close code: it must be an AUTHORIZATION
+    refusal, because that is what it is -- the feature exists and this
+    caller has no standing in the container.
+
+    The frontend half asserts the page DOES dial the lane for a
+    container project. While the terminal was withdrawn this asserted
+    the opposite, and the reason it did is worth keeping in view: a
+    socket left to be refused surfaces a deliberate refusal as a
+    connection failure. That is why the pane now names the deliberate
+    close codes rather than printing "[Connection closed]" for all of
+    them.
 
     Run in a real browser because a string search of the source cannot
-    tell whether a module still reaches for the socket at runtime.
+    tell whether a module actually reaches for the socket at runtime.
     """
     pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
     sCredential = _fsPageCredential(pageDashboard)
@@ -681,9 +686,13 @@ def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
         sCredential,
     )
     from vaibify.gui import webSocketAuthorization
-    assert iCloseCode == webSocketAuthorization.I_REJECT_TERMINAL_DISABLED, (
-        "the server must close a terminal dial-in with the withdrawal "
-        f"code, distinct from every authorization refusal; got {iCloseCode}"
+    assert iCloseCode in (
+        webSocketAuthorization.I_REJECT_BAD_TOKEN,
+        webSocketAuthorization.I_REJECT_FOREIGN_LEASE,
+        webSocketAuthorization.I_REJECT_BAD_ORIGIN,
+    ), (
+        "a dial with no claim behind it must be refused BY THE GATE, "
+        f"with an authorization code; got {iCloseCode}"
     )
 
     try:
@@ -695,6 +704,8 @@ def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
                     listUrls.push(sUrl);
                     this.readyState = 0;
                     this.close = () => {};
+                    this.send = () => {};
+                    this.addEventListener = () => {};
                 }
                 WebSocketFake.CONNECTING = 0;
                 WebSocketFake.OPEN = 1;
@@ -714,18 +725,14 @@ def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
                         sName, dictClaim.sLeaseId);
                     await VaibifyApp.fnEnterNoWorkflow(sContainerId);
                     VaibifyTerminal.fnCreateTab();
-                    /* Read the rendered ROWS, not the strip: xterm
-                     * injects a stylesheet into the strip, so the
-                     * strip's textContent is mostly CSS and a substring
-                     * check against it would be meaningless. */
                     const listRows = Array.from(document.querySelectorAll(
                         '#terminalStrip .xterm-rows'));
                     return {
                         listUrls: listUrls,
                         bTabOpened: listRows.length > 0,
-                        bSendRefused:
+                        bSendAccepted:
                             VaibifyTerminal.fbSendCommandInFreshTab(
-                                'echo hello') === false,
+                                'echo hello') === true,
                         sRowsText: listRows.map(
                             (el) => el.textContent).join(' '),
                     };
@@ -745,17 +752,19 @@ def testTerminalIsRefusedAndTheFrontendNeverDialsIt(
     listTerminalUrls = [
         sUrl for sUrl in dictFrontend["listUrls"] if "/ws/terminal" in sUrl
     ]
-    assert listTerminalUrls == [], (
-        f"the frontend still dials the disabled terminal: {listTerminalUrls}"
+    assert listTerminalUrls != [], (
+        "the frontend never dialled the terminal lane, so the pane "
+        "shows a shell that is not connected to anything"
     )
-    assert dictFrontend["bSendRefused"], (
-        "fbSendCommandInFreshTab must report False so an interactive "
-        "step refuses instead of waiting forever for a sentinel"
+    assert dictFrontend["bSendAccepted"], (
+        "fbSendCommandInFreshTab reported False in a container, so an "
+        "interactive step would refuse where a shell is available"
     )
-    assert "terminals are disabled" in dictFrontend["sRowsText"].lower(), (
-        "the pane must SAY why there is no shell; an empty black "
-        "rectangle is indistinguishable from a terminal that failed. "
-        f"Rendered rows were: {dictFrontend['sRowsText']!r}"
+    assert "runs on your own machine" not in (
+        dictFrontend["sRowsText"].lower()
+    ), (
+        "the host notice was rendered in a container project: "
+        f"{dictFrontend['sRowsText']!r}"
     )
     assert pageDashboard.listPageErrors == []
     # Entering a container also opens the Repos panel, whose sidecar

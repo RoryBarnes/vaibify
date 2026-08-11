@@ -25,7 +25,7 @@ check, the bound-lease check, the id->name resolution and the
 per-container connection budget all run for real.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import WebSocket
@@ -375,35 +375,37 @@ def testTerminalAndPipelineWebSocketsCoexistOnTheServedApplication(
     assert recordOwner.iLivePipelineConnectionCount == 0
 
 
-def testWithdrawnTerminalRefusesTheOwnerOnTheServedApplication(
+def testTerminalDoesNotSpendThePipelineBudgetOnTheServedApplication(
     appServed, clientBrowser, sBrowserCredential,
 ):
-    """The real served app refuses the terminal to its rightful owner.
+    """A terminal must not consume the one-pipeline-per-container slot.
 
     Driven end to end -- claim over HTTP, then dial the terminal with
-    the lease that claim returned -- so the refusal is observed through
-    the same application a browser talks to, not a route registered in
-    isolation. The code must be the withdrawal code, and the owner
-    record must be untouched: an ownership refresh or a live-count bump
-    here would let an unauthenticated caller disturb a session it has
-    no standing in.
+    the lease that claim returned -- so the property is observed
+    through the same application a browser talks to, not a route
+    registered in isolation. While the terminal was withdrawn this
+    asserted the withdrawal code instead; the terminal serves again,
+    and what matters on the served app is the budget.
+
+    Budgeting all sockets is what shipped the Run-Step-always-refused
+    bug: the terminal opens on workflow entry, held the only slot, and
+    every Run Step came back 4409 mislabelled "cannot reach server".
     """
     sLeaseId = _fsConnectAndReturnLease(clientBrowser)
-    with clientBrowser.websocket_connect(
-        _fsTerminalUrl(sBrowserCredential, sLeaseId),
-        headers=_DICT_LOOPBACK_ORIGIN,
-    ) as websocketClient:
-        with pytest.raises(WebSocketDisconnect) as excInfo:
-            websocketClient.receive_text()
-    assert excInfo.value.code == (
-        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
-    ), (
-        "the withdrawn terminal must close with its own code, not an "
-        f"authorization refusal; got {excInfo.value.code}"
-    )
     recordOwner = appServed.state.dictContainerOwners[S_CONTAINER_NAME]
-    assert recordOwner.iLiveConnectionCount == 0
-    assert recordOwner.iLivePipelineConnectionCount == 0
+    with patch(
+        "vaibify.gui.routes.terminalRoutes._fnStartAndRunTerminal",
+        new=AsyncMock(),
+    ):
+        with clientBrowser.websocket_connect(
+            _fsTerminalUrl(sBrowserCredential, sLeaseId),
+            headers=_DICT_LOOPBACK_ORIGIN,
+        ):
+            pass
+    assert recordOwner.iLivePipelineConnectionCount == 0, (
+        "the terminal spent the per-container pipeline budget; every "
+        "Run Step in this container would be refused 4409"
+    )
 
 
 @pytest.mark.parametrize("fsBuildUrl", [_fsPipelineUrl])

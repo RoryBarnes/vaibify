@@ -24,6 +24,7 @@ and needing ``vaibify reconcile``.
 """
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -106,15 +107,19 @@ def test_legacy_record_keeps_the_container_quarantined():
     )
 
 
-def test_dialling_the_withdrawn_route_does_not_settle_the_record():
-    """The refusal is inert: it cannot clear what it did not prove.
+def test_dialling_the_route_does_not_settle_an_older_record():
+    """Opening a terminal is inert: it cannot clear what it did not prove.
 
-    This is the adversarial half. The withdrawn route and the operation
-    journal are separate subsystems, and the tempting shortcut when
-    parking a feature is to have the parking sweep its leftovers. Here
-    the route is dialled with the container's own valid lease -- the
-    most privileged caller there is -- and the record must be exactly as
-    it was, byte for byte, afterwards.
+    This is the adversarial half, and it outlived the withdrawal it was
+    written for. The route and the operation journal are separate
+    subsystems, and the tempting shortcut -- when parking a feature, or
+    when bringing one back -- is to let the new session sweep the old
+    session's leftovers. Here the route is dialled with the container's
+    own valid lease, the most privileged caller there is, and the
+    pre-existing record must be exactly as it was, byte for byte,
+    afterwards. The start itself fails against the stub connection,
+    which is the point: a start that cannot even run must not settle a
+    quarantine it never examined.
     """
     sOperationId = _fsWriteLegacyTerminalRecord()
     dictBefore = dict(_fdictJournalOperations()[sOperationId])
@@ -139,15 +144,12 @@ def test_dialling_the_withdrawn_route_does_not_settle_the_record():
         "?sToken=any&sLeaseId=owning-lease",
         headers={"origin": "http://localhost"},
     ) as websocketClient:
-        with pytest.raises(WebSocketDisconnect) as excInfo:
+        with pytest.raises(WebSocketDisconnect):
             websocketClient.receive_text()
 
-    assert excInfo.value.code == (
-        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
-    )
     assert _fdictJournalOperations()[sOperationId] == dictBefore, (
-        "withdrawing the route must not silently settle, amend, or "
-        "clear a record it has proven nothing about"
+        "opening a terminal must not silently settle, amend, or clear "
+        "a record it has proven nothing about"
     )
 
 
@@ -242,40 +244,46 @@ def test_the_registry_starts_empty_after_an_upgrade():
     assert _fdictJournalOperations() != {}
 
 
-def test_no_terminal_process_can_be_created_through_the_route():
-    """The alpha gate half of the setsid problem.
+def test_an_unauthorized_dial_creates_no_terminal_process():
+    """A caller with no standing cannot start a shell.
 
     ``testTerminalContainmentLive`` demonstrates that a ``setsid``
-    descendant escapes the recorded process group and that the record
-    then settles CLEAN over a live process -- the reason the terminal is
-    disabled. That demonstration drives ``TerminalSession`` directly, on
-    purpose, so it keeps proving the boundary is invalid no matter what
-    the route does.
+    descendant escapes the recorded process group -- the limit vaibify
+    now states rather than hides, which is what let the terminal come
+    back. That limit makes THIS boundary matter more, not less: a shell
+    nobody authorized would be a process vaibify cannot prove stopped
+    AND cannot attribute to a session.
 
-    This is the other half, and it is deliberately not the same test:
-    the route cannot create such a process at all, because it never
-    constructs a session. A ``TerminalSession`` that explodes on
-    construction proves it -- a route that merely returned early would
-    still pass a check of the response code.
+    So the property is the one that survived the withdrawal in
+    substance: an unauthorized dial-in builds nothing. A
+    ``TerminalSession`` that explodes on construction proves it, where
+    a route that merely returned early would still pass a check of the
+    close code.
     """
     from vaibify.gui.routes import terminalRoutes
 
-    assert not hasattr(terminalRoutes, "TerminalSession"), (
-        "terminalRoutes still holds a TerminalSession reference; the "
-        "parking controls exist so the name is not even in scope, and "
-        "a module that can name it can call it"
-    )
+    listConstructed = []
+
+    def _fnExplode(*tArguments, **dictKeywords):
+        listConstructed.append(tArguments)
+        raise AssertionError(
+            "an unauthorized dial-in constructed a TerminalSession"
+        )
 
     dictCtx = {"docker": _StubProbeConnection()}
     app = FastAPI()
     _fnRegisterTerminalWs(app, dictCtx)
     client = TestClient(app)
-    with client.websocket_connect(
-        f"/ws/terminal/{S_CONTAINER_ID}?sToken=x&sLeaseId=y",
-        headers={"origin": "http://localhost"},
-    ) as websocketClient:
-        with pytest.raises(WebSocketDisconnect) as excInfo:
-            websocketClient.receive_text()
-    assert excInfo.value.code == (
-        webSocketAuthorization.I_REJECT_TERMINAL_DISABLED
-    )
+    with patch.object(terminalRoutes, "TerminalSession", _fnExplode):
+        with client.websocket_connect(
+            f"/ws/terminal/{S_CONTAINER_ID}?sToken=x&sLeaseId=y",
+            headers={"origin": "http://localhost"},
+        ) as websocketClient:
+            with pytest.raises(WebSocketDisconnect) as excInfo:
+                websocketClient.receive_text()
+    assert listConstructed == []
+    assert excInfo.value.code in (
+        webSocketAuthorization.I_REJECT_BAD_TOKEN,
+        webSocketAuthorization.I_REJECT_FOREIGN_LEASE,
+        webSocketAuthorization.I_REJECT_BAD_ORIGIN,
+    ), excInfo.value.code

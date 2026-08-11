@@ -9923,9 +9923,13 @@ def _fdictEntry(sRel):
             'testTheTerminalNoticeSpeaksAboutTheRightThing'
         ),
         source='vaibify/gui/static/scriptTerminal.js',
-        # One notice for both modes: a host researcher is told to
-        # docker exec into a container their project does not have.
-        old='        if (VaibifyApp.fsGetProjectMode() !== "host") {\n',
-        new='        if (true) {\n',
+        # Treat a host project as terminal-capable: the pane dials a
+        # socket the server will refuse, and the researcher is shown a
+        # connection failure instead of being pointed at their own
+        # shell. (Before the terminal came back this same mutation
+        # produced the container notice, with its docker exec line, on
+        # a project that has no container.)
+        old='        return VaibifyApp.fsGetProjectMode() !== "host";\n',
+        new='        return true;\n',
     ),
 ]

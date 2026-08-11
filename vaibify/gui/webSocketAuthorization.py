@@ -36,6 +36,7 @@ __all__ = [
     "fnServeUnderLiveConnectionCounters",
     "fbContainerIsPoisoned",
     "I_REJECT_TERMINAL_DISABLED",
+    "I_REJECT_TERMINAL_NOT_ON_HOST",
     "I_REJECT_POISONED",
 ]
 
@@ -50,13 +51,22 @@ I_REJECT_BAD_TOKEN = 4401
 I_REJECT_FOREIGN_LEASE = 4403
 I_REJECT_DUPLICATE_SESSION = 4409
 
-# The interactive terminal is withdrawn for the alpha (see AGENTS.md,
-# "Withdrawn for the alpha"). The code is deliberately distinct from
-# every authorization refusal above: the socket is refused because the
-# feature is gone, not because this browser lacks standing, and a
-# client that cannot tell the two apart would advise the researcher to
-# re-claim a container that is already theirs.
+# The terminal was withdrawn for the alpha under this code, and is back
+# for containers (2026-08-11). The code is KEPT, and still distinct from
+# every authorization refusal above, because a client that cannot tell
+# "the feature is gone" from "your credential is bad" advises the
+# researcher to re-claim a container that is already theirs. Nothing in
+# the product sends it today; it is what a future withdrawal would send.
 I_REJECT_TERMINAL_DISABLED = 4503
+
+# A terminal asked for on a HOST project. That shell would have to be a
+# PTY on the researcher's own machine, journaled through the gated
+# host-exec primitive, and it is not built yet. Distinct from the
+# withdrawal code above and from every authorization code: the feature
+# is neither gone nor refused to this caller — it is not built for this
+# KIND of project, and the researcher's own terminal is the answer
+# until it is.
+I_REJECT_TERMINAL_NOT_ON_HOST = 4504
 
 # A container whose owner record is POISONED: a guarded worker was
 # force-abandoned and could not be proven dead, so every mutation

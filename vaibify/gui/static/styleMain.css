@@ -2482,6 +2482,26 @@ body.proof-level-3 .toolbar-label {
     opacity: 0.6;
 }
 
+.terminal-kill-overlay {
+    position: absolute;
+    top: 4px;
+    right: 20px;
+    z-index: 10;
+    background: var(--color-red);
+    color: #fff;
+    border: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    font-size: 0;
+    cursor: pointer;
+    opacity: 0.85;
+}
+
+.terminal-kill-overlay:hover {
+    opacity: 1;
+}
+
 .btn-terminal-help {
     font-size: 0.75rem;
     color: var(--highlight-color);
