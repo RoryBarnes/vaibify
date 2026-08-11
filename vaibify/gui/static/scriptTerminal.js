@@ -396,8 +396,16 @@ const VaibifyTerminal = (function () {
        all — a socket left to be refused would report a deliberate
        refusal as a connection failure, which is a different and
        misleading thing — and says so on screen instead of leaving an
-       empty black rectangle. */
-    var S_TERMINAL_DISABLED_NOTICE = [
+       empty black rectangle.
+
+       The notice is MODE-AWARE. The container wording is a statement
+       about a container, and a host project has none: it told a
+       researcher their project could not be "reported quiet" as a
+       container and then handed them a `docker exec` line naming a
+       container that does not exist. The host wording says the true
+       thing instead, which is that the shell they want is the ordinary
+       one on their own machine, in a directory vaibify can name. */
+    var _T_TERMINAL_DISABLED_CONTAINER = [
         "",
         "  Interactive terminals are disabled.",
         "",
@@ -413,8 +421,30 @@ const VaibifyTerminal = (function () {
         "",
     ];
 
+    function flistTerminalDisabledNotice() {
+        if (VaibifyApp.fsGetProjectMode() !== "host") {
+            return _T_TERMINAL_DISABLED_CONTAINER;
+        }
+        var sRoot = VaibifyApp.fsGetWorkspaceRoot() || "your project";
+        return [
+            "",
+            "  Interactive terminals are disabled.",
+            "",
+            "  A terminal can start a process that outlives its window,",
+            "  and vaibify cannot prove such a process has stopped — so",
+            "  releasing this project could not honestly report that",
+            "  nothing of vaibify's is still running.",
+            "",
+            "  This project runs on your own machine, so the shell you",
+            "  want is your own, in:",
+            "",
+            "      cd " + sRoot,
+            "",
+        ];
+    }
+
     function fnRenderTerminalDisabledNotice(terminal) {
-        S_TERMINAL_DISABLED_NOTICE.forEach(function (sLine) {
+        flistTerminalDisabledNotice().forEach(function (sLine) {
             terminal.write(sLine + "\r\n");
         });
         terminal.options.cursorBlink = false;

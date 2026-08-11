@@ -285,3 +285,37 @@ def _fnWaitForFile(sPath, fTimeoutSeconds=60.0):
         f"the step never wrote {sPath}; the run did not reach the "
         "host connection, or it failed silently"
     )
+
+
+@pytest.mark.falsification
+def testTheTerminalNoticeSpeaksAboutTheRightThing(
+    pageDashboard, serverHub,
+):
+    """A host project has no container to talk about.
+
+    The withdrawn-terminal notice is container copy: it said releasing
+    "this container" could not report it quiet, and then offered a
+    `docker exec -it <container-name> bash` line naming a container
+    that does not exist for this project. A researcher who followed it
+    would be told no such container is running, about work that is
+    running fine on their own machine.
+
+    Kills: one notice for both modes.
+    """
+    _fnOpenTheHostWorkflow(pageDashboard, serverHub)
+    sNotice = _fsTerminalNoticeText(pageDashboard)
+    assert "docker exec" not in sNotice, sNotice
+    assert "this container" not in sNotice, sNotice
+    assert "your own machine" in sNotice, sNotice
+    assert serverHub.sHome.split(os.sep)[-1] in sNotice or (
+        S_HOST_PROJECT_READY in sNotice
+    ), (
+        "the notice does not name the directory the researcher should "
+        f"open a shell in: {sNotice}"
+    )
+
+
+def _fsTerminalNoticeText(page):
+    """Return the terminal pane's rendered text, whitespace collapsed."""
+    page.wait_for_selector(".xterm-rows", timeout=20000)
+    return " ".join(page.text_content(".xterm-rows").split())

@@ -9917,4 +9917,15 @@ def _fdictEntry(sRel):
             '    padding: 40px;\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectJourney.py::'
+            'testTheTerminalNoticeSpeaksAboutTheRightThing'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        # One notice for both modes: a host researcher is told to
+        # docker exec into a container their project does not have.
+        old='        if (VaibifyApp.fsGetProjectMode() !== "host") {\n',
+        new='        if (true) {\n',
+    ),
 ]
