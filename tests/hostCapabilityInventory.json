@@ -300,11 +300,6 @@
       "sRationale": "Git command builder; the host-mode plan routes the gitStatus builders through the host-exec primitive.",
       "sSupportingSymbols": "fdictComputeBlobShasInContainer, sCommand"
     },
-    "f8a67bc6b004faf0613977bb718b3bd9be88061aa7f02428bb5d67ea733b698f": {
-      "sDisposition": "container-only",
-      "sRationale": "The /workspace/.vaibify picker probe is container-only: host tiles come from the registry, not from probing.",
-      "sSupportingSymbols": "_fbIsVaibifyContainer"
-    },
     "fcbef801412943424804ce812babac24c7183df917014359b846ceefec5105bd": {
       "sDisposition": "host-variant",
       "sRationale": "Sync execs (Overleaf/Zenodo/keyring/digest/DAG) and repo scanning have host variants per the plan: package-module imports, host keyring, host dot, and host directory iteration.",
@@ -316,7 +311,7 @@
       "sSupportingSymbols": "ConnectionRouter.fconnectionForResource, fbIsHostProject"
     }
   },
-  "iRowCount": 131,
+  "iRowCount": 130,
   "iUndisposedSiteBudget": 68,
   "listRows": [
     {
@@ -689,13 +684,6 @@
       "sFingerprint": "bbe8255a04ec3b81818f0876864fb7b734fe1cc6960e044998fa3717cc82f4c4",
       "sMethod": "ftRunInContainerStreamed",
       "sModule": "vaibify/gui/promptRecordManager.py"
-    },
-    {
-      "sCommandExpression": "'test -d /workspace/.vaibify'",
-      "sEnclosingFunction": "_fbIsVaibifyContainer",
-      "sFingerprint": "f8a67bc6b004faf0613977bb718b3bd9be88061aa7f02428bb5d67ea733b698f",
-      "sMethod": "ftResultExecuteCommand",
-      "sModule": "vaibify/gui/registryRoutes.py"
     },
     {
       "sCommandExpression": "sCommand",

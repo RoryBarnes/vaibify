@@ -4781,7 +4781,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # nothing a researcher can reach could make one. The mode decides
     # which leg every later call takes, so it is recorded here rather
     # than inferred later.
-    "registryRoutes.py": 1335,
+    # +27: container recognition moved off an arbitrary exec onto the
+    # typed read, and stopped swallowing a control-plane refusal as
+    # "not a vaibify container". The added lines are the reasoning for
+    # both — this defect cost a researcher a working dashboard and
+    # every link in its chain was silent, so the next reader gets the
+    # chain rather than a one-line docstring.
+    "registryRoutes.py": 1362,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

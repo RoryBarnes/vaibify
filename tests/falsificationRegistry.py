@@ -9932,4 +9932,52 @@ def _fdictEntry(sRel):
         old='        return VaibifyApp.fsGetProjectMode() !== "host";\n',
         new='        return true;\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryContainerRecognition.py::'
+            'testRecognitionSurvivesTheMutationGate'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # The shipped defect, restored exactly: recognise by running an
+        # arbitrary command, which the enforced request lane refuses.
+        old=(
+            '        listExists = connectionDocker.flistContainerPathsExist(\n'
+            '            dictContainer["sContainerId"], '
+            '[S_VAIBIFY_MARKER_DIRECTORY],\n'
+            '        )\n'
+            '        return bool(listExists) and bool(listExists[0])\n'
+        ),
+        new=(
+            '        iExitCode, _ = connectionDocker.ftResultExecuteCommand(\n'
+            '            dictContainer["sContainerId"],\n'
+            '            "test -d /workspace/.vaibify",\n'
+            '        )\n'
+            '        return iExitCode == 0\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryContainerRecognition.py::'
+            'testAContainerWithoutTheMarkerIsNotRecognised'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Recognise anything reachable, sweeping every unrelated
+        # container on the machine into the researcher's project list.
+        old='        return bool(listExists) and bool(listExists[0])\n',
+        new='        return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRegistryContainerRecognition.py::'
+            'testARefusedReadIsNotReportedAsNotAVaibifyContainer'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # Swallow the refusal again: the dashboard shows a shorter list
+        # instead of an error, which is how the defect stayed invisible.
+        old=(
+            '    except ControlPlaneRefusalError:\n'
+            '        raise\n'
+        ),
+        new='',
+    ),
 ]

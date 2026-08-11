@@ -35,6 +35,12 @@ import json
 S_CONTAINER_ID = "browserlane0container0id0000000000000000000000000000000000000000"
 S_CONTAINER_NAME = "browser-lane-project"
 S_WORKSPACE_ROOT = "/workspace"
+# Imported from the product rather than re-spelled: a fake that drifted
+# from the real marker path would answer the recognition probe for a
+# path nothing asks about, and report its own container unrecognized.
+from vaibify.gui.registryRoutes import (  # noqa: E402
+    S_VAIBIFY_MARKER_DIRECTORY,
+)
 S_PROJECT_REPO = "/workspace/browserLaneProject"
 S_WORKFLOW_PATH = f"{S_PROJECT_REPO}/.vaibify/workflows/project.json"
 
@@ -279,10 +285,24 @@ class FailClosedDockerAdapter:
 
     def flistContainerPathsExist(self, sContainerId, listPaths):
         return [
+            self._fbPathExists(sPath) for sPath in listPaths
+        ]
+
+    def _fbPathExists(self, sPath):
+        """Answer the typed existence read for the paths it models.
+
+        The vaibify marker directory is answered TRUE because this
+        adapter stands in for a vaibify container: registry recognition
+        asks for it through the typed read (an arbitrary exec would be
+        refused on the enforced request lane), and a fake that said no
+        would report its own container as unrecognized.
+        """
+        if sPath == S_VAIBIFY_MARKER_DIRECTORY:
+            return True
+        return (
             sPath[len(S_WORKSPACE_ROOT) + 1:].rsplit("/.git", 1)[0]
             in self.setWorkspaceRepositories
-            for sPath in listPaths
-        ]
+        )
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         return self._ftAnswerModelledCommand(sCommand)

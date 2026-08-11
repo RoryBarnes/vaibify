@@ -550,7 +550,7 @@
       "sScopeFingerprint": "287144c24c2e3acd"
     },
     {
-      "iLine": 736,
+      "iLine": 742,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -563,7 +563,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 731,
+      "iLine": 737,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -576,7 +576,7 @@
       "sScopeFingerprint": "55496e2d845be06c"
     },
     {
-      "iLine": 1207,
+      "iLine": 1234,
       "iOrdinal": 0,
       "sAcquisitionKind": "import",
       "sCapability": "process-launch",
@@ -589,7 +589,7 @@
       "sScopeFingerprint": "8af36da422b672dd"
     },
     {
-      "iLine": 1244,
+      "iLine": 1271,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -602,7 +602,7 @@
       "sScopeFingerprint": "d012680a30c7b6d4"
     },
     {
-      "iLine": 672,
+      "iLine": 678,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -615,7 +615,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 669,
+      "iLine": 675,
       "iOrdinal": 1,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -628,7 +628,7 @@
       "sScopeFingerprint": "b44c07589c323215"
     },
     {
-      "iLine": 702,
+      "iLine": 708,
       "iOrdinal": 0,
       "sAcquisitionKind": "reflection-call",
       "sCapability": "reflection",
@@ -680,7 +680,7 @@
       "sScopeFingerprint": "f5f03ff3b7eb02ca"
     },
     {
-      "iLine": 536,
+      "iLine": 568,
       "iOrdinal": 0,
       "sAcquisitionKind": "attribute",
       "sCapability": "process-signal",
@@ -4836,7 +4836,7 @@
     },
     {
       "bInsideGateway": false,
-      "bMutationCapable": true,
+      "bMutationCapable": false,
       "iOrdinal": 0,
       "listCarrierModes": [
         "UNCLASSIFIED"
@@ -4847,17 +4847,17 @@
       "listLockOwners": [
         "UNCLASSIFIED"
       ],
-      "sAccess": "arbitrary-command",
+      "sAccess": "typed-read",
       "sCarrierDisposition": "UNCLASSIFIED",
       "sExclusionRationale": "UNCLASSIFIED",
       "sFile": "gui/registryRoutes.py",
-      "sFingerprint": "ec68315eb75b94b8",
+      "sFingerprint": "9956c2c525f068e0",
       "sFunction": "_fbIsVaibifyContainer",
       "sJournalKind": "UNCLASSIFIED",
       "sLifetime": "UNCLASSIFIED",
       "sLogicalOperation": "UNCLASSIFIED",
       "sOperationMetadata": "UNCLASSIFIED",
-      "sPrimitive": "ftResultExecuteCommand",
+      "sPrimitive": "flistContainerPathsExist",
       "sReferenceKind": "direct-call"
     },
     {

@@ -195,12 +195,20 @@ def testStopContainerProjectNotFound(fixtureClient):
 # --- Merge: registry + auto-discovery ---
 
 def _fMockDockerWithContainers(listContainers, bVaibify=True):
-    """Create a mock Docker connection with given containers."""
+    """Create a mock Docker connection with given containers.
+
+    Recognition asks the TYPED READ whether the marker directory
+    exists, so that is what the double answers. A bare ``MagicMock``
+    would answer it with a truthy mock and report every container as
+    vaibify's, which is the permissive-Docker-mock habit this suite has
+    been bitten by before.
+    """
     from unittest.mock import MagicMock
     mockDocker = MagicMock()
     mockDocker.flistGetRunningContainers.return_value = listContainers
-    iExitCode = 0 if bVaibify else 1
-    mockDocker.ftResultExecuteCommand.return_value = (iExitCode, "")
+    mockDocker.flistContainerPathsExist.side_effect = (
+        lambda sContainerId, listPaths: [bVaibify for _ in listPaths]
+    )
     return mockDocker
 
 
@@ -745,16 +753,23 @@ def testDiscoverContainersDockerException(tmp_path, monkeypatch):
 
 
 # -----------------------------------------------------------------------
-# _fbIsVaibifyContainer exception (lines 237-238)
+# _fbIsVaibifyContainer: an ordinary failure is an answer of "no"
 # -----------------------------------------------------------------------
 
 
 def testIsVaibifyContainerExceptionReturnsFalse(monkeypatch):
-    """Lines 237-238: exception in exec returns False."""
+    """A container that vanished mid-listing answers False, not an error.
+
+    Only ordinary failures. A control-plane REFUSAL is re-raised
+    instead, and the separation is pinned in
+    ``tests/testRegistryContainerRecognition.py`` -- swallowing that
+    one is what hid the misclassification that cost a researcher a
+    working dashboard.
+    """
     from unittest.mock import MagicMock
     from vaibify.gui.registryRoutes import _fbIsVaibifyContainer
     mockDocker = MagicMock()
-    mockDocker.ftResultExecuteCommand.side_effect = RuntimeError("err")
+    mockDocker.flistContainerPathsExist.side_effect = RuntimeError("err")
     bResult = _fbIsVaibifyContainer(
         mockDocker, {"sContainerId": "x"},
     )

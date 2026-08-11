@@ -33,6 +33,12 @@ logger = logging.getLogger("vaibify")
 
 _RE_FOLDER_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\- ]*$")
 
+# What marks a container as one of vaibify's. Deliberately a directory
+# the container CARRIES, not a Docker label: a label is applied by one
+# creation path, so keying on it silently unrecognizes every container
+# made before that path existed or by any other route.
+S_VAIBIFY_MARKER_DIRECTORY = "/workspace/.vaibify"
+
 _I_MAXIMUM_CPU_LIMIT = 1024
 _F_MINIMUM_MEMORY_LIMIT_GIGABYTES = 0.25
 _F_MAXIMUM_MEMORY_LIMIT_GIGABYTES = 1024.0
@@ -902,13 +908,34 @@ def _ftSplitContainers(connectionDocker, listContainers):
 
 
 def _fbIsVaibifyContainer(connectionDocker, dictContainer):
-    """Return True if the container has a .vaibify directory."""
+    """Return True if the container has a .vaibify directory.
+
+    Through the TYPED READ, never an arbitrary exec. Arbitrary command
+    execution is always treated as mutating -- the primitive cannot
+    know whether the text it was handed reads a file or deletes a
+    workspace -- so a `test -d` sent through
+    ``ftResultExecuteCommand`` is refused on any enforced request lane,
+    which this read-only listing is. The refusal then met the broad
+    ``except`` below, and every container was quietly reclassified as
+    unrecognized: a registered project got no ``sContainerId``, and its
+    tile did nothing when clicked.
+
+    A control-plane refusal is re-raised rather than swallowed. It
+    means the read is not permitted HERE, which is an architectural
+    fact about this call site, and answering "not a vaibify container"
+    to it is the silent misclassification that hid this defect. An
+    ordinary failure -- container gone mid-listing, daemon hiccup --
+    still answers False, because that genuinely is not an answer of
+    "yes".
+    """
+    from vaibify.config.mutationAdmission import ControlPlaneRefusalError
     try:
-        iExitCode, _ = connectionDocker.ftResultExecuteCommand(
-            dictContainer["sContainerId"],
-            "test -d /workspace/.vaibify",
+        listExists = connectionDocker.flistContainerPathsExist(
+            dictContainer["sContainerId"], [S_VAIBIFY_MARKER_DIRECTORY],
         )
-        return iExitCode == 0
+        return bool(listExists) and bool(listExists[0])
+    except ControlPlaneRefusalError:
+        raise
     except Exception:
         return False
 

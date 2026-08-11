@@ -161,7 +161,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 294
 # Its git-status batch was a shell script assembled here with
 # repository names interpolated raw; it is a typed read now, and with
 # it gone that route could finally leave the awaiting set.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 208
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 207
 
 
 # Every acquisition of a declared capability that still has no reviewed
