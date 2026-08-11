@@ -10009,4 +10009,54 @@ def _fdictEntry(sRel):
         old='            if (error && error.iStatus === 409) {\n',
         new='            if (false) {\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testInlineCodeAndModulesNameNoScriptFile'
+        ),
+        source='vaibify/gui/commandUtilities.py',
+        # The shipped defect: the token after the interpreter is taken
+        # as the script, so `-c` is read as a filename and pre-flight
+        # refuses the step with "command not found: -c".
+        old='        return fsExtractScriptPathFromArguments(listTokens[1:])\n',
+        new='        return listTokens[1]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testAnOrdinaryScriptIsStillFound'
+        ),
+        source='vaibify/gui/commandUtilities.py',
+        # Answer "no script" for everything, which silently switches
+        # off pre-flight's missing-script protection for every step.
+        old='        if sToken.startswith("-"):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testFlagsThatTakeAValueDoNotHideTheScript'
+        ),
+        source='vaibify/gui/commandUtilities.py',
+        # Skip the flag but keep its value, so `-W ignore run.py`
+        # reports a script called "ignore" and refuses the step.
+        old=(
+            '        if sToken in _SET_FLAGS_TAKING_A_VALUE:\n'
+            '            iIndex += 2\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testInlineCodeCommandsPassPreflight.py::'
+            'testPreflightFallsBackToCheckingTheInterpreter'
+        ),
+        source='vaibify/gui/pipelineValidator.py',
+        # Drop the fallback: a command with no script file is not
+        # validated at all, so a missing interpreter surfaces only when
+        # the run has already started.
+        old='    return listTokens[0]\n',
+        new='    return None\n',
+    ),
 ]
