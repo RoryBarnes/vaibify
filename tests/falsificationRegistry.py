@@ -9980,4 +9980,33 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSaveFailureNamesItsReason.py::'
+            'testAFailedSaveNamesTheStatusAndTheReason'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # One fixed sentence for every non-conflict failure: a refused
+        # lane, a server exception and an unreachable hub become
+        # indistinguishable, which is what made a real report
+        # undiagnosable.
+        old=(
+            '                fnShowToast(_fsDescribeSaveFailure(error), '
+            '"error");\n'
+        ),
+        new=(
+            '                fnShowToast("Save failed.", "error");\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSaveFailureNamesItsReason.py::'
+            'testAConflictKeepsItsOwnMessage'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Describe a conflict with the status sentence too, losing the
+        # one message whose advice is "re-apply your edit".
+        old='            if (error && error.iStatus === 409) {\n',
+        new='            if (false) {\n',
+    ),
 ]
